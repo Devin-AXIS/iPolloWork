@@ -44,7 +44,8 @@ export type DesignRuntimeMessage =
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "selected"; selection: DesignSelection }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "editing"; selection: DesignSelection }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "draft"; html: string; selection: DesignSelection }
-  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "snapshot"; requestId: string; html: string };
+  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "snapshot"; requestId: string; html: string }
+  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "navigate"; href: string };
 
 export function isLocalHtmlPath(path: string) {
   return /\.html?$/i.test(path.trim());
@@ -58,15 +59,71 @@ export function designSessionSelectionStorageKey(workspaceId: string, sessionId:
   return `ipollowork:design-html:selected:v1:${workspaceId}:${sessionId}`;
 }
 
-export function buildDesignPreviewDocument(source: string, editing: boolean) {
-  if (!editing) return source;
+export function resolveDesignNavigationPath(currentPath: string, rootPath: string, href: string) {
+  const value = href.trim();
+  if (!value || value.startsWith("#") || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(value)) return null;
+  const [rawPath, rawHash = ""] = value.split("#", 2);
+  const pathname = rawPath.split("?", 1)[0] ?? "";
+  const rootDirectory = rootPath.replace(/[^/]+$/, "").replace(/\/$/, "");
+  const currentDirectory = currentPath.replace(/[^/]+$/, "").replace(/\/$/, "");
+  const requested = pathname.startsWith("/") ? `${rootDirectory}/${pathname.replace(/^\/+/, "")}` : `${currentDirectory}/${pathname}`;
+  const segments: string[] = [];
+  for (const segment of requested.split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  let path = segments.join("/");
+  if (pathname === "/") path = rootPath;
+  else if (pathname.endsWith("/")) path = `${path}/index.html`;
+  else if (!/\.html?$/i.test(path)) path = `${path}.html`;
+  if (path !== rootPath && !path.startsWith(`${rootDirectory}/`)) return null;
+  let hash = rawHash;
+  try { hash = rawHash ? decodeURIComponent(rawHash) : ""; } catch { hash = rawHash; }
+  return { path, hash };
+}
 
-  const runtime = `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)});<\/script>`;
+export function buildDesignPreviewDocument(source: string, editing: boolean) {
+  const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"});<\/script>`;
+  const editingRuntime = editing
+    ? `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)});<\/script>`
+    : "";
+  const runtime = `${navigationRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
   if (bodyEnd >= 0) {
     return `${source.slice(0, bodyEnd)}${runtime}${source.slice(bodyEnd)}`;
   }
   return `${source}${runtime}`;
+}
+
+function designNavigationRuntime(channel: string, editing: boolean) {
+  if (!editing) {
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest<HTMLAnchorElement>("a[href]");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href")?.trim() || "";
+      if (!href || /^(?:mailto:|tel:|javascript:)/i.test(href)) return;
+      if (href.startsWith("#")) {
+        event.preventDefault();
+        let id = href.slice(1);
+        try { id = decodeURIComponent(id); } catch {}
+        if (!id) window.scrollTo({ top: 0, behavior: "smooth" });
+        else document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      event.preventDefault();
+      window.parent.postMessage({ channel, type: "navigate", href }, "*");
+    }, true);
+  }
+  window.addEventListener("message", (event) => {
+    if (event.source !== window.parent) return;
+    const data = event.data;
+    if (!data || typeof data !== "object" || data.channel !== channel || data.type !== "scroll-to" || typeof data.hash !== "string") return;
+    if (!data.hash) window.scrollTo({ top: 0 });
+    else document.getElementById(data.hash)?.scrollIntoView({ block: "start" });
+  });
 }
 
 function designRuntime(channel: string, styleFields: readonly string[]) {
@@ -148,6 +205,7 @@ function designRuntime(channel: string, styleFields: readonly string[]) {
     const clone = document.documentElement.cloneNode(true);
     if (!(clone instanceof HTMLElement)) return "";
     clone.querySelector(`#${runtimeId}`)?.remove();
+    clone.querySelector("#ipollowork-design-navigation-runtime")?.remove();
     clone.querySelector(`#${styleId}`)?.remove();
     clone.querySelector(`#${overlayId}`)?.remove();
     clone.querySelectorAll(`[${textNodeAttribute}]`).forEach((element) => element.replaceWith(...Array.from(element.childNodes)));

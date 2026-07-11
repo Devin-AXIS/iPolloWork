@@ -24,6 +24,7 @@ import {
   designSelectionStorageKey,
   designSessionSelectionStorageKey,
   isLocalHtmlPath,
+  resolveDesignNavigationPath,
   type DesignField,
   type DesignRuntimeMessage,
   type DesignSelection,
@@ -56,7 +57,7 @@ const TYPE_PRESETS = [
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft");
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "navigate");
 }
 
 function fileName(path: string) {
@@ -156,6 +157,8 @@ export function DesignPanel({
     [catalogQuery.data, sessionId],
   );
   const [selectedPath, setSelectedPath] = React.useState("");
+  const [activePagePath, setActivePagePath] = React.useState("");
+  const [activePageHash, setActivePageHash] = React.useState("");
   const [viewedVersionPath, setViewedVersionPath] = React.useState("current");
   const [viewedVersionUpdatedAt, setViewedVersionUpdatedAt] = React.useState<number | null>(null);
   const [editing, setEditing] = React.useState(false);
@@ -179,24 +182,56 @@ export function DesignPanel({
     }
     const stored = lockedPath || window.localStorage.getItem(designSessionSelectionStorageKey(workspaceId, sessionId)) || window.localStorage.getItem(designSelectionStorageKey(workspaceId));
     const next = htmlTargets.some((target) => target.value === stored) ? stored : htmlTargets[0]?.value;
-    setSelectedPath(next || "");
-  }, [htmlTargets, lockedPath, sessionId, workspaceId]);
+    const path = next || "";
+    if (path !== selectedPath) {
+      setSelectedPath(path);
+      setActivePagePath(path);
+      setActivePageHash("");
+    }
+  }, [htmlTargets, lockedPath, selectedPath, sessionId, workspaceId]);
 
   const fileQuery = useQuery<LoadedHtml>({
-    queryKey: ["design-html", workspaceId, selectedPath] as const,
+    queryKey: ["design-html", workspaceId, activePagePath] as const,
     queryFn: async () => {
-      if (!client || !workspaceId || !selectedPath) throw new Error("Workspace file is not ready.");
-      const result = await client.readWorkspaceFile(workspaceId, selectedPath);
+      if (!client || !workspaceId || !activePagePath) throw new Error("Workspace file is not ready.");
+      const result = await client.readWorkspaceFile(workspaceId, activePagePath);
       return { content: result.content, updatedAt: result.updatedAt ?? null };
     },
-    enabled: Boolean(client && workspaceId && selectedPath && !isRemoteWorkspace),
+    enabled: Boolean(client && workspaceId && activePagePath && !isRemoteWorkspace),
     refetchInterval: viewedVersionPath === "current" && !editing && draft === savedSource ? 1_500 : false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
 
+  const openDesignLink = React.useCallback(async (href: string) => {
+    if (!client || !workspaceId || !lockedPath || !activePagePath) return;
+    if (draft !== savedSource && !window.confirm("Discard unsaved design changes and open this page?")) return;
+    const resolved = resolveDesignNavigationPath(activePagePath, lockedPath, href);
+    if (!resolved) {
+      toast.error("This link is outside the current Design task.");
+      return;
+    }
+    try {
+      const loaded = await client.readWorkspaceFile(workspaceId, resolved.path);
+      queryClient.setQueryData<LoadedHtml>(
+        ["design-html", workspaceId, resolved.path] as const,
+        { content: loaded.content, updatedAt: loaded.updatedAt ?? null },
+      );
+      setActivePagePath(resolved.path);
+      setActivePageHash(resolved.hash);
+      setViewedVersionPath("current");
+      window.localStorage.setItem(`ipollowork.session-design-version.${sessionId}`, "current");
+    } catch {
+      toast.error(`Page not found: ${resolved.path}`);
+    }
+  }, [activePagePath, client, draft, lockedPath, queryClient, savedSource, sessionId, workspaceId]);
+
   React.useEffect(() => {
     if (!fileQuery.data) return;
+    const storedVersion = typeof window !== "undefined"
+      ? window.localStorage.getItem(`ipollowork.session-design-version.${sessionId}`)
+      : "current";
+    if (viewedVersionPath !== "current" && storedVersion !== "current") return;
     setViewedVersionPath("current");
     setViewedVersionUpdatedAt(fileQuery.data.updatedAt);
     if (typeof window !== "undefined") window.localStorage.setItem(`ipollowork.session-design-version.${sessionId}`, "current");
@@ -212,11 +247,15 @@ export function DesignPanel({
     setPreviewLoaded(false);
     setSourceHydrated(true);
     setPreviewRevision((current) => current + 1);
-  }, [fileQuery.data, sessionId]);
+  }, [fileQuery.data, sessionId, viewedVersionPath]);
 
   React.useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow || !isDesignRuntimeMessage(event.data)) return;
+      if (event.data.type === "navigate") {
+        void openDesignLink(event.data.href);
+        return;
+      }
       if (event.data.type === "editing") setHistory((current) => [...current, draft]);
       setSelection((current) => {
         if (event.data.type === "selected" || current?.id !== event.data.selection.id) setQuickEdit(null);
@@ -230,7 +269,7 @@ export function DesignPanel({
     };
     window.addEventListener("message", receiveMessage);
     return () => window.removeEventListener("message", receiveMessage);
-  }, [draft]);
+  }, [draft, openDesignLink]);
 
   const readLatestCanvasHtml = React.useCallback(async () => {
     const frameWindow = iframeRef.current?.contentWindow;
@@ -295,7 +334,7 @@ export function DesignPanel({
       // flight, which is especially important for text nested in controls.
       const content = await readLatestCanvasHtml();
       draftRef.current = content;
-      const savePath = viewedVersionPath === "current" ? selectedPath : viewedVersionPath;
+      const savePath = viewedVersionPath === "current" ? activePagePath : viewedVersionPath;
       const result = await client.writeWorkspaceFile(workspaceId, {
         path: savePath,
         content,
@@ -306,7 +345,7 @@ export function DesignPanel({
     onSuccess: ({ result, content, isCurrent }) => {
       if (isCurrent) {
         queryClient.setQueryData<LoadedHtml>(
-          ["design-html", workspaceId, selectedPath] as const,
+          ["design-html", workspaceId, activePagePath] as const,
           { content, updatedAt: result.updatedAt ?? null },
         );
       } else {
@@ -337,6 +376,8 @@ export function DesignPanel({
         );
       }
       setViewedVersionPath(versionPath);
+      setActivePagePath(selectedPath);
+      setActivePageHash("");
       setViewedVersionUpdatedAt(loaded.updatedAt ?? null);
       window.localStorage.setItem(`ipollowork.session-design-version.${sessionId}`, versionPath);
       draftRef.current = content;
@@ -515,7 +556,7 @@ export function DesignPanel({
         <>
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
             {lockedPath ? (
-              <div className="min-w-0 flex flex-1 items-center gap-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{fileName(selectedPath)}</p><p className="truncate text-[10px] text-muted-foreground">{viewedVersionPath === "current" ? "Current design" : "Version preview"}</p></div>{versionTargets.length > 0 ? <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}><SelectTrigger size="sm" className="w-32 rounded-lg" aria-label="Design version"><SelectValue>Versions</SelectValue></SelectTrigger><SelectContent><SelectItem value="current">Current version</SelectItem>{versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>Version {versionTargets.length - index}</SelectItem>)}</SelectContent></Select> : null}</div>
+              <div className="min-w-0 flex flex-1 items-center gap-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{fileName(activePagePath)}</p><p className="truncate text-[10px] text-muted-foreground">{viewedVersionPath === "current" ? "Current design" : "Version preview"}</p></div>{versionTargets.length > 0 ? <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}><SelectTrigger size="sm" className="w-32 rounded-lg" aria-label="Design version"><SelectValue>Versions</SelectValue></SelectTrigger><SelectContent><SelectItem value="current">Current version</SelectItem>{versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>Version {versionTargets.length - index}</SelectItem>)}</SelectContent></Select> : null}</div>
             ) : (
               <Select value={selectedPath} onValueChange={chooseFile}>
                 <SelectTrigger size="sm" className="min-w-44 max-w-full flex-1 rounded-lg" aria-label="HTML file">
@@ -577,13 +618,16 @@ export function DesignPanel({
               <div className="relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2">
                 <iframe
                   ref={iframeRef}
-                  key={`${selectedPath}:${previewRevision}:${editing ? "edit" : "preview"}`}
+                  key={`${activePagePath}:${previewRevision}:${editing ? "edit" : "preview"}`}
                   srcDoc={preview}
-                  title={`Design preview: ${fileName(selectedPath)}`}
+                  title={`Design preview: ${fileName(activePagePath)}`}
                   className="h-full w-full rounded-lg border border-border bg-white shadow-sm"
                   sandbox="allow-scripts"
                   data-preview-loaded={previewLoaded ? "true" : "false"}
-                  onLoad={() => setPreviewLoaded(true)}
+                  onLoad={() => {
+                    setPreviewLoaded(true);
+                    iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
+                  }}
                 />
                 {editing && selection ? (
                   <div
