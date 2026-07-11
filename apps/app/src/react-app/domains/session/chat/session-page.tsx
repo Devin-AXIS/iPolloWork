@@ -370,7 +370,12 @@ export function SessionPage(props: SessionPageProps) {
   const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
   const [designTemplateRevision, setDesignTemplateRevision] = useState(0);
   const isDesignSession = Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-type.${props.selectedSessionId}`) === "design");
-  const hasDesignTemplate = useMemo(() => Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`)), [designTemplateRevision, props.selectedSessionId]);
+  const hasDesignTemplate = useMemo(() => Boolean(
+    props.selectedSessionId
+      && typeof window !== "undefined"
+      && window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`)
+      && window.localStorage.getItem(`ipollowork.session-design-path.${props.selectedSessionId}`),
+  ), [designTemplateRevision, props.selectedSessionId]);
   const hasDesignBrief = useMemo(() => Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-design-brief.${props.selectedSessionId}`)), [designTemplateRevision, props.selectedSessionId]);
   const chooseDesignTemplate = useCallback(async (templateId: "open-design-saas-landing") => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
