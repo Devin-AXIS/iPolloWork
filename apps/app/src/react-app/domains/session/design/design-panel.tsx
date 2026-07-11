@@ -29,6 +29,7 @@ import {
   type DesignSelection,
   type DesignStyleField,
 } from "./design-html-runtime";
+import { getDesignTemplate } from "./design-template-catalog";
 
 type DesignPanelProps = {
   sessionId: string;
@@ -123,9 +124,12 @@ export function DesignPanel({
   });
   const lockedPath = React.useMemo(() => {
     if (!workspaceId || typeof window === "undefined") return "";
-    return window.localStorage.getItem(`ipollowork.session-design-path.${sessionId}`)
+    const stored = window.localStorage.getItem(`ipollowork.session-design-path.${sessionId}`)
       || window.localStorage.getItem(designSessionSelectionStorageKey(workspaceId, sessionId))
       || "";
+    if (stored) return stored;
+    const template = getDesignTemplate(window.localStorage.getItem(`ipollowork.session-template.${sessionId}`) ?? undefined);
+    return template ? `design/${template.fileName}` : "";
   }, [sessionId, workspaceId]);
   const htmlTargets = React.useMemo(() => {
     const unique = new Map<string, { value: string }>();
@@ -140,6 +144,12 @@ export function DesignPanel({
     const entries = Array.from(unique.values()).sort((left, right) => left.value.localeCompare(right.value));
     return lockedPath ? entries.filter((target) => target.value === lockedPath) : entries;
   }, [catalogQuery.data, lockedPath, targets]);
+  const versionTargets = React.useMemo(
+    () => (catalogQuery.data ?? [])
+      .filter((entry) => entry.kind === "file" && entry.path.startsWith(`design/.versions/${sessionId}/`) && isLocalHtmlPath(entry.path))
+      .sort((left, right) => right.path.localeCompare(left.path)),
+    [catalogQuery.data, sessionId],
+  );
   const [selectedPath, setSelectedPath] = React.useState("");
   const [editing, setEditing] = React.useState(false);
   const [selection, setSelection] = React.useState<DesignSelection | null>(null);
@@ -297,6 +307,22 @@ export function DesignPanel({
       toast.error(message.includes("changed since") ? "This HTML file changed on disk. Reopen it before saving." : message);
     },
   });
+
+  const restoreVersion = async (versionPath: string) => {
+    if (!client || !workspaceId || !lockedPath || !fileQuery.data) return;
+    try {
+      const snapshot = await client.readWorkspaceFile(workspaceId, versionPath);
+      const result = await client.writeWorkspaceFile(workspaceId, {
+        path: lockedPath,
+        content: snapshot.content,
+        baseUpdatedAt: fileQuery.data.updatedAt,
+      });
+      queryClient.setQueryData<LoadedHtml>(["design-html", workspaceId, lockedPath] as const, { content: snapshot.content, updatedAt: result.updatedAt ?? null });
+      toast.success("Version restored.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not restore this version.");
+    }
+  };
 
   const chooseFile = (path: string | null) => {
     if (!path || path === selectedPath) return;
@@ -458,7 +484,7 @@ export function DesignPanel({
         <>
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
             {lockedPath ? (
-              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{fileName(selectedPath)}</p><p className="truncate text-[10px] text-muted-foreground">Current design</p></div>
+              <div className="min-w-0 flex flex-1 items-center gap-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{fileName(selectedPath)}</p><p className="truncate text-[10px] text-muted-foreground">Current design</p></div>{versionTargets.length > 0 ? <Select value="current" onValueChange={(value) => { if (value && value !== "current") void restoreVersion(value); }}><SelectTrigger size="sm" className="w-32 rounded-lg" aria-label="Design version"><SelectValue>Versions</SelectValue></SelectTrigger><SelectContent><SelectItem value="current">Current version</SelectItem>{versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>Restore v{versionTargets.length - index}</SelectItem>)}</SelectContent></Select> : null}</div>
             ) : (
               <Select value={selectedPath} onValueChange={chooseFile}>
                 <SelectTrigger size="sm" className="min-w-44 max-w-full flex-1 rounded-lg" aria-label="HTML file">
