@@ -318,6 +318,21 @@ function DesignStarter({ onChoose }: { onChoose: (templateId: "open-design-saas-
   );
 }
 
+const DESIGN_THEME_PRESETS = [
+  { id: "ember", label: "暖橙", primary: "#c96442", colors: ["#fafaf9", "#1c1b1a", "#c96442"] },
+  { id: "ocean", label: "深海蓝", primary: "#2563eb", colors: ["#f8fafc", "#172554", "#2563eb"] },
+  { id: "violet", label: "紫罗兰", primary: "#7c3aed", colors: ["#faf5ff", "#2e1065", "#7c3aed"] },
+  { id: "forest", label: "森林绿", primary: "#059669", colors: ["#f0fdf4", "#064e3b", "#059669"] },
+] as const;
+
+function DesignBriefCard({ onSubmit }: { onSubmit: (brief: { name: string; purpose: string; features: string; color: string }) => void }) {
+  const [name, setName] = useState("");
+  const [purpose, setPurpose] = useState("");
+  const [features, setFeatures] = useState("");
+  const [color, setColor] = useState<string>(DESIGN_THEME_PRESETS[0].primary);
+  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className="bg-gradient-to-br from-stone-100 via-orange-50 to-white p-5"><p className="text-xs font-medium text-dls-secondary">SaaS Landing · Design brief</p><h2 className="mt-1 text-lg font-semibold">告诉我你要做什么</h2><p className="mt-1 text-sm text-dls-secondary">这会直接应用到当前模板，之后仍可在画布中修改。</p></div><div className="space-y-4 p-5"><label className="block text-sm font-medium">名称<Input value={name} onChange={(event) => setName(event.currentTarget.value)} placeholder="例如：iPollo Studio" className="mt-2" /></label><label className="block text-sm font-medium">网站是做什么的<Input value={purpose} onChange={(event) => setPurpose(event.currentTarget.value)} placeholder="例如：帮助团队用 AI 完成创意工作" className="mt-2" /></label><label className="block text-sm font-medium">主要功能<Input value={features} onChange={(event) => setFeatures(event.currentTarget.value)} placeholder="例如：项目协作、作品展示、预约咨询" className="mt-2" /></label><div><p className="text-sm font-medium">主题色</p><div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">{DESIGN_THEME_PRESETS.map((theme) => <button key={theme.id} type="button" onClick={() => setColor(theme.primary)} className={cn("rounded-xl border p-2 text-left transition", color === theme.primary ? "border-primary ring-2 ring-primary/20" : "border-dls-border hover:border-dls-secondary")}><span className="mb-2 flex gap-1">{theme.colors.map((tone) => <span key={tone} className="size-4 rounded-full border border-black/10" style={{ backgroundColor: tone }} />)}</span><span className="text-xs font-medium">{theme.label}</span></button>)}</div><label className="mt-3 flex items-center gap-2 text-xs text-dls-secondary">自定义颜色<input type="color" value={color} onChange={(event) => setColor(event.currentTarget.value)} className="size-7 cursor-pointer rounded border-0 bg-transparent p-0" /></label></div><Button className="w-full" disabled={!name.trim() || !purpose.trim()} onClick={() => onSubmit({ name: name.trim(), purpose: purpose.trim(), features: features.trim(), color })}>生成我的网站</Button></div></div></div>;
+}
+
 export function SessionPage(props: SessionPageProps) {
   const { config: shellConfig } = useShellConfig();
   const platform = usePlatform();
@@ -355,6 +370,7 @@ export function SessionPage(props: SessionPageProps) {
   const [designTemplateRevision, setDesignTemplateRevision] = useState(0);
   const isDesignSession = Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-type.${props.selectedSessionId}`) === "design");
   const hasDesignTemplate = useMemo(() => Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`)), [designTemplateRevision, props.selectedSessionId]);
+  const hasDesignBrief = useMemo(() => Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-design-brief.${props.selectedSessionId}`)), [designTemplateRevision, props.selectedSessionId]);
   const chooseDesignTemplate = useCallback(async (templateId: "open-design-saas-landing") => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     const template = getDesignTemplate(templateId);
@@ -365,14 +381,20 @@ export function SessionPage(props: SessionPageProps) {
     window.localStorage.setItem(designSelectionStorageKey(props.runtimeWorkspaceId), path);
     setDesignTemplateRevision((value) => value + 1);
     setSidePanelState(props.selectedSessionId, "design");
-    const draft: ComposerDraft = {
-      mode: "prompt",
-      parts: [],
-      attachments: [],
-      text: `A Design template is now selected: ${template.title}. The editable source is ${path}. Treat this template as the design baseline for this whole session. Do not replace its visual language unless asked. First, ask only the essential questions needed to personalize it: project or brand name, what it does and for whom, and the primary call to action. After the answers, update the existing HTML and keep it open in the Design panel.`,
-    };
-    props.surface?.onSendDraft(draft, props.selectedSessionId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState]);
+  const submitDesignBrief = useCallback(async (brief: { name: string; purpose: string; features: string; color: string }) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
+    const templateId = window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`);
+    const template = getDesignTemplate(templateId ?? undefined);
+    if (!template) return;
+    const path = `design/${template.fileName}`;
+    const current = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path);
+    const content = current.content.replace(/--ipw-color-primary:\s*#[0-9a-fA-F]{6}/, `--ipw-color-primary: ${brief.color}`);
+    await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content, baseUpdatedAt: current.updatedAt ?? null });
+    window.localStorage.setItem(`ipollowork.session-design-brief.${props.selectedSessionId}`, JSON.stringify(brief));
+    setDesignTemplateRevision((value) => value + 1);
+    props.surface?.onSendDraft({ mode: "prompt", parts: [], attachments: [], text: `Use the selected ${template.title} template at ${path} as the fixed design baseline. Apply this structured brief: name: ${brief.name}; purpose: ${brief.purpose}; main functions: ${brief.features || "not specified"}; theme primary color: ${brief.color}. Update the existing HTML only, preserve its layout and visual language, and keep the result editable in the Design panel.` }, props.selectedSessionId);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const sidePanelOpen = activeSidePanel !== null;
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
@@ -1193,6 +1215,8 @@ export function SessionPage(props: SessionPageProps) {
                     <div className={cn("min-h-0 min-w-0 flex-1", canRenderSplitSurface && "lg:border-r lg:border-border")}>
                       {isDesignSession && !hasDesignTemplate ? (
                         <DesignStarter onChoose={(templateId) => void chooseDesignTemplate(templateId)} />
+                      ) : isDesignSession && !hasDesignBrief ? (
+                        <DesignBriefCard onSubmit={(brief) => void submitDesignBrief(brief)} />
                       ) : <SessionSurface
                         // Spread `surface` first so the explicit per-workspace
                         // routing props below CAN'T be silently overridden by
