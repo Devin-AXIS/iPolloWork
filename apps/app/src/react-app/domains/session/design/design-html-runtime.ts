@@ -116,6 +116,13 @@ function designNavigationRuntime(channel: string, editing: boolean) {
         || inlineHref
         || conventionalHref;
       if (!href || /^(?:mailto:|tel:|javascript:)/i.test(href)) return;
+      const mobileHeader = (anchor || control)?.closest<HTMLElement>("header[data-menu-open]");
+      if (mobileHeader) {
+        mobileHeader.dataset.menuOpen = "false";
+        const mobileToggle = mobileHeader.querySelector<HTMLElement>(".mobile-nav-toggle");
+        mobileToggle?.setAttribute("aria-expanded", "false");
+        if (mobileToggle) mobileToggle.setAttribute("aria-label", mobileToggle.getAttribute("aria-label")?.includes("关闭") ? "打开导航" : "Open navigation");
+      }
       event.stopPropagation();
       if (href.startsWith("#")) {
         event.preventDefault();

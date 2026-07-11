@@ -44,6 +44,7 @@ export const DESIGN_TEMPLATES: readonly DesignTemplate[] = [
     applyChecklist: [
       "document title and meta description",
       "brand mark and navigation labels",
+      "responsive glass mobile navigation with a compact menu toggle",
       "hero heading, copy, and calls to action",
       "feature cards and proof content",
       "pricing or section labels",

@@ -957,7 +957,7 @@ export function SessionRoute() {
         const promptParts = designPath
           ? [{
               type: "text" as const,
-              text: "Design navigation contract: keep same-page navigation as real #section links with matching element ids. When the requested experience implies a child page such as login, signup, docs, product detail, or checkout, create the sibling HTML file inside the same Design task directory and use a real relative href (for example ./login.html) or data-href. Never leave navigation as a plain button with no destination, and do not use placeholder href=\"#\" for an action that should open a page.",
+              text: "Design site contract: every site must be responsive at desktop and mobile widths. On mobile, collapse dense desktop navigation into a compact accessible menu toggle and a polished glass-style menu; never allow navigation to overflow or disappear. Keep same-page navigation as real #section links with matching element ids. When the requested experience implies a child page such as login, signup, docs, product detail, or checkout, create the sibling HTML file inside the same Design task directory and use a real relative href (for example ./login.html) or data-href. Never leave navigation as a plain button with no destination, and do not use placeholder href=\"#\" for an action that should open a page.",
             }, ...parts]
           : parts;
         const result = await opencodeClient.session.promptAsync({
