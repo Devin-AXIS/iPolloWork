@@ -1,9 +1,12 @@
 import saasLandingSource from "./templates/open-design/saas-landing.html?raw";
+import pitchDeckSource from "./templates/open-design/pitch-deck.html?raw";
+
+export type DesignTemplateId = "open-design-saas-landing" | "open-design-pitch-deck";
 
 export type DesignTemplate = {
-  id: string;
-  category: "site";
-  subcategory: "landing" | "personal";
+  id: DesignTemplateId;
+  category: "site" | "slides";
+  subcategory: "landing" | "personal" | "pitch";
   title: string;
   source: { name: string; repository: string; license: string };
   fileName: string;
@@ -96,8 +99,35 @@ export const DESIGN_TEMPLATES: readonly DesignTemplate[] = [
       "global theme token values",
     ],
   },
+  {
+    id: "open-design-pitch-deck",
+    category: "slides",
+    subcategory: "pitch",
+    title: "Pitch Deck",
+    source: {
+      name: "Open Design · html-ppt",
+      repository: "https://github.com/lewislulu/html-ppt-skill",
+      license: "MIT",
+    },
+    fileName: "pitch-deck.html",
+    html: pitchDeckSource,
+    designSystem: {
+      tokenVersion: 1,
+      editableGroups: ["theme", "background", "typography", "components"],
+    },
+    applyChecklist: [
+      "deck title, audience, and decision goal",
+      "a coherent 6 to 10 slide narrative",
+      "16:9 composition with safe margins on every slide",
+      "cover, problem, solution, evidence, plan, and closing layouts",
+      "real metrics with no invented claims",
+      "speaker notes kept separate from audience-facing content",
+      "keyboard navigation, slide counter, and presentation controls",
+      "global deck theme token values",
+    ],
+  },
 ];
 
-export function getDesignTemplate(id: string | undefined) {
+export function getDesignTemplate(id: string | undefined): DesignTemplate | null {
   return DESIGN_TEMPLATES.find((template) => template.id === id) ?? null;
 }

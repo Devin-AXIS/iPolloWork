@@ -3,7 +3,7 @@ import * as React from "react";
 import type { WorkspaceConnectionState } from "../../../../app/types";
 
 export type iPolloWorkSessionType = "work" | "design" | "code" | "video";
-export type iPolloWorkTemplateId = "open-design-saas-landing";
+export type iPolloWorkTemplateId = "open-design-saas-landing" | "open-design-pitch-deck";
 
 export type SidebarContextValue = {
   selectedWorkspaceId: string;

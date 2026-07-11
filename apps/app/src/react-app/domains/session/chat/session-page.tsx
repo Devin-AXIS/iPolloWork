@@ -68,7 +68,7 @@ import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
 import { VideoPanel } from "../video/video-panel";
 import { designSelectionStorageKey, designSessionSelectionStorageKey } from "../design/design-html-runtime";
-import { getDesignTemplate } from "../design/design-template-catalog";
+import { getDesignTemplate, type DesignTemplate } from "../design/design-template-catalog";
 import { SidePanel } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
@@ -294,7 +294,7 @@ function controlStringArg(args: unknown, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function DesignStarter({ onChoose }: { onChoose: (templateId: "open-design-saas-landing") => void }) {
+function DesignStarter({ onChoose }: { onChoose: (templateId: iPolloWorkTemplateId) => void }) {
   const [category, setCategory] = useState<"website" | "slides" | "poster" | null>(null);
   const categories = [
     { id: "website" as const, label: "网站", detail: "落地页、产品页、个人主页", Icon: Globe },
@@ -311,6 +311,8 @@ function DesignStarter({ onChoose }: { onChoose: (templateId: "open-design-saas-
           </div>
         ) : category === "website" ? (
           <div><button type="button" className="mb-3 text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => onChoose("open-design-saas-landing")} className="overflow-hidden rounded-2xl border border-dls-border bg-dls-surface text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><div className="h-28 bg-gradient-to-br from-stone-100 via-orange-100 to-white p-4"><div className="h-2 w-14 rounded bg-stone-400/45" /><div className="mt-4 h-5 w-3/4 rounded bg-stone-800/75" /><div className="mt-2 h-2 w-1/2 rounded bg-stone-400/45" /><div className="mt-4 h-4 w-20 rounded-md bg-orange-500/75" /></div><div className="p-4"><div className="text-sm font-semibold">SaaS Landing</div><div className="mt-1 text-xs text-dls-secondary">官网模板 · 完整可编辑的产品落地页</div><div className="mt-4 text-xs font-medium text-primary">使用模板 →</div></div></button></div></div>
+        ) : category === "slides" ? (
+          <div><button type="button" className="mb-3 text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => onChoose("open-design-pitch-deck")} className="overflow-hidden rounded-2xl border border-dls-border bg-dls-surface text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><div className="relative h-28 overflow-hidden bg-[#0b1020] p-4 text-white"><div className="absolute -right-8 -top-10 size-28 rounded-full bg-violet-500/30 blur-2xl" /><div className="text-[8px] font-semibold uppercase tracking-[.18em] text-emerald-300">Pitch Deck · 2026</div><div className="mt-3 max-w-[12rem] text-lg font-bold leading-[1.05]">Ideas into <span className="text-violet-400">outcomes.</span></div><div className="absolute bottom-3 left-4 flex gap-1">{Array.from({ length: 7 }, (_, index) => <span key={index} className={cn("h-1 rounded-full", index === 0 ? "w-4 bg-violet-400" : "w-1 bg-white/25")} />)}</div></div><div className="p-4"><div className="text-sm font-semibold">Pitch Deck</div><div className="mt-1 text-xs text-dls-secondary">路演模板 · 16:9 多页演示与键盘翻页</div><div className="mt-4 text-xs font-medium text-primary">使用模板 →</div></div></button></div></div>
         ) : (
           <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">模板即将加入</p><button type="button" className="mt-3 text-xs text-primary" onClick={() => setCategory(null)}>返回类别</button></div>
         )}
@@ -326,12 +328,13 @@ const DESIGN_THEME_PRESETS = [
   { id: "forest", label: "森林绿", primary: "#059669", colors: ["#f0fdf4", "#064e3b", "#059669"] },
 ] as const;
 
-function DesignBriefCard({ onSubmit }: { onSubmit: (brief: { name: string; purpose: string; features: string; color: string }) => void }) {
+function DesignBriefCard({ template, onSubmit }: { template: DesignTemplate; onSubmit: (brief: { name: string; purpose: string; features: string; color: string }) => void }) {
+  const isSlides = template.category === "slides";
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
   const [features, setFeatures] = useState("");
-  const [color, setColor] = useState<string>(DESIGN_THEME_PRESETS[0].primary);
-  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className="bg-gradient-to-br from-stone-100 via-orange-50 to-white p-5"><p className="text-xs font-medium text-dls-secondary">SaaS Landing · Design brief</p><h2 className="mt-1 text-lg font-semibold">告诉我你要做什么</h2><p className="mt-1 text-sm text-dls-secondary">这会直接应用到当前模板，之后仍可在画布中修改。</p></div><div className="space-y-4 p-5"><label className="block text-sm font-medium">名称<Input value={name} onChange={(event) => setName(event.currentTarget.value)} placeholder="例如：iPollo Studio" className="mt-2" /></label><label className="block text-sm font-medium">网站是做什么的<Input value={purpose} onChange={(event) => setPurpose(event.currentTarget.value)} placeholder="例如：帮助团队用 AI 完成创意工作" className="mt-2" /></label><label className="block text-sm font-medium">主要功能<Input value={features} onChange={(event) => setFeatures(event.currentTarget.value)} placeholder="例如：项目协作、作品展示、预约咨询" className="mt-2" /></label><div><p className="text-sm font-medium">主题色</p><div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">{DESIGN_THEME_PRESETS.map((theme) => <button key={theme.id} type="button" onClick={() => setColor(theme.primary)} className={cn("rounded-xl border p-2 text-left transition", color === theme.primary ? "border-primary ring-2 ring-primary/20" : "border-dls-border hover:border-dls-secondary")}><span className="mb-2 flex gap-1">{theme.colors.map((tone) => <span key={tone} className="size-4 rounded-full border border-black/10" style={{ backgroundColor: tone }} />)}</span><span className="text-xs font-medium">{theme.label}</span></button>)}</div><label className="mt-3 flex items-center gap-2 text-xs text-dls-secondary">自定义颜色<input type="color" value={color} onChange={(event) => setColor(event.currentTarget.value)} className="size-7 cursor-pointer rounded border-0 bg-transparent p-0" /></label></div><Button className="w-full" disabled={!name.trim() || !purpose.trim()} onClick={() => onSubmit({ name: name.trim(), purpose: purpose.trim(), features: features.trim(), color })}>生成我的网站</Button></div></div></div>;
+  const [color, setColor] = useState<string>(isSlides ? DESIGN_THEME_PRESETS[2].primary : DESIGN_THEME_PRESETS[0].primary);
+  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("p-5", isSlides ? "bg-gradient-to-br from-slate-950 via-violet-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><p className={cn("text-xs font-medium", isSlides ? "text-violet-200" : "text-dls-secondary")}>{template.title} · Design brief</p><h2 className="mt-1 text-lg font-semibold">{isSlides ? "定义这份演示" : "告诉我你要做什么"}</h2><p className={cn("mt-1 text-sm", isSlides ? "text-white/65" : "text-dls-secondary")}>这会直接应用到当前模板，之后仍可在画布中修改。</p></div><div className="space-y-4 p-5"><label className="block text-sm font-medium">{isSlides ? "演示标题" : "名称"}<Input value={name} onChange={(event) => setName(event.currentTarget.value)} placeholder={isSlides ? "例如：iPolloWork 融资路演" : "例如：iPollo Studio"} className="mt-2" /></label><label className="block text-sm font-medium">{isSlides ? "这份演示要说服谁、做什么决定" : "网站是做什么的"}<Input value={purpose} onChange={(event) => setPurpose(event.currentTarget.value)} placeholder={isSlides ? "例如：面向投资人，说明市场机会与融资计划" : "例如：帮助团队用 AI 完成创意工作"} className="mt-2" /></label><label className="block text-sm font-medium">{isSlides ? "必须包含的内容与数据" : "主要功能"}<Input value={features} onChange={(event) => setFeatures(event.currentTarget.value)} placeholder={isSlides ? "例如：问题、方案、增长数据、商业模式、融资用途" : "例如：项目协作、作品展示、预约咨询"} className="mt-2" /></label><div><p className="text-sm font-medium">主题色</p><div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">{DESIGN_THEME_PRESETS.map((theme) => <button key={theme.id} type="button" onClick={() => setColor(theme.primary)} className={cn("rounded-xl border p-2 text-left transition", color === theme.primary ? "border-primary ring-2 ring-primary/20" : "border-dls-border hover:border-dls-secondary")}><span className="mb-2 flex gap-1">{theme.colors.map((tone) => <span key={tone} className="size-4 rounded-full border border-black/10" style={{ backgroundColor: tone }} />)}</span><span className="text-xs font-medium">{theme.label}</span></button>)}</div><label className="mt-3 flex items-center gap-2 text-xs text-dls-secondary">自定义颜色<input type="color" value={color} onChange={(event) => setColor(event.currentTarget.value)} className="size-7 cursor-pointer rounded border-0 bg-transparent p-0" /></label></div><Button className="w-full" disabled={!name.trim() || !purpose.trim()} onClick={() => onSubmit({ name: name.trim(), purpose: purpose.trim(), features: features.trim(), color })}>{isSlides ? "生成幻灯片" : "生成我的网站"}</Button></div></div></div>;
 }
 
 export function SessionPage(props: SessionPageProps) {
@@ -376,7 +379,8 @@ export function SessionPage(props: SessionPageProps) {
       && window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`),
   ), [designTemplateRevision, props.selectedSessionId]);
   const hasDesignBrief = useMemo(() => Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-design-brief.${props.selectedSessionId}`)), [designTemplateRevision, props.selectedSessionId]);
-  const chooseDesignTemplate = useCallback(async (templateId: "open-design-saas-landing") => {
+  const selectedDesignTemplate = useMemo(() => getDesignTemplate(props.selectedSessionId && typeof window !== "undefined" ? window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`) ?? undefined : undefined), [designTemplateRevision, props.selectedSessionId]);
+  const chooseDesignTemplate = useCallback(async (templateId: iPolloWorkTemplateId) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     try {
       const template = getDesignTemplate(templateId);
@@ -408,7 +412,9 @@ export function SessionPage(props: SessionPageProps) {
     });
     window.localStorage.setItem(`ipollowork.session-design-brief.${props.selectedSessionId}`, JSON.stringify(brief));
     setDesignTemplateRevision((value) => value + 1);
-    const prompt = `Apply design/brief.json to the selected ${template.title} template at ${path}. This is a whole-page update, not a partial copy edit. Keep the template's layout and visual language, but update every applicable item in this required checklist: ${template.applyChecklist.join("; ")}. Replace all inherited Filebase/original-template names, navigation labels, links, headings, calls to action, cards, section copy, metadata, and footer content with information consistent with this brief. Do not create a new page or leave placeholders. Work only in ${path}. Keep the result editable in the Design panel.`;
+    const prompt = template.category === "slides"
+      ? `Apply design/brief.json to the selected ${template.title} at ${path}. Rewrite the complete deck, not one slide. Keep the 16:9 slide system, keyboard navigation, controls, theme tokens, and separate speaker notes. Update every applicable item in this checklist: ${template.applyChecklist.join("; ")}. Build a coherent decision-oriented narrative from the brief. Never invent metrics; clearly mark missing evidence for the user to replace. Keep 6 to 10 slides, audience-facing content concise, and work only in ${path}. Keep every slide editable in the Design panel.`
+      : `Apply design/brief.json to the selected ${template.title} template at ${path}. This is a whole-page update, not a partial copy edit. Keep the template's layout and visual language, but update every applicable item in this required checklist: ${template.applyChecklist.join("; ")}. Replace all inherited Filebase/original-template names, navigation labels, links, headings, calls to action, cards, section copy, metadata, and footer content with information consistent with this brief. Do not create a new page or leave placeholders. Work only in ${path}. Keep the result editable in the Design panel.`;
     props.surface?.onSendDraft({ mode: "prompt", parts: [{ type: "text", text: prompt }], attachments: [], text: prompt }, props.selectedSessionId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const sidePanelOpen = activeSidePanel !== null;
@@ -1238,7 +1244,7 @@ export function SessionPage(props: SessionPageProps) {
                       {isDesignSession && !hasDesignTemplate ? (
                         <DesignStarter onChoose={(templateId) => void chooseDesignTemplate(templateId)} />
                       ) : isDesignSession && !hasDesignBrief ? (
-                        <DesignBriefCard onSubmit={(brief) => void submitDesignBrief(brief)} />
+                        selectedDesignTemplate ? <DesignBriefCard template={selectedDesignTemplate} onSubmit={(brief) => void submitDesignBrief(brief)} /> : null
                       ) : <SessionSurface
                         // Spread `surface` first so the explicit per-workspace
                         // routing props below CAN'T be silently overridden by
