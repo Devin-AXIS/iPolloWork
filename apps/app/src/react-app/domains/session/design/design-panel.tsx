@@ -603,9 +603,17 @@ export function DesignPanel({
               variant={designSystemOpen ? "secondary" : "ghost"}
               size="sm"
               className="ml-auto"
-              disabled={!editing || !designTemplate}
+              disabled={!designTemplate}
               onClick={() => {
-                setDesignSystemOpen((current) => !current);
+                if (!editing) {
+                  setPreviewSource(draft);
+                  setPreviewLoaded(false);
+                  setPreviewRevision((current) => current + 1);
+                  setEditing(true);
+                  setSelection(null);
+                  setQuickEdit(null);
+                }
+                setDesignSystemOpen(true);
                 setAdvancedOpen(false);
               }}
               aria-label="Open design system"
