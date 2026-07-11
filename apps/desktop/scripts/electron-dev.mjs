@@ -87,6 +87,8 @@ async function looksLikeVite(url) {
   }
 }
 
+const expectedAppRoot = resolve(repoRoot, "apps", "app");
+
 async function portIsOpenForVite(url) {
   try {
     const parsed = new URL(url);
@@ -99,22 +101,38 @@ async function portIsOpenForVite(url) {
   }
 }
 
+async function getIpolloWorkViteAppRoot(url) {
+  try {
+    const response = await fetchWithTimeout(`${url}/__ipollowork_dev_server_id`);
+    if (!response.ok) return null;
+    const payload = await response.json();
+    return typeof payload?.appRoot === "string" ? payload.appRoot : null;
+  } catch {
+    return null;
+  }
+}
+
+async function isExpectedVite(url) {
+  if (!(await looksLikeVite(url))) return false;
+  // An explicit URL is intentionally allowed to point at a remote/custom dev
+  // server. The default localhost path must belong to this exact checkout.
+  if (explicitStartUrl) return true;
+  return (await getIpolloWorkViteAppRoot(url)) === expectedAppRoot;
+}
+
 async function waitForVite(url, timeoutMs = 60_000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     for (const candidate of [url, ...viteProbeUrls].filter(Boolean)) {
-      if (await looksLikeVite(candidate)) {
-        return candidate;
-      }
-    }
-    for (const candidate of [url, ...viteProbeUrls].filter(Boolean)) {
-      if (await portIsOpenForVite(candidate)) {
+      if (await isExpectedVite(candidate)) {
         return candidate;
       }
     }
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
   }
-  throw new Error(`Timed out waiting for Vite dev server at ${viteProbeUrls.join(", ")}`);
+  throw new Error(
+    `Timed out waiting for this checkout's Vite dev server at ${viteProbeUrls.join(", ")}`,
+  );
 }
 
 function signalTree(child, signal) {
@@ -207,20 +225,31 @@ runSync(pnpmCmd, ["--filter", "ipollowork-server", "build"], { cwd: repoRoot });
 
 const initialProbeUrls = [startUrl, ...viteProbeUrls].filter(Boolean);
 let viteReady = false;
+let conflictingViteUrl = null;
+let occupiedDevUrl = null;
 for (const candidate of initialProbeUrls) {
-  if (await looksLikeVite(candidate)) {
+  if (await isExpectedVite(candidate)) {
     viteReady = true;
     break;
   }
+  if (await looksLikeVite(candidate)) {
+    conflictingViteUrl = candidate;
+  } else if (await portIsOpenForVite(candidate)) {
+    occupiedDevUrl = candidate;
+  }
 }
 
-if (!viteReady) {
-  for (const candidate of initialProbeUrls) {
-    if (await portIsOpenForVite(candidate)) {
-      viteReady = true;
-      break;
-    }
-  }
+if (!viteReady && (conflictingViteUrl || occupiedDevUrl)) {
+  const conflictingUrl = conflictingViteUrl ?? occupiedDevUrl;
+  const owner = conflictingViteUrl
+    ? await getIpolloWorkViteAppRoot(conflictingViteUrl)
+    : null;
+  const detail = owner
+    ? `It belongs to ${owner}.`
+    : "It is not the current checkout's Vite server.";
+  throw new Error(
+    `Refusing to attach Electron to ${conflictingUrl}. ${detail} Stop the stale dev stack, then start this checkout again.`,
+  );
 }
 
 if (!viteReady) {
