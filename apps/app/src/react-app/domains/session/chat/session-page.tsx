@@ -396,9 +396,15 @@ export function SessionPage(props: SessionPageProps) {
     const current = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path);
     const content = current.content.replace(/--ipw-color-primary:\s*#[0-9a-fA-F]{6}/, `--ipw-color-primary: ${brief.color}`);
     await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content, baseUpdatedAt: current.updatedAt ?? null });
+    await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
+      path: "design/brief.json",
+      content: JSON.stringify({ templateId, template: template.title, ...brief }, null, 2),
+      baseUpdatedAt: null,
+    });
     window.localStorage.setItem(`ipollowork.session-design-brief.${props.selectedSessionId}`, JSON.stringify(brief));
     setDesignTemplateRevision((value) => value + 1);
-    props.surface?.onSendDraft({ mode: "prompt", parts: [], attachments: [], text: `Use the selected ${template.title} template at ${path} as the fixed design baseline. Apply this structured brief: name: ${brief.name}; purpose: ${brief.purpose}; main functions: ${brief.features || "not specified"}; theme primary color: ${brief.color}. Update the existing HTML only, preserve its layout and visual language, and keep the result editable in the Design panel.` }, props.selectedSessionId);
+    const prompt = `Use the selected ${template.title} template at ${path} as the fixed design baseline. The structured brief is also saved in design/brief.json. Apply it now: name: ${brief.name}; purpose: ${brief.purpose}; main functions: ${brief.features || "not specified"}; theme primary color: ${brief.color}. Update the existing HTML only, preserve its layout and visual language, and keep the result editable in the Design panel.`;
+    props.surface?.onSendDraft({ mode: "prompt", parts: [{ type: "text", text: prompt }], attachments: [], text: prompt }, props.selectedSessionId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const sidePanelOpen = activeSidePanel !== null;
   const panelRailActive = activeSidePanel === "panel";
