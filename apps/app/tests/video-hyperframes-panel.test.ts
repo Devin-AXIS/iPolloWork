@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { hyperframesStudioPort, hyperframesStudioUrl, videoProjectDirectory, videoProjectId } from "../src/react-app/domains/session/video/video-panel";
+import { hyperframesPreviewCommand, hyperframesStudioPort, hyperframesStudioUrl, videoProjectDirectory, videoProjectId } from "../src/react-app/domains/session/video/video-panel";
 
 describe("HyperFrames Video Studio", () => {
   test("opens the native Studio on a hydrated first frame", () => {
@@ -19,5 +19,12 @@ describe("HyperFrames Video Studio", () => {
     expect(hyperframesStudioUrl(hyperframesStudioPort("ses_video_a"), videoProjectId("ses_video_a"))).toBe(
       `http://localhost:${hyperframesStudioPort("ses_video_a")}/#project/ses_video_a?v=1&t=0&tab=design&rc=1&tv=1`,
     );
+  });
+
+  test("starts the embedded Studio without opening an external browser", () => {
+    const command = hyperframesPreviewCommand("ses_video_a");
+    expect(command).toContain("cd video/ses_video_a");
+    expect(command).toContain(`--port ${hyperframesStudioPort("ses_video_a")}`);
+    expect(command).toContain("--no-open");
   });
 });

@@ -37,6 +37,12 @@ export function videoProjectDirectory(sessionId: string) {
   return `video/${videoProjectId(sessionId)}`;
 }
 
+export function hyperframesPreviewCommand(sessionId: string) {
+  const projectDirectory = videoProjectDirectory(sessionId);
+  const studioPort = hyperframesStudioPort(sessionId);
+  return `if [ ! -f ${projectDirectory}/index.html ]; then HYPERFRAMES_SKIP_SKILLS=1 npx --yes hyperframes@${HYPERFRAMES_VERSION} init ${projectDirectory} --example warm-grain --non-interactive --skip-skills; fi && cd ${projectDirectory} && npx --yes hyperframes@${HYPERFRAMES_VERSION} preview --port ${studioPort} --no-open\n`;
+}
+
 export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const [revision, setRevision] = React.useState(0);
@@ -107,8 +113,7 @@ export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false
         return;
       }
       terminalIdRef.current = terminalId;
-      const command = `if [ ! -f ${projectDirectory}/index.html ]; then HYPERFRAMES_SKIP_SKILLS=1 npx --yes hyperframes@${HYPERFRAMES_VERSION} init ${projectDirectory} --example warm-grain --non-interactive --skip-skills; fi && cd ${projectDirectory} && npx --yes hyperframes@${HYPERFRAMES_VERSION} preview --port ${studioPort}\n`;
-      void writeTerminal(terminalId, command);
+      void writeTerminal(terminalId, hyperframesPreviewCommand(sessionId));
     }).catch((cause) => {
       setStatus("failed");
       setDetail(cause instanceof Error ? cause.message : "Could not start HyperFrames.");
@@ -122,7 +127,7 @@ export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false
       terminalIdRef.current = null;
       if (terminalId) void killTerminal(terminalId);
     };
-  }, [isRemoteWorkspace, projectDirectory, studioPort, workspaceRoot]);
+  }, [isRemoteWorkspace, projectDirectory, sessionId, studioPort, workspaceRoot]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel">

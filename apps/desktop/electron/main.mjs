@@ -2228,14 +2228,17 @@ ipcMain.handle("ipollowork:terminal:kill", (event, terminalId) => {
 });
 
 ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) => {
-  const collectHyperframesFrames = (frame, matches = []) => {
-    if (frame.url.startsWith("http://localhost:3002/") || frame.url.startsWith("http://127.0.0.1:3002/")) matches.push(frame);
-    for (const child of frame.frames) collectHyperframesFrames(child, matches);
+  const collectFrames = (frame, matches = []) => {
+    matches.push(frame);
+    for (const child of frame.frames) collectFrames(child, matches);
     return matches;
   };
-  const frames = collectHyperframesFrames(event.sender.mainFrame);
-  const studioFrame = frames.find((frame) => !frame.url.includes("/api/projects/"));
+  const allFrames = collectFrames(event.sender.mainFrame);
+  const studioFrame = allFrames.find((frame) => (
+    frame.frames.some((child) => child.url.includes("/api/projects/"))
+  ));
   if (!studioFrame) return { ok: false, reason: "studio-frame-missing" };
+  const frames = collectFrames(studioFrame, []);
   const result = await studioFrame.executeJavaScript(`(() => {
     const enabled = ${enabled ? "true" : "false"};
     const wasEnabled = document.documentElement.dataset.ipolloworkSimpleMode === 'true';
@@ -2268,6 +2271,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
     );
     button?.click();
     const inspector = document.querySelector('button[aria-label="Inspector"]');
+    const brand = document.querySelector('svg[aria-label="Hyperframes"]')?.parentElement;
+    if (brand) brand.style.display = 'none';
     if (enabled && !wasEnabled) clearCanvasSelection();
     if (enabled && !wasEnabled && inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
     for (const label of ['Layers', 'Renders', 'Slideshow', 'Variables']) {
@@ -2289,8 +2294,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         iframe?.contentWindow?.__player?.seek?.(0);
       }, 120);
     }
-    if (window.__ipolloworkSimpleVideoListener !== 7) {
-      window.__ipolloworkSimpleVideoListener = 7;
+    if (window.__ipolloworkSimpleVideoListener !== 9) {
+      window.__ipolloworkSimpleVideoListener = 9;
       window.__ipolloworkVideoAdvancedExplicit = false;
       window.addEventListener('message', (event) => {
         const inspector = document.querySelector('button[aria-label="Inspector"]');
@@ -2330,6 +2335,28 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const inspectorButton = event.target instanceof Element ? event.target.closest('button[aria-label="Inspector"]') : null;
         if (inspectorButton && inspectorButton.getAttribute('aria-pressed') === 'true') {
           window.__ipolloworkVideoAdvancedExplicit = false;
+        }
+      }, true);
+      document.addEventListener('pointerdown', (event) => {
+        if (document.documentElement.dataset.ipolloworkSimpleMode !== 'true') return;
+        if (window.__ipolloworkVideoAdvancedExplicit) return;
+        for (const iframe of collectIframes(document)) {
+          const rect = iframe.getBoundingClientRect();
+          if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) continue;
+          try {
+            const scaleX = Number(iframe.contentWindow?.innerWidth || rect.width) / Math.max(1, rect.width);
+            const scaleY = Number(iframe.contentWindow?.innerHeight || rect.height) / Math.max(1, rect.height);
+            const localX = (event.clientX - rect.left) * scaleX;
+            const localY = (event.clientY - rect.top) * scaleY;
+            if (iframe.contentWindow?.__ipolloworkSelectAtPoint?.(localX, localY)) {
+              clearCanvasSelection();
+              const inspector = document.querySelector('button[aria-label="Inspector"]');
+              if (inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              return;
+            }
+          } catch {}
         }
       }, true);
       document.addEventListener('click', (event) => {
@@ -2382,8 +2409,11 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
   })()`);
   if (enabled) {
     await Promise.all(frames.filter((frame) => frame !== studioFrame).map((frame) => frame.executeJavaScript(`(() => {
-      if (window.__ipolloworkSimpleVideoClickInstalled === 11) return;
-      window.__ipolloworkSimpleVideoClickInstalled = 11;
+      if (window.__ipolloworkSimpleVideoClickInstalled === 14) return;
+      window.__ipolloworkSimpleVideoClickInstalled = 14;
+      const encodedProjectId = location.pathname.match(/^\\/api\\/projects\\/([^/]+)/)?.[1];
+      const projectId = encodedProjectId ? decodeURIComponent(encodedProjectId) : '';
+      if (!projectId) return;
       for (const element of document.querySelectorAll('div')) {
         if (element.childElementCount === 0 && (element.textContent || '').trim()) {
           element.setAttribute('data-ipollowork-direct-text', 'true');
@@ -2447,7 +2477,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         window.clearTimeout(saveTimer);
         const run = async () => {
           try {
-            await fetch('/api/projects/video/file-mutations/patch-element/' + encodeURI(target.file), {
+            await fetch('/api/projects/' + encodeURIComponent(projectId) + '/file-mutations/patch-element/' + encodeURI(target.file), {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({
@@ -2466,7 +2496,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         if (!target) return;
         element.style.setProperty(property, value);
         try {
-          await fetch('/api/projects/video/file-mutations/patch-element/' + encodeURI(target.file), {
+          await fetch('/api/projects/' + encodeURIComponent(projectId) + '/file-mutations/patch-element/' + encodeURI(target.file), {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -2548,11 +2578,20 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         return textAtPoint(x, y) || geometric || patchable || null;
       };
 
+      const isEffectivelyVisible = (element) => {
+        let current = element;
+        while (current && current !== document.documentElement) {
+          const style = getComputedStyle(current);
+          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) <= .01) return false;
+          current = current.parentElement;
+        }
+        return true;
+      };
+
       const textAtPoint = (x, y) => [...document.querySelectorAll(textSelector)]
         .filter((element) => {
           const rect = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' &&
+          return rect.width > 0 && rect.height > 0 && isEffectivelyVisible(element) &&
             x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom &&
             Boolean((element.textContent || '').trim()) && sourceTargetFor(element);
         })
@@ -2634,6 +2673,11 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         if (toolbar.contains(event.target)) return;
         finishEditing();
         const text = textAtPoint(event.clientX, event.clientY);
+        if (text && beginEditing(text, event)) {
+          pendingPointer = null;
+          event.preventDefault();
+          return;
+        }
         pendingPointer = { x: event.clientX, y: event.clientY, text, moved: false };
         // Keep HyperFrames' original picker active during the gesture. A real
         // drag therefore still moves/resizes the native selection; only a
@@ -2649,6 +2693,11 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       }, true);
       document.addEventListener('click', (event) => {
         if (toolbar.contains(event.target)) return;
+        if (editing) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
         const gesture = pendingPointer;
         pendingPointer = null;
         if (gesture?.moved) {
