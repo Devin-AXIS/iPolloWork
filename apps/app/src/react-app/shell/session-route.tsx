@@ -114,7 +114,7 @@ import type { CreateWorkspaceOptions } from "@/react-app/domains/workspace/types
 import { useSessionProviderAuth } from "@/react-app/domains/connections/provider-auth/use-session-provider-auth";
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
-import type { iPolloWorkSessionType } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
+import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -1199,7 +1199,7 @@ export function SessionRoute() {
   );
 
 
-  const handleCreateTaskInWorkspace = useCallback(async (workspaceId: string, type: iPolloWorkSessionType = "work"): Promise<string | null> => {
+  const handleCreateTaskInWorkspace = useCallback(async (workspaceId: string, type: iPolloWorkSessionType = "work", templateId?: iPolloWorkTemplateId): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     if (
       !workspace ||
@@ -1224,6 +1224,7 @@ export function SessionRoute() {
         await workspaceClient.session.create({ directory: workspace.path?.trim() || undefined }),
       );
       window.localStorage.setItem(`ipollowork.session-type.${session.id}`, type);
+      if (templateId) window.localStorage.setItem(`ipollowork.session-template.${session.id}`, templateId);
       captureAnalyticsEvent("task_created", {
         source: "new_task",
         workspace_type: workspace.workspaceType ?? "unknown",
@@ -2079,8 +2080,8 @@ export function SessionRoute() {
           navigateToWorkspaceSession(workspaceId, sessionId);
         },
         onPrefetchSession: () => {},
-        onCreateTaskInWorkspace: (workspaceId, type) => {
-          void handleCreateTaskInWorkspace(workspaceId, type);
+        onCreateTaskInWorkspace: (workspaceId, type, templateId) => {
+          void handleCreateTaskInWorkspace(workspaceId, type, templateId);
         },
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
           void (async () => {

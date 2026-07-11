@@ -86,8 +86,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
-import type { SidebarContextValue } from "./app-sidebar-provider";
-import type { iPolloWorkSessionType } from "./app-sidebar-provider";
+import type { SidebarContextValue, iPolloWorkSessionType, iPolloWorkTemplateId } from "./app-sidebar-provider";
 import {
   MAX_SESSIONS_PREVIEW,
   buildSessionTreeState,
@@ -577,7 +576,7 @@ export type AppSidebarProps = {
   onSelectWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
-  onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType) => void;
+  onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType, templateId?: iPolloWorkTemplateId) => void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
   onArchiveSession?: (sessionId: string, archived: boolean) => void;
@@ -1057,21 +1056,27 @@ function WorkspaceSidebarGroup({
                     <Plus className="size-4" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" side="bottom" className="w-40">
-                    {([
-                      ["work", "Work", BriefcaseBusiness],
-                      ["design", "Design", Palette],
-                      ["code", "Code", Code2],
-                      ["video", "Video", Video],
-                    ] as const).map(([type, label, Icon]) => (
-                      <DropdownMenuItem
-                        key={type}
-                        onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, type)}
-                        className="gap-2"
-                      >
-                        <Icon className="size-3.5 text-muted-foreground" />
-                        {label}
-                      </DropdownMenuItem>
-                    ))}
+                    <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "work")} className="gap-2"><BriefcaseBusiness className="size-3.5 text-muted-foreground" />Work</DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="gap-2"><Palette className="size-3.5 text-muted-foreground" />Design</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-48">
+                        <DropdownMenuSub>
+                          <DropdownMenuSubTrigger>Site</DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent className="w-56">
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>Personal Website</DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent className="w-64">
+                                <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "design", "personal-minimal")}>Minimal Profile</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "design", "personal-editorial")}>Editorial Portfolio</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "design", "personal-portfolio")}>Creative Portfolio</DropdownMenuItem>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "code")} className="gap-2"><Code2 className="size-3.5 text-muted-foreground" />Code</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "video")} className="gap-2"><Video className="size-3.5 text-muted-foreground" />Video</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <WorkspaceActionsMenu

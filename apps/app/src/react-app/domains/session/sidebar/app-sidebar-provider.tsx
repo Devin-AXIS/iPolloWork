@@ -3,6 +3,7 @@ import * as React from "react";
 import type { WorkspaceConnectionState } from "../../../../app/types";
 
 export type iPolloWorkSessionType = "work" | "design" | "code" | "video";
+export type iPolloWorkTemplateId = "personal-minimal" | "personal-editorial" | "personal-portfolio";
 
 export type SidebarContextValue = {
   selectedWorkspaceId: string;
@@ -16,7 +17,7 @@ export type SidebarContextValue = {
   onSelectWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
-  onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType) => void;
+  onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType, templateId?: iPolloWorkTemplateId) => void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
   onArchiveSession?: (sessionId: string, archived: boolean) => void;
