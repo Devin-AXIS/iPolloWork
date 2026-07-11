@@ -1,0 +1,27 @@
+pkgbase = ipollowalk
+	pkgdesc = An Open source alternative to Claude Cowork
+	pkgver = 0.17.20
+	pkgrel = 1
+	url = https://github.com/Devin-AXIS/iPolloWalk
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	depends = gtk3
+	depends = nss
+	depends = alsa-lib
+	depends = libxss
+	depends = libxtst
+	depends = xdg-utils
+	depends = at-spi2-core
+	depends = libdrm
+	depends = libxkbcommon
+	depends = mesa
+	depends = dbus
+	depends = hicolor-icon-theme
+	options = !strip
+	source_x86_64 = ipollowalk-0.17.20-x64.tar.gz::https://github.com/Devin-AXIS/iPolloWalk/releases/download/v0.17.20/ipollowalk-linux-x64-0.17.20.tar.gz
+	sha256sums_x86_64 = 409ae7dbe2b71ada857fff32abf25f9f1e688e254b485f390cdc46e3e0c791d3
+	source_aarch64 = ipollowalk-0.17.20-arm64.tar.gz::https://github.com/Devin-AXIS/iPolloWalk/releases/download/v0.17.20/ipollowalk-linux-arm64-0.17.20.tar.gz
+	sha256sums_aarch64 = e5c78f1503b9f8333fa76de135237ec39314729f70c7d5bf171c5ed1503798eb
+
+pkgname = ipollowalk

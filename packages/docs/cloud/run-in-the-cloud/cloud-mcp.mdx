@@ -1,0 +1,87 @@
+---
+title: "iPolloWalk Connect MCP"
+description: "Use your iPolloWalk organization, skills, and connected tools from Codex, ChatGPT Desktop, OpenCode, Cursor, Claude Code, VS Code, or any MCP client"
+---
+
+import { iPolloWalkConnectInstaller } from "/snippets/ipollowalk-connect-installer.jsx";
+
+iPolloWalk Connect lets your own agent use everything available to your iPolloWalk organization. Sign in once to use your shared skills and connected tools, including Gmail, Slack, Notion, and other services your organization has configured.
+
+The server uses OAuth. Your MCP client opens a browser, you sign in to iPolloWalk, choose the organization to authorize, and the client stores the returned token.
+
+<iPolloWalkConnectInstaller />
+
+## In the iPolloWalk desktop app
+
+If you use the iPolloWalk desktop app, there is nothing to configure. When you sign in, the app injects iPolloWalk Connect by default with access scoped to your active organization. Switching organizations refreshes that access automatically.
+
+## What you can ask the agent
+
+Once connected, your agent manages the organization from plain English in the
+composer. These flows are exercised end to end against a live iPolloWalk Cloud
+deployment (see `evals/cloud-mcp-agent-flows.md` in the repository):
+
+- **Check your cloud identity** — "Which iPolloWalk Cloud organization am I
+  connected to?" The agent reports the organization, your account, and your
+  role.
+- **Invite teammates** — "Add omar@example.com to my organization." The agent
+  sends the invitation, updates the allowed email domains when needed, and
+  surfaces seat-limit billing rules instead of failing silently.
+- **Manage teams** — "Assign Priya to the Sales team." Works for active
+  members; the agent explains when someone still has a pending invitation.
+- **Share skills with your org** — "Create a skill that writes weekly status
+  reports and share it with my whole organization." The agent writes the
+  `SKILL.md` locally, then creates a plugin, attaches the skill, publishes it
+  to your marketplace, and grants org-wide access — teammates see it in their
+  marketplace and install it with one click.
+
+Org policy still applies: invitations respect seat limits and domain rules,
+and resource creation follows your organization's roles.
+
+## Authorize access
+
+1. Save the MCP config in your client.
+2. Start the client's MCP auth flow for `ipollowalk`.
+3. Sign in at `app.ipollowalklabs.com` when the browser opens.
+4. Choose the iPolloWalk Cloud organization that should receive MCP access.
+5. Return to your MCP client after authorization completes.
+
+The token is scoped to the organization you select during OAuth. If you need to switch organizations, remove the stored MCP auth token in your client and run the auth flow again.
+
+## OAuth security controls
+
+iPolloWalk Cloud's MCP OAuth flow is hardened for public MCP clients:
+
+- PKCE is required for dynamically registered/public clients. Only the `S256`
+  code challenge method is supported.
+- Redirect URIs are restricted to loopback HTTP(S) callbacks, such as
+  `http://127.0.0.1:<port>/callback`, or private-use custom schemes. Public web
+  redirects and dangerous schemes such as `javascript:`, `file:`, and `data:`
+  are rejected.
+- MCP OAuth access tokens expire after 15 minutes.
+- JWT access tokens are signed with EdDSA only. The MCP verifier pins that
+  signing algorithm, validates the issuer as the iPolloWalk Cloud auth server,
+  and validates the audience against the MCP resource URLs advertised by the
+  protected-resource metadata.
+- JWKS signing keys rotate every 24 hours. Previous public keys remain in the
+  JWKS for a 1-hour overlap, which is longer than the MCP access-token
+  lifetime, so in-flight tokens can expire naturally during rotation.
+- MCP OAuth refresh tokens expire after 7 days, rotate on refresh, and are
+  revocable. Reusing a revoked refresh token invalidates the token family.
+- Access is rechecked against the user's active iPolloWalk Cloud session and
+  organization membership, so removing a member or revoking their session also
+  cuts off MCP access.
+
+## What the server exposes
+
+The hosted MCP server exposes iPolloWalk Cloud API tools for normal product resources, including config objects, connectors, plugins, marketplaces, skills, workers, members, roles, teams, and LLM providers.
+
+It intentionally does not expose authentication internals, admin-only system routes, webhooks, API-key creation or deletion, or credential-returning endpoints.
+
+## Requirements
+
+- An iPolloWalk Cloud account and organization.
+- An MCP client that supports remote Streamable HTTP MCP servers.
+- OAuth support in the MCP client, including browser-based authorization.
+
+If your client does not support OAuth for remote MCP servers, it cannot connect to iPolloWalk Connect yet.

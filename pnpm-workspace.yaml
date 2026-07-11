@@ -1,0 +1,27 @@
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - "@opencode-ai/sdk"
+
+packages:
+  - "apps/*"
+  - "packages/*"
+
+catalog:
+  react: 19.2.4
+  react-dom: 19.2.4
+
+catalogs:
+  react18:
+    react: 18.2.0
+    react-dom: 18.2.0
+linkWorkspacePackages: true
+preferWorkspacePackages: true
+allowBuilds:
+  "@whiskeysockets/baileys": true
+  better-sqlite3: true
+  electron: true
+  esbuild: true
+  msw: false
+  node-pty: true
+  protobufjs: true
+  sharp: true

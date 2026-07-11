@@ -1,36 +1,65 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+.turbo/
+node_modules/
+apps/desktop/dist-electron/
+packages/*/node_modules/
+apps/*/node_modules/
+.next/
+out/
+dist/
+packages/*/dist/
+apps/*/dist/
+tmp/
 
-# dependencies
-/node_modules
+# Local git worktrees
+_worktrees/
+.worktrees/
 
-# next.js
-/.next/
-/out/
+# Desktop sidecars
+apps/desktop/resources/sidecars/
+apps/desktop/server/
 
-# production
-/build
+# Env
+.env
+.env.*
+!.env.example
+# Committed local-dev defaults (throwaway secrets) loaded by scripts/dev-local.mjs.
+!.env.dev
+# The migration-release fragment is committed only on the tagged
+# migration-release commit and removed by 03-post-migration-cleanup.mjs.
+# Allow git to see it so `cut-migration-release` can commit it.
+!.env.migration-release
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# Bun build artifacts
+*.bun-build
+apps/server/cli
 
-# env files
-.env*
+# pnpm store (created by Docker volume mounts)
+.pnpm-store/
 
-# vercel
+# Docker dev workspace (ephemeral mount point)
+packaging/docker/workspace/
+
+# OS
+.DS_Store
+
+# OpenCode mirror
+vendor/opencode/
+
+# OpenCode local deps
+.opencode/node_modules/
+.opencode/bun.lock
+
+# iPolloWalk workspace-local artifacts
+.opencode/ipollowalk/
+.opencode/agents/ipollowalk.md
+.opencode/ipollowalk.json
+opencode.jsonc
 .vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# data
-/data
-
-# SSL certificates
-/certs
-*.key
-*.crt
-*.pem
+.env*.local
+.claude/*
+.security
+transcript-analysis
+# Eval runner output
+evals/results/
+.playwright-mcp/
+.vscode/

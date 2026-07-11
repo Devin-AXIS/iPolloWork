@@ -1,0 +1,71 @@
+FROM node:22-bookworm-slim AS ipollowalk-builder
+
+WORKDIR /src
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl git unzip \
+  && npm install -g bun \
+  && corepack enable \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+
+RUN pnpm install --frozen-lockfile --trust-lockfile --filter ipollowalk-orchestrator... --filter ipollowalk-server... \
+  && pnpm --filter ipollowalk-orchestrator build:bin \
+  && pnpm --filter ipollowalk-server build:bin
+
+FROM node:22-bookworm-slim
+
+ARG IPOLLOWALK_ORCHESTRATOR_VERSION
+ARG IPOLLOWALK_SERVER_VERSION
+ARG OPENCODE_VERSION
+ARG OPENCODE_DOWNLOAD_URL=
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl tar unzip \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ipollowalk-builder /src/apps/orchestrator/dist/bin/ipollowalk /usr/local/bin/ipollowalk
+COPY --from=ipollowalk-builder /src/apps/server/dist/bin/ipollowalk-server /usr/local/bin/ipollowalk-server
+COPY --from=ipollowalk-builder /src/constants.json /usr/local/constants.json
+COPY packaging/docker/microsandbox-entrypoint.sh /usr/local/bin/microsandbox-entrypoint.sh
+
+RUN set -eux; \
+  test -n "$IPOLLOWALK_ORCHESTRATOR_VERSION"; \
+  test -n "$IPOLLOWALK_SERVER_VERSION"; \
+  test -n "$OPENCODE_VERSION"; \
+  arch="$(dpkg --print-architecture)"; \
+  case "$arch" in \
+    amd64) asset="opencode-linux-x64-baseline.tar.gz" ;; \
+    arm64) asset="opencode-linux-arm64.tar.gz" ;; \
+    *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
+  esac; \
+  url="$OPENCODE_DOWNLOAD_URL"; \
+  if [ -z "$url" ]; then \
+    url="https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/${asset}"; \
+  fi; \
+  tmpdir="$(mktemp -d)"; \
+  curl -fsSL "$url" -o "$tmpdir/$asset"; \
+  tar -xzf "$tmpdir/$asset" -C "$tmpdir"; \
+  binary="$(find "$tmpdir" -type f -name opencode | head -n 1)"; \
+  test -n "$binary"; \
+  install -m 0755 "$binary" /usr/local/bin/opencode; \
+  chmod +x /usr/local/bin/microsandbox-entrypoint.sh; \
+  rm -rf "$tmpdir"
+
+RUN test "$(ipollowalk --version)" = "$IPOLLOWALK_ORCHESTRATOR_VERSION" \
+  && test "$(ipollowalk-server --version)" = "$IPOLLOWALK_SERVER_VERSION" \
+  && opencode --version
+
+ENV IPOLLOWALK_DATA_DIR=/data/ipollowalk-orchestrator
+ENV IPOLLOWALK_SIDECAR_DIR=/data/sidecars
+ENV IPOLLOWALK_WORKSPACE=/workspace
+
+EXPOSE 8787
+
+VOLUME ["/workspace", "/data"]
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=12 \
+  CMD /bin/sh -c 'curl -fsS "http://127.0.0.1:${IPOLLOWALK_PORT:-8787}/health" >/dev/null || exit 1'
+
+ENTRYPOINT ["/usr/local/bin/microsandbox-entrypoint.sh"]

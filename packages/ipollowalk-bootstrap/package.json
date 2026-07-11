@@ -1,0 +1,22 @@
+{
+  "name": "ipollowalk-bootstrap",
+  "version": "0.1.0",
+  "description": "Script-installable iPolloWalk bootstrap CLI for agents",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ipollowalk-bootstrap": "bin/ipollowalk.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md",
+    "start.md"
+  ],
+  "scripts": {
+    "check": "node --check bin/ipollowalk.mjs && node --check evals/agent-fraimz-ipollowalk-bootstrap.mjs && node --check evals/agent-fraimz-ipollowalk-app-install.mjs && node --check evals/agent-fraimz-linux-container.mjs",
+    "test": "node test/ipollowalk-bootstrap.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

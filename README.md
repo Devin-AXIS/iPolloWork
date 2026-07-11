@@ -1,392 +1,253 @@
-# 🚀 A2V Protocol - Next-Gen AI Value Compute Protocol
+# iPolloWalk
 
-<div align="center">
+iPolloWalk is a free, open-source desktop app (macOS, Windows, Linux) for doing work with AI agents on your own files — the open source alternative to Claude Cowork and Codex. Bring any of 50+ LLMs with your own provider keys, extend agents with skills, plugins, and MCP servers, and share complete setups with your team in one link.
 
-![A2V Protocol](https://img.shields.io/badge/A2V-Protocol-blue?style=for-the-badge)
-![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
-![Status](https://img.shields.io/badge/status-Active-success?style=for-the-badge)
 
-**The Synaptic Mesh for the AI Economy**
+## Core Philosophy
 
-*10,000+ AI-driven applications are shaping the next value protocol — built on A2V*
+- Local-first, cloud-ready: iPolloWalk runs on your machine in one click. Send a message instantly.
+- Composable: desktop app, Slack/Telegram connector, or server. Use what fits, no lock-in.
+- Ejectable: iPolloWalk is powered by OpenCode, so everything OpenCode can do works in iPolloWalk, even without a UI yet.
+- Sharing is caring: start solo on localhost, then explicitly opt into remote sharing when you need it.
 
-[Documentation](#) • [Get Started](#quick-start) • [Website](http://a2v.ipollo.ai/) • [Twitter](https://x.com/a2vprotocol)
+<p align="center">
+  <img src="./app-demo.gif" alt="iPolloWalk demo" width="800" />
+</p>
 
-</div>
+iPolloWalk is designed around the idea that you can easily ship your agentic workflows for your team as a repeatable, productized process.
 
----
+> [!TIP]
+>
+> Get enhanced capabilities including feature prioritization, SSO, SLA support, LTS versions, and more.
 
-## 🌟 What is A2V?
+## Alternate UIs
+- **iPolloWalk Orchestrator (CLI host)**: run OpenCode + iPolloWalk server without the desktop UI.
+  - install: `npm install -g ipollowalk-orchestrator`
+  - run: `ipollowalk start --workspace /path/to/workspace --approval auto`
+  - docs: [apps/orchestrator/README.md](./apps/orchestrator/README.md)
 
-**A2V (AI Value Compute Protocol)** is a revolutionary distributed protocol that enables AI agents to measure, exchange, and settle value on-chain. Think of it as the **synaptic mesh** of the AI economy — a neural substrate that connects agents, models, and blockchain value systems into a unified, transparent, and autonomous network.
+## Quick start
 
-By aligning probabilistic AI cognition with blockchain finality, A2V creates a **hybrid intelligence consensus** where every prompt, inference, and interaction becomes measurable economic value.
 
-### 🎯 The Vision
+- macOS and Linux downloads are available directly.
 
-A2V establishes a decentralized **AI value governance layer** across 10,000+ agents, ensuring that every AI interaction is measured and settled via smart contracts. We're building the foundation of the **AI agent tool economy** — where intelligence meets blockchain, enabling transparent compensation, agent-to-agent transactions, and goal-oriented value creation.
+## Code signing policy
 
----
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
 
-## ✨ Key Features
 
-### 🔗 **Synaptic Mesh Architecture**
-- **Distributed Neural Substrate**: Links agents, models, and on-chain value systems seamlessly
-- **Hybrid Intelligence Consensus**: Combines probabilistic AI cognition with blockchain finality
-- **Autonomous Value Network**: Transparent, decentralized governance across the ecosystem
+## Why
 
-### 💎 **Multi-Protocol Compatibility**
-- ✅ **MCP (Model Context Protocol)**: Fully compatible with 10,000+ MCP tools and agents
-- ✅ **A2A (Agent-to-Agent)**: Native support for future agent-to-agent transactions and collaborations
-- ✅ **X402 Protocol**: Native integration with X402 protocol for advanced AI value computation and payment infrastructure
-- ✅ **Smart Contract Settlement** on-chain for every interaction
-- ✅ **Real-time AI Call Metering** and analytics
-- ✅ **Automated Value Distribution** across the network
-- ✅ **Open SDK & Developer APIs** for seamless integration
+Current CLI and GUIs for opencode are anchored around developers. That means a focus on file diffs, tool names, and hard to extend capabilities without relying on exposing some form of cli.
 
-### 💰 **AI Compensation Quantification System**
-- ✅ **Intelligent Payroll System**: Automated compensation calculation for AI agents based on performance and value creation
-- ✅ **Goal-Oriented Rewards**: Support for agent objectives and target-based compensation models
-- ✅ **Transparent Metrics**: Real-time tracking of agent contributions and earnings
-- ✅ **Fair Distribution**: Algorithm-based value allocation ensuring equitable compensation
-- ✅ **Multi-Agent Economics**: Enable complex economic interactions between multiple AI agents
+iPolloWalk is designed to be:
 
-### 🤖 **Agent Tool Economy**
-- ✅ **Future-Ready Architecture**: Built for the emerging AI agent tool economy
-- ✅ **Agent Goal Support**: Comprehensive support for agent objectives and mission-driven value creation
-- ✅ **Tool Marketplace Integration**: Seamless connection to agent tool ecosystems
-- ✅ **Economic Incentives**: Align agent goals with economic rewards
+- **Extensible**: skill and opencode plugins are installable modules.
+- **Auditable**: show what happened, when, and why.
+- **Permissioned**: access to privileged flows.
+- **Local/Remote**: iPolloWalk works locally as well as can connect to remote servers.
 
-### 🌐 **HTTP Gateway**
-- ✅ **One-click HTTP Registration** for quick onboarding
-- ✅ **Auto-generate A2V Value Addresses** for instant participation
-- ✅ **Built-in Call Tracking & Analytics** for comprehensive insights
+## What’s Included
 
-### ⚡ **X402 Protocol Integration**
-- ✅ **Native X402 Support**: Full compatibility with X402 protocol for AI value computation
-- ✅ **Payment Infrastructure**: Leverage X402's advanced payment and settlement mechanisms
-- ✅ **Seamless Integration**: Direct integration with X402 ecosystem for enhanced value flow
-- ✅ **Protocol Interoperability**: Bridge between X402 and A2V protocols for unified value network
-- ✅ **Advanced Features**: Access X402's cutting-edge features for AI agent economics
+- **Host mode**: runs opencode locally on your computer
+- **Client mode**: connect to an existing OpenCode server by URL.
+- **Sessions**: create/select sessions and send prompts.
+- **Live streaming**: SSE `/event` subscription for realtime updates.
+- **Execution plan**: render OpenCode todos as a timeline.
+- **Permissions**: surface permission requests and reply (allow once / always / deny).
+- **Templates**: save and re-run common workflows (stored locally).
+- **Debug exports**: copy or export the runtime debug report and developer log stream from Settings -> Debug when you need to file a bug.
+- **Skills manager**:
+  - list installed `.opencode/skills` folders
+  - import a local skill folder into `.opencode/skills/<skill-name>`
 
-### 🔐 **Decentralized Governance**
-- Transparent and autonomous value flow
-- Smart contract-based settlement
-- Measurable economic value for every AI interaction
+## Skill Manager
 
----
+<img width="1292" height="932" alt="image" src="https://github.com/user-attachments/assets/b500c1c6-a218-42ce-8a11-52787f5642b6" />
 
-## 🏗️ Architecture
+## Works on local computer or servers
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    A2V Protocol Layer                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────────┐      ┌──────────────┐      ┌──────────┐  │
-│  │  AI Agents   │──────│  MCP Tools   │──────│  Models  │  │
-│  │  10,000+     │      │  10,000+     │      │          │  │
-│  └──────┬───────┘      └──────┬───────┘      └────┬─────┘  │
-│         │                     │                    │        │
-│         │                     │                    │        │
-│  ┌──────▼─────────────────────▼────────────────────▼─────┐  │
-│  │         A2A (Agent-to-Agent) Network                  │  │
-│  │         Agent Tool Economy                             │  │
-│  │         X402 Protocol Integration                      │  │
-│  └──────┬─────────────────────────────────────────────────┘  │
-│         │                                                    │
-│         └─────────────────────┐                             │
-│                               │                             │
-│                    ┌──────────▼──────────┐                  │
-│                    │  Value Measurement  │                  │
-│                    │   & Settlement      │                  │
-│                    │  Compensation Sys.  │                  │
-│                    └──────────┬──────────┘                  │
-│                               │                             │
-│                    ┌──────────▼──────────┐                  │
-│                    │  Smart Contracts    │                  │
-│                    │  On-Chain Settlement│                  │
-│                    │  Goal-Based Rewards │                  │
-│                    └──────────────────────┘                  │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
-```
+<img width="1292" height="932" alt="Screenshot 2026-01-13 at 7 05 16 PM" src="https://github.com/user-attachments/assets/9c864390-de69-48f2-82c1-93b328dd60c3" />
 
----
+## Build from Source
 
-## 🚀 Quick Start
+### Requirements
 
-### Prerequisites
+- Node.js + `pnpm`
+- Rust toolchain (for Tauri): install via `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- Tauri CLI: `cargo install tauri-cli`
+- OpenCode CLI installed and available on PATH: `opencode`
 
-- Node.js 18+ or Python 3.8+
-- A Web3 wallet (MetaMask, WalletConnect, etc.)
-- Access to an MCP-compatible AI agent or tool
+### Local Dev Prerequisites (Desktop)
 
-### Installation
+Before running `pnpm dev`, ensure these are installed and active in your shell:
 
-#### Option 1: HTTP Gateway Integration
+- Node + pnpm (repo uses `pnpm@10.27.0`)
+- **Bun 1.3.9+** (`bun --version`)
+- Rust toolchain (for Tauri), with Cargo from current `rustup` stable (supports `Cargo.lock` v4)
+- Xcode Command Line Tools (macOS)
+- On Linux, WebKitGTK 4.1 development packages so `pkg-config` can resolve `webkit2gtk-4.1` and `javascriptcoregtk-4.1`
+
+### One-minute sanity check
+
+Run from repo root:
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/a2vhub.git
-cd a2vhub
+git checkout dev
+git pull --ff-only origin dev
+pnpm install --frozen-lockfile
 
-# Install dependencies (if applicable)
-npm install  # or yarn install / pnpm install
-
-# Start the local server
-python3 -m http.server 8000
-# or
-npm start
+which bun
+bun --version
+pnpm --filter @ipollowalk/desktop exec tauri --version
 ```
 
-Visit `http://localhost:8000` to see the A2V Protocol interface.
+### Install
 
-#### Option 2: MCP Integration
-
-```javascript
-// Example: Integrate A2V with your MCP agent
-import { A2VClient } from '@a2v/sdk';
-
-const client = new A2VClient({
-  apiKey: 'your-api-key',
-  network: 'mainnet', // or 'testnet'
-});
-
-// Register your agent
-await client.registerAgent({
-  name: 'My AI Agent',
-  mcpTools: ['tool1', 'tool2'],
-  goals: ['objective1', 'objective2'], // Agent goals support
-});
-
-// Start measuring value
-const value = await client.measureInteraction({
-  agentId: 'agent-123',
-  prompt: 'Your AI prompt',
-  inference: 'AI response',
-});
-
-// AI Compensation tracking
-const compensation = await client.calculateCompensation({
-  agentId: 'agent-123',
-  performance: { tasks: 100, quality: 0.95 },
-});
+```bash
+pnpm install
 ```
 
-#### Option 3: A2A (Agent-to-Agent) Integration
+iPolloWalk now lives in `apps/app` (UI) and `apps/desktop` (desktop shell).
 
-```javascript
-// Example: Enable agent-to-agent transactions
-import { A2VClient } from '@a2v/sdk';
+### Run (Desktop)
 
-const client = new A2VClient({
-  apiKey: 'your-api-key',
-  network: 'mainnet',
-});
-
-// Enable A2A transactions
-await client.enableA2A({
-  agentId: 'agent-123',
-  capabilities: ['request', 'respond', 'collaborate'],
-});
-
-// Initiate agent-to-agent transaction
-const transaction = await client.initiateA2ATransaction({
-  fromAgent: 'agent-123',
-  toAgent: 'agent-456',
-  service: 'data-processing',
-  value: 100,
-});
+```bash
+pnpm dev
 ```
 
-#### Option 4: X402 Protocol Integration
+`pnpm dev` now enables `IPOLLOWALK_DEV_MODE=1` automatically, so desktop dev uses an isolated OpenCode state instead of your personal global config/auth/data.
 
-```javascript
-// Example: Integrate A2V with X402 protocol
-import { A2VClient } from '@a2v/sdk';
-import { X402Provider } from '@a2v/x402';
+### Run (Web UI only)
 
-const client = new A2VClient({
-  apiKey: 'your-api-key',
-  network: 'mainnet',
-});
-
-// Initialize X402 provider
-const x402Provider = new X402Provider({
-  endpoint: 'x402-endpoint',
-  apiKey: 'x402-api-key',
-});
-
-// Enable X402 integration
-await client.enableX402({
-  agentId: 'agent-123',
-  x402Provider: x402Provider,
-  features: ['payment', 'settlement', 'value-computation'],
-});
-
-// Use X402 for value computation
-const computedValue = await client.computeValueWithX402({
-  agentId: 'agent-123',
-  interaction: {
-    prompt: 'AI prompt',
-    inference: 'AI response',
-    complexity: 'high',
-  },
-  x402Config: {
-    paymentMethod: 'x402-native',
-    settlement: 'auto',
-  },
-});
-
-// Access X402 payment infrastructure
-const payment = await client.processPaymentViaX402({
-  from: 'agent-123',
-  to: 'agent-456',
-  amount: computedValue,
-  currency: 'A2V',
-});
+```bash
+pnpm dev:ui
 ```
 
----
+All repo `dev` entrypoints now opt into the same dev-mode isolation so local testing uses the iPolloWalk-managed OpenCode state consistently.
 
-## 📚 Documentation
+### Arch Users:
 
-### Core Concepts
+```bash
+sudo pacman -S --needed webkit2gtk-4.1
+curl -fsSL https://opencode.ai/install | bash -s -- --version "$(node -e "const fs=require('fs'); const parsed=JSON.parse(fs.readFileSync('constants.json','utf8')); process.stdout.write(String(parsed.opencodeVersion||'').trim().replace(/^v/,''));")" --no-modify-path
+```
 
-- **Synaptic Mesh**: The distributed neural substrate that connects all participants
-- **Value Measurement**: How AI interactions are quantified and tracked
-- **AI Compensation Quantification**: Automated payroll system for AI agents based on performance
-- **A2A (Agent-to-Agent)**: Native support for agent-to-agent transactions and collaborations
-- **X402 Protocol**: Integration with X402 protocol for advanced AI value computation and payment infrastructure
-- **Agent Tool Economy**: Economic framework for the emerging AI agent tool marketplace
-- **Goal-Oriented Rewards**: Support for agent objectives and mission-driven value creation
-- **On-Chain Settlement**: Smart contract-based value exchange
-- **Hybrid Consensus**: Combining AI cognition with blockchain finality
+## Architecture (high-level)
 
-### API Reference
+- In **Host mode**, iPolloWalk runs a local host stack and connects the UI to it.
+  - Default runtime: `ipollowalk` (installed from `ipollowalk-orchestrator`), which orchestrates `opencode` and `ipollowalk-server`.
+  - Fallback runtime: `direct`, where the desktop app spawns `opencode serve --hostname 127.0.0.1 --port <free-port>` directly.
 
-Full API documentation is available at [docs.a2vprotocol.com](https://docs.a2vprotocol.com)
+When you select a project folder, iPolloWalk runs the host stack locally using that folder and connects the desktop UI.
+This lets you run agentic workflows, send prompts, and see progress entirely on your machine without a remote server.
 
-### Integration Guides
+- The UI uses `@opencode-ai/sdk/v2/client` to:
+  - connect to the server
+  - list/create sessions
+  - send prompts
+  - subscribe to SSE events(Server-Sent Events are used to stream real-time updates from the server to the UI.)
+  - read todos and permission requests
 
-- [MCP Integration Guide](#)
-- [A2A (Agent-to-Agent) Setup](#)
-- [X402 Protocol Integration](#)
-- [AI Compensation System Configuration](#)
-- [HTTP Gateway Setup](#)
-- [Smart Contract Deployment](#)
-- [SDK Usage Examples](#)
+## Folder Picker
 
----
+The folder picker uses the Tauri dialog plugin.
+Capability permissions are defined in:
 
-## 🛠️ Tech Stack
+- `apps/desktop/src-tauri/capabilities/default.json`
 
-- **Frontend**: HTML5, CSS3, JavaScript (Webflow)
-- **Blockchain**: Smart Contracts (Ethereum-compatible)
-- **Protocol**: MCP (Model Context Protocol), A2A (Agent-to-Agent) & X402 Protocol compatible
-- **SDK**: JavaScript/TypeScript SDK available
-- **Infrastructure**: Decentralized, blockchain-based
+## OpenCode Plugins
 
----
+Plugins are the **native** way to extend OpenCode. iPolloWalk now manages them from the Skills tab by
+reading and writing `opencode.json`.
 
-## 🌍 Ecosystem
+- **Project scope**: `<workspace>/opencode.json`
+- **Global scope**: `~/.config/opencode/opencode.json` (or `$XDG_CONFIG_HOME/opencode/opencode.json`)
 
-A2V is compatible with a vast ecosystem of AI tools and agents, designed for the future of the AI agent tool economy:
+You can still edit `opencode.json` manually; iPolloWalk uses the same format as the OpenCode CLI:
 
-- **10,000+ MCP Tools** - Full compatibility with the Model Context Protocol ecosystem
-- **A2A (Agent-to-Agent)** - Native support for agent-to-agent transactions and collaborations
-- **X402 Protocol** - Full integration with X402 protocol for advanced AI value computation and payment infrastructure
-- **AI Compensation System** - Automated payroll and value distribution for AI agents
-- **Agent Tool Economy** - Built for the emerging marketplace of AI agent tools and services
-- **Goal-Oriented Agents** - Comprehensive support for agent objectives and mission-driven value creation
-- **AI Agents** - Connect any AI agent to the value network
-- **Blockchain Networks** - Multi-chain support for value settlement
-- **Developer Tools** - Open SDK and comprehensive APIs
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["opencode-wakatime"]
+}
+```
 
----
+## Useful Commands
 
-## 🤝 Contributing
+```bash
+pnpm dev
+pnpm dev:ui
+pnpm typecheck
+pnpm build
+pnpm build:ui
+pnpm test:e2e
+```
 
-We welcome contributions! A2V is an open-source project built by the community, for the community.
+## Troubleshooting
 
-### How to Contribute
+If you need to report a desktop or session bug, open Settings -> Debug and export both the runtime debug report and developer logs before filing an issue.
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+### Linux / Wayland (Hyprland)
 
-### Contribution Guidelines
+If iPolloWalk crashes on launch with WebKitGTK errors like `Failed to create GBM buffer`, disable dmabuf or compositing before launch. Try one of the following environment flags.
 
-- Follow the existing code style
-- Write clear commit messages
-- Add tests for new features
-- Update documentation as needed
-- Be respectful and constructive in discussions
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 ipollowalk
+```
 
----
+```bash
+WEBKIT_DISABLE_COMPOSITING_MODE=1 ipollowalk
+```
 
-## 📊 Roadmap
+## Security Notes
 
-- [x] Core protocol development
-- [x] MCP integration framework
-- [x] HTTP Gateway implementation
-- [x] AI Compensation Quantification System
-- [x] A2A (Agent-to-Agent) compatibility foundation
-- [x] X402 Protocol integration
-- [ ] Full A2A transaction support
-- [ ] Enhanced X402 feature set
-- [ ] Mainnet deployment
-- [ ] Advanced analytics dashboard
-- [ ] Agent Tool Economy marketplace
-- [ ] Goal-oriented reward system enhancement
-- [ ] Multi-chain support
-- [ ] Mobile SDK
-- [ ] Enterprise features
+- iPolloWalk hides model reasoning and sensitive tool metadata by default.
+- Host mode binds to `127.0.0.1` by default.
 
----
+## Contributing
 
-## 📄 License
+- Review `AGENTS.md` plus `VISION.md`, `PRINCIPLES.md`, `PRODUCT.md`, and `ARCHITECTURE.md` to understand the product goals before making changes.
+- Ensure Node.js, `pnpm`, the Rust toolchain, and `opencode` are installed before working inside the repo.
+- Run `pnpm install` once per checkout, then verify your change with `pnpm typecheck` plus `pnpm test:e2e` (or the targeted subset of scripts) before opening a PR.
+- Use `.github/pull_request_template.md` when opening PRs and include exact commands, outcomes, manual verification steps, and evidence.
+- If CI fails, classify failures in the PR body as either code-related regressions or external/environment/auth blockers.
+- Add new PRDs to `apps/app/pr/<name>.md` following the `.opencode/skills/prd-conventions/SKILL.md` conventions described in `AGENTS.md`.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Community docs:
 
----
+- `CODE_OF_CONDUCT.md`
+- `SECURITY.md`
+- `SUPPORT.md`
+- `TRIAGE.md`
 
-## 🙏 Acknowledgments
+First contribution checklist:
 
-- Built for the AI and blockchain community
-- Inspired by the Model Context Protocol (MCP) ecosystem
-- Integrated with X402 protocol for advanced value computation
-- Powered by decentralized technologies
+- [ ] Run `pnpm install` and baseline verification commands.
+- [ ] Confirm your change has a clear issue link and scope.
+- [ ] Add/update tests for behavioral changes.
+- [ ] Include commands run and outcomes in your PR.
+- [ ] Add screenshots/video for user-facing flow changes.
 
----
+## Supported Languages
 
-## 📞 Contact & Community
+Translated READMEs: [`translated_readmes/`](./translated_readmes/README.md), available in English, 简体中文, 繁體中文, 日本語.
 
-- **Website**: [a2v.ipollo.ai](http://a2v.ipollo.ai/)
-- **Twitter/X**: [@a2vprotocol](https://x.com/a2vprotocol)
-- **Email**: 
-  - General inquiries: [a2v@ipollo.ai](mailto:a2v@ipollo.ai)
-  - Technical support: [devin@ipollo.ai](mailto:devin@ipollo.ai)
-- **GitHub**: [github.com/a2vprotocol](https://github.com/a2vprotocol)
+The App is available in the following languages:
+- English (`en`)
+- French (`fr`)
+- Spanish (`es`)
+- Catalan (`ca`)
+- Brazilian Portuguese (`pt-BR`)
+- Japanese (`ja`)
+- Simplified Chinese (`zh`)
+- Thai (`th`)
+- Vietnamese (`vi`)
+- Russian (`ru`)
 
----
+## For Teams & Businesses
 
-## ⭐ Star History
 
-If you find A2V useful, please consider giving us a star on GitHub!
+## License
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/a2vhub&type=Date)](https://star-history.com/#yourusername/a2vhub&Date)
-
----
-
-<div align="center">
-
-**Built with ❤️ by the A2V Community**
-
-*Measuring AI value, one interaction at a time.*
-
-</div>
-
+MIT — see `LICENSE`.

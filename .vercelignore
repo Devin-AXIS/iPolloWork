@@ -1,0 +1,14 @@
+_archive
+_worktrees
+.git
+.opencode
+vendor
+**/node_modules
+**/.next
+**/dist
+**/.*.bun-build
+packages/agent-lab
+packages/desktop
+packages/headless
+packages/owpenbot
+packages/server
