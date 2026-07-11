@@ -2286,6 +2286,51 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       }
       return output;
     };
+    const ensureTextPanel = () => {
+      let panel = document.querySelector('[data-ipollowork-video-text-panel]');
+      if (panel) return panel;
+      const style = document.createElement('style');
+      style.dataset.ipolloworkVideoTextPanel = 'true';
+      style.textContent = '.ipw-video-text-panel{position:fixed;z-index:2147483646;right:0;top:40px;bottom:0;width:288px;display:none;flex-direction:column;border-left:1px solid rgba(255,255,255,.1);background:rgba(18,18,20,.96);box-shadow:-18px 0 48px rgba(0,0,0,.28);backdrop-filter:blur(22px);color:#f8fafc;font:500 12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.ipw-video-text-panel *{box-sizing:border-box}.ipw-video-text-head{display:flex;align-items:center;gap:10px;height:52px;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.08)}.ipw-video-text-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:rgba(60,230,172,.13);color:#3ce6ac;font-weight:700}.ipw-video-text-title{flex:1;min-width:0}.ipw-video-text-title strong{display:block;font-size:13px}.ipw-video-text-title span{display:block;overflow:hidden;color:#8b8b94;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.ipw-video-text-close{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#8b8b94;cursor:pointer;font-size:18px}.ipw-video-text-close:hover{background:rgba(255,255,255,.07);color:#fff}.ipw-video-text-body{display:flex;flex:1;flex-direction:column;gap:18px;overflow:auto;padding:14px}.ipw-video-field label{display:block;margin-bottom:7px;color:#a1a1aa;font-size:10px;letter-spacing:.08em;text-transform:uppercase}.ipw-video-textarea{width:100%;min-height:110px;resize:vertical;border:1px solid rgba(255,255,255,.1);border-radius:12px;outline:0;background:rgba(255,255,255,.045);padding:10px 11px;color:#fff;font:500 13px/1.5 inherit}.ipw-video-textarea:focus{border-color:rgba(60,230,172,.55);box-shadow:0 0 0 3px rgba(60,230,172,.1)}.ipw-video-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.ipw-video-control{display:flex;align-items:center;height:38px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.045);overflow:hidden}.ipw-video-number{min-width:0;flex:1;border:0;outline:0;background:transparent;padding:0 10px;color:#fff;font:600 12px inherit}.ipw-video-step{width:30px;height:100%;border:0;border-left:1px solid rgba(255,255,255,.08);background:transparent;color:#a1a1aa;cursor:pointer}.ipw-video-step:hover{background:rgba(255,255,255,.07);color:#fff}.ipw-video-color{width:100%;height:38px;cursor:pointer;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.045);padding:5px}';
+      document.head.appendChild(style);
+      panel = document.createElement('aside');
+      panel.className = 'ipw-video-text-panel';
+      panel.setAttribute('data-ipollowork-video-text-panel', 'true');
+      panel.setAttribute('aria-label', 'Video text editor');
+      panel.innerHTML = '<div class="ipw-video-text-head"><span class="ipw-video-text-icon">T</span><div class="ipw-video-text-title"><strong>Text</strong><span data-ipw-text-element>Selected text</span></div><button type="button" class="ipw-video-text-close" aria-label="Close text editor">×</button></div><div class="ipw-video-text-body"><div class="ipw-video-field"><label for="ipw-video-text-content">Content</label><textarea id="ipw-video-text-content" class="ipw-video-textarea" spellcheck="false"></textarea></div><div class="ipw-video-row"><div class="ipw-video-field"><label for="ipw-video-font-size">Size</label><div class="ipw-video-control"><input id="ipw-video-font-size" class="ipw-video-number" type="number" min="1" max="500" step="1"><button type="button" class="ipw-video-step" data-step="-1">−</button><button type="button" class="ipw-video-step" data-step="1">+</button></div></div><div class="ipw-video-field"><label for="ipw-video-text-color">Color</label><input id="ipw-video-text-color" class="ipw-video-color" type="color"></div></div></div>';
+      document.body.appendChild(panel);
+      const text = panel.querySelector('#ipw-video-text-content');
+      const size = panel.querySelector('#ipw-video-font-size');
+      const color = panel.querySelector('#ipw-video-text-color');
+      panel.querySelector('.ipw-video-text-close').addEventListener('click', () => { panel.style.display = 'none'; });
+      text.addEventListener('input', () => window.__ipolloworkVideoTextSource?.__ipolloworkSetSelectedText?.(text.value));
+      size.addEventListener('change', () => window.__ipolloworkVideoTextSource?.__ipolloworkSetSelectedStyle?.('font-size', Math.max(1, Number(size.value) || 1) + 'px'));
+      color.addEventListener('input', () => window.__ipolloworkVideoTextSource?.__ipolloworkSetSelectedStyle?.('color', color.value));
+      for (const step of panel.querySelectorAll('[data-step]')) step.addEventListener('click', () => {
+        size.value = String(Math.max(1, (Number(size.value) || 16) + Number(step.dataset.step)));
+        size.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      return panel;
+    };
+    const normalizePanelColor = (value) => {
+      if (/^#[0-9a-f]{6}$/i.test(value || '')) return value;
+      const rgb = String(value || '').match(/rgba?\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)/i);
+      return rgb ? '#' + rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0')).join('') : '#111827';
+    };
+    const showTextPanel = (source, data) => {
+      const panel = ensureTextPanel();
+      window.__ipolloworkVideoTextSource = source;
+      panel.querySelector('[data-ipw-text-element]').textContent = (data.tag || 'text').toUpperCase();
+      panel.querySelector('#ipw-video-text-content').value = data.text || '';
+      panel.querySelector('#ipw-video-font-size').value = String(Math.max(1, Math.round(Number.parseFloat(data.fontSize) || 16)));
+      panel.querySelector('#ipw-video-text-color').value = normalizePanelColor(data.color);
+      panel.style.display = 'flex';
+    };
+    const hideTextPanel = () => {
+      const panel = document.querySelector('[data-ipollowork-video-text-panel]');
+      if (panel) panel.style.display = 'none';
+      window.__ipolloworkVideoTextSource = null;
+    };
     if (enabled && !wasEnabled) {
       window.setTimeout(() => {
         const iframe = collectIframes(document)[0];
@@ -2294,26 +2339,29 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         iframe?.contentWindow?.__player?.seek?.(0);
       }, 120);
     }
-    if (window.__ipolloworkSimpleVideoListener !== 9) {
-      window.__ipolloworkSimpleVideoListener = 9;
+    if (window.__ipolloworkSimpleVideoListener !== 11) {
+      window.__ipolloworkSimpleVideoListener = 11;
       window.__ipolloworkVideoAdvancedExplicit = false;
       window.addEventListener('message', (event) => {
         const inspector = document.querySelector('button[aria-label="Inspector"]');
-        if (event.data?.type === 'ipollowork:hyperframes:direct-text-edit' || event.data?.type === 'ipollowork:hyperframes:element-edit') {
-          window.__ipolloworkVideoAdvancedExplicit = false;
+        if (event.data?.type === 'ipollowork:hyperframes:direct-text-edit') {
           clearCanvasSelection();
-          if (document.documentElement.dataset.ipolloworkSimpleMode === 'true' && inspector?.getAttribute('aria-pressed') === 'true') {
-            inspector.click();
-          }
+          if (inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
+          showTextPanel(event.source, event.data);
+          return;
+        }
+        if (event.data?.type === 'ipollowork:hyperframes:element-edit') {
           return;
         }
         if (event.data?.type === 'ipollowork:hyperframes:native-selection-compact') {
+          hideTextPanel();
           window.__ipolloworkVideoAdvancedExplicit = false;
           applyCanvasSelection(event.data.target);
           if (inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
           return;
         }
         if (event.data?.type === 'ipollowork:hyperframes:open-advanced') {
+          hideTextPanel();
           const iframe = collectIframes(document).find((candidate) => candidate.contentWindow === event.source);
           const x = Number(event.data.x);
           const y = Number(event.data.y);
@@ -2409,8 +2457,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
   })()`);
   if (enabled) {
     await Promise.all(frames.filter((frame) => frame !== studioFrame).map((frame) => frame.executeJavaScript(`(() => {
-      if (window.__ipolloworkSimpleVideoClickInstalled === 14) return;
-      window.__ipolloworkSimpleVideoClickInstalled = 14;
+      if (window.__ipolloworkSimpleVideoClickInstalled === 18) return;
+      window.__ipolloworkSimpleVideoClickInstalled = 18;
       const encodedProjectId = location.pathname.match(/^\\/api\\/projects\\/([^/]+)/)?.[1];
       const projectId = encodedProjectId ? decodeURIComponent(encodedProjectId) : '';
       if (!projectId) return;
@@ -2425,8 +2473,17 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       const textSelector = 'h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote,[data-ipollowork-direct-text]';
       let editing = null;
       let selected = null;
+      let selectedTarget = null;
       let pendingPointer = null;
       let saveTimer = 0;
+      const postEditorMessage = (payload) => {
+        let target = window.parent;
+        while (target && target !== window) {
+          target.postMessage(payload, '*');
+          if (target === target.parent) break;
+          target = target.parent;
+        }
+      };
 
       const directEditStyle = document.createElement('style');
       directEditStyle.dataset.ipolloworkDirectText = 'true';
@@ -2471,8 +2528,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         return { file, selector, selectorIndex };
       };
 
-      const saveText = (element, immediate = false) => {
-        const target = sourceTargetFor(element);
+      const saveTextTarget = (target, value, immediate = false) => {
         if (!target) return;
         window.clearTimeout(saveTimer);
         const run = async () => {
@@ -2482,7 +2538,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({
                 target: { selector: target.selector, selectorIndex: target.selectorIndex },
-                operations: [{ type: 'text-content', value: element.textContent || '' }],
+                operations: [{ type: 'text-content', value: String(value ?? '') }],
               }),
             });
           } catch {}
@@ -2490,11 +2546,12 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         if (immediate) void run();
         else saveTimer = window.setTimeout(run, 180);
       };
+      const saveText = (element, immediate = false) => {
+        saveTextTarget(sourceTargetFor(element), element.textContent || '', immediate);
+      };
 
-      const saveStyle = async (element, property, value) => {
-        const target = sourceTargetFor(element);
+      const saveStyleTarget = async (target, property, value) => {
         if (!target) return;
-        element.style.setProperty(property, value);
         try {
           await fetch('/api/projects/' + encodeURIComponent(projectId) + '/file-mutations/patch-element/' + encodeURI(target.file), {
             method: 'POST',
@@ -2505,6 +2562,12 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
             }),
           });
         } catch {}
+      };
+      const saveStyle = async (element, property, value) => {
+        const target = sourceTargetFor(element);
+        if (!target) return;
+        element.style.setProperty(property, value);
+        await saveStyleTarget(target, property, value);
       };
 
       const displayScale = () => {
@@ -2545,7 +2608,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         toolbar.style.top = (placeAbove ? rect.top - 10 / scale : rect.bottom + 10 / scale) + 'px';
         toolbar.style.transform = 'translate(-50%, ' + (placeAbove ? '-100%' : '0') + ') scale(' + (1 / scale) + ')';
         toolbar.style.display = 'flex';
-        window.parent.postMessage({ type: 'ipollowork:hyperframes:element-edit' }, '*');
+        postEditorMessage({ type: 'ipollowork:hyperframes:element-edit' });
       };
 
       const finishEditing = () => {
@@ -2611,6 +2674,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         if (editing && editing !== element) finishEditing();
         editing = element;
         selected = element;
+        selectedTarget = sourceTargetFor(element);
         element.setAttribute('contenteditable', 'plaintext-only');
         element.style.setProperty('pointer-events', 'auto', 'important');
         element.style.setProperty('cursor', 'text', 'important');
@@ -2623,7 +2687,16 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
           selection?.removeAllRanges();
           selection?.addRange(range);
         }
-        window.parent.postMessage({ type: 'ipollowork:hyperframes:direct-text-edit' }, '*');
+        const target = selectedTarget;
+        const computed = getComputedStyle(element);
+        postEditorMessage({
+          type: 'ipollowork:hyperframes:direct-text-edit',
+          target: target ? { ...target, id: element.id || undefined } : null,
+          tag: element.tagName.toLowerCase(),
+          text: element.textContent || '',
+          fontSize: computed.fontSize,
+          color: computed.color,
+        });
         showToolbar(element);
         return true;
       };
@@ -2660,12 +2733,12 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
           const rect = selected.getBoundingClientRect();
           finishEditing();
           toolbar.style.display = 'none';
-          window.parent.postMessage({
+          postEditorMessage({
             type: 'ipollowork:hyperframes:open-advanced',
             x: rect.left + rect.width / 2,
             y: rect.top + rect.height / 2,
             target: { ...sourceTargetFor(selected), id: selected.id || undefined },
-          }, '*');
+          });
         }
       }, true);
 
@@ -2703,10 +2776,10 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         if (gesture?.moved) {
           const element = editableAtPoint(event.clientX, event.clientY);
           const target = element ? sourceTargetFor(element) : null;
-          window.setTimeout(() => window.parent.postMessage({
+          window.setTimeout(() => postEditorMessage({
             type: 'ipollowork:hyperframes:native-selection-compact',
             target: target ? { ...target, id: element.id || undefined } : null,
-          }, '*'), 60);
+          }), 60);
           return;
         }
         if (gesture?.text && selectTextAtPoint(event.clientX, event.clientY, event)) {
@@ -2716,10 +2789,10 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         hideToolbar();
         const element = editableAtPoint(event.clientX, event.clientY);
         const target = element ? sourceTargetFor(element) : null;
-        window.setTimeout(() => window.parent.postMessage({
+        window.setTimeout(() => postEditorMessage({
           type: 'ipollowork:hyperframes:native-selection-compact',
           target: target ? { ...target, id: element.id || undefined } : null,
-        }, '*'), 60);
+        }), 60);
       }, true);
       document.addEventListener('input', (event) => {
         if (editing && event.target === editing) saveText(editing);
@@ -2748,6 +2821,21 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const target = document.elementFromPoint(x, y);
         if (!(target instanceof Element) || !toolbar.contains(target)) return false;
         target.closest('button')?.click();
+        return true;
+      };
+      window.__ipolloworkSetSelectedText = (value) => {
+        const target = selected?.isConnected ? sourceTargetFor(selected) : selectedTarget;
+        if (!target) return false;
+        if (selected?.isConnected) selected.textContent = String(value ?? '');
+        saveTextTarget(target, value);
+        return true;
+      };
+      window.__ipolloworkSetSelectedStyle = (property, value) => {
+        if (typeof property !== 'string' || typeof value !== 'string') return false;
+        const target = selected?.isConnected ? sourceTargetFor(selected) : selectedTarget;
+        if (!target) return false;
+        if (selected?.isConnected) selected.style.setProperty(property, value);
+        void saveStyleTarget(target, property, value);
         return true;
       };
       window.__HF_PICKER_API?.disable?.();
