@@ -2339,12 +2339,18 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         iframe?.contentWindow?.__player?.seek?.(0);
       }, 120);
     }
-    if (window.__ipolloworkSimpleVideoListener !== 11) {
-      window.__ipolloworkSimpleVideoListener = 11;
+    if (window.__ipolloworkSimpleVideoListener !== 12) {
+      window.__ipolloworkSimpleVideoListener = 12;
       window.__ipolloworkVideoAdvancedExplicit = false;
       window.addEventListener('message', (event) => {
         const inspector = document.querySelector('button[aria-label="Inspector"]');
         if (event.data?.type === 'ipollowork:hyperframes:direct-text-edit') {
+          clearCanvasSelection();
+          if (inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
+          hideTextPanel();
+          return;
+        }
+        if (event.data?.type === 'ipollowork:hyperframes:open-text-panel') {
           clearCanvasSelection();
           if (inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
           showTextPanel(event.source, event.data);
@@ -2457,8 +2463,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
   })()`);
   if (enabled) {
     await Promise.all(frames.filter((frame) => frame !== studioFrame).map((frame) => frame.executeJavaScript(`(() => {
-      if (window.__ipolloworkSimpleVideoClickInstalled === 18) return;
-      window.__ipolloworkSimpleVideoClickInstalled = 18;
+      if (window.__ipolloworkSimpleVideoClickInstalled === 19) return;
+      window.__ipolloworkSimpleVideoClickInstalled = 19;
       const encodedProjectId = location.pathname.match(/^\\/api\\/projects\\/([^/]+)/)?.[1];
       const projectId = encodedProjectId ? decodeURIComponent(encodedProjectId) : '';
       if (!projectId) return;
@@ -2501,7 +2507,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       toolbar.className = 'ipollowork-video-toolbar';
       toolbar.setAttribute('role', 'toolbar');
       toolbar.setAttribute('aria-label', 'Video element quick editor');
-      toolbar.innerHTML = '<span class="ow-tag"></span><button type="button" data-action="text" title="Edit text">T</button><button type="button" data-action="smaller" title="Smaller">−</button><button type="button" class="ow-size" data-action="size" title="Font size">16</button><button type="button" data-action="larger" title="Larger">+</button><button type="button" class="ow-color" data-action="colors" title="Color"></button><span class="ow-sep"></span><button type="button" data-action="advanced" title="More properties">•••</button><div class="ipollowork-video-colors"></div>';
+      toolbar.innerHTML = '<span class="ow-tag"></span><button type="button" data-action="text" title="Edit text">T</button><button type="button" data-action="smaller" title="Smaller">−</button><button type="button" class="ow-size" data-action="size" title="Font size">16</button><button type="button" data-action="larger" title="Larger">+</button><button type="button" class="ow-color" data-action="colors" title="Color"></button><button type="button" data-action="panel" title="Open text panel" aria-label="Open text panel"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1.5" y="2" width="11" height="10" rx="2" stroke="currentColor"/><path d="M9 2v10" stroke="currentColor"/></svg></button><span class="ow-sep"></span><button type="button" data-action="advanced" title="More properties">•••</button><div class="ipollowork-video-colors"></div>';
       const colors = toolbar.querySelector('.ipollowork-video-colors');
       for (const color of ['#111827','#475569','#ffffff','#ef4444','#f59e0b','#22c55e','#3b82f6','#8b5cf6']) {
         const swatch = document.createElement('button');
@@ -2601,6 +2607,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         toolbar.querySelector('[data-action="smaller"]').style.display = canEditText ? '' : 'none';
         toolbar.querySelector('[data-action="size"]').style.display = canEditText ? '' : 'none';
         toolbar.querySelector('[data-action="larger"]').style.display = canEditText ? '' : 'none';
+        toolbar.querySelector('[data-action="panel"]').style.display = canEditText ? '' : 'none';
         toolbar.querySelector('[data-action="size"]').textContent = String(fontSize);
         toolbar.querySelector('.ow-color').style.backgroundColor = getComputedStyle(element).color;
         toolbar.style.left = Math.max(80 / scale, Math.min(innerWidth - 80 / scale, rect.left + rect.width / 2)) + 'px';
@@ -2729,6 +2736,17 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
           void saveStyle(selected, 'font-size', next + 'px');
         } else if (action === 'colors') {
           colors.style.display = colors.style.display === 'flex' ? 'none' : 'flex';
+        } else if (action === 'panel') {
+          const target = sourceTargetFor(selected) || selectedTarget;
+          const computed = getComputedStyle(selected);
+          postEditorMessage({
+            type: 'ipollowork:hyperframes:open-text-panel',
+            target: target ? { ...target, id: selected.id || undefined } : null,
+            tag: selected.tagName.toLowerCase(),
+            text: selected.textContent || '',
+            fontSize: computed.fontSize,
+            color: computed.color,
+          });
         } else if (action === 'advanced') {
           const rect = selected.getBoundingClientRect();
           finishEditing();
