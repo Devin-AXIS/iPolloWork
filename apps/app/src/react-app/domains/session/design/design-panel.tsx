@@ -29,7 +29,6 @@ import {
   type DesignSelection,
   type DesignStyleField,
 } from "./design-html-runtime";
-import { getDesignTemplate } from "./design-template-catalog";
 
 type DesignPanelProps = {
   sessionId: string;
@@ -124,12 +123,9 @@ export function DesignPanel({
   });
   const lockedPath = React.useMemo(() => {
     if (!workspaceId || typeof window === "undefined") return "";
-    const stored = window.localStorage.getItem(`ipollowork.session-design-path.${sessionId}`)
+    return window.localStorage.getItem(`ipollowork.session-design-path.${sessionId}`)
       || window.localStorage.getItem(designSessionSelectionStorageKey(workspaceId, sessionId))
       || "";
-    if (stored) return stored;
-    const template = getDesignTemplate(window.localStorage.getItem(`ipollowork.session-template.${sessionId}`) ?? undefined);
-    return template ? `design/${template.fileName}` : "";
   }, [sessionId, workspaceId]);
   const htmlTargets = React.useMemo(() => {
     const unique = new Map<string, { value: string }>();
