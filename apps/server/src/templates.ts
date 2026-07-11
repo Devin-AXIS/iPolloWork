@@ -198,7 +198,7 @@ async function readManifest(directory: string): Promise<TemplateManifestV1> {
   const parsed = templateManifestV1Schema.safeParse(value);
   if (!parsed.success) throw new ApiError(400, "invalid_template_manifest", "Template manifest is invalid", parsed.error.flatten());
   const manifest = parsed.data;
-  for (const relativePath of [manifest.entry, manifest.cover]) {
+  for (const relativePath of [manifest.entry, manifest.cover, manifest.designSystem.tokens].filter((path): path is string => Boolean(path))) {
     const safe = validateStaticFile(relativePath);
     const target = resolve(directory, ...safe.split("/"));
     if (!target.startsWith(`${resolve(directory)}${sep}`) || !existsSync(target)) throw new ApiError(400, "invalid_template_manifest", `Missing package file: ${relativePath}`);

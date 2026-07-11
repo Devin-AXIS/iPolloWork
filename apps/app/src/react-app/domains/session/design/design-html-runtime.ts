@@ -44,6 +44,7 @@ export type DesignRuntimeMessage =
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "selected"; selection: DesignSelection }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "editing"; selection: DesignSelection }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "draft"; html: string; selection: DesignSelection }
+  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "document-draft"; html: string }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "snapshot"; requestId: string; html: string }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "navigate"; href: string };
 
@@ -83,12 +84,15 @@ export function resolveDesignNavigationPath(currentPath: string, rootPath: strin
   return { path, hash };
 }
 
-export function buildDesignPreviewDocument(source: string, editing: boolean) {
+export function buildDesignPreviewDocument(source: string, editing: boolean, templateTokenCss = "") {
+  const tokenStyle = templateTokenCss.trim()
+    ? `<style id="ipollowork-design-template-token-style">${templateTokenCss.replace(/<\/style/gi, "<\\/style")}</style>`
+    : "";
   const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"});<\/script>`;
   const editingRuntime = editing
     ? `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)});<\/script>`
     : "";
-  const runtime = `${navigationRuntime}${editingRuntime}`;
+  const runtime = `${tokenStyle}${navigationRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
   if (bodyEnd >= 0) {
     return `${source.slice(0, bodyEnd)}${runtime}${source.slice(bodyEnd)}`;
@@ -226,6 +230,7 @@ function designRuntime(channel: string, styleFields: readonly string[]) {
     clone.querySelector(`#${runtimeId}`)?.remove();
     clone.querySelector("#ipollowork-design-navigation-runtime")?.remove();
     clone.querySelector(`#${styleId}`)?.remove();
+    clone.querySelector("#ipollowork-design-template-token-style")?.remove();
     clone.querySelector(`#${overlayId}`)?.remove();
     clone.querySelectorAll(`[${textNodeAttribute}]`).forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
     clone.querySelectorAll(`[${idAttribute}]`).forEach((element) => element.removeAttribute(idAttribute));
@@ -511,7 +516,7 @@ function designRuntime(channel: string, styleFields: readonly string[]) {
     }
     if (data.type === "set-token" && typeof data.name === "string" && typeof data.value === "string" && data.name.startsWith("--ipw-")) {
       document.documentElement.style.setProperty(data.name, data.value);
-      post("draft");
+      window.parent.postMessage({ channel, type: "document-draft", html: serialize() }, "*");
       return;
     }
     if (!selected || data.type !== "set") return;

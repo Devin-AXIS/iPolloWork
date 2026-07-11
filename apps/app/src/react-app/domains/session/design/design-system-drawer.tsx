@@ -9,14 +9,6 @@ import { cn } from "@/lib/utils";
 
 type DesignSystemTab = "theme" | "background" | "typography" | "components";
 
-type DesignSystemDrawerProps = {
-  open: boolean;
-  templateName: string;
-  onClose: () => void;
-  onTokenChange: (name: string, value: string) => void;
-  onBackgroundImageUpload: (file: File) => Promise<string>;
-};
-
 const DEFAULTS = {
   "--ipw-color-primary": "#c96442",
   "--ipw-color-secondary": "#2563eb",
@@ -48,6 +40,17 @@ const DEFAULTS = {
   "--ipw-card-shadow": "0 12px 32px rgba(28,27,26,.10)",
   "--ipw-card-blur": "0px",
 } as const;
+
+export type DesignTokenValues = Partial<Record<keyof typeof DEFAULTS, string>>;
+
+type DesignSystemDrawerProps = {
+  open: boolean;
+  templateName: string;
+  initialValues?: DesignTokenValues;
+  onClose: () => void;
+  onTokenChange: (name: string, value: string) => void;
+  onBackgroundImageUpload: (file: File) => Promise<string>;
+};
 
 const SECTION_KEYS: Record<DesignSystemTab, readonly (keyof typeof DEFAULTS)[]> = {
   theme: [
@@ -113,6 +116,7 @@ function cssUrl(value: string) {
 export function DesignSystemDrawer({
   open,
   templateName,
+  initialValues,
   onClose,
   onTokenChange,
   onBackgroundImageUpload,
@@ -120,6 +124,10 @@ export function DesignSystemDrawer({
   const [tab, setTab] = React.useState<DesignSystemTab>("theme");
   const [values, setValues] = React.useState<Record<keyof typeof DEFAULTS, string>>({ ...DEFAULTS });
   const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (open) setValues({ ...DEFAULTS, ...initialValues });
+  }, [initialValues, open]);
 
   const update = React.useCallback((name: keyof typeof DEFAULTS, value: string) => {
     setValues((current) => ({ ...current, [name]: value }));

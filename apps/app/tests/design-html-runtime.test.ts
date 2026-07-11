@@ -15,9 +15,12 @@ describe("Design HTML runtime", () => {
     expect(isLocalHtmlPath("https://example.com")).toBe(false);
   });
 
-  test("leaves preview HTML untouched when editing is off", () => {
+  test("keeps navigation active without injecting editor controls when editing is off", () => {
     const source = "<!doctype html><html><body><h1>Hello</h1></body></html>";
-    expect(buildDesignPreviewDocument(source, false)).toBe(source);
+    const preview = buildDesignPreviewDocument(source, false);
+    expect(preview).toContain('id="ipollowork-design-navigation-runtime"');
+    expect(preview).not.toContain('id="ipollowork-design-runtime"');
+    expect(preview).toContain("<h1>Hello</h1>");
   });
 
   test("injects the isolated editor bridge before the closing body", () => {
@@ -41,6 +44,14 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('data-handle="se"');
     expect(preview).toContain('prepareTransform(selected, handle === "move" ? "move" : "resize"');
     expect(preview).toContain('selected.style.width = `${width}px`');
+  });
+
+  test("inlines template token CSS into the preview without treating it as user HTML", () => {
+    const source = "<!doctype html><html><body><h1>Hello</h1></body></html>";
+    const preview = buildDesignPreviewDocument(source, true, ":root { --ipw-color-primary: #123456; }");
+    expect(preview).toContain('id="ipollowork-design-template-token-style"');
+    expect(preview).toContain("--ipw-color-primary: #123456");
+    expect(preview).toContain("document-draft");
   });
 
   test("scopes the remembered file to its workspace", () => {

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.saas-landing",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "site",
   "subcategory": "landing",
@@ -16,6 +16,7 @@
   },
   "designSystem": {
     "tokenVersion": 1,
+    "tokens": "design-tokens.css",
     "editableGroups": ["theme", "background", "typography", "components"]
   },
   "applyChecklist": [

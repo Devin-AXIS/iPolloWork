@@ -22,6 +22,7 @@ export const templateManifestV1Schema = z.object({
   designSystem: z.object({
     tokenVersion: z.literal(1),
     editableGroups: z.array(z.enum(["theme", "background", "typography", "components"])).min(1),
+    tokens: z.string().trim().min(1).optional(),
   }).strict(),
   applyChecklist: z.array(z.string().trim().min(1).max(240)).min(1),
   minimumAppVersion: z.string().regex(/^\d+\.\d+\.\d+$/),

@@ -32,7 +32,7 @@ import {
   type DesignSelection,
   type DesignStyleField,
 } from "./design-html-runtime";
-import { DesignSystemDrawer } from "./design-system-drawer";
+import { DesignSystemDrawer, type DesignTokenValues } from "./design-system-drawer";
 
 type DesignPanelProps = {
   sessionId: string;
@@ -59,7 +59,31 @@ const TYPE_PRESETS = [
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "navigate");
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate");
+}
+
+function readDesignTokenValues(...sources: string[]): DesignTokenValues {
+  const values: DesignTokenValues = {};
+  const declaration = document.createElement("div").style;
+  const apply = (cssText: string) => {
+    declaration.cssText = cssText;
+    for (let index = 0; index < declaration.length; index += 1) {
+      const name = declaration.item(index);
+      if (name.startsWith("--ipw-")) values[name as keyof DesignTokenValues] = declaration.getPropertyValue(name).trim();
+    }
+  };
+  for (const source of sources) {
+    for (const match of source.matchAll(/:root\s*{([^}]*)}/gi)) apply(match[1] ?? "");
+    const rootStyle = source.match(/<html[^>]*\sstyle=["']([^"']*)["']/i)?.[1];
+    if (rootStyle) apply(rootStyle);
+  }
+  return values;
+}
+
+function linkedDesignTokenPath(source: string | undefined): string {
+  const path = source?.match(/<link\b[^>]*\bhref=["']([^"']*design-tokens?\.css)["'][^>]*>/i)?.[1]?.trim() ?? "";
+  if (!path || path.startsWith("/") || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(path) || path.split("/").includes("..")) return "";
+  return path.replace(/^\.\//, "");
 }
 
 function fileName(path: string) {
@@ -205,6 +229,22 @@ export function DesignPanel({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+  const templateTokenPath = React.useMemo(() => {
+    const tokenPath = designTemplate?.designSystem.tokens || linkedDesignTokenPath(fileQuery.data?.content) || "design-tokens.css";
+    const briefPath = templateQuery.data?.state.briefPath;
+    if (!tokenPath || !briefPath) return "";
+    return `${briefPath.replace(/[^/]+$/, "")}${tokenPath}`;
+  }, [designTemplate?.designSystem.tokens, fileQuery.data?.content, templateQuery.data?.state.briefPath]);
+  const templateTokenQuery = useQuery({
+    queryKey: ["design-template-tokens", workspaceId, templateTokenPath] as const,
+    queryFn: async () => {
+      if (!client || !workspaceId || !templateTokenPath) return "";
+      return (await client.readWorkspaceFile(workspaceId, templateTokenPath)).content;
+    },
+    enabled: Boolean(client && workspaceId && templateTokenPath && !isRemoteWorkspace),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
 
   const openDesignLink = React.useCallback(async (href: string) => {
     if (!client || !workspaceId || !lockedPath || !activePagePath) return;
@@ -258,6 +298,12 @@ export function DesignPanel({
       if (event.source !== iframeRef.current?.contentWindow || !isDesignRuntimeMessage(event.data)) return;
       if (event.data.type === "navigate") {
         void openDesignLink(event.data.href);
+        return;
+      }
+      if (event.data.type === "document-draft") {
+        draftRef.current = event.data.html;
+        setDraft(event.data.html);
+        setPendingCanvasChange(false);
         return;
       }
       if (event.data.type === "editing") setHistory((current) => [...current, draft]);
@@ -506,9 +552,13 @@ export function DesignPanel({
   };
 
   const dirty = pendingCanvasChange || draft !== savedSource;
+  const designTokenValues = React.useMemo(
+    () => readDesignTokenValues(templateTokenQuery.data ?? "", draft),
+    [draft, templateTokenQuery.data],
+  );
   const preview = React.useMemo(
-    () => buildDesignPreviewDocument(previewSource, editing),
-    [editing, previewSource],
+    () => buildDesignPreviewDocument(previewSource, editing, templateTokenQuery.data ?? ""),
+    [editing, previewSource, templateTokenQuery.data],
   );
   const floatingStyle = selection ? {
     left: `clamp(112px, ${(iframeRef.current?.offsetLeft ?? 0) + selection.rect.left + selection.rect.width / 2 + 8}px, calc(100% - 112px))`,
@@ -816,6 +866,7 @@ export function DesignPanel({
               <DesignSystemDrawer
                 open={editing && designSystemOpen && Boolean(designTemplate)}
                 templateName={designTemplate?.title ?? "Template"}
+                initialValues={designTokenValues}
                 onClose={() => setDesignSystemOpen(false)}
                 onTokenChange={applyToken}
                 onBackgroundImageUpload={async (file) => {
