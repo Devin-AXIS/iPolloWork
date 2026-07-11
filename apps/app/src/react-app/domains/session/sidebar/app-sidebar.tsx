@@ -1578,6 +1578,15 @@ function PinnedIndicator({ isPinned }: { isPinned: boolean }) {
   );
 }
 
+function SessionTypeIcon({ sessionId }: { sessionId: string }) {
+  const type = typeof window === "undefined"
+    ? "work"
+    : window.localStorage.getItem(`ipollowork.session-type.${sessionId}`) ?? "work";
+  const Icon = type === "design" ? Palette : type === "code" ? Code2 : type === "video" ? Video : BriefcaseBusiness;
+  const label = type[0].toUpperCase() + type.slice(1);
+  return <Icon className="size-3 shrink-0 text-muted-foreground/70" aria-label={label} />;
+}
+
 type SessionMenuItemProps = {
   session: SessionListItem;
   depth: number;
@@ -1645,6 +1654,7 @@ function SessionMenuItem({
                 onFocus={prefetchSession}
               >
                 <PinnedIndicator isPinned={isPinned} />
+                <SessionTypeIcon sessionId={session.id} />
                 <span
                   className={cn("min-w-0 flex-1 truncate transition-[padding] duration-75 group-hover/menu-sub-item:pe-12 group-has-data-popup-open/menu-sub-item:pe-12 pe-4", isSessionStreaming || isSessionActive && "pe-12")}
                   title={displayTitle}
@@ -1679,6 +1689,7 @@ function SessionMenuItem({
           className={cn("transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", depth > 0 && "ps-13", isSessionStreaming || isSessionActive && "pe-8")}
         >
           <PinnedIndicator isPinned={isPinned} />
+          <SessionTypeIcon sessionId={session.id} />
           <span className="truncate" title={displayTitle}>{displayTitle}</span>
         </SidebarMenuSubButton>
       </SessionContextMenu>
