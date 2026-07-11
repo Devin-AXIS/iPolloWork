@@ -32,6 +32,7 @@ import {
   type DesignSelection,
   type DesignStyleField,
 } from "./design-html-runtime";
+import { DesignSystemDrawer } from "./design-system-drawer";
 import { getDesignTemplate } from "./design-template-catalog";
 
 type DesignPanelProps = {
@@ -138,6 +139,12 @@ export function DesignPanel({
     () => typeof window !== "undefined" && Boolean(window.localStorage.getItem(`ipollowork.session-template.${sessionId}`)),
     [sessionId],
   );
+  const designTemplate = React.useMemo(
+    () => typeof window === "undefined"
+      ? null
+      : getDesignTemplate(window.localStorage.getItem(`ipollowork.session-template.${sessionId}`) ?? undefined),
+    [sessionId],
+  );
   const htmlTargets = React.useMemo(() => {
     const unique = new Map<string, { value: string }>();
     catalogQuery.data?.forEach((entry) => {
@@ -177,6 +184,7 @@ export function DesignPanel({
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!workspaceId || htmlTargets.length === 0) {
@@ -246,6 +254,7 @@ export function DesignPanel({
     setSelection(null);
     setQuickEdit(null);
     setAdvancedOpen(false);
+    setDesignSystemOpen(false);
     setPreviewSource(fileQuery.data.content);
     setPreviewLoaded(false);
     setSourceHydrated(true);
@@ -584,25 +593,26 @@ export function DesignPanel({
                   setSelection(null);
                   setQuickEdit(null);
                   setAdvancedOpen(false);
+                  setDesignSystemOpen(false);
                 }}
                 aria-label="Edit page"
               />
               Edit page
             </Label>
-            {editing ? (
-              <div className="ml-auto flex items-center gap-1 rounded-lg border border-border/70 bg-muted/25 p-1" aria-label="Template color theme">
-                {["#c96442", "#2563eb", "#7c3aed", "#059669"].map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    className="size-4 rounded-full border border-black/10 transition-transform hover:scale-110"
-                    style={{ backgroundColor: color }}
-                    onClick={() => applyToken("--ipw-color-primary", color)}
-                    aria-label={`Set template accent ${color}`}
-                  />
-                ))}
-              </div>
-            ) : null}
+            <Button
+              variant={designSystemOpen ? "secondary" : "ghost"}
+              size="sm"
+              className="ml-auto"
+              disabled={!editing || !designTemplate}
+              onClick={() => {
+                setDesignSystemOpen((current) => !current);
+                setAdvancedOpen(false);
+              }}
+              aria-label="Open design system"
+            >
+              <Palette />
+              Design system
+            </Button>
             <Button variant="ghost" size="icon-sm" onClick={undo} disabled={history.length === 0} aria-label="Undo design change">
               <Undo2 />
             </Button>
@@ -796,7 +806,10 @@ export function DesignPanel({
                         <Button
                           variant={advancedOpen ? "secondary" : "ghost"}
                           size="icon-xs"
-                          onClick={() => setAdvancedOpen((current) => !current)}
+                          onClick={() => {
+                            setAdvancedOpen((current) => !current);
+                            setDesignSystemOpen(false);
+                          }}
                           aria-label="Toggle advanced design settings"
                           aria-pressed={advancedOpen}
                         >
@@ -807,6 +820,23 @@ export function DesignPanel({
                   </div>
                 ) : null}
               </div>
+              <DesignSystemDrawer
+                open={editing && designSystemOpen && Boolean(designTemplate)}
+                templateName={designTemplate?.title ?? "Template"}
+                onClose={() => setDesignSystemOpen(false)}
+                onTokenChange={applyToken}
+                onBackgroundImageUpload={async (file) => {
+                  if (!file.type.startsWith("image/")) {
+                    toast.error("Choose an image file for the background.");
+                    throw new Error("Invalid background image");
+                  }
+                  if (file.size > 5 * 1024 * 1024) {
+                    toast.error("Choose a background image smaller than 5 MB.");
+                    throw new Error("Background image too large");
+                  }
+                  return imageFileToPortableDataUrl(file);
+                }}
+              />
               {editing && advancedOpen ? (
                 <aside className="w-64 shrink-0 overflow-y-auto border-l border-border/70 bg-background" aria-label="Design inspector">
                   {selection ? (
