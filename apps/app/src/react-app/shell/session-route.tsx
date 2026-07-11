@@ -927,13 +927,28 @@ export function SessionRoute() {
         if (designPath && selectedWorkspaceEndpoint) {
           try {
             const currentDesign = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, designPath);
+            let versionContent = currentDesign.content;
+            const selectedVersionPath = window.localStorage.getItem(`ipollowork.session-design-version.${targetSessionId}`);
+            if (selectedVersionPath && selectedVersionPath !== "current") {
+              const selectedVersion = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, selectedVersionPath);
+              await selectedWorkspaceEndpoint.client.writeWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, {
+                path: designPath,
+                content: selectedVersion.content,
+                baseUpdatedAt: currentDesign.updatedAt ?? null,
+              });
+              versionContent = selectedVersion.content;
+              window.localStorage.setItem(`ipollowork.session-design-version.${targetSessionId}`, "current");
+            }
             await selectedWorkspaceEndpoint.client.writeWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, {
               path: `design/.versions/${targetSessionId}/${Date.now()}-before-ai.html`,
-              content: currentDesign.content,
+              content: versionContent,
               baseUpdatedAt: null,
             });
             await getReactQueryClient().invalidateQueries({
               queryKey: ["design-html-catalog", selectedWorkspaceEndpoint.workspaceId],
+            });
+            await getReactQueryClient().invalidateQueries({
+              queryKey: ["design-html", selectedWorkspaceEndpoint.workspaceId, designPath],
             });
           } catch (error) {
             throw new Error(`Could not create the Design version before this AI update: ${error instanceof Error ? error.message : "Unknown error"}`);

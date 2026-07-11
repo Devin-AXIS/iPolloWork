@@ -157,6 +157,7 @@ export function DesignPanel({
   );
   const [selectedPath, setSelectedPath] = React.useState("");
   const [viewedVersionPath, setViewedVersionPath] = React.useState("current");
+  const [viewedVersionUpdatedAt, setViewedVersionUpdatedAt] = React.useState<number | null>(null);
   const [editing, setEditing] = React.useState(false);
   const [selection, setSelection] = React.useState<DesignSelection | null>(null);
   const [draft, setDraft] = React.useState("");
@@ -197,6 +198,8 @@ export function DesignPanel({
   React.useEffect(() => {
     if (!fileQuery.data) return;
     setViewedVersionPath("current");
+    setViewedVersionUpdatedAt(fileQuery.data.updatedAt);
+    if (typeof window !== "undefined") window.localStorage.setItem(`ipollowork.session-design-version.${sessionId}`, "current");
     draftRef.current = fileQuery.data.content;
     setPendingCanvasChange(false);
     setDraft(fileQuery.data.content);
@@ -209,7 +212,7 @@ export function DesignPanel({
     setPreviewLoaded(false);
     setSourceHydrated(true);
     setPreviewRevision((current) => current + 1);
-  }, [fileQuery.data]);
+  }, [fileQuery.data, sessionId]);
 
   React.useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
@@ -292,23 +295,28 @@ export function DesignPanel({
       // flight, which is especially important for text nested in controls.
       const content = await readLatestCanvasHtml();
       draftRef.current = content;
+      const savePath = viewedVersionPath === "current" ? selectedPath : viewedVersionPath;
       const result = await client.writeWorkspaceFile(workspaceId, {
-        path: selectedPath,
+        path: savePath,
         content,
-        baseUpdatedAt: fileQuery.data.updatedAt,
+        baseUpdatedAt: viewedVersionPath === "current" ? fileQuery.data.updatedAt : viewedVersionUpdatedAt,
       });
-      return { result, content };
+      return { result, content, savePath, isCurrent: viewedVersionPath === "current" };
     },
-    onSuccess: ({ result, content }) => {
-      queryClient.setQueryData<LoadedHtml>(
-        ["design-html", workspaceId, selectedPath] as const,
-        { content, updatedAt: result.updatedAt ?? null },
-      );
+    onSuccess: ({ result, content, isCurrent }) => {
+      if (isCurrent) {
+        queryClient.setQueryData<LoadedHtml>(
+          ["design-html", workspaceId, selectedPath] as const,
+          { content, updatedAt: result.updatedAt ?? null },
+        );
+      } else {
+        setViewedVersionUpdatedAt(result.updatedAt ?? null);
+      }
       setDraft(content);
       setSavedSource(content);
       setPendingCanvasChange(false);
       setHistory([]);
-      toast.success("Design saved to the workspace.");
+      toast.success(isCurrent ? "Design saved to the workspace." : "This version was saved.");
     },
     onError: (cause) => {
       const message = cause instanceof Error ? cause.message : "Could not save this design.";
@@ -318,7 +326,7 @@ export function DesignPanel({
 
   const viewVersion = async (versionPath: string) => {
     if (!client || !workspaceId || !fileQuery.data || versionPath === viewedVersionPath) return;
-    if (viewedVersionPath === "current" && draft !== savedSource && !window.confirm("Discard unsaved design changes and switch versions?")) return;
+    if (draft !== savedSource && !window.confirm("Discard unsaved design changes and switch versions?")) return;
     try {
       const loaded = await client.readWorkspaceFile(workspaceId, versionPath === "current" ? selectedPath : versionPath);
       const content = loaded.content;
@@ -329,8 +337,12 @@ export function DesignPanel({
         );
       }
       setViewedVersionPath(versionPath);
+      setViewedVersionUpdatedAt(loaded.updatedAt ?? null);
+      window.localStorage.setItem(`ipollowork.session-design-version.${sessionId}`, versionPath);
       draftRef.current = content;
       setDraft(content);
+      setSavedSource(content);
+      setPendingCanvasChange(false);
       setHistory([]);
       setSelection(null);
       setQuickEdit(null);
@@ -552,7 +564,7 @@ export function DesignPanel({
             </Button>
             <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || (!editing && !dirty)}>
               {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
-              {viewedVersionPath === "current" ? "Save" : "Restore"}
+              Save
             </Button>
           </div>
 
