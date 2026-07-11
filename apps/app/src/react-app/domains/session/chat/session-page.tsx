@@ -12,6 +12,7 @@ import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
 import { openDesktopPath, revealDesktopItemInDir, type WorkspaceInfo } from "../../../../app/lib/desktop";
 import type {
+  ComposerDraft,
   PendingPermission,
   PendingQuestion,
   ProviderListItem,
@@ -308,7 +309,7 @@ function DesignStarter({ onChoose }: { onChoose: (templateId: "open-design-saas-
             {categories.map(({ id, label, detail, Icon }) => <button key={id} type="button" onClick={() => setCategory(id)} className="group rounded-2xl border border-dls-border bg-dls-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><Icon className="mb-7 size-4 text-dls-secondary group-hover:text-primary" /><div className="text-sm font-semibold">{label}</div><div className="mt-1 text-xs leading-5 text-dls-secondary">{detail}</div></button>)}
           </div>
         ) : category === "website" ? (
-          <div><button type="button" className="mb-3 text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => onChoose("open-design-saas-landing")} className="min-h-44 rounded-2xl border border-dls-border bg-gradient-to-br from-stone-100 via-orange-50 to-white p-5 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><div className="text-sm font-semibold">SaaS Landing</div><div className="mt-1 text-xs text-dls-secondary">官网模板 · 完整可编辑的产品落地页</div><div className="mt-8 text-xs font-medium text-primary">使用模板 →</div></button></div></div>
+          <div><button type="button" className="mb-3 text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => onChoose("open-design-saas-landing")} className="overflow-hidden rounded-2xl border border-dls-border bg-dls-surface text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><div className="h-28 bg-gradient-to-br from-stone-100 via-orange-100 to-white p-4"><div className="h-2 w-14 rounded bg-stone-400/45" /><div className="mt-4 h-5 w-3/4 rounded bg-stone-800/75" /><div className="mt-2 h-2 w-1/2 rounded bg-stone-400/45" /><div className="mt-4 h-4 w-20 rounded-md bg-orange-500/75" /></div><div className="p-4"><div className="text-sm font-semibold">SaaS Landing</div><div className="mt-1 text-xs text-dls-secondary">官网模板 · 完整可编辑的产品落地页</div><div className="mt-4 text-xs font-medium text-primary">使用模板 →</div></div></button></div></div>
         ) : (
           <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">模板即将加入</p><button type="button" className="mt-3 text-xs text-primary" onClick={() => setCategory(null)}>返回类别</button></div>
         )}
@@ -364,6 +365,13 @@ export function SessionPage(props: SessionPageProps) {
     window.localStorage.setItem(designSelectionStorageKey(props.runtimeWorkspaceId), path);
     setDesignTemplateRevision((value) => value + 1);
     setSidePanelState(props.selectedSessionId, "design");
+    const draft: ComposerDraft = {
+      mode: "prompt",
+      parts: [],
+      attachments: [],
+      text: `A Design template is now selected: ${template.title}. The editable source is ${path}. Treat this template as the design baseline for this whole session. Do not replace its visual language unless asked. First, ask only the essential questions needed to personalize it: project or brand name, what it does and for whom, and the primary call to action. After the answers, update the existing HTML and keep it open in the Design panel.`,
+    };
+    props.surface?.onSendDraft(draft, props.selectedSessionId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState]);
   const sidePanelOpen = activeSidePanel !== null;
   const panelRailActive = activeSidePanel === "panel";
