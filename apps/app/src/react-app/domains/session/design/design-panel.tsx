@@ -599,28 +599,21 @@ export function DesignPanel({
               />
               Edit page
             </Label>
-            <Button
-              variant={designSystemOpen ? "secondary" : "ghost"}
-              size="sm"
-              className="ml-auto"
-              disabled={!designTemplate}
-              onClick={() => {
-                if (!editing) {
-                  setPreviewSource(draft);
-                  setPreviewLoaded(false);
-                  setPreviewRevision((current) => current + 1);
-                  setEditing(true);
-                  setSelection(null);
-                  setQuickEdit(null);
-                }
-                setDesignSystemOpen(true);
-                setAdvancedOpen(false);
-              }}
-              aria-label="Open design system"
-            >
-              <Palette />
-              Design system
-            </Button>
+            {editing && designTemplate ? (
+              <Button
+                variant={designSystemOpen ? "secondary" : "ghost"}
+                size="icon-sm"
+                className="ml-auto rounded-lg"
+                onClick={() => {
+                  setDesignSystemOpen((current) => !current);
+                  setAdvancedOpen(false);
+                }}
+                aria-label="Open design system"
+                title="Design system"
+              >
+                <Palette className="size-3.5" />
+              </Button>
+            ) : null}
             <Button variant="ghost" size="icon-sm" onClick={undo} disabled={history.length === 0} aria-label="Undo design change">
               <Undo2 />
             </Button>
