@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-const templateUrl = new URL("../src/react-app/domains/session/design/templates/open-design/pitch-deck.html", import.meta.url);
+const templateUrl = new URL("../../server/bundled-templates/ipollowork.pitch-deck/entry.html", import.meta.url);
 
 describe("Design slide template", () => {
   test("ships a self-contained editable 16:9 deck", async () => {

@@ -115,7 +115,6 @@ import { useSessionProviderAuth } from "@/react-app/domains/connections/provider
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
-import { getDesignTemplate } from "@/react-app/domains/session/design/design-template-catalog";
 import { designSessionSelectionStorageKey } from "@/react-app/domains/session/design/design-html-runtime";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
@@ -921,9 +920,11 @@ export function SessionRoute() {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
         });
-        const designPath = typeof window !== "undefined"
-          ? window.localStorage.getItem(`ipollowork.session-design-path.${targetSessionId}`)
+        const isDesignTask = typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-type.${targetSessionId}`) === "design";
+        const designSessionTemplate = selectedWorkspaceEndpoint && isDesignTask
+          ? await selectedWorkspaceEndpoint.client.getDesignSessionTemplate(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
           : null;
+        const designPath = designSessionTemplate?.state.entry ?? null;
         if (designPath && selectedWorkspaceEndpoint) {
           try {
             const currentDesign = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, designPath);
@@ -954,9 +955,7 @@ export function SessionRoute() {
             throw new Error(`Could not create the Design version before this AI update: ${error instanceof Error ? error.message : "Unknown error"}`);
           }
         }
-        const designTemplate = designPath && typeof window !== "undefined"
-          ? getDesignTemplate(window.localStorage.getItem(`ipollowork.session-template.${targetSessionId}`) ?? undefined)
-          : null;
+        const designTemplate = designSessionTemplate?.manifest ?? null;
         const designContract = designTemplate?.category === "slides"
           ? "Design slide contract: preserve a fixed 16:9 stage, one .slide section per page, safe margins, concise audience-facing content, separate hidden speaker notes, keyboard navigation, slide counter, and presentation controls. Keep a coherent narrative across 6 to 10 slides. Never turn the deck into a scrolling website, never place presenter instructions on the visible slide, and never invent metrics."
           : "Design site contract: every site must be responsive at desktop and mobile widths. On mobile, collapse dense desktop navigation into a compact accessible menu toggle and a polished glass-style menu; never allow navigation to overflow or disappear. Keep same-page navigation as real #section links with matching element ids. When the requested experience implies a child page such as login, signup, docs, product detail, or checkout, create the sibling HTML file inside the same Design task directory and use a real relative href (for example ./login.html) or data-href. Never leave navigation as a plain button with no destination, and do not use placeholder href=\"#\" for an action that should open a page.";
@@ -1273,18 +1272,8 @@ export function SessionRoute() {
       );
       window.localStorage.setItem(`ipollowork.session-type.${session.id}`, type);
       if (templateId) {
-        const template = getDesignTemplate(templateId);
-        window.localStorage.setItem(`ipollowork.session-template.${session.id}`, templateId);
-        if (template) {
-          const path = `design/${session.id}/${template.fileName}`;
-          await endpoint.client.writeWorkspaceFile(endpoint.workspaceId, {
-            path,
-            content: template.html,
-            baseUpdatedAt: null,
-          });
-          window.localStorage.setItem(`ipollowork.session-design-path.${session.id}`, path);
-          window.localStorage.setItem(designSessionSelectionStorageKey(endpoint.workspaceId, session.id), path);
-        }
+        const materialized = await endpoint.client.materializeTemplate(endpoint.workspaceId, templateId, session.id);
+        window.localStorage.setItem(designSessionSelectionStorageKey(endpoint.workspaceId, session.id), materialized.state.entry);
       }
       captureAnalyticsEvent("task_created", {
         source: "new_task",

@@ -2,7 +2,8 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
-import { Cloud, Code2, Columns2, FileText, Film, Globe, Image, Mic2, Palette, Presentation, Settings2, TextSearch, X, Zap } from "lucide-react";
+import { Cloud, Code2, Columns2, Ellipsis, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, Presentation, Settings2, TextSearch, Upload, X, Zap } from "lucide-react";
+import type { DesignSessionTemplateState, TemplateCatalogItem, TemplateManifestV1 } from "@ipollowork/types/templates";
 
 import { t } from "../../../../i18n";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
@@ -68,7 +69,6 @@ import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
 import { VideoPanel } from "../video/video-panel";
 import { designSelectionStorageKey, designSessionSelectionStorageKey } from "../design/design-html-runtime";
-import { getDesignTemplate, type DesignTemplate } from "../design/design-template-catalog";
 import { SidePanel } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
@@ -294,8 +294,37 @@ function controlStringArg(args: unknown, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function DesignStarter({ onChoose }: { onChoose: (templateId: iPolloWorkTemplateId) => void }) {
+function TemplateCover({ client, workspaceId, template }: { client: iPolloWorkServerClient; workspaceId: string; template: TemplateCatalogItem }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    void client.getTemplateCover(workspaceId, template.manifest.id).then(({ data, contentType }) => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(new Blob([data], { type: contentType ?? "image/svg+xml" }));
+      setSrc(objectUrl);
+    }).catch(() => undefined);
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [client, template.manifest.id, workspaceId]);
+  return src ? <img src={src} alt="" className="h-28 w-full object-cover" /> : <div className="h-28 animate-pulse bg-dls-hover" />;
+}
+
+function DesignStarter({ client, workspaceId, templates, loading, busyId, error, onRefresh, onChoose, onInstall, onUninstall, onImport }: {
+  client: iPolloWorkServerClient;
+  workspaceId: string;
+  templates: TemplateCatalogItem[];
+  loading: boolean;
+  busyId: string | null;
+  error: string | null;
+  onRefresh: () => void;
+  onChoose: (templateId: iPolloWorkTemplateId) => void;
+  onInstall: (templateId: string) => void;
+  onUninstall: (templateId: string) => void;
+  onImport: (file: File) => void;
+}) {
   const [category, setCategory] = useState<"website" | "slides" | "poster" | null>(null);
+  const [pendingImport, setPendingImport] = useState<File | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const categories = [
     { id: "website" as const, label: "网站", detail: "落地页、产品页、个人主页", Icon: Globe },
     { id: "slides" as const, label: "幻灯片", detail: "演示、提案和报告", Icon: Presentation },
@@ -305,17 +334,19 @@ function DesignStarter({ onChoose }: { onChoose: (templateId: iPolloWorkTemplate
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12">
       <div className="w-full max-w-3xl">
         <div className="mb-7 text-center"><div className="mx-auto mb-3 grid size-11 place-items-center rounded-2xl bg-primary/10 text-primary"><Palette className="size-5" /></div><h2 className="text-lg font-semibold">开始设计</h2><p className="mt-1 text-sm text-dls-secondary">先选择类别，再选择一个模板。</p></div>
-        {!category ? (
+        {loading ? <div className="flex items-center justify-center py-14 text-sm text-dls-secondary"><LoaderCircle className="mr-2 size-4 animate-spin" />正在读取模板</div> : error ? <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5 text-center text-sm"><p>{error}</p><button type="button" onClick={onRefresh} className="mt-3 text-xs font-medium text-primary">重试</button></div> : !category ? (
           <div className="grid gap-3 sm:grid-cols-3">
             {categories.map(({ id, label, detail, Icon }) => <button key={id} type="button" onClick={() => setCategory(id)} className="group rounded-2xl border border-dls-border bg-dls-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><Icon className="mb-7 size-4 text-dls-secondary group-hover:text-primary" /><div className="text-sm font-semibold">{label}</div><div className="mt-1 text-xs leading-5 text-dls-secondary">{detail}</div></button>)}
           </div>
-        ) : category === "website" ? (
-          <div><button type="button" className="mb-3 text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => onChoose("open-design-saas-landing")} className="overflow-hidden rounded-2xl border border-dls-border bg-dls-surface text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><div className="h-28 bg-gradient-to-br from-stone-100 via-orange-100 to-white p-4"><div className="h-2 w-14 rounded bg-stone-400/45" /><div className="mt-4 h-5 w-3/4 rounded bg-stone-800/75" /><div className="mt-2 h-2 w-1/2 rounded bg-stone-400/45" /><div className="mt-4 h-4 w-20 rounded-md bg-orange-500/75" /></div><div className="p-4"><div className="text-sm font-semibold">SaaS Landing</div><div className="mt-1 text-xs text-dls-secondary">官网模板 · 完整可编辑的产品落地页</div><div className="mt-4 text-xs font-medium text-primary">使用模板 →</div></div></button></div></div>
-        ) : category === "slides" ? (
-          <div><button type="button" className="mb-3 text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => onChoose("open-design-pitch-deck")} className="overflow-hidden rounded-2xl border border-dls-border bg-dls-surface text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><div className="relative h-28 overflow-hidden bg-[#0b1020] p-4 text-white"><div className="absolute -right-8 -top-10 size-28 rounded-full bg-violet-500/30 blur-2xl" /><div className="text-[8px] font-semibold uppercase tracking-[.18em] text-emerald-300">Pitch Deck · 2026</div><div className="mt-3 max-w-[12rem] text-lg font-bold leading-[1.05]">Ideas into <span className="text-violet-400">outcomes.</span></div><div className="absolute bottom-3 left-4 flex gap-1">{Array.from({ length: 7 }, (_, index) => <span key={index} className={cn("h-1 rounded-full", index === 0 ? "w-4 bg-violet-400" : "w-1 bg-white/25")} />)}</div></div><div className="p-4"><div className="text-sm font-semibold">Pitch Deck</div><div className="mt-1 text-xs text-dls-secondary">路演模板 · 16:9 多页演示与键盘翻页</div><div className="mt-4 text-xs font-medium text-primary">使用模板 →</div></div></button></div></div>
-        ) : (
-          <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">模板即将加入</p><button type="button" className="mt-3 text-xs text-primary" onClick={() => setCategory(null)}>返回类别</button></div>
-        )}
+        ) : (() => {
+          const serverCategory = category === "website" ? "site" : category;
+          const visible = templates.filter((item) => item.manifest.category === serverCategory);
+          return <div>
+            <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><button type="button" onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text"><Upload className="size-3" />导入 .ipwt</button><input ref={importRef} type="file" accept=".ipwt,application/zip" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
+            {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB · 本地模板将标记为未验证</div></div><button type="button" onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text">取消</button><button type="button" onClick={() => { onImport(pendingImport); setPendingImport(null); }} className="h-7 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground">安装</button></div> : null}
+            {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><TemplateCover client={client} workspaceId={workspaceId} template={item} /><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2 text-sm font-semibold">{item.manifest.title}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">Local</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">更新</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">卸载</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">更新</button> : null}</div></details></div><button type="button" disabled={busyId === item.manifest.id} onClick={() => item.installed ? onChoose(item.manifest.id) : onInstall(item.manifest.id)} className="mt-4 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.installed ? "使用模板" : "安装"}</button></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">这个分类还没有模板</p><p className="mt-1 text-xs text-dls-secondary">可导入标准 .ipwt 模板包。</p></div>}
+          </div>;
+        })()}
       </div>
     </div>
   );
@@ -328,7 +359,7 @@ const DESIGN_THEME_PRESETS = [
   { id: "forest", label: "森林绿", primary: "#059669", colors: ["#f0fdf4", "#064e3b", "#059669"] },
 ] as const;
 
-function DesignBriefCard({ template, onSubmit }: { template: DesignTemplate; onSubmit: (brief: { name: string; purpose: string; features: string; color: string }) => void }) {
+function DesignBriefCard({ template, onSubmit }: { template: TemplateManifestV1; onSubmit: (brief: { name: string; purpose: string; features: string; color: string }) => void }) {
   const isSlides = template.category === "slides";
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -372,55 +403,126 @@ export function SessionPage(props: SessionPageProps) {
   const hasArtifactTargets = artifactTargetCount > 0;
   const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
   const [designTemplateRevision, setDesignTemplateRevision] = useState(0);
+  const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
+  const [templateCatalogLoading, setTemplateCatalogLoading] = useState(false);
+  const [templateCatalogError, setTemplateCatalogError] = useState<string | null>(null);
+  const [templateBusyId, setTemplateBusyId] = useState<string | null>(null);
+  const [designTemplateData, setDesignTemplateData] = useState<{ state: DesignSessionTemplateState; manifest: TemplateManifestV1; hasBrief: boolean } | null>(null);
   const selectedSessionType = props.selectedSessionId && typeof window !== "undefined"
     ? window.localStorage.getItem(`ipollowork.session-type.${props.selectedSessionId}`)
     : null;
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
-  const hasDesignTemplate = useMemo(() => Boolean(
-    props.selectedSessionId
-      && typeof window !== "undefined"
-      && window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`),
-  ), [designTemplateRevision, props.selectedSessionId]);
-  const hasDesignBrief = useMemo(() => Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-design-brief.${props.selectedSessionId}`)), [designTemplateRevision, props.selectedSessionId]);
-  const selectedDesignTemplate = useMemo(() => getDesignTemplate(props.selectedSessionId && typeof window !== "undefined" ? window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`) ?? undefined : undefined), [designTemplateRevision, props.selectedSessionId]);
+  const hasDesignTemplate = Boolean(designTemplateData);
+  const hasDesignBrief = designTemplateData?.hasBrief === true;
+  const selectedDesignTemplate = designTemplateData?.manifest ?? null;
+  const refreshTemplateCatalog = useCallback(async () => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
+    setTemplateCatalogLoading(true);
+    setTemplateCatalogError(null);
+    try { setTemplateCatalog((await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId)).items); }
+    catch (error) { setTemplateCatalogError(error instanceof Error ? error.message : "无法读取模板"); }
+    finally { setTemplateCatalogLoading(false); }
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
+  useEffect(() => {
+    if (!isDesignSession || !props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) { setDesignTemplateData(null); return; }
+    let active = true;
+    const client = props.ipolloworkServerClient;
+    const workspaceId = props.runtimeWorkspaceId;
+    const sessionId = props.selectedSessionId;
+    void (async () => {
+      try {
+        let result;
+        try { result = await client.getDesignSessionTemplate(workspaceId, sessionId); }
+        catch {
+          const legacyId = window.localStorage.getItem(`ipollowork.session-template.${sessionId}`);
+          const templateId = legacyId === "open-design-saas-landing" ? "ipollowork.saas-landing" : legacyId === "open-design-pitch-deck" ? "ipollowork.pitch-deck" : "";
+          const entry = window.localStorage.getItem(`ipollowork.session-design-path.${sessionId}`) ?? "";
+          if (!templateId || !entry) throw new Error("no-template");
+          let brief: unknown = undefined;
+          const legacyBrief = window.localStorage.getItem(`ipollowork.session-design-brief.${sessionId}`);
+          if (legacyBrief) try { brief = JSON.parse(legacyBrief); } catch { brief = undefined; }
+          result = await client.adoptDesignSession(workspaceId, sessionId, { templateId, entry, brief });
+          window.localStorage.removeItem(`ipollowork.session-template.${sessionId}`);
+          window.localStorage.removeItem(`ipollowork.session-design-path.${sessionId}`);
+          window.localStorage.removeItem(`ipollowork.session-design-brief.${sessionId}`);
+        }
+        let hasBrief = false;
+        try { const brief = JSON.parse((await client.readWorkspaceFile(workspaceId, result.state.briefPath)).content); hasBrief = Boolean(brief && typeof brief === "object" && Object.keys(brief).length); } catch { hasBrief = false; }
+        if (active) setDesignTemplateData({ ...result, hasBrief });
+      } catch { if (active) setDesignTemplateData(null); }
+    })();
+    void refreshTemplateCatalog();
+    return () => { active = false; };
+  }, [designTemplateRevision, isDesignSession, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog]);
   const chooseDesignTemplate = useCallback(async (templateId: iPolloWorkTemplateId) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     try {
-      const template = getDesignTemplate(templateId);
-      if (!template) throw new Error("Template is unavailable.");
-      const path = `design/${props.selectedSessionId}/${template.fileName}`;
-      await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content: template.html, baseUpdatedAt: null });
-      window.localStorage.setItem(`ipollowork.session-template.${props.selectedSessionId}`, templateId);
-      window.localStorage.setItem(`ipollowork.session-design-path.${props.selectedSessionId}`, path);
-      window.localStorage.setItem(designSessionSelectionStorageKey(props.runtimeWorkspaceId, props.selectedSessionId), path);
+      setTemplateBusyId(templateId);
+      const result = await props.ipolloworkServerClient.materializeTemplate(props.runtimeWorkspaceId, templateId, props.selectedSessionId);
+      window.localStorage.setItem(designSessionSelectionStorageKey(props.runtimeWorkspaceId, props.selectedSessionId), result.state.entry);
+      setDesignTemplateData({ ...result, hasBrief: false });
       setDesignTemplateRevision((value) => value + 1);
       setSidePanelState(props.selectedSessionId, "design");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create this template.");
-    }
+    } finally { setTemplateBusyId(null); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState]);
+  const installDesignTemplate = useCallback(async (templateId: string) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
+    setTemplateBusyId(templateId);
+    try { await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, templateId); await refreshTemplateCatalog(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "安装模板失败"); }
+    finally { setTemplateBusyId(null); }
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
+  const uninstallDesignTemplate = useCallback(async (templateId: string) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
+    if (!window.confirm("卸载后，已有作品不会被删除。确定卸载这个模板吗？")) return;
+    setTemplateBusyId(templateId);
+    try { await props.ipolloworkServerClient.uninstallTemplate(props.runtimeWorkspaceId, templateId); await refreshTemplateCatalog(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "卸载模板失败"); }
+    finally { setTemplateBusyId(null); }
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
+  const importDesignTemplate = useCallback(async (file: File) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
+    setTemplateBusyId("import");
+    try { const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file); toast.success(`已安装 ${result.item.manifest.title}`); await refreshTemplateCatalog(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "模板包无效"); }
+    finally { setTemplateBusyId(null); }
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
   const submitDesignBrief = useCallback(async (brief: { name: string; purpose: string; features: string; color: string }) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
-    const templateId = window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`);
-    const template = getDesignTemplate(templateId ?? undefined);
+    const template = designTemplateData?.manifest;
     if (!template) return;
-    const path = window.localStorage.getItem(`ipollowork.session-design-path.${props.selectedSessionId}`) || `design/${props.selectedSessionId}/${template.fileName}`;
+    const path = designTemplateData.state.entry;
     const current = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path);
     const content = current.content.replace(/--ipw-color-primary:\s*#[0-9a-fA-F]{6}/, `--ipw-color-primary: ${brief.color}`);
     await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content, baseUpdatedAt: current.updatedAt ?? null });
+    if (content === current.content) {
+      const tokenPath = `${path.slice(0, path.lastIndexOf("/"))}/design-tokens.css`;
+      try {
+        const tokens = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, tokenPath);
+        await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
+          path: tokenPath,
+          content: tokens.content.replace(/--ipw-color-primary:\s*#[0-9a-fA-F]{6}/, `--ipw-color-primary: ${brief.color}`),
+          baseUpdatedAt: tokens.updatedAt ?? null,
+        });
+      } catch {
+        // Templates without a separate token stylesheet keep their inline theme.
+      }
+    }
     await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
-      path: "design/brief.json",
-      content: JSON.stringify({ templateId, template: template.title, sourcePath: path, applyChecklist: template.applyChecklist, ...brief }, null, 2),
+      path: designTemplateData.state.briefPath,
+      content: JSON.stringify({ templateId: template.id, template: template.title, sourcePath: path, applyChecklist: template.applyChecklist, ...brief }, null, 2),
       baseUpdatedAt: null,
     });
-    window.localStorage.setItem(`ipollowork.session-design-brief.${props.selectedSessionId}`, JSON.stringify(brief));
+    setDesignTemplateData((current) => current ? { ...current, hasBrief: true } : current);
     setDesignTemplateRevision((value) => value + 1);
     const prompt = template.category === "slides"
-      ? `Apply design/brief.json to the selected ${template.title} at ${path}. Rewrite the complete deck, not one slide. Keep the 16:9 slide system, keyboard navigation, controls, theme tokens, and separate speaker notes. Update every applicable item in this checklist: ${template.applyChecklist.join("; ")}. Build a coherent decision-oriented narrative from the brief. Never invent metrics; clearly mark missing evidence for the user to replace. Keep 6 to 10 slides, audience-facing content concise, and work only in ${path}. Keep every slide editable in the Design panel.`
-      : `Apply design/brief.json to the selected ${template.title} template at ${path}. This is a whole-page update, not a partial copy edit. Keep the template's layout and visual language, but update every applicable item in this required checklist: ${template.applyChecklist.join("; ")}. Replace all inherited Filebase/original-template names, navigation labels, links, headings, calls to action, cards, section copy, metadata, and footer content with information consistent with this brief. Do not create a new page or leave placeholders. Work only in ${path}. Keep the result editable in the Design panel.`;
+      ? `Apply ${designTemplateData.state.briefPath} to the selected ${template.title} at ${path}. Rewrite the complete deck, not one slide. Keep the 16:9 slide system, keyboard navigation, controls, theme tokens, and separate speaker notes. Update every applicable item in this checklist: ${template.applyChecklist.join("; ")}. Build a coherent decision-oriented narrative from the brief. Never invent metrics; clearly mark missing evidence for the user to replace. Keep 6 to 10 slides, audience-facing content concise, and work only in ${path}. Keep every slide editable in the Design panel.`
+      : `Apply ${designTemplateData.state.briefPath} to the selected ${template.title} template at ${path}. This is a whole-page update, not a partial copy edit. Keep the template's layout and visual language, but update every applicable item in this required checklist: ${template.applyChecklist.join("; ")}. Replace all inherited Filebase/original-template names, navigation labels, links, headings, calls to action, cards, section copy, metadata, and footer content with information consistent with this brief. Do not create a new page or leave placeholders. Work only in ${path}. Keep the result editable in the Design panel.`;
     props.surface?.onSendDraft({ mode: "prompt", parts: [{ type: "text", text: prompt }], attachments: [], text: prompt }, props.selectedSessionId);
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  }, [designTemplateData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const sidePanelOpen = activeSidePanel !== null;
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
@@ -1250,8 +1352,20 @@ export function SessionPage(props: SessionPageProps) {
                   ) : null}
                   <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
                     <div className={cn("min-h-0 min-w-0 flex-1", canRenderSplitSurface && "lg:border-r lg:border-border")}>
-                      {isDesignSession && !hasDesignTemplate ? (
-                        <DesignStarter onChoose={(templateId) => void chooseDesignTemplate(templateId)} />
+                      {isDesignSession && !hasDesignTemplate && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
+                        <DesignStarter
+                          client={props.ipolloworkServerClient}
+                          workspaceId={props.runtimeWorkspaceId}
+                          templates={templateCatalog}
+                          loading={templateCatalogLoading}
+                          busyId={templateBusyId}
+                          error={templateCatalogError}
+                          onRefresh={() => void refreshTemplateCatalog()}
+                          onChoose={(templateId) => void chooseDesignTemplate(templateId)}
+                          onInstall={(templateId) => void installDesignTemplate(templateId)}
+                          onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
+                          onImport={(file) => void importDesignTemplate(file)}
+                        />
                       ) : isDesignSession && !hasDesignBrief ? (
                         selectedDesignTemplate ? <DesignBriefCard template={selectedDesignTemplate} onSubmit={(brief) => void submitDesignBrief(brief)} /> : null
                       ) : <SessionSurface

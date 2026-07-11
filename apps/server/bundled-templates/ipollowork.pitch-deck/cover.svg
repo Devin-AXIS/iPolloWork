@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Pitch deck preview">
+  <defs><radialGradient id="a" cx="80%" cy="10%" r="80%"><stop stop-color="#7c5cff" stop-opacity=".55"/><stop offset="1" stop-color="#0b1020" stop-opacity="0"/></radialGradient></defs>
+  <rect width="640" height="360" rx="28" fill="#0b1020"/><rect width="640" height="360" rx="28" fill="url(#a)"/>
+  <text x="56" y="68" fill="#35d0ba" font-family="system-ui" font-size="16" font-weight="700" letter-spacing="3">PITCH DECK · 2026</text>
+  <text x="56" y="152" fill="#f7f8fc" font-family="system-ui" font-size="48" font-weight="750">Ideas into</text><text x="56" y="208" fill="#9b87ff" font-family="system-ui" font-size="48" font-weight="750">outcomes.</text>
+  <rect x="56" y="270" width="220" height="12" rx="6" fill="#9ea8c6" opacity=".45"/><circle cx="566" cy="286" r="38" fill="#35d0ba" opacity=".8"/>
+</svg>

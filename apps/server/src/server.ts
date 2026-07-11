@@ -78,6 +78,16 @@ import {
   writeiPolloWorkWorkspaceConfig,
 } from "./ipollowork-workspace-config-store.js";
 import { buildiPolloWorkRuntimeConfigObject } from "./ipollowork-runtime-config.js";
+import {
+  adoptDesignSession,
+  importTemplate,
+  installBundledTemplate,
+  listTemplates,
+  materializeTemplate,
+  readDesignSessionTemplate,
+  readTemplateCover,
+  uninstallTemplate,
+} from "./templates.js";
 import pkg from "../package.json" with { type: "json" };
 import constants from "../../../constants.json" with { type: "json" };
 
@@ -983,7 +993,7 @@ function withCors(response: Response, request: Request, config: ServerConfig) {
   headers.set("Access-Control-Allow-Origin", allowOrigin);
   headers.set(
     "Access-Control-Allow-Headers",
-    "Authorization, Content-Type, X-iPolloWork-Host-Token, X-iPolloWork-Client-Id, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
+    "Authorization, Content-Type, X-iPolloWork-Host-Token, X-iPolloWork-Client-Id, X-iPolloWork-Filename, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
   );
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   headers.set("Vary", "Origin");
@@ -1060,6 +1070,7 @@ function buildCapabilities(config: ServerConfig): Capabilities {
     mcp: { read: true, write: writeEnabled },
     commands: { read: true, write: writeEnabled },
     config: { read: true, write: writeEnabled },
+    templates: { read: true, install: writeEnabled, import: writeEnabled, uninstall: writeEnabled },
 
     approvals: { mode: config.approval.mode, timeoutMs: config.approval.timeoutMs },
     sandbox: { enabled: sandboxEnabled, backend: sandboxBackend },
@@ -1353,6 +1364,71 @@ function createRoutes(
     resolveWorkspace,
     createWorkspaceOpencodeClient,
     unwrapOpencodeResult,
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/templates", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse({ items: await listTemplates(config, workspace.id) });
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/templates/:templateId/cover", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const cover = await readTemplateCover(config, workspace.id, ctx.params.templateId);
+    return new Response(cover.data, { headers: { "Content-Type": cover.contentType, "Cache-Control": "private, max-age=300" } });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/templates/import", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    await requireApproval(ctx, { workspaceId: workspace.id, action: "template.import", summary: "Import a local Design template", paths: [join(dirname(runtimeDbPathForServer(config)), "templates", workspace.id)] });
+    const declaredBytes = Number(ctx.request.headers.get("content-length") ?? "0");
+    if (Number.isFinite(declaredBytes) && declaredBytes > 50 * 1024 * 1024) throw new ApiError(413, "template_package_too_large", "Template package exceeds 50 MB");
+    const archive = new Uint8Array(await ctx.request.arrayBuffer());
+    if (archive.byteLength === 0) throw new ApiError(400, "empty_template_package", "Choose a .ipwt template package");
+    return jsonResponse({ item: await importTemplate(config, workspace.id, archive) }, 201);
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/templates/:templateId/install", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    await requireApproval(ctx, { workspaceId: workspace.id, action: "template.install", summary: `Install Design template ${ctx.params.templateId}`, paths: [join(dirname(runtimeDbPathForServer(config)), "templates", workspace.id)] });
+    return jsonResponse({ item: await installBundledTemplate(config, workspace.id, ctx.params.templateId) });
+  });
+
+  addRoute(routes, "DELETE", "/workspace/:id/templates/:templateId", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    await requireApproval(ctx, { workspaceId: workspace.id, action: "template.uninstall", summary: `Uninstall Design template ${ctx.params.templateId}. Existing designs will remain available.`, paths: [join(dirname(runtimeDbPathForServer(config)), "templates", workspace.id)] });
+    return jsonResponse(await uninstallTemplate(config, workspace.id, ctx.params.templateId));
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/templates/:templateId/materialize", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+    if (!sessionId) throw new ApiError(400, "invalid_payload", "sessionId is required");
+    return jsonResponse(await materializeTemplate(config, workspace, ctx.params.templateId, sessionId, body.brief));
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/design-sessions/:sessionId/template", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse(await readDesignSessionTemplate(workspace, ctx.params.sessionId));
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/design-sessions/:sessionId/adopt", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    const templateId = typeof body.templateId === "string" ? body.templateId : "";
+    const entry = typeof body.entry === "string" ? body.entry : "";
+    if (!templateId || !entry) throw new ApiError(400, "invalid_payload", "templateId and entry are required");
+    return jsonResponse(await adoptDesignSession(workspace, ctx.params.sessionId, { templateId, entry, brief: body.brief }));
   });
 
   addRoute(routes, "GET", "/workspace/:id/config", "client", async (ctx) => {
@@ -2597,6 +2673,13 @@ function ensureWritable(config: ServerConfig): void {
   if (config.readOnly) {
     throw new ApiError(403, "read_only", "Server is read-only");
   }
+}
+
+function runtimeDbPathForServer(config: ServerConfig): string {
+  const override = process.env.IPOLLOWORK_RUNTIME_DB?.trim();
+  if (override) return resolve(override);
+  const configDir = config.configPath?.trim() ? dirname(config.configPath) : join(homedir(), ".config", "ipollowork");
+  return join(configDir, "runtime.sqlite");
 }
 
 function scopeRank(scope: TokenScope): number {

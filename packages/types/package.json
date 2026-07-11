@@ -33,6 +33,11 @@
       "types": "./src/desktop-ipc.ts",
       "development": "./src/desktop-ipc.ts",
       "default": "./src/desktop-ipc.ts"
+    },
+    "./templates": {
+      "types": "./src/templates.ts",
+      "development": "./src/templates.ts",
+      "default": "./src/templates.ts"
     }
   },
   "files": [

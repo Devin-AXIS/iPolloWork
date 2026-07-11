@@ -4,6 +4,7 @@ import { isDesktopRuntime } from "./runtime-env";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
 import type { DenOrgMarketplace, DenOrgPluginResolved, DenResourceSnapshot } from "./den-types";
 import type { CloudImportedMarketplace, CloudImportedPlugin } from "../cloud/import-state";
+import type { DesignSessionTemplateState, TemplateCatalogItem, TemplateManifestV1 } from "@ipollowork/types/templates";
 
 export type iPolloWorkServerCapabilities = {
   skills: { read: boolean; write: boolean; source: "ipollowork" | "opencode" };
@@ -18,6 +19,7 @@ export type iPolloWorkServerCapabilities = {
   mcp: { read: boolean; write: boolean };
   commands: { read: boolean; write: boolean };
   config: { read: boolean; write: boolean };
+  templates?: { read: boolean; install: boolean; import: boolean; uninstall: boolean };
   sandbox?: { enabled: boolean; backend: "none" | "docker" | "container" };
   proxy?: { opencode: boolean };
   toolProviders?: {
@@ -978,10 +980,10 @@ async function requestMultipartRaw(
 async function requestBinary(
   baseUrl: string,
   path: string,
-  options: { method?: string; token?: string; hostToken?: string; timeoutMs?: number } = {},
+  options: { method?: string; token?: string; hostToken?: string; timeoutMs?: number; direct?: boolean } = {},
 ): Promise<{ data: ArrayBuffer; contentType: string | null; filename: string | null }>{
   const url = `${baseUrl}${path}`;
-  const fetchImpl = resolveFetch(url);
+  const fetchImpl = options.direct ? globalThis.fetch : resolveFetch(url);
   const response = await fetchWithTimeout(
     fetchImpl,
     url,
@@ -1012,6 +1014,27 @@ async function requestBinary(
   const filename = filenameRaw ? decodeURIComponent(filenameRaw) : null;
   const data = await response.arrayBuffer();
   return { data, contentType, filename };
+}
+
+async function requestRawJson<T>(
+  baseUrl: string,
+  path: string,
+  options: { token?: string; hostToken?: string; body: BodyInit; headers?: Record<string, string>; timeoutMs?: number },
+): Promise<T> {
+  const url = `${baseUrl}${path}`;
+  // Binary template uploads must stay binary. The Electron cross-origin IPC
+  // fetch bridge currently serializes request bodies as text, while the
+  // iPolloWork Server already exposes the required authenticated CORS route.
+  const response = await fetchWithTimeout(globalThis.fetch, url, {
+    method: "POST",
+    headers: buildAuthHeaders(options.token, options.hostToken, options.headers),
+    body: options.body,
+  }, options.timeoutMs ?? DEFAULT_IPOLLOWORK_SERVER_TIMEOUT_MS);
+  const text = await response.text();
+  let json: any = null;
+  try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+  if (!response.ok) throw new iPolloWorkServerError(response.status, typeof json?.code === "string" ? json.code : "request_failed", typeof json?.message === "string" ? json.message : response.statusText, json?.details);
+  return json as T;
 }
 
 export function createiPolloWorkServerClient(options: { baseUrl: string; token?: string; hostToken?: string }) {
@@ -1116,6 +1139,28 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
         { token, hostToken, method: "DELETE", timeoutMs: timeouts.deleteSession },
       ),
+    listTemplates: (workspaceId: string) =>
+      requestJson<{ items: TemplateCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates`, { token, hostToken }),
+    installTemplate: (workspaceId: string, templateId: string) =>
+      requestJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/install`, { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceImport }),
+    importTemplate: (workspaceId: string, file: File) =>
+      requestRawJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/import`, {
+        token,
+        hostToken,
+        body: file,
+        headers: { "Content-Type": "application/vnd.ipollowork-template+zip", "X-iPolloWork-Filename": encodeURIComponent(file.name) },
+        timeoutMs: timeouts.workspaceImport,
+      }),
+    uninstallTemplate: (workspaceId: string, templateId: string) =>
+      requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}`, { token, hostToken, method: "DELETE", timeoutMs: timeouts.workspaceImport }),
+    getTemplateCover: (workspaceId: string, templateId: string) =>
+      requestBinary(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/cover`, { token, hostToken, direct: true }),
+    materializeTemplate: (workspaceId: string, templateId: string, sessionId: string, brief?: unknown) =>
+      requestJson<{ state: DesignSessionTemplateState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/materialize`, { token, hostToken, method: "POST", body: { sessionId, brief }, timeoutMs: timeouts.workspaceImport }),
+    getDesignSessionTemplate: (workspaceId: string, sessionId: string) =>
+      requestJson<{ state: DesignSessionTemplateState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/design-sessions/${encodeURIComponent(sessionId)}/template`, { token, hostToken }),
+    adoptDesignSession: (workspaceId: string, sessionId: string, input: { templateId: string; entry: string; brief?: unknown }) =>
+      requestJson<{ state: DesignSessionTemplateState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/design-sessions/${encodeURIComponent(sessionId)}/adopt`, { token, hostToken, method: "POST", body: input, timeoutMs: timeouts.workspaceImport }),
     listSessions: (
       workspaceId: string,
       options?: { roots?: boolean; start?: number; search?: string; limit?: number },

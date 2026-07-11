@@ -33,7 +33,6 @@ import {
   type DesignStyleField,
 } from "./design-html-runtime";
 import { DesignSystemDrawer } from "./design-system-drawer";
-import { getDesignTemplate } from "./design-template-catalog";
 
 type DesignPanelProps = {
   sessionId: string;
@@ -126,25 +125,18 @@ export function DesignPanel({
     staleTime: 10_000,
     refetchOnWindowFocus: false,
   });
-  const lockedPath = React.useMemo(() => {
-    if (!workspaceId || typeof window === "undefined") return "";
-    const path = window.localStorage.getItem(`ipollowork.session-design-path.${sessionId}`)
-      || window.localStorage.getItem(designSessionSelectionStorageKey(workspaceId, sessionId))
-      || "";
-    if (path) return path;
-    const template = getDesignTemplate(window.localStorage.getItem(`ipollowork.session-template.${sessionId}`) ?? undefined);
-    return template ? `design/${template.fileName}` : "";
-  }, [sessionId, workspaceId]);
-  const isDesignTemplateSession = React.useMemo(
-    () => typeof window !== "undefined" && Boolean(window.localStorage.getItem(`ipollowork.session-template.${sessionId}`)),
-    [sessionId],
-  );
-  const designTemplate = React.useMemo(
-    () => typeof window === "undefined"
-      ? null
-      : getDesignTemplate(window.localStorage.getItem(`ipollowork.session-template.${sessionId}`) ?? undefined),
-    [sessionId],
-  );
+  const templateQuery = useQuery({
+    queryKey: ["design-session-template", workspaceId, sessionId] as const,
+    queryFn: async () => {
+      if (!client || !workspaceId) return null;
+      try { return await client.getDesignSessionTemplate(workspaceId, sessionId); } catch { return null; }
+    },
+    enabled: Boolean(client && workspaceId),
+    staleTime: 5_000,
+  });
+  const lockedPath = templateQuery.data?.state.entry ?? "";
+  const isDesignTemplateSession = Boolean(templateQuery.data);
+  const designTemplate = templateQuery.data?.manifest ?? null;
   const htmlTargets = React.useMemo(() => {
     const unique = new Map<string, { value: string }>();
     catalogQuery.data?.forEach((entry) => {

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.saas-landing",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "site",
+  "subcategory": "landing",
+  "title": "SaaS Landing",
+  "description": "A responsive product landing page with editable navigation, features, pricing and calls to action.",
+  "cover": "cover.svg",
+  "entry": "entry.html",
+  "source": {
+    "name": "Open Design",
+    "repository": "https://github.com/nexu-io/open-design",
+    "license": "Apache-2.0"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"]
+  },
+  "applyChecklist": [
+    "document title and meta description",
+    "brand mark and navigation labels",
+    "responsive mobile navigation",
+    "hero heading, copy and calls to action",
+    "feature cards and proof content",
+    "pricing and section labels",
+    "footer copy and links",
+    "global theme token values"
+  ],
+  "minimumAppVersion": "0.17.20"
+}
