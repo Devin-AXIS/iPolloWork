@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, Code2, ImagePlus, Link2, Loader2, Minus, MousePointer2, Move, Palette, Paintbrush, Plus, Save, SlidersHorizontal, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, MousePointer2, Move, Palette, Paintbrush, Plus, Save, SlidersHorizontal, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
@@ -736,11 +736,16 @@ export function DesignPanel({
                             <Palette />
                           </Button>
                         ) : null}
-                        {selection.tag === "a" ? (
-                          <Button variant="ghost" size="xs" onClick={() => beginQuickEdit("href")} aria-label="Edit selected link">
-                            <Link2 />
-                            Link
-                          </Button>
+                        {selection.href ? (
+                          <>
+                            <Button variant="ghost" size="xs" onClick={() => beginQuickEdit("href")} aria-label="Edit selected link">
+                              <Link2 />
+                              Link
+                            </Button>
+                            <Button variant="ghost" size="icon-xs" onClick={() => void openDesignLink(selection.href)} aria-label="Open linked Design page" title="Open page">
+                              <ExternalLink />
+                            </Button>
+                          </>
                         ) : null}
                         {selection.tag === "img" ? (
                           <>
@@ -797,7 +802,7 @@ export function DesignPanel({
                         </InspectorSection>
                       ) : null}
 
-                      {selection.tag === "a" ? (
+                      {selection.href ? (
                         <div className="border-b border-border/60 px-2 py-2.5">
                           <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Link</p>
                           <Input aria-label="Design link destination" className="h-9 rounded-xl bg-muted/40 px-3 text-xs" value={selection.href} onChange={(event) => applyField("href", event.currentTarget.value)} />

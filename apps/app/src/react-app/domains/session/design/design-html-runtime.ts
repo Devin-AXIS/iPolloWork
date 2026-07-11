@@ -102,9 +102,21 @@ function designNavigationRuntime(channel: string, editing: boolean) {
       const target = event.target;
       if (!(target instanceof Element)) return;
       const anchor = target.closest<HTMLAnchorElement>("a[href]");
-      if (!anchor) return;
-      const href = anchor.getAttribute("href")?.trim() || "";
+      const control = target.closest<HTMLElement>("button,[role='button']");
+      const inlineAction = control?.getAttribute("onclick") || "";
+      const inlineHref = inlineAction.match(/(?:window\.)?location(?:\.href)?\s*=\s*['\"]([^'\"]+)['\"]/i)?.[1]
+        || inlineAction.match(/window\.open\(\s*['\"]([^'\"]+)['\"]/i)?.[1]
+        || "";
+      const label = control?.textContent?.trim().toLowerCase() || "";
+      const conventionalHref = /^(?:登录|登陆|sign\s*in|log\s*in)$/.test(label) ? "login.html" : "";
+      const href = anchor?.getAttribute("href")?.trim()
+        || control?.getAttribute("data-href")?.trim()
+        || control?.getAttribute("data-url")?.trim()
+        || control?.getAttribute("formaction")?.trim()
+        || inlineHref
+        || conventionalHref;
       if (!href || /^(?:mailto:|tel:|javascript:)/i.test(href)) return;
+      event.stopPropagation();
       if (href.startsWith("#")) {
         event.preventDefault();
         let id = href.slice(1);
@@ -224,6 +236,10 @@ function designRuntime(channel: string, styleFields: readonly string[]) {
   const describe = (element: HTMLElement) => {
     const computed = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
+    const navigationControl = element.closest<HTMLElement>("a,button,[role='button']");
+    const navigationHref = navigationControl instanceof HTMLAnchorElement
+      ? navigationControl.getAttribute("href") || ""
+      : navigationControl?.getAttribute("data-href") || navigationControl?.getAttribute("data-url") || navigationControl?.getAttribute("formaction") || "";
     const styles: Record<string, string> = {};
     styleFields.forEach((field) => {
       styles[field] = element.style.getPropertyValue(field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)) || Reflect.get(computed, field) || "";
@@ -232,7 +248,7 @@ function designRuntime(channel: string, styleFields: readonly string[]) {
       id: element.getAttribute(idAttribute) || "",
       tag: element.tagName.toLowerCase(),
       text: element instanceof HTMLImageElement ? "" : element.textContent || "",
-      href: element instanceof HTMLAnchorElement ? element.getAttribute("href") || "" : "",
+      href: navigationHref,
       src: element instanceof HTMLImageElement ? element.getAttribute("src") || "" : "",
       alt: element instanceof HTMLImageElement ? element.getAttribute("alt") || "" : "",
       canEditText: !(element instanceof HTMLImageElement) && (element.matches(textEditableSelector) || element.hasAttribute(textNodeAttribute)),
@@ -496,8 +512,11 @@ function designRuntime(channel: string, styleFields: readonly string[]) {
 
     if (data.field === "text" && !(selected instanceof HTMLImageElement) && (selected.matches(textEditableSelector) || selected.hasAttribute(textNodeAttribute))) {
       selected.textContent = data.value;
-    } else if (data.field === "href" && selected instanceof HTMLAnchorElement) {
-      selected.setAttribute("href", data.value);
+    } else if (data.field === "href") {
+      const navigationControl = selected.closest<HTMLElement>("a,button,[role='button']");
+      if (navigationControl instanceof HTMLAnchorElement) navigationControl.setAttribute("href", data.value);
+      else if (navigationControl) navigationControl.setAttribute("data-href", data.value);
+      else return;
     } else if (data.field === "src" && selected instanceof HTMLImageElement) {
       selected.setAttribute("src", data.value);
     } else if (data.field === "alt" && selected instanceof HTMLImageElement) {

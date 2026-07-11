@@ -14,6 +14,10 @@ describe("Design navigation", () => {
       path: "design/session-1/pricing.html",
       hash: "",
     });
+    expect(resolveDesignNavigationPath(root, root, "login.html")).toEqual({
+      path: "design/session-1/login.html",
+      hash: "",
+    });
   });
 
   test("keeps root navigation on the current Design entry page", () => {

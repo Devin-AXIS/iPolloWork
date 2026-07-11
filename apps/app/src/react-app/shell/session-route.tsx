@@ -954,9 +954,15 @@ export function SessionRoute() {
             throw new Error(`Could not create the Design version before this AI update: ${error instanceof Error ? error.message : "Unknown error"}`);
           }
         }
+        const promptParts = designPath
+          ? [{
+              type: "text" as const,
+              text: "Design navigation contract: keep same-page navigation as real #section links with matching element ids. When the requested experience implies a child page such as login, signup, docs, product detail, or checkout, create the sibling HTML file inside the same Design task directory and use a real relative href (for example ./login.html) or data-href. Never leave navigation as a plain button with no destination, and do not use placeholder href=\"#\" for an action that should open a page.",
+            }, ...parts]
+          : parts;
         const result = await opencodeClient.session.promptAsync({
           sessionID: targetSessionId,
-          parts,
+          parts: promptParts,
           model: local.prefs.defaultModel ?? undefined,
           agent: selectedAgent ?? undefined,
           ...(modelVariantValue ? { variant: modelVariantValue } : {}),
