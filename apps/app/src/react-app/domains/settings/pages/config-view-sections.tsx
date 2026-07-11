@@ -1,11 +1,11 @@
 /** @jsxImportSource react */
 import { RefreshCcw } from "lucide-react";
 
-import type { iPolloWalkServerInfo } from "../../../../app/lib/desktop";
+import type { iPolloWorkServerInfo } from "../../../../app/lib/desktop";
 import { t } from "../../../../i18n";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "../../../design-system/text-input";
-import type { iPolloWalkTestState, TokenVisibilityKey } from "./config-view-state";
+import type { iPolloWorkTestState, TokenVisibilityKey } from "./config-view-state";
 
 export function ConfigWorkspaceSummary(props: { runtimeWorkspaceId: string | null }) {
   return (
@@ -109,7 +109,7 @@ function TokenRow(props: {
 }
 
 export function ConfigServerSharingSection(props: {
-  hostInfo: iPolloWalkServerInfo;
+  hostInfo: iPolloWorkServerInfo;
   hostConnectUrl: string;
   hostRemoteAccessEnabled: boolean;
   hostConnectUrlUsesMdns: boolean;
@@ -156,16 +156,16 @@ export function ConfigServerSharingSection(props: {
 
 export function ConfigServerConnectionSection(props: {
   busy: boolean;
-  ipollowalkUrl: string;
-  ipollowalkToken: string;
+  ipolloworkUrl: string;
+  ipolloworkToken: string;
   tokenVisible: boolean;
-  ipollowalkStatusLabel: string;
-  ipollowalkStatusStyle: string;
+  ipolloworkStatusLabel: string;
+  ipolloworkStatusStyle: string;
   resolvedWorkspaceUrl: string;
   resolvedWorkspaceId: string;
-  ipollowalkTestState: iPolloWalkTestState;
-  ipollowalkTestMessage: string | null;
-  hasiPolloWalkChanges: boolean;
+  ipolloworkTestState: iPolloWorkTestState;
+  ipolloworkTestMessage: string | null;
+  hasiPolloWorkChanges: boolean;
   onUrlChange: (url: string) => void;
   onTokenChange: (token: string) => void;
   onToggleToken: () => void;
@@ -180,14 +180,14 @@ export function ConfigServerConnectionSection(props: {
           <div className="text-sm font-medium text-gray-12">{t("config.server_section_title")}</div>
           <div className="text-xs text-gray-10">{t("config.server_section_desc")}</div>
         </div>
-        <div className={`text-xs px-2 py-1 rounded-full border ${props.ipollowalkStatusStyle}`}>{props.ipollowalkStatusLabel}</div>
+        <div className={`text-xs px-2 py-1 rounded-full border ${props.ipolloworkStatusStyle}`}>{props.ipolloworkStatusLabel}</div>
       </div>
       <div className="grid gap-3">
-        <TextInput label={t("config.server_url_input_label")} value={props.ipollowalkUrl} onChange={(event) => props.onUrlChange(event.currentTarget.value)} placeholder="http://127.0.0.1:<port>" hint={t("config.server_url_hint")} disabled={props.busy} />
+        <TextInput label={t("config.server_url_input_label")} value={props.ipolloworkUrl} onChange={(event) => props.onUrlChange(event.currentTarget.value)} placeholder="http://127.0.0.1:<port>" hint={t("config.server_url_hint")} disabled={props.busy} />
         <label className="block">
           <div className="mb-1 text-xs font-medium text-gray-11">{t("config.token_label")}</div>
           <div className="flex items-center gap-2">
-            <input type={props.tokenVisible ? "text" : "password"} value={props.ipollowalkToken} onChange={(event) => props.onTokenChange(event.currentTarget.value)} placeholder={t("config.token_placeholder")} disabled={props.busy} className="w-full rounded-xl bg-gray-2/60 px-3 py-2 text-sm text-gray-12 placeholder:text-gray-10 shadow-[0_0_0_1px_rgba(255,255,255,0.08)] focus:outline-none focus:ring-2 focus:ring-gray-6/20" />
+            <input type={props.tokenVisible ? "text" : "password"} value={props.ipolloworkToken} onChange={(event) => props.onTokenChange(event.currentTarget.value)} placeholder={t("config.token_placeholder")} disabled={props.busy} className="w-full rounded-xl bg-gray-2/60 px-3 py-2 text-sm text-gray-12 placeholder:text-gray-10 shadow-[0_0_0_1px_rgba(255,255,255,0.08)] focus:outline-none focus:ring-2 focus:ring-gray-6/20" />
             <Button variant="outline" className="shrink-0" onClick={props.onToggleToken} disabled={props.busy}>
               {props.tokenVisible ? t("common.hide") : t("common.show")}
             </Button>
@@ -200,17 +200,17 @@ export function ConfigServerConnectionSection(props: {
         <div className="text-[11px] text-gray-8 font-mono truncate">{t("config.worker_id")}{props.resolvedWorkspaceId || t("config.unavailable")}</div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => void props.onTestConnection()} disabled={props.busy || props.ipollowalkTestState === "testing"}>{props.ipollowalkTestState === "testing" ? t("config.testing") : t("config.test_connection")}</Button>
-        <Button onClick={props.onSave} disabled={props.busy || !props.hasiPolloWalkChanges}>{t("common.save")}</Button>
+        <Button variant="outline" onClick={() => void props.onTestConnection()} disabled={props.busy || props.ipolloworkTestState === "testing"}>{props.ipolloworkTestState === "testing" ? t("config.testing") : t("config.test_connection")}</Button>
+        <Button onClick={props.onSave} disabled={props.busy || !props.hasiPolloWorkChanges}>{t("common.save")}</Button>
         <Button variant="outline" onClick={props.onReset} disabled={props.busy}>{t("common.reset")}</Button>
       </div>
-      {props.ipollowalkTestState !== "idle" ? <ConfigConnectionTestStatus state={props.ipollowalkTestState} message={props.ipollowalkTestMessage} /> : null}
-      {props.ipollowalkStatusLabel !== t("config.status_connected") ? <div className="text-xs text-gray-9">{t("config.server_needed_hint")}</div> : null}
+      {props.ipolloworkTestState !== "idle" ? <ConfigConnectionTestStatus state={props.ipolloworkTestState} message={props.ipolloworkTestMessage} /> : null}
+      {props.ipolloworkStatusLabel !== t("config.status_connected") ? <div className="text-xs text-gray-9">{t("config.server_needed_hint")}</div> : null}
     </div>
   );
 }
 
-function ConfigConnectionTestStatus(props: { state: iPolloWalkTestState; message: string | null }) {
+function ConfigConnectionTestStatus(props: { state: iPolloWorkTestState; message: string | null }) {
   return (
     <div className={`text-xs ${props.state === "success" ? "text-green-11" : props.state === "error" ? "text-red-11" : "text-gray-9"}`} role="status" aria-live="polite">
       {props.state === "testing" ? t("config.testing_connection") : (props.message ?? t("config.connection_status_updated"))}

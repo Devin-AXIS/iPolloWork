@@ -17,12 +17,12 @@ import {
 } from "@/react-app/kernel/notification-store";
 
 /** Window event that asks the notification bell to open its panel. */
-export const openNotificationCenterEvent = "ipollowalk-open-notification-center";
+export const openNotificationCenterEvent = "ipollowork-open-notification-center";
 
 /** Window event that asks the marketplace view to highlight a plugin. */
-export const openMarketplacePluginEvent = "ipollowalk-open-marketplace-plugin";
+export const openMarketplacePluginEvent = "ipollowork-open-marketplace-plugin";
 
-const PENDING_MARKETPLACE_PLUGIN_KEY = "ipollowalk:pending-marketplace-plugin";
+const PENDING_MARKETPLACE_PLUGIN_KEY = "ipollowork:pending-marketplace-plugin";
 
 export type OpenMarketplacePluginDetail = {
   pluginName: string;
@@ -62,7 +62,7 @@ export function notifyEvent(input: NotificationInput): void {
   useNotificationStore.getState().add(input);
 }
 
-const ALERT_TOAST_ID = "ipollowalk-notification-alert";
+const ALERT_TOAST_ID = "ipollowork-notification-alert";
 const ALERT_BURST_WINDOW_MS = 8000;
 
 let lastAlertAt = 0;

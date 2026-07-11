@@ -1,22 +1,22 @@
 import { CLOUD_MCP_SYNC_MARKER_STORAGE_KEY } from "../../../app/lib/den";
 
 /**
- * Durable record of the user's intent for the auto-configured iPolloWalk
- * Cloud Control MCP ("ipollowalk-cloud").
+ * Durable record of the user's intent for the auto-configured iPolloWork
+ * Cloud Control MCP ("ipollowork-cloud").
  *
  * A background reconciler (`syncCloudControlMcp`) keeps that entry
  * configured with a fresh first-party token while the user is signed in to
- * iPolloWalk Cloud. Its writes hardcode `enabled: true` and recreate removed
+ * iPolloWork Cloud. Its writes hardcode `enabled: true` and recreate removed
  * entries, so without a durable record of "the user turned this off" the
  * reconciler resurrected the MCP on every sync tick — making it impossible
  * to disable. These helpers persist that intent; the reconciler consults it
  * before touching the entry, and any explicit user reconnect clears it.
  */
 
-export const CLOUD_MCP_SERVER_NAME = "ipollowalk-cloud";
+export const CLOUD_MCP_SERVER_NAME = "ipollowork-cloud";
 
-const CLOUD_MCP_USER_STATE_KEY = "ipollowalk.den.mcp.cloudControlUserState";
-const CLOUD_MCP_UNHEALTHY_REMINT_ATTEMPT_KEY = "ipollowalk.den.mcp.unhealthyRemintAttempt";
+const CLOUD_MCP_USER_STATE_KEY = "ipollowork.den.mcp.cloudControlUserState";
+const CLOUD_MCP_UNHEALTHY_REMINT_ATTEMPT_KEY = "ipollowork.den.mcp.unhealthyRemintAttempt";
 
 export type CloudMcpUserState = "disabled" | "removed";
 export type CloudMcpUnhealthyRemintAttempt = { orgId: string };

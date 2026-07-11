@@ -5,7 +5,7 @@ export function getElectronBrowser() {
     return null;
   }
 
-  return window.__IPOLLOWALK_ELECTRON__?.browser ?? null;
+  return window.__IPOLLOWORK_ELECTRON__?.browser ?? null;
 }
 
 // Bounds and points are sent in renderer CSS pixels. The Electron main process

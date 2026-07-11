@@ -29,10 +29,10 @@ if [[ "$TAG" != v* ]]; then
 fi
 
 VERSION="${TAG#v}"
-ASSET_NAME_AMD64="${AUR_ASSET_NAME:-ipollowalk-linux-x64-${VERSION}.tar.gz}"
-ASSET_NAME_ARM64="ipollowalk-linux-arm64-${VERSION}.tar.gz"
-ASSET_URL_AMD64="https://github.com/Devin-AXIS/iPolloWalk/releases/download/${TAG}/${ASSET_NAME_AMD64}"
-ASSET_URL_ARM64="https://github.com/Devin-AXIS/iPolloWalk/releases/download/${TAG}/${ASSET_NAME_ARM64}"
+ASSET_NAME_AMD64="${AUR_ASSET_NAME:-ipollowork-linux-x64-${VERSION}.tar.gz}"
+ASSET_NAME_ARM64="ipollowork-linux-arm64-${VERSION}.tar.gz"
+ASSET_URL_AMD64="https://github.com/Devin-AXIS/iPolloWork/releases/download/${TAG}/${ASSET_NAME_AMD64}"
+ASSET_URL_ARM64="https://github.com/Devin-AXIS/iPolloWork/releases/download/${TAG}/${ASSET_NAME_ARM64}"
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT

@@ -43,7 +43,7 @@ const workspaceCards: SettingsCardDefinition[] = [
 
 const globalCards: SettingsCardDefinition[] = [
   { tab: "ai", icon: Sparkles, title: "AI Providers", desc: "Connect services that provide AI models." },
-  { tab: "cloud-account", icon: Cloud, title: "Cloud", desc: "iPolloWalk Cloud account and organization." },
+  { tab: "cloud-account", icon: Cloud, title: "Cloud", desc: "iPolloWork Cloud account and organization." },
   { tab: "connect", icon: Cable, titleKey: "settings.tab_connect", descKey: "settings.tab_description_connect" },
   { tab: "appearance", icon: Paintbrush, title: "Appearance", desc: "Theme, font size, and display." },
   { tab: "environment", icon: Terminal, title: "Environment", desc: "Environment variables and paths." },

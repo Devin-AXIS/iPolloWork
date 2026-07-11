@@ -4,38 +4,38 @@
  * deep link into Settings -> Cloud -> Account, and assert the session lands.
  *
  * Required env:
- * - IPOLLOWALK_EVAL_DEN_API_URL    Den API base, e.g. https://api.example.com
- * - IPOLLOWALK_EVAL_DEN_TOKEN      Bearer session token for a Den account
+ * - IPOLLOWORK_EVAL_DEN_API_URL    Den API base, e.g. https://api.example.com
+ * - IPOLLOWORK_EVAL_DEN_TOKEN      Bearer session token for a Den account
  */
 export default {
   id: "cloud-signin-handoff",
   title: "Cloud sign-in via desktop handoff paste code",
   spec: "evals/cloud-auth-flows.md#flow-1-cloud-sign-in-happy-path",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN"],
   steps: [
     {
       name: "App booted",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 30_000 });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30_000 });
       },
     },
     {
       name: "Create desktop handoff grant via Den API",
       run: async (ctx) => {
-        const apiBase = ctx.env.IPOLLOWALK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
+        const apiBase = ctx.env.IPOLLOWORK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
         const response = await fetch(`${apiBase}/v1/auth/desktop-handoff`, {
           method: "POST",
           headers: {
-            authorization: `Bearer ${ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN.trim()}`,
+            authorization: `Bearer ${ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN.trim()}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({ desktopScheme: "ipollowalk" }),
+          body: JSON.stringify({ desktopScheme: "ipollowork" }),
         });
         const body = await response.text();
         ctx.assert(response.ok, `Handoff create failed: ${response.status} ${body.slice(0, 200)}`);
         const payload = JSON.parse(body);
-        ctx.assert(typeof payload.ipollowalkUrl === "string" && payload.ipollowalkUrl.length > 0, "No ipollowalkUrl in handoff response.");
-        ctx.handoffUrl = payload.ipollowalkUrl;
+        ctx.assert(typeof payload.ipolloworkUrl === "string" && payload.ipolloworkUrl.length > 0, "No ipolloworkUrl in handoff response.");
+        ctx.handoffUrl = payload.ipolloworkUrl;
         ctx.log("Handoff grant created.");
       },
     },
@@ -69,7 +69,7 @@ export default {
       run: async (ctx) => {
         await ctx.expectText("Sign out", { timeoutMs: 45_000 });
         const token = await ctx.eval(
-          "localStorage.getItem('ipollowalk.den.authToken') ?? ''",
+          "localStorage.getItem('ipollowork.den.authToken') ?? ''",
         );
         ctx.assert(typeof token === "string" && token.trim().length > 0, "No persisted den auth token.");
         await ctx.screenshot("signed-in", {

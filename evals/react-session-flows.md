@@ -7,29 +7,29 @@ during the React port cutover. Run them before shipping any change that touches:
 - `apps/app/src/react-app/shell/settings-route.tsx`
 - `apps/app/src/react-app/domains/session/**`
 - `apps/app/src/react-app/domains/settings/**`
-- iPolloWalk server proxy endpoints for `/w/:workspaceId/opencode/session/**`
+- iPolloWork server proxy endpoints for `/w/:workspaceId/opencode/session/**`
 
 ## Preflight
 
 Before running any eval:
 
-1. Install dependencies in the iPolloWalk repo:
+1. Install dependencies in the iPolloWork repo:
    ```bash
    pnpm install --frozen-lockfile
    ```
 2. Start the Electron dev app:
    ```bash
-   nohup pnpm dev:electron > .ipollowalk-run/electron.log 2>&1 &
+   nohup pnpm dev:electron > .ipollowork-run/electron.log 2>&1 &
    ```
    Wait ~15s for Vite + Electron to boot. The log will show
-   `[ipollowalk] Electron CDP exposed at http://127.0.0.1:9823` when ready.
+   `[ipollowork] Electron CDP exposed at http://127.0.0.1:9823` when ready.
 3. Chrome MCP automatically connects to the Electron renderer via CDP on
    port 9823. Verify by taking a snapshot:
    ```
    chrome-devtools_take_snapshot
    ```
-   You should see the full iPolloWalk UI tree (sidebar, composer, footer).
-4. Confirm the footer shows **"iPolloWalk Ready"**.
+   You should see the full iPolloWork UI tree (sidebar, composer, footer).
+4. Confirm the footer shows **"iPolloWork Ready"**.
 5. Check the JS console for errors with
    `chrome-devtools_list_console_messages { types: ["error"] }`. It must be
    empty of `Maximum update depth exceeded` warnings. Any of those means the
@@ -105,7 +105,7 @@ classification, right-pane mode switching, and artifact preview fallbacks.
 
 Steps:
 1. Run this once in an existing workspace, then create a new workspace and run
-   it again there. The default iPolloWalk agent should include artifact guidance
+   it again there. The default iPolloWork agent should include artifact guidance
    in both cases.
 2. Hover the workspace header in the sidebar → click **New task**.
 3. Fill the composer:
@@ -117,7 +117,7 @@ Pass criteria:
 - The right pane opens automatically after the run completes.
 - The right-side rail shows compact Browser and Artifact icon buttons, and the
   Artifact icon is active while the artifact pane is visible.
-- The artifact pane only auto-opens a file after the iPolloWalk server confirms
+- The artifact pane only auto-opens a file after the iPolloWork server confirms
   it exists on the workspace filesystem.
 - Searching or listing implementation files such as `package.json` does not
   populate the artifact rail; only previewable deliverables are shown there.
@@ -127,11 +127,11 @@ Pass criteria:
 - The artifact pane includes a per-session artifact strip when multiple files
   are detected.
 - CSV/XLSX spreadsheet artifacts allow editing cells and saving through the
-  iPolloWalk server.
+  iPolloWork server.
 - Markdown artifacts open directly in the text editor and can save through the
-  iPolloWalk server write API without switching into a separate edit view.
+  iPolloWork server write API without switching into a separate edit view.
 - CSV/XLSX/Markdown artifacts expose a **Download artifact** action backed by
-  the iPolloWalk server, so it works for local and remote workspaces.
+  the iPolloWork server, so it works for local and remote workspaces.
 - Clicking **Browser** still restores the browser panel without losing the
   selected artifact button.
 - There are no console errors from `ArtifactPanel`, `deriveOpenTargets`, or
@@ -745,7 +745,7 @@ Known regressions this catches:
 ### Browser tool recipe
 
 Use `browser_eval` against the Electron CDP target. The snippets below use
-the iPolloWalk inspector and React Query cache so the eval can assert transcript
+the iPolloWork inspector and React Query cache so the eval can assert transcript
 state directly instead of relying on a visual snapshot cadence.
 
 Create a new session:
@@ -774,7 +774,7 @@ Fill and run a prompt:
     .find((b) => b.textContent.trim() === 'Run task' && !b.disabled);
   if (!btn) return JSON.stringify({ ok: false, error: 'run disabled', editorText: editor.textContent });
   btn.click();
-  return JSON.stringify({ ok: true, sessionId: window.__ipollowalk.snapshot().route.selectedSessionId });
+  return JSON.stringify({ ok: true, sessionId: window.__ipollowork.snapshot().route.selectedSessionId });
 })()
 ```
 
@@ -805,7 +805,7 @@ Assert transcript completion for a marker:
 (async function() {
   const { getReactQueryClient } = await import('/src/react-app/infra/query-client.ts');
   const { transcriptKey, statusKey } = await import('/src/react-app/domains/session/sync/session-sync.ts');
-  const route = window.__ipollowalk.snapshot().route;
+  const route = window.__ipollowork.snapshot().route;
   const messages = getReactQueryClient().getQueryData(transcriptKey(route.selectedWorkspaceId, route.selectedSessionId)) || [];
   const status = getReactQueryClient().getQueryData(statusKey(route.selectedWorkspaceId, route.selectedSessionId));
   const assistant = [...messages].reverse().find((message) => message.role === 'assistant');

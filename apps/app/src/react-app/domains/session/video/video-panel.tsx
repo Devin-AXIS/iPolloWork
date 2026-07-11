@@ -31,7 +31,7 @@ export function VideoPanel({ workspaceRoot, isRemoteWorkspace = false, onClose }
   const studioUrl = hyperframesStudioUrl();
 
   const applySimpleMode = React.useCallback(async (enabled: boolean) => {
-    const result = await window.__IPOLLOWALK_ELECTRON__?.hyperframes?.setSimpleMode?.(enabled);
+    const result = await window.__IPOLLOWORK_ELECTRON__?.hyperframes?.setSimpleMode?.(enabled);
     if (result?.ok) setSimpleMode(enabled);
   }, []);
 
@@ -50,10 +50,10 @@ export function VideoPanel({ workspaceRoot, isRemoteWorkspace = false, onClose }
       setDetail("Video Studio is available for local workspaces.");
       return;
     }
-    const bridge = window.__IPOLLOWALK_ELECTRON__?.terminal;
+    const bridge = window.__IPOLLOWORK_ELECTRON__?.terminal;
     if (!bridge?.create || !bridge.write || !bridge.kill || !bridge.onData || !bridge.onExit) {
       setStatus("failed");
-      setDetail("HyperFrames requires the iPolloWalk desktop app.");
+      setDetail("HyperFrames requires the iPolloWork desktop app.");
       return;
     }
     const createTerminal = bridge.create;

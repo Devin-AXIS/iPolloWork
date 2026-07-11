@@ -19,8 +19,8 @@ export type TuiService = {
 export type TuiConnectInfo = {
   runId: string;
   workspace: string;
-  ipollowalkUrl: string;
-  ipollowalkToken: string;
+  ipolloworkUrl: string;
+  ipolloworkToken: string;
   ownerToken?: string;
   hostToken: string;
   opencodeUrl: string;
@@ -96,7 +96,7 @@ const levelColor: Record<TuiLogLevel, RGBA> = {
 
 const levelCycle: Array<"all" | TuiLogLevel> = ["all", "info", "warn", "error", "debug"];
 
-const serviceCycle = ["all", "ipollowalk-orchestrator", "opencode", "ipollowalk-server"];
+const serviceCycle = ["all", "ipollowork-orchestrator", "opencode", "ipollowork-server"];
 
 const viewTabs: Array<{ name: string; description: string; value: ViewName }> = [
   { name: "Overview", description: "Overview", value: "overview" },
@@ -392,7 +392,7 @@ export function startOrchestratorTui(options: TuiOptions): TuiHandle {
         <box flexDirection="column" width={dimensions().width} height={dimensions().height} paddingLeft={2} paddingRight={2}>
           <box flexDirection="row" justifyContent="space-between" paddingTop={1}>
             <text fg={theme.text} attributes={TextAttributes.BOLD}>
-              ipollowalk · {state.view}
+              ipollowork · {state.view}
             </text>
             <text fg={theme.textMuted}>v{options.version}</text>
           </box>
@@ -462,15 +462,15 @@ export function startOrchestratorTui(options: TuiOptions): TuiHandle {
                 <text fg={theme.text} attributes={TextAttributes.BOLD}>
                   Connect
                 </text>
-                <text fg={theme.textMuted}>iPolloWalk URL (LAN)</text>
-                <text fg={theme.text}>{state.connect.ipollowalkUrl}</text>
-                <text fg={theme.textMuted}>iPolloWalk Collaborator Token</text>
-                <text fg={theme.text}>{state.connect.ipollowalkToken}</text>
+                <text fg={theme.textMuted}>iPolloWork URL (LAN)</text>
+                <text fg={theme.text}>{state.connect.ipolloworkUrl}</text>
+                <text fg={theme.textMuted}>iPolloWork Collaborator Token</text>
+                <text fg={theme.text}>{state.connect.ipolloworkToken}</text>
                 <Show when={state.connect.ownerToken}>
-                  <text fg={theme.textMuted}>iPolloWalk Owner Token</text>
+                  <text fg={theme.textMuted}>iPolloWork Owner Token</text>
                   <text fg={theme.text}>{state.connect.ownerToken}</text>
                 </Show>
-                <text fg={theme.textMuted}>iPolloWalk Host Admin Token</text>
+                <text fg={theme.textMuted}>iPolloWork Host Admin Token</text>
                 <text fg={theme.text}>{state.connect.hostToken}</text>
                 <text fg={theme.textMuted}>OpenCode URL</text>
                 <text fg={theme.text}>{state.connect.opencodeUrl}</text>

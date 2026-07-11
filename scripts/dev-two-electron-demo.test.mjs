@@ -14,21 +14,21 @@ import {
 test("uses a non-production temporary demo root by default", () => {
   const root = resolveDemoRoot({});
 
-  assert.equal(root, path.join(os.tmpdir(), "ipollowalk-two-electron-demo"));
-  assert.notEqual(root, path.join(os.homedir(), ".ipollowalk"));
+  assert.equal(root, path.join(os.tmpdir(), "ipollowork-two-electron-demo"));
+  assert.notEqual(root, path.join(os.homedir(), ".ipollowork"));
 });
 
 test("honors an explicit demo root", () => {
   assert.equal(
     resolveDemoRoot({
-      IPOLLOWALK_ELECTRON_DEMO_ROOT: " /tmp/ipollowalk-custom-demo "
+      IPOLLOWORK_ELECTRON_DEMO_ROOT: " /tmp/ipollowork-custom-demo "
     }),
-    "/tmp/ipollowalk-custom-demo"
+    "/tmp/ipollowork-custom-demo"
   );
 });
 
 test("creates fresh, independent folders for every demo launch", async context => {
-  const testRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowalk-demo-test-"));
+  const testRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-demo-test-"));
   context.after(() => rm(testRoot, { recursive: true, force: true }));
 
   const first = await createDemoRun(testRoot);
@@ -52,7 +52,7 @@ test("creates fresh, independent folders for every demo launch", async context =
 
 test("reset removes all prior demo runs from the configured root", async context => {
   const testRoot = await mkdtemp(
-    path.join(os.tmpdir(), "ipollowalk-demo-reset-test-")
+    path.join(os.tmpdir(), "ipollowork-demo-reset-test-")
   );
   context.after(() => rm(testRoot, { recursive: true, force: true }));
   const run = await createDemoRun(testRoot);
@@ -64,7 +64,7 @@ test("reset removes all prior demo runs from the configured root", async context
 
 test("points each Electron instance at its own profile folders", async context => {
   const testRoot = await mkdtemp(
-    path.join(os.tmpdir(), "ipollowalk-demo-env-test-")
+    path.join(os.tmpdir(), "ipollowork-demo-env-test-")
   );
   context.after(() => rm(testRoot, { recursive: true, force: true }));
   const run = await createDemoRun(testRoot);
@@ -76,16 +76,16 @@ test("points each Electron instance at its own profile folders", async context =
   const adminEnv = demoEnv(profile, run.admin, "5273", "9923");
   const consumerEnv = demoEnv(profile, run.consumer, "5274", "9924");
 
-  assert.equal(adminEnv.IPOLLOWALK_ELECTRON_USERDATA, run.admin.userDataDir);
-  assert.equal(adminEnv.IPOLLOWALK_DATA_DIR, run.admin.dataDir);
+  assert.equal(adminEnv.IPOLLOWORK_ELECTRON_USERDATA, run.admin.userDataDir);
+  assert.equal(adminEnv.IPOLLOWORK_DATA_DIR, run.admin.dataDir);
   assert.equal(
-    consumerEnv.IPOLLOWALK_ELECTRON_USERDATA,
+    consumerEnv.IPOLLOWORK_ELECTRON_USERDATA,
     run.consumer.userDataDir
   );
-  assert.equal(consumerEnv.IPOLLOWALK_DATA_DIR, run.consumer.dataDir);
+  assert.equal(consumerEnv.IPOLLOWORK_DATA_DIR, run.consumer.dataDir);
   assert.notEqual(
-    adminEnv.IPOLLOWALK_ELECTRON_USERDATA,
-    consumerEnv.IPOLLOWALK_ELECTRON_USERDATA
+    adminEnv.IPOLLOWORK_ELECTRON_USERDATA,
+    consumerEnv.IPOLLOWORK_ELECTRON_USERDATA
   );
-  assert.notEqual(adminEnv.IPOLLOWALK_DATA_DIR, consumerEnv.IPOLLOWALK_DATA_DIR);
+  assert.notEqual(adminEnv.IPOLLOWORK_DATA_DIR, consumerEnv.IPOLLOWORK_DATA_DIR);
 });

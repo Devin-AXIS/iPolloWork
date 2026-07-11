@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { iPolloWalkSessionMessage } from "../src/app/lib/ipollowalk-server";
+import type { iPolloWorkSessionMessage } from "../src/app/lib/ipollowork-server";
 import {
   createSessionSearcher,
   type SearchableSession,
@@ -32,7 +32,7 @@ function textMessage(id: string, role: "user" | "assistant", text: string) {
         messageID: id,
       },
     ],
-  } satisfies iPolloWalkSessionMessage;
+  } satisfies iPolloWorkSessionMessage;
 }
 
 describe("session search", () => {

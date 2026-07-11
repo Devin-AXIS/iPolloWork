@@ -12,11 +12,11 @@ import { publishInspectorSlice, recordInspectorEvent } from "@/app/lib/app-inspe
 import {
   resolveWorkspaceListSelectedId,
   workspaceBootstrap,
-  type iPolloWalkServerInfo,
+  type iPolloWorkServerInfo,
   type WorkspaceList,
 } from "@/app/lib/desktop";
 import { createClient } from "@/app/lib/opencode";
-import { createiPolloWalkServerClient, type iPolloWalkServerClient } from "@/app/lib/ipollowalk-server";
+import { createiPolloWorkServerClient, type iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { isDesktopRuntime } from "@/app/lib/runtime-env";
 import {
   resolveWorkspaceEndpoint,
@@ -32,8 +32,8 @@ import {
 } from "@/react-app/domains/workspace/remote-workspace-diagnostics";
 import { useLocal } from "@/react-app/kernel/local-provider";
 import { useBootState } from "./boot-state";
-import { ensureDesktopLocaliPolloWalkConnection } from "./desktop-local-ipollowalk";
-import { resolveiPolloWalkConnection } from "./ipollowalk-connection";
+import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
+import { resolveiPolloWorkConnection } from "./ipollowork-connection";
 import {
   describeRouteError,
   isTransientStartupError,
@@ -52,10 +52,10 @@ import {
 import { legacySessionRoute, workspaceSessionRoute } from "./workspace-routes";
 
 export type UseWorkspaceRouteStateInput = {
-  /** Invoked when the ipollowalk-server settings-changed event fires (the route bumps its settings version). */
+  /** Invoked when the ipollowork-server settings-changed event fires (the route bumps its settings version). */
   onServerSettingsChanged: () => void;
-  /** Receives the local ipollowalk-server host info discovered during refresh. */
-  onHostInfo: (info: iPolloWalkServerInfo | null) => void;
+  /** Receives the local ipollowork-server host info discovered during refresh. */
+  onHostInfo: (info: iPolloWorkServerInfo | null) => void;
 };
 
 export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
@@ -76,7 +76,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
 
   const { markRouteReady: markBootRouteReady } = useBootState();
   const [loading, setLoading] = useState(true);
-  const [client, setClient] = useState<iPolloWalkServerClient | null>(null);
+  const [client, setClient] = useState<iPolloWorkServerClient | null>(null);
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
   const [workspaces, setWorkspaces] = useState<RouteWorkspace[]>([]);
@@ -167,7 +167,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       const backoffMs = (attempt: number) => Math.min(500 * Math.pow(2, attempt), 4_000);
 
       const fetchOnce = async (workspace: RouteWorkspace, attempt: number): Promise<void> => {
-        const isRemoteiPolloWalkWorkspace = workspace.workspaceType === "remote" && workspace.remoteType !== "opencode";
+        const isRemoteiPolloWorkWorkspace = workspace.workspaceType === "remote" && workspace.remoteType !== "opencode";
         const endpoint = endpointForWorkspace(workspace);
         if (!endpoint) {
           if (workspace.workspaceType === "remote") {
@@ -191,7 +191,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         if (startedAt && Date.now() - startedAt < 5_000) return;
         const requestStartedAt = Date.now();
         backgroundSessionLoadInFlight.current.set(workspace.id, requestStartedAt);
-        if (isRemoteiPolloWalkWorkspace) {
+        if (isRemoteiPolloWorkWorkspace) {
           setWorkspaceConnectionOverrides((current) => ({
             ...current,
             [workspace.id]: {
@@ -205,7 +205,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
           const response = await endpoint.client.listSessions(endpoint.workspaceId, { limit: 200 });
           const fetchedItems = response.items ?? [];
           const workspaceRoot = normalizeDirectoryPath(workspace.path ?? "");
-          const items = workspaceRoot && !isRemoteiPolloWalkWorkspace
+          const items = workspaceRoot && !isRemoteiPolloWorkWorkspace
             ? fetchedItems.filter((session) =>
                 normalizeDirectoryPath(session?.directory ?? "") === workspaceRoot,
               )
@@ -218,7 +218,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
           });
           setErrorsByWorkspaceId((current) => ({ ...current, [workspace.id]: null }));
           setWorkspaceConnectionOverrides((current) => {
-            if (isRemoteiPolloWalkWorkspace) {
+            if (isRemoteiPolloWorkWorkspace) {
               return {
                 ...current,
                 [workspace.id]: {
@@ -324,7 +324,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         }
       }
 
-      const { normalizedBaseUrl, resolvedToken, resolvedHostToken, hostInfo } = await resolveiPolloWalkConnection();
+      const { normalizedBaseUrl, resolvedToken, resolvedHostToken, hostInfo } = await resolveiPolloWorkConnection();
       onHostInfo(hostInfo);
       if (!normalizedBaseUrl || !resolvedToken) {
         // Keep `localServerRef` in lockstep with the disconnected state.
@@ -353,12 +353,12 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       // local workspaces => sidebar gets stuck in "loading" forever.
       localServerRef.current = { baseUrl: normalizedBaseUrl, token: resolvedToken };
 
-      const ipollowalkClient = createiPolloWalkServerClient({
+      const ipolloworkClient = createiPolloWorkServerClient({
         baseUrl: normalizedBaseUrl,
         token: resolvedToken,
         hostToken: resolvedHostToken || undefined,
       });
-      const list = await ipollowalkClient.listWorkspaces();
+      const list = await ipolloworkClient.listWorkspaces();
       const nextWorkspaces = orderRouteWorkspaces(
         mergeRouteWorkspaces(list.items, desktopWorkspaces),
         workspaceOrderIdsRef.current,
@@ -393,7 +393,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         if (match?.workspaceId) nextWorkspaceId = match.workspaceId;
       }
 
-      setClient(ipollowalkClient);
+      setClient(ipolloworkClient);
       setBaseUrl(normalizedBaseUrl);
       setToken(resolvedToken);
       setWorkspaces(nextWorkspaces);
@@ -555,7 +555,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       refreshInFlightRef.current = false;
       void refreshRouteState();
     };
-    window.addEventListener("ipollowalk-server-settings-changed", handleSettingsChange);
+    window.addEventListener("ipollowork-server-settings-changed", handleSettingsChange);
 
     // Also retry on visibility flip independently — even when nobody else
     // dispatches the settings event.
@@ -575,7 +575,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         window.clearTimeout(startupRetryTimerRef.current);
         startupRetryTimerRef.current = null;
       }
-      window.removeEventListener("ipollowalk-server-settings-changed", handleSettingsChange);
+      window.removeEventListener("ipollowork-server-settings-changed", handleSettingsChange);
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibility);
       }
@@ -584,7 +584,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
 
   // Inspector wiring: publish the route's current state so an external
   // operator (or an AI driver using browser tools) can call
-  // `window.__ipollowalk.snapshot()` or `window.__ipollowalk.slice("route")` and
+  // `window.__ipollowork.snapshot()` or `window.__ipollowork.slice("route")` and
   // see workspaces / sessions / connection info without walking the DOM.
   useEffect(() => {
     const dispose = publishInspectorSlice("route", () => ({
@@ -699,7 +699,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     if (!workspaceId || reconnectAttemptedWorkspaceIdRef.current === workspaceId) return;
     reconnectAttemptedWorkspaceIdRef.current = workspaceId;
 
-    void ensureDesktopLocaliPolloWalkConnection({
+    void ensureDesktopLocaliPolloWorkConnection({
       route: "session",
       workspace: selectedWorkspace,
       allWorkspaces: workspaces,
@@ -712,7 +712,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const selectedWorkspaceRoot = selectedWorkspace?.path?.trim() || "";
   // Single source of truth for the selected workspace's server URL/token/id.
   // For remote workspaces this is the worker that owns the workspace; for
-  // local workspaces it's the user's local iPolloWalk server.
+  // local workspaces it's the user's local iPolloWork server.
   const selectedWorkspaceEndpoint = useMemo(
     () => resolveWorkspaceEndpoint(selectedWorkspace, { baseUrl, token }),
     [baseUrl, selectedWorkspace, token],
@@ -744,7 +744,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError
         ? createClient(opencodeBaseUrl, selectedWorkspaceRoot || undefined, {
             token: selectedWorkspaceServerToken,
-            mode: "ipollowalk",
+            mode: "ipollowork",
           })
         : null,
     [opencodeBaseUrl, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],

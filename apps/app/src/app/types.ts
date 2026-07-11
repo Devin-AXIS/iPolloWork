@@ -210,7 +210,7 @@ export type WorkspaceConnectionState = {
   checkedAt?: number | null;
 };
 
-export type ResetiPolloWalkMode = "onboarding" | "all";
+export type ResetiPolloWorkMode = "onboarding" | "all";
 
 export type WorkspaceBlueprintStarterKind = "prompt" | "session" | "action";
 
@@ -263,7 +263,7 @@ export type WorkspaceBlueprint = {
   } | null;
 };
 
-export type WorkspaceiPolloWalkConfig = {
+export type WorkspaceiPolloWorkConfig = {
   version: number;
   workspace?: {
     name?: string | null;
@@ -300,7 +300,7 @@ export type HubSkillCard = {
   };
 };
 
-/** iPolloWalk Cloud (Den) org skill surfaced in the Skills catalog. */
+/** iPolloWork Cloud (Den) org skill surfaced in the Skills catalog. */
 export type DenOrgSkillCard = {
   id: string;
   title: string;

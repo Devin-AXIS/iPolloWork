@@ -175,7 +175,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
 
 export function printHelp(): void {
   const message = [
-    "ipollowalk-server",
+    "ipollowork-server",
     "",
     "Options:",
     "  --config <path>          Path to server.json",
@@ -207,12 +207,12 @@ async function loadFileConfig(configPath: string): Promise<FileConfig> {
 }
 
 export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
-  const envConfigPath = process.env.IPOLLOWALK_SERVER_CONFIG;
-  const configPath = cli.configPath ?? envConfigPath ?? resolve(homedir(), ".config", "ipollowalk", "server.json");
+  const envConfigPath = process.env.IPOLLOWORK_SERVER_CONFIG;
+  const configPath = cli.configPath ?? envConfigPath ?? resolve(homedir(), ".config", "ipollowork", "server.json");
   const fileConfig = await loadFileConfig(configPath);
   const configDir = dirname(configPath);
 
-  const envWorkspaces = parseList(process.env.IPOLLOWALK_WORKSPACES);
+  const envWorkspaces = parseList(process.env.IPOLLOWORK_WORKSPACES);
   let workspaceConfigs: WorkspaceConfig[] =
     cli.workspaces.length > 0
       ? cli.workspaces.map((path) => ({ path }))
@@ -220,10 +220,10 @@ export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
         ? envWorkspaces.map((path) => ({ path }))
         : fileConfig.workspaces ?? [];
 
-  const envOpencodeBaseUrl = process.env.IPOLLOWALK_OPENCODE_BASE_URL;
-  const envOpencodeDirectory = process.env.IPOLLOWALK_OPENCODE_DIRECTORY;
-  const envOpencodeUsername = process.env.IPOLLOWALK_OPENCODE_USERNAME;
-  const envOpencodePassword = process.env.IPOLLOWALK_OPENCODE_PASSWORD;
+  const envOpencodeBaseUrl = process.env.IPOLLOWORK_OPENCODE_BASE_URL;
+  const envOpencodeDirectory = process.env.IPOLLOWORK_OPENCODE_DIRECTORY;
+  const envOpencodeUsername = process.env.IPOLLOWORK_OPENCODE_USERNAME;
+  const envOpencodePassword = process.env.IPOLLOWORK_OPENCODE_PASSWORD;
   const opencodeBaseUrl = cli.opencodeBaseUrl ?? envOpencodeBaseUrl ?? fileConfig.opencodeBaseUrl;
   const opencodeDirectory = cli.opencodeDirectory ?? envOpencodeDirectory ?? fileConfig.opencodeDirectory;
   const opencodeUsername = cli.opencodeUsername ?? envOpencodeUsername ?? fileConfig.opencodeUsername;
@@ -246,8 +246,8 @@ export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
 
   const workspaces = buildWorkspaceInfos(workspaceConfigs, configDir);
 
-  const tokenFromEnv = process.env.IPOLLOWALK_TOKEN;
-  const hostTokenFromEnv = process.env.IPOLLOWALK_HOST_TOKEN;
+  const tokenFromEnv = process.env.IPOLLOWORK_TOKEN;
+  const hostTokenFromEnv = process.env.IPOLLOWORK_HOST_TOKEN;
 
   const token = cli.token ?? tokenFromEnv ?? fileConfig.token ?? shortId();
   const hostToken = cli.hostToken ?? hostTokenFromEnv ?? fileConfig.hostToken ?? shortId();
@@ -270,13 +270,13 @@ export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
 
   const approvalMode =
     cli.approvalMode ??
-    (process.env.IPOLLOWALK_APPROVAL_MODE as ApprovalMode | undefined) ??
+    (process.env.IPOLLOWORK_APPROVAL_MODE as ApprovalMode | undefined) ??
     fileConfig.approval?.mode ??
     "manual";
 
   const approvalTimeoutMs =
     cli.approvalTimeoutMs ??
-    (process.env.IPOLLOWALK_APPROVAL_TIMEOUT_MS ? Number(process.env.IPOLLOWALK_APPROVAL_TIMEOUT_MS) : undefined) ??
+    (process.env.IPOLLOWORK_APPROVAL_TIMEOUT_MS ? Number(process.env.IPOLLOWORK_APPROVAL_TIMEOUT_MS) : undefined) ??
     fileConfig.approval?.timeoutMs ??
     DEFAULT_TIMEOUT_MS;
 
@@ -285,24 +285,24 @@ export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
     timeoutMs: Number.isNaN(approvalTimeoutMs) ? DEFAULT_TIMEOUT_MS : approvalTimeoutMs,
   };
 
-  const envCorsOrigins = process.env.IPOLLOWALK_CORS_ORIGINS;
+  const envCorsOrigins = process.env.IPOLLOWORK_CORS_ORIGINS;
   const parsedEnvCors = envCorsOrigins ? parseList(envCorsOrigins) : null;
   const corsOrigins = cli.corsOrigins ?? parsedEnvCors ?? fileConfig.corsOrigins ?? ["*"];
 
-  const envReadOnly = process.env.IPOLLOWALK_READONLY;
+  const envReadOnly = process.env.IPOLLOWORK_READONLY;
   const parsedReadOnly = envReadOnly
     ? ["true", "1", "yes"].includes(envReadOnly.toLowerCase())
     : undefined;
   const readOnly = cli.readOnly ?? parsedReadOnly ?? fileConfig.readOnly ?? false;
 
-  const envLogFormat = process.env.IPOLLOWALK_LOG_FORMAT;
+  const envLogFormat = process.env.IPOLLOWORK_LOG_FORMAT;
   const logFormat =
     cli.logFormat ??
     normalizeLogFormat(envLogFormat) ??
     normalizeLogFormat(fileConfig.logFormat) ??
     DEFAULT_LOG_FORMAT;
 
-  const envLogRequests = parseBoolean(process.env.IPOLLOWALK_LOG_REQUESTS);
+  const envLogRequests = parseBoolean(process.env.IPOLLOWORK_LOG_REQUESTS);
   const logRequests = cli.logRequests ?? envLogRequests ?? fileConfig.logRequests ?? DEFAULT_LOG_REQUESTS;
 
   const authorizedRoots =
@@ -310,8 +310,8 @@ export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
       ? fileConfig.authorizedRoots.map((root) => resolve(configDir, root))
       : workspaces.map((workspace) => workspace.path);
 
-  const host = cli.host ?? process.env.IPOLLOWALK_HOST ?? fileConfig.host ?? DEFAULT_HOST;
-  const port = cli.port ?? (process.env.IPOLLOWALK_PORT ? Number(process.env.IPOLLOWALK_PORT) : undefined) ?? fileConfig.port ?? DEFAULT_PORT;
+  const host = cli.host ?? process.env.IPOLLOWORK_HOST ?? fileConfig.host ?? DEFAULT_HOST;
+  const port = cli.port ?? (process.env.IPOLLOWORK_PORT ? Number(process.env.IPOLLOWORK_PORT) : undefined) ?? fileConfig.port ?? DEFAULT_PORT;
 
   return {
     host,

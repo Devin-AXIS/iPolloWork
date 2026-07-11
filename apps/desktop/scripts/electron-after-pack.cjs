@@ -2,12 +2,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const computerUseHelperAppName = "iPolloWalk Computer Use.app";
+const computerUseHelperAppName = "iPolloWork Computer Use.app";
 
 const sidecarBases = [
   "opencode",
-  "ipollowalk-server",
-  "ipollowalk-orchestrator",
+  "ipollowork-server",
+  "ipollowork-orchestrator",
   "chrome-devtools-mcp",
 ];
 
@@ -56,7 +56,7 @@ function signComputerUseHelper(context) {
     throw new Error(`Missing Computer Use helper app at ${helperPath}`);
   }
 
-  const identity = process.env.IPOLLOWALK_COMPUTER_USE_CODESIGN_IDENTITY
+  const identity = process.env.IPOLLOWORK_COMPUTER_USE_CODESIGN_IDENTITY
     || process.env.CSC_NAME
     || process.env.APPLE_CODESIGN_IDENTITY
     || "-";

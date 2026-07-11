@@ -24,7 +24,7 @@ let savedAssets = null;
 let brandShapeStates = [];
 
 function orgSettingsUrl(ctx) {
-  return `${ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL.replace(/\/$/, "")}${ORG_SETTINGS_PATH}`;
+  return `${ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL.replace(/\/$/, "")}${ORG_SETTINGS_PATH}`;
 }
 
 function parseMetadata(value) {
@@ -60,16 +60,16 @@ async function ensureDesktopSession(ctx) {
     body: JSON.stringify({ name: "Example Corp", brandAppName: "Example Work", brandLogoUrl: null, brandIconUrl: null }),
   });
 
-  await ctx.control("eval.auth.set-base-url", { baseUrl: process.env.IPOLLOWALK_EVAL_DEN_WEB_URL });
+  await ctx.control("eval.auth.set-base-url", { baseUrl: process.env.IPOLLOWORK_EVAL_DEN_WEB_URL });
   await ctx.eval(`(() => {
-    localStorage.setItem('ipollowalk.den.baseUrl', ${JSON.stringify(process.env.IPOLLOWALK_EVAL_DEN_WEB_URL)});
-    localStorage.setItem('ipollowalk.den.apiBaseUrl', ${JSON.stringify(process.env.IPOLLOWALK_EVAL_DEN_API_URL)});
-    localStorage.setItem('ipollowalk.den.authToken', ${JSON.stringify(process.env.IPOLLOWALK_EVAL_DEN_TOKEN)});
-    localStorage.setItem('ipollowalk.den.activeOrgId', ${JSON.stringify(activeOrg.id)});
-    localStorage.setItem('ipollowalk.den.activeOrgSlug', ${JSON.stringify(activeOrg.slug ?? "example-corp")});
-    localStorage.setItem('ipollowalk.den.activeOrgName', 'Example Corp');
-    window.dispatchEvent(new CustomEvent('ipollowalk-den-settings-changed', { detail: {} }));
-    window.dispatchEvent(new CustomEvent('ipollowalk-den-session-updated', { detail: { token: ${JSON.stringify(process.env.IPOLLOWALK_EVAL_DEN_TOKEN)} } }));
+    localStorage.setItem('ipollowork.den.baseUrl', ${JSON.stringify(process.env.IPOLLOWORK_EVAL_DEN_WEB_URL)});
+    localStorage.setItem('ipollowork.den.apiBaseUrl', ${JSON.stringify(process.env.IPOLLOWORK_EVAL_DEN_API_URL)});
+    localStorage.setItem('ipollowork.den.authToken', ${JSON.stringify(process.env.IPOLLOWORK_EVAL_DEN_TOKEN)});
+    localStorage.setItem('ipollowork.den.activeOrgId', ${JSON.stringify(activeOrg.id)});
+    localStorage.setItem('ipollowork.den.activeOrgSlug', ${JSON.stringify(activeOrg.slug ?? "example-corp")});
+    localStorage.setItem('ipollowork.den.activeOrgName', 'Example Corp');
+    window.dispatchEvent(new CustomEvent('ipollowork-den-settings-changed', { detail: {} }));
+    window.dispatchEvent(new CustomEvent('ipollowork-den-session-updated', { detail: { token: ${JSON.stringify(process.env.IPOLLOWORK_EVAL_DEN_TOKEN)} } }));
     return true;
   })()`);
 
@@ -145,13 +145,13 @@ export default {
   id: "organization-branding-upload-layout",
   title: "Branding uploads stay contained and desktop wordmarks align without adjacent text",
   kind: "user-facing",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "setup",
       run: async (ctx) => {
         await ensureRendererMounted(ctx);
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 30_000, label: "window.__ipollowalkControl" });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30_000, label: "window.__ipolloworkControl" });
         await ctx.ensureLightMode();
         await ensureDesktopSession(ctx);
         await ensureWorkspaceReady(ctx);

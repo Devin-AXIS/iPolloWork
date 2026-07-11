@@ -136,8 +136,8 @@ async function startMockBroker() {
         expiresAt: 987654321,
         model: "gpt-realtime-2",
         transcriptionModel: "gpt-4o-transcribe",
-        tools: ["ipollowalk_snapshot", "ipollowalk_list_actions", "ipollowalk_execute_action"],
-        source: "ipollowalk-models",
+        tools: ["ipollowork_snapshot", "ipollowork_list_actions", "ipollowork_execute_action"],
+        source: "ipollowork-models",
       }));
     });
   });
@@ -150,7 +150,7 @@ async function startMockBroker() {
   };
 }
 
-async function startiPolloWalkServer({ directory, port, env }) {
+async function startiPolloWorkServer({ directory, port, env }) {
   const token = "owt_managed_voice_client";
   const hostToken = "owt_managed_voice_host";
   const child = spawn("bun", [
@@ -165,7 +165,7 @@ async function startiPolloWalkServer({ directory, port, env }) {
   ], {
     cwd: resolve(join(import.meta.dirname, "..", "..", "..")),
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, ...env, IPOLLOWALK_DEV_MODE: "1" },
+    env: { ...process.env, ...env, IPOLLOWORK_DEV_MODE: "1" },
   });
   let stdout = "";
   let stderr = "";
@@ -206,22 +206,22 @@ async function waitForServerHealthy(baseUrl) {
     }
     await new Promise((resolvePoll) => setTimeout(resolvePoll, 250));
   }
-  throw new Error(`Timed out waiting for iPolloWalk server health: ${lastError}`);
+  throw new Error(`Timed out waiting for iPolloWork server health: ${lastError}`);
 }
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
-const envDir = await mkdtemp(join(tmpdir(), "ipollowalk-managed-voice-e2e-"));
+const envDir = await mkdtemp(join(tmpdir(), "ipollowork-managed-voice-e2e-"));
 const mockBroker = await startMockBroker();
 const port = await findFreePort();
-const server = await startiPolloWalkServer({
+const server = await startiPolloWorkServer({
   directory,
   port,
   env: {
-    IPOLLOWALK_ENV_STORE: join(envDir, "env.json"),
-    IPOLLOWALK_TOKEN_STORE: join(envDir, "tokens.json"),
-    IPOLLOWALK_API_KEY: "ow_inf_e2e",
-    IPOLLOWALK_INFERENCE_BASE_URL: mockBroker.baseUrl,
+    IPOLLOWORK_ENV_STORE: join(envDir, "env.json"),
+    IPOLLOWORK_TOKEN_STORE: join(envDir, "tokens.json"),
+    IPOLLOWORK_API_KEY: "ow_inf_e2e",
+    IPOLLOWORK_INFERENCE_BASE_URL: mockBroker.baseUrl,
   },
 });
 
@@ -231,7 +231,7 @@ try {
   const owner = await step("owner token", async () => {
     const response = await fetch(`${server.baseUrl}/tokens`, {
       method: "POST",
-      headers: { "x-ipollowalk-host-token": server.hostToken, "content-type": "application/json" },
+      headers: { "x-ipollowork-host-token": server.hostToken, "content-type": "application/json" },
       body: JSON.stringify({ scope: "owner", label: "managed voice e2e" }),
     });
     assert.equal(response.status, 201);
@@ -250,7 +250,7 @@ try {
     const body = await response.json();
     assert.equal(body.ok, true);
     assert.equal(body.clientSecret, "managed-e2e-client-secret");
-    assert.equal(body.source, "ipollowalk-models");
+    assert.equal(body.source, "ipollowork-models");
     return body;
   });
 

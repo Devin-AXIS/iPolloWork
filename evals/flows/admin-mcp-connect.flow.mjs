@@ -11,17 +11,17 @@
  * (alex@acme.test, seeded into AdminAllowlistTable on the Daytona Den):
  *   1. Sign in via desktop handoff (handles org onboarding + workspace pick).
  *   2. Open Settings -> Extensions -> MCP and reveal the hidden admin entry.
- *   3. Connect "iPolloWalk Admin Analytics".
+ *   3. Connect "iPolloWork Admin Analytics".
  *   4. Assert the entry flips to Connected and the connected app count grows —
  *      only possible if admin OAuth discovery + token mint + allowlist all
  *      succeed end-to-end against den-api /mcp/admin.
  *
  * Required env:
- * - IPOLLOWALK_EVAL_DEN_API_URL  Den API base (the fixed sandbox Den)
- * - IPOLLOWALK_EVAL_DEN_TOKEN    Bearer session token for the admin account
+ * - IPOLLOWORK_EVAL_DEN_API_URL  Den API base (the fixed sandbox Den)
+ * - IPOLLOWORK_EVAL_DEN_TOKEN    Bearer session token for the admin account
  */
 
-const ADMIN_TITLE = "iPolloWalk Admin Analytics";
+const ADMIN_TITLE = "iPolloWork Admin Analytics";
 const WORKSPACE_FOLDER = "/workspace/admin-mcp-test";
 
 const CLICK_ANY = "button, [role=button], a, div, article, li, label";
@@ -45,45 +45,45 @@ export default {
   id: "admin-mcp-connect",
   title: "Admin MCP connects end-to-end after OAuth discovery fix",
   spec: "evals/cloud-mcp-agent-flows.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN"],
   steps: [
     {
       name: "App booted",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000 });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000 });
       },
     },
     {
       name: "Sign in as the admin user via desktop handoff",
       run: async (ctx) => {
         const signedIn = await ctx.eval(
-          "Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())",
+          "Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())",
         );
         if (signedIn) {
           ctx.log("Already signed in; reusing session.");
           return;
         }
-        const apiBase = ctx.env.IPOLLOWALK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
+        const apiBase = ctx.env.IPOLLOWORK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
         const response = await fetch(`${apiBase}/v1/auth/desktop-handoff`, {
           method: "POST",
           headers: {
-            authorization: `Bearer ${ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN.trim()}`,
+            authorization: `Bearer ${ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN.trim()}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({ desktopScheme: "ipollowalk" }),
+          body: JSON.stringify({ desktopScheme: "ipollowork" }),
         });
         const body = await response.text();
         ctx.assert(response.ok, `Handoff create failed: ${response.status} ${body.slice(0, 200)}`);
         const payload = JSON.parse(body);
-        ctx.assert(typeof payload.ipollowalkUrl === "string" && payload.ipollowalkUrl.length > 0, "No ipollowalkUrl in handoff response.");
+        ctx.assert(typeof payload.ipolloworkUrl === "string" && payload.ipolloworkUrl.length > 0, "No ipolloworkUrl in handoff response.");
 
         await ctx.navigateHash("/settings/cloud-account");
         await ctx.expectHashIncludes("/settings/cloud-account");
         await ctx.clickText("Paste sign-in code", { timeoutMs: 30_000 });
-        await ctx.fill("#den-signin-link", payload.ipollowalkUrl);
+        await ctx.fill("#den-signin-link", payload.ipolloworkUrl);
         await ctx.clickText("Finish sign-in");
         await ctx.waitFor(
-          "Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())",
+          "Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())",
           { timeoutMs: 45_000, label: "persisted den auth token" },
         );
       },
@@ -127,7 +127,7 @@ export default {
           },
           screenshot: {
             name: "admin-entry-revealed",
-            claim: "iPolloWalk Admin Analytics appears in MCP settings after Show hidden.",
+            claim: "iPolloWork Admin Analytics appears in MCP settings after Show hidden.",
             requireText: [ADMIN_TITLE],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/mcp",
@@ -184,7 +184,7 @@ export default {
           },
           screenshot: {
             name: "admin-mcp-connected",
-            claim: "iPolloWalk Admin Analytics shows Connected — admin MCP attached end-to-end.",
+            claim: "iPolloWork Admin Analytics shows Connected — admin MCP attached end-to-end.",
             requireText: [ADMIN_TITLE, "Connected"],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/mcp",

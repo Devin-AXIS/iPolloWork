@@ -66,7 +66,7 @@ import {
 } from "@/components/ui/radio-group"
 import { useOrgListWindow } from "./use-org-list-window";
 
-const RELOAD_AFTER_ONBOARDING_KEY = "ipollowalk.reloadAfterOrgOnboarding";
+const RELOAD_AFTER_ONBOARDING_KEY = "ipollowork.reloadAfterOrgOnboarding";
 
 function useDenClient() {
   const settings = useMemo(() => readDenSettings(), []);
@@ -126,7 +126,7 @@ function usePreparedBootstrap() {
 const FIRST_TASK_IDEAS = [
   "Summarize the files in my Downloads folder.",
   "Create a CSV of my last 10 screenshots with their dates.",
-  "Draft a short intro email about iPolloWalk I can send my team.",
+  "Draft a short intro email about iPolloWork I can send my team.",
 ];
 
 function PreparedWorkspacePage({ prepared }: { prepared: PreparedBootstrapSummary }) {
@@ -138,7 +138,7 @@ function PreparedWorkspacePage({ prepared }: { prepared: PreparedBootstrapSummar
     navigate("/session", { replace: true });
     // Drop the cursor into the composer so the user can type their first task.
     [0, 120, 320, 600].forEach((delay) =>
-      window.setTimeout(() => window.dispatchEvent(new Event("ipollowalk:focusPrompt")), delay),
+      window.setTimeout(() => window.dispatchEvent(new Event("ipollowork:focusPrompt")), delay),
     );
   };
 
@@ -149,19 +149,19 @@ function PreparedWorkspacePage({ prepared }: { prepared: PreparedBootstrapSummar
       <PageContainer>
         <PageHeader>
           <div
-            data-ipollowalk-prepared="true"
-            data-ipollowalk-provisional="true"
+            data-ipollowork-prepared="true"
+            data-ipollowork-provisional="true"
             className="mx-auto flex w-fit items-center gap-2 rounded-full border border-green-6/30 bg-green-2/30 px-3 py-1 text-xs font-semibold text-green-11"
           >
             <CheckCircle2 className="size-3.5" />
-            Setup complete — iPolloWalk is ready
+            Setup complete — iPolloWork is ready
           </div>
           <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-dls-border bg-dls-hover">
             <BuildingOffice2Icon className="size-7 text-foreground" />
           </div>
           <PageTitle>{prepared.orgName}</PageTitle>
           <div
-            data-ipollowalk-prepared-skill={prepared.skillTitle}
+            data-ipollowork-prepared-skill={prepared.skillTitle}
             className="mx-auto flex w-fit items-center gap-2 rounded-xl border border-border bg-dls-hover px-3 py-2 text-sm text-foreground"
           >
             <Sparkles className="size-4 text-foreground/60" />
@@ -169,7 +169,7 @@ function PreparedWorkspacePage({ prepared }: { prepared: PreparedBootstrapSummar
             <span className="font-semibold">{prepared.skillTitle}</span>
           </div>
           <PageDescription>
-            Your workspace and first skill are set up. Try a task to see iPolloWalk
+            Your workspace and first skill are set up. Try a task to see iPolloWork
             work for you — no further setup needed.
           </PageDescription>
         </PageHeader>
@@ -218,11 +218,11 @@ function markProvidersSeen(providers: DenOrgLlmProvider[]) {
   if (providers.length === 0) return;
 
   try {
-    const raw = window.localStorage.getItem("ipollowalk.seenProviderIds");
+    const raw = window.localStorage.getItem("ipollowork.seenProviderIds");
     const existing: string[] = raw ? JSON.parse(raw) : [];
     const ids = new Set(existing);
     for (const provider of providers) ids.add(provider.id);
-    window.localStorage.setItem("ipollowalk.seenProviderIds", JSON.stringify([...ids]));
+    window.localStorage.setItem("ipollowork.seenProviderIds", JSON.stringify([...ids]));
   } catch {}
 }
 
@@ -407,11 +407,11 @@ export function ResourceSelectionPage() {
         <PageHeader>
           {prepared ? (
             <div
-              data-ipollowalk-prepared="true"
+              data-ipollowork-prepared="true"
               className="mx-auto flex w-fit items-center gap-2 rounded-full border border-green-6/30 bg-green-2/30 px-3 py-1 text-xs font-semibold text-green-11"
             >
               <CheckCircle2 className="size-3.5" />
-              Setup complete — iPolloWalk prepared this workspace
+              Setup complete — iPolloWork prepared this workspace
             </div>
           ) : null}
           <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-dls-border bg-dls-hover">
@@ -422,7 +422,7 @@ export function ResourceSelectionPage() {
           </PageTitle>
           {prepared ? (
             <div
-              data-ipollowalk-prepared-skill={prepared.skillTitle}
+              data-ipollowork-prepared-skill={prepared.skillTitle}
               className="mx-auto flex w-fit items-center gap-2 rounded-xl border border-border bg-dls-hover px-3 py-2 text-sm text-foreground"
             >
               <Sparkles className="size-4 text-foreground/60" />
@@ -457,7 +457,7 @@ export function ResourceSelectionPage() {
               <EmptyHeader>
                 <EmptyTitle>No resources have been configured for this organization yet.</EmptyTitle>
                 <EmptyDescription>
-                  Add AI providers or marketplaces from the iPolloWalk Cloud dashboard.
+                  Add AI providers or marketplaces from the iPolloWork Cloud dashboard.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
@@ -465,7 +465,7 @@ export function ResourceSelectionPage() {
                   variant="outline"
                   onClick={() => platform.openLink(resolveDenBaseUrls(settings.baseUrl).baseUrl)}
                 >
-                  Open iPolloWalk Cloud
+                  Open iPolloWork Cloud
                   <ArrowUpRightIcon data-icon="inline-end" />
                 </Button>
               </EmptyContent>

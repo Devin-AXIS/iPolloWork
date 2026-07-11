@@ -1,17 +1,17 @@
 ---
 name: create-plugin
-description: "Create an OpenCode plugin for iPolloWalk. Scaffolds the plugin file with the correct API shape, tool definitions, and hook registration. Use when the user asks to 'create a plugin', 'write a plugin', or 'make a plugin that does X'."
+description: "Create an OpenCode plugin for iPolloWork. Scaffolds the plugin file with the correct API shape, tool definitions, and hook registration. Use when the user asks to 'create a plugin', 'write a plugin', or 'make a plugin that does X'."
 ---
 
 # Skill: Create an OpenCode Plugin
 
-Scaffold a working OpenCode plugin for use in iPolloWalk.
+Scaffold a working OpenCode plugin for use in iPolloWork.
 
 ## When to use
 
 - User asks "create a plugin that does X"
 - User asks "write a plugin" or "make a plugin"
-- User wants to extend iPolloWalk/OpenCode with custom tools
+- User wants to extend iPolloWork/OpenCode with custom tools
 
 ## Plugin API
 

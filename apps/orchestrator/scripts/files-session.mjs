@@ -73,14 +73,14 @@ async function runCli(args) {
 
   const [code] = await once(child, "exit");
   if (code !== 0) {
-    throw new Error(stderr.trim() || `ipollowalk CLI failed with code ${code}`);
+    throw new Error(stderr.trim() || `ipollowork CLI failed with code ${code}`);
   }
 
   const trimmed = stdout.trim();
   return trimmed ? JSON.parse(trimmed) : null;
 }
 
-const root = await mkdtemp(join(tmpdir(), "ipollowalk-file-session-"));
+const root = await mkdtemp(join(tmpdir(), "ipollowork-file-session-"));
 const workspace = join(root, "workspace");
 await mkdir(join(workspace, "notes"), { recursive: true });
 await writeFile(join(workspace, "notes", "remote.md"), "hello from remote\n", "utf8");
@@ -88,7 +88,7 @@ await writeFile(join(workspace, "notes", "remote.md"), "hello from remote\n", "u
 const port = await findFreePort();
 const token = "test-client-token";
 const hostToken = "test-host-token";
-const ipollowalkUrl = `http://127.0.0.1:${port}`;
+const ipolloworkUrl = `http://127.0.0.1:${port}`;
 
 const server = spawn(
   "bun",
@@ -117,9 +117,9 @@ server.stderr.on("data", (chunk) => {
 });
 
 try {
-  await waitFor(`${ipollowalkUrl}/health`);
+  await waitFor(`${ipolloworkUrl}/health`);
 
-  const workspaces = await fetchJson(`${ipollowalkUrl}/workspaces`, {
+  const workspaces = await fetchJson(`${ipolloworkUrl}/workspaces`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const workspaceId = workspaces?.items?.[0]?.id;
@@ -129,8 +129,8 @@ try {
     "files",
     "session",
     "create",
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--workspace-id",
@@ -147,8 +147,8 @@ try {
     "files",
     "catalog",
     sessionId,
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--json",
@@ -160,8 +160,8 @@ try {
     "files",
     "read",
     sessionId,
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--path",
@@ -177,14 +177,14 @@ try {
     "files",
     "write",
     sessionId,
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--path",
     "notes/remote.md",
     "--content",
-    "updated by ipollowalk cli\n",
+    "updated by ipollowork cli\n",
     "--if-match",
     firstRevision,
     "--json",
@@ -193,15 +193,15 @@ try {
   const updatedRevision = wrote.items[0].revision;
 
   const diskContent = await readFile(join(workspace, "notes", "remote.md"), "utf8");
-  assert.equal(diskContent, "updated by ipollowalk cli\n");
+  assert.equal(diskContent, "updated by ipollowork cli\n");
 
   await writeFile(join(workspace, "notes", "remote.md"), "changed outside session\n", "utf8");
   const staleWrite = await runCli([
     "files",
     "write",
     sessionId,
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--path",
@@ -219,8 +219,8 @@ try {
     "files",
     "mkdir",
     sessionId,
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--path",
@@ -233,8 +233,8 @@ try {
     "files",
     "rename",
     sessionId,
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--from",
@@ -249,8 +249,8 @@ try {
     "files",
     "delete",
     sessionId,
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--path",
@@ -263,8 +263,8 @@ try {
     "files",
     "events",
     sessionId,
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--since",
@@ -281,15 +281,15 @@ try {
     "session",
     "close",
     sessionId,
-    "--ipollowalk-url",
-    ipollowalkUrl,
+    "--ipollowork-url",
+    ipolloworkUrl,
     "--token",
     token,
     "--json",
   ]);
   assert.equal(closed.ok, true);
 
-  console.log(JSON.stringify({ ok: true, ipollowalkUrl, workspaceId, sessionId }, null, 2));
+  console.log(JSON.stringify({ ok: true, ipolloworkUrl, workspaceId, sessionId }, null, 2));
 } catch (error) {
   console.error(
     JSON.stringify(

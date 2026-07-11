@@ -93,22 +93,22 @@ const kindLabel: Record<ExtensionKind, string> = {
   plugin: "Plugin",
   skill: "Skill",
   "ui-control": "UI Control",
-  extension: "iPolloWalk Extension",
+  extension: "iPolloWork Extension",
 };
 
 const kindDesc: Record<ExtensionKind, string> = {
   mcp: "Connects as a Model Context Protocol server, giving your agent access to external tools and data.",
-  plugin: "Extends iPolloWalk with additional capabilities managed by your organization.",
+  plugin: "Extends iPolloWork with additional capabilities managed by your organization.",
   skill: "A reusable workflow that your agent can execute on demand.",
-  "ui-control": "Lets another MCP client inspect and drive this iPolloWalk desktop UI through a local stdio wrapper.",
-  extension: "An iPolloWalk extension that adds tools, providers, or integrations to your workspace.",
+  "ui-control": "Lets another MCP client inspect and drive this iPolloWork desktop UI through a local stdio wrapper.",
+  extension: "An iPolloWork extension that adds tools, providers, or integrations to your workspace.",
 };
 
 const uiControlClientConfig = `{
   "mcpServers": {
-    "ipollowalk-ui": {
+    "ipollowork-ui": {
       "command": "npx",
-      "args": ["-y", "ipollowalk-ui-mcp"]
+      "args": ["-y", "ipollowork-ui-mcp"]
     }
   }
 }`;
@@ -116,7 +116,7 @@ const uiControlClientConfig = `{
 function uiControlOpencodeConfig(command: string[], environment?: Record<string, string>) {
   return JSON.stringify({
     mcp: {
-      "ipollowalk-ui": {
+      "ipollowork-ui": {
         type: "local",
         command,
         ...(environment ? { environment } : {}),
@@ -126,13 +126,13 @@ function uiControlOpencodeConfig(command: string[], environment?: Record<string,
   }, null, 2);
 }
 
-const fallbackUiControlCommand = ["npx", "-y", "ipollowalk-ui-mcp"];
+const fallbackUiControlCommand = ["npx", "-y", "ipollowork-ui-mcp"];
 
 const fallbackUiControlOpencodeConfig = `{
   "mcp": {
-    "ipollowalk-ui": {
+    "ipollowork-ui": {
       "type": "local",
-      "command": ["npx", "-y", "ipollowalk-ui-mcp"],
+      "command": ["npx", "-y", "ipollowork-ui-mcp"],
       "enabled": true
     }
   }
@@ -559,8 +559,8 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-2 text-sm leading-relaxed text-muted-foreground">
-            <div>iPolloWalk desktop starts a private localhost bridge automatically.</div>
-            <div>Your MCP client starts <span className="font-mono text-card-foreground">ipollowalk-ui-mcp</span> over stdio; the wrapper discovers the bridge and proxies UI tools to it.</div>
+            <div>iPolloWork desktop starts a private localhost bridge automatically.</div>
+            <div>Your MCP client starts <span className="font-mono text-card-foreground">ipollowork-ui-mcp</span> over stdio; the wrapper discovers the bridge and proxies UI tools to it.</div>
             <div>Do not point clients at the random localhost bridge URL directly.</div>
           </div>
         </CardContent>
@@ -601,7 +601,7 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
                     Production discovery file
                   </TableCell>
                   <TableCell className="py-2 whitespace-normal">
-                    <span className="font-mono text-xs break-all">~/Library/Application Support/com.differentai.ipollowalk/ipollowalk-ui-control.json</span>
+                    <span className="font-mono text-xs break-all">~/Library/Application Support/com.differentai.ipollowork/ipollowork-ui-control.json</span>
                   </TableCell>
                 </TableRow>
                 <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
@@ -609,7 +609,7 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
                     Dev discovery file
                   </TableCell>
                   <TableCell className="py-2 whitespace-normal">
-                    <span className="font-mono text-xs break-all">~/Library/Application Support/com.differentai.ipollowalk.dev/ipollowalk-ui-control.json</span>
+                    <span className="font-mono text-xs break-all">~/Library/Application Support/com.differentai.ipollowork.dev/ipollowork-ui-control.json</span>
                   </TableCell>
                 </TableRow>
                 <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
@@ -617,16 +617,16 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
                     Override
                   </TableCell>
                   <TableCell className="py-2 whitespace-normal">
-                    <span className="font-mono text-xs break-all">IPOLLOWALK_UI_CONTROL_DISCOVERY=/path/to/ipollowalk-ui-control.json</span>
+                    <span className="font-mono text-xs break-all">IPOLLOWORK_UI_CONTROL_DISCOVERY=/path/to/ipollowork-ui-control.json</span>
                   </TableCell>
                 </TableRow>
-                {props.environment?.IPOLLOWALK_UI_CONTROL_DISCOVERY ? (
+                {props.environment?.IPOLLOWORK_UI_CONTROL_DISCOVERY ? (
                   <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
                     <TableCell className="bg-muted/50 py-2 text-xs font-medium">
                       Current override
                     </TableCell>
                     <TableCell className="py-2 whitespace-normal">
-                      <span className="font-mono text-xs break-all">{props.environment.IPOLLOWALK_UI_CONTROL_DISCOVERY}</span>
+                      <span className="font-mono text-xs break-all">{props.environment.IPOLLOWORK_UI_CONTROL_DISCOVERY}</span>
                     </TableCell>
                   </TableRow>
                 ) : null}

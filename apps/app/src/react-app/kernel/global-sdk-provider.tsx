@@ -62,10 +62,10 @@ const GlobalSDKContext = createContext<GlobalSDKContextValue | undefined>(
   undefined,
 );
 
-function readiPolloWalkToken(): string {
+function readiPolloWorkToken(): string {
   if (typeof window === "undefined") return "";
   try {
-    return (window.localStorage.getItem("ipollowalk.server.token") ?? "").trim();
+    return (window.localStorage.getItem("ipollowork.server.token") ?? "").trim();
   } catch {
     return "";
   }
@@ -84,7 +84,7 @@ export function GlobalSDKProvider({ children }: GlobalSDKProviderProps) {
   }
   const emitter = emitterRef.current;
 
-  const token = readiPolloWalkToken();
+  const token = readiPolloWorkToken();
   const headers =
     token && server.url.includes("/opencode")
       ? { Authorization: `Bearer ${token}` }

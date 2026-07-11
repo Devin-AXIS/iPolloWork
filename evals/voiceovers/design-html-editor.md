@@ -2,7 +2,7 @@
 
 The Design space is additive: Browser, OpenCode, Cloud, authentication, providers, and existing artifact behavior remain unchanged.
 
-1. I open an existing iPolloWalk task and see a new Design button beside the current right-side tools, while Browser and the rest of iPolloWalk stay exactly where they are.
+1. I open an existing iPolloWork task and see a new Design button beside the current right-side tools, while Browser and the rest of iPolloWork stay exactly where they are.
 
 2. I open Design and choose a local HTML file from this workspace; the page renders inside the dedicated Design space without turning an ordinary web page into an editable site.
 

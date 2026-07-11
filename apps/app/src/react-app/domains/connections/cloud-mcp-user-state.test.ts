@@ -13,7 +13,7 @@ import {
   writeCloudMcpUnhealthyRemintAttempt,
 } from "./cloud-mcp-user-state";
 
-const UNHEALTHY_REMINT_ATTEMPT_KEY = "ipollowalk.den.mcp.unhealthyRemintAttempt";
+const UNHEALTHY_REMINT_ATTEMPT_KEY = "ipollowork.den.mcp.unhealthyRemintAttempt";
 
 function createStorageStub() {
   const values = new Map<string, string>();

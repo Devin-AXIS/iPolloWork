@@ -7,20 +7,20 @@ import {
   engineStart as engineStartCmd,
   getDesktopBootstrapConfig,
   debugDesktopBootstrapConfig,
-  nukeiPolloWalkAndOpencodeConfigAndExit,
+  nukeiPolloWorkAndOpencodeConfigAndExit,
   openDesktopUrl,
-  ipollowalkServerInfo as ipollowalkServerInfoCmd,
-  ipollowalkServerRestart as ipollowalkServerRestartCmd,
+  ipolloworkServerInfo as ipolloworkServerInfoCmd,
+  ipolloworkServerRestart as ipolloworkServerRestartCmd,
   pickFile,
   revealDesktopItemInDir,
-  resetiPolloWalkState,
+  resetiPolloWorkState,
   sandboxDebugProbe as sandboxDebugProbeCmd,
   updaterEnvironment as updaterEnvironmentCmd,
   workspaceBootstrap as workspaceBootstrapCmd,
   type AppBuildInfo,
   type DesktopBootstrapConfig,
   type EngineInfo,
-  type iPolloWalkServerInfo,
+  type iPolloWorkServerInfo,
   type SandboxDebugProbeResult,
 } from "../../../../app/lib/desktop";
 import {
@@ -30,8 +30,8 @@ import {
 import { downloadTextAsFile } from "../../../../app/lib/download";
 
 import {
-  writeiPolloWalkServerSettings,
-} from "../../../../app/lib/ipollowalk-server";
+  writeiPolloWorkServerSettings,
+} from "../../../../app/lib/ipollowork-server";
 import {
   clearStartupPreference,
   isDesktopRuntime,
@@ -43,19 +43,19 @@ import { t } from "../../../../i18n";
 import { resetFirstRunClientState } from "../../../shell/session-memory";
 import type { DebugViewProps } from "../pages/debug-view";
 import type { ReleaseChannel } from "../../../../app/types";
-import type { iPolloWalkServerStore, iPolloWalkServerStoreSnapshot } from "../../connections/ipollowalk-server-store";
+import type { iPolloWorkServerStore, iPolloWorkServerStoreSnapshot } from "../../connections/ipollowork-server-store";
 
-const STARTUP_PREFERENCE_KEY = "ipollowalk.startupPreference";
-const ENGINE_SOURCE_KEY = "ipollowalk.engineSource";
-const ENGINE_CUSTOM_BIN_KEY = "ipollowalk.engineCustomBinPath";
-const OPENCODE_ENABLE_EXA_KEY = "ipollowalk.opencodeEnableExa";
+const STARTUP_PREFERENCE_KEY = "ipollowork.startupPreference";
+const ENGINE_SOURCE_KEY = "ipollowork.engineSource";
+const ENGINE_CUSTOM_BIN_KEY = "ipollowork.engineCustomBinPath";
+const OPENCODE_ENABLE_EXA_KEY = "ipollowork.opencodeEnableExa";
 
 type ResetModalMode = "onboarding" | "all";
 
 type UseDebugViewModelOptions = {
   developerMode: boolean;
-  ipollowalkServerStore: iPolloWalkServerStore;
-  ipollowalkServerSnapshot: iPolloWalkServerStoreSnapshot;
+  ipolloworkServerStore: iPolloWorkServerStore;
+  ipolloworkServerSnapshot: iPolloWorkServerStoreSnapshot;
   runtimeWorkspaceId: string | null;
   selectedWorkspaceRoot: string;
   setRouteError: (value: string | null) => void;
@@ -88,7 +88,7 @@ function clearStoredString(key: string): void {
   }
 }
 
-function cleariPolloWalkLocalStorageForReset(mode: ResetModalMode): void {
+function cleariPolloWorkLocalStorageForReset(mode: ResetModalMode): void {
   if (typeof window === "undefined") return;
   if (mode === "all") {
     try {
@@ -174,7 +174,7 @@ function formatOpencodeBinary(info: EngineInfo | null) {
   return formatBinaryWithSource(info?.opencodeBinPath, info?.opencodeBinSource);
 }
 
-function formatManagedOpencodeBinary(info: iPolloWalkServerInfo | null) {
+function formatManagedOpencodeBinary(info: iPolloWorkServerInfo | null) {
   return formatBinaryWithSource(
     info?.managedOpencodeBinPath,
     info?.managedOpencodeBinSource,
@@ -188,7 +188,7 @@ function formatBinaryWithSource(path: string | null | undefined, source: string 
   return sourceLabel ? `${binary} (${sourceLabel})` : binary;
 }
 
-function describeiPolloWalkServer(info: iPolloWalkServerInfo | null) {
+function describeiPolloWorkServer(info: iPolloWorkServerInfo | null) {
   const running = Boolean(info?.running);
   return {
     ...statusPill(running),
@@ -227,8 +227,8 @@ function describeOpencodeConnect(engine: EngineInfo | null) {
 export function useDebugViewModel(options: UseDebugViewModelOptions) {
   const {
     developerMode,
-    ipollowalkServerStore,
-    ipollowalkServerSnapshot,
+    ipolloworkServerStore,
+    ipolloworkServerSnapshot,
     runtimeWorkspaceId,
     selectedWorkspaceRoot,
     setRouteError,
@@ -246,17 +246,17 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
   const [sandboxProbeResult, setSandboxProbeResult] = useState<SandboxDebugProbeResult | null>(null);
   const [sandboxProbeStatus, setSandboxProbeStatus] = useState<string | null>(null);
   const [opencodeRestarting, setOpencodeRestarting] = useState(false);
-  const [ipollowalkServerRestarting, setiPolloWalkServerRestarting] = useState(false);
+  const [ipolloworkServerRestarting, setiPolloWorkServerRestarting] = useState(false);
   const [opencodeServiceStatus, setOpencodeServiceStatus] = useState<{
     tone: "success" | "error";
     message: string;
   } | null>(null);
-  const [ipollowalkServiceStatus, setiPolloWalkServiceStatus] = useState<{
+  const [ipolloworkServiceStatus, setiPolloWorkServiceStatus] = useState<{
     tone: "success" | "error";
     message: string;
   } | null>(null);
   const [opencodeLogStatus, setOpencodeLogStatus] = useState<string | null>(null);
-  const [ipollowalkLogStatus, setiPolloWalkLogStatus] = useState<string | null>(null);
+  const [ipolloworkLogStatus, setiPolloWorkLogStatus] = useState<string | null>(null);
   const [serviceRestartError, setServiceRestartError] = useState<string | null>(null);
   const [resetModalBusy, setResetModalBusy] = useState(false);
   const [nukeConfigBusy, setNukeConfigBusy] = useState(false);
@@ -357,13 +357,13 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       appVersionLabel: appBuild?.version ?? "—",
       appCommitLabel: appBuild?.gitSha ?? "—",
       opencodeVersionLabel: engineInfoState?.baseUrl ? "managed" : "—",
-      ipollowalkServerVersionLabel: ipollowalkServerSnapshot.ipollowalkServerDiagnostics?.version ?? "—",
+      ipolloworkServerVersionLabel: ipolloworkServerSnapshot.ipolloworkServerDiagnostics?.version ?? "—",
     }),
     [
       appBuild?.gitSha,
       appBuild?.version,
       engineInfoState?.baseUrl,
-      ipollowalkServerSnapshot.ipollowalkServerDiagnostics?.version,
+      ipolloworkServerSnapshot.ipolloworkServerDiagnostics?.version,
     ],
   );
 
@@ -372,13 +372,13 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       collectedAt: new Date().toISOString(),
       app: appBuild ?? null,
       engine: engineInfoState,
-      ipollowalkServer: {
-        hostInfo: ipollowalkServerSnapshot.ipollowalkServerHostInfo,
-        diagnostics: ipollowalkServerSnapshot.ipollowalkServerDiagnostics,
-        capabilities: ipollowalkServerSnapshot.ipollowalkServerCapabilities,
-        settings: ipollowalkServerSnapshot.ipollowalkServerSettings,
-        status: ipollowalkServerSnapshot.ipollowalkServerStatus,
-        url: ipollowalkServerSnapshot.ipollowalkServerUrl,
+      ipolloworkServer: {
+        hostInfo: ipolloworkServerSnapshot.ipolloworkServerHostInfo,
+        diagnostics: ipolloworkServerSnapshot.ipolloworkServerDiagnostics,
+        capabilities: ipolloworkServerSnapshot.ipolloworkServerCapabilities,
+        settings: ipolloworkServerSnapshot.ipolloworkServerSettings,
+        status: ipolloworkServerSnapshot.ipolloworkServerStatus,
+        url: ipolloworkServerSnapshot.ipolloworkServerUrl,
       },
       runtimeWorkspaceId,
       selectedWorkspaceRoot,
@@ -388,12 +388,12 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
     appBuild,
     bootstrapPrepared,
     engineInfoState,
-    ipollowalkServerSnapshot.ipollowalkServerCapabilities,
-    ipollowalkServerSnapshot.ipollowalkServerDiagnostics,
-    ipollowalkServerSnapshot.ipollowalkServerHostInfo,
-    ipollowalkServerSnapshot.ipollowalkServerSettings,
-    ipollowalkServerSnapshot.ipollowalkServerStatus,
-    ipollowalkServerSnapshot.ipollowalkServerUrl,
+    ipolloworkServerSnapshot.ipolloworkServerCapabilities,
+    ipolloworkServerSnapshot.ipolloworkServerDiagnostics,
+    ipolloworkServerSnapshot.ipolloworkServerHostInfo,
+    ipolloworkServerSnapshot.ipolloworkServerSettings,
+    ipolloworkServerSnapshot.ipolloworkServerStatus,
+    ipolloworkServerSnapshot.ipolloworkServerUrl,
     runtimeWorkspaceId,
     selectedWorkspaceRoot,
   ]);
@@ -408,9 +408,9 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
   );
 
   const engineCard = useMemo(() => describeEngine(engineInfoState), [engineInfoState]);
-  const ipollowalkCard = useMemo(
-    () => describeiPolloWalkServer(ipollowalkServerSnapshot.ipollowalkServerHostInfo),
-    [ipollowalkServerSnapshot.ipollowalkServerHostInfo],
+  const ipolloworkCard = useMemo(
+    () => describeiPolloWorkServer(ipolloworkServerSnapshot.ipolloworkServerHostInfo),
+    [ipolloworkServerSnapshot.ipolloworkServerHostInfo],
   );
   const opencodeConnectCard = useMemo(
     () => describeOpencodeConnect(engineInfoState),
@@ -429,7 +429,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
   const onExportRuntimeDebugReport = useCallback(async () => {
     try {
       downloadTextAsFile(
-        `ipollowalk-runtime-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+        `ipollowork-runtime-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
         runtimeDebugReportJson,
         "application/json",
       );
@@ -456,7 +456,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
   const onExportDeveloperLog = useCallback(async () => {
     try {
       downloadTextAsFile(
-        `ipollowalk-developer-${new Date().toISOString().replace(/[:.]/g, "-")}.log`,
+        `ipollowork-developer-${new Date().toISOString().replace(/[:.]/g, "-")}.log`,
         developerLog.join("\n"),
         "text/plain",
       );
@@ -503,11 +503,11 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       const env = await updaterEnvironmentCmd() as { appBundlePath?: string };
       const appBundlePath = env.appBundlePath?.trim();
       if (!appBundlePath) {
-        setElectronMigrationStatus("Could not resolve the current iPolloWalk.app bundle path.");
+        setElectronMigrationStatus("Could not resolve the current iPolloWork.app bundle path.");
         return;
       }
       await revealDesktopItemInDir(`${appBundlePath}.migrate-bak`);
-      setElectronMigrationStatus("Requested Finder reveal for iPolloWalk.app.migrate-bak. The backup exists after an install handoff completes.");
+      setElectronMigrationStatus("Requested Finder reveal for iPolloWork.app.migrate-bak. The backup exists after an install handoff completes.");
     } catch (error) {
       setElectronMigrationStatus(error instanceof Error ? error.message : safeStringify(error));
     }
@@ -523,7 +523,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
 
   useEffect(() => {
     if (!developerMode || !isElectronRuntime()) return;
-    const bridge = window.__IPOLLOWALK_ELECTRON__?.updater;
+    const bridge = window.__IPOLLOWORK_ELECTRON__?.updater;
     if (!bridge?.getChannel) return;
     let cancelled = false;
     void bridge.getChannel()
@@ -546,7 +546,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       setElectronAlphaUpdaterStatus("Electron alpha updates are macOS-only for now.");
       return;
     }
-    const bridge = window.__IPOLLOWALK_ELECTRON__?.updater;
+    const bridge = window.__IPOLLOWORK_ELECTRON__?.updater;
     if (!bridge?.setChannel) {
       setElectronAlphaUpdaterStatus("Electron updater bridge is unavailable.");
       return;
@@ -572,7 +572,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       setElectronAlphaUpdaterStatus("Electron update checks are available only in the Electron desktop app.");
       return;
     }
-    const bridge = window.__IPOLLOWALK_ELECTRON__?.updater;
+    const bridge = window.__IPOLLOWORK_ELECTRON__?.updater;
     if (!bridge?.check) {
       setElectronAlphaUpdaterStatus("Electron updater bridge is unavailable.");
       return;
@@ -668,7 +668,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       );
     }
 
-    // Collect ALL local workspace paths so ipollowalk-server is started with
+    // Collect ALL local workspace paths so ipollowork-server is started with
     // --workspace <path> for every registered local workspace. Mirrors the
     // Solid reference (context/workspace.ts::resolveWorkspacePaths) so that
     // `client.listWorkspaces()` later returns the full set, not just the
@@ -693,15 +693,15 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       runtime: "direct",
       workspacePaths,
       opencodeEnableExa: readOpencodeEnableExa(),
-      ipollowalkRemoteAccess:
-        optionsRef.current.ipollowalkServerSnapshot.ipollowalkServerSettings
+      ipolloworkRemoteAccess:
+        optionsRef.current.ipolloworkServerSnapshot.ipolloworkServerSettings
           .remoteAccessEnabled === true,
     });
 
-    // engine_start restarts ipollowalk-server on a NEW port and lets that server
+    // engine_start restarts ipollowork-server on a NEW port and lets that server
     // manage OpenCode. Re-read host info and persist the fresh URL/token.
     try {
-      const hostInfo = (await ipollowalkServerInfoCmd()) as {
+      const hostInfo = (await ipolloworkServerInfoCmd()) as {
         baseUrl?: string;
         ownerToken?: string;
         clientToken?: string;
@@ -710,7 +710,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
         remoteAccessEnabled?: boolean;
       } | null;
       if (hostInfo?.baseUrl) {
-        writeiPolloWalkServerSettings({
+        writeiPolloWorkServerSettings({
           urlOverride: hostInfo.baseUrl,
           token: hostInfo.ownerToken?.trim() || hostInfo.clientToken?.trim() || undefined,
           hostToken: hostInfo.hostToken?.trim() || undefined,
@@ -718,17 +718,17 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
           remoteAccessEnabled: hostInfo.remoteAccessEnabled === true,
         });
         if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("ipollowalk-server-settings-changed"));
+          window.dispatchEvent(new CustomEvent("ipollowork-server-settings-changed"));
         }
       }
     } catch {
       // best-effort: if this fails, the host-info poller will catch up in ~10s.
     }
 
-    await ipollowalkServerStore.reconnectiPolloWalkServer();
+    await ipolloworkServerStore.reconnectiPolloWorkServer();
     await refreshEngineInfo();
     return info;
-  }, [ipollowalkServerStore, refreshEngineInfo]);
+  }, [ipolloworkServerStore, refreshEngineInfo]);
 
   const onRestartOpencode = useCallback(async () => {
     if (!isDesktopRuntime()) return;
@@ -754,34 +754,34 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
     }
   }, [bootFullEngineStack, pushDeveloperLog]);
 
-  const onRestartiPolloWalkServer = useCallback(async () => {
+  const onRestartiPolloWorkServer = useCallback(async () => {
     if (!isDesktopRuntime()) return;
-    setiPolloWalkServerRestarting(true);
-    setiPolloWalkServiceStatus(null);
+    setiPolloWorkServerRestarting(true);
+    setiPolloWorkServiceStatus(null);
     setServiceRestartError(null);
     try {
-      await ipollowalkServerRestartCmd({
-        remoteAccessEnabled: ipollowalkServerSnapshot.ipollowalkServerSettings.remoteAccessEnabled === true,
+      await ipolloworkServerRestartCmd({
+        remoteAccessEnabled: ipolloworkServerSnapshot.ipolloworkServerSettings.remoteAccessEnabled === true,
       });
-      setiPolloWalkServiceStatus({
+      setiPolloWorkServiceStatus({
         tone: "success",
-        message: t("settings.restart_succeeded_template", { service: "iPolloWalk server" }),
+        message: t("settings.restart_succeeded_template", { service: "iPolloWork server" }),
       });
-      pushDeveloperLog("Restarted ipollowalk-server");
-      await ipollowalkServerStore.reconnectiPolloWalkServer();
+      pushDeveloperLog("Restarted ipollowork-server");
+      await ipolloworkServerStore.reconnectiPolloWorkServer();
     } catch (error) {
       const message = error instanceof Error ? error.message : safeStringify(error);
-      setiPolloWalkServiceStatus({
+      setiPolloWorkServiceStatus({
         tone: "error",
-        message: `${t("settings.restart_failed_template", { service: "iPolloWalk server" })} ${message}`,
+        message: `${t("settings.restart_failed_template", { service: "iPolloWork server" })} ${message}`,
       });
       setServiceRestartError(message);
     } finally {
-      setiPolloWalkServerRestarting(false);
+      setiPolloWorkServerRestarting(false);
     }
   }, [
-    ipollowalkServerSnapshot.ipollowalkServerSettings.remoteAccessEnabled,
-    ipollowalkServerStore,
+    ipolloworkServerSnapshot.ipolloworkServerSettings.remoteAccessEnabled,
+    ipolloworkServerStore,
     pushDeveloperLog,
   ]);
 
@@ -819,7 +819,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
     }
     try {
       downloadTextAsFile(
-        `ipollowalk-opencode-${new Date().toISOString().replace(/[:.]/g, "-")}.log`,
+        `ipollowork-opencode-${new Date().toISOString().replace(/[:.]/g, "-")}.log`,
         text,
         "text/plain",
       );
@@ -829,39 +829,39 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
     }
   }, [engineInfoState?.lastStderr, engineInfoState?.lastStdout, formatServiceLogs]);
 
-  const onCopyiPolloWalkLogs = useCallback(async () => {
-    const info = ipollowalkServerSnapshot.ipollowalkServerHostInfo;
+  const onCopyiPolloWorkLogs = useCallback(async () => {
+    const info = ipolloworkServerSnapshot.ipolloworkServerHostInfo;
     const text = formatServiceLogs(info?.lastStdout, info?.lastStderr);
     if (!text) {
-      setiPolloWalkLogStatus(t("settings.no_logs_captured"));
+      setiPolloWorkLogStatus(t("settings.no_logs_captured"));
       return;
     }
     try {
       await navigator.clipboard.writeText(text);
-      setiPolloWalkLogStatus(t("settings.copied_service_logs", { service: "iPolloWalk server" }));
+      setiPolloWorkLogStatus(t("settings.copied_service_logs", { service: "iPolloWork server" }));
     } catch (error) {
-      setiPolloWalkLogStatus(error instanceof Error ? error.message : safeStringify(error));
+      setiPolloWorkLogStatus(error instanceof Error ? error.message : safeStringify(error));
     }
-  }, [formatServiceLogs, ipollowalkServerSnapshot.ipollowalkServerHostInfo]);
+  }, [formatServiceLogs, ipolloworkServerSnapshot.ipolloworkServerHostInfo]);
 
-  const onExportiPolloWalkLogs = useCallback(async () => {
-    const info = ipollowalkServerSnapshot.ipollowalkServerHostInfo;
+  const onExportiPolloWorkLogs = useCallback(async () => {
+    const info = ipolloworkServerSnapshot.ipolloworkServerHostInfo;
     const text = formatServiceLogs(info?.lastStdout, info?.lastStderr);
     if (!text) {
-      setiPolloWalkLogStatus(t("settings.no_logs_captured"));
+      setiPolloWorkLogStatus(t("settings.no_logs_captured"));
       return;
     }
     try {
       downloadTextAsFile(
-        `ipollowalk-server-${new Date().toISOString().replace(/[:.]/g, "-")}.log`,
+        `ipollowork-server-${new Date().toISOString().replace(/[:.]/g, "-")}.log`,
         text,
         "text/plain",
       );
-      setiPolloWalkLogStatus(t("settings.exported_developer_log"));
+      setiPolloWorkLogStatus(t("settings.exported_developer_log"));
     } catch (error) {
-      setiPolloWalkLogStatus(error instanceof Error ? error.message : safeStringify(error));
+      setiPolloWorkLogStatus(error instanceof Error ? error.message : safeStringify(error));
     }
-  }, [formatServiceLogs, ipollowalkServerSnapshot.ipollowalkServerHostInfo]);
+  }, [formatServiceLogs, ipolloworkServerSnapshot.ipolloworkServerHostInfo]);
 
   const [resetStatus, setResetStatus] = useState<string | null>(null);
 
@@ -870,22 +870,22 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       if (!isDesktopRuntime()) return;
       const message =
         mode === "all"
-          ? "Reset ALL iPolloWalk app data? Open sessions and workspaces will be removed."
+          ? "Reset ALL iPolloWork app data? Open sessions and workspaces will be removed."
           : "Reset onboarding state only?";
       if (typeof window !== "undefined" && !window.confirm(message)) {
         return;
       }
       setResetModalBusy(true);
       setResetStatus(null);
-      void resetiPolloWalkState(mode)
+      void resetiPolloWorkState(mode)
         .then(async () => {
-          cleariPolloWalkLocalStorageForReset(mode);
+          cleariPolloWorkLocalStorageForReset(mode);
           setResetStatus(
             mode === "all"
-              ? "Reset iPolloWalk state. Restart the app to see changes."
+              ? "Reset iPolloWork state. Restart the app to see changes."
               : "Reset onboarding state. Restart the app to see changes.",
           );
-          pushDeveloperLog(`reset_ipollowalk_state mode=${mode}`);
+          pushDeveloperLog(`reset_ipollowork_state mode=${mode}`);
         })
         .catch((error) => {
           setRouteError(error instanceof Error ? error.message : safeStringify(error));
@@ -897,19 +897,19 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
     [pushDeveloperLog, setRouteError],
   );
 
-  const onNukeiPolloWalkAndOpencodeConfig = useCallback(async () => {
+  const onNukeiPolloWorkAndOpencodeConfig = useCallback(async () => {
     if (!isDesktopRuntime()) return;
     const confirmed =
       typeof window === "undefined"
         ? true
         : window.confirm(
-            "Delete ALL local iPolloWalk + OpenCode config and quit? This cannot be undone.",
+            "Delete ALL local iPolloWork + OpenCode config and quit? This cannot be undone.",
           );
     if (!confirmed) return;
     setNukeConfigBusy(true);
     setNukeConfigStatus(null);
     try {
-      await nukeiPolloWalkAndOpencodeConfigAndExit();
+      await nukeiPolloWorkAndOpencodeConfigAndExit();
     } catch (error) {
       setNukeConfigStatus(error instanceof Error ? error.message : safeStringify(error));
     } finally {
@@ -929,8 +929,8 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       anyActiveRuns: false,
       startupPreference: "server",
       startupLabel:
-        ipollowalkServerSnapshot.ipollowalkServerStatus === "connected"
-          ? t("settings.ipollowalk_server_label")
+        ipolloworkServerSnapshot.ipolloworkServerStatus === "connected"
+          ? t("settings.ipollowork_server_label")
           : t("status.disconnected_label"),
       runtimeSummary,
       runtimeDebugReportJson,
@@ -984,40 +984,40 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       startupStatus,
       workspaceDebugEventsStatus,
       opencodeRestarting,
-      ipollowalkServerRestarting,
+      ipolloworkServerRestarting,
       opencodeServiceStatus,
-      ipollowalkServiceStatus,
+      ipolloworkServiceStatus,
       opencodeLogStatus,
-      ipollowalkLogStatus,
+      ipolloworkLogStatus,
       onCopyOpencodeLogs,
       onExportOpencodeLogs,
-      onCopyiPolloWalkLogs,
-      onExportiPolloWalkLogs,
+      onCopyiPolloWorkLogs,
+      onExportiPolloWorkLogs,
       serviceRestartError,
       onRestartOpencode,
-      onRestartiPolloWalkServer,
+      onRestartiPolloWorkServer,
       engineCard,
       opencodeConnectCard,
-      ipollowalkCard,
-      ipollowalkServerDiagnostics: ipollowalkServerSnapshot.ipollowalkServerDiagnostics,
+      ipolloworkCard,
+      ipolloworkServerDiagnostics: ipolloworkServerSnapshot.ipolloworkServerDiagnostics,
       runtimeWorkspaceId,
-      ipollowalkServerCapabilities: ipollowalkServerSnapshot.ipollowalkServerCapabilities,
+      ipolloworkServerCapabilities: ipolloworkServerSnapshot.ipolloworkServerCapabilities,
       pendingPermissions: {},
       events: [],
       workspaceDebugEvents: [],
       safeStringify,
       onClearWorkspaceDebugEvents,
-      ipollowalkAuditEntries: ipollowalkServerSnapshot.ipollowalkAuditEntries,
-      ipollowalkAuditStatus: auditStatusPill(ipollowalkServerSnapshot.ipollowalkAuditStatus),
-      ipollowalkAuditError: ipollowalkServerSnapshot.ipollowalkAuditError,
+      ipolloworkAuditEntries: ipolloworkServerSnapshot.ipolloworkAuditEntries,
+      ipolloworkAuditStatus: auditStatusPill(ipolloworkServerSnapshot.ipolloworkAuditStatus),
+      ipolloworkAuditError: ipolloworkServerSnapshot.ipolloworkAuditError,
       opencodeConnectStatus: null,
-      opencodeDevModeEnabled: appBuild?.ipollowalkDevMode === true,
+      opencodeDevModeEnabled: appBuild?.ipolloworkDevMode === true,
       nukeConfigBusy,
       nukeConfigStatus,
-      onNukeiPolloWalkAndOpencodeConfig,
+      onNukeiPolloWorkAndOpencodeConfig,
     }),
     [
-      appBuild?.ipollowalkDevMode,
+      appBuild?.ipolloworkDevMode,
       developerLog,
       developerLogStatus,
       developerMode,
@@ -1045,7 +1045,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       onExportRuntimeDebugReport,
       onInstallElectronPreviewFromTauri,
       onCheckElectronAlphaUpdates,
-      onNukeiPolloWalkAndOpencodeConfig,
+      onNukeiPolloWorkAndOpencodeConfig,
       onOpenElectronPreviewRelease,
       onOpenResetModal,
       onPrepareElectronMigrationSnapshot,
@@ -1054,7 +1054,7 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       onRevealElectronMigrationBackup,
       onResetStartupPreference,
       onRestartOpencode,
-      onRestartiPolloWalkServer,
+      onRestartiPolloWorkServer,
       onRunSandboxDebugProbe,
       onSetElectronAlphaUpdaterChannel,
       onSetElectronMigrationSha512,
@@ -1062,26 +1062,26 @@ export function useDebugViewModel(options: UseDebugViewModelOptions) {
       onSetEngineSource,
       onStopHost,
       onCopyOpencodeLogs,
-      onCopyiPolloWalkLogs,
+      onCopyiPolloWorkLogs,
       onExportOpencodeLogs,
-      onExportiPolloWalkLogs,
+      onExportiPolloWorkLogs,
       opencodeConnectCard,
       opencodeLogStatus,
       opencodeRestarting,
       opencodeServiceStatus,
-      ipollowalkCard,
-      ipollowalkLogStatus,
-      ipollowalkServiceStatus,
-      ipollowalkServerRestarting,
+      ipolloworkCard,
+      ipolloworkLogStatus,
+      ipolloworkServiceStatus,
+      ipolloworkServerRestarting,
       resetStatus,
       startupStatus,
       workspaceDebugEventsStatus,
-      ipollowalkServerSnapshot.ipollowalkAuditEntries,
-      ipollowalkServerSnapshot.ipollowalkAuditError,
-      ipollowalkServerSnapshot.ipollowalkAuditStatus,
-      ipollowalkServerSnapshot.ipollowalkServerCapabilities,
-      ipollowalkServerSnapshot.ipollowalkServerDiagnostics,
-      ipollowalkServerSnapshot.ipollowalkServerStatus,
+      ipolloworkServerSnapshot.ipolloworkAuditEntries,
+      ipolloworkServerSnapshot.ipolloworkAuditError,
+      ipolloworkServerSnapshot.ipolloworkAuditStatus,
+      ipolloworkServerSnapshot.ipolloworkServerCapabilities,
+      ipolloworkServerSnapshot.ipolloworkServerDiagnostics,
+      ipolloworkServerSnapshot.ipolloworkServerStatus,
       resetModalBusy,
       runtimeDebugReportJson,
       runtimeDebugStatus,

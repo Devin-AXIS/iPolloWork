@@ -1,6 +1,6 @@
 # connect-delivery-switch — Marketplace delivery moves to Connect
 
-Cast is Alex, the Acme Robotics admin, using the iPolloWalk desktop app against the local Den stack. The proof toggles Acme's Connect capability around one seeded marketplace plugin so the old desktop import path and the new cloud rail can be compared directly.
+Cast is Alex, the Acme Robotics admin, using the iPolloWork desktop app against the local Den stack. The proof toggles Acme's Connect capability around one seeded marketplace plugin so the old desktop import path and the new cloud rail can be compared directly.
 
 1. With Connect turned off, Alex opens Extensions and switches to Marketplace. The familiar My Extensions / Marketplace toggle is still present, and the seeded marketplace plugin is installable just like today's desktop import flow.
 

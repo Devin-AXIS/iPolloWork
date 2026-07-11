@@ -19,17 +19,17 @@ import { RemoteWorkspaceFields } from "./remote-workspace-fields";
 import type { CreateRemoteWorkspaceModalProps } from "./types";
 
 type RemoteWorkspaceFormState = {
-  ipollowalkHostUrl: string;
-  ipollowalkToken: string;
-  ipollowalkTokenVisible: boolean;
+  ipolloworkHostUrl: string;
+  ipolloworkToken: string;
+  ipolloworkTokenVisible: boolean;
   directory: string;
   displayName: string;
 };
 
 const emptyRemoteWorkspaceForm: RemoteWorkspaceFormState = {
-  ipollowalkHostUrl: "",
-  ipollowalkToken: "",
-  ipollowalkTokenVisible: false,
+  ipolloworkHostUrl: "",
+  ipolloworkToken: "",
+  ipolloworkTokenVisible: false,
   directory: "",
   displayName: "",
 };
@@ -40,7 +40,7 @@ export function CreateRemoteWorkspaceModal(
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = useState<RemoteWorkspaceFormState>(emptyRemoteWorkspaceForm);
-  const { ipollowalkHostUrl, ipollowalkToken, ipollowalkTokenVisible, directory, displayName } = form;
+  const { ipolloworkHostUrl, ipolloworkToken, ipolloworkTokenVisible, directory, displayName } = form;
 
   const showClose = props.showClose ?? true;
   const title = props.title ?? t("dashboard.create_remote_workspace_title");
@@ -52,8 +52,8 @@ export function CreateRemoteWorkspaceModal(
 
   const canSubmit = useMemo(() => {
     if (submitting) return false;
-    return ipollowalkHostUrl.trim().length > 0;
-  }, [ipollowalkHostUrl, submitting]);
+    return ipolloworkHostUrl.trim().length > 0;
+  }, [ipolloworkHostUrl, submitting]);
 
   useEffect(() => {
     if (!props.open) return;
@@ -65,9 +65,9 @@ export function CreateRemoteWorkspaceModal(
     if (!props.open) return;
     const defaults = props.initialValues ?? {};
     setForm({
-      ipollowalkHostUrl: defaults.ipollowalkHostUrl?.trim() ?? "",
-      ipollowalkToken: defaults.ipollowalkToken?.trim() ?? "",
-      ipollowalkTokenVisible: false,
+      ipolloworkHostUrl: defaults.ipolloworkHostUrl?.trim() ?? "",
+      ipolloworkToken: defaults.ipolloworkToken?.trim() ?? "",
+      ipolloworkTokenVisible: false,
       directory: defaults.directory?.trim() ?? "",
       displayName: defaults.displayName?.trim() ?? "",
     });
@@ -91,13 +91,13 @@ export function CreateRemoteWorkspaceModal(
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <RemoteWorkspaceFields
-            hostUrl={ipollowalkHostUrl}
-            onHostUrlInput={(value) => setForm((current) => ({ ...current, ipollowalkHostUrl: value }))}
-            token={ipollowalkToken}
-            tokenVisible={ipollowalkTokenVisible}
-            onTokenInput={(value) => setForm((current) => ({ ...current, ipollowalkToken: value }))}
+            hostUrl={ipolloworkHostUrl}
+            onHostUrlInput={(value) => setForm((current) => ({ ...current, ipolloworkHostUrl: value }))}
+            token={ipolloworkToken}
+            tokenVisible={ipolloworkTokenVisible}
+            onTokenInput={(value) => setForm((current) => ({ ...current, ipolloworkToken: value }))}
             onToggleTokenVisible={() =>
-              setForm((current) => ({ ...current, ipollowalkTokenVisible: !current.ipollowalkTokenVisible }))
+              setForm((current) => ({ ...current, ipolloworkTokenVisible: !current.ipolloworkTokenVisible }))
             }
             displayName={displayName}
             onDisplayNameInput={(value) => setForm((current) => ({ ...current, displayName: value }))}
@@ -107,7 +107,7 @@ export function CreateRemoteWorkspaceModal(
             submitting={submitting}
             hostInputRef={inputRef}
             title="Remote server details"
-            description="Use the URL your iPolloWalk server shared with you. Add a token only if the server needs one."
+            description="Use the URL your iPolloWork server shared with you. Add a token only if the server needs one."
           />
         </div>
 
@@ -128,15 +128,15 @@ export function CreateRemoteWorkspaceModal(
               type="button"
               onClick={() =>
                 props.onConfirm({
-                  ipollowalkHostUrl: ipollowalkHostUrl.trim(),
-                  ipollowalkToken: ipollowalkToken.trim(),
+                  ipolloworkHostUrl: ipolloworkHostUrl.trim(),
+                  ipolloworkToken: ipolloworkToken.trim(),
                   directory: directory.trim() ? directory.trim() : null,
                   displayName: displayName.trim() ? displayName.trim() : null,
                 })
               }
               disabled={!canSubmit}
               title={
-                !ipollowalkHostUrl.trim()
+                !ipolloworkHostUrl.trim()
                   ? t("dashboard.remote_base_url_required")
                   : undefined
               }

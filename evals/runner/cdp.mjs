@@ -17,7 +17,7 @@ export async function pickAppTarget(baseUrl) {
   const targets = await listTargets(baseUrl);
   const pages = targets.filter((target) => target.type === "page" && target.webSocketDebuggerUrl);
   const target =
-    pages.find((page) => page.title === "iPolloWalk") ??
+    pages.find((page) => page.title === "iPolloWork") ??
     pages.find(
       (page) =>
         page.url.includes("localhost") ||

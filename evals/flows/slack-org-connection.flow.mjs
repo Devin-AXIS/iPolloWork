@@ -11,8 +11,8 @@ import { denApiFetch, openAdminConnections as openConnections, openYourConnectio
 
 const vo = await loadVoiceoverParagraphs("slack-org-connection");
 
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 const MOCK_SERVER_URL = (process.env.MOCK_DCRLESS_MCP_URL ?? "http://127.0.0.1:3979").trim().replace(/\/+$/, "");
 const MOCK_CLIENT_ID = process.env.MOCK_CLIENT_ID || "mock-preregistered-client";
 const MOCK_CLIENT_SECRET = process.env.MOCK_CLIENT_SECRET || "mock-preregistered-secret";
@@ -86,7 +86,7 @@ export default {
   title: "Slack-style Cloud Connection uses a pre-registered OAuth client instead of DCR",
   kind: "user-facing",
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   spec: "evals/org-mcp-connections-ux.md",
   steps: [
     {
@@ -199,7 +199,7 @@ export default {
           },
           screenshot: {
             name: "slack-style-redirect-url-handoff",
-            claim: "After create, iPolloWalk shows the exact redirect URL the admin must whitelist in the app.",
+            claim: "After create, iPolloWork shows the exact redirect URL the admin must whitelist in the app.",
             requireText: ["redirect URL", "/connect/callback"],
             rejectText: ["Something went wrong"],
           },

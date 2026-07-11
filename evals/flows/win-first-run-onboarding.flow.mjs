@@ -16,7 +16,7 @@ export default {
       name: "Frame 1 — first-run loader holds the boot surface",
       run: async (ctx) => {
         await ctx.prove("First launch shows the Preparing workspace loader instead of an empty session picker", {
-          claim: "A factory-reset Windows launch starts on the full-screen Preparing workspace loader as the topmost surface while iPolloWalk creates the default workspace.",
+          claim: "A factory-reset Windows launch starts on the full-screen Preparing workspace loader as the topmost surface while iPolloWork creates the default workspace.",
           voiceover: vo[0],
           // "The instant the app opens there is no welcome wizard and no empty picker — j"
           action: async () => {
@@ -52,7 +52,7 @@ export default {
       name: "Frame 2 — auto-created session is chat-ready",
       run: async (ctx) => {
         await ctx.prove("The loader hands off directly to a ready first session", {
-          claim: "When the engine is ready, iPolloWalk lands on an auto-created session with the composer and Ready for new tasks status visible, never the select-or-create empty state.",
+          claim: "When the engine is ready, iPolloWork lands on an auto-created session with the composer and Ready for new tasks status visible, never the select-or-create empty state.",
           voiceover: vo[1],
           // "When the engine is ready the loader hands off straight into a live chat sess"
           action: async () => {
@@ -84,7 +84,7 @@ export default {
       name: "Frame 3 — first send is held for provider choice",
       run: async (ctx) => {
         await ctx.prove("Running the first task opens the provider choice step before sending", {
-          claim: "The first Run task click keeps the draft in place and asks whether to use iPolloWalk Models, bring an API key, or skip to the free model.",
+          claim: "The first Run task click keeps the draft in place and asks whether to use iPolloWork Models, bring an API key, or skip to the free model.",
           voiceover: vo[2],
           // "The user types their first message and presses Run task. Instead of sending "
           action: async () => {
@@ -114,13 +114,13 @@ export default {
           },
           assert: async () => {
             await ctx.expectText("Power your first task");
-            await ctx.expectText("Use iPolloWalk Models");
+            await ctx.expectText("Use iPolloWork Models");
             await ctx.expectText("Bring your own API key");
             await ctx.expectText("Skip and use the free model");
           },
           screenshot: {
             name: "provider-choice-step",
-            requireText: ["Power your first task", "Use iPolloWalk Models", "Skip and use the free model"],
+            requireText: ["Power your first task", "Use iPolloWork Models", "Skip and use the free model"],
           },
         });
       },
@@ -145,17 +145,17 @@ export default {
           },
           assert: async () => {
             const result = await ctx.eval(`(() => {
-              const rawPreferences = localStorage.getItem("ipollowalk.preferences");
+              const rawPreferences = localStorage.getItem("ipollowork.preferences");
               const preferences = rawPreferences ? JSON.parse(rawPreferences) : null;
               const text = document.body.innerText;
               return {
                 providerStepCompleted: preferences?.providerStepCompleted === true,
-                promoStartupShown: localStorage.getItem("ipollowalk.ipollowalkModelsPromo.startupShown"),
+                promoStartupShown: localStorage.getItem("ipollowork.ipolloworkModelsPromo.startupShown"),
                 replyCount: text.split(${JSON.stringify("Windows onboarding OK")}).length - 1,
               };
             })()`);
-            ctx.assert(result.providerStepCompleted === true, "providerStepCompleted was not true in ipollowalk.preferences.");
-            ctx.assert(result.promoStartupShown === "1", "ipollowalk.ipollowalkModelsPromo.startupShown was not set to 1.");
+            ctx.assert(result.providerStepCompleted === true, "providerStepCompleted was not true in ipollowork.preferences.");
+            ctx.assert(result.promoStartupShown === "1", "ipollowork.ipolloworkModelsPromo.startupShown was not set to 1.");
             ctx.assert(result.replyCount > 1, "Windows onboarding OK did not appear in both the user draft and assistant reply.");
             await ctx.expectNoText("Power your first task");
           },

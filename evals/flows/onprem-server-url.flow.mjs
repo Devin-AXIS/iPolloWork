@@ -4,36 +4,36 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 // The runner fails this flow if the narration drifts from that script.
 const vo = await loadVoiceoverParagraphs("onprem-server-url");
 
-const ORG_URL = "https://ipollowalk.acme-example.com";
-const ORG_HOST = "ipollowalk.acme-example.com";
-const DEFAULT_DEN_BASE_URL = "https://app.ipollowalklabs.com";
-const DEFAULT_DEN_API_BASE_URL = "https://app.ipollowalklabs.com/api/den";
+const ORG_URL = "https://ipollowork.acme-example.com";
+const ORG_HOST = "ipollowork.acme-example.com";
+const DEFAULT_DEN_BASE_URL = "https://app.ipolloworklabs.com";
+const DEFAULT_DEN_API_BASE_URL = "https://app.ipolloworklabs.com/api/den";
 const PROJECT_DIR = process.cwd();
 
 async function setDesktopBootstrapConfig(ctx, config) {
-  await ctx.waitFor(`Boolean(window.__IPOLLOWALK_ELECTRON__?.invokeDesktop)`, {
+  await ctx.waitFor(`Boolean(window.__IPOLLOWORK_ELECTRON__?.invokeDesktop)`, {
     timeoutMs: 60_000,
     label: "desktop bridge",
   });
   await ctx.eval(`(async () => {
     const config = ${JSON.stringify(config)};
-    const persisted = await window.__IPOLLOWALK_ELECTRON__.invokeDesktop("setDesktopBootstrapConfig", config);
+    const persisted = await window.__IPOLLOWORK_ELECTRON__.invokeDesktop("setDesktopBootstrapConfig", config);
     const baseUrl = persisted?.baseUrl || config.baseUrl;
     const apiBaseUrl = persisted?.apiBaseUrl || config.apiBaseUrl;
-    localStorage.setItem("ipollowalk.den.baseUrl", baseUrl);
-    localStorage.setItem("ipollowalk.den.apiBaseUrl", apiBaseUrl);
-    localStorage.removeItem("ipollowalk.den.authToken");
-    localStorage.removeItem("ipollowalk.den.activeOrgId");
-    localStorage.removeItem("ipollowalk.den.activeOrgSlug");
-    localStorage.removeItem("ipollowalk.den.activeOrgName");
+    localStorage.setItem("ipollowork.den.baseUrl", baseUrl);
+    localStorage.setItem("ipollowork.den.apiBaseUrl", apiBaseUrl);
+    localStorage.removeItem("ipollowork.den.authToken");
+    localStorage.removeItem("ipollowork.den.activeOrgId");
+    localStorage.removeItem("ipollowork.den.activeOrgSlug");
+    localStorage.removeItem("ipollowork.den.activeOrgName");
     return persisted;
   })()`, { awaitPromise: true });
 }
 
 async function currentDenBaseUrls(ctx) {
   return ctx.eval(`(() => ({
-    baseUrl: localStorage.getItem("ipollowalk.den.baseUrl") || ${JSON.stringify(DEFAULT_DEN_BASE_URL)},
-    apiBaseUrl: localStorage.getItem("ipollowalk.den.apiBaseUrl") || ${JSON.stringify(DEFAULT_DEN_API_BASE_URL)},
+    baseUrl: localStorage.getItem("ipollowork.den.baseUrl") || ${JSON.stringify(DEFAULT_DEN_BASE_URL)},
+    apiBaseUrl: localStorage.getItem("ipollowork.den.apiBaseUrl") || ${JSON.stringify(DEFAULT_DEN_API_BASE_URL)},
   }))()`);
 }
 
@@ -50,14 +50,14 @@ function writeOnboardingPrefScript(completed) {
   return `(() => {
     let prefs = {};
     try {
-      const raw = localStorage.getItem("ipollowalk.preferences");
+      const raw = localStorage.getItem("ipollowork.preferences");
       prefs = raw ? JSON.parse(raw) : {};
     } catch {
       prefs = {};
     }
     if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) prefs = {};
     prefs.hasCompletedOnboarding = ${completed ? "true" : "false"};
-    localStorage.setItem("ipollowalk.preferences", JSON.stringify(prefs));
+    localStorage.setItem("ipollowork.preferences", JSON.stringify(prefs));
     return true;
   })()`;
 }
@@ -75,13 +75,13 @@ async function resetToDefaultWelcome(ctx) {
     location.reload();
     return true;
   })()`, { awaitPromise: true });
-  await ctx.waitForText("Using iPolloWalk on-premises?", { timeoutMs: 60_000 });
+  await ctx.waitForText("Using iPolloWork on-premises?", { timeoutMs: 60_000 });
 }
 
 async function finishOnboardingEnoughForSettings(ctx) {
   const onWelcome = await ctx.hasText("Pick a folder to get started");
   const existingWorkspaceId = await ctx.eval(`(async () => {
-    const invokeDesktop = window.__IPOLLOWALK_ELECTRON__?.invokeDesktop;
+    const invokeDesktop = window.__IPOLLOWORK_ELECTRON__?.invokeDesktop;
     if (!invokeDesktop) return "";
     const list = await invokeDesktop("workspaceBootstrap").catch(() => null);
     return list?.selectedId || list?.activeId || list?.workspaces?.[0]?.id || "";
@@ -101,9 +101,9 @@ async function finishOnboardingEnoughForSettings(ctx) {
       const state = await ctx.waitFor(`(() => {
         const text = document.body.innerText;
         if (text.includes("Power your first task")) return "provider";
-        if (text.includes("How did you hear about iPolloWalk?")) return "attribution";
+        if (text.includes("How did you hear about iPolloWork?")) return "attribution";
         if (location.hash.includes("/workspace/") || location.hash.includes("#/session")) return "done";
-        if (text.includes("iPolloWalk server is unavailable") || text.includes("Failed to create workspace")) return "fallback";
+        if (text.includes("iPolloWork server is unavailable") || text.includes("Failed to create workspace")) return "fallback";
         return null;
       })()`, { timeoutMs: 120_000, label: "workspace creation or onboarding step" }).catch(() => "fallback");
 
@@ -113,7 +113,7 @@ async function finishOnboardingEnoughForSettings(ctx) {
 
       const attribution = await ctx.waitFor(`(() => {
         const text = document.body.innerText;
-        if (text.includes("How did you hear about iPolloWalk?")) return "ready";
+        if (text.includes("How did you hear about iPolloWork?")) return "ready";
         if (!location.hash.startsWith("#/welcome")) return "done";
         return null;
       })()`, { timeoutMs: 30_000, label: "attribution or app route" }).catch(() => "fallback");
@@ -158,12 +158,12 @@ export default {
           },
           assert: async () => {
             await ctx.expectText("Pick a folder to get started");
-            await ctx.expectText("Using iPolloWalk on-premises?");
+            await ctx.expectText("Using iPolloWork on-premises?");
             await ctx.expectNoText(`Connected to ${ORG_HOST}`);
           },
           screenshot: {
             name: "frame-1",
-            requireText: ["Pick a folder to get started", "Using iPolloWalk on-premises?"],
+            requireText: ["Pick a folder to get started", "Using iPolloWork on-premises?"],
             rejectText: [`Connected to ${ORG_HOST}`, "Something went wrong"],
           },
         });
@@ -176,8 +176,8 @@ export default {
           voiceover: vo[1],
           action: async () => {
             await closeDialogs(ctx);
-            await ctx.clickText("Using iPolloWalk on-premises?");
-            await ctx.fill('input[placeholder="https://ipollowalk.yourcompany.com"]', ORG_URL);
+            await ctx.clickText("Using iPolloWork on-premises?");
+            await ctx.fill('input[placeholder="https://ipollowork.yourcompany.com"]', ORG_URL);
           },
           assert: async () => {
             await ctx.expectText("Connect to your organization's server");
@@ -210,13 +210,13 @@ export default {
           assert: async () => {
             await ctx.expectText(`Connected to ${ORG_HOST}`);
             await ctx.expectText("Change");
-            const stored = await ctx.eval(`localStorage.getItem("ipollowalk.den.baseUrl")`);
+            const stored = await ctx.eval(`localStorage.getItem("ipollowork.den.baseUrl")`);
             ctx.assert(stored === ORG_URL, `Expected localStorage control plane URL to be ${ORG_URL}, got ${stored}`);
           },
           screenshot: {
             name: "frame-3",
             requireText: [`Connected to ${ORG_HOST}`, "Change"],
-            rejectText: ["Using iPolloWalk on-premises?", "Something went wrong"],
+            rejectText: ["Using iPolloWork on-premises?", "Something went wrong"],
           },
         });
       },
@@ -247,26 +247,26 @@ export default {
     {
       name: "Frame 5",
       run: async (ctx) => {
-        await ctx.prove("Reset returns to standard iPolloWalk Cloud and the welcome link state", {
+        await ctx.prove("Reset returns to standard iPolloWork Cloud and the welcome link state", {
           voiceover: vo[4],
           action: async () => {
             await assertAdvancedOrganizationServerFirst(ctx);
             await ctx.clickText("Reset", { selector: "[data-section] button" });
-            await ctx.waitForText("Using standard iPolloWalk Cloud.", { timeoutMs: 30_000 });
+            await ctx.waitForText("Using standard iPolloWork Cloud.", { timeoutMs: 30_000 });
             await ctx.eval(`${writeOnboardingPrefScript(false)}`);
             await ctx.navigateHash("/welcome");
             await ctx.eval("location.reload()");
-            await ctx.waitForText("Using iPolloWalk on-premises?", { timeoutMs: 60_000 });
+            await ctx.waitForText("Using iPolloWork on-premises?", { timeoutMs: 60_000 });
           },
           assert: async () => {
-            await ctx.expectText("Using iPolloWalk on-premises?");
+            await ctx.expectText("Using iPolloWork on-premises?");
             await ctx.expectNoText(`Connected to ${ORG_HOST}`);
-            const stored = await ctx.eval(`localStorage.getItem("ipollowalk.den.baseUrl")`);
+            const stored = await ctx.eval(`localStorage.getItem("ipollowork.den.baseUrl")`);
             ctx.assert(stored === DEFAULT_DEN_BASE_URL, `Expected reset control plane URL to be ${DEFAULT_DEN_BASE_URL}, got ${stored}`);
           },
           screenshot: {
             name: "frame-5",
-            requireText: ["Using iPolloWalk on-premises?"],
+            requireText: ["Using iPolloWork on-premises?"],
             rejectText: [`Connected to ${ORG_HOST}`, "Something went wrong"],
           },
         });
@@ -291,13 +291,13 @@ export default {
                 location.reload();
                 return true;
               })()`);
-              await ctx.waitForText("Sign in with iPolloWalk Cloud", { timeoutMs: 60_000 });
+              await ctx.waitForText("Sign in with iPolloWork Cloud", { timeoutMs: 60_000 });
               await ctx.expectNoText("Developer mode only");
-              await ctx.expectText("Using iPolloWalk on-premises?");
-              await ctx.clickText("Using iPolloWalk on-premises?");
+              await ctx.expectText("Using iPolloWork on-premises?");
+              await ctx.clickText("Using iPolloWork on-premises?");
               await ctx.expectText("Connect to your organization's server");
               await ctx.expectText("Paste the server URL your IT team shared.");
-              await ctx.fill('input[placeholder="https://ipollowalk.yourcompany.com"]', ORG_URL);
+              await ctx.fill('input[placeholder="https://ipollowork.yourcompany.com"]', ORG_URL);
               await ctx.clickText("Save", { selector: '[role="dialog"] button' });
               await ctx.waitForText(`Connected to ${ORG_HOST}`, { timeoutMs: 30_000 });
               // The dialog closes with a fade animation; screenshotting while the
@@ -312,10 +312,10 @@ export default {
               await ctx.expectText(`Connected to ${ORG_HOST}`);
               await ctx.expectText("Change");
               await ctx.expectNoText("Developer mode only");
-              const stored = await ctx.eval(`localStorage.getItem("ipollowalk.den.baseUrl")`);
+              const stored = await ctx.eval(`localStorage.getItem("ipollowork.den.baseUrl")`);
               ctx.assert(stored === ORG_URL, `Expected forced sign-in control plane URL to be ${ORG_URL}, got ${stored}`);
               const bootstrap = await ctx.eval(`(async () => {
-                const config = await window.__IPOLLOWALK_ELECTRON__.invokeDesktop("getDesktopBootstrapConfig");
+                const config = await window.__IPOLLOWORK_ELECTRON__.invokeDesktop("getDesktopBootstrapConfig");
                 return { baseUrl: config.baseUrl, requireSignin: config.requireSignin === true };
               })()`, { awaitPromise: true });
               ctx.assert(bootstrap.requireSignin === true, "Expected forced sign-in to remain enabled while proving the gate.");

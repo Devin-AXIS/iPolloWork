@@ -23,13 +23,13 @@ export default {
   title: "Voice Mode request includes recent session context",
   spec: "evals/react-session-flows.md",
   precondition: async (ctx) => {
-    await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+    await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
       timeoutMs: 60_000,
       label: "control API",
     });
     const state = await ctx.waitFor(
       `(() => {
-        const control = window.__ipollowalkControl;
+        const control = window.__ipolloworkControl;
         if (control.snapshot().route.startsWith("/welcome")) return "welcome";
         const hasVoiceOpen = control.listActions().some((action) => action.id === "voice.panel.open" && !action.disabled);
         return hasVoiceOpen ? "ready" : null;
@@ -89,7 +89,7 @@ export default {
         await ctx.control("voice.panel.open");
         await ctx.waitForText("Voice Mode", { timeoutMs: 15_000 });
         await ctx.waitFor(
-          "window.__ipollowalkControl.listActions().some((action) => action.id === 'voice.start' && !action.disabled)",
+          "window.__ipolloworkControl.listActions().some((action) => action.id === 'voice.start' && !action.disabled)",
           { timeoutMs: 15_000, label: "voice.start action enabled" },
         );
       },
@@ -97,7 +97,7 @@ export default {
     {
       name: "Start Voice Mode and capture request body",
       run: async (ctx) => {
-        await ctx.eval(`window.__ipollowalkControl.execute("voice.start").catch((error) => ({ ok: false, error: String(error?.message || error) }))`, {
+        await ctx.eval(`window.__ipolloworkControl.execute("voice.start").catch((error) => ({ ok: false, error: String(error?.message || error) }))`, {
           awaitPromise: false,
         });
         const captured = await ctx.waitFor(

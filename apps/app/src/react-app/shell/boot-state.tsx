@@ -13,7 +13,7 @@ import {
 export type BootPhaseId =
   | "idle"
   | "bootstrapping-workspaces"
-  | "starting-ipollowalk-server"
+  | "starting-ipollowork-server"
   | "starting-engine"
   | "activating-workspace"
   | "ready"
@@ -48,7 +48,7 @@ const DEFAULT_STATE: BootStateSnapshot = {
 const PHASE_MESSAGES: Record<BootPhaseId, string> = {
   idle: "",
   "bootstrapping-workspaces": "Loading your workspaces",
-  "starting-ipollowalk-server": "Starting the iPolloWalk server",
+  "starting-ipollowork-server": "Starting the iPolloWork server",
   "starting-engine": "Preparing workspace",
   "activating-workspace": "Activating your workspace",
   ready: "Ready",

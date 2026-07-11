@@ -10,8 +10,8 @@ import { denApiFetch, openYourConnections, signInApi, signInViaBrowser } from ".
 
 const vo = await loadVoiceoverParagraphs("your-connections-admin-shared-connect");
 
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 const MOCK_SERVER_URL = (process.env.MOCK_OAUTH_MCP_URL ?? "http://127.0.0.1:3978").trim().replace(/\/+$/, "");
 const RUN_TAG = Date.now();
 const CONNECTION_NAME = `shared-tool-${RUN_TAG}`;
@@ -82,7 +82,7 @@ export default {
   kind: "user-facing",
   spec: "evals/org-mcp-connections-ux.md",
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "Setup: create an unconnected shared OAuth MCP connection",

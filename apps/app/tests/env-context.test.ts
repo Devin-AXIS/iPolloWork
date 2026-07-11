@@ -1,26 +1,26 @@
 import { describe, expect, test } from "bun:test";
 
-import type { iPolloWalkServerClient } from "../src/app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import {
-  buildiPolloWalkEnvSystemContext,
-  cleariPolloWalkEnvSystemContextCache,
+  buildiPolloWorkEnvSystemContext,
+  cleariPolloWorkEnvSystemContextCache,
 } from "../src/react-app/domains/session/sync/env-context";
 
-function client(keys: string[], calls: { count: number }): iPolloWalkServerClient {
+function client(keys: string[], calls: { count: number }): iPolloWorkServerClient {
   return {
     baseUrl: "http://127.0.0.1:3000",
     listUserEnvKeys: async () => {
       calls.count += 1;
       return { keys };
     },
-  } as iPolloWalkServerClient;
+  } as iPolloWorkServerClient;
 }
 
-describe("buildiPolloWalkEnvSystemContext", () => {
+describe("buildiPolloWorkEnvSystemContext", () => {
   test("lists configured key names without inventing secret values", async () => {
-    cleariPolloWalkEnvSystemContextCache();
+    cleariPolloWorkEnvSystemContextCache();
     const calls = { count: 0 };
-    const context = await buildiPolloWalkEnvSystemContext(
+    const context = await buildiPolloWorkEnvSystemContext(
       client(["NBA_LIVE_KEY", "bad-key", "ANTHROPIC_API_KEY", "NBA_LIVE_KEY"], calls),
       {
         cacheKey: "session-a",
@@ -36,19 +36,19 @@ describe("buildiPolloWalkEnvSystemContext", () => {
   });
 
   test("caches key context per session", async () => {
-    cleariPolloWalkEnvSystemContextCache();
+    cleariPolloWorkEnvSystemContextCache();
     const calls = { count: 0 };
     const server = client(["OPENROUTER_API_KEY"], calls);
 
-    await buildiPolloWalkEnvSystemContext(server, {
+    await buildiPolloWorkEnvSystemContext(server, {
       cacheKey: "session-a",
       readPendingChanges: () => false,
     });
-    await buildiPolloWalkEnvSystemContext(server, {
+    await buildiPolloWorkEnvSystemContext(server, {
       cacheKey: "session-a",
       readPendingChanges: () => false,
     });
-    await buildiPolloWalkEnvSystemContext(server, {
+    await buildiPolloWorkEnvSystemContext(server, {
       cacheKey: "session-b",
       readPendingChanges: () => false,
     });
@@ -57,10 +57,10 @@ describe("buildiPolloWalkEnvSystemContext", () => {
   });
 
   test("does not truncate long key lists", async () => {
-    cleariPolloWalkEnvSystemContextCache();
+    cleariPolloWorkEnvSystemContextCache();
     const calls = { count: 0 };
     const keys = Array.from({ length: 90 }, (_, index) => `KEY_${index}`);
-    const context = await buildiPolloWalkEnvSystemContext(client(keys, calls), {
+    const context = await buildiPolloWorkEnvSystemContext(client(keys, calls), {
       cacheKey: "session-a",
       readPendingChanges: () => false,
     });
@@ -71,9 +71,9 @@ describe("buildiPolloWalkEnvSystemContext", () => {
   });
 
   test("skips context while environment changes are pending", async () => {
-    cleariPolloWalkEnvSystemContextCache();
+    cleariPolloWorkEnvSystemContextCache();
     const calls = { count: 0 };
-    const context = await buildiPolloWalkEnvSystemContext(client(["ANTHROPIC_API_KEY"], calls), {
+    const context = await buildiPolloWorkEnvSystemContext(client(["ANTHROPIC_API_KEY"], calls), {
       cacheKey: "session-a",
       readPendingChanges: () => true,
     });

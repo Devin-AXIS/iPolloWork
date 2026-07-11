@@ -8,9 +8,9 @@ targets, and stop-tracking persistence.
 
 1. Start the Electron dev app from the repo root:
    ```bash
-   IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT=9823 pnpm dev:electron
+   IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=9823 pnpm dev:electron
    ```
-2. Attach browser tools to `http://127.0.0.1:9823` and select the iPolloWalk target.
+2. Attach browser tools to `http://127.0.0.1:9823` and select the iPolloWork target.
 3. Open or create a local workspace with permission to write files and run a local server.
 4. Keep every screenshot path returned by `browser_screenshot`; visually inspect each PNG before reporting pass/fail.
 

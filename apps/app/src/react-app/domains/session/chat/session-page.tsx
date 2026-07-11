@@ -5,9 +5,9 @@ import { usePanelRef } from "react-resizable-panels";
 import { Cloud, Code2, Columns2, FileText, Film, Globe, Mic2, Settings2, TextSearch, X, Zap } from "lucide-react";
 
 import { t } from "../../../../i18n";
-import { IPOLLOWALK_EXTENSION_CATALOG } from "../../../../app/constants";
+import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
 import { buildDenAuthUrl, readDenBootstrapConfig } from "../../../../app/lib/den";
-import { type iPolloWalkServerClient, type iPolloWalkServerStatus } from "../../../../app/lib/ipollowalk-server";
+import { type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
 import { openDesktopPath, revealDesktopItemInDir, type WorkspaceInfo } from "../../../../app/lib/desktop";
@@ -69,8 +69,8 @@ import { SidePanel } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
-import { useControlAction, type iPolloWalkControlAction } from "../../../shell/control/control-provider";
-import { getExtensionId, isiPolloWalkExtensionEnabled, IPOLLOWALK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
+import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
+import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
 
 const STARTUP_SKELETON_ROWS = [
@@ -78,7 +78,7 @@ const STARTUP_SKELETON_ROWS = [
   { id: "middle", titleWidth: "56%", bodyWidth: "88%" },
   { id: "final", titleWidth: "36%", bodyWidth: "74%" },
 ];
-const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowalk_voice__";
+const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowork_voice__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
 
 export type OpenSessionTab = {
@@ -134,7 +134,7 @@ export type SessionPageSidebarProps = {
 
 export type SessionPageSurfaceProps = Omit<
   SessionSurfaceProps,
-  "client" | "workspaceId" | "sessionId" | "opencodeBaseUrl" | "ipollowalkToken"
+  "client" | "workspaceId" | "sessionId" | "opencodeBaseUrl" | "ipolloworkToken"
 >;
 
 export type SessionPageProps = {
@@ -157,10 +157,10 @@ export type SessionPageProps = {
   opencodeBaseUrl?: string | null;
   workspaces: WorkspaceInfo[];
   clientConnected: boolean;
-  ipollowalkServerStatus: iPolloWalkServerStatus;
-  ipollowalkServerClient: iPolloWalkServerClient | null;
-  environmentClient?: iPolloWalkServerClient | null;
-  ipollowalkServerToken?: string | null;
+  ipolloworkServerStatus: iPolloWorkServerStatus;
+  ipolloworkServerClient: iPolloWorkServerClient | null;
+  environmentClient?: iPolloWorkServerClient | null;
+  ipolloworkServerToken?: string | null;
   developerMode: boolean;
   headerStatus: string;
   busyHint: string | null;
@@ -253,7 +253,7 @@ function absoluteWorkspacePath(root: string | null | undefined, value: string) {
 
 function hiddenAccessibleTargetsStorageKey(workspaceId: string | null | undefined, sessionId: string | null | undefined) {
   if (!workspaceId || !sessionId) return null;
-  return `ipollowalk.session.hiddenAccessibleTargets.v1:${workspaceId}:${sessionId}`;
+  return `ipollowork.session.hiddenAccessibleTargets.v1:${workspaceId}:${sessionId}`;
 }
 
 function readHiddenAccessibleTargetIds(workspaceId: string | null | undefined, sessionId: string | null | undefined): Set<string> {
@@ -331,10 +331,10 @@ export function SessionPage(props: SessionPageProps) {
   const extensionsRailActive = activeSidePanel === "extensions";
   const voiceRailActive = activeSidePanel === "voice";
   const voiceExtension = useMemo(
-    () => IPOLLOWALK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowalk-voice") ?? null,
+    () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
   );
-  const voiceExtensionEnabled = voiceExtension ? isiPolloWalkExtensionEnabled(voiceExtension) : false;
+  const voiceExtensionEnabled = voiceExtension ? isiPolloWorkExtensionEnabled(voiceExtension) : false;
   const showCloudSignIn = shellConfig.cloudSignin && !denAuth.isSignedIn && denAuth.status !== "checking";
   const openCloudSignIn = useCallback(() => {
     const baseUrl = readDenBootstrapConfig().baseUrl;
@@ -386,7 +386,7 @@ export function SessionPage(props: SessionPageProps) {
   // the panel opened and doesn't render the unified panel chrome.
   useEffect(() => {
     if (!isElectronRuntime()) return;
-    const browser = (window as Window).__IPOLLOWALK_ELECTRON__?.browser;
+    const browser = (window as Window).__IPOLLOWORK_ELECTRON__?.browser;
     if (!browser) return;
     const unsubOpen = browser.onPanelOpened?.(() => {
       if (preserveSidePanelOnPanelOpenRef.current) {
@@ -428,11 +428,11 @@ export function SessionPage(props: SessionPageProps) {
     return target.value;
   }, []);
   const downloadOpenTarget = useCallback(async (target: OpenTarget) => {
-    if (target.kind !== "file" || !props.ipollowalkServerClient || !props.runtimeWorkspaceId) {
+    if (target.kind !== "file" || !props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
       return;
     }
 
-    const result = await props.ipollowalkServerClient.downloadWorkspaceFile(props.runtimeWorkspaceId, target.value);
+    const result = await props.ipolloworkServerClient.downloadWorkspaceFile(props.runtimeWorkspaceId, target.value);
     const url = URL.createObjectURL(new Blob([result.data], { type: result.contentType ?? "application/octet-stream" }));
     const anchor = document.createElement("a");
 
@@ -441,13 +441,13 @@ export function SessionPage(props: SessionPageProps) {
     anchor.click();
 
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }, [props.ipollowalkServerClient, props.runtimeWorkspaceId]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   const openTarget = useCallback((target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);
       if (isElectronRuntime()) {
         setCurrentSidePanel("panel");
-        void window.__IPOLLOWALK_ELECTRON__?.browser?.createTab?.(url);
+        void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.(url);
       } else {
         window.open(url, "_blank", "noopener,noreferrer");
       }
@@ -505,7 +505,7 @@ export function SessionPage(props: SessionPageProps) {
     if (opening && isElectronRuntime()) {
       const hasBrowserTab = sessionPanelState.tabs.some((tab) => tab.type === "browser");
       if (!hasBrowserTab) {
-        void window.__IPOLLOWALK_ELECTRON__?.browser?.createTab?.();
+        void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.();
       }
     }
     toggleCurrentSidePanel("panel");
@@ -516,7 +516,7 @@ export function SessionPage(props: SessionPageProps) {
   const openVideoRailPane = useCallback(() => {
     toggleCurrentSidePanel("video");
   }, [toggleCurrentSidePanel]);
-  const seedDesignHtmlControlAction = useMemo<iPolloWalkControlAction | null>(() => {
+  const seedDesignHtmlControlAction = useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
 
     return {
@@ -524,9 +524,9 @@ export function SessionPage(props: SessionPageProps) {
       label: "Seed a local HTML design",
       description: "Create and open a deterministic local HTML artifact in the Design space.",
       sideEffect: "mutation",
-      disabled: !props.ipollowalkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
+      disabled: !props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
       execute: async () => {
-        if (!props.ipollowalkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) {
+        if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) {
           return { ok: false, error: "Workspace client is not ready." };
         }
 
@@ -536,7 +536,7 @@ export function SessionPage(props: SessionPageProps) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>iPolloWalk Design Demo</title>
+    <title>iPolloWork Design Demo</title>
     <style>
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #f5f3ff; color: #1f1636; }
       main { width: min(680px, calc(100% - 48px)); padding: 48px; border-radius: 28px; background: white; box-shadow: 0 24px 70px rgba(76, 29, 149, .14); }
@@ -549,14 +549,14 @@ export function SessionPage(props: SessionPageProps) {
   <body>
     <main>
       <img src="https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&amp;fit=crop&amp;w=1200&amp;q=80" alt="Colorful design materials on a desk" />
-      <h1>Design directly in iPolloWalk</h1>
+      <h1>Design directly in iPolloWork</h1>
       <p>Select this heading, link, or any presentation detail and make it yours.</p>
-      <a href="https://ipollowalk.so">Explore iPolloWalk</a>
+      <a href="https://ipollowork.so">Explore iPolloWork</a>
     </main>
   </body>
 </html>`;
-        const existing = await props.ipollowalkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path).catch(() => null);
-        const result = await props.ipollowalkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
+        const existing = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path).catch(() => null);
+        const result = await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
           path,
           content,
           baseUpdatedAt: existing?.updatedAt ?? null,
@@ -584,12 +584,12 @@ export function SessionPage(props: SessionPageProps) {
         return { ok: true, path };
       },
     };
-  }, [props.ipollowalkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, setCurrentSidePanel]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, setCurrentSidePanel]);
   useControlAction(seedDesignHtmlControlAction);
-  const openBrowserUrlControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const openBrowserUrlControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.open_url",
     label: "Open URL in built-in browser",
-    description: "Create or select an iPolloWalk built-in browser tab, navigate it to a URL, and return the CDP handle for browser automation.",
+    description: "Create or select an iPolloWork built-in browser tab, navigate it to a URL, and return the CDP handle for browser automation.",
     sideEffect: "navigation",
     requiresArgs: true,
     args: [
@@ -606,23 +606,23 @@ export function SessionPage(props: SessionPageProps) {
         return { ok: false, error: `Browser provider is not available yet: ${provider}` };
       }
       setCurrentSidePanel("panel");
-      return window.__IPOLLOWALK_ELECTRON__?.browser?.openUrl?.(url, provider);
+      return window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
     },
   }), [setCurrentSidePanel]);
   useControlAction(openBrowserUrlControlAction);
-  const setBrowserProxyControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.set_proxy",
     label: "Set built-in browser proxy",
     description: "Route all built-in browser traffic through an HTTP/SOCKS proxy (e.g. to browse from another location). Applies to every built-in browser tab until cleared. Pass an empty proxy to restore system network settings.",
     sideEffect: "mutation",
     args: [
-      { name: "proxy", type: "string", description: "Proxy URL like http://user:pass@host:8080 or socks5://host:1080, env:NAME to use the IPOLLOWALK_BROWSER_PROXY_NAME environment variable, or empty to clear." },
+      { name: "proxy", type: "string", description: "Proxy URL like http://user:pass@host:8080 or socks5://host:1080, env:NAME to use the IPOLLOWORK_BROWSER_PROXY_NAME environment variable, or empty to clear." },
     ],
     previewArgs: { proxy: "env:DE" },
     disabled: !isElectronRuntime(),
     execute: async (args) => {
       const proxy = controlStringArg(args, "proxy") || "";
-      const setProxy = window.__IPOLLOWALK_ELECTRON__?.browser?.setProxy;
+      const setProxy = window.__IPOLLOWORK_ELECTRON__?.browser?.setProxy;
       if (!setProxy) return { ok: false, error: "Built-in browser is not available." };
       return setProxy(proxy);
     },
@@ -685,24 +685,24 @@ export function SessionPage(props: SessionPageProps) {
       const target = accessibleTargets.find((item) => item.id === requested?.id || item.value === requested?.value);
       if (target) removeAccessibleTarget(target);
     };
-    window.addEventListener("ipollowalk-open-accessible-target", open);
-    window.addEventListener("ipollowalk-hide-accessible-target", hide);
+    window.addEventListener("ipollowork-open-accessible-target", open);
+    window.addEventListener("ipollowork-hide-accessible-target", hide);
     return () => {
-      window.removeEventListener("ipollowalk-open-accessible-target", open);
-      window.removeEventListener("ipollowalk-hide-accessible-target", hide);
+      window.removeEventListener("ipollowork-open-accessible-target", open);
+      window.removeEventListener("ipollowork-hide-accessible-target", hide);
     };
   }, [accessibleTargets, openTarget, removeAccessibleTarget]);
   useEffect(() => {
     const handler = () => setCurrentSidePanel(null);
-    window.addEventListener("ipollowalk-close-right-pane", handler);
-    return () => window.removeEventListener("ipollowalk-close-right-pane", handler);
+    window.addEventListener("ipollowork-close-right-pane", handler);
+    return () => window.removeEventListener("ipollowork-close-right-pane", handler);
   }, [setCurrentSidePanel]);
   useEffect(() => {
     const refresh = () => setExtensionStateVersion((value) => value + 1);
-    window.addEventListener(IPOLLOWALK_EXTENSION_STATE_CHANGED, refresh);
+    window.addEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
     window.addEventListener("storage", refresh);
     return () => {
-      window.removeEventListener(IPOLLOWALK_EXTENSION_STATE_CHANGED, refresh);
+      window.removeEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
       window.removeEventListener("storage", refresh);
     };
   }, []);
@@ -712,7 +712,7 @@ export function SessionPage(props: SessionPageProps) {
     }
   }, [activeSidePanel, setCurrentSidePanel, voiceExtensionEnabled]);
 
-  const openVoicePanelControlAction = useMemo<iPolloWalkControlAction | null>(() => (
+  const openVoicePanelControlAction = useMemo<iPolloWorkControlAction | null>(() => (
     voiceExtensionEnabled ? {
       id: "voice.panel.open",
       label: "Open Voice Mode",
@@ -726,7 +726,7 @@ export function SessionPage(props: SessionPageProps) {
   ), [setCurrentSidePanel, voiceExtensionEnabled]);
   useControlAction(openVoicePanelControlAction);
 
-  const closeVoicePanelControlAction = useMemo<iPolloWalkControlAction | null>(() => (
+  const closeVoicePanelControlAction = useMemo<iPolloWorkControlAction | null>(() => (
     voiceExtensionEnabled && activeSidePanel === "voice" ? {
       id: "voice.panel.close",
       label: "Close Voice Mode",
@@ -819,13 +819,13 @@ export function SessionPage(props: SessionPageProps) {
 
   const reactSessionBaseUrl = props.opencodeBaseUrl?.trim() ?? "";
   const reactSessionToken =
-    props.ipollowalkServerToken?.trim() ||
-    props.ipollowalkServerClient?.token?.trim() ||
+    props.ipolloworkServerToken?.trim() ||
+    props.ipolloworkServerClient?.token?.trim() ||
     "";
   const canRenderReactSurface = Boolean(
     props.selectedSessionId &&
       props.runtimeWorkspaceId &&
-      props.ipollowalkServerClient &&
+      props.ipolloworkServerClient &&
       reactSessionBaseUrl &&
       reactSessionToken &&
       props.surface,
@@ -1030,8 +1030,8 @@ export function SessionPage(props: SessionPageProps) {
                   size="sm"
                   onClick={() => {
                     try {
-                      window.localStorage.removeItem("ipollowalk.acknowledgedProviders");
-                      window.localStorage.removeItem("ipollowalk.orgOnboardingSeen");
+                      window.localStorage.removeItem("ipollowork.acknowledgedProviders");
+                      window.localStorage.removeItem("ipollowork.orgOnboardingSeen");
                     } catch {}
                   }}
                   title="Clears acknowledged providers + org onboarding so they trigger again"
@@ -1146,16 +1146,16 @@ export function SessionPage(props: SessionPageProps) {
                         // Spread `surface` first so the explicit per-workspace
                         // routing props below CAN'T be silently overridden by
                         // anything that leaks into `surface`. SessionSurface's
-                        // server target (client/workspaceId/sessionId/opencodeBaseUrl/ipollowalkToken)
+                        // server target (client/workspaceId/sessionId/opencodeBaseUrl/ipolloworkToken)
                         // must come from the resolved workspace endpoint passed by
                         // SessionRoute, not from anything in `surface`.
                         {...props.surface!}
-                        client={props.ipollowalkServerClient!}
+                        client={props.ipolloworkServerClient!}
                         environmentClient={props.environmentClient}
                         workspaceId={props.runtimeWorkspaceId!}
                         sessionId={props.selectedSessionId!}
                         opencodeBaseUrl={reactSessionBaseUrl}
-                        ipollowalkToken={reactSessionToken}
+                        ipolloworkToken={reactSessionToken}
                         todos={props.todos}
                         activePermission={props.activePermission}
                         permissionReplyBusy={props.permissionReplyBusy}
@@ -1171,12 +1171,12 @@ export function SessionPage(props: SessionPageProps) {
                       <div className="min-h-0 min-w-0 flex-1 border-t border-border lg:border-t-0">
                         <SessionSurface
                           {...props.surface!}
-                          client={props.ipollowalkServerClient!}
+                          client={props.ipolloworkServerClient!}
                           environmentClient={props.environmentClient}
                           workspaceId={props.runtimeWorkspaceId!}
                           sessionId={splitSessionId!}
                           opencodeBaseUrl={reactSessionBaseUrl}
-                          ipollowalkToken={reactSessionToken}
+                          ipolloworkToken={reactSessionToken}
                           todos={[]}
                           onOpenTarget={openTarget}
                         />
@@ -1312,7 +1312,7 @@ export function SessionPage(props: SessionPageProps) {
                               );
                             }}
                           >
-                            <img src="/ipollowalk-mark.svg" alt="" width={20} height={20} className="mt-0.5 shrink-0" />
+                            <img src="/ipollowork-mark.svg" alt="" width={20} height={20} className="mt-0.5 shrink-0" />
                             <div>
                               <div className="text-[13px] font-medium text-dls-text">Browse the web</div>
                               <div className="mt-0.5 text-[11px] text-dls-secondary">Search Craigslist for couches and list the results</div>
@@ -1356,7 +1356,7 @@ export function SessionPage(props: SessionPageProps) {
           {shellConfig.statusBar ? (
             <StatusBar
               clientConnected={props.clientConnected}
-              ipollowalkServerStatus={props.ipollowalkServerStatus}
+              ipolloworkServerStatus={props.ipolloworkServerStatus}
               developerMode={props.developerMode}
               settingsOpen={props.statusBar?.settingsOpen ?? false}
               onSendFeedback={props.onSendFeedback}
@@ -1387,7 +1387,7 @@ export function SessionPage(props: SessionPageProps) {
                     </div>
                   ) : activeSidePanel === "voice" ? (
                     <VoicePanel
-                      client={props.ipollowalkServerClient}
+                      client={props.ipolloworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
                       sessionId={props.selectedSessionId}
                       onClose={closeRightPane}
@@ -1395,7 +1395,7 @@ export function SessionPage(props: SessionPageProps) {
                   ) : activeSidePanel === "design" && props.selectedSessionId ? (
                     <DesignPanel
                       sessionId={props.selectedSessionId}
-                      client={props.ipollowalkServerClient}
+                      client={props.ipolloworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
                       targets={transcriptTargets}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
@@ -1410,7 +1410,7 @@ export function SessionPage(props: SessionPageProps) {
                   ) : activeSidePanel === "panel" && props.selectedSessionId ? (
                     <SidePanel
                       sessionId={props.selectedSessionId}
-                      client={props.ipollowalkServerClient}
+                      client={props.ipolloworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
                       workspaceRoot={props.selectedWorkspaceRoot}
                       isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}

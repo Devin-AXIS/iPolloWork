@@ -3,7 +3,7 @@ title: "Brand an on-prem deployment"
 description: "Configure an organization name, wordmark, accent color, and desktop icon without depending on a public CDN."
 ---
 
-Organization branding lets an owner customize the iPolloWalk experience for everyone signed in to an on-prem Den organization. Uploaded images stay inside the deployment: Den stores the binary image data in the existing MySQL database and serves signed, versioned URLs from your Den API origin.
+Organization branding lets an owner customize the iPolloWork experience for everyone signed in to an on-prem Den organization. Uploaded images stay inside the deployment: Den stores the binary image data in the existing MySQL database and serves signed, versioned URLs from your Den API origin.
 
 No separate asset PVC, public object store, or public image CDN is required.
 
@@ -17,7 +17,7 @@ No separate asset PVC, public object store, or public image CDN is required.
 | Accent color | Supported buttons and accent highlights |
 
 <Note>
-  Branding changes the displayed organization experience. It does not rename or re-sign the installed executable, and the signed application identity remains iPolloWalk.
+  Branding changes the displayed organization experience. It does not rename or re-sign the installed executable, and the signed application identity remains iPolloWork.
 </Note>
 
 ## Configure the on-prem origins
@@ -29,17 +29,17 @@ For Helm installations, set internal HTTPS names that are reachable from member 
 ```yaml
 config:
   public:
-    webOrigin: "https://ipollowalk.example.internal"
-    apiOrigin: "https://api.ipollowalk.example.internal"
-    desktopDenBaseUrl: "https://ipollowalk.example.internal"
-    corsOrigins: "https://ipollowalk.example.internal,https://api.ipollowalk.example.internal"
-    betterAuthTrustedOrigins: "https://ipollowalk.example.internal"
-    webAppHosts: "ipollowalk.example.internal"
+    webOrigin: "https://ipollowork.example.internal"
+    apiOrigin: "https://api.ipollowork.example.internal"
+    desktopDenBaseUrl: "https://ipollowork.example.internal"
+    corsOrigins: "https://ipollowork.example.internal,https://api.ipollowork.example.internal"
+    betterAuthTrustedOrigins: "https://ipollowork.example.internal"
+    webAppHosts: "ipollowork.example.internal"
 ```
 
 This maps `config.public.apiOrigin` to `DEN_API_PUBLIC_URL`. Do not set it to `localhost`, a Kubernetes service name, or an Internet hostname that air-gapped desktops cannot reach.
 
-If your organization uses a private certificate authority, install that CA in the operating-system trust store on every desktop. iPolloWalk uses Electron networking for the native icon download, so it follows the operating system's proxy and certificate trust.
+If your organization uses a private certificate authority, install that CA in the operating-system trust store on every desktop. iPolloWork uses Electron networking for the native icon download, so it follows the operating system's proxy and certificate trust.
 
 ## Upload the brand
 
@@ -78,9 +78,9 @@ There are two separate timing steps:
 
 In the real Windows validation flow, the visible taskbar and Alt-Tab update completed without a restart in about 5.4 seconds after a controlled configuration refresh. Treat that as a validation result rather than a network SLA.
 
-An already-running desktop that receives no refresh event can therefore remain on the old organization configuration for up to one hour. Closing and reopening iPolloWalk starts an immediate configuration fetch, so reopening is the fastest user action when an update appears stale.
+An already-running desktop that receives no refresh event can therefore remain on the old organization configuration for up to one hour. Closing and reopening iPolloWork starts an immediate configuration fetch, so reopening is the fastest user action when an update appears stale.
 
-On Windows, iPolloWalk briefly removes the live taskbar button, stages the new icon and AppUserModelID, and re-adds the button. The two 250 ms waits prevent Explorer from collapsing the operation and retaining the executable's stock icon. This behavior uses Electron's [`setSkipTaskbar`, `setAppDetails`, and `setIcon`](https://www.electronjs.org/docs/latest/api/browser-window) APIs.
+On Windows, iPolloWork briefly removes the live taskbar button, stages the new icon and AppUserModelID, and re-adds the button. The two 250 ms waits prevent Explorer from collapsing the operation and retaining the executable's stock icon. This behavior uses Electron's [`setSkipTaskbar`, `setAppDetails`, and `setIcon`](https://www.electronjs.org/docs/latest/api/browser-window) APIs.
 
 <Frame>
   ![A company icon displayed in the real Windows taskbar and Alt-Tab switcher](/images/on-prem-branding/windows-taskbar-and-alt-tab.png)
@@ -90,7 +90,7 @@ On Windows, iPolloWalk briefly removes the live taskbar button, stages the new i
 
 After the first successful download, the desktop caches a normalized PNG and, on Windows, a multi-resolution ICO. A relaunch applies that cached identity before the first window becomes visible. The branded icon therefore survives a desktop restart and can appear while Den is temporarily unreachable.
 
-Windows also creates or replaces a per-user `iPolloWalk Organization` Start Menu shortcut with the same AppUserModelID and icon. This does not require administrator access. Microsoft uses the AppUserModelID and [`RelaunchIconResource`](https://learn.microsoft.com/en-us/windows/win32/properties/props-system-appusermodel-relaunchiconresource) to associate taskbar grouping, pinning, relaunch information, and the icon. See Microsoft's [Application User Model ID guidance](https://learn.microsoft.com/en-us/windows/win32/shell/appids) for the underlying Windows behavior.
+Windows also creates or replaces a per-user `iPolloWork Organization` Start Menu shortcut with the same AppUserModelID and icon. This does not require administrator access. Microsoft uses the AppUserModelID and [`RelaunchIconResource`](https://learn.microsoft.com/en-us/windows/win32/properties/props-system-appusermodel-relaunchiconresource) to associate taskbar grouping, pinning, relaunch information, and the icon. See Microsoft's [Application User Model ID guidance](https://learn.microsoft.com/en-us/windows/win32/shell/appids) for the underlying Windows behavior.
 
 <Tip>
   If Windows still shows a separate, older stock pinned shortcut, unpin that stale shortcut and pin the currently running branded taskbar button once. The live window does not otherwise require re-pinning or a restart.
@@ -113,7 +113,7 @@ Because every Den API replica reads the same database, multiple replicas do not 
 ## Clear or replace branding
 
 - Use `Replace image` and save to publish a new immutable version.
-- Use `Clear` and save to return to stock iPolloWalk branding.
+- Use `Clear` and save to return to stock iPolloWork branding.
 
 After the next desktop configuration refresh, clearing the icon removes the cached organization icon and the per-user Windows shortcut, then restores the stock taskbar identity. Reopen the desktop if you want to force the configuration fetch immediately.
 
@@ -122,7 +122,7 @@ After the next desktop configuration refresh, clearing the icon removes the cach
 ### The dashboard saved, but a desktop still shows the old icon
 
 1. Confirm the member is signed in to the intended organization.
-2. Reopen iPolloWalk to force an immediate configuration fetch instead of waiting for the hourly background refresh.
+2. Reopen iPolloWork to force an immediate configuration fetch instead of waiting for the hourly background refresh.
 3. From the member device, confirm `config.public.apiOrigin` resolves and the signed asset URL is reachable.
 4. Confirm the private CA is installed in the operating-system trust store.
 

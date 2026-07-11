@@ -3,7 +3,7 @@ import { useCallback } from "react";
 
 import type { McpDirectoryInfo } from "../../../app/constants";
 import { evaluateEnablement, type EnablementContext } from "../../../app/enablement";
-import type { iPolloWalkServerClient } from "../../../app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient } from "../../../app/lib/ipollowork-server";
 import type { McpServerEntry } from "../../../app/types";
 import { getExtensionConfigSlot, getExtensionConnected, type ExtensionConfigContext } from "./extension-registry";
 import type { LocalProviderInstallInput } from "./openai-image-extension";
@@ -14,8 +14,8 @@ type ProviderLike = {
 };
 
 type SettingsExtensionControllerInput = {
-  ipollowalkServerClient: iPolloWalkServerClient | null;
-  hostiPolloWalkServerClient: iPolloWalkServerClient | null;
+  ipolloworkServerClient: iPolloWorkServerClient | null;
+  hostiPolloWorkServerClient: iPolloWorkServerClient | null;
   enablementContext: EnablementContext;
   mcpServers: McpServerEntry[];
   mcpConnectingName: string | null;
@@ -53,15 +53,15 @@ type SettingsExtensionControllerInput = {
 function hasOpenAiEnv(input: Pick<SettingsExtensionControllerInput, "providers" | "providerConnectedIds" | "userEnvKeys">) {
   return input.userEnvKeys.includes("OPENAI_REALTIME_API_KEY") ||
     input.userEnvKeys.includes("OPENAI_API_KEY") ||
-    input.userEnvKeys.includes("IPOLLOWALK_OPENAI_IMAGE_API_KEY") ||
+    input.userEnvKeys.includes("IPOLLOWORK_OPENAI_IMAGE_API_KEY") ||
     input.providers.some((provider) => provider.id === "openai" && provider.source === "env") ||
     input.providerConnectedIds.includes("openai");
 }
 
 export function useSettingsExtensionController(input: SettingsExtensionControllerInput) {
   const configContextForEntry = useCallback((entry: McpDirectoryInfo): ExtensionConfigContext => ({
-    ipollowalkServerClient: input.ipollowalkServerClient,
-    hostiPolloWalkServerClient: input.hostiPolloWalkServerClient,
+    ipolloworkServerClient: input.ipolloworkServerClient,
+    hostiPolloWorkServerClient: input.hostiPolloWorkServerClient,
     restartLocalServer: input.restartLocalServer,
     extensionConnections: {
       "google-workspace": input.googleWorkspaceConnected,
@@ -97,7 +97,7 @@ export function useSettingsExtensionController(input: SettingsExtensionControlle
       return evaluateEnablement(entry.extensionManifest.enablement, input.enablementContext).active;
     }
     const runtimeConnected = getExtensionConnected(entry, {
-      ipollowalkServerClient: input.ipollowalkServerClient,
+      ipolloworkServerClient: input.ipolloworkServerClient,
       extensionConnections: {
         "google-workspace": input.googleWorkspaceConnected,
       },

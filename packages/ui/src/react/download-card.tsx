@@ -9,7 +9,7 @@ export type DownloadCardInstallers = {
   linux: { appImageX64: string; appImageArm64: string; tarX64: string; tarArm64: string }
 }
 
-const FALLBACK_RELEASE = "https://github.com/Devin-AXIS/iPolloWalk/releases"
+const FALLBACK_RELEASE = "https://github.com/Devin-AXIS/iPolloWork/releases"
 
 const FALLBACK_INSTALLERS: DownloadCardInstallers = {
   macos: { appleSilicon: FALLBACK_RELEASE, intel: FALLBACK_RELEASE },
@@ -89,7 +89,7 @@ function DownloadLink({ href, children, recommended }: { href: string; children:
       href={href}
       target="_blank"
       rel="noreferrer"
-      data-testid="download-ipollowalk-link"
+      data-testid="download-ipollowork-link"
       data-recommended={recommended ? "true" : undefined}
       className={
         recommended
@@ -123,7 +123,7 @@ function isRecommended(detected: DetectedPlatform | null, os: DetectedOS, arch: 
   return detected !== null && detected.os === os && detected.arch === arch
 }
 
-export function DownloadiPolloWalkCard({
+export function DownloadiPolloWorkCard({
   installers,
   releaseTag,
 }: {
@@ -146,7 +146,7 @@ export function DownloadiPolloWalkCard({
 
   return (
     <section
-      data-testid="download-ipollowalk-card"
+      data-testid="download-ipollowork-card"
       data-detected-os={detected?.os}
       data-detected-arch={detected ? detected.arch ?? "unknown" : undefined}
       data-detected-os-version={detected ? detected.osVersion ?? "unknown" : undefined}
@@ -156,7 +156,7 @@ export function DownloadiPolloWalkCard({
       <div className="bg-gradient-to-b from-[#FAFBFE] to-white px-6 py-5">
         <div className="flex items-center gap-2.5">
           <DownloadIcon className="h-5 w-5 text-[#07192C]/70" />
-          <span className="text-[16px] font-semibold text-[#07192C]">Download iPolloWalk</span>
+          <span className="text-[16px] font-semibold text-[#07192C]">Download iPolloWork</span>
           {tag ? (
             <span className="rounded-full bg-[#F1F4F9] px-2 py-0.5 text-[11px] font-medium text-[#5A6886]">{tag}</span>
           ) : null}

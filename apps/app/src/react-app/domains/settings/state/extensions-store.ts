@@ -32,19 +32,19 @@ import {
   readOpencodeConfig,
   revealDesktopItemInDir,
   uninstallSkill as uninstallSkillCommand,
-  workspaceiPolloWalkRead,
-  workspaceiPolloWalkWrite,
+  workspaceiPolloWorkRead,
+  workspaceiPolloWorkWrite,
   writeLocalSkill,
   writeOpencodeConfig,
   type OpencodeConfigFile,
 } from "../../../../app/lib/desktop";
 import type {
-  iPolloWalkClaudePluginPreview,
-  iPolloWalkHubRepo,
-  iPolloWalkServerCapabilities,
-  iPolloWalkServerClient,
-  iPolloWalkServerStatus,
-} from "../../../../app/lib/ipollowalk-server";
+  iPolloWorkClaudePluginPreview,
+  iPolloWorkHubRepo,
+  iPolloWorkServerCapabilities,
+  iPolloWorkServerClient,
+  iPolloWorkServerStatus,
+} from "../../../../app/lib/ipollowork-server";
 import {
   createDenClient,
   fetchDenOrgSkillsCatalog,
@@ -68,17 +68,17 @@ import {
   type PendingCloudPluginChange,
 } from "../../../../app/cloud/desktop-cloud-sync";
 import { notifyEvent } from "../../../shell/notifications";
-import type { iPolloWalkServerStore } from "../../connections/ipollowalk-server-store";
+import type { iPolloWorkServerStore } from "../../connections/ipollowork-server-store";
 
 const OPENCODE_SKILL_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const OPENCODE_MCP_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/;
 const OPENCODE_MCP_IMPORT_PATH_PREFIX = "opencode.jsonc#mcp.";
 const DEFAULT_HUB_REPO: HubSkillRepo = {
   owner: "different-ai",
-  repo: "ipollowalk-hub",
+  repo: "ipollowork-hub",
   ref: "main",
 };
-const HUB_REPOS_STORAGE_KEY = "ipollowalk.skills.hubRepos.v1";
+const HUB_REPOS_STORAGE_KEY = "ipollowork.skills.hubRepos.v1";
 
 type SetStateAction<T> = T | ((current: T) => T);
 
@@ -390,11 +390,11 @@ export function createExtensionsStore(options: {
   selectedWorkspaceId: () => string;
   selectedWorkspaceRoot: () => string;
   workspaceType: () => "local" | "remote";
-  ipollowalkServer: iPolloWalkServerStore;
-  ipollowalkServerConnection?: () => {
-    ipollowalkServerClient: iPolloWalkServerClient | null;
-    ipollowalkServerStatus: iPolloWalkServerStatus;
-    ipollowalkServerCapabilities: iPolloWalkServerCapabilities | null;
+  ipolloworkServer: iPolloWorkServerStore;
+  ipolloworkServerConnection?: () => {
+    ipolloworkServerClient: iPolloWorkServerClient | null;
+    ipolloworkServerStatus: iPolloWorkServerStatus;
+    ipolloworkServerCapabilities: iPolloWorkServerCapabilities | null;
   };
   runtimeWorkspaceId: () => string | null;
   ensureRuntimeWorkspaceId?: () => Promise<string | null | undefined>;
@@ -408,7 +408,7 @@ export function createExtensionsStore(options: {
 
   let disposed = false;
   let started = false;
-  let stopiPolloWalkSubscription: (() => void) | null = null;
+  let stopiPolloWorkSubscription: (() => void) | null = null;
   let stopDenSessionListener: (() => void) | null = null;
   let lastWorkspaceContextKey = "";
   let snapshot: ExtensionsStoreSnapshot;
@@ -479,33 +479,33 @@ export function createExtensionsStore(options: {
     return `${workspaceType}:${workspaceId}:${root}:${runtimeWorkspaceId}`;
   };
 
-  const getiPolloWalkServerSnapshot = () => {
-    const snapshot = options.ipollowalkServer.getSnapshot();
-    const connection = options.ipollowalkServerConnection?.();
-    if (!connection?.ipollowalkServerClient) return snapshot;
+  const getiPolloWorkServerSnapshot = () => {
+    const snapshot = options.ipolloworkServer.getSnapshot();
+    const connection = options.ipolloworkServerConnection?.();
+    if (!connection?.ipolloworkServerClient) return snapshot;
     return {
       ...snapshot,
-      ipollowalkServerClient: connection.ipollowalkServerClient,
-      ipollowalkServerStatus: connection.ipollowalkServerStatus,
-      ipollowalkServerCapabilities: connection.ipollowalkServerCapabilities,
+      ipolloworkServerClient: connection.ipolloworkServerClient,
+      ipolloworkServerStatus: connection.ipolloworkServerStatus,
+      ipolloworkServerCapabilities: connection.ipolloworkServerCapabilities,
     };
   };
 
   const resolveWorkspaceServerTarget = async () => {
-    const ipollowalkSnapshot = getiPolloWalkServerSnapshot();
-    const ipollowalkClient = ipollowalkSnapshot.ipollowalkServerClient;
-    let ipollowalkWorkspaceId = options.runtimeWorkspaceId()?.trim() || null;
-    if (!ipollowalkWorkspaceId && ipollowalkSnapshot.ipollowalkServerStatus === "connected" && ipollowalkClient) {
-      ipollowalkWorkspaceId = (await options.ensureRuntimeWorkspaceId?.())?.trim() || null;
+    const ipolloworkSnapshot = getiPolloWorkServerSnapshot();
+    const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
+    let ipolloworkWorkspaceId = options.runtimeWorkspaceId()?.trim() || null;
+    if (!ipolloworkWorkspaceId && ipolloworkSnapshot.ipolloworkServerStatus === "connected" && ipolloworkClient) {
+      ipolloworkWorkspaceId = (await options.ensureRuntimeWorkspaceId?.())?.trim() || null;
     }
-    const hasiPolloWalkTarget =
-      ipollowalkSnapshot.ipollowalkServerStatus === "connected" &&
-      Boolean(ipollowalkClient && ipollowalkWorkspaceId);
+    const hasiPolloWorkTarget =
+      ipolloworkSnapshot.ipolloworkServerStatus === "connected" &&
+      Boolean(ipolloworkClient && ipolloworkWorkspaceId);
     return {
-      ipollowalkSnapshot,
-      ipollowalkClient,
-      ipollowalkWorkspaceId,
-      hasiPolloWalkTarget,
+      ipolloworkSnapshot,
+      ipolloworkClient,
+      ipolloworkWorkspaceId,
+      hasiPolloWorkTarget,
     };
   };
 
@@ -590,56 +590,56 @@ export function createExtensionsStore(options: {
     return next;
   };
 
-  const readWorkspaceiPolloWalkConfigRecord = async (): Promise<Record<string, unknown>> => {
+  const readWorkspaceiPolloWorkConfigRecord = async (): Promise<Record<string, unknown>> => {
     const root = options.selectedWorkspaceRoot().trim();
     const isLocalWorkspace = options.workspaceType() === "local";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.config?.read !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.config?.read !== false;
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      const config = await ipollowalkClient.getConfig(ipollowalkWorkspaceId);
-      return config.ipollowalk ?? {};
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      const config = await ipolloworkClient.getConfig(ipolloworkWorkspaceId);
+      return config.ipollowork ?? {};
     }
 
-    if (hasiPolloWalkTarget) {
+    if (hasiPolloWorkTarget) {
       return {};
     }
 
     if (isLocalWorkspace && isDesktopRuntime() && root) {
-      return await workspaceiPolloWalkRead({ workspacePath: root }) as unknown as Record<string, unknown>;
+      return await workspaceiPolloWorkRead({ workspacePath: root }) as unknown as Record<string, unknown>;
     }
 
     return {};
   };
 
-  const writeWorkspaceiPolloWalkConfigRecord = async (config: Record<string, unknown>) => {
+  const writeWorkspaceiPolloWorkConfigRecord = async (config: Record<string, unknown>) => {
     const root = options.selectedWorkspaceRoot().trim();
     const isLocalWorkspace = options.workspaceType() === "local";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.config?.write !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.config?.write !== false;
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      await ipollowalkClient.patchConfig(ipollowalkWorkspaceId, { ipollowalk: config });
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      await ipolloworkClient.patchConfig(ipolloworkWorkspaceId, { ipollowork: config });
       return true;
     }
 
-    if (hasiPolloWalkTarget) {
+    if (hasiPolloWorkTarget) {
       return false;
     }
 
     if (isLocalWorkspace && isDesktopRuntime() && root) {
-      const result = (await workspaceiPolloWalkWrite({
+      const result = (await workspaceiPolloWorkWrite({
         workspacePath: root,
         config: config as never,
       })) as { ok: boolean; stderr?: string; stdout?: string };
       if (!result.ok) {
-        throw new Error(result.stderr || result.stdout || "Failed to write .opencode/ipollowalk.json");
+        throw new Error(result.stderr || result.stdout || "Failed to write .opencode/ipollowork.json");
       }
       return true;
     }
@@ -649,7 +649,7 @@ export function createExtensionsStore(options: {
 
   const refreshImportedCloudSkills = async () => {
     try {
-      const config = await readWorkspaceiPolloWalkConfigRecord();
+      const config = await readWorkspaceiPolloWorkConfigRecord();
       const cloudImports = readWorkspaceCloudImports(config);
       setStateField("importedCloudSkills", cloudImports.skills);
       return cloudImports.skills;
@@ -662,17 +662,17 @@ export function createExtensionsStore(options: {
   const refreshPendingCloudPluginChanges = async (installedPlugins?: Record<string, CloudImportedPlugin>) => {
     try {
       const target = await resolveWorkspaceServerTarget();
-      if (!target.ipollowalkClient || !target.ipollowalkWorkspaceId) {
+      if (!target.ipolloworkClient || !target.ipolloworkWorkspaceId) {
         setStateField("pendingCloudPluginChanges", {});
         return;
       }
       const syncResult = await refreshDesktopCloudSync({
-        ipollowalkClient: target.ipollowalkClient,
-        workspaceId: target.ipollowalkWorkspaceId,
+        ipolloworkClient: target.ipolloworkClient,
+        workspaceId: target.ipolloworkWorkspaceId,
       }).catch(() => null);
       const changes = syncResult
         ? syncResult.changes
-        : readPendingCloudSyncChanges(await target.ipollowalkClient.getDesktopCloudSync(target.ipollowalkWorkspaceId));
+        : readPendingCloudSyncChanges(await target.ipolloworkClient.getDesktopCloudSync(target.ipolloworkWorkspaceId));
       const pending = derivePendingCloudPluginChanges({
         changes,
         installedPlugins: installedPlugins ?? snapshot.importedCloudPlugins,
@@ -714,14 +714,14 @@ export function createExtensionsStore(options: {
   const refreshImportedCloudPlugins = async () => {
     try {
       const target = await resolveWorkspaceServerTarget();
-      if (target.ipollowalkClient && target.ipollowalkWorkspaceId) {
-        const result = await target.ipollowalkClient.listCloudPlugins(target.ipollowalkWorkspaceId);
+      if (target.ipolloworkClient && target.ipolloworkWorkspaceId) {
+        const result = await target.ipolloworkClient.listCloudPlugins(target.ipolloworkWorkspaceId);
         setStateField("importedCloudMarketplaces", result.marketplaces);
         setStateField("importedCloudPlugins", result.plugins);
         void refreshPendingCloudPluginChanges(result.plugins);
         return result.plugins;
       }
-      const config = await readWorkspaceiPolloWalkConfigRecord();
+      const config = await readWorkspaceiPolloWorkConfigRecord();
       const cloudImports = readWorkspaceCloudImports(config);
       setStateField("importedCloudMarketplaces", cloudImports.marketplaces);
       setStateField("importedCloudPlugins", cloudImports.plugins);
@@ -735,46 +735,46 @@ export function createExtensionsStore(options: {
   };
 
   const persistImportedCloudMarketplaces = async (nextMarketplaces: Record<string, CloudImportedMarketplace>) => {
-    const config = await readWorkspaceiPolloWalkConfigRecord();
+    const config = await readWorkspaceiPolloWorkConfigRecord();
     const cloudImports = readWorkspaceCloudImports(config);
     const nextCloudImports = {
       ...cloudImports,
       marketplaces: nextMarketplaces,
     };
     const nextConfig = withWorkspaceCloudImports(config, nextCloudImports);
-    const persisted = await writeWorkspaceiPolloWalkConfigRecord(nextConfig);
+    const persisted = await writeWorkspaceiPolloWorkConfigRecord(nextConfig);
     if (!persisted) {
-      throw new Error("iPolloWalk server unavailable. Connect to manage imported cloud marketplaces.");
+      throw new Error("iPolloWork server unavailable. Connect to manage imported cloud marketplaces.");
     }
     setStateField("importedCloudMarketplaces", nextMarketplaces);
     void refreshPendingCloudPluginChanges();
   };
 
   const persistImportedCloudSkills = async (nextSkills: Record<string, CloudImportedSkill>) => {
-    const config = await readWorkspaceiPolloWalkConfigRecord();
+    const config = await readWorkspaceiPolloWorkConfigRecord();
     const cloudImports = readWorkspaceCloudImports(config);
     const nextConfig = withWorkspaceCloudImports(config, {
       ...cloudImports,
       skills: nextSkills,
     });
-    const persisted = await writeWorkspaceiPolloWalkConfigRecord(nextConfig);
+    const persisted = await writeWorkspaceiPolloWorkConfigRecord(nextConfig);
     if (!persisted) {
-      throw new Error("iPolloWalk server unavailable. Connect to manage imported cloud skills.");
+      throw new Error("iPolloWork server unavailable. Connect to manage imported cloud skills.");
     }
     setStateField("importedCloudSkills", nextSkills);
   };
 
   const persistImportedCloudPlugins = async (nextPlugins: Record<string, CloudImportedPlugin>) => {
-    const config = await readWorkspaceiPolloWalkConfigRecord();
+    const config = await readWorkspaceiPolloWorkConfigRecord();
     const cloudImports = readWorkspaceCloudImports(config);
     const nextCloudImports = {
       ...cloudImports,
       plugins: nextPlugins,
     };
     const nextConfig = withWorkspaceCloudImports(config, nextCloudImports);
-    const persisted = await writeWorkspaceiPolloWalkConfigRecord(nextConfig);
+    const persisted = await writeWorkspaceiPolloWorkConfigRecord(nextConfig);
     if (!persisted) {
-      throw new Error("iPolloWalk server unavailable. Connect to manage imported cloud plugins.");
+      throw new Error("iPolloWork server unavailable. Connect to manage imported cloud plugins.");
     }
     setStateField("importedCloudPlugins", nextPlugins);
     void refreshPendingCloudPluginChanges(nextPlugins);
@@ -805,14 +805,14 @@ export function createExtensionsStore(options: {
     const isRemoteWorkspace = options.workspaceType() === "remote";
     const isLocalWorkspace = options.workspaceType() === "local";
     const root = options.selectedWorkspaceRoot().trim();
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.skills?.write !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.skills?.write !== false;
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      await ipollowalkClient.upsertSkill(ipollowalkWorkspaceId, {
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      await ipolloworkClient.upsertSkill(ipolloworkWorkspaceId, {
         name,
         content,
         description,
@@ -820,12 +820,12 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (hasiPolloWalkTarget) {
-      throw new Error("iPolloWalk server cannot write skills for this workspace.");
+    if (hasiPolloWorkTarget) {
+      throw new Error("iPolloWork server cannot write skills for this workspace.");
     }
 
     if (isRemoteWorkspace) {
-      throw new Error("iPolloWalk server unavailable. Connect to import skills.");
+      throw new Error("iPolloWork server unavailable. Connect to import skills.");
     }
 
     if (!isDesktopRuntime()) {
@@ -868,23 +868,23 @@ export function createExtensionsStore(options: {
     const isRemoteWorkspace = options.workspaceType() === "remote";
     const isLocalWorkspace = options.workspaceType() === "local";
     const root = options.selectedWorkspaceRoot().trim();
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.skills?.write !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.skills?.write !== false;
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      await ipollowalkClient.deleteSkill(ipollowalkWorkspaceId, name);
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      await ipolloworkClient.deleteSkill(ipolloworkWorkspaceId, name);
       return;
     }
 
-    if (hasiPolloWalkTarget) {
-      throw new Error("iPolloWalk server cannot remove skills for this workspace.");
+    if (hasiPolloWorkTarget) {
+      throw new Error("iPolloWork server cannot remove skills for this workspace.");
     }
 
     if (isRemoteWorkspace) {
-      throw new Error("iPolloWalk server unavailable. Connect to remove skills.");
+      throw new Error("iPolloWork server unavailable. Connect to remove skills.");
     }
 
     if (!isDesktopRuntime()) {
@@ -1067,7 +1067,7 @@ export function createExtensionsStore(options: {
     const version = object.latestVersion;
     const payload = version?.normalizedPayloadJson ?? parseJsonRecord(version?.rawSourceText ?? null);
     if (!payload) return null;
-    if (payload.ipollowalkManaged === "den_external_mcp") {
+    if (payload.ipolloworkManaged === "den_external_mcp") {
       const id = readNonEmptyString(payload.externalMcpConnectionId);
       if (id) return id;
     }
@@ -1077,7 +1077,7 @@ export function createExtensionsStore(options: {
     ].filter((entry): entry is Record<string, unknown> => Boolean(entry));
     for (const container of containers) {
       for (const config of Object.values(container)) {
-        if (!isRecord(config) || config.ipollowalkManaged !== "den_external_mcp") continue;
+        if (!isRecord(config) || config.ipolloworkManaged !== "den_external_mcp") continue;
         const id = readNonEmptyString(config.externalMcpConnectionId);
         if (id) return id;
       }
@@ -1090,40 +1090,40 @@ export function createExtensionsStore(options: {
   ): string | null => {
     const version = object.latestVersion;
     const payload = version?.normalizedPayloadJson ?? parseJsonRecord(version?.rawSourceText ?? null);
-    if (!payload || payload.ipollowalkManaged !== "den_skill") return null;
+    if (!payload || payload.ipolloworkManaged !== "den_skill") return null;
     return readNonEmptyString(payload.denSkillId);
   };
 
   const upsertPluginMcpConfig = async (name: string, config: Record<string, unknown>) => {
-    const ipollowalkSnapshot = getiPolloWalkServerSnapshot();
-    const ipollowalkClient = ipollowalkSnapshot.ipollowalkServerClient;
-    const ipollowalkWorkspaceId = options.runtimeWorkspaceId();
+    const ipolloworkSnapshot = getiPolloWorkServerSnapshot();
+    const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
+    const ipolloworkWorkspaceId = options.runtimeWorkspaceId();
     if (
-      ipollowalkSnapshot.ipollowalkServerStatus === "connected" &&
-      ipollowalkClient &&
-      ipollowalkWorkspaceId &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.mcp?.write
+      ipolloworkSnapshot.ipolloworkServerStatus === "connected" &&
+      ipolloworkClient &&
+      ipolloworkWorkspaceId &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.mcp?.write
     ) {
-      await ipollowalkClient.addMcp(ipollowalkWorkspaceId, { name, config });
+      await ipolloworkClient.addMcp(ipolloworkWorkspaceId, { name, config });
       return;
     }
-    throw new Error("iPolloWalk server unavailable. Connect to import MCP servers into this workspace.");
+    throw new Error("iPolloWork server unavailable. Connect to import MCP servers into this workspace.");
   };
 
   const deletePluginMcpConfig = async (name: string) => {
-    const ipollowalkSnapshot = getiPolloWalkServerSnapshot();
-    const ipollowalkClient = ipollowalkSnapshot.ipollowalkServerClient;
-    const ipollowalkWorkspaceId = options.runtimeWorkspaceId();
+    const ipolloworkSnapshot = getiPolloWorkServerSnapshot();
+    const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
+    const ipolloworkWorkspaceId = options.runtimeWorkspaceId();
     if (
-      ipollowalkSnapshot.ipollowalkServerStatus === "connected" &&
-      ipollowalkClient &&
-      ipollowalkWorkspaceId &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.mcp?.write
+      ipolloworkSnapshot.ipolloworkServerStatus === "connected" &&
+      ipolloworkClient &&
+      ipolloworkWorkspaceId &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.mcp?.write
     ) {
-      await ipollowalkClient.removeMcp(ipollowalkWorkspaceId, name);
+      await ipolloworkClient.removeMcp(ipolloworkWorkspaceId, name);
       return;
     }
-    throw new Error("iPolloWalk server unavailable. Connect to remove imported MCP servers from this workspace.");
+    throw new Error("iPolloWork server unavailable. Connect to remove imported MCP servers from this workspace.");
   };
 
   const pluginReloadReason = (objectType: string): ReloadReason => {
@@ -1142,33 +1142,33 @@ export function createExtensionsStore(options: {
   };
 
   const writePluginWorkspaceFile = async (path: string, content: string) => {
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
     if (
-      hasiPolloWalkTarget &&
-      ipollowalkClient &&
-      ipollowalkWorkspaceId &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.config?.write !== false &&
-      typeof ipollowalkClient.writeWorkspaceFile === "function"
+      hasiPolloWorkTarget &&
+      ipolloworkClient &&
+      ipolloworkWorkspaceId &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.config?.write !== false &&
+      typeof ipolloworkClient.writeWorkspaceFile === "function"
     ) {
-      await ipollowalkClient.writeWorkspaceFile(ipollowalkWorkspaceId, { path, content, force: true });
+      await ipolloworkClient.writeWorkspaceFile(ipolloworkWorkspaceId, { path, content, force: true });
       return;
     }
-    throw new Error("iPolloWalk server unavailable. Connect to import plugin files into this workspace.");
+    throw new Error("iPolloWork server unavailable. Connect to import plugin files into this workspace.");
   };
 
   const deletePluginWorkspaceFiles = async (files: Array<{ path: string; recursive?: boolean }>) => {
     if (files.length === 0) return;
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
     if (
-      hasiPolloWalkTarget &&
-      ipollowalkClient &&
-      ipollowalkWorkspaceId &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.config?.write !== false &&
-      typeof ipollowalkClient.deleteWorkspaceFiles === "function"
+      hasiPolloWorkTarget &&
+      ipolloworkClient &&
+      ipolloworkWorkspaceId &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.config?.write !== false &&
+      typeof ipolloworkClient.deleteWorkspaceFiles === "function"
     ) {
-      const results = await ipollowalkClient.deleteWorkspaceFiles(ipollowalkWorkspaceId, files);
+      const results = await ipolloworkClient.deleteWorkspaceFiles(ipolloworkWorkspaceId, files);
       const failed = results.filter((result) => !result.ok && result.code !== "file_not_found");
       if (failed.length > 0) {
         throw new Error(
@@ -1177,7 +1177,7 @@ export function createExtensionsStore(options: {
       }
       return;
     }
-    throw new Error("iPolloWalk server unavailable. Connect to remove imported plugin files from this workspace.");
+    throw new Error("iPolloWork server unavailable. Connect to remove imported plugin files from this workspace.");
   };
 
   const applyCloudOrgPluginImport = async (
@@ -1364,12 +1364,12 @@ export function createExtensionsStore(options: {
     const root = options.selectedWorkspaceRoot().trim();
     const repo = snapshot.hubRepo;
     const loadKey = `${root}::${repo ? hubRepoKey(repo) : "none"}`;
-    const ipollowalkSnapshot = getiPolloWalkServerSnapshot();
-    const ipollowalkClient = ipollowalkSnapshot.ipollowalkServerClient;
-    const canUseiPolloWalkServer =
-      ipollowalkSnapshot.ipollowalkServerStatus === "connected" &&
-      ipollowalkClient &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.hub?.skills?.read;
+    const ipolloworkSnapshot = getiPolloWorkServerSnapshot();
+    const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
+    const canUseiPolloWorkServer =
+      ipolloworkSnapshot.ipolloworkServerStatus === "connected" &&
+      ipolloworkClient &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.hub?.skills?.read;
 
     if (loadKey !== hubSkillsLoadKey) {
       hubSkillsLoaded = false;
@@ -1395,8 +1395,8 @@ export function createExtensionsStore(options: {
         return;
       }
 
-      if (canUseiPolloWalkServer) {
-        const response = await ipollowalkClient.listHubSkills({
+      if (canUseiPolloWorkServer) {
+        const response = await ipolloworkClient.listHubSkills({
           repo: {
             owner: repo.owner,
             repo: repo.repo,
@@ -1655,13 +1655,13 @@ export function createExtensionsStore(options: {
       const settings = readDenSettings();
       const token = settings.authToken?.trim() ?? "";
       const orgId = settings.activeOrgId?.trim() ?? "";
-      if (!token || !orgId) throw new Error("Sign in to iPolloWalk Cloud and choose an organization first.");
+      if (!token || !orgId) throw new Error("Sign in to iPolloWork Cloud and choose an organization first.");
       const client = createDenClient({ baseUrl: settings.baseUrl, token });
       const resolved = await client.getOrgPluginResolved(orgId, plugin);
       const target = await resolveWorkspaceServerTarget();
-      if (target.ipollowalkClient && target.ipollowalkWorkspaceId) {
+      if (target.ipolloworkClient && target.ipolloworkWorkspaceId) {
         const marketplace = marketplaceId ? findCloudMarketplace(marketplaceId) : null;
-        const result = await target.ipollowalkClient.installCloudPlugin(target.ipollowalkWorkspaceId, {
+        const result = await target.ipolloworkClient.installCloudPlugin(target.ipolloworkWorkspaceId, {
           marketplaceId,
           marketplace,
           resolved,
@@ -1694,12 +1694,12 @@ export function createExtensionsStore(options: {
     }
   }
 
-  async function previewClaudePlugin(url: string): Promise<iPolloWalkClaudePluginPreview> {
+  async function previewClaudePlugin(url: string): Promise<iPolloWorkClaudePluginPreview> {
     const target = await resolveWorkspaceServerTarget();
-    if (!target.ipollowalkClient || !target.ipollowalkWorkspaceId) {
-      throw new Error("iPolloWalk server unavailable. Connect to install plugins from GitHub.");
+    if (!target.ipolloworkClient || !target.ipolloworkWorkspaceId) {
+      throw new Error("iPolloWork server unavailable. Connect to install plugins from GitHub.");
     }
-    const result = await target.ipollowalkClient.previewClaudePlugin(target.ipollowalkWorkspaceId, { url });
+    const result = await target.ipolloworkClient.previewClaudePlugin(target.ipolloworkWorkspaceId, { url });
     return result.preview;
   }
 
@@ -1708,10 +1708,10 @@ export function createExtensionsStore(options: {
     options.setError(null);
     try {
       const target = await resolveWorkspaceServerTarget();
-      if (!target.ipollowalkClient || !target.ipollowalkWorkspaceId) {
-        throw new Error("iPolloWalk server unavailable. Connect to install plugins from GitHub.");
+      if (!target.ipolloworkClient || !target.ipolloworkWorkspaceId) {
+        throw new Error("iPolloWork server unavailable. Connect to install plugins from GitHub.");
       }
-      const result = await target.ipollowalkClient.installClaudePlugin(target.ipollowalkWorkspaceId, { url });
+      const result = await target.ipolloworkClient.installClaudePlugin(target.ipolloworkWorkspaceId, { url });
       await refreshSkills({ force: true });
       await refreshImportedCloudPlugins();
       return {
@@ -1734,8 +1734,8 @@ export function createExtensionsStore(options: {
 
     try {
       const target = await resolveWorkspaceServerTarget();
-      if (target.ipollowalkClient && target.ipollowalkWorkspaceId) {
-        const result = await target.ipollowalkClient.removeCloudPlugin(target.ipollowalkWorkspaceId, pluginId);
+      if (target.ipolloworkClient && target.ipolloworkWorkspaceId) {
+        const result = await target.ipolloworkClient.removeCloudPlugin(target.ipolloworkWorkspaceId, pluginId);
         await refreshSkills({ force: true });
         await refreshCloudOrgMarketplaces({ force: true });
         void refreshPendingCloudPluginChanges();
@@ -1795,15 +1795,15 @@ export function createExtensionsStore(options: {
     if (!repo) return { ok: false, message: "Select a hub repo before installing skills." };
 
     const isRemoteWorkspace = options.workspaceType() === "remote";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.hub?.skills?.install !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.hub?.skills?.install !== false;
 
-    if (!canUseiPolloWalkServer) {
-      if (isRemoteWorkspace) return { ok: false, message: "iPolloWalk server unavailable. Connect to install skills." };
-      return { ok: false, message: "Hub install requires iPolloWalk server." };
+    if (!canUseiPolloWorkServer) {
+      if (isRemoteWorkspace) return { ok: false, message: "iPolloWork server unavailable. Connect to install skills." };
+      return { ok: false, message: "Hub install requires iPolloWork server." };
     }
 
     options.setBusy(true);
@@ -1811,9 +1811,9 @@ export function createExtensionsStore(options: {
     setStateField("skillsStatus", null);
 
     try {
-      const repoOverride: iPolloWalkHubRepo = { owner: repo.owner, repo: repo.repo, ref: repo.ref };
-      if (!ipollowalkClient || !ipollowalkWorkspaceId) return { ok: false, message: "Hub install requires iPolloWalk server." };
-      const result = await ipollowalkClient.installHubSkill(ipollowalkWorkspaceId, trimmed, { repo: repoOverride });
+      const repoOverride: iPolloWorkHubRepo = { owner: repo.owner, repo: repo.repo, ref: repo.ref };
+      if (!ipolloworkClient || !ipolloworkWorkspaceId) return { ok: false, message: "Hub install requires iPolloWork server." };
+      const result = await ipolloworkClient.installHubSkill(ipolloworkWorkspaceId, trimmed, { repo: repoOverride });
       await Promise.all([refreshSkills({ force: true }), refreshHubSkills({ force: true })]);
       if (!result?.ok) return { ok: false, message: "Install failed." };
       return { ok: true, message: `Installed ${trimmed}.` };
@@ -1922,13 +1922,13 @@ export function createExtensionsStore(options: {
   async function refreshSkills(optionsOverride?: { force?: boolean }) {
     const root = options.selectedWorkspaceRoot().trim();
     const isLocalWorkspace = options.workspaceType() === "local";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.skills?.read !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.skills?.read !== false;
 
-    if (!root && !hasiPolloWalkTarget) {
+    if (!root && !hasiPolloWorkTarget) {
       mutateState((current) => ({
         ...current,
         skills: [],
@@ -1937,8 +1937,8 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      const skillCacheKey = root || ipollowalkWorkspaceId;
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      const skillCacheKey = root || ipolloworkWorkspaceId;
       if (skillCacheKey !== skillsRoot) skillsLoaded = false;
       if (!optionsOverride?.force && skillsLoaded) return;
       if (refreshSkillsInFlight) return;
@@ -1947,7 +1947,7 @@ export function createExtensionsStore(options: {
       refreshSkillsAborted = false;
       try {
         setStateField("skillsStatus", null);
-        const response = await ipollowalkClient.listSkills(ipollowalkWorkspaceId, { includeGlobal: isLocalWorkspace });
+        const response = await ipolloworkClient.listSkills(ipolloworkWorkspaceId, { includeGlobal: isLocalWorkspace });
         if (refreshSkillsAborted) return;
         const next: SkillCard[] = Array.isArray(response.items)
           ? response.items.map((entry) => ({
@@ -1978,11 +1978,11 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (hasiPolloWalkTarget) {
+    if (hasiPolloWorkTarget) {
       mutateState((current) => ({
         ...current,
         skills: [],
-        skillsStatus: "iPolloWalk server cannot read skills for this workspace.",
+        skillsStatus: "iPolloWork server cannot read skills for this workspace.",
       }));
       return;
     }
@@ -2032,7 +2032,7 @@ export function createExtensionsStore(options: {
       mutateState((current) => ({
         ...current,
         skills: [],
-        skillsStatus: "iPolloWalk server unavailable. Connect to load skills.",
+        skillsStatus: "iPolloWork server unavailable. Connect to load skills.",
       }));
       return;
     }
@@ -2087,11 +2087,11 @@ export function createExtensionsStore(options: {
   async function refreshPlugins(scopeOverride?: PluginScope) {
     const isRemoteWorkspace = options.workspaceType() === "remote";
     const isLocalWorkspace = options.workspaceType() === "local";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.plugins?.read !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.plugins?.read !== false;
 
     if (refreshPluginsInFlight) return;
     refreshPluginsInFlight = true;
@@ -2112,17 +2112,17 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (scope === "project" && canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
+    if (scope === "project" && canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
       mutateState((current) => ({
         ...current,
         pluginConfig: null,
-        pluginConfigPath: `opencode.json (${isRemoteWorkspace ? "remote" : "ipollowalk"} server)`,
+        pluginConfigPath: `opencode.json (${isRemoteWorkspace ? "remote" : "ipollowork"} server)`,
       }));
 
       try {
         mutateState((current) => ({ ...current, pluginStatus: null, sidebarPluginStatus: null }));
         if (refreshPluginsAborted) return;
-        const result = await ipollowalkClient.listPlugins(ipollowalkWorkspaceId, { includeGlobal: false });
+        const result = await ipolloworkClient.listPlugins(ipolloworkWorkspaceId, { includeGlobal: false });
         if (refreshPluginsAborted) return;
         const projectItems = result.items.filter((item) => item.scope === "project");
         const list = toProjectPluginListEntries(projectItems);
@@ -2149,12 +2149,12 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (scope === "project" && hasiPolloWalkTarget) {
+    if (scope === "project" && hasiPolloWorkTarget) {
       mutateState((current) => ({
         ...current,
-        pluginStatus: "iPolloWalk server cannot read plugins for this workspace.",
+        pluginStatus: "iPolloWork server cannot read plugins for this workspace.",
         pluginList: [],
-        sidebarPluginStatus: "iPolloWalk server cannot read plugins for this workspace.",
+        sidebarPluginStatus: "iPolloWork server cannot read plugins for this workspace.",
         sidebarPluginList: [],
       }));
       refreshPluginsInFlight = false;
@@ -2173,12 +2173,12 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (!isLocalWorkspace && !canUseiPolloWalkServer) {
+    if (!isLocalWorkspace && !canUseiPolloWorkServer) {
       mutateState((current) => ({
         ...current,
-        pluginStatus: "iPolloWalk server unavailable. Connect to manage plugins.",
+        pluginStatus: "iPolloWork server unavailable. Connect to manage plugins.",
         pluginList: [],
-        sidebarPluginStatus: "Connect an iPolloWalk server to load plugins.",
+        sidebarPluginStatus: "Connect an iPolloWork server to load plugins.",
         sidebarPluginList: [],
       }));
       refreshPluginsInFlight = false;
@@ -2266,11 +2266,11 @@ export function createExtensionsStore(options: {
     const triggerName = stripPluginVersion(pluginName);
 
     const isLocalWorkspace = options.workspaceType() === "local";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.plugins?.write !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.plugins?.write !== false;
 
     if (!pluginName) {
       if (isManualInput) setStateField("pluginStatus", t("skills.enter_plugin_name"));
@@ -2282,10 +2282,10 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (snapshot.pluginScope === "project" && canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
+    if (snapshot.pluginScope === "project" && canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
       try {
         setStateField("pluginStatus", null);
-        await ipollowalkClient.addPlugin(ipollowalkWorkspaceId, pluginName);
+        await ipolloworkClient.addPlugin(ipolloworkWorkspaceId, pluginName);
         options.markReloadRequired?.("plugins", { type: "plugin", name: triggerName, action: "added" });
         if (isManualInput) setStateField("pluginInput", "");
         await refreshPlugins("project");
@@ -2295,8 +2295,8 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (snapshot.pluginScope === "project" && hasiPolloWalkTarget) {
-      setStateField("pluginStatus", "iPolloWalk server cannot write plugins for this workspace.");
+    if (snapshot.pluginScope === "project" && hasiPolloWorkTarget) {
+      setStateField("pluginStatus", "iPolloWork server cannot write plugins for this workspace.");
       return;
     }
 
@@ -2306,7 +2306,7 @@ export function createExtensionsStore(options: {
     }
 
     if (!isLocalWorkspace) {
-      setStateField("pluginStatus", "iPolloWalk server unavailable. Connect to manage plugins.");
+      setStateField("pluginStatus", "iPolloWork server unavailable. Connect to manage plugins.");
       return;
     }
 
@@ -2362,21 +2362,21 @@ export function createExtensionsStore(options: {
     }
 
     const isLocalWorkspace = options.workspaceType() === "local";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.plugins?.write !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.plugins?.write !== false;
 
     if (snapshot.pluginScope !== "project" && !isLocalWorkspace) {
       setStateField("pluginStatus", "Global plugins are only available for local workers.");
       return;
     }
 
-    if (snapshot.pluginScope === "project" && canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
+    if (snapshot.pluginScope === "project" && canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
       try {
         setStateField("pluginStatus", null);
-        await ipollowalkClient.removePlugin(ipollowalkWorkspaceId, name);
+        await ipolloworkClient.removePlugin(ipolloworkWorkspaceId, name);
         options.markReloadRequired?.("plugins", { type: "plugin", name: triggerName, action: "removed" });
         await refreshPlugins("project");
       } catch (error) {
@@ -2385,8 +2385,8 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (snapshot.pluginScope === "project" && hasiPolloWalkTarget) {
-      setStateField("pluginStatus", "iPolloWalk server cannot write plugins for this workspace.");
+    if (snapshot.pluginScope === "project" && hasiPolloWorkTarget) {
+      setStateField("pluginStatus", "iPolloWork server cannot write plugins for this workspace.");
       return;
     }
 
@@ -2396,7 +2396,7 @@ export function createExtensionsStore(options: {
     }
 
     if (!isLocalWorkspace) {
-      setStateField("pluginStatus", "iPolloWalk server unavailable. Connect to manage plugins.");
+      setStateField("pluginStatus", "iPolloWork server unavailable. Connect to manage plugins.");
       return;
     }
 
@@ -2477,18 +2477,18 @@ export function createExtensionsStore(options: {
   async function installSkillCreator(): Promise<{ ok: boolean; message: string }> {
     const isRemoteWorkspace = options.workspaceType() === "remote";
     const isLocalWorkspace = options.workspaceType() === "local";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.skills?.write !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.skills?.write !== false;
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
       options.setBusy(true);
       options.setError(null);
       setStateField("skillsStatus", t("skills.installing_skill_creator"));
       try {
-        await ipollowalkClient.upsertSkill(ipollowalkWorkspaceId, { name: "skill-creator", content: skillCreatorTemplate });
+        await ipolloworkClient.upsertSkill(ipolloworkWorkspaceId, { name: "skill-creator", content: skillCreatorTemplate });
         const message = t("skills.skill_creator_installed");
         setStateField("skillsStatus", message);
         options.markReloadRequired?.("skills", { type: "skill", name: "skill-creator", action: "added" });
@@ -2505,14 +2505,14 @@ export function createExtensionsStore(options: {
       }
     }
 
-    if (hasiPolloWalkTarget) {
-      const message = "iPolloWalk server cannot write skills for this workspace.";
+    if (hasiPolloWorkTarget) {
+      const message = "iPolloWork server cannot write skills for this workspace.";
       setStateField("skillsStatus", message);
       return { ok: false, message };
     }
 
     if (isRemoteWorkspace) {
-      const message = "iPolloWalk server unavailable. Connect to install skills.";
+      const message = "iPolloWork server unavailable. Connect to install skills.";
       setStateField("skillsStatus", message);
       return { ok: false, message };
     }
@@ -2629,16 +2629,16 @@ export function createExtensionsStore(options: {
     const root = options.selectedWorkspaceRoot().trim();
     const isRemoteWorkspace = options.workspaceType() === "remote";
     const isLocalWorkspace = options.workspaceType() === "local";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.skills?.read !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.skills?.read !== false;
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
       try {
         setStateField("skillsStatus", null);
-        const result = await ipollowalkClient.getSkill(ipollowalkWorkspaceId, trimmed, { includeGlobal: isLocalWorkspace });
+        const result = await ipolloworkClient.getSkill(ipolloworkWorkspaceId, trimmed, { includeGlobal: isLocalWorkspace });
         return { name: result.item.name, path: result.item.path, content: result.content };
       } catch (error) {
         setStateField("skillsStatus", error instanceof Error ? error.message : t("skills.failed_to_load"));
@@ -2646,8 +2646,8 @@ export function createExtensionsStore(options: {
       }
     }
 
-    if (hasiPolloWalkTarget) {
-      setStateField("skillsStatus", "iPolloWalk server cannot read skills for this workspace.");
+    if (hasiPolloWorkTarget) {
+      setStateField("skillsStatus", "iPolloWork server cannot read skills for this workspace.");
       return null;
     }
 
@@ -2657,7 +2657,7 @@ export function createExtensionsStore(options: {
     }
 
     if (isRemoteWorkspace) {
-      setStateField("skillsStatus", "iPolloWalk server unavailable. Connect to view skills.");
+      setStateField("skillsStatus", "iPolloWork server unavailable. Connect to view skills.");
       return null;
     }
     if (!isDesktopRuntime()) {
@@ -2685,18 +2685,18 @@ export function createExtensionsStore(options: {
     const root = options.selectedWorkspaceRoot().trim();
     const isRemoteWorkspace = options.workspaceType() === "remote";
     const isLocalWorkspace = options.workspaceType() === "local";
-    const { ipollowalkSnapshot, ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget } =
+    const { ipolloworkSnapshot, ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget } =
       await resolveWorkspaceServerTarget();
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.skills?.write !== false;
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.skills?.write !== false;
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
       options.setBusy(true);
       options.setError(null);
       setStateField("skillsStatus", null);
       try {
-        await ipollowalkClient.upsertSkill(ipollowalkWorkspaceId, {
+        await ipolloworkClient.upsertSkill(ipolloworkWorkspaceId, {
           name: trimmed,
           content: input.content,
           description: input.description,
@@ -2713,8 +2713,8 @@ export function createExtensionsStore(options: {
       return;
     }
 
-    if (hasiPolloWalkTarget) {
-      setStateField("skillsStatus", "iPolloWalk server cannot write skills for this workspace.");
+    if (hasiPolloWorkTarget) {
+      setStateField("skillsStatus", "iPolloWork server cannot write skills for this workspace.");
       return;
     }
 
@@ -2724,7 +2724,7 @@ export function createExtensionsStore(options: {
     }
 
     if (isRemoteWorkspace) {
-      setStateField("skillsStatus", "iPolloWalk server unavailable. Connect to edit skills.");
+      setStateField("skillsStatus", "iPolloWork server unavailable. Connect to edit skills.");
       return;
     }
     if (!isDesktopRuntime()) {
@@ -2872,11 +2872,11 @@ export function createExtensionsStore(options: {
         cloudOrgMarketplacesLoaded = false;
         mutateState((current) => ({ ...current, cloudOrgSkillsContextKey: "" }));
       };
-      window.addEventListener("ipollowalk-den-session-updated", onDenSessionUpdated);
-      stopDenSessionListener = () => window.removeEventListener("ipollowalk-den-session-updated", onDenSessionUpdated);
+      window.addEventListener("ipollowork-den-session-updated", onDenSessionUpdated);
+      stopDenSessionListener = () => window.removeEventListener("ipollowork-den-session-updated", onDenSessionUpdated);
     }
 
-    stopiPolloWalkSubscription = options.ipollowalkServer.subscribe(() => {
+    stopiPolloWorkSubscription = options.ipolloworkServer.subscribe(() => {
       syncFromOptions();
     });
 
@@ -2888,8 +2888,8 @@ export function createExtensionsStore(options: {
     disposed = true;
     started = false;
     abortRefreshes();
-    stopiPolloWalkSubscription?.();
-    stopiPolloWalkSubscription = null;
+    stopiPolloWorkSubscription?.();
+    stopiPolloWorkSubscription = null;
     stopDenSessionListener?.();
     stopDenSessionListener = null;
     listeners.clear();

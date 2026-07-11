@@ -1,21 +1,21 @@
 services:
-  ipollowalk-host:
+  ipollowork-host:
     build:
       context: .
       dockerfile: Dockerfile
       args:
         # Keep this in sync with apps/orchestrator/package.json if you want a pinned release.
-        IPOLLOWALK_ORCHESTRATOR_VERSION: 0.11.22
+        IPOLLOWORK_ORCHESTRATOR_VERSION: 0.11.22
     ports:
       - "8787:8787"
     environment:
       # Set these explicitly for stable sharing.
-      # IPOLLOWALK_TOKEN: "..."
-      # IPOLLOWALK_HOST_TOKEN: "..."
-      # Optional: IPOLLOWALK_APPROVAL_MODE: "auto"
-      # Optional: IPOLLOWALK_APPROVAL_TIMEOUT_MS: "30000"
-      IPOLLOWALK_DATA_DIR: /data/ipollowalk-orchestrator
-      IPOLLOWALK_SIDECAR_DIR: /data/sidecars
+      # IPOLLOWORK_TOKEN: "..."
+      # IPOLLOWORK_HOST_TOKEN: "..."
+      # Optional: IPOLLOWORK_APPROVAL_MODE: "auto"
+      # Optional: IPOLLOWORK_APPROVAL_TIMEOUT_MS: "30000"
+      IPOLLOWORK_DATA_DIR: /data/ipollowork-orchestrator
+      IPOLLOWORK_SIDECAR_DIR: /data/sidecars
     volumes:
       # Mount an existing project/workspace here.
       - ./workspace:/workspace

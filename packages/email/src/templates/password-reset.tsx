@@ -8,12 +8,12 @@ export function PasswordResetEmail({ resetLink }: PasswordResetEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>Reset your iPolloWalk password</Preview>
+      <Preview>Reset your iPolloWork password</Preview>
       <Body style={styles.body}>
         <Container style={styles.container}>
-          <Text style={styles.eyebrow}>iPolloWalk account</Text>
+          <Text style={styles.eyebrow}>iPolloWork account</Text>
           <Heading style={styles.heading}>Reset your password</Heading>
-          <Text style={styles.text}>Use this secure link to choose a new password for your iPolloWalk account.</Text>
+          <Text style={styles.text}>Use this secure link to choose a new password for your iPolloWork account.</Text>
           <Button href={resetLink} style={styles.button}>Reset password</Button>
           <Text style={styles.footer}>This link expires in 1 hour. If you did not request a password reset, you can ignore this email.</Text>
           <Hr style={styles.hr} />

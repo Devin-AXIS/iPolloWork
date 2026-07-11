@@ -33,12 +33,12 @@ function witness(ctx, condition, assertion, actual) {
 
 export default {
   id: FLOW_ID,
-  title: "iPolloWalk Cloud MCP authorizes organization writes without weakening explicit scope consent",
+  title: "iPolloWork Cloud MCP authorizes organization writes without weakening explicit scope consent",
   kind: "internal",
   requiresApp: false,
   steps: [
     {
-      name: "iPolloWalk Cloud MCP receives requested write access",
+      name: "iPolloWork Cloud MCP receives requested write access",
       run: async (ctx) => {
         let result;
         await ctx.prove("New MCP connections include write access and legacy connections can explicitly opt in", {

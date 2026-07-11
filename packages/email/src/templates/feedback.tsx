@@ -8,7 +8,7 @@ export type FeedbackEmailProps = {
   entrypoint: string
   deployment: string
   appVersion: string
-  ipollowalkServerVersion: string
+  ipolloworkServerVersion: string
   opencodeVersion: string
   orchestratorVersion: string
   osName: string
@@ -26,7 +26,7 @@ export function FeedbackEmail({
   entrypoint,
   deployment,
   appVersion,
-  ipollowalkServerVersion,
+  ipolloworkServerVersion,
   opencodeVersion,
   orchestratorVersion,
   osName,
@@ -41,7 +41,7 @@ export function FeedbackEmail({
     ["Entrypoint", entrypoint],
     ["Deployment", deployment],
     ["App version", appVersion],
-    ["iPolloWalk server", ipollowalkServerVersion],
+    ["iPolloWork server", ipolloworkServerVersion],
     ["OpenCode", opencodeVersion],
     ["Orchestrator", orchestratorVersion],
     ["OS", osLabel],
@@ -52,10 +52,10 @@ export function FeedbackEmail({
   return (
     <Html>
       <Head />
-      <Preview>{name} sent iPolloWalk feedback from {entrypoint || source || "unknown"}</Preview>
+      <Preview>{name} sent iPolloWork feedback from {entrypoint || source || "unknown"}</Preview>
       <Body style={styles.body}>
         <Container style={styles.container}>
-          <Text style={styles.eyebrow}>iPolloWalk feedback</Text>
+          <Text style={styles.eyebrow}>iPolloWork feedback</Text>
           <Heading style={styles.heading}>Feedback from {name}</Heading>
           <Text style={styles.contact}>{email}</Text>
 

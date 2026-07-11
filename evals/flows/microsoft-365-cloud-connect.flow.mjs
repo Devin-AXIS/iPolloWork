@@ -23,14 +23,14 @@ import {
 
 const vo = await loadVoiceoverParagraphs("microsoft-365-cloud-connect");
 
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MOCK_SERVER_URL = (process.env.IPOLLOWALK_EVAL_CLOUD_CONNECT_MOCK_URL ?? "http://127.0.0.1:3979")
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MOCK_SERVER_URL = (process.env.IPOLLOWORK_EVAL_CLOUD_CONNECT_MOCK_URL ?? "http://127.0.0.1:3979")
   .trim()
   .replace(/\/+$/, "");
 const TENANT_ID = "11111111-2222-3333-4444-555555555555";
 const CLIENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-const CLIENT_SECRET = "ipollowalk-microsoft-mock-secret";
+const CLIENT_SECRET = "ipollowork-microsoft-mock-secret";
 const MICROSOFT_SCOPES = ["Mail.Read", "Calendars.Read", "Files.Read"];
 const MAIL_PATH = "/v1/capabilities/microsoft-365/mail-messages";
 const CALENDAR_PATH = "/v1/capabilities/microsoft-365/calendar-events";
@@ -206,7 +206,7 @@ export default {
   title: "Members connect delegated Microsoft 365 read access, use mail/calendar/OneDrive capabilities, and disconnect safely",
   kind: "user-facing",
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "Setup: mock services are healthy and the demo owner starts disconnected",
@@ -224,8 +224,8 @@ export default {
         witness(ctx, reset.ok, "The Cloud Connect service mock starts from a clean request log.", { status: reset.status });
 
         state.adminSession = await signInApi(ADMIN_EMAIL, ADMIN_PASSWORD);
-        if (!state.adminSession && ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN?.trim()) {
-          state.adminSession = ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN.trim();
+        if (!state.adminSession && ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN?.trim()) {
+          state.adminSession = ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN.trim();
         }
         witness(ctx, Boolean(state.adminSession), `The demo owner can sign in as ${ADMIN_EMAIL}.`);
 
@@ -340,7 +340,7 @@ export default {
             await ctx.expectText("Microsoft 365 is connected");
             ctx.switchBack();
             const closed = await fetch(`${ctx.cdpBaseUrl.replace(/\/$/, "")}/json/close/${encodeURIComponent(oauthTab.id)}`).catch(() => null);
-            witness(ctx, Boolean(closed?.ok), "The completed OAuth popup closes before returning to iPolloWalk.", {
+            witness(ctx, Boolean(closed?.ok), "The completed OAuth popup closes before returning to iPolloWork.", {
               status: closed?.status ?? null,
             });
           },

@@ -1,6 +1,6 @@
 # daytona-windows-cert-assets — Skill assets for Windows enterprise certificate validation
 
-Cast is an iPolloWalk maintainer reviewing the checked-in skill and helper scripts locally before anyone spends time in a Daytona Windows sandbox.
+Cast is an iPolloWork maintainer reviewing the checked-in skill and helper scripts locally before anyone spends time in a Daytona Windows sandbox.
 
 1. The maintainer opens the new skill and sees that opencode can discover it by name, with the exact Windows, enterprise CA, GPO cert, TLS fetch, and self-hosted certificate phrases that should trigger it.
 

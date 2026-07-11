@@ -8,12 +8,12 @@ export function VerificationEmail({ verificationCode }: VerificationEmailProps) 
   return (
     <Html>
       <Head />
-      <Preview>Your iPolloWalk verification code is {verificationCode}</Preview>
+      <Preview>Your iPolloWork verification code is {verificationCode}</Preview>
       <Body style={styles.body}>
         <Container style={styles.container}>
-          <Text style={styles.eyebrow}>iPolloWalk</Text>
+          <Text style={styles.eyebrow}>iPolloWork</Text>
           <Heading style={styles.heading}>Verify your email</Heading>
-          <Text style={styles.text}>Enter this code to finish signing in to iPolloWalk.</Text>
+          <Text style={styles.text}>Enter this code to finish signing in to iPolloWork.</Text>
           <Section style={styles.codeBox}>
             <Text style={styles.code}>{verificationCode}</Text>
           </Section>

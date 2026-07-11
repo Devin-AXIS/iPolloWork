@@ -5,9 +5,9 @@ import { useNavigate } from "react-router-dom";
 import { useUpdateCheckRequestStore } from "../domains/settings/state/update-check-request";
 import { useUiStateStore } from "./ui-state-store";
 
-const NATIVE_MENU_OPEN_SETTINGS_EVENT = "ipollowalk:native-menu:open-settings";
-const NATIVE_MENU_TOGGLE_SIDEBAR_EVENT = "ipollowalk:native-menu:toggle-sidebar";
-const NATIVE_MENU_CHECK_UPDATES_EVENT = "ipollowalk:native-menu:check-updates";
+const NATIVE_MENU_OPEN_SETTINGS_EVENT = "ipollowork:native-menu:open-settings";
+const NATIVE_MENU_TOGGLE_SIDEBAR_EVENT = "ipollowork:native-menu:toggle-sidebar";
+const NATIVE_MENU_CHECK_UPDATES_EVENT = "ipollowork:native-menu:check-updates";
 
 export function AppMenuProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();

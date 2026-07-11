@@ -61,10 +61,10 @@ export default {
             action: async () => {},
             assert: async () => {
               const run = await createDemoRun(testRoot);
-              const productionRoot = path.join(os.homedir(), ".ipollowalk");
+              const productionRoot = path.join(os.homedir(), ".ipollowork");
               witness(ctx, run.admin.root !== run.consumer.root, "Demo A and Demo B folders differ");
-              witness(ctx, !run.admin.root.startsWith(productionRoot), "Demo A does not use the production .ipollowalk folder", run.admin.root);
-              witness(ctx, !run.consumer.root.startsWith(productionRoot), "Demo B does not use the production .ipollowalk folder", run.consumer.root);
+              witness(ctx, !run.admin.root.startsWith(productionRoot), "Demo A does not use the production .ipollowork folder", run.admin.root);
+              witness(ctx, !run.consumer.root.startsWith(productionRoot), "Demo B does not use the production .ipollowork folder", run.consumer.root);
               witness(ctx, await exists(run.admin.userDataDir), "Demo A Electron data folder exists");
               witness(ctx, await exists(run.consumer.userDataDir), "Demo B Electron data folder exists");
               ctx.output("Created demo folders", `Demo A: ${run.admin.root}\nDemo B: ${run.consumer.root}`);

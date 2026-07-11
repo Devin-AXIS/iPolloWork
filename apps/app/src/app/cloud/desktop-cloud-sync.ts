@@ -3,11 +3,11 @@ import {
   readDenSettings,
 } from "../lib/den";
 import type {
-  iPolloWalkDesktopCloudSyncChange,
-  iPolloWalkDesktopCloudSyncResult,
-  iPolloWalkDesktopCloudSyncState,
-  iPolloWalkServerClient,
-} from "../lib/ipollowalk-server";
+  iPolloWorkDesktopCloudSyncChange,
+  iPolloWorkDesktopCloudSyncResult,
+  iPolloWorkDesktopCloudSyncState,
+  iPolloWorkServerClient,
+} from "../lib/ipollowork-server";
 
 export type PendingCloudPluginChange = "modified" | "removed";
 
@@ -20,7 +20,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function readSyncChange(value: unknown): iPolloWalkDesktopCloudSyncChange | null {
+function readSyncChange(value: unknown): iPolloWorkDesktopCloudSyncChange | null {
   if (!isRecord(value)) return null;
   const id = typeof value.id === "string" ? value.id.trim() : "";
   const kind = value.kind === "new" || value.kind === "modified" || value.kind === "removed" ? value.kind : null;
@@ -44,7 +44,7 @@ function readSyncChange(value: unknown): iPolloWalkDesktopCloudSyncChange | null
 }
 
 /** Read all pending changes from a persisted desktop-cloud-sync state (GET response). */
-export function readPendingCloudSyncChanges(state: iPolloWalkDesktopCloudSyncState): iPolloWalkDesktopCloudSyncChange[] {
+export function readPendingCloudSyncChanges(state: iPolloWorkDesktopCloudSyncState): iPolloWorkDesktopCloudSyncChange[] {
   return Object.values(state.entries).flatMap((entry) => {
     if (!isRecord(entry) || !Array.isArray(entry.pendingChanges)) return [];
     return entry.pendingChanges.flatMap((change) => {
@@ -61,7 +61,7 @@ export function readPendingCloudSyncChanges(state: iPolloWalkDesktopCloudSyncSta
  * no longer installed) are filtered out.
  */
 export function derivePendingCloudPluginChanges(input: {
-  changes: iPolloWalkDesktopCloudSyncChange[];
+  changes: iPolloWorkDesktopCloudSyncChange[];
   installedPlugins: Record<string, InstalledCloudPluginLike>;
 }): Record<string, PendingCloudPluginChange> {
   const pending: Record<string, PendingCloudPluginChange> = {};
@@ -101,9 +101,9 @@ export function derivePendingCloudPluginChanges(input: {
 let desktopCloudSyncQueue: Promise<void> = Promise.resolve();
 
 async function runDesktopCloudSync(input: {
-  ipollowalkClient: iPolloWalkServerClient;
+  ipolloworkClient: iPolloWorkServerClient;
   workspaceId: string;
-}): Promise<iPolloWalkDesktopCloudSyncResult | null> {
+}): Promise<iPolloWorkDesktopCloudSyncResult | null> {
   const settings = readDenSettings();
   const token = settings.authToken?.trim() ?? "";
   const activeOrgId = settings.activeOrgId?.trim() ?? "";
@@ -114,18 +114,18 @@ async function runDesktopCloudSync(input: {
     token,
   }).getResourceSnapshot(activeOrgId);
 
-  return input.ipollowalkClient.syncDesktopCloud(input.workspaceId, snapshot);
+  return input.ipolloworkClient.syncDesktopCloud(input.workspaceId, snapshot);
 }
 
 export function refreshDesktopCloudSync(input: {
-  ipollowalkClient: iPolloWalkServerClient | null | undefined;
+  ipolloworkClient: iPolloWorkServerClient | null | undefined;
   workspaceId: string | null | undefined;
-}): Promise<iPolloWalkDesktopCloudSyncResult | null> {
-  const ipollowalkClient = input.ipollowalkClient ?? null;
+}): Promise<iPolloWorkDesktopCloudSyncResult | null> {
+  const ipolloworkClient = input.ipolloworkClient ?? null;
   const workspaceId = input.workspaceId?.trim() ?? "";
-  if (!ipollowalkClient || !workspaceId) return Promise.resolve(null);
+  if (!ipolloworkClient || !workspaceId) return Promise.resolve(null);
 
-  const run = desktopCloudSyncQueue.then(() => runDesktopCloudSync({ ipollowalkClient, workspaceId }));
+  const run = desktopCloudSyncQueue.then(() => runDesktopCloudSync({ ipolloworkClient, workspaceId }));
   desktopCloudSyncQueue = run.then(
     () => undefined,
     () => undefined,

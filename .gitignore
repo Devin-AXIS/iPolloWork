@@ -49,10 +49,10 @@ vendor/opencode/
 .opencode/node_modules/
 .opencode/bun.lock
 
-# iPolloWalk workspace-local artifacts
-.opencode/ipollowalk/
-.opencode/agents/ipollowalk.md
-.opencode/ipollowalk.json
+# iPolloWork workspace-local artifacts
+.opencode/ipollowork/
+.opencode/agents/ipollowork.md
+.opencode/ipollowork.json
 opencode.jsonc
 .vercel
 .env*.local

@@ -7,16 +7,16 @@ import { SUGGESTED_PLUGINS } from "@/app/constants";
 import type { EnablementContext } from "@/app/enablement";
 import { createClient } from "@/app/lib/opencode";
 import {
-  createiPolloWalkServerClient,
-  isLoopbackiPolloWalkServerUrl,
-  readiPolloWalkServerSettings,
-  iPolloWalkServerError,
-  type iPolloWalkServerCapabilities,
-  type iPolloWalkServerClient,
-  type iPolloWalkWorkspaceInfo,
-} from "@/app/lib/ipollowalk-server";
+  createiPolloWorkServerClient,
+  isLoopbackiPolloWorkServerUrl,
+  readiPolloWorkServerSettings,
+  iPolloWorkServerError,
+  type iPolloWorkServerCapabilities,
+  type iPolloWorkServerClient,
+  type iPolloWorkWorkspaceInfo,
+} from "@/app/lib/ipollowork-server";
 import { resolveWorkspaceEndpoint } from "@/app/lib/workspace-endpoint";
-import { buildiPolloWalkEnvRuntimeKey } from "@/app/lib/ipollowalk-env-runtime";
+import { buildiPolloWorkEnvRuntimeKey } from "@/app/lib/ipollowork-env-runtime";
 import {
   getInitialThemeMode,
   setThemeMode as setAppThemeMode,
@@ -52,7 +52,7 @@ import {
 } from "@/react-app/shell/route-workspaces";
 import { createConnectionsStore, useConnectionsStoreSnapshot } from "@/react-app/domains/connections/store";
 import { useOrgMcpConnections } from "@/react-app/domains/connections/use-org-mcp-connections";
-import { createiPolloWalkServerStore, useiPolloWalkServerStoreSnapshot } from "@/react-app/domains/connections/ipollowalk-server-store";
+import { createiPolloWorkServerStore, useiPolloWorkServerStoreSnapshot } from "@/react-app/domains/connections/ipollowork-server-store";
 import { createProviderAuthStore, useProviderAuthStoreSnapshot } from "@/react-app/domains/connections/provider-auth/store";
 import ProviderAuthModal from "@/react-app/domains/connections/provider-auth/provider-auth-modal";
 import ConnectionsModals from "@/react-app/domains/connections/modals";
@@ -62,11 +62,11 @@ import "@/react-app/domains/settings/openai-image-gen-config";
 import "@/react-app/domains/settings/ollama-config";
 import "@/react-app/domains/settings/computer-use-config";
 import "@/react-app/domains/settings/browser-extension-config";
-import "@/react-app/domains/settings/ipollowalk-voice-config";
+import "@/react-app/domains/settings/ipollowork-voice-config";
 import "@/react-app/domains/settings/google-workspace-config";
 import { useSettingsExtensionController } from "@/react-app/domains/settings/settings-extension-controller";
 import { buildExtensionItems } from "@/react-app/domains/settings/extension-items";
-import { isiPolloWalkExtensionEnabled, IPOLLOWALK_EXTENSION_STATE_CHANGED, setiPolloWalkExtensionEnabled } from "@/react-app/domains/settings/extension-state";
+import { isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED, setiPolloWorkExtensionEnabled } from "@/react-app/domains/settings/extension-state";
 import { PreferencesView } from "@/react-app/domains/settings/pages/preferences-view";
 import { ShellCustomizationView } from "@/react-app/domains/settings/pages/shell-view";
 import { GeneralSettingsView } from "@/react-app/domains/settings/pages/general-view";
@@ -91,15 +91,15 @@ import { useDebugViewModel } from "@/react-app/domains/settings/state/debug-view
 import { useElectronUpdaterState } from "@/react-app/domains/settings/state/electron-updater-state";
 import { CloudSessionProvider, useCloudSession } from "@/react-app/domains/settings/cloud/cloud-session-provider";
 import { useDenSession } from "@/react-app/domains/settings/cloud/use-den-session";
-import { useControlAction, type iPolloWalkControlAction } from "./control/control-provider";
+import { useControlAction, type iPolloWorkControlAction } from "./control/control-provider";
 import { useBootState } from "./boot-state";
 import { SettingsShell } from "@/react-app/domains/settings/shell/settings-shell";
 import { createExtensionsStore, useExtensionsStoreSnapshot } from "@/react-app/domains/settings/state/extensions-store";
 import { usePlatform } from "@/react-app/kernel/platform";
 import { useLocal } from "@/react-app/kernel/local-provider";
 import {
-  ipollowalkServerInfo,
-  ipollowalkServerRestart,
+  ipolloworkServerInfo,
+  ipolloworkServerRestart,
   engineStart,
   engineRestart,
   pickDirectory,
@@ -119,11 +119,11 @@ import { useCheckDesktopRestriction, useDesktopConfig } from "@/react-app/domain
 import { useRestrictionNotice } from "@/react-app/domains/cloud/restriction-notice-provider";
 import { useCloudProviderAutoSync } from "@/react-app/domains/cloud/use-cloud-provider-auto-sync";
 import {
-  hasiPolloWalkModelsProvider,
-  hideiPolloWalkModelsPromo,
-  isiPolloWalkModelsPromoHidden,
-  iPolloWalkModelsPromoChangedEvent,
-} from "@/react-app/domains/cloud/ipollowalk-models-promo";
+  hasiPolloWorkModelsProvider,
+  hideiPolloWorkModelsPromo,
+  isiPolloWorkModelsPromoHidden,
+  iPolloWorkModelsPromoChangedEvent,
+} from "@/react-app/domains/cloud/ipollowork-models-promo";
 import {
   isDesktopRuntime,
   isElectronRuntime,
@@ -148,8 +148,8 @@ import { ModelPickerModal } from "@/react-app/domains/session/modals/model-picke
 import type { ModelRef } from "@/app/types";
 import { workspaceSwatchColor } from "@/react-app/domains/session/sidebar/utils";
 import { recordInspectorEvent } from "../../app/lib/app-inspector";
-import { ensureDesktopLocaliPolloWalkConnection } from "./desktop-local-ipollowalk";
-import { resolveiPolloWalkConnection } from "./ipollowalk-connection";
+import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
+import { resolveiPolloWorkConnection } from "./ipollowork-connection";
 import { abortSessionSafe } from "@/app/lib/opencode-session";
 import { notifyAlert } from "./notifications";
 import { useReloadCoordinator } from "./reload-coordinator";
@@ -165,8 +165,8 @@ import {
 } from "@/react-app/domains/settings/openai-image-extension";
 import { OLLAMA_PROVIDER_CONFIG, type LocalProviderInstallInput } from "@/react-app/domains/settings/openai-image-extension";
 
-const ROUTE_IPOLLOWALK_CAPABILITIES: iPolloWalkServerCapabilities = {
-  skills: { read: true, write: true, source: "ipollowalk" },
+const ROUTE_IPOLLOWORK_CAPABILITIES: iPolloWorkServerCapabilities = {
+  skills: { read: true, write: true, source: "ipollowork" },
   plugins: { read: true, write: true },
   mcp: { read: true, write: true },
   commands: { read: true, write: true },
@@ -174,7 +174,7 @@ const ROUTE_IPOLLOWALK_CAPABILITIES: iPolloWalkServerCapabilities = {
 };
 
 async function reloadEngineOrRestartDesktop(
-  client: Pick<iPolloWalkServerClient, "reloadEngine">,
+  client: Pick<iPolloWorkServerClient, "reloadEngine">,
   workspaceId: string,
   afterRestart?: () => Promise<void>,
 ): Promise<void> {
@@ -182,7 +182,7 @@ async function reloadEngineOrRestartDesktop(
     await client.reloadEngine(workspaceId);
   } catch (error) {
     const unreachable =
-      error instanceof iPolloWalkServerError && error.code === "opencode_engine_unreachable";
+      error instanceof iPolloWorkServerError && error.code === "opencode_engine_unreachable";
     if (!unreachable || !isDesktopRuntime()) {
       throw error;
     }
@@ -191,13 +191,13 @@ async function reloadEngineOrRestartDesktop(
   }
 }
 
-function isiPolloWalkCloudProvider(provider: {
+function isiPolloWorkCloudProvider(provider: {
   providerId?: string | null;
   source?: string | null;
   sourceProviderId?: string | null;
 }) {
   return [provider.providerId, provider.source, provider.sourceProviderId].some(
-    (value) => value?.trim().toLowerCase() === "ipollowalk",
+    (value) => value?.trim().toLowerCase() === "ipollowork",
   );
 }
 
@@ -238,9 +238,9 @@ function reconcileSelectedWorkspaceId(
   return serverList.activeId?.trim() || desktopSelectedId || workspaces[0]?.id || "";
 }
 
-const SETTINGS_HIDE_TITLEBAR_KEY = "ipollowalk.react.settings.hide-titlebar";
-const SETTINGS_UPDATE_AUTO_CHECK_KEY = "ipollowalk.react.settings.update-auto-check";
-const SETTINGS_UPDATE_AUTO_DOWNLOAD_KEY = "ipollowalk.react.settings.update-auto-download";
+const SETTINGS_HIDE_TITLEBAR_KEY = "ipollowork.react.settings.hide-titlebar";
+const SETTINGS_UPDATE_AUTO_CHECK_KEY = "ipollowork.react.settings.update-auto-check";
+const SETTINGS_UPDATE_AUTO_DOWNLOAD_KEY = "ipollowork.react.settings.update-auto-download";
 
 export function parseSettingsPath(pathname: string): {
   tab: SettingsTab;
@@ -382,7 +382,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [navigate, props.embedded, selectedWorkspaceId]);
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
-  const [ipollowalkClient, setiPolloWalkClient] = useState<iPolloWalkServerClient | null>(null);
+  const [ipolloworkClient, setiPolloWorkClient] = useState<iPolloWorkServerClient | null>(null);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
@@ -400,7 +400,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [disabledProviders, setDisabledProviders] = useState<string[]>([]);
   const [developerMode, setDeveloperMode] = useState(() => {
     if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("ipollowalk.developerMode") === "1";
+    return window.localStorage.getItem("ipollowork.developerMode") === "1";
   });
   const [themeMode, setThemeModeState] = useState<ThemeMode>(getInitialThemeMode);
   const [hideTitlebar, setHideTitlebar] = useState(() => readStoredBoolean(SETTINGS_HIDE_TITLEBAR_KEY, false));
@@ -458,9 +458,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     selectedWorkspaceRoot: "",
     selectedWorkspaceType: "local" as "local" | "remote",
     runtimeWorkspaceId: null as string | null,
-    ipollowalkServerClient: null as iPolloWalkServerClient | null,
-    ipollowalkServerStatus: "disconnected" as "connected" | "disconnected",
-    ipollowalkServerCapabilities: null as iPolloWalkServerCapabilities | null,
+    ipolloworkServerClient: null as iPolloWorkServerClient | null,
+    ipolloworkServerStatus: "disconnected" as "connected" | "disconnected",
+    ipolloworkServerCapabilities: null as iPolloWorkServerCapabilities | null,
     selectedWorkspaceDisplay: emptyWorkspaceDisplay as WorkspaceDisplay,
     providerItems: [] as ProviderListItem[],
     providerDefaults: {} as Record<string, string>,
@@ -498,7 +498,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             preset: "starter",
             workspaceType: selectedWorkspace.workspaceType ?? "local",
             displayName: selectedWorkspace.displayNameResolved,
-            ipollowalkWorkspaceName: selectedWorkspace.ipollowalkWorkspaceName,
+            ipolloworkWorkspaceName: selectedWorkspace.ipolloworkWorkspaceName,
           }
         : emptyWorkspaceDisplay,
     [emptyWorkspaceDisplay, selectedWorkspace],
@@ -510,9 +510,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     selectedWorkspaceRoot,
     selectedWorkspaceType: selectedWorkspace?.workspaceType ?? "local",
     runtimeWorkspaceId: selectedWorkspace?.id ?? null,
-    ipollowalkServerClient: ipollowalkClient,
-    ipollowalkServerStatus: ipollowalkClient ? "connected" : "disconnected",
-    ipollowalkServerCapabilities: ipollowalkClient ? ROUTE_IPOLLOWALK_CAPABILITIES : null,
+    ipolloworkServerClient: ipolloworkClient,
+    ipolloworkServerStatus: ipolloworkClient ? "connected" : "disconnected",
+    ipolloworkServerCapabilities: ipolloworkClient ? ROUTE_IPOLLOWORK_CAPABILITIES : null,
     selectedWorkspaceDisplay,
     providerItems: providers,
     providerDefaults,
@@ -539,17 +539,17 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     [sessionsByWorkspaceId],
   );
 
-  const ipollowalkServerStore = useMemo(
+  const ipolloworkServerStore = useMemo(
     () =>
-      createiPolloWalkServerStore({
+      createiPolloWorkServerStore({
         startupPreference: () => {
           // In desktop mode, loopback URLs are ephemeral local runtime details.
           // Only non-loopback stored URLs indicate an explicit remote/manual
           // server connection preference.
           if (!isDesktopRuntime()) return "server";
-          const stored = readiPolloWalkServerSettings();
+          const stored = readiPolloWorkServerSettings();
           const storedUrl = stored.urlOverride?.trim() ?? "";
-          return storedUrl && !isLoopbackiPolloWalkServerUrl(storedUrl) ? "server" : "local";
+          return storedUrl && !isLoopbackiPolloWorkServerUrl(storedUrl) ? "server" : "local";
         },
         documentVisible: () => typeof document === "undefined" || document.visibilityState === "visible",
         developerMode: () => routeStateRef.current.developerMode,
@@ -559,9 +559,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         restartLocalServer: async () => {
           if (!isDesktopRuntime()) return false;
           try {
-            await ipollowalkServerRestart({
+            await ipolloworkServerRestart({
               remoteAccessEnabled:
-                readiPolloWalkServerSettings().remoteAccessEnabled === true,
+                readiPolloWorkServerSettings().remoteAccessEnabled === true,
             });
             return true;
           } catch {
@@ -581,7 +581,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         selectedWorkspaceId: () => routeStateRef.current.selectedWorkspaceId,
         selectedWorkspaceRoot: () => routeStateRef.current.selectedWorkspaceRoot,
         workspaceType: () => routeStateRef.current.selectedWorkspaceType,
-        ipollowalkServer: ipollowalkServerStore,
+        ipolloworkServer: ipolloworkServerStore,
         runtimeWorkspaceId: () => routeStateRef.current.runtimeWorkspaceId,
         ensureRuntimeWorkspaceId: async () =>
           routeStateRef.current.runtimeWorkspaceId?.trim() ||
@@ -590,7 +590,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         developerMode: () => routeStateRef.current.developerMode,
         markReloadRequired: reloadCoordinator.markReloadRequired,
       }),
-    [ipollowalkServerStore, reloadCoordinator.markReloadRequired],
+    [ipolloworkServerStore, reloadCoordinator.markReloadRequired],
   );
   refreshMcpServersRef.current = connectionsStore.refreshMcpServers;
   notifyMcpReloadingRef.current = connectionsStore.notifyMcpReloading;
@@ -611,7 +611,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           routeStateRef.current.runtimeWorkspaceId?.trim() ||
           routeStateRef.current.selectedWorkspaceId.trim() ||
           null,
-        ipollowalkServer: ipollowalkServerStore,
+        ipolloworkServer: ipolloworkServerStore,
         setProviders,
         setProviderDefaults,
         setProviderConnectedIds,
@@ -625,7 +625,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           });
         },
       }),
-    [checkDesktopRestriction, ipollowalkServerStore, reloadCoordinator.markReloadRequired],
+    [checkDesktopRestriction, ipolloworkServerStore, reloadCoordinator.markReloadRequired],
   );
   const extensionsStore = useMemo(
     () =>
@@ -635,11 +635,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         selectedWorkspaceId: () => routeStateRef.current.selectedWorkspaceId,
         selectedWorkspaceRoot: () => routeStateRef.current.selectedWorkspaceRoot,
         workspaceType: () => routeStateRef.current.selectedWorkspaceType,
-        ipollowalkServer: ipollowalkServerStore,
-        ipollowalkServerConnection: () => ({
-          ipollowalkServerClient: routeStateRef.current.ipollowalkServerClient,
-          ipollowalkServerStatus: routeStateRef.current.ipollowalkServerStatus,
-          ipollowalkServerCapabilities: routeStateRef.current.ipollowalkServerCapabilities,
+        ipolloworkServer: ipolloworkServerStore,
+        ipolloworkServerConnection: () => ({
+          ipolloworkServerClient: routeStateRef.current.ipolloworkServerClient,
+          ipolloworkServerStatus: routeStateRef.current.ipolloworkServerStatus,
+          ipolloworkServerCapabilities: routeStateRef.current.ipolloworkServerCapabilities,
         }),
         runtimeWorkspaceId: () => routeStateRef.current.runtimeWorkspaceId,
         ensureRuntimeWorkspaceId: async () =>
@@ -656,25 +656,25 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         },
         markReloadRequired: reloadCoordinator.markReloadRequired,
       }),
-    [ipollowalkServerStore, reloadCoordinator.markReloadRequired],
+    [ipolloworkServerStore, reloadCoordinator.markReloadRequired],
   );
-  const ipollowalkServerSnapshot = useiPolloWalkServerStoreSnapshot(ipollowalkServerStore);
+  const ipolloworkServerSnapshot = useiPolloWorkServerStoreSnapshot(ipolloworkServerStore);
   const connectionsSnapshot = useConnectionsStoreSnapshot(connectionsStore);
   const providerAuthSnapshot = useProviderAuthStoreSnapshot(providerAuthStore);
   useExtensionsStoreSnapshot(extensionsStore);
   const orgMcpConnections = useOrgMcpConnections();
 
-  const ipollowalkServerStatusForMcp = ipollowalkServerSnapshot.ipollowalkServerStatus;
+  const ipolloworkServerStatusForMcp = ipolloworkServerSnapshot.ipolloworkServerStatus;
   useEffect(() => {
-    if (ipollowalkServerStatusForMcp !== "connected") return;
-    // The first MCP read races the ipollowalk-server store's initial health
+    if (ipolloworkServerStatusForMcp !== "connected") return;
+    // The first MCP read races the ipollowork-server store's initial health
     // check (a fresh store always starts "disconnected"), so it falls back
     // to config files where server-runtime (config.remote) entries — notably
     // the cloud control MCP — don't exist. Without this re-read the built-in
     // cards show "Tap to connect" until the next full remount even though
     // the entries are configured and healthy.
     void connectionsStore.refreshMcpServers();
-  }, [connectionsStore, ipollowalkServerStatusForMcp]);
+  }, [connectionsStore, ipolloworkServerStatusForMcp]);
 
   const denSession = useDenSession({
     developerMode,
@@ -682,31 +682,31 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   });
   const cloudSession = useCloudSession();
 
-  const hasiPolloWalkCloudProvider = useMemo(
+  const hasiPolloWorkCloudProvider = useMemo(
     () =>
-      providerAuthSnapshot.cloudOrgProviders.some(isiPolloWalkCloudProvider) ||
-      Object.values(providerAuthSnapshot.importedCloudProviders ?? {}).some(isiPolloWalkCloudProvider),
+      providerAuthSnapshot.cloudOrgProviders.some(isiPolloWorkCloudProvider) ||
+      Object.values(providerAuthSnapshot.importedCloudProviders ?? {}).some(isiPolloWorkCloudProvider),
     [providerAuthSnapshot.cloudOrgProviders, providerAuthSnapshot.importedCloudProviders],
   );
-  const [iPolloWalkModelsPromoHidden, setiPolloWalkModelsPromoHidden] = useState(isiPolloWalkModelsPromoHidden);
-  const iPolloWalkModelsConnected =
-    (cloudSession.isSignedIn && hasiPolloWalkCloudProvider) ||
-    hasiPolloWalkModelsProvider(providerConnectedIds);
-  const showiPolloWalkModelsSubscribe = !iPolloWalkModelsConnected && !iPolloWalkModelsPromoHidden;
-  const showiPolloWalkModelsConnect = !iPolloWalkModelsConnected && iPolloWalkModelsPromoHidden;
+  const [iPolloWorkModelsPromoHidden, setiPolloWorkModelsPromoHidden] = useState(isiPolloWorkModelsPromoHidden);
+  const iPolloWorkModelsConnected =
+    (cloudSession.isSignedIn && hasiPolloWorkCloudProvider) ||
+    hasiPolloWorkModelsProvider(providerConnectedIds);
+  const showiPolloWorkModelsSubscribe = !iPolloWorkModelsConnected && !iPolloWorkModelsPromoHidden;
+  const showiPolloWorkModelsConnect = !iPolloWorkModelsConnected && iPolloWorkModelsPromoHidden;
 
   useEffect(() => {
-    const handlePromoChanged = () => setiPolloWalkModelsPromoHidden(isiPolloWalkModelsPromoHidden());
-    window.addEventListener(iPolloWalkModelsPromoChangedEvent, handlePromoChanged);
-    return () => window.removeEventListener(iPolloWalkModelsPromoChangedEvent, handlePromoChanged);
+    const handlePromoChanged = () => setiPolloWorkModelsPromoHidden(isiPolloWorkModelsPromoHidden());
+    window.addEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
+    return () => window.removeEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
   }, []);
 
-  const dismissiPolloWalkModelsPromo = useCallback(() => {
-    hideiPolloWalkModelsPromo();
-    setiPolloWalkModelsPromoHidden(true);
+  const dismissiPolloWorkModelsPromo = useCallback(() => {
+    hideiPolloWorkModelsPromo();
+    setiPolloWorkModelsPromoHidden(true);
   }, []);
 
-  const subscribeToiPolloWalkModels = useCallback(() => {
+  const subscribeToiPolloWorkModels = useCallback(() => {
     providerAuthStore.closeProviderAuthModal();
     const accountPath = selectedWorkspaceId
       ? workspaceSettingsRoute(selectedWorkspaceId, "cloud-account")
@@ -744,8 +744,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
 
   const shareWorkspaceState = useShareWorkspaceState({
     workspaces,
-    ipollowalkServerHostInfo: ipollowalkServerSnapshot.ipollowalkServerHostInfo,
-    ipollowalkServerSettings: ipollowalkServerSnapshot.ipollowalkServerSettings,
+    ipolloworkServerHostInfo: ipolloworkServerSnapshot.ipolloworkServerHostInfo,
+    ipolloworkServerSettings: ipolloworkServerSnapshot.ipolloworkServerSettings,
     engineInfo: null,
     exportWorkspaceBusy,
     openLink: (url) => platform.openLink(url),
@@ -754,8 +754,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
 
   const debugViewProps = useDebugViewModel({
     developerMode,
-    ipollowalkServerStore,
-    ipollowalkServerSnapshot,
+    ipolloworkServerStore,
+    ipolloworkServerSnapshot,
     runtimeWorkspaceId: selectedWorkspace?.id ?? null,
     selectedWorkspaceRoot,
     setRouteError: (message) => {
@@ -812,7 +812,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       selectedWorkspaceRoot || undefined,
       {
         token: selectedWorkspaceEndpoint.token,
-        mode: "ipollowalk",
+        mode: "ipollowork",
       },
     );
   }, [selectedWorkspaceEndpoint, selectedWorkspaceRoot]);
@@ -839,10 +839,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
 
   useEffect(() => {
     const refresh = () => setExtensionStateVersion((value) => value + 1);
-    window.addEventListener(IPOLLOWALK_EXTENSION_STATE_CHANGED, refresh);
+    window.addEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
     window.addEventListener("storage", refresh);
     return () => {
-      window.removeEventListener(IPOLLOWALK_EXTENSION_STATE_CHANGED, refresh);
+      window.removeEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
       window.removeEventListener("storage", refresh);
     };
   }, []);
@@ -863,7 +863,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, []);
 
   useEffect(() => {
-    const client = selectedWorkspaceEndpoint?.client ?? ipollowalkClient;
+    const client = selectedWorkspaceEndpoint?.client ?? ipolloworkClient;
     if (!client) {
       setGoogleWorkspaceConnected(false);
       return;
@@ -881,24 +881,24 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [ipollowalkClient, selectedWorkspaceEndpoint]);
+  }, [ipolloworkClient, selectedWorkspaceEndpoint]);
 
   useEffect(() => {
-    if (!ipollowalkClient) {
+    if (!ipolloworkClient) {
       setUserEnvKeys([]);
       return;
     }
     let cancelled = false;
-    void ipollowalkClient.listUserEnvKeys()
+    void ipolloworkClient.listUserEnvKeys()
       .then((response) => { if (!cancelled) setUserEnvKeys(response.keys); })
       .catch(() => { if (!cancelled) setUserEnvKeys([]); });
     return () => { cancelled = true; };
-  }, [ipollowalkClient]);
+  }, [ipolloworkClient]);
 
   const installOpenAiImageExtension = useCallback(async (apiKey: string) => {
     const resolvedApiKey = apiKey.trim();
-    if (!ipollowalkClient) {
-      setImageExtensionError("iPolloWalk server is not connected.");
+    if (!ipolloworkClient) {
+      setImageExtensionError("iPolloWork server is not connected.");
       return;
     }
     if (!resolvedApiKey) {
@@ -910,23 +910,23 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     setImageExtensionStatus(null);
     setImageExtensionError(null);
     try {
-      await ipollowalkClient.upsertUserEnv([{ key: "OPENAI_API_KEY", value: resolvedApiKey }]);
+      await ipolloworkClient.upsertUserEnv([{ key: "OPENAI_API_KEY", value: resolvedApiKey }]);
       setUserEnvKeys((current) => Array.from(new Set([...current, "OPENAI_API_KEY"])));
-      setImageExtensionStatus("Saved OPENAI_API_KEY. Agents can use iPolloWalk extension actions for image generation.");
+      setImageExtensionStatus("Saved OPENAI_API_KEY. Agents can use iPolloWork extension actions for image generation.");
     } catch (error) {
       setImageExtensionError(describeRouteError(error));
     } finally {
       setImageExtensionBusy(false);
     }
-  }, [ipollowalkClient]);
+  }, [ipolloworkClient]);
 
   const generateOpenAiTestImage = useCallback(async (input: { apiKey: string; prompt: string }) => {
-    const client = selectedWorkspaceEndpoint?.client ?? ipollowalkClient;
+    const client = selectedWorkspaceEndpoint?.client ?? ipolloworkClient;
     const workspaceId = runtimeWorkspaceId?.trim() ?? "";
     const apiKey = input.apiKey.trim();
     const prompt = input.prompt.trim();
     if (!client || !workspaceId) {
-      setImageGenerationError("iPolloWalk server is not connected for this workspace.");
+      setImageGenerationError("iPolloWork server is not connected for this workspace.");
       return;
     }
     if (!apiKey) {
@@ -942,8 +942,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     setImageGenerationStatus(null);
     setImageGenerationError(null);
     try {
-      if (ipollowalkClient) {
-        await ipollowalkClient.upsertUserEnv([{ key: "OPENAI_API_KEY", value: apiKey }]);
+      if (ipolloworkClient) {
+        await ipolloworkClient.upsertUserEnv([{ key: "OPENAI_API_KEY", value: apiKey }]);
         setUserEnvKeys((current) => Array.from(new Set([...current, "OPENAI_API_KEY"])));
       }
       const response = await client.callExtensionAction({
@@ -966,11 +966,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     } finally {
       setImageGenerationBusy(false);
     }
-  }, [ipollowalkClient, runtimeWorkspaceId, selectedWorkspaceEndpoint, selectedWorkspaceRoot]);
+  }, [ipolloworkClient, runtimeWorkspaceId, selectedWorkspaceEndpoint, selectedWorkspaceRoot]);
 
   const saveVoiceApiKey = useCallback(async (apiKey: string) => {
     const resolvedApiKey = apiKey.trim();
-    if (!ipollowalkClient || !resolvedApiKey) {
+    if (!ipolloworkClient || !resolvedApiKey) {
       setVoiceError("OpenAI API key is required.");
       return;
     }
@@ -978,7 +978,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     setVoiceStatus(null);
     setVoiceError(null);
     try {
-      await ipollowalkClient.upsertUserEnv([{ key: "OPENAI_API_KEY", value: resolvedApiKey }]);
+      await ipolloworkClient.upsertUserEnv([{ key: "OPENAI_API_KEY", value: resolvedApiKey }]);
       setUserEnvKeys((current) => Array.from(new Set([...current, "OPENAI_API_KEY"])));
       setVoiceStatus("Saved OPENAI_API_KEY for Voice Mode.");
     } catch (error) {
@@ -986,32 +986,32 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     } finally {
       setVoiceBusy(false);
     }
-  }, [ipollowalkClient]);
+  }, [ipolloworkClient]);
 
   const testVoiceSession = useCallback(async () => {
-    if (!ipollowalkClient) {
-      setVoiceError("iPolloWalk server is not connected.");
+    if (!ipolloworkClient) {
+      setVoiceError("iPolloWork server is not connected.");
       return;
     }
     setVoiceBusy(true);
     setVoiceStatus(null);
     setVoiceError(null);
     try {
-      const session = await ipollowalkClient.createVoiceRealtimeSession();
-      setVoiceStatus(`Realtime ready with ${session.model} (${session.tools.length} iPolloWalk tools).`);
+      const session = await ipolloworkClient.createVoiceRealtimeSession();
+      setVoiceStatus(`Realtime ready with ${session.model} (${session.tools.length} iPolloWork tools).`);
     } catch (error) {
       setVoiceError(describeRouteError(error));
     } finally {
       setVoiceBusy(false);
     }
-  }, [ipollowalkClient]);
+  }, [ipolloworkClient]);
 
   const installLocalProvider = useCallback(async (input: LocalProviderInstallInput) => {
-    const client = selectedWorkspaceEndpoint?.client ?? ipollowalkClient;
+    const client = selectedWorkspaceEndpoint?.client ?? ipolloworkClient;
     const workspaceId = runtimeWorkspaceId?.trim() ?? "";
     const modelId = input.modelId.trim();
     if (!client || !workspaceId) {
-      setLocalProviderError("iPolloWalk server is not connected for this workspace.");
+      setLocalProviderError("iPolloWork server is not connected for this workspace.");
       return;
     }
     if (!modelId) {
@@ -1050,7 +1050,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       }
       await refreshProviderListQueries(getReactQueryClient());
       try {
-        window.dispatchEvent(new CustomEvent("ipollowalk-server-settings-changed"));
+        window.dispatchEvent(new CustomEvent("ipollowork-server-settings-changed"));
       } catch {
         // ignore browser event dispatch failures
       }
@@ -1060,7 +1060,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     } finally {
       setLocalProviderBusy(false);
     }
-  }, [local, ipollowalkClient, reloadCoordinator, runtimeWorkspaceId, selectedWorkspaceEndpoint]);
+  }, [local, ipolloworkClient, reloadCoordinator, runtimeWorkspaceId, selectedWorkspaceEndpoint]);
 
   useEffect(() => {
     local.setUi((previous) => ({ ...previous, view: "settings", tab: route.tab }));
@@ -1106,10 +1106,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           desktopWorkspaces = workspacesRef.current;
         }
       }
-      const { normalizedBaseUrl, resolvedToken, resolvedHostToken } = await resolveiPolloWalkConnection();
+      const { normalizedBaseUrl, resolvedToken, resolvedHostToken } = await resolveiPolloWorkConnection();
 
       if (!normalizedBaseUrl || !resolvedToken) {
-        setiPolloWalkClient(null);
+        setiPolloWorkClient(null);
         setBaseUrl("");
         setToken("");
         setWorkspaces(desktopWorkspaces);
@@ -1123,7 +1123,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         return;
       }
 
-      const client = createiPolloWalkServerClient({
+      const client = createiPolloWorkServerClient({
         baseUrl: normalizedBaseUrl,
         token: resolvedToken,
         hostToken: resolvedHostToken || undefined,
@@ -1171,7 +1171,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         }),
       );
 
-      setiPolloWalkClient(client);
+      setiPolloWorkClient(client);
       setBaseUrl(normalizedBaseUrl);
       setToken(resolvedToken);
       setWorkspaces(nextWorkspaces);
@@ -1230,16 +1230,16 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
 
   const reloadWorkspaceEngineFromUi = useCallback(async () => {
     const workspaceId = routeStateRef.current.runtimeWorkspaceId?.trim() || selectedWorkspaceId.trim();
-    if (!ipollowalkClient || !workspaceId) {
+    if (!ipolloworkClient || !workspaceId) {
       toast.error(t("app.error_connect_first"));
       return false;
     }
 
-    await reloadEngineOrRestartDesktop(ipollowalkClient, workspaceId, refreshRouteState);
+    await reloadEngineOrRestartDesktop(ipolloworkClient, workspaceId, refreshRouteState);
     await refreshProviderListQueries(getReactQueryClient());
 
     try {
-      window.dispatchEvent(new CustomEvent("ipollowalk-server-settings-changed"));
+      window.dispatchEvent(new CustomEvent("ipollowork-server-settings-changed"));
     } catch {
       // ignore browser event dispatch failures
     }
@@ -1249,11 +1249,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     void pollMcpServersAfterReloadRef.current?.();
 
     return true;
-  }, [ipollowalkClient, refreshRouteState, selectedWorkspaceId]);
+  }, [ipolloworkClient, refreshRouteState, selectedWorkspaceId]);
 
   useEffect(() => {
     return reloadCoordinator.registerWorkspaceReloadControls({
-      canReloadWorkspaceEngine: () => Boolean(ipollowalkClient && (selectedWorkspace?.id || selectedWorkspaceId)),
+      canReloadWorkspaceEngine: () => Boolean(ipolloworkClient && (selectedWorkspace?.id || selectedWorkspaceId)),
       reloadWorkspaceEngine: reloadWorkspaceEngineFromUi,
       activeSessions: () => activeReloadBlockingSessions,
       stopSession: async (sessionId) => {
@@ -1264,7 +1264,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [
     activeClient,
     activeReloadBlockingSessions,
-    ipollowalkClient,
+    ipolloworkClient,
     reloadCoordinator,
     reloadWorkspaceEngineFromUi,
     selectedWorkspace?.id,
@@ -1371,7 +1371,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   useEffect(() => {
     if (!isDesktopRuntime()) return;
     if (loading) return;
-    if (ipollowalkClient) {
+    if (ipolloworkClient) {
       reconnectAttemptedWorkspaceIdRef.current = "";
       return;
     }
@@ -1380,7 +1380,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     if (!workspaceId || reconnectAttemptedWorkspaceIdRef.current === workspaceId) return;
     reconnectAttemptedWorkspaceIdRef.current = workspaceId;
 
-    void ensureDesktopLocaliPolloWalkConnection({
+    void ensureDesktopLocaliPolloWorkConnection({
       route: "settings",
       workspace: selectedWorkspace,
       allWorkspaces: workspaces,
@@ -1394,27 +1394,27 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         dedupeKey: "server-reconnect",
       });
     });
-  }, [loading, ipollowalkClient, selectedWorkspace, workspaces]);
+  }, [loading, ipolloworkClient, selectedWorkspace, workspaces]);
 
   useEffect(() => {
     void refreshRouteState();
     const handleSettingsChange = () => {
       void refreshRouteState();
     };
-    window.addEventListener("ipollowalk-server-settings-changed", handleSettingsChange);
+    window.addEventListener("ipollowork-server-settings-changed", handleSettingsChange);
     return () => {
-      window.removeEventListener("ipollowalk-server-settings-changed", handleSettingsChange);
+      window.removeEventListener("ipollowork-server-settings-changed", handleSettingsChange);
     };
   }, [refreshRouteState]);
 
   // Load auto-compaction state from OpenCode config on workspace change.
   useEffect(() => {
-    if (!ipollowalkClient || !selectedWorkspaceId) return;
+    if (!ipolloworkClient || !selectedWorkspaceId) return;
     const workspaceId = routeStateRef.current.runtimeWorkspaceId?.trim() || selectedWorkspaceId;
     let cancelled = false;
     (async () => {
       try {
-        const config = await ipollowalkClient.getConfig(workspaceId);
+        const config = await ipolloworkClient.getConfig(workspaceId);
         if (cancelled) return;
         const compaction = config.opencode?.compaction;
         const auto = compaction && typeof compaction === "object" && "auto" in compaction
@@ -1427,17 +1427,17 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       }
     })();
     return () => { cancelled = true; };
-  }, [ipollowalkClient, selectedWorkspaceId]);
+  }, [ipolloworkClient, selectedWorkspaceId]);
 
   const toggleAutoCompactContext = useCallback(async () => {
     if (autoCompactContextBusy) return;
     const workspaceId = routeStateRef.current.runtimeWorkspaceId?.trim() || selectedWorkspaceId;
-    if (!ipollowalkClient || !workspaceId) return;
+    if (!ipolloworkClient || !workspaceId) return;
     const next = !autoCompactContext;
     setAutoCompactContext(next);
     setAutoCompactContextBusy(true);
     try {
-      await ipollowalkClient.patchConfig(workspaceId, {
+      await ipolloworkClient.patchConfig(workspaceId, {
         opencode: { compaction: { auto: next } },
       });
       reloadCoordinator.markReloadRequired("config", {
@@ -1450,10 +1450,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     } finally {
       setAutoCompactContextBusy(false);
     }
-  }, [autoCompactContext, autoCompactContextBusy, ipollowalkClient, reloadCoordinator, selectedWorkspaceId]);
+  }, [autoCompactContext, autoCompactContextBusy, ipolloworkClient, reloadCoordinator, selectedWorkspaceId]);
 
   useEffect(() => {
-    ipollowalkServerStore.start();
+    ipolloworkServerStore.start();
     connectionsStore.start();
     providerAuthStore.start();
     extensionsStore.start();
@@ -1462,11 +1462,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       extensionsStore.dispose();
       providerAuthStore.dispose();
       connectionsStore.dispose();
-      ipollowalkServerStore.dispose();
+      ipolloworkServerStore.dispose();
     };
-  }, [connectionsStore, extensionsStore, ipollowalkServerStore, providerAuthStore]);
+  }, [connectionsStore, extensionsStore, ipolloworkServerStore, providerAuthStore]);
 
-  const refreshMarketplaceAction = useMemo<iPolloWalkControlAction>(() => ({
+  const refreshMarketplaceAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "extensions.refresh-marketplace",
     label: "Refresh marketplace extensions",
     description: "Force a fresh sync of organization marketplace plugins from the cloud.",
@@ -1493,7 +1493,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [providerAuthStore, route.tab]);
 
   useEffect(() => {
-    ipollowalkServerStore.syncFromOptions();
+    ipolloworkServerStore.syncFromOptions();
     connectionsStore.syncFromOptions();
     providerAuthStore.syncFromOptions();
     extensionsStore.syncFromOptions();
@@ -1501,7 +1501,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     activeClient,
     connectionsStore,
     extensionsStore,
-    ipollowalkServerStore,
+    ipolloworkServerStore,
     providerAuthStore,
     selectedWorkspace?.id,
     selectedWorkspace?.workspaceType,
@@ -1530,9 +1530,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const workspaceType = selectedWorkspace?.workspaceType ?? "local";
   const isRemoteWorkspace = workspaceType === "remote";
   const canWriteWorkspaceSkills =
-    !isRemoteWorkspace || ipollowalkServerSnapshot.ipollowalkServerCanWriteSkills;
+    !isRemoteWorkspace || ipolloworkServerSnapshot.ipolloworkServerCanWriteSkills;
   const canWriteWorkspacePlugins =
-    !isRemoteWorkspace || ipollowalkServerSnapshot.ipollowalkServerCanWritePlugins;
+    !isRemoteWorkspace || ipolloworkServerSnapshot.ipolloworkServerCanWritePlugins;
   const skillsAccessHint =
     isRemoteWorkspace && !canWriteWorkspaceSkills ? t("app.skills_hint_readonly") : null;
   const pluginsAccessHint =
@@ -1568,8 +1568,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       : [],
   );
   const mcpConnectedAppsCount = connectionsSnapshot.mcpServers.length;
-  const ipollowalkCloudMcpUrl = connectionsSnapshot.mcpServers.find(
-    (server) => server.name === "ipollowalk-cloud",
+  const ipolloworkCloudMcpUrl = connectionsSnapshot.mcpServers.find(
+    (server) => server.name === "ipollowork-cloud",
   )?.config.url ?? null;
 
   // Build enablement context from all available runtime state.
@@ -1597,7 +1597,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       isToggleEnabled: (ref: string) => {
         const catalog = connectionsStore.quickConnect;
         const match = catalog.find((e: { id?: string; serverName?: string }) => (e.id ?? e.serverName) === ref);
-        return match ? isiPolloWalkExtensionEnabled(match) : false;
+        return match ? isiPolloWorkExtensionEnabled(match) : false;
       },
     };
   }, [computerUsePermissions, connectionsSnapshot, extensionStateVersion, providerConnectedIds, userEnvKeys]);
@@ -1605,20 +1605,20 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const restartExtensionLocalServer = useCallback(async () => {
     if (!isDesktopRuntime()) return false;
     try {
-      await ipollowalkServerRestart({
+      await ipolloworkServerRestart({
         remoteAccessEnabled:
-          readiPolloWalkServerSettings().remoteAccessEnabled === true,
+          readiPolloWorkServerSettings().remoteAccessEnabled === true,
       });
-      await ipollowalkServerStore.reconnectiPolloWalkServer();
+      await ipolloworkServerStore.reconnectiPolloWorkServer();
       await refreshRouteState();
       return true;
     } catch {
       return false;
     }
-  }, [ipollowalkServerStore, refreshRouteState]);
+  }, [ipolloworkServerStore, refreshRouteState]);
   const extensionController = useSettingsExtensionController({
-    ipollowalkServerClient: selectedWorkspaceEndpoint?.client ?? ipollowalkClient,
-    hostiPolloWalkServerClient: ipollowalkClient,
+    ipolloworkServerClient: selectedWorkspaceEndpoint?.client ?? ipolloworkClient,
+    hostiPolloWorkServerClient: ipolloworkClient,
     enablementContext,
     mcpServers: connectionsSnapshot.mcpServers,
     mcpConnectingName: connectionsSnapshot.mcpConnectingName,
@@ -1676,7 +1676,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     () => extensionItems.orgMcpConnectionItems.filter((item) => item.installState === "installed"),
     [extensionItems.orgMcpConnectionItems],
   );
-  const routeiPolloWalkStatus = ipollowalkClient ? "connected" : "disconnected";
+  const routeiPolloWorkStatus = ipolloworkClient ? "connected" : "disconnected";
   const notFoundRouteError = !loading && routeWorkspaceId && !selectedWorkspace
     ? "Workspace was not found. Select a new workspace from the sidebar."
     : null;
@@ -1689,13 +1689,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       });
     }
   }, [notFoundRouteError]);
-  const routeiPolloWalkCapabilities: iPolloWalkServerCapabilities | null = ipollowalkClient
-    ? ROUTE_IPOLLOWALK_CAPABILITIES
+  const routeiPolloWorkCapabilities: iPolloWorkServerCapabilities | null = ipolloworkClient
+    ? ROUTE_IPOLLOWORK_CAPABILITIES
     : null;
-  const environmentRuntimeKey = buildiPolloWalkEnvRuntimeKey({
-    baseUrl: ipollowalkServerSnapshot.ipollowalkServerBaseUrl || ipollowalkServerSnapshot.ipollowalkServerUrl,
-    pid: ipollowalkServerSnapshot.ipollowalkServerHostInfo?.pid ?? null,
-    port: ipollowalkServerSnapshot.ipollowalkServerHostInfo?.port ?? null,
+  const environmentRuntimeKey = buildiPolloWorkEnvRuntimeKey({
+    baseUrl: ipolloworkServerSnapshot.ipolloworkServerBaseUrl || ipolloworkServerSnapshot.ipolloworkServerUrl,
+    pid: ipolloworkServerSnapshot.ipolloworkServerHostInfo?.pid ?? null,
+    port: ipolloworkServerSnapshot.ipolloworkServerHostInfo?.port ?? null,
   });
 
   const handleApplyEnvironmentChanges = async () => {
@@ -1724,9 +1724,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       preferSidecar: true,
       runtime: "direct",
       workspacePaths,
-      ipollowalkRemoteAccess: ipollowalkServerSnapshot.ipollowalkServerSettings.remoteAccessEnabled === true,
+      ipolloworkRemoteAccess: ipolloworkServerSnapshot.ipolloworkServerSettings.remoteAccessEnabled === true,
     });
-    const reconnected = await ipollowalkServerStore.reconnectiPolloWalkServer();
+    const reconnected = await ipolloworkServerStore.reconnectiPolloWorkServer();
     if (!reconnected) {
       await refreshRouteState().catch(() => {});
       return { statusMessage: t("settings.environment.apply_refresh_failed") };
@@ -1781,11 +1781,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     if (!trimmed) return;
     setRenameWorkspaceBusy(true);
     try {
-      if (!ipollowalkClient) {
-        toast.error("iPolloWalk server is unavailable. Reconnect the server before renaming workspaces.");
+      if (!ipolloworkClient) {
+        toast.error("iPolloWork server is unavailable. Reconnect the server before renaming workspaces.");
         return;
       }
-      await ipollowalkClient.updateWorkspaceDisplayName(renameWorkspaceId, trimmed);
+      await ipolloworkClient.updateWorkspaceDisplayName(renameWorkspaceId, trimmed);
       setRenameWorkspaceId(null);
       setRenameWorkspaceTitle("");
       await refreshRouteState();
@@ -1796,7 +1796,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     } finally {
       setRenameWorkspaceBusy(false);
     }
-  }, [ipollowalkClient, refreshRouteState, renameWorkspaceId, renameWorkspaceTitle]);
+  }, [ipolloworkClient, refreshRouteState, renameWorkspaceId, renameWorkspaceTitle]);
 
   const handleRevealWorkspace = useCallback(async (workspaceId: string) => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
@@ -1819,7 +1819,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       }
       return;
     }
-    throw new Error("iPolloWalk server is unavailable. Reconnect the server before exporting workspace config.");
+    throw new Error("iPolloWork server is unavailable. Reconnect the server before exporting workspace config.");
   }, [baseUrl, token, workspaces]);
 
   const handleForgetWorkspace = useCallback(async (workspaceId: string) => {
@@ -1827,8 +1827,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       const message = t("workspace_list.remove_confirm") || "Remove this workspace from the sidebar?";
       if (!window.confirm(message)) return;
     }
-    if (ipollowalkClient) {
-      await ipollowalkClient.deleteWorkspace(workspaceId).catch(() => undefined);
+    if (ipolloworkClient) {
+      await ipolloworkClient.deleteWorkspace(workspaceId).catch(() => undefined);
     }
     if (isDesktopRuntime()) {
       await workspaceForget(workspaceId).catch(() => undefined);
@@ -1842,7 +1842,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       }
     }
     await refreshRouteState();
-  }, [ipollowalkClient, refreshRouteState, selectedWorkspaceId, workspaces]);
+  }, [ipolloworkClient, refreshRouteState, selectedWorkspaceId, workspaces]);
 
   const handleCreateWorkspace = async (preset: WorkspacePreset, folder: string | null) => {
     if (!folder) return;
@@ -1851,13 +1851,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     try {
       const workspaceName = folderNameFromPath(folder);
       let list: WorkspaceList | null = null;
-      if (ipollowalkClient) {
-        list = await ipollowalkClient
+      if (ipolloworkClient) {
+        list = await ipolloworkClient
           .createLocalWorkspace({ folderPath: folder, name: workspaceName, preset })
           .catch(() => null);
       }
       if (!list) {
-        throw new Error("iPolloWalk server is unavailable. Start or reconnect the server before creating a workspace.");
+        throw new Error("iPolloWork server is unavailable. Start or reconnect the server before creating a workspace.");
       }
       const createdId = resolveWorkspaceListSelectedId(list) || list.workspaces[list.workspaces.length - 1]?.id || "";
       if (createdId) {
@@ -1874,21 +1874,21 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   };
 
   const handleCreateRemoteWorkspace = async (input: {
-    ipollowalkHostUrl?: string | null;
-    ipollowalkToken?: string | null;
+    ipolloworkHostUrl?: string | null;
+    ipolloworkToken?: string | null;
     directory?: string | null;
     displayName?: string | null;
   }) => {
-    const baseUrlValue = input.ipollowalkHostUrl?.trim() ?? "";
+    const baseUrlValue = input.ipolloworkHostUrl?.trim() ?? "";
     if (!baseUrlValue) return false;
     setCreateWorkspaceRemoteBusy(true);
     setCreateWorkspaceRemoteError(null);
     try {
-      const remoteType: "ipollowalk" = "ipollowalk";
+      const remoteType: "ipollowork" = "ipollowork";
       const payload = {
         baseUrl: baseUrlValue,
-        ipollowalkHostUrl: baseUrlValue,
-        ipollowalkToken: input.ipollowalkToken?.trim() || null,
+        ipolloworkHostUrl: baseUrlValue,
+        ipolloworkToken: input.ipolloworkToken?.trim() || null,
         displayName: input.displayName?.trim() || null,
         directory: input.directory?.trim() || null,
         remoteType,
@@ -1896,11 +1896,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       let list: WorkspaceList | null = null;
       if (isDesktopRuntime()) {
         list = await workspaceCreateRemote(payload);
-      } else if (ipollowalkClient) {
-        list = await ipollowalkClient.createRemoteWorkspace(payload).catch(() => null);
+      } else if (ipolloworkClient) {
+        list = await ipolloworkClient.createRemoteWorkspace(payload).catch(() => null);
       }
       if (!list) {
-        throw new Error("iPolloWalk server is unavailable. Start or reconnect the server before connecting a remote workspace.");
+        throw new Error("iPolloWork server is unavailable. Start or reconnect the server before connecting a remote workspace.");
       }
       const createdId = resolveWorkspaceListSelectedId(list) || list.workspaces[list.workspaces.length - 1]?.id || "";
       if (createdId) {
@@ -1951,16 +1951,16 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             developerMode={developerMode}
             onSendFeedback={() => platform.openLink(buildFeedbackUrl({ entrypoint: "settings" }))}
             onJoinDiscord={() => platform.openLink("https://discord.gg/VEhNQXxYMB")}
-            onReportIssue={() => platform.openLink("https://github.com/Devin-AXIS/iPolloWalk/issues/new?template=bug.yml")}
+            onReportIssue={() => platform.openLink("https://github.com/Devin-AXIS/iPolloWork/issues/new?template=bug.yml")}
           />
         );
       case "permissions":
         return (
           <SettingsStack>
             <AuthorizedFoldersPanel
-              ipollowalkServerClient={ipollowalkClient}
-              ipollowalkServerStatus={routeiPolloWalkStatus}
-              ipollowalkServerCapabilities={routeiPolloWalkCapabilities}
+              ipolloworkServerClient={ipolloworkClient}
+              ipolloworkServerStatus={routeiPolloWorkStatus}
+              ipolloworkServerCapabilities={routeiPolloWorkCapabilities}
               runtimeWorkspaceId={runtimeWorkspaceId}
               selectedWorkspaceRoot={selectedWorkspaceRoot}
               activeWorkspaceType={workspaceType}
@@ -1993,10 +1993,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             cloudProviderIds={new Set(
               Object.values(providerAuthSnapshot.importedCloudProviders ?? {}).map((p) => p.providerId)
             )}
-            showiPolloWalkModelsSubscribe={showiPolloWalkModelsSubscribe}
-            showiPolloWalkModelsConnect={showiPolloWalkModelsConnect}
-            onSubscribeiPolloWalkModels={subscribeToiPolloWalkModels}
-            onDismissiPolloWalkModels={dismissiPolloWalkModelsPromo}
+            showiPolloWorkModelsSubscribe={showiPolloWorkModelsSubscribe}
+            showiPolloWorkModelsConnect={showiPolloWorkModelsConnect}
+            onSubscribeiPolloWorkModels={subscribeToiPolloWorkModels}
+            onDismissiPolloWorkModels={dismissiPolloWorkModelsPromo}
             cloudProvidersView={
               <CloudProvidersView
                 embedded
@@ -2111,7 +2111,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                   void connectionsStore.removeMcp(name);
                 }}
                 setMcpEnabled={
-                  routeiPolloWalkStatus === "connected" && routeiPolloWalkCapabilities?.mcp?.write
+                  routeiPolloWorkStatus === "connected" && routeiPolloWorkCapabilities?.mcp?.write
                     ? (name, enabled) => connectionsStore.setMcpEnabled(name, enabled)
                     : undefined
                 }
@@ -2153,7 +2153,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                   void orgMcpConnections.disconnect(connectionId);
                 }}
                 refreshOrgMcpConnections={orgMcpConnections.refresh}
-                setBuiltInEnabled={setiPolloWalkExtensionEnabled}
+                setBuiltInEnabled={setiPolloWorkExtensionEnabled}
               />
             }
           />
@@ -2197,7 +2197,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               void orgMcpConnections.disconnect(connectionId);
             }}
             refreshOrgMcpConnections={orgMcpConnections.refresh}
-            setBuiltInEnabled={setiPolloWalkExtensionEnabled}
+            setBuiltInEnabled={setiPolloWorkExtensionEnabled}
           />
         );
       case "memory":
@@ -2221,22 +2221,22 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             busy={busy}
             clientConnected={Boolean(opencodeClient)}
             opencodeConnectStatus={null}
-            ipollowalkServerStatus={ipollowalkServerSnapshot.ipollowalkServerStatus}
+            ipolloworkServerStatus={ipolloworkServerSnapshot.ipolloworkServerStatus}
             developerMode={developerMode}
             toggleDeveloperMode={() => setDeveloperMode((current) => {
               const next = !current;
-              try { window.localStorage.setItem("ipollowalk.developerMode", next ? "1" : "0"); } catch {}
+              try { window.localStorage.setItem("ipollowork.developerMode", next ? "1" : "0"); } catch {}
               return next;
             })}
             opencodeDevModeEnabled={false}
             openDebugDeepLink={async () => ({ ok: false, message: "Debug deep links are not wired into the React settings route yet." })}
-            cloudMcpUrl={ipollowalkCloudMcpUrl}
-            canMigrateRuntimeConfig={Boolean(ipollowalkClient && selectedWorkspaceId)}
+            cloudMcpUrl={ipolloworkCloudMcpUrl}
+            canMigrateRuntimeConfig={Boolean(ipolloworkClient && selectedWorkspaceId)}
             migrateRuntimeConfig={async () => {
-              if (!ipollowalkClient || !selectedWorkspaceId) {
+              if (!ipolloworkClient || !selectedWorkspaceId) {
                 throw new Error("Select a workspace before migrating legacy runtime config.");
               }
-              const result = await ipollowalkClient.migrateRuntimeConfig(selectedWorkspaceId);
+              const result = await ipolloworkClient.migrateRuntimeConfig(selectedWorkspaceId);
               if (result.migrated) {
                 void connectionsStore.refreshMcpServers();
                 void extensionsStore.refreshPlugins();
@@ -2244,10 +2244,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               return { migrated: result.migrated, keys: result.keys };
             }}
             getRuntimeConfigStatus={async () => {
-              if (!ipollowalkClient || !selectedWorkspaceId) {
+              if (!ipolloworkClient || !selectedWorkspaceId) {
                 throw new Error("Select a workspace to inspect runtime config.");
               }
-              return ipollowalkClient.getRuntimeConfigStatus(selectedWorkspaceId);
+              return ipolloworkClient.getRuntimeConfigStatus(selectedWorkspaceId);
             }}
             organizationServer={denSession}
           />
@@ -2289,7 +2289,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         return (
           <RecoveryView
             anyActiveRuns={false}
-            workspaceConfigPath={selectedWorkspaceRoot ? `${selectedWorkspaceRoot}/.opencode/ipollowalk.json` : ""}
+            workspaceConfigPath={selectedWorkspaceRoot ? `${selectedWorkspaceRoot}/.opencode/ipollowork.json` : ""}
             resetConfigBusy={resetConfigBusy}
             onResetAppConfigDefaults={() => {}}
             configActionStatus={configActionStatus}
@@ -2298,13 +2298,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             onRepairOpencodeCache={() => {}}
             dockerCleanupBusy={false}
             dockerCleanupResult={null}
-            onCleanupiPolloWalkDockerContainers={() => {}}
+            onCleanupiPolloWorkDockerContainers={() => {}}
           />
         );
       case "environment":
         return (
           <EnvironmentView
-            client={ipollowalkServerSnapshot.ipollowalkServerClient}
+            client={ipolloworkServerSnapshot.ipolloworkServerClient}
             isRemoteWorkspace={isRemoteWorkspace}
             onApplyChanges={isDesktopRuntime() && !isRemoteWorkspace ? handleApplyEnvironmentChanges : undefined}
             applyBlocked={activeReloadBlockingSessions.length > 0}
@@ -2334,7 +2334,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         selectedWorkspaceColor={selectedWorkspaceColor}
         workspaces={workspaceOptions}
         onSelectWorkspace={handleSelectSettingsWorkspace}
-        headerStatus={routeiPolloWalkStatus}
+        headerStatus={routeiPolloWorkStatus}
         busyHint={loading ? t("session.loading_detail") : busyLabel}
         onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId) : "/session"))}
         compact={props.embedded}
@@ -2377,8 +2377,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         onConnectCloudProvider={providerAuthStore.connectCloudProvider}
         onSubmitOAuth={providerAuthStore.completeProviderAuthOAuth}
         onRefreshProviders={providerAuthStore.refreshProviders}
-        showiPolloWalkModelsSubscribe={showiPolloWalkModelsSubscribe}
-        onSubscribeiPolloWalkModels={subscribeToiPolloWalkModels}
+        showiPolloWorkModelsSubscribe={showiPolloWorkModelsSubscribe}
+        onSubscribeiPolloWorkModels={subscribeToiPolloWorkModels}
         onClose={() => providerAuthStore.closeProviderAuthModal()}
       />
       <CreateWorkspaceModal

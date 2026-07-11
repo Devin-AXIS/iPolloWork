@@ -11,7 +11,7 @@ on:
         required: false
         type: string
       release_name:
-        description: "Release title (defaults to iPolloWalk <tag>)"
+        description: "Release title (defaults to iPolloWork <tag>)"
         required: false
         type: string
       release_body:
@@ -34,12 +34,12 @@ on:
         type: boolean
         default: true
       publish_sidecars:
-        description: "Build + upload ipollowalk-orchestrator sidecar release assets"
+        description: "Build + upload ipollowork-orchestrator sidecar release assets"
         required: false
         type: boolean
         default: true
       publish_npm:
-        description: "Publish ipollowalk-orchestrator/ipollowalk-server to npm if versions changed"
+        description: "Publish ipollowork-orchestrator/ipollowork-server to npm if versions changed"
         required: false
         type: boolean
         default: true
@@ -131,14 +131,14 @@ jobs:
           if [ -n "$RELEASE_NAME_INPUT" ]; then
             RELEASE_NAME="$RELEASE_NAME_INPUT"
           else
-            RELEASE_NAME="iPolloWalk $TAG"
+            RELEASE_NAME="iPolloWork $TAG"
           fi
 
           RELEASE_BODY_INPUT="${INPUT_RELEASE_BODY:-}"
           if [ -n "$RELEASE_BODY_INPUT" ]; then
             RELEASE_BODY="$RELEASE_BODY_INPUT"
           else
-            printf -v RELEASE_BODY '%s\n\niPolloWalk %s desktop release.\n\n%s\n%s' \
+            printf -v RELEASE_BODY '%s\n\niPolloWork %s desktop release.\n\n%s\n%s' \
               "## What's new" \
               "$TAG" \
               "- Download the attached installer for your platform." \
@@ -208,9 +208,9 @@ jobs:
           echo "publish_npm=$publish_npm" >> "$GITHUB_OUTPUT"
           echo "publish_daytona_snapshot=$publish_daytona_snapshot" >> "$GITHUB_OUTPUT"
           {
-            echo "release_body<<__IPOLLOWALK_RELEASE_BODY_EOF__"
+            echo "release_body<<__IPOLLOWORK_RELEASE_BODY_EOF__"
             printf '%s\n' "$RELEASE_BODY"
-            echo "__IPOLLOWALK_RELEASE_BODY_EOF__"
+            echo "__IPOLLOWORK_RELEASE_BODY_EOF__"
           } >> "$GITHUB_OUTPUT"
 
       - name: Create release if missing
@@ -409,7 +409,7 @@ jobs:
           # TARGET tells prepare-sidecar.mjs which architecture's sidecars
           # to download (critical for cross-arch builds like x64 on arm64 mac).
           TARGET: ${{ matrix.target_triple }}
-        run: pnpm --filter @ipollowalk/desktop build:electron
+        run: pnpm --filter @ipollowork/desktop build:electron
 
       - name: Package Electron (macOS, signed + notarized)
         if: matrix.os_type == 'macos' && env.MACOS_NOTARIZE == 'true'
@@ -477,7 +477,7 @@ jobs:
 
           mkdir -p "$RUNNER_TEMP/signpath-unsigned"
           shopt -s nullglob
-          installers=(apps/desktop/dist-electron/ipollowalk-win-*.exe)
+          installers=(apps/desktop/dist-electron/ipollowork-win-*.exe)
           if [ "${#installers[@]}" -ne 1 ]; then
             printf 'Expected exactly one unsigned Windows installer, found %s.\n' "${#installers[@]}" >&2
             printf '%s\n' "${installers[@]}" >&2
@@ -539,7 +539,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          assets=(apps/desktop/dist-electron/ipollowalk-*)
+          assets=(apps/desktop/dist-electron/ipollowork-*)
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No Electron release assets found in apps/desktop/dist-electron" >&2
             exit 1
@@ -591,7 +591,7 @@ jobs:
         run: node scripts/release/publish-electron-assets.mjs --manifests-only "${{ runner.temp }}/electron-dist" "$RELEASE_TAG"
 
   release-orchestrator-sidecars:
-    name: Build + Upload ipollowalk-orchestrator Sidecars
+    name: Build + Upload ipollowork-orchestrator Sidecars
     needs: [resolve-release, verify-release]
     if: needs.resolve-release.outputs.publish_sidecars == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -650,14 +650,14 @@ jobs:
           epoch=$(git show -s --format=%ct "${RELEASE_TAG}")
           echo "epoch=$epoch" >> "$GITHUB_OUTPUT"
 
-      - name: Check ipollowalk-orchestrator release
+      - name: Check ipollowork-orchestrator release
         id: orchestrator-release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="ipollowalk-orchestrator-v${{ steps.sidecar-versions.outputs.orchestrator }}"
+          tag="ipollowork-orchestrator-v${{ steps.sidecar-versions.outputs.orchestrator }}"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
@@ -668,25 +668,25 @@ jobs:
         env:
           SOURCE_DATE_EPOCH: ${{ steps.source-date.outputs.epoch }}
         run: |
-          pnpm --filter ipollowalk-orchestrator build:bin:all
-          pnpm --filter ipollowalk-orchestrator build:sidecars
+          pnpm --filter ipollowork-orchestrator build:bin:all
+          pnpm --filter ipollowork-orchestrator build:sidecars
 
       - name: Release review (strict)
         env:
           SOURCE_DATE_EPOCH: ${{ steps.source-date.outputs.epoch }}
         run: node scripts/release/review.mjs --strict
 
-      - name: Create ipollowalk-orchestrator release
+      - name: Create ipollowork-orchestrator release
         if: steps.orchestrator-release.outputs.exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${{ steps.sidecar-versions.outputs.orchestrator }}"
-          tag="ipollowalk-orchestrator-v${version}"
-          notes="Sidecar bundle for ipollowalk-orchestrator v${version}.\n\nipollowalk-server: ${{ steps.sidecar-versions.outputs.server }}"
+          tag="ipollowork-orchestrator-v${version}"
+          notes="Sidecar bundle for ipollowork-orchestrator v${version}.\n\nipollowork-server: ${{ steps.sidecar-versions.outputs.server }}"
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "ipollowalk-orchestrator v${version}" \
+            --title "ipollowork-orchestrator v${version}" \
             --notes "$notes" \
             --latest=false
 
@@ -694,7 +694,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="ipollowalk-orchestrator-v${{ steps.sidecar-versions.outputs.orchestrator }}"
+          tag="ipollowork-orchestrator-v${{ steps.sidecar-versions.outputs.orchestrator }}"
           gh release upload "$tag" apps/orchestrator/dist/bin/* apps/orchestrator/dist/sidecars/* --repo "$GITHUB_REPOSITORY" --clobber
 
   publish-npm:
@@ -767,8 +767,8 @@ jobs:
           set -euo pipefail
           # npm view exits non-zero for packages that don't exist yet (404).
           # Treat missing packages as "not published" so release can publish them.
-          orchestrator_current="$(npm view ipollowalk-orchestrator version 2>/dev/null || true)"
-          server_current="$(npm view ipollowalk-server version 2>/dev/null || true)"
+          orchestrator_current="$(npm view ipollowork-orchestrator version 2>/dev/null || true)"
+          server_current="$(npm view ipollowork-server version 2>/dev/null || true)"
 
           if [ "$orchestrator_current" = "$ORCHESTRATOR_VERSION" ]; then
             echo "publish_orchestrator=false" >> "$GITHUB_OUTPUT"
@@ -811,23 +811,23 @@ jobs:
           npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
-      - name: Publish ipollowalk-server
+      - name: Publish ipollowork-server
         if: steps.npm-auth.outputs.enabled == 'true' && steps.npm-versions.outputs.publish_server == 'true'
-        run: pnpm --filter ipollowalk-server publish --access public --no-git-checks
+        run: pnpm --filter ipollowork-server publish --access public --no-git-checks
 
-      - name: Publish ipollowalk-orchestrator
+      - name: Publish ipollowork-orchestrator
         if: steps.npm-auth.outputs.enabled == 'true' && steps.npm-versions.outputs.publish_orchestrator == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ORCHESTRATOR_VERSION: ${{ steps.package-versions.outputs.orchestrator }}
         run: |
           set -euo pipefail
-          tag="ipollowalk-orchestrator-v${ORCHESTRATOR_VERSION}"
+          tag="ipollowork-orchestrator-v${ORCHESTRATOR_VERSION}"
           if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "ipollowalk-orchestrator sidecar release $tag not found. Publish sidecars before ipollowalk-orchestrator." >&2
+            echo "ipollowork-orchestrator sidecar release $tag not found. Publish sidecars before ipollowork-orchestrator." >&2
             exit 1
           fi
-          pnpm --filter ipollowalk-orchestrator build:bin:all
+          pnpm --filter ipollowork-orchestrator build:bin:all
           node apps/orchestrator/scripts/publish-npm.mjs
 
   publish-daytona-snapshot:
@@ -879,7 +879,7 @@ jobs:
 
           version="${RELEASE_TAG#v}"
           git add packaging/aur/PKGBUILD packaging/aur/.SRCINFO
-          git -c user.name="iPolloWalk Release Bot" \
+          git -c user.name="iPolloWork Release Bot" \
               -c user.email="release-bot@users.noreply.github.com" \
               commit -m "chore(aur): update PKGBUILD for ${version}"
           git push origin HEAD:dev
@@ -887,7 +887,7 @@ jobs:
       - name: Publish to AUR
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          AUR_REPO: ${{ vars.AUR_REPO || 'ipollowalk' }}
+          AUR_REPO: ${{ vars.AUR_REPO || 'ipollowork' }}
           AUR_SKIP_UPDATE: "1"
         run: |
           set -euo pipefail

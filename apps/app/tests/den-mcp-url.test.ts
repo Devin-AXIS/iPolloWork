@@ -10,18 +10,18 @@ import {
 describe("resolveDenBaseUrls", () => {
   test("always derives the API proxy from the base URL", () => {
     const resolved = resolveDenBaseUrls({
-      baseUrl: "https://app.ipollowalklabs.com",
-      apiBaseUrl: "https://app.ipollowalklabs.com",
+      baseUrl: "https://app.ipolloworklabs.com",
+      apiBaseUrl: "https://app.ipolloworklabs.com",
     });
-    expect(resolved.apiBaseUrl).toBe("https://app.ipollowalklabs.com/api/den");
+    expect(resolved.apiBaseUrl).toBe("https://app.ipolloworklabs.com/api/den");
   });
 
   test("ignores an explicit API origin when a base URL is present", () => {
     const resolved = resolveDenBaseUrls({
-      baseUrl: "https://app.ipollowalklabs.com",
+      baseUrl: "https://app.ipolloworklabs.com",
       apiBaseUrl: "https://api.example.com",
     });
-    expect(resolved.apiBaseUrl).toBe("https://app.ipollowalklabs.com/api/den");
+    expect(resolved.apiBaseUrl).toBe("https://app.ipolloworklabs.com/api/den");
   });
 
   test("ignores an explicit loopback API URL when a base URL is present", () => {
@@ -33,8 +33,8 @@ describe("resolveDenBaseUrls", () => {
   });
 
   test("derives the /api/den proxy from a web-app baseUrl when no apiBaseUrl is set", () => {
-    const resolved = resolveDenBaseUrls({ baseUrl: "https://app.ipollowalklabs.com" });
-    expect(resolved.apiBaseUrl).toBe("https://app.ipollowalklabs.com/api/den");
+    const resolved = resolveDenBaseUrls({ baseUrl: "https://app.ipolloworklabs.com" });
+    expect(resolved.apiBaseUrl).toBe("https://app.ipolloworklabs.com/api/den");
   });
 });
 
@@ -48,12 +48,12 @@ describe("getDenMcpUrl", () => {
 
 describe("isLegacyWebAppMcpUrl", () => {
   test("flags the legacy bare web-app MCP URL", () => {
-    expect(isLegacyWebAppMcpUrl("https://app.ipollowalklabs.com/mcp")).toBe(true);
-    expect(isLegacyWebAppMcpUrl("https://app.ipollowalk.software/mcp/")).toBe(true);
+    expect(isLegacyWebAppMcpUrl("https://app.ipolloworklabs.com/mcp")).toBe(true);
+    expect(isLegacyWebAppMcpUrl("https://app.ipollowork.software/mcp/")).toBe(true);
   });
 
   test("accepts valid MCP URLs", () => {
-    expect(isLegacyWebAppMcpUrl("https://app.ipollowalklabs.com/api/den/mcp")).toBe(false);
+    expect(isLegacyWebAppMcpUrl("https://app.ipolloworklabs.com/api/den/mcp")).toBe(false);
     expect(isLegacyWebAppMcpUrl("http://127.0.0.1:8787/mcp")).toBe(false);
   });
 
@@ -65,17 +65,17 @@ describe("isLegacyWebAppMcpUrl", () => {
 
 describe("resolveCloudMcpResourceUrl", () => {
   test("heals a minted legacy web-app resource through the /api/den proxy", () => {
-    expect(resolveCloudMcpResourceUrl("https://app.ipollowalklabs.com/mcp")).toBe(
-      "https://app.ipollowalklabs.com/api/den/mcp",
+    expect(resolveCloudMcpResourceUrl("https://app.ipolloworklabs.com/mcp")).toBe(
+      "https://app.ipolloworklabs.com/api/den/mcp",
     );
-    expect(resolveCloudMcpResourceUrl("https://app.ipollowalk.software/mcp/")).toBe(
-      "https://app.ipollowalk.software/api/den/mcp",
+    expect(resolveCloudMcpResourceUrl("https://app.ipollowork.software/mcp/")).toBe(
+      "https://app.ipollowork.software/api/den/mcp",
     );
   });
 
   test("keeps healthy resources verbatim", () => {
-    expect(resolveCloudMcpResourceUrl("https://app.ipollowalklabs.com/api/den/mcp")).toBe(
-      "https://app.ipollowalklabs.com/api/den/mcp",
+    expect(resolveCloudMcpResourceUrl("https://app.ipolloworklabs.com/api/den/mcp")).toBe(
+      "https://app.ipolloworklabs.com/api/den/mcp",
     );
     expect(resolveCloudMcpResourceUrl("http://127.0.0.1:8787/mcp")).toBe(
       "http://127.0.0.1:8787/mcp",
@@ -87,6 +87,6 @@ describe("resolveCloudMcpResourceUrl", () => {
     expect(resolveCloudMcpResourceUrl("")).toBeNull();
     expect(resolveCloudMcpResourceUrl("   ")).toBeNull();
     expect(resolveCloudMcpResourceUrl("not a url")).toBeNull();
-    expect(resolveCloudMcpResourceUrl("ftp://app.ipollowalklabs.com/mcp")).toBeNull();
+    expect(resolveCloudMcpResourceUrl("ftp://app.ipolloworklabs.com/mcp")).toBeNull();
   });
 });

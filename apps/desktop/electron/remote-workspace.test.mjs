@@ -2,13 +2,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  ipollowalkWorkspaceDisplayName,
-  selectiPolloWalkWorkspaceForConnection,
+  ipolloworkWorkspaceDisplayName,
+  selectiPolloWorkWorkspaceForConnection,
 } from "./remote-workspace.mjs";
 
-describe("selectiPolloWalkWorkspaceForConnection", () => {
+describe("selectiPolloWorkWorkspaceForConnection", () => {
   it("selects the active worker workspace when no directory is provided", () => {
-    const selected = selectiPolloWalkWorkspaceForConnection(
+    const selected = selectiPolloWorkWorkspaceForConnection(
       {
         activeId: "ws_active",
         items: [
@@ -23,7 +23,7 @@ describe("selectiPolloWalkWorkspaceForConnection", () => {
   });
 
   it("falls back to the first workspace when activeId is missing", () => {
-    const selected = selectiPolloWalkWorkspaceForConnection(
+    const selected = selectiPolloWorkWorkspaceForConnection(
       {
         items: [
           { id: "ws_first", path: "/workspace/first" },
@@ -37,7 +37,7 @@ describe("selectiPolloWalkWorkspaceForConnection", () => {
   });
 
   it("selects a workspace whose path matches the requested remote directory", () => {
-    const selected = selectiPolloWalkWorkspaceForConnection(
+    const selected = selectiPolloWorkWorkspaceForConnection(
       {
         activeId: "ws_other",
         items: [
@@ -52,7 +52,7 @@ describe("selectiPolloWalkWorkspaceForConnection", () => {
   });
 
   it("selects by opencode directory when workers expose it there", () => {
-    const selected = selectiPolloWalkWorkspaceForConnection(
+    const selected = selectiPolloWorkWorkspaceForConnection(
       {
         items: [
           {
@@ -69,7 +69,7 @@ describe("selectiPolloWalkWorkspaceForConnection", () => {
   });
 
   it("returns null when a requested directory is not present", () => {
-    const selected = selectiPolloWalkWorkspaceForConnection(
+    const selected = selectiPolloWorkWorkspaceForConnection(
       { items: [{ id: "ws_demo", path: "/workspace/demo" }] },
       "/workspace/missing",
     );
@@ -78,7 +78,7 @@ describe("selectiPolloWalkWorkspaceForConnection", () => {
   });
 
   it("reads legacy workspaces arrays", () => {
-    const selected = selectiPolloWalkWorkspaceForConnection(
+    const selected = selectiPolloWorkWorkspaceForConnection(
       { activeId: "ws_legacy", workspaces: [{ id: "ws_legacy", path: "/workspace" }] },
       null,
     );
@@ -87,10 +87,10 @@ describe("selectiPolloWalkWorkspaceForConnection", () => {
   });
 });
 
-describe("ipollowalkWorkspaceDisplayName", () => {
+describe("ipolloworkWorkspaceDisplayName", () => {
   it("prefers display fields before id", () => {
     assert.equal(
-      ipollowalkWorkspaceDisplayName({
+      ipolloworkWorkspaceDisplayName({
         id: "ws_demo",
         name: "Worker project",
         displayName: "Demo",

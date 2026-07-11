@@ -11,18 +11,18 @@ function expandHome(value: string): string {
   return value;
 }
 
-function resolveiPolloWalkDataDir(): string {
-  const override = process.env.IPOLLOWALK_DATA_DIR?.trim();
+function resolveiPolloWorkDataDir(): string {
+  const override = process.env.IPOLLOWORK_DATA_DIR?.trim();
   if (override) return expandHome(override);
-  return join(homedir(), ".ipollowalk", "ipollowalk-server");
+  return join(homedir(), ".ipollowork", "ipollowork-server");
 }
 
 export function auditLogPath(workspaceId: string): string {
-  return join(resolveiPolloWalkDataDir(), "audit", `${workspaceId}.jsonl`);
+  return join(resolveiPolloWorkDataDir(), "audit", `${workspaceId}.jsonl`);
 }
 
 export function legacyAuditLogPath(workspaceRoot: string): string {
-  return join(workspaceRoot, ".opencode", "ipollowalk", "audit.jsonl");
+  return join(workspaceRoot, ".opencode", "ipollowork", "audit.jsonl");
 }
 
 async function resolveReadableAuditPath(workspaceRoot: string, workspaceId: string): Promise<string | null> {

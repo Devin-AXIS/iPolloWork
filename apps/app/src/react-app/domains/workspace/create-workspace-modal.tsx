@@ -162,8 +162,8 @@ export function CreateWorkspaceModal(props: CreateWorkspaceModalProps) {
     if (!props.onConfirmRemote) return;
     await Promise.resolve(
       props.onConfirmRemote({
-        ipollowalkHostUrl: remoteUrl.trim(),
-        ipollowalkToken: remoteToken.trim() || null,
+        ipolloworkHostUrl: remoteUrl.trim(),
+        ipolloworkToken: remoteToken.trim() || null,
         directory: null,
         displayName: remoteDisplayName.trim() || null,
         closeModal: true,

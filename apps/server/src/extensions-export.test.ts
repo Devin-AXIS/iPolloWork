@@ -35,15 +35,15 @@ function serverConfig(root: string): ServerConfig {
 }
 
 async function withWorkspace(fn: (input: { root: string; config: ServerConfig }) => Promise<void>) {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-extensions-export-"));
-  const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-  process.env.IPOLLOWALK_RUNTIME_DB = join(root, "runtime.sqlite");
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-extensions-export-"));
+  const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
   try {
     await mkdir(join(root, ".git"), { recursive: true });
     await fn({ root, config: serverConfig(root) });
   } finally {
-    if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-    else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+    if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+    else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     await rm(root, { recursive: true, force: true });
   }
 }
@@ -207,7 +207,7 @@ describe("POST /workspace/:id/extensions/export", () => {
   });
 });
 
-describe("ipollowalk_extensions_export plugin tool", () => {
+describe("ipollowork_extensions_export plugin tool", () => {
   test("exports end to end through the bundled plugin tool", async () => {
     await withWorkspace(async ({ root, config }) => {
       await writeSkill(root);
@@ -219,14 +219,14 @@ describe("ipollowalk_extensions_export plugin tool", () => {
       });
 
       const server = await startServer(config) as Served;
-      const previousUrl = process.env.IPOLLOWALK_SERVER_URL;
-      const previousToken = process.env.IPOLLOWALK_SERVER_TOKEN;
-      process.env.IPOLLOWALK_SERVER_URL = `http://127.0.0.1:${server.port}`;
-      process.env.IPOLLOWALK_SERVER_TOKEN = config.token;
+      const previousUrl = process.env.IPOLLOWORK_SERVER_URL;
+      const previousToken = process.env.IPOLLOWORK_SERVER_TOKEN;
+      process.env.IPOLLOWORK_SERVER_URL = `http://127.0.0.1:${server.port}`;
+      process.env.IPOLLOWORK_SERVER_TOKEN = config.token;
       try {
-        const { iPolloWalkExtensionsPreview } = await import("./opencode-plugins/ipollowalk-extensions-preview.js");
-        const plugin = await iPolloWalkExtensionsPreview();
-        const output = await plugin.tool.ipollowalk_extensions_export.execute(
+        const { iPolloWorkExtensionsPreview } = await import("./opencode-plugins/ipollowork-extensions-preview.js");
+        const plugin = await iPolloWorkExtensionsPreview();
+        const output = await plugin.tool.ipollowork_extensions_export.execute(
           { skills: ["release-notes"], mcps: ["linear", "not-installed"] },
           { directory: root },
         );
@@ -243,10 +243,10 @@ describe("ipollowalk_extensions_export plugin tool", () => {
         expect(findMcp(parsed.components, "linear")?.config.headers).toEqual({ Authorization: "<redacted>" });
         expect(parsed.missing).toEqual({ skills: [], mcps: ["not-installed"] });
       } finally {
-        if (previousUrl === undefined) delete process.env.IPOLLOWALK_SERVER_URL;
-        else process.env.IPOLLOWALK_SERVER_URL = previousUrl;
-        if (previousToken === undefined) delete process.env.IPOLLOWALK_SERVER_TOKEN;
-        else process.env.IPOLLOWALK_SERVER_TOKEN = previousToken;
+        if (previousUrl === undefined) delete process.env.IPOLLOWORK_SERVER_URL;
+        else process.env.IPOLLOWORK_SERVER_URL = previousUrl;
+        if (previousToken === undefined) delete process.env.IPOLLOWORK_SERVER_TOKEN;
+        else process.env.IPOLLOWORK_SERVER_TOKEN = previousToken;
         await server.stop(true);
       }
     });

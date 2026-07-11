@@ -11,7 +11,7 @@ export type WebUnavailableSurfaceProps = {
 };
 
 const MESSAGE =
-  "This feature is currently unavailable in iPolloWalk Web, check iPolloWalk Desktop for full functionality.";
+  "This feature is currently unavailable in iPolloWork Web, check iPolloWork Desktop for full functionality.";
 
 export function WebUnavailableSurface(props: WebUnavailableSurfaceProps) {
   const innerProps = props.unavailable
@@ -37,12 +37,12 @@ export function WebUnavailableSurface(props: WebUnavailableSurfaceProps) {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>{MESSAGE}</span>
             <a
-              href="https://ipollowalklabs.com"
+              href="https://ipolloworklabs.com"
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 underline underline-offset-2 hover:no-underline"
             >
-              <span>Download iPolloWalk Desktop</span>
+              <span>Download iPolloWork Desktop</span>
               <ArrowUpRight size={props.compact ? 12 : 14} />
             </a>
           </div>

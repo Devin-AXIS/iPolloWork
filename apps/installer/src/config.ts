@@ -1,5 +1,5 @@
 export type InstallerConfig = {
-  /** Organization-controlled display name. Signed app identity remains iPolloWalk. */
+  /** Organization-controlled display name. Signed app identity remains iPolloWork. */
   appName: string
   clientName: string
   /** Den web origin — becomes `baseUrl` in desktop-bootstrap.json. */

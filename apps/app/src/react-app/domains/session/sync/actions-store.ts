@@ -49,7 +49,7 @@ type SessionActionsSnapshot = {
   sessionAgentById: Record<string, string>;
 };
 
-const FLUSH_PROMPT_EVENT = "ipollowalk:flushPromptDraft";
+const FLUSH_PROMPT_EVENT = "ipollowork:flushPromptDraft";
 
 const fileToDataUrl = (file: File, mimeType: string) =>
   new Promise<string>((resolve, reject) => {
@@ -350,7 +350,7 @@ export function createSessionActionsStore(options: {
     const perfEnabled = options.developerMode();
     const startedAt = perfNow();
     const runId = (() => {
-      const key = "__ipollowalk_create_session_run__";
+      const key = "__ipollowork_create_session_run__";
       const w = window as typeof window & { [key]?: number };
       w[key] = (w[key] ?? 0) + 1;
       return w[key];

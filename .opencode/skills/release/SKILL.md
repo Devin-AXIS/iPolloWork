@@ -10,7 +10,7 @@ Confirm the repo is on `main` and clean. Keep changes aligned with OpenCode prim
 ---
 
 ## Bump
-Update versions in `packages/app/package.json`, `packages/desktop/package.json`, `packages/orchestrator/package.json` (publishes as `ipollowalk-orchestrator`), `packages/desktop/src-tauri/tauri.conf.json`, and `packages/desktop/src-tauri/Cargo.toml`. Use one of these commands.
+Update versions in `packages/app/package.json`, `packages/desktop/package.json`, `packages/orchestrator/package.json` (publishes as `ipollowork-orchestrator`), `packages/desktop/src-tauri/tauri.conf.json`, and `packages/desktop/src-tauri/Cargo.toml`. Use one of these commands.
 
 ```bash
 pnpm bump:patch
@@ -40,7 +40,7 @@ git push origin vX.Y.Z
 If a tag needs a rerun, dispatch the workflow.
 
 ```bash
-gh workflow run "Release App" --repo Devin-AXIS/iPolloWalk -f tag=vX.Y.Z
+gh workflow run "Release App" --repo Devin-AXIS/iPolloWork -f tag=vX.Y.Z
 ```
 
 ---
@@ -49,6 +49,6 @@ gh workflow run "Release App" --repo Devin-AXIS/iPolloWalk -f tag=vX.Y.Z
 Confirm the run and the published release.
 
 ```bash
-gh run list --repo Devin-AXIS/iPolloWalk --workflow "Release App" --limit 5
-gh release view vX.Y.Z --repo Devin-AXIS/iPolloWalk
+gh run list --repo Devin-AXIS/iPolloWork --workflow "Release App" --limit 5
+gh release view vX.Y.Z --repo Devin-AXIS/iPolloWork
 ```

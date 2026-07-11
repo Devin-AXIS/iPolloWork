@@ -33,7 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { t } from "@/i18n";
-import { saveInstalledSkillToiPolloWalkOrg } from "@/app/lib/den-skills";
+import { saveInstalledSkillToiPolloWorkOrg } from "@/app/lib/den-skills";
 import {
   buildDenAuthUrl,
   DEFAULT_DEN_BASE_URL,
@@ -70,7 +70,7 @@ const sectionTitleClass = "text-[15px] font-medium tracking-[-0.2px] text-dls-te
 const panelCardClass =
   "rounded-[20px] border border-dls-border bg-dls-surface p-5 transition-all hover:border-dls-border hover:shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]";
 
-const IPOLLOWALK_DEFAULT_SKILL_NAMES = new Set([
+const IPOLLOWORK_DEFAULT_SKILL_NAMES = new Set([
   "workspace-guide",
   "get-started",
   "skill-creator",
@@ -297,8 +297,8 @@ export function SkillsView(props: SkillsViewProps) {
       dispatchLocal({ type: "denSessionUpdated" });
       void extensions.refreshCloudOrgSkills({ force: true });
     };
-    window.addEventListener("ipollowalk-den-session-updated", onDenSession);
-    return () => window.removeEventListener("ipollowalk-den-session-updated", onDenSession);
+    window.addEventListener("ipollowork-den-session-updated", onDenSession);
+    return () => window.removeEventListener("ipollowork-den-session-updated", onDenSession);
   }, [extensions]);
 
   useEffect(() => {
@@ -437,7 +437,7 @@ export function SkillsView(props: SkillsViewProps) {
   );
 
   const hasDefaultHubRepo = useMemo(
-    () => hubRepos.some((repo) => `${repo.owner}/${repo.repo}@${repo.ref}` === "Devin-AXIS/iPolloWalk-hub@main"),
+    () => hubRepos.some((repo) => `${repo.owner}/${repo.repo}@${repo.ref}` === "Devin-AXIS/iPolloWork-hub@main"),
     [hubRepos],
   );
 
@@ -572,13 +572,13 @@ export function SkillsView(props: SkillsViewProps) {
       const skill = await extensions.readSkill(shareTarget.name);
       if (!skill) throw new Error("Failed to load skill");
       const sharing = resolveSharePermission();
-      const { orgName, orgId } = await saveInstalledSkillToiPolloWalkOrg({
+      const { orgName, orgId } = await saveInstalledSkillToiPolloWorkOrg({
         skillText: skill.content,
         shared: sharing.shared,
       });
       setShareTeamSuccess(t("skills.share_team_uploaded_success", undefined, { org: orgName }));
       window.dispatchEvent(
-        new CustomEvent<{ orgId: string }>("ipollowalk-den-org-skills-changed", {
+        new CustomEvent<{ orgId: string }>("ipollowork-den-org-skills-changed", {
           detail: { orgId },
         }),
       );
@@ -668,11 +668,11 @@ export function SkillsView(props: SkillsViewProps) {
     closeCustomRepoModal();
   }, [closeCustomRepoModal, customRepoName, customRepoOwner, customRepoRef, extensions]);
 
-  const isiPolloWalkInjectedSkill = (skill: SkillCard) => {
+  const isiPolloWorkInjectedSkill = (skill: SkillCard) => {
     const normalizedName = skill.name.trim().toLowerCase();
     const normalizedPath = skill.path.replace(/\\/g, "/").toLowerCase();
     return normalizedPath.includes("/.opencode/skills/") &&
-      (IPOLLOWALK_DEFAULT_SKILL_NAMES.has(normalizedName) || normalizedName.endsWith("-creator"));
+      (IPOLLOWORK_DEFAULT_SKILL_NAMES.has(normalizedName) || normalizedName.endsWith("-creator"));
   };
 
   const handleSkillCardKeyDown = (
@@ -808,7 +808,7 @@ export function SkillsView(props: SkillsViewProps) {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="truncate text-[14px] font-semibold text-dls-text">{skill.name}</h4>
-                          {isiPolloWalkInjectedSkill(skill) ? <span className={tagClass}>iPolloWalk</span> : null}
+                          {isiPolloWorkInjectedSkill(skill) ? <span className={tagClass}>iPolloWork</span> : null}
                         </div>
                         <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-dls-secondary">
                           {skill.description || t("skills.no_description")}
@@ -998,7 +998,7 @@ export function SkillsView(props: SkillsViewProps) {
               <button
                 type="button"
                 onClick={() => {
-                  void Promise.resolve(extensions.addHubRepo({ owner: "different-ai", repo: "ipollowalk-hub", ref: "main" })).then(() => {
+                  void Promise.resolve(extensions.addHubRepo({ owner: "different-ai", repo: "ipollowork-hub", ref: "main" })).then(() => {
                     void extensions.refreshHubSkills({ force: true });
                   });
                 }}
@@ -1006,7 +1006,7 @@ export function SkillsView(props: SkillsViewProps) {
                 disabled={props.busy || hasDefaultHubRepo}
               >
                 <Plus size={14} />
-                {t("skills.add_ipollowalk_hub")}
+                {t("skills.add_ipollowork_hub")}
               </button>
               <button type="button" onClick={openCustomRepoModal} disabled={props.busy} className={pillSecondaryClass}>
                 <Plus size={14} />
@@ -1290,7 +1290,7 @@ export function SkillsView(props: SkillsViewProps) {
                     type="text"
                     value={customRepoName}
                     onChange={(event) => setCustomRepoName(event.currentTarget.value)}
-                    placeholder="ipollowalk-hub"
+                    placeholder="ipollowork-hub"
                     className="w-full rounded-lg border border-dls-border bg-dls-hover px-3 py-2 text-xs font-mono text-dls-text focus:outline-none"
                     spellCheck={false}
                   />

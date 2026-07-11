@@ -814,7 +814,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
 
   const initialConfig = useMemo(
     () => ({
-      namespace: "ipollowalk-react-session-composer",
+      namespace: "ipollowork-react-session-composer",
       onError(error: Error) {
         throw error;
       },

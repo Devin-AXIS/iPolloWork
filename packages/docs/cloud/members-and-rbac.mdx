@@ -3,11 +3,11 @@ title: "Managing members and RBAC"
 description: "Invite teammates, create teams, and control Cloud access with owners, admins, members, and custom roles"
 ---
 
-iPolloWalk Cloud separates org membership from team assignment. Teams are used for marketplace and provider access; roles control what a person can manage across the org.
+iPolloWork Cloud separates org membership from team assignment. Teams are used for marketplace and provider access; roles control what a person can manage across the org.
 
 ## Default roles
 
-iPolloWalk Cloud comes with three default roles:
+iPolloWork Cloud comes with three default roles:
 
 - `Owner`: full org control, including member roles and custom roles.
 - `Admin`: can invite people, manage teams, and manage most shared Cloud resources.
@@ -24,16 +24,16 @@ Only `Owner` can change member roles, remove members, or create, edit, and delet
 5. Click `Send invite`.
 
 <Frame>
-  ![Members and RBAC dashboard in iPolloWalk Cloud](/images/cloud-members-and-rbac-dashboard.png)
+  ![Members and RBAC dashboard in iPolloWork Cloud](/images/cloud-members-and-rbac-dashboard.png)
 </Frame>
 
 Invites are tied to the invited email address.
 
 ## SSO just-in-time provisioning
 
-When SSO just-in-time provisioning adds someone to an organization on first sign-in, iPolloWalk assigns the baseline `Member` role. IdP attributes such as `role`, `groups`, or `admin` are not used to grant iPolloWalk organization roles.
+When SSO just-in-time provisioning adds someone to an organization on first sign-in, iPolloWork assigns the baseline `Member` role. IdP attributes such as `role`, `groups`, or `admin` are not used to grant iPolloWork organization roles.
 
-Treat `Admin`, `Owner`, and custom-role elevation as explicit access changes made inside iPolloWalk. Review those changes in the member list and audit trail instead of relying on unvalidated IdP attributes for authorization.
+Treat `Admin`, `Owner`, and custom-role elevation as explicit access changes made inside iPolloWork. Review those changes in the member list and audit trail instead of relying on unvalidated IdP attributes for authorization.
 
 ## Restrict who can join
 
@@ -44,7 +44,7 @@ If you only want teammates from specific companies or domains to join:
 3. Add each approved domain to the `Domain allowlist`.
 4. Click `Save settings`.
 
-When this is enabled, iPolloWalk Cloud only lets people join with email addresses from the approved domains. Existing invites still target a specific email address, so both checks apply: the invitee must use the invited email address and that address must match the allowlist.
+When this is enabled, iPolloWork Cloud only lets people join with email addresses from the approved domains. Existing invites still target a specific email address, so both checks apply: the invitee must use the invited email address and that address must match the allowlist.
 
 ## Create teams
 

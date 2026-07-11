@@ -29,15 +29,15 @@ const readArg = (name) => {
 };
 
 const hasFlag = (name) => process.argv.slice(2).includes(name);
-const forceBuild = hasFlag("--force") || process.env.IPOLLOWALK_SIDECAR_FORCE_BUILD === "1";
-const sidecarOverride = process.env.IPOLLOWALK_SIDECAR_DIR?.trim() || readArg("--outdir");
+const forceBuild = hasFlag("--force") || process.env.IPOLLOWORK_SIDECAR_FORCE_BUILD === "1";
+const sidecarOverride = process.env.IPOLLOWORK_SIDECAR_DIR?.trim() || readArg("--outdir");
 const sidecarDir = sidecarOverride ? resolve(sidecarOverride) : join(__dirname, "..", "resources", "sidecars");
 const constantsPath = resolve(__dirname, "..", "..", "..", "constants.json");
 
 const opencodeGithubRepo = (() => {
   const raw =
     process.env.OPENCODE_GITHUB_REPO?.trim() ||
-    process.env.IPOLLOWALK_OPENCODE_GITHUB_REPO?.trim() ||
+    process.env.IPOLLOWORK_OPENCODE_GITHUB_REPO?.trim() ||
     "anomalyco/opencode";
   const normalized = raw
     .replace(/^https:\/\/github\.com\//i, "")
@@ -118,21 +118,21 @@ const opencodeTargetPath = opencodeTargetName ? join(sidecarDir, opencodeTargetN
 const opencodeCandidatePath = opencodeTargetPath ?? opencodePath;
 let existingOpencodeVersion = null;
 
-// ipollowalk-server paths
-const ipollowalkServerBaseName = "ipollowalk-server";
-const ipollowalkServerName = isWindowsTarget ? `${ipollowalkServerBaseName}.exe` : ipollowalkServerBaseName;
-const ipollowalkServerPath = join(sidecarDir, ipollowalkServerName);
-const ipollowalkServerBuildName = bunTarget
-  ? `${ipollowalkServerBaseName}-${bunTarget}${bunTarget.includes("windows") ? ".exe" : ""}`
-  : ipollowalkServerName;
-const ipollowalkServerBuildPath = join(sidecarDir, ipollowalkServerBuildName);
-const ipollowalkServerTargetTriple = resolvedTargetTriple;
-const ipollowalkServerTargetName = ipollowalkServerTargetTriple
-  ? `${ipollowalkServerBaseName}-${ipollowalkServerTargetTriple}${ipollowalkServerTargetTriple.includes("windows") ? ".exe" : ""}`
+// ipollowork-server paths
+const ipolloworkServerBaseName = "ipollowork-server";
+const ipolloworkServerName = isWindowsTarget ? `${ipolloworkServerBaseName}.exe` : ipolloworkServerBaseName;
+const ipolloworkServerPath = join(sidecarDir, ipolloworkServerName);
+const ipolloworkServerBuildName = bunTarget
+  ? `${ipolloworkServerBaseName}-${bunTarget}${bunTarget.includes("windows") ? ".exe" : ""}`
+  : ipolloworkServerName;
+const ipolloworkServerBuildPath = join(sidecarDir, ipolloworkServerBuildName);
+const ipolloworkServerTargetTriple = resolvedTargetTriple;
+const ipolloworkServerTargetName = ipolloworkServerTargetTriple
+  ? `${ipolloworkServerBaseName}-${ipolloworkServerTargetTriple}${ipolloworkServerTargetTriple.includes("windows") ? ".exe" : ""}`
   : null;
-const ipollowalkServerTargetPath = ipollowalkServerTargetName ? join(sidecarDir, ipollowalkServerTargetName) : null;
+const ipolloworkServerTargetPath = ipolloworkServerTargetName ? join(sidecarDir, ipolloworkServerTargetName) : null;
 
-const ipollowalkServerDir = resolve(__dirname, "..", "..", "server");
+const ipolloworkServerDir = resolve(__dirname, "..", "..", "server");
 
 const resolveBuildScript = (dir) => {
   const scriptPath = resolve(dir, "script", "build.ts");
@@ -143,7 +143,7 @@ const resolveBuildScript = (dir) => {
 };
 
 // orchestrator paths
-const orchestratorBaseName = "ipollowalk-orchestrator";
+const orchestratorBaseName = "ipollowork-orchestrator";
 const orchestratorName =
   isWindowsTarget ? `${orchestratorBaseName}.exe` : orchestratorBaseName;
 const orchestratorPath = join(sidecarDir, orchestratorName);
@@ -274,9 +274,9 @@ const parseChecksum = (content, assetName) => {
   return null;
 };
 
-// ipollowalk-server is no longer compiled as a sidecar binary — it runs
+// ipollowork-server is no longer compiled as a sidecar binary — it runs
 // in-process inside Electron via a direct import of the server library.
-const didBuildiPolloWalkServer = false;
+const didBuildiPolloWorkServer = false;
 
 // Server binary copy/sign skipped — runs in-process.
 
@@ -486,15 +486,15 @@ if (existsSync(orchestratorBuildPath)) {
 adHocSignDarwinSidecars([
   opencodePath,
   opencodeTargetPath,
-  // ipollowalk-server runs in-process — no binary to sign.
+  // ipollowork-server runs in-process — no binary to sign.
   orchestratorBuildPath,
   orchestratorPath,
   orchestratorTargetPath,
 ]);
 
-const ipollowalkServerVersion = (() => {
+const ipolloworkServerVersion = (() => {
   try {
-    const raw = readFileSync(resolve(ipollowalkServerDir, "package.json"), "utf8");
+    const raw = readFileSync(resolve(ipolloworkServerDir, "package.json"), "utf8");
     return String(JSON.parse(raw).version ?? "").trim();
   } catch {
     return null;
@@ -515,11 +515,11 @@ const versions = {
     version: normalizedOpencodeVersion,
     sha256: opencodeCandidatePath && existsSync(opencodeCandidatePath) ? sha256File(opencodeCandidatePath) : null,
   },
-  "ipollowalk-server": {
-    version: ipollowalkServerVersion,
+  "ipollowork-server": {
+    version: ipolloworkServerVersion,
     sha256: "in-process",
   },
-  "ipollowalk-orchestrator": {
+  "ipollowork-orchestrator": {
     version: orchestratorVersion,
     sha256: existsSync(orchestratorPath) ? sha256File(orchestratorPath) : null,
   },

@@ -3,8 +3,8 @@ import { denWebUrl } from "./lib/den-web.mjs";
 
 const vo = await loadVoiceoverParagraphs("den-web-sidebar-logout");
 
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 
 const visibleSidebarFooter = `(() => {
   const sidebar = [...document.querySelectorAll('aside')].find((element) => getComputedStyle(element).display !== 'none');
@@ -87,7 +87,7 @@ export default {
   id: "den-web-sidebar-logout",
   title: "Den Web organization controls stay at the viewport bottom on long dashboard pages",
   kind: "user-facing",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL", "IPOLLOWALK_EVAL_DEN_MULTI_ORG"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL", "IPOLLOWORK_EVAL_DEN_MULTI_ORG"],
   steps: [
     {
       name: "Logged-in dashboard shows workspace navigation",

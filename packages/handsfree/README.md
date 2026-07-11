@@ -1,7 +1,7 @@
-# iPolloWalk Computer Use
+# iPolloWork Computer Use
 
-Native macOS computer-use runtime for iPolloWalk.
-Packaged iPolloWalk builds wrap this runtime in a bundled `Computer Use.app`
+Native macOS computer-use runtime for iPolloWork.
+Packaged iPolloWork builds wrap this runtime in a bundled `Computer Use.app`
 helper so macOS Accessibility and Screen Recording permissions belong to the
 helper app instead of a transient Node or Swift process.
 
@@ -26,13 +26,13 @@ is only used when strict mode is disabled.
 Build the native stdio server:
 
 ```bash
-pnpm --filter @ipollowalk/handsfree check:native
+pnpm --filter @ipollowork/handsfree check:native
 ```
 
 Run it as an MCP-compatible adapter:
 
 ```bash
-pnpm --filter @ipollowalk/handsfree exec ipollowalk-handsfree-computer-use mcp
+pnpm --filter @ipollowork/handsfree exec ipollowork-handsfree-computer-use mcp
 ```
 
 The core runtime is intentionally MCP-independent. `ComputerUseRuntime` exposes a small direct surface (`snapshot`, `click`, `typeText`, `pressKey`, `scroll`, `wait`, `setValue`, `performAction`); `MCPServer` is only a thin stdio wrapper.

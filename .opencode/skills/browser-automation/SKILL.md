@@ -1,13 +1,13 @@
 ---
 name: browser-automation
-description: Local iPolloWalk Electron browser automation with CDP. Use when driving a local Electron dev app, browser_list, browser_snapshot, browser_eval, composer automation, or local UI smoke tests.
+description: Local iPolloWork Electron browser automation with CDP. Use when driving a local Electron dev app, browser_list, browser_snapshot, browser_eval, composer automation, or local UI smoke tests.
 ---
 
 # Browser Automation
 
 ## What I Do
 
-- Attach OpenCode browser tools to the iPolloWalk Electron app during local development.
+- Attach OpenCode browser tools to the iPolloWork Electron app during local development.
 - Drive the app UI through Electron's Chrome DevTools Protocol endpoint.
 - Send a task/session from the composer and confirm the response in the UI.
 
@@ -16,7 +16,7 @@ description: Local iPolloWalk Electron browser automation with CDP. Use when dri
 `pnpm dev` enables Electron CDP by default:
 
 ```sh
-IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT=${IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT:-9823}
+IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=${IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT:-9823}
 ```
 
 The default browser URL for OpenCode browser tools is:
@@ -34,13 +34,13 @@ http://localhost:5173/
 To use a different CDP port, launch with an override:
 
 ```sh
-IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT=9830 pnpm dev
+IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=9830 pnpm dev
 ```
 
 To disable Electron CDP for a run:
 
 ```sh
-IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT=0 pnpm dev
+IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=0 pnpm dev
 ```
 
 ## Background Launch
@@ -48,7 +48,7 @@ IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT=0 pnpm dev
 Use a detached launch when the user wants the app running in the background:
 
 ```sh
-nohup pnpm dev > /var/folders/d9/xqhkvsp94rg0n0n523snqztm0000gn/T/opencode/ipollowalk-dev.log 2>&1 &
+nohup pnpm dev > /var/folders/d9/xqhkvsp94rg0n0n523snqztm0000gn/T/opencode/ipollowork-dev.log 2>&1 &
 ```
 
 Then wait for the CDP port:
@@ -60,7 +60,7 @@ lsof -nP -iTCP:9823 -sTCP:LISTEN
 ## Browser Tool Flow
 
 1. List targets with `browser_list` using `browser_url: "http://127.0.0.1:9823"`.
-2. Select the `iPolloWalk` target ID.
+2. Select the `iPolloWork` target ID.
 3. Read state with `browser_eval` or `browser_snapshot`.
 4. Fill the Lexical composer by targeting `[contenteditable="true"][data-lexical-editor="true"]`.
 5. Click the `Run task` button.
@@ -68,7 +68,7 @@ lsof -nP -iTCP:9823 -sTCP:LISTEN
 
 ## Send A Session
 
-Use this `browser_eval` pattern after selecting the iPolloWalk target:
+Use this `browser_eval` pattern after selecting the iPolloWork target:
 
 ```js
 (() => {
@@ -96,6 +96,6 @@ Use this `browser_eval` pattern after selecting the iPolloWalk target:
 
 ## Notes
 
-- Electron CDP is used for development test tooling. User browser tasks should use the built-in iPolloWalk Browser target.
-- A successful local attach should show an `iPolloWalk` target at `http://127.0.0.1:9823`.
+- Electron CDP is used for development test tooling. User browser tasks should use the built-in iPolloWork Browser target.
+- A successful local attach should show an `iPolloWork` target at `http://127.0.0.1:9823`.
 - The known-good smoke prompt is `Say hello from the Electron browser test.` and the expected response is `Hello from the Electron browser test.`

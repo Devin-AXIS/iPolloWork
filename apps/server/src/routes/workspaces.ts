@@ -5,8 +5,8 @@ import { ApiError } from "../errors.js";
 import { inheritWorkspaceOpencodeConnection, resolveWorkspaceOpencodeConnection } from "../opencode-connection.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
-import { defaultWorkspaceiPolloWalkConfig, ensureWorkspaceFiles } from "../workspace-init.js";
-import { seediPolloWalkWorkspaceConfigIfEmpty } from "../ipollowalk-workspace-config-store.js";
+import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles } from "../workspace-init.js";
+import { seediPolloWorkWorkspaceConfigIfEmpty } from "../ipollowork-workspace-config-store.js";
 import { workspaceIdForPath, workspaceIdForRemote } from "../workspaces.js";
 import { addRoute, type Route } from "./registry.js";
 
@@ -43,7 +43,7 @@ function normalizeRemoteDirectory(value: unknown): string {
   return value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
-function parseiPolloWalkWorkspaceIdFromUrl(input: string | null | undefined): string | null {
+function parseiPolloWorkWorkspaceIdFromUrl(input: string | null | undefined): string | null {
   const raw = input?.trim() ?? "";
   if (!raw) return null;
   try {
@@ -66,7 +66,7 @@ function parseiPolloWalkWorkspaceIdFromUrl(input: string | null | undefined): st
   }
 }
 
-function stripiPolloWalkWorkspaceMount(input: string | null | undefined): string | null {
+function stripiPolloWorkWorkspaceMount(input: string | null | undefined): string | null {
   const raw = input?.trim() ?? "";
   if (!raw) return null;
   try {
@@ -85,8 +85,8 @@ function stripiPolloWalkWorkspaceMount(input: string | null | undefined): string
   }
 }
 
-function ipollowalkRemoteWorkspaceId(hostUrl: string, workspaceId: string | null | undefined): string {
-  const remoteWorkspaceId = workspaceId?.trim() || parseiPolloWalkWorkspaceIdFromUrl(hostUrl);
+function ipolloworkRemoteWorkspaceId(hostUrl: string, workspaceId: string | null | undefined): string {
+  const remoteWorkspaceId = workspaceId?.trim() || parseiPolloWorkWorkspaceIdFromUrl(hostUrl);
   return remoteWorkspaceId ? `rem_${remoteWorkspaceId}` : workspaceIdForRemote(hostUrl, null);
 }
 
@@ -97,7 +97,7 @@ function workspaceDirectoryCandidates(workspace: Record<string, unknown>): strin
     .filter(Boolean);
 }
 
-function selectiPolloWalkWorkspaceForConnection(list: unknown, directory: string | null): Record<string, unknown> | null {
+function selectiPolloWorkWorkspaceForConnection(list: unknown, directory: string | null): Record<string, unknown> | null {
   if (!isRecord(list)) return null;
   const rawItems = Array.isArray(list.items)
     ? list.items
@@ -116,35 +116,35 @@ function selectiPolloWalkWorkspaceForConnection(list: unknown, directory: string
   return (activeId ? items.find((item) => readStringField(item, "id") === activeId) : null) ?? items[0] ?? null;
 }
 
-function ipollowalkWorkspaceDisplayName(workspace: Record<string, unknown>): string | null {
+function ipolloworkWorkspaceDisplayName(workspace: Record<string, unknown>): string | null {
   return readStringField(workspace, "displayName")
-    || readStringField(workspace, "ipollowalkWorkspaceName")
+    || readStringField(workspace, "ipolloworkWorkspaceName")
     || readStringField(workspace, "name")
     || readStringField(workspace, "id")
     || null;
 }
 
-async function fetchiPolloWalkWorkspaceList(hostUrl: string, token: string, hostToken: string): Promise<unknown> {
+async function fetchiPolloWorkWorkspaceList(hostUrl: string, token: string, hostToken: string): Promise<unknown> {
   const url = `${hostUrl.replace(/\/+$/, "")}/workspaces`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   const headers = new Headers();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (hostToken) headers.set("X-iPolloWalk-Host-Token", hostToken);
+  if (hostToken) headers.set("X-iPolloWork-Host-Token", hostToken);
 
   try {
     const response = await fetch(url, { headers, signal: controller.signal });
     if (!response.ok) {
       throw new ApiError(
         502,
-        "ipollowalk_workspace_discovery_failed",
-        `iPolloWalk workspace discovery failed (${response.status} ${response.statusText || "HTTP error"})`,
+        "ipollowork_workspace_discovery_failed",
+        `iPolloWork workspace discovery failed (${response.status} ${response.statusText || "HTTP error"})`,
       );
     }
     return await response.json();
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw new ApiError(502, "ipollowalk_workspace_discovery_failed", "iPolloWalk workspace discovery failed", {
+    throw new ApiError(502, "ipollowork_workspace_discovery_failed", "iPolloWork workspace discovery failed", {
       error: String(error),
     });
   } finally {
@@ -152,14 +152,14 @@ async function fetchiPolloWalkWorkspaceList(hostUrl: string, token: string, host
   }
 }
 
-async function discoveriPolloWalkWorkspace(input: {
+async function discoveriPolloWorkWorkspace(input: {
   hostUrl: string;
   token: string;
   hostToken: string;
   directory: string | null;
 }): Promise<Record<string, unknown> | null> {
-  const list = await fetchiPolloWalkWorkspaceList(input.hostUrl, input.token, input.hostToken);
-  return selectiPolloWalkWorkspaceForConnection(list, input.directory);
+  const list = await fetchiPolloWorkWorkspaceList(input.hostUrl, input.token, input.hostToken);
+  return selectiPolloWorkWorkspaceForConnection(list, input.directory);
 }
 
 function ensurePlainObject(value: unknown): Record<string, unknown> {
@@ -195,10 +195,10 @@ function serializeWorkspaceConfigEntry(workspace: WorkspaceInfo): Record<string,
     ...(!isLocalWorkspace && workspace.baseUrl ? { baseUrl: workspace.baseUrl } : {}),
     ...(!isLocalWorkspace && workspace.directory ? { directory: workspace.directory } : {}),
     ...(workspace.displayName ? { displayName: workspace.displayName } : {}),
-    ...(workspace.ipollowalkHostUrl ? { ipollowalkHostUrl: workspace.ipollowalkHostUrl } : {}),
-    ...(workspace.ipollowalkToken ? { ipollowalkToken: workspace.ipollowalkToken } : {}),
-    ...(workspace.ipollowalkWorkspaceId ? { ipollowalkWorkspaceId: workspace.ipollowalkWorkspaceId } : {}),
-    ...(workspace.ipollowalkWorkspaceName ? { ipollowalkWorkspaceName: workspace.ipollowalkWorkspaceName } : {}),
+    ...(workspace.ipolloworkHostUrl ? { ipolloworkHostUrl: workspace.ipolloworkHostUrl } : {}),
+    ...(workspace.ipolloworkToken ? { ipolloworkToken: workspace.ipolloworkToken } : {}),
+    ...(workspace.ipolloworkWorkspaceId ? { ipolloworkWorkspaceId: workspace.ipolloworkWorkspaceId } : {}),
+    ...(workspace.ipolloworkWorkspaceName ? { ipolloworkWorkspaceName: workspace.ipolloworkWorkspaceName } : {}),
     ...(workspace.sandboxBackend ? { sandboxBackend: workspace.sandboxBackend } : {}),
     ...(workspace.sandboxRunId ? { sandboxRunId: workspace.sandboxRunId } : {}),
     ...(workspace.sandboxContainerName ? { sandboxContainerName: workspace.sandboxContainerName } : {}),
@@ -279,12 +279,12 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     await ensureWorkspaceFiles(workspacePath, preset);
 
     const workspaceId = workspaceIdForPath(workspacePath);
-    // Seed the per-workspace ipollowalk config in the runtime DB (replaces the
-    // legacy `.opencode/ipollowalk.json` file). No-op if a row already exists.
-    await seediPolloWalkWorkspaceConfigIfEmpty(
+    // Seed the per-workspace ipollowork config in the runtime DB (replaces the
+    // legacy `.opencode/ipollowork.json` file). No-op if a row already exists.
+    await seediPolloWorkWorkspaceConfigIfEmpty(
       config,
       workspaceId,
-      defaultWorkspaceiPolloWalkConfig(workspacePath, preset),
+      defaultWorkspaceiPolloWorkConfig(workspacePath, preset),
     );
 
     const workspace: WorkspaceInfo = {
@@ -331,61 +331,61 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       throw new ApiError(400, "invalid_payload", "baseUrl must start with http:// or https://");
     }
 
-    const remoteType = readStringField(body, "remoteType") === "opencode" ? "opencode" : "ipollowalk";
+    const remoteType = readStringField(body, "remoteType") === "opencode" ? "opencode" : "ipollowork";
     const directory = readStringField(body, "directory") || null;
     const displayName = readStringField(body, "displayName") || null;
-    const rawiPolloWalkHostUrl = readStringField(body, "ipollowalkHostUrl") || null;
-    const ipollowalkHostUrl = remoteType === "ipollowalk"
-      ? stripiPolloWalkWorkspaceMount(rawiPolloWalkHostUrl ?? baseUrl)
-      : rawiPolloWalkHostUrl;
-    const ipollowalkToken = readStringField(body, "ipollowalkToken");
-    const ipollowalkHostToken = readStringField(body, "ipollowalkHostToken");
+    const rawiPolloWorkHostUrl = readStringField(body, "ipolloworkHostUrl") || null;
+    const ipolloworkHostUrl = remoteType === "ipollowork"
+      ? stripiPolloWorkWorkspaceMount(rawiPolloWorkHostUrl ?? baseUrl)
+      : rawiPolloWorkHostUrl;
+    const ipolloworkToken = readStringField(body, "ipolloworkToken");
+    const ipolloworkHostToken = readStringField(body, "ipolloworkHostToken");
     const sandboxBackend = readStringField(body, "sandboxBackend");
     const sandboxRunId = readStringField(body, "sandboxRunId");
     const sandboxContainerName = readStringField(body, "sandboxContainerName");
-    let ipollowalkWorkspaceId = remoteType === "ipollowalk"
-      ? readStringField(body, "ipollowalkWorkspaceId")
-        || parseiPolloWalkWorkspaceIdFromUrl(rawiPolloWalkHostUrl)
-        || parseiPolloWalkWorkspaceIdFromUrl(baseUrl)
+    let ipolloworkWorkspaceId = remoteType === "ipollowork"
+      ? readStringField(body, "ipolloworkWorkspaceId")
+        || parseiPolloWorkWorkspaceIdFromUrl(rawiPolloWorkHostUrl)
+        || parseiPolloWorkWorkspaceIdFromUrl(baseUrl)
       : "";
-    let ipollowalkWorkspaceName = readStringField(body, "ipollowalkWorkspaceName") || null;
+    let ipolloworkWorkspaceName = readStringField(body, "ipolloworkWorkspaceName") || null;
 
-    if (remoteType === "ipollowalk" && !ipollowalkWorkspaceId) {
-      const discovered = await discoveriPolloWalkWorkspace({
-        hostUrl: ipollowalkHostUrl ?? baseUrl,
-        token: ipollowalkToken,
-        hostToken: ipollowalkHostToken,
+    if (remoteType === "ipollowork" && !ipolloworkWorkspaceId) {
+      const discovered = await discoveriPolloWorkWorkspace({
+        hostUrl: ipolloworkHostUrl ?? baseUrl,
+        token: ipolloworkToken,
+        hostToken: ipolloworkHostToken,
         directory,
       });
-      ipollowalkWorkspaceId = discovered ? readStringField(discovered, "id") : "";
-      ipollowalkWorkspaceName = discovered ? ipollowalkWorkspaceDisplayName(discovered) : ipollowalkWorkspaceName;
-      if (!ipollowalkWorkspaceId) {
+      ipolloworkWorkspaceId = discovered ? readStringField(discovered, "id") : "";
+      ipolloworkWorkspaceName = discovered ? ipolloworkWorkspaceDisplayName(discovered) : ipolloworkWorkspaceName;
+      if (!ipolloworkWorkspaceId) {
         throw new ApiError(
           400,
-          "ipollowalk_workspace_not_found",
+          "ipollowork_workspace_not_found",
           directory
-            ? `iPolloWalk server has no workspace matching ${directory}.`
-            : "iPolloWalk server returned no workspaces.",
+            ? `iPolloWork server has no workspace matching ${directory}.`
+            : "iPolloWork server returned no workspaces.",
         );
       }
     }
 
     const workspace: WorkspaceInfo = {
-      id: remoteType === "ipollowalk"
-        ? ipollowalkRemoteWorkspaceId(ipollowalkHostUrl ?? baseUrl, ipollowalkWorkspaceId)
+      id: remoteType === "ipollowork"
+        ? ipolloworkRemoteWorkspaceId(ipolloworkHostUrl ?? baseUrl, ipolloworkWorkspaceId)
         : workspaceIdForRemote(baseUrl, directory),
-      name: displayName ?? ipollowalkWorkspaceName ?? "Remote workspace",
+      name: displayName ?? ipolloworkWorkspaceName ?? "Remote workspace",
       path: directory ?? "",
       preset: "remote",
       workspaceType: "remote",
       remoteType,
-      baseUrl: remoteType === "ipollowalk" ? (ipollowalkHostUrl ?? baseUrl) : baseUrl,
+      baseUrl: remoteType === "ipollowork" ? (ipolloworkHostUrl ?? baseUrl) : baseUrl,
       ...(directory ? { directory } : {}),
       ...(displayName ? { displayName } : {}),
-      ...(remoteType === "ipollowalk" && ipollowalkHostUrl ? { ipollowalkHostUrl } : {}),
-      ...(ipollowalkToken ? { ipollowalkToken } : {}),
-      ...(remoteType === "ipollowalk" && ipollowalkWorkspaceId ? { ipollowalkWorkspaceId } : {}),
-      ...(remoteType === "ipollowalk" && ipollowalkWorkspaceName ? { ipollowalkWorkspaceName } : {}),
+      ...(remoteType === "ipollowork" && ipolloworkHostUrl ? { ipolloworkHostUrl } : {}),
+      ...(ipolloworkToken ? { ipolloworkToken } : {}),
+      ...(remoteType === "ipollowork" && ipolloworkWorkspaceId ? { ipolloworkWorkspaceId } : {}),
+      ...(remoteType === "ipollowork" && ipolloworkWorkspaceName ? { ipolloworkWorkspaceName } : {}),
       ...(sandboxBackend ? { sandboxBackend } : {}),
       ...(sandboxRunId ? { sandboxRunId } : {}),
       ...(sandboxContainerName ? { sandboxContainerName } : {}),
@@ -501,7 +501,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       actor: ctx.actor ?? { type: "host" },
       action: "workspace.delete",
       target: "workspace",
-      summary: "Deleted workspace from iPolloWalk server",
+      summary: "Deleted workspace from iPolloWork server",
       timestamp: Date.now(),
     });
 

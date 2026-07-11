@@ -1,37 +1,37 @@
-export type iPolloWalkTestState = "idle" | "testing" | "success" | "error";
+export type iPolloWorkTestState = "idle" | "testing" | "success" | "error";
 
-export type iPolloWalkConnectionState = {
+export type iPolloWorkConnectionState = {
   url: string;
   token: string;
-  testState: iPolloWalkTestState;
+  testState: iPolloWorkTestState;
   testMessage: string | null;
 };
 
-export type TokenVisibilityKey = "ipollowalk" | "client" | "owner" | "host";
+export type TokenVisibilityKey = "ipollowork" | "client" | "owner" | "host";
 
 type ConfigLocalState = {
-  ipollowalkConnection: iPolloWalkConnectionState;
+  ipolloworkConnection: iPolloWorkConnectionState;
   tokenVisible: Record<TokenVisibilityKey, boolean>;
   copyingField: string | null;
 };
 
 type ConfigLocalAction =
-  | { type: "serverSettings"; connection: iPolloWalkConnectionState }
+  | { type: "serverSettings"; connection: iPolloWorkConnectionState }
   | { type: "url"; url: string }
   | { type: "token"; token: string }
-  | { type: "testState"; testState: iPolloWalkTestState; testMessage: string | null }
+  | { type: "testState"; testState: iPolloWorkTestState; testMessage: string | null }
   | { type: "toggleToken"; key: TokenVisibilityKey }
   | { type: "copyingField"; field: string | null };
 
 export const initialConfigLocalState: ConfigLocalState = {
-  ipollowalkConnection: {
+  ipolloworkConnection: {
     url: "",
     token: "",
     testState: "idle",
     testMessage: null,
   },
   tokenVisible: {
-    ipollowalk: false,
+    ipollowork: false,
     client: false,
     owner: false,
     host: false,
@@ -45,12 +45,12 @@ export function configLocalReducer(
 ): ConfigLocalState {
   switch (action.type) {
     case "serverSettings":
-      return { ...state, ipollowalkConnection: action.connection };
+      return { ...state, ipolloworkConnection: action.connection };
     case "url":
       return {
         ...state,
-        ipollowalkConnection: {
-          ...state.ipollowalkConnection,
+        ipolloworkConnection: {
+          ...state.ipolloworkConnection,
           url: action.url,
           testState: "idle",
           testMessage: null,
@@ -59,8 +59,8 @@ export function configLocalReducer(
     case "token":
       return {
         ...state,
-        ipollowalkConnection: {
-          ...state.ipollowalkConnection,
+        ipolloworkConnection: {
+          ...state.ipolloworkConnection,
           token: action.token,
           testState: "idle",
           testMessage: null,
@@ -69,8 +69,8 @@ export function configLocalReducer(
     case "testState":
       return {
         ...state,
-        ipollowalkConnection: {
-          ...state.ipollowalkConnection,
+        ipolloworkConnection: {
+          ...state.ipolloworkConnection,
           testState: action.testState,
           testMessage: action.testMessage,
         },

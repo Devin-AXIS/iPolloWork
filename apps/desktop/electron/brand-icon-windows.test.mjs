@@ -84,10 +84,10 @@ test("updates both the live window icon and Windows taskbar identity", async () 
 
   await applyWindowsTaskbarIcon(window, {
     image,
-    appId: "com.differentai.ipollowalk",
+    appId: "com.differentai.ipollowork",
     appIconPath: "C:\\Users\\Admin\\brand-icon.ico",
-    relaunchCommand: "C:\\Program Files\\iPolloWalk\\iPolloWalk.exe",
-    relaunchDisplayName: "iPolloWalk",
+    relaunchCommand: "C:\\Program Files\\iPolloWork\\iPolloWork.exe",
+    relaunchDisplayName: "iPolloWork",
   }, async () => calls.push(["waitForRefresh"]));
 
   assert.deepEqual(calls, [
@@ -96,10 +96,10 @@ test("updates both the live window icon and Windows taskbar identity", async () 
     ["setAppDetails", {
       appIconPath: "C:\\Users\\Admin\\brand-icon.ico",
       appIconIndex: 0,
-      relaunchCommand: "C:\\Program Files\\iPolloWalk\\iPolloWalk.exe",
-      relaunchDisplayName: "iPolloWalk",
+      relaunchCommand: "C:\\Program Files\\iPolloWork\\iPolloWork.exe",
+      relaunchDisplayName: "iPolloWork",
     }],
-    ["setAppDetails", { appId: "com.differentai.ipollowalk" }],
+    ["setAppDetails", { appId: "com.differentai.ipollowork" }],
     ["setIcon", image],
     ["waitForRefresh"],
     ["setSkipTaskbar", false],
@@ -107,12 +107,12 @@ test("updates both the live window icon and Windows taskbar identity", async () 
 });
 
 test("uses a stable per-brand AppUserModelID to avoid the installed shortcut icon", () => {
-  const base = "com.differentai.ipollowalk";
+  const base = "com.differentai.ipollowork";
   const first = windowsBrandAppUserModelId(base, "https://den.internal/assets/acme.png");
   const repeated = windowsBrandAppUserModelId(base, "https://den.internal/assets/acme.png");
   const second = windowsBrandAppUserModelId(base, "https://den.internal/assets/other.png");
 
-  assert.match(first, /^com\.differentai\.ipollowalk\.brand\.[a-f0-9]{16}$/);
+  assert.match(first, /^com\.differentai\.ipollowork\.brand\.[a-f0-9]{16}$/);
   assert.equal(first, repeated);
   assert.notEqual(first, second);
   assert.equal(windowsBrandAppUserModelId(base, null), base);
@@ -128,10 +128,10 @@ test("does not refresh the taskbar button before the boot window is shown", asyn
     setSkipTaskbar: () => calls.push("skip"),
   }, {
     image: { id: "company-icon" },
-    appId: "com.differentai.ipollowalk.brand.1234",
+    appId: "com.differentai.ipollowork.brand.1234",
     appIconPath: "C:\\brand.ico",
-    relaunchCommand: "C:\\iPolloWalk.exe",
-    relaunchDisplayName: "iPolloWalk",
+    relaunchCommand: "C:\\iPolloWork.exe",
+    relaunchDisplayName: "iPolloWork",
   }, async () => calls.push("wait"));
 
   assert.deepEqual(calls, ["details", "details", "icon"]);
@@ -146,10 +146,10 @@ test("restores a visible taskbar button when refresh staging fails", async () =>
     setSkipTaskbar: (value) => calls.push(["skip", value]),
   }, {
     image: { id: "company-icon" },
-    appId: "com.differentai.ipollowalk.brand.1234",
+    appId: "com.differentai.ipollowork.brand.1234",
     appIconPath: "C:\\brand.ico",
-    relaunchCommand: "C:\\iPolloWalk.exe",
-    relaunchDisplayName: "iPolloWalk",
+    relaunchCommand: "C:\\iPolloWork.exe",
+    relaunchDisplayName: "iPolloWork",
   }, async () => {
     calls.push("wait");
     throw new Error("refresh failed");
@@ -160,41 +160,41 @@ test("restores a visible taskbar button when refresh staging fails", async () =>
 
 test("builds a per-user Start Menu shortcut with the branded Windows identity", () => {
   assert.equal(windowsBrandShortcutFileName('Agent: Blue/West'), "Agent- Blue-West.lnk");
-  assert.equal(windowsInstalledShortcutFileName("iPolloWalk"), "iPolloWalk.lnk");
+  assert.equal(windowsInstalledShortcutFileName("iPolloWork"), "iPolloWork.lnk");
   assert.deepEqual(windowsBrandShortcutDetails({
-    target: "C:\\Program Files\\iPolloWalk\\iPolloWalk.exe",
-    appId: "com.differentai.ipollowalk.brand.1234",
+    target: "C:\\Program Files\\iPolloWork\\iPolloWork.exe",
+    appId: "com.differentai.ipollowork.brand.1234",
     appIconPath: "C:\\Users\\Admin\\brand-icon.ico",
-    appName: "iPolloWalk",
+    appName: "iPolloWork",
   }), {
-    target: "C:\\Program Files\\iPolloWalk\\iPolloWalk.exe",
-    cwd: "C:\\Program Files\\iPolloWalk",
-    description: "iPolloWalk organization desktop",
+    target: "C:\\Program Files\\iPolloWork\\iPolloWork.exe",
+    cwd: "C:\\Program Files\\iPolloWork",
+    description: "iPolloWork organization desktop",
     icon: "C:\\Users\\Admin\\brand-icon.ico",
     iconIndex: 0,
-    appUserModelId: "com.differentai.ipollowalk.brand.1234",
+    appUserModelId: "com.differentai.ipollowork.brand.1234",
   });
 });
 
 test("anchors a packaged shortcut target to the active Windows user profile", () => {
   assert.equal(windowsInstalledExecutablePath({
     packaged: true,
-    execPath: "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Programs\\@ipollowalkdesktop\\iPolloWalk.exe",
-    resourcesPath: "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Programs\\@ipollowalkdesktop\\resources",
+    execPath: "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Programs\\@ipolloworkdesktop\\iPolloWork.exe",
+    resourcesPath: "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Programs\\@ipolloworkdesktop\\resources",
     shortcutPath: "C:\\Users\\Administrator\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Blue Yonder.lnk",
-  }), "C:\\Users\\Administrator\\AppData\\Local\\Programs\\@ipollowalkdesktop\\iPolloWalk.exe");
+  }), "C:\\Users\\Administrator\\AppData\\Local\\Programs\\@ipolloworkdesktop\\iPolloWork.exe");
 });
 
 test("creates a branded shortcut after callers remove stale Windows metadata", () => {
   const calls = [];
-  const details = { appUserModelId: "com.differentai.ipollowalk.brand.1234" };
+  const details = { appUserModelId: "com.differentai.ipollowork.brand.1234" };
   const shellApi = {
     writeShortcutLink: (...args) => {
       calls.push(args);
       return true;
     },
   };
-  const shortcutPath = "C:\\Users\\Admin\\iPolloWalk Organization.lnk";
+  const shortcutPath = "C:\\Users\\Admin\\iPolloWork Organization.lnk";
 
   const created = writeWindowsBrandShortcut(shellApi, shortcutPath, details, false);
   assert.equal(created, true);

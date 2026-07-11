@@ -41,7 +41,7 @@ export async function exchangeHandoffAndSignIn(
   grant: string,
   options: ExchangeHandoffOptions,
 ): Promise<ExchangeHandoffResult> {
-  const fallback = options.fallbackErrorMessage ?? "Failed to sign in to iPolloWalk Cloud.";
+  const fallback = options.fallbackErrorMessage ?? "Failed to sign in to iPolloWork Cloud.";
   const client = options.client ?? createDenClient({ baseUrl: options.baseUrl });
 
   try {

@@ -6,7 +6,7 @@ import { updateJsoncPath } from "./jsonc.js";
 
 describe("updateJsoncPath", () => {
   test("patches nested values without replacing sibling config", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ipollowalk-jsonc-"));
+    const dir = await mkdtemp(join(tmpdir(), "ipollowork-jsonc-"));
     const file = join(dir, "opencode.jsonc");
     await writeFile(
       file,
@@ -36,7 +36,7 @@ describe("updateJsoncPath", () => {
   });
 
   test("removes parent object when nested property was the only entry", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ipollowalk-jsonc-"));
+    const dir = await mkdtemp(join(tmpdir(), "ipollowork-jsonc-"));
     const file = join(dir, "opencode.jsonc");
     await writeFile(
       file,
@@ -58,7 +58,7 @@ describe("updateJsoncPath", () => {
   });
 
   test("adds a nested provider without replacing existing providers", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ipollowalk-jsonc-"));
+    const dir = await mkdtemp(join(tmpdir(), "ipollowork-jsonc-"));
     const file = join(dir, "opencode.jsonc");
     await writeFile(
       file,

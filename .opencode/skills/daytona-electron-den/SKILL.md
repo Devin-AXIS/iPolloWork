@@ -54,7 +54,7 @@ JSON.stringify({ hash: location.hash, text: document.body.innerText.slice(0, 100
 Then inspect the desktop bootstrap file:
 
 ```bash
-daytona exec "$SANDBOX" -- 'cat /workspace/.ipollowalk-daytona/desktop-bootstrap.json'
+daytona exec "$SANDBOX" -- 'cat /workspace/.ipollowork-daytona/desktop-bootstrap.json'
 ```
 
 Expected: `baseUrl` is `DEN_WEB_URL` and `apiBaseUrl` is `DEN_API_URL`, not

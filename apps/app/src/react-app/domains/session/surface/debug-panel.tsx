@@ -1,10 +1,10 @@
 /** @jsxImportSource react */
-import type { iPolloWalkSessionSnapshot } from "../../../../app/lib/ipollowalk-server";
+import type { iPolloWorkSessionSnapshot } from "../../../../app/lib/ipollowork-server";
 import type { SessionRenderModel } from "../sync/transition-controller";
 
 export function SessionDebugPanel(props: {
   model: SessionRenderModel;
-  snapshot: iPolloWalkSessionSnapshot | null;
+  snapshot: iPolloWorkSessionSnapshot | null;
 }) {
   return (
     <div className="fixed bottom-20 right-4 z-30 w-[280px] rounded-2xl border border-dls-border bg-dls-surface/95 p-3 text-xs text-dls-secondary shadow-[var(--dls-card-shadow)] backdrop-blur-md">

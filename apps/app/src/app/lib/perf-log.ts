@@ -10,10 +10,10 @@ export type PerfLogRecord = {
 };
 
 type PerfRoot = typeof globalThis & {
-  __ipollowalkPerfSeq?: number;
-  __ipollowalkPerfLogs?: PerfLogRecord[];
-  __ipollowalkPerfConsoleAt?: Record<string, number>;
-  __ipollowalkPerfConsoleSuppressed?: Record<string, number>;
+  __ipolloworkPerfSeq?: number;
+  __ipolloworkPerfLogs?: PerfLogRecord[];
+  __ipolloworkPerfConsoleAt?: Record<string, number>;
+  __ipolloworkPerfConsoleSuppressed?: Record<string, number>;
 };
 
 const PERF_LOG_LIMIT = 500;
@@ -50,8 +50,8 @@ export const recordPerfLog = (
   if (!enabled) return;
 
   const root = globalThis as PerfRoot;
-  const id = (root.__ipollowalkPerfSeq ?? 0) + 1;
-  root.__ipollowalkPerfSeq = id;
+  const id = (root.__ipolloworkPerfSeq ?? 0) + 1;
+  root.__ipolloworkPerfSeq = id;
 
   const entry: PerfLogRecord = {
     id,
@@ -62,12 +62,12 @@ export const recordPerfLog = (
     payload,
   };
 
-  const logs = root.__ipollowalkPerfLogs ?? [];
+  const logs = root.__ipolloworkPerfLogs ?? [];
   logs.push(entry);
   if (logs.length > PERF_LOG_LIMIT) {
     logs.splice(0, logs.length - PERF_LOG_LIMIT);
   }
-  root.__ipollowalkPerfLogs = logs;
+  root.__ipolloworkPerfLogs = logs;
   recordDevLog(enabled, {
     level: "perf",
     source: scope,
@@ -78,9 +78,9 @@ export const recordPerfLog = (
   try {
     const key = `${scope}:${event}`;
     const now = Date.now();
-    const lastByKey = root.__ipollowalkPerfConsoleAt ?? (root.__ipollowalkPerfConsoleAt = {});
+    const lastByKey = root.__ipolloworkPerfConsoleAt ?? (root.__ipolloworkPerfConsoleAt = {});
     const suppressedByKey =
-      root.__ipollowalkPerfConsoleSuppressed ?? (root.__ipollowalkPerfConsoleSuppressed = {});
+      root.__ipolloworkPerfConsoleSuppressed ?? (root.__ipolloworkPerfConsoleSuppressed = {});
     if (HOT_EVENT_KEYS.has(key)) {
       const last = lastByKey[key] ?? 0;
       if (now - last < HOT_EVENT_MIN_INTERVAL_MS) {
@@ -117,7 +117,7 @@ export const recordPerfLog = (
 
 export const readPerfLogs = (limit = 120) => {
   const root = globalThis as PerfRoot;
-  const logs = root.__ipollowalkPerfLogs ?? [];
+  const logs = root.__ipolloworkPerfLogs ?? [];
   if (limit <= 0) return [];
   if (logs.length <= limit) return logs.slice();
   return logs.slice(logs.length - limit);
@@ -125,8 +125,8 @@ export const readPerfLogs = (limit = 120) => {
 
 export const clearPerfLogs = () => {
   const root = globalThis as PerfRoot;
-  root.__ipollowalkPerfLogs = [];
-  root.__ipollowalkPerfSeq = 0;
+  root.__ipolloworkPerfLogs = [];
+  root.__ipolloworkPerfSeq = 0;
 };
 
 export const finishPerf = (

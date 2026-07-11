@@ -3,7 +3,7 @@
 // packages/types/src/desktop-ipc.ts (shared with the Electron main process);
 // this module re-exports them as the app-side import path.
 
-import type { WorkspaceWire } from "@ipollowalk/types/workspace";
+import type { WorkspaceWire } from "@ipollowork/types/workspace";
 
 export type {
   AppBuildInfo,
@@ -28,8 +28,8 @@ export type {
   OpencodeConfigFile,
   OpencodeExecutionEnvEntry,
   OpencodeExecutionSnapshot,
-  iPolloWalkDockerCleanupResult,
-  iPolloWalkServerInfo,
+  iPolloWorkDockerCleanupResult,
+  iPolloWorkServerInfo,
   OrchestratorDetachedHost,
   SandboxDebugProbeResult,
   SandboxDoctorResult,
@@ -38,11 +38,11 @@ export type {
   WorkspaceCreateRemoteInput,
   WorkspaceExportSummary,
   WorkspaceList,
-  WorkspaceiPolloWalkConfig,
+  WorkspaceiPolloWorkConfig,
   WorkspaceUpdateRemoteInput,
-} from "@ipollowalk/types/desktop-ipc";
+} from "@ipollowork/types/desktop-ipc";
 
-// Canonical wire shape shared with ipollowalk-server and the desktop bridge.
+// Canonical wire shape shared with ipollowork-server and the desktop bridge.
 // Single source of truth: packages/types/src/workspace.ts.
 export type WorkspaceInfo = WorkspaceWire;
 

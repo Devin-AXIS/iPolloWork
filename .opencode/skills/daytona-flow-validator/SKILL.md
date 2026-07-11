@@ -91,7 +91,7 @@ with `browser_snapshot` or a screenshot.
 
 ## Lexical Composer
 
-Prefer synthetic paste for the iPolloWalk composer:
+Prefer synthetic paste for the iPolloWork composer:
 
 ```js
 (function pasteComposer(text) {
@@ -171,7 +171,7 @@ is not valid evidence until the image itself has been inspected.
 
 For every screenshot, assert these visual checks:
 
-- The target iPolloWalk/Chrome window is visible and not covered by a native file
+- The target iPolloWork/Chrome window is visible and not covered by a native file
   picker, modal, toast, desktop window, or unrelated overlay.
 - The exact claimed state is visible in the image, not just present in DOM or
   command output.
@@ -206,8 +206,8 @@ daytona exec "$SANDBOX" -- 'bash -lc '\''DISPLAY=:99 wmctrl -l | tee /tmp/window
 ```
 
 If a Chromium or Electron window is intentionally part of the shot, activate the
-right window first with `wmctrl -a "iPolloWalk - Dev"` or
-`wmctrl -a "iPolloWalk Cloud - Chromium"` so the screenshot shows the intended
+right window first with `wmctrl -a "iPolloWork - Dev"` or
+`wmctrl -a "iPolloWork Cloud - Chromium"` so the screenshot shows the intended
 journey step.
 
 ## Failure Handling

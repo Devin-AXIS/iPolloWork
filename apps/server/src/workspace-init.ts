@@ -7,7 +7,7 @@ import { opencodeConfigPath } from "./workspace-files.js";
 import { readJsoncFile } from "./jsonc.js";
 import type { ReloadReason, WorkspaceInfo } from "./types.js";
 
-type WorkspaceiPolloWalkConfig = {
+type WorkspaceiPolloWorkConfig = {
   version: number;
   workspace?: {
     name?: string | null;
@@ -33,13 +33,13 @@ function normalizePreset(preset: string | null | undefined): string {
 }
 
 /**
- * Build the default per-workspace ipollowalk config metadata. The ipollowalk
+ * Build the default per-workspace ipollowork config metadata. The ipollowork
  * config is now stored in the runtime DB (see
- * `seediPolloWalkWorkspaceConfigIfEmpty`), not in `.opencode/ipollowalk.json`, so
+ * `seediPolloWorkWorkspaceConfigIfEmpty`), not in `.opencode/ipollowork.json`, so
  * this no longer writes a file. Exposed so the workspace-creation route can
  * seed the DB row with the same defaults.
  */
-export function defaultWorkspaceiPolloWalkConfig(workspaceRoot: string, preset: string): WorkspaceiPolloWalkConfig {
+export function defaultWorkspaceiPolloWorkConfig(workspaceRoot: string, preset: string): WorkspaceiPolloWorkConfig {
   return {
     version: 1,
     workspace: {
@@ -68,7 +68,7 @@ export async function ensureWorkspaceFiles(workspaceRoot: string, presetInput: s
   await ensureDir(workspaceRoot);
   const reloadReasons = new Set<ReloadReason>();
   if (await ensureOpencodeConfig(workspaceRoot)) reloadReasons.add("config");
-  // ipollowalk config is seeded into the runtime DB by the caller, not written
+  // ipollowork config is seeded into the runtime DB by the caller, not written
   // as a file here.
   void preset;
   return {

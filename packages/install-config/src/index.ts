@@ -1,10 +1,10 @@
 import { z } from "zod"
 
-export const INSTALL_SIDECAR_FILENAME = "ipollowalk-installer.json"
+export const INSTALL_SIDECAR_FILENAME = "ipollowork-installer.json"
 export const DESKTOP_BOOTSTRAP_FILENAME = "desktop-bootstrap.json"
 
 export const installConfigSchema = z.object({
-  appName: z.string().trim().min(1).max(64).default("iPolloWalk"),
+  appName: z.string().trim().min(1).max(64).default("iPolloWork"),
   clientName: z.string().trim().min(1),
   webUrl: z.string().trim().url(),
   apiUrl: z.string().trim().url(),

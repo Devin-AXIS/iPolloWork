@@ -14,14 +14,14 @@
  *      deployment id and the detail page shows exactly that model.
  *
  * Required env:
- * - IPOLLOWALK_EVAL_DEN_WEB_URL          Den web origin
- * - IPOLLOWALK_EVAL_DEN_EMAIL            Seeded admin email
- * - IPOLLOWALK_EVAL_DEN_PASSWORD         Seeded admin password
- * - IPOLLOWALK_EVAL_AZURE_FOUNDRY_RESOURCE  Azure AI Foundry resource name
- * - IPOLLOWALK_EVAL_AZURE_FOUNDRY_API_KEY   Azure AI Foundry key (throwaway)
+ * - IPOLLOWORK_EVAL_DEN_WEB_URL          Den web origin
+ * - IPOLLOWORK_EVAL_DEN_EMAIL            Seeded admin email
+ * - IPOLLOWORK_EVAL_DEN_PASSWORD         Seeded admin password
+ * - IPOLLOWORK_EVAL_AZURE_FOUNDRY_RESOURCE  Azure AI Foundry resource name
+ * - IPOLLOWORK_EVAL_AZURE_FOUNDRY_API_KEY   Azure AI Foundry key (throwaway)
  */
 
-const RESOURCE_NAME = process.env.IPOLLOWALK_EVAL_AZURE_FOUNDRY_RESOURCE ?? "";
+const RESOURCE_NAME = process.env.IPOLLOWORK_EVAL_AZURE_FOUNDRY_RESOURCE ?? "";
 const PROVIDER_NAME = "Acme Azure (Catalog)";
 const DEPLOYMENT = "gpt-5-mini";
 const CATALOG_NOISE = "gpt-4o";
@@ -52,17 +52,17 @@ export default {
   title: "Catalog Azure provider offers only the resource's real deployments",
   spec: "evals/cloud-provider-sync-flows.md",
   requiredEnv: [
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
-    "IPOLLOWALK_EVAL_DEN_EMAIL",
-    "IPOLLOWALK_EVAL_DEN_PASSWORD",
-    "IPOLLOWALK_EVAL_AZURE_FOUNDRY_RESOURCE",
-    "IPOLLOWALK_EVAL_AZURE_FOUNDRY_API_KEY",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_DEN_EMAIL",
+    "IPOLLOWORK_EVAL_DEN_PASSWORD",
+    "IPOLLOWORK_EVAL_AZURE_FOUNDRY_RESOURCE",
+    "IPOLLOWORK_EVAL_AZURE_FOUNDRY_API_KEY",
   ],
   steps: [
     {
       name: "Signed-in dashboard session (signs in if needed)",
       run: async (ctx) => {
-        const origin = ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
+        const origin = ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
         await ctx.eval(`(() => { location.href = ${JSON.stringify(`${origin}/`)}; return true; })()`);
         await ctx.waitFor(
           `location.origin === ${JSON.stringify(origin)} && document.readyState === "complete"`,
@@ -79,8 +79,8 @@ export default {
               headers: { "content-type": "application/json" },
               credentials: "include",
               body: JSON.stringify({
-                email: ${JSON.stringify(ctx.env.IPOLLOWALK_EVAL_DEN_EMAIL)},
-                password: ${JSON.stringify(ctx.env.IPOLLOWALK_EVAL_DEN_PASSWORD)},
+                email: ${JSON.stringify(ctx.env.IPOLLOWORK_EVAL_DEN_EMAIL)},
+                password: ${JSON.stringify(ctx.env.IPOLLOWORK_EVAL_DEN_PASSWORD)},
               }),
             });
             return response.status;
@@ -93,7 +93,7 @@ export default {
     {
       name: "Pick Azure from the catalog: the models.dev list shows",
       run: async (ctx) => {
-        const origin = ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
+        const origin = ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
         await ctx.eval(`(() => { location.href = ${JSON.stringify(`${origin}/dashboard/custom-llm-providers/new`)}; return true; })()`);
         await ctx.waitForText("Add a new LLM provider", { timeoutMs: 45_000 });
         await ctx.eval(fillInputExpr(
@@ -157,7 +157,7 @@ export default {
               ));
               await ctx.eval(fillInputExpr(
                 `[...document.querySelectorAll('input[type="password"]')].find((el) => el.placeholder.includes("AZURE_API_KEY"))`,
-                ctx.env.IPOLLOWALK_EVAL_AZURE_FOUNDRY_API_KEY,
+                ctx.env.IPOLLOWORK_EVAL_AZURE_FOUNDRY_API_KEY,
               ));
             },
             assert: async () => {

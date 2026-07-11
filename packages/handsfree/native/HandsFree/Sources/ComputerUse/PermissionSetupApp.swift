@@ -66,7 +66,7 @@ private final class PermissionSetupWindow: NSWindow {
             backing: .buffered,
             defer: false
         )
-        title = "iPolloWalk Computer Use"
+        title = "iPolloWork Computer Use"
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
         isMovableByWindowBackground = true
@@ -136,7 +136,7 @@ final class PermissionSetupViewController: NSViewController {
         let axCard = makeAccessibilityCard()
         let srCard = makeScreenRecordingCard()
 
-        let doneBtn = NSButton(title: "Done — Return to iPolloWalk", target: self, action: #selector(done))
+        let doneBtn = NSButton(title: "Done — Return to iPolloWork", target: self, action: #selector(done))
         doneBtn.bezelStyle = .rounded
         doneBtn.controlSize = .large
         doneBtn.keyEquivalent = "\r"

@@ -12,9 +12,9 @@ import { pathToFileURL } from "node:url";
 const __runtimeDir = path.dirname(fileURLToPath(import.meta.url));
 
 const DIRECT_RUNTIME = "direct";
-const ORCHESTRATOR_RUNTIME = "ipollowalk-orchestrator";
-const IPOLLOWALK_SERVER_PORT_RANGE_START = 48_000;
-const IPOLLOWALK_SERVER_PORT_RANGE_END = 51_000;
+const ORCHESTRATOR_RUNTIME = "ipollowork-orchestrator";
+const IPOLLOWORK_SERVER_PORT_RANGE_START = 48_000;
+const IPOLLOWORK_SERVER_PORT_RANGE_END = 51_000;
 
 function truncateOutput(value, limit = 8000) {
   const text = String(value ?? "");
@@ -48,24 +48,24 @@ export function prioritizeWorkspacePaths(preferredPath, workspacePaths = []) {
   return paths;
 }
 
-export function resolveiPolloWalkServerConfigPath(env = process.env) {
-  const override = String(env.IPOLLOWALK_SERVER_CONFIG ?? "").trim();
+export function resolveiPolloWorkServerConfigPath(env = process.env) {
+  const override = String(env.IPOLLOWORK_SERVER_CONFIG ?? "").trim();
   if (override) return path.resolve(override);
   if (process.platform === "win32") {
     const appData = String(env.APPDATA ?? "").trim();
     const root = appData || path.join(os.homedir(), "AppData", "Roaming");
-    return path.join(root, "ipollowalk", "server.json");
+    return path.join(root, "ipollowork", "server.json");
   }
   const xdgConfigHome = String(env.XDG_CONFIG_HOME ?? "").trim();
   const root = xdgConfigHome || path.join(os.homedir(), ".config");
-  return path.join(root, "ipollowalk", "server.json");
+  return path.join(root, "ipollowork", "server.json");
 }
 
 export function seedWorkspacePathsForEmbeddedServer(workspacePaths, serverConfigExists) {
   return serverConfigExists ? [] : workspacePaths;
 }
 
-export function selectStickyiPolloWalkPortWorkspace(requestedWorkspacePaths = [], serverWorkspacePaths = []) {
+export function selectStickyiPolloWorkPortWorkspace(requestedWorkspacePaths = [], serverWorkspacePaths = []) {
   for (const value of [...requestedWorkspacePaths, ...serverWorkspacePaths]) {
     const workspacePath = String(value ?? "").trim();
     if (workspacePath) return workspacePath;
@@ -78,8 +78,8 @@ export function commandMatchesPackagedSidecar(command, sidecarDirs = []) {
   if (!sidecarDirs.some((dir) => String(dir ?? "").trim() && value.includes(dir))) {
     return false;
   }
-  return value.includes("ipollowalk-orchestrator") ||
-    value.includes("ipollowalk-server") ||
+  return value.includes("ipollowork-orchestrator") ||
+    value.includes("ipollowork-server") ||
     /(?:^|[/\\])opencode[^/\\\s]*\s+serve\b/.test(value);
 }
 
@@ -138,7 +138,7 @@ function snapshotEngineState(state) {
   };
 }
 
-function createiPolloWalkServerState() {
+function createiPolloWorkServerState() {
   return {
     child: null,
     childExited: true,
@@ -161,7 +161,7 @@ function createiPolloWalkServerState() {
   };
 }
 
-function snapshotiPolloWalkServerState(state) {
+function snapshotiPolloWorkServerState(state) {
   const child = state.childExited ? null : state.child;
   const running = state.inProcess || Boolean(child && child.exitCode === null && !child.killed);
   return {
@@ -203,15 +203,15 @@ function redactedExecutionSnapshot(command, args, cwd, injectedEnv) {
   };
 }
 
-function assertiPolloWalkServerReady(snapshot) {
+function assertiPolloWorkServerReady(snapshot) {
   if (!snapshot?.running) {
-    throw new Error("iPolloWalk server did not stay running after startup.");
+    throw new Error("iPolloWork server did not stay running after startup.");
   }
   if (!snapshot.baseUrl) {
-    throw new Error("iPolloWalk server did not report a base URL after startup.");
+    throw new Error("iPolloWork server did not report a base URL after startup.");
   }
   if (!snapshot.ownerToken && !snapshot.clientToken) {
-    throw new Error("iPolloWalk server did not report an access token after startup.");
+    throw new Error("iPolloWork server did not report an access token after startup.");
   }
   return snapshot;
 }
@@ -457,25 +457,25 @@ async function fetchJson(url, options = {}, timeoutMs = 3000) {
   }
 }
 
-// Resolves ~/.config/ipollowalk/env.json (or %APPDATA%\ipollowalk\env.json on
+// Resolves ~/.config/ipollowork/env.json (or %APPDATA%\ipollowork\env.json on
 // Windows) — must agree byte-for-byte with apps/server/src/env-file.ts and
-// apps/orchestrator/src/cli.ts. Honor IPOLLOWALK_ENV_STORE override.
+// apps/orchestrator/src/cli.ts. Honor IPOLLOWORK_ENV_STORE override.
 function resolveUserEnvFilePath() {
-  const override = String(process.env.IPOLLOWALK_ENV_STORE ?? "").trim();
+  const override = String(process.env.IPOLLOWORK_ENV_STORE ?? "").trim();
   if (override) return path.resolve(override);
   if (process.platform === "win32") {
     const appData = String(process.env.APPDATA ?? "").trim();
     const root = appData || path.join(os.homedir(), "AppData", "Roaming");
-    return path.join(root, "ipollowalk", "env.json");
+    return path.join(root, "ipollowork", "env.json");
   }
-  return path.join(os.homedir(), ".config", "ipollowalk", "env.json");
+  return path.join(os.homedir(), ".config", "ipollowork", "env.json");
 }
 
 const USER_ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const USER_ENV_RESERVED_PREFIXES = ["IPOLLOWALK_", "OPENCODE_"];
+const USER_ENV_RESERVED_PREFIXES = ["IPOLLOWORK_", "OPENCODE_"];
 
 // Synchronous, best-effort; absent or malformed returns {}. Reserved prefixes
-// are stripped so a tampered file can never shadow IPOLLOWALK_* / OPENCODE_*.
+// are stripped so a tampered file can never shadow IPOLLOWORK_* / OPENCODE_*.
 function loadUserEnvFile() {
   try {
     const raw = readFileSync(resolveUserEnvFilePath(), "utf8");
@@ -522,7 +522,7 @@ export async function resolveSystemCaEnv({
   const env = parentEnv ?? {};
   if (Object.prototype.hasOwnProperty.call(env, "NODE_EXTRA_CA_CERTS")) {
     if (typeof logInfo === "function") {
-      logInfo("iPolloWalk runtime: NODE_EXTRA_CA_CERTS is already set; skipping system CA bundle export.");
+      logInfo("iPolloWork runtime: NODE_EXTRA_CA_CERTS is already set; skipping system CA bundle export.");
     }
     return {};
   }
@@ -558,7 +558,7 @@ export function mergeSystemCaChildEnv(baseEnv = {}, caEnv = {}, extra = {}) {
 
 export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths }) {
   const engineState = createEngineState();
-  const ipollowalkServerState = createiPolloWalkServerState();
+  const ipolloworkServerState = createiPolloWorkServerState();
   const orchestratorState = createOrchestratorState();
 
   // Serialize engine lifecycle operations. Without this, concurrent renderer
@@ -595,12 +595,12 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     return systemCaEnvPromise;
   }
 
-  function ipollowalkServerTokenStorePath() {
-    return path.join(userDataDir, "ipollowalk-server-tokens.json");
+  function ipolloworkServerTokenStorePath() {
+    return path.join(userDataDir, "ipollowork-server-tokens.json");
   }
 
-  function ipollowalkServerStatePath() {
-    return path.join(userDataDir, "ipollowalk-server-state.json");
+  function ipolloworkServerStatePath() {
+    return path.join(userDataDir, "ipollowork-server-state.json");
   }
 
   function managedOpencodeWorkdir() {
@@ -608,17 +608,17 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   }
 
   function orchestratorDataDir() {
-    const envDir = process.env.IPOLLOWALK_DATA_DIR?.trim();
+    const envDir = process.env.IPOLLOWORK_DATA_DIR?.trim();
     if (envDir) return envDir;
-    return path.join(app.getPath("home"), ".ipollowalk", "ipollowalk-orchestrator");
+    return path.join(app.getPath("home"), ".ipollowork", "ipollowork-orchestrator");
   }
 
   function orchestratorStatePath(dataDir) {
-    return path.join(dataDir, "ipollowalk-orchestrator-state.json");
+    return path.join(dataDir, "ipollowork-orchestrator-state.json");
   }
 
   function orchestratorAuthPath(dataDir) {
-    return path.join(dataDir, "ipollowalk-orchestrator-auth.json");
+    return path.join(dataDir, "ipollowork-orchestrator-auth.json");
   }
 
   async function readOrchestratorStateFile(dataDir) {
@@ -655,17 +655,17 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   }
 
   async function loadTokenStore() {
-    return readJsonFile(ipollowalkServerTokenStorePath(), { version: 1, workspaces: {} });
+    return readJsonFile(ipolloworkServerTokenStorePath(), { version: 1, workspaces: {} });
   }
 
   async function saveTokenStore(store) {
-    const filePath = ipollowalkServerTokenStorePath();
+    const filePath = ipolloworkServerTokenStorePath();
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
   }
 
   async function loadPortState() {
-    return readJsonFile(ipollowalkServerStatePath(), {
+    return readJsonFile(ipolloworkServerStatePath(), {
       version: 3,
       workspacePorts: {},
       preferredPort: null,
@@ -673,7 +673,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   }
 
   async function savePortState(state) {
-    const filePath = ipollowalkServerStatePath();
+    const filePath = ipolloworkServerStatePath();
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
   }
@@ -705,7 +705,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     await saveTokenStore(store);
   }
 
-  async function readPreferrediPolloWalkPort(workspaceKey) {
+  async function readPreferrediPolloWorkPort(workspaceKey) {
     const state = await loadPortState();
     const normalized = normalizeWorkspaceKey(workspaceKey);
     if (normalized && state.workspacePorts?.[normalized]) {
@@ -714,7 +714,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     return state.preferredPort ?? null;
   }
 
-  async function persistPreferrediPolloWalkPort(workspaceKey, port) {
+  async function persistPreferrediPolloWorkPort(workspaceKey, port) {
     const state = await loadPortState();
     const normalized = normalizeWorkspaceKey(workspaceKey);
     state.version = 3;
@@ -737,8 +737,8 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     return portAvailable(host, port);
   }
 
-  async function resolveiPolloWalkPort(host, workspaceKey, currentPort = null) {
-    const preferredPort = await readPreferrediPolloWalkPort(workspaceKey);
+  async function resolveiPolloWorkPort(host, workspaceKey, currentPort = null) {
+    const preferredPort = await readPreferrediPolloWorkPort(workspaceKey);
     if (currentPort && (await waitForPortAvailable(host, currentPort))) {
       return { port: currentPort, preferredPort };
     }
@@ -749,7 +749,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   }
 
   async function ensureDevModePaths() {
-    const root = path.join(userDataDir, "ipollowalk-dev-data");
+    const root = path.join(userDataDir, "ipollowork-dev-data");
     const paths = {
       homeDir: path.join(root, "home"),
       xdgConfigHome: path.join(root, "xdg", "config"),
@@ -789,9 +789,9 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     if (pathEnv) {
       env[pathKey] = pathEnv;
     }
-    if (process.env.IPOLLOWALK_DEV_MODE === "1") {
+    if (process.env.IPOLLOWORK_DEV_MODE === "1") {
       const devPaths = await ensureDevModePaths();
-      env.IPOLLOWALK_DEV_MODE = "1";
+      env.IPOLLOWORK_DEV_MODE = "1";
       env.HOME = devPaths.homeDir;
       env.USERPROFILE = devPaths.homeDir;
       env.XDG_CONFIG_HOME = devPaths.xdgConfigHome;
@@ -855,7 +855,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     const candidates = [];
     const seen = new Set();
 
-    for (const key of ["IPOLLOWALK_DOCKER_BIN", "OPENWRK_DOCKER_BIN", "DOCKER_BIN"]) {
+    for (const key of ["IPOLLOWORK_DOCKER_BIN", "OPENWRK_DOCKER_BIN", "DOCKER_BIN"]) {
       const value = process.env[key]?.trim();
       if (value && !seen.has(value)) {
         seen.add(value);
@@ -908,7 +908,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     }
 
     throw new Error(
-      `Failed to run docker: ${errors.join("; ")} (Set IPOLLOWALK_DOCKER_BIN to your docker binary if needed)`,
+      `Failed to run docker: ${errors.join("; ")} (Set IPOLLOWORK_DOCKER_BIN to your docker binary if needed)`,
     );
   }
 
@@ -931,10 +931,10 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     const sanitized = String(runId ?? "")
       .replace(/[^a-zA-Z0-9_.-]+/g, "-")
       .slice(0, 24);
-    return `ipollowalk-orchestrator-${sanitized}`;
+    return `ipollowork-orchestrator-${sanitized}`;
   }
 
-  async function listiPolloWalkManagedContainers() {
+  async function listiPolloWorkManagedContainers() {
     const result = runDockerCommandDetailed(["ps", "-a", "--format", "{{.Names}}"], 8000);
     if (result.status !== 0) {
       const combined = `${result.stdout.trim()}\n${result.stderr.trim()}`.trim();
@@ -943,7 +943,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     return result.stdout
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .filter((name) => name && (name.startsWith("ipollowalk-orchestrator-") || name.startsWith("ipollowalk-dev-") || name.startsWith("openwrk-")))
+      .filter((name) => name && (name.startsWith("ipollowork-orchestrator-") || name.startsWith("ipollowork-dev-") || name.startsWith("openwrk-")))
       .sort();
   }
 
@@ -1135,9 +1135,9 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-iPolloWalk-Host-Token": hostToken,
+          "X-iPolloWork-Host-Token": hostToken,
         },
-        body: JSON.stringify({ scope: "owner", label: "iPolloWalk desktop owner token" }),
+        body: JSON.stringify({ scope: "owner", label: "iPolloWork desktop owner token" }),
       },
       5000,
     );
@@ -1148,20 +1148,20 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   // In-process server handle. Kept alive across restarts so we can stop it.
   let inProcessServer = null;
 
-  async function startiPolloWalkServer(options) {
-    const currentPort = ipollowalkServerState.port;
+  async function startiPolloWorkServer(options) {
+    const currentPort = ipolloworkServerState.port;
     // Stop any previously running in-process server
     if (inProcessServer) {
       try { await inProcessServer.stop(); } catch { /* ignore */ }
       inProcessServer = null;
     }
-    await stopChild(ipollowalkServerState);
+    await stopChild(ipolloworkServerState);
 
     const host = options.remoteAccessEnabled ? "0.0.0.0" : "127.0.0.1";
 
     const managedOpencode = options.manageOpencode ? resolveOpencodeBinary(options.opencodeBinPath) : null;
-    ipollowalkServerState.managedOpencodeBinPath = managedOpencode?.path ?? null;
-    ipollowalkServerState.managedOpencodeBinSource = managedOpencode?.source ?? null;
+    ipolloworkServerState.managedOpencodeBinPath = managedOpencode?.path ?? null;
+    ipolloworkServerState.managedOpencodeBinSource = managedOpencode?.source ?? null;
     if (options.manageOpencode) {
       engineState.opencodeBinPath = managedOpencode?.path ?? null;
       engineState.opencodeBinSource = managedOpencode?.source ?? null;
@@ -1175,14 +1175,14 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     // truth. Do not pass Electron's legacy workspace list as CLI workspaces or
     // the server config loader will ignore server.json and lose server-created
     // workspaces after restart.
-    const serverConfigPath = resolveiPolloWalkServerConfigPath(process.env);
+    const serverConfigPath = resolveiPolloWorkServerConfigPath(process.env);
     const requestedWorkspacePaths = (options.workspacePaths ?? []).filter((value) => value.trim().length > 0);
     const workspacePaths = seedWorkspacePathsForEmbeddedServer(
       requestedWorkspacePaths,
       existsSync(serverConfigPath),
     );
-    const activeWorkspace = selectStickyiPolloWalkPortWorkspace(requestedWorkspacePaths, workspacePaths);
-    const portSelection = await resolveiPolloWalkPort(host, activeWorkspace, currentPort);
+    const activeWorkspace = selectStickyiPolloWorkPortWorkspace(requestedWorkspacePaths, workspacePaths);
+    const portSelection = await resolveiPolloWorkPort(host, activeWorkspace, currentPort);
     const tokens = await loadOrCreateWorkspaceTokens(activeWorkspace);
 
     // One call: resolve config, spawn managed OpenCode, start HTTP server.
@@ -1193,12 +1193,12 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       path.resolve(__runtimeDir, "..", "server", "dist", "embedded.js"),
       ...(process.resourcesPath ? [path.resolve(process.resourcesPath, "server", "dist", "embedded.js")] : []),
     ];
-    const candidates = process.env.IPOLLOWALK_DEV_MODE === "1"
+    const candidates = process.env.IPOLLOWORK_DEV_MODE === "1"
       ? [devPath, ...packagedPaths]
       : [...packagedPaths, devPath];
     const embeddedPath = candidates.find((candidate) => existsSync(candidate));
     if (!embeddedPath) {
-      throw new Error(`Cannot find iPolloWalk embedded server bundle. Checked: ${candidates.join(", ")}`);
+      throw new Error(`Cannot find iPolloWork embedded server bundle. Checked: ${candidates.join(", ")}`);
     }
     const { startEmbeddedServer } = await import(embeddedServerImportUrl(embeddedPath));
     // startEmbeddedServer falls back to an OS-assigned port if `port` races
@@ -1220,23 +1220,23 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       opencodeCwd: managedOpencodeWorkdir(),
     });
     inProcessServer = handle;
-    ipollowalkServerState.managedOpencodeExecution = handle.managedOpencodeExecution ?? null;
+    ipolloworkServerState.managedOpencodeExecution = handle.managedOpencodeExecution ?? null;
 
     const boundPort = handle.port;
     const baseUrl = handle.url;
 
-    ipollowalkServerState.inProcess = true;
-    ipollowalkServerState.remoteAccessEnabled = options.remoteAccessEnabled;
-    ipollowalkServerState.host = host;
-    ipollowalkServerState.port = boundPort;
-    ipollowalkServerState.baseUrl = baseUrl;
-    ipollowalkServerState.clientToken = tokens.clientToken;
-    ipollowalkServerState.hostToken = tokens.hostToken;
+    ipolloworkServerState.inProcess = true;
+    ipolloworkServerState.remoteAccessEnabled = options.remoteAccessEnabled;
+    ipolloworkServerState.host = host;
+    ipolloworkServerState.port = boundPort;
+    ipolloworkServerState.baseUrl = baseUrl;
+    ipolloworkServerState.clientToken = tokens.clientToken;
+    ipolloworkServerState.hostToken = tokens.hostToken;
 
     const connectUrls = options.remoteAccessEnabled ? buildConnectUrls(boundPort) : { connectUrl: null, mdnsUrl: null, lanUrl: null };
-    ipollowalkServerState.connectUrl = connectUrls.connectUrl;
-    ipollowalkServerState.mdnsUrl = connectUrls.mdnsUrl;
-    ipollowalkServerState.lanUrl = connectUrls.lanUrl;
+    ipolloworkServerState.connectUrl = connectUrls.connectUrl;
+    ipolloworkServerState.mdnsUrl = connectUrls.mdnsUrl;
+    ipolloworkServerState.lanUrl = connectUrls.lanUrl;
 
     // No health check needed -- startServer() resolves only after the listener is bound.
     let workspaceList = null;
@@ -1251,7 +1251,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       }
     }
     ownerToken ||= await issueOwnerToken(baseUrl, tokens.hostToken);
-    ipollowalkServerState.ownerToken = ownerToken;
+    ipolloworkServerState.ownerToken = ownerToken;
     if (ownerToken) {
       await persistWorkspaceOwnerToken(activeWorkspace, ownerToken);
     }
@@ -1275,13 +1275,13 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
           engineState.childExited = false;
         }
       } catch (error) {
-        appendOutput(ipollowalkServerState, "lastStderr", `iPolloWalk server workspace probe: ${error instanceof Error ? error.message : String(error)}\n`);
+        appendOutput(ipolloworkServerState, "lastStderr", `iPolloWork server workspace probe: ${error instanceof Error ? error.message : String(error)}\n`);
       }
     }
     if (!portSelection.preferredPort || boundPort === portSelection.preferredPort) {
-      await persistPreferrediPolloWalkPort(activeWorkspace, boundPort);
+      await persistPreferrediPolloWorkPort(activeWorkspace, boundPort);
     }
-    return snapshotiPolloWalkServerState(ipollowalkServerState);
+    return snapshotiPolloWorkServerState(ipolloworkServerState);
   }
 
   async function resolveOrchestratorBaseUrl() {
@@ -1303,9 +1303,9 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     const opencodePort = await findFreePort("127.0.0.1");
     const [username, password] = generateManagedCredentials();
 
-    const orchestratorProgram = resolveBinary("ipollowalk-orchestrator") ?? resolveBinary("ipollowalk");
+    const orchestratorProgram = resolveBinary("ipollowork-orchestrator") ?? resolveBinary("ipollowork");
     if (!orchestratorProgram) {
-      throw new Error("Failed to locate ipollowalk-orchestrator.");
+      throw new Error("Failed to locate ipollowork-orchestrator.");
     }
 
     const opencodeBinary = resolveOpencodeBinary(options.opencodeBinPath);
@@ -1314,9 +1314,9 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     }
 
     const env = await buildChildEnv({
-      IPOLLOWALK_INTERNAL_ALLOW_OPENCODE_CREDENTIALS: "1",
-      IPOLLOWALK_OPENCODE_USERNAME: username,
-      IPOLLOWALK_OPENCODE_PASSWORD: password,
+      IPOLLOWORK_INTERNAL_ALLOW_OPENCODE_CREDENTIALS: "1",
+      IPOLLOWORK_OPENCODE_USERNAME: username,
+      IPOLLOWORK_OPENCODE_PASSWORD: password,
       ...(options.opencodeEnableExa !== false ? { OPENCODE_ENABLE_EXA: "1" } : {}),
     });
 
@@ -1421,7 +1421,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       try { await inProcessServer.stop(); } catch { /* ignore */ }
       inProcessServer = null;
     }
-    await stopChild(ipollowalkServerState);
+    await stopChild(ipolloworkServerState);
     await stopChild(orchestratorState, {
       requestShutdown: () => requestOrchestratorShutdown(orchestratorState.dataDir || orchestratorDataDir()),
     });
@@ -1429,7 +1429,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     await stopChild(engineState);
 
     Object.assign(engineState, createEngineState());
-    Object.assign(ipollowalkServerState, createiPolloWalkServerState());
+    Object.assign(ipolloworkServerState, createiPolloWorkServerState());
     Object.assign(orchestratorState, createOrchestratorState());
   }
 
@@ -1440,10 +1440,10 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     lifecycleState = "idle";
   }
 
-  async function ensureiPolloWalk(options) {
-    let ipollowalkServer;
+  async function ensureiPolloWork(options) {
+    let ipolloworkServer;
     try {
-      ipollowalkServer = await startiPolloWalkServer({
+      ipolloworkServer = await startiPolloWorkServer({
         workspacePaths: options.workspacePaths,
         opencodeBaseUrl: engineState.baseUrl,
         opencodeUsername: engineState.opencodeUsername,
@@ -1453,11 +1453,11 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
         opencodeBinPath: options.opencodeBinPath,
       });
     } catch (error) {
-      appendOutput(engineState, "lastStderr", `iPolloWalk server: ${error instanceof Error ? error.message : String(error)}\n`);
+      appendOutput(engineState, "lastStderr", `iPolloWork server: ${error instanceof Error ? error.message : String(error)}\n`);
       throw error;
     }
 
-    assertiPolloWalkServerReady(ipollowalkServer);
+    assertiPolloWorkServerReady(ipolloworkServer);
   }
 
   async function engineStart(projectDir, options = {}) {
@@ -1468,20 +1468,20 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
 
     // Reuse a healthy server instead of tearing it down. During boot the
     // main process kicks off bootRuntimeForSelectedWorkspace while renderer
-    // routes independently call ensureDesktopLocaliPolloWalkConnection. Both go
+    // routes independently call ensureDesktopLocaliPolloWorkConnection. Both go
     // through this serialized path; without this guard the second call runs
     // prepareFreshRuntime (killing the freshly bound server) and then rebinds
     // the sticky preferred port, racing the not-yet-released socket into
     // EADDRINUSE and leaving the runtime in error -> boot screen.
-    const requestedRemoteAccess = options.ipollowalkRemoteAccess === true;
+    const requestedRemoteAccess = options.ipolloworkRemoteAccess === true;
     if (
       options.forceRestart !== true &&
-      ipollowalkServerState.inProcess &&
+      ipolloworkServerState.inProcess &&
       lifecycleState === "healthy" &&
       normalizeWorkspaceKey(engineState.projectDir) === normalizeWorkspaceKey(safeProjectDir) &&
-      ipollowalkServerState.remoteAccessEnabled === requestedRemoteAccess
+      ipolloworkServerState.remoteAccessEnabled === requestedRemoteAccess
     ) {
-      const existing = snapshotiPolloWalkServerState(ipollowalkServerState);
+      const existing = snapshotiPolloWorkServerState(ipolloworkServerState);
       if (existing.running && existing.baseUrl && (existing.ownerToken || existing.clientToken)) {
         return snapshotEngineState(engineState);
       }
@@ -1503,10 +1503,10 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       engineState.child = null;
       engineState.childExited = true;
 
-      await ensureiPolloWalk({
+      await ensureiPolloWork({
         projectDir: safeProjectDir,
         workspacePaths,
-        remoteAccessEnabled: options.ipollowalkRemoteAccess === true,
+        remoteAccessEnabled: options.ipolloworkRemoteAccess === true,
         manageOpencode: true,
         opencodeBinPath: options.opencodeBinPath,
       });
@@ -1531,14 +1531,14 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     if (!projectDir) {
       throw new Error("OpenCode is not configured for a local workspace");
     }
-    const ipollowalkRemoteAccess = typeof options.ipollowalkRemoteAccess === "boolean"
-      ? options.ipollowalkRemoteAccess
-      : ipollowalkServerState.remoteAccessEnabled;
+    const ipolloworkRemoteAccess = typeof options.ipolloworkRemoteAccess === "boolean"
+      ? options.ipolloworkRemoteAccess
+      : ipolloworkServerState.remoteAccessEnabled;
     return engineStart(projectDir, {
       runtime: engineState.runtime,
       workspacePaths: [projectDir],
       opencodeEnableExa: options.opencodeEnableExa,
-      ipollowalkRemoteAccess,
+      ipolloworkRemoteAccess,
       forceRestart: true,
     });
   }
@@ -1551,41 +1551,41 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     return {
       lifecycleState,
       engine: await engineInfo(),
-      ipollowalkServer: snapshotiPolloWalkServerState(ipollowalkServerState),
+      ipolloworkServer: snapshotiPolloWorkServerState(ipolloworkServerState),
     };
   }
 
-  async function ipollowalkServerInfo() {
-    return snapshotiPolloWalkServerState(ipollowalkServerState);
+  async function ipolloworkServerInfo() {
+    return snapshotiPolloWorkServerState(ipolloworkServerState);
   }
 
-  async function ipollowalkServerRestart(options = {}) {
+  async function ipolloworkServerRestart(options = {}) {
     const workspacePaths = prioritizeWorkspacePaths(engineState.projectDir, await listLocalWorkspacePaths());
     const shouldManageOpencode = Boolean(
-      ipollowalkServerState.managedOpencodeBinPath || engineState.opencodeBinPath || !engineState.baseUrl,
+      ipolloworkServerState.managedOpencodeBinPath || engineState.opencodeBinPath || !engineState.baseUrl,
     );
-    return startiPolloWalkServer({
+    return startiPolloWorkServer({
       workspacePaths,
       opencodeBaseUrl: shouldManageOpencode ? null : engineState.baseUrl,
       opencodeUsername: shouldManageOpencode ? null : engineState.opencodeUsername,
       opencodePassword: shouldManageOpencode ? null : engineState.opencodePassword,
       remoteAccessEnabled: options.remoteAccessEnabled === true,
       manageOpencode: shouldManageOpencode,
-      opencodeBinPath: engineState.opencodeBinPath ?? ipollowalkServerState.managedOpencodeBinPath,
+      opencodeBinPath: engineState.opencodeBinPath ?? ipolloworkServerState.managedOpencodeBinPath,
     });
   }
 
   async function orchestratorStatus() {
     const engine = snapshotEngineState(engineState);
-    const ipollowalkServer = snapshotiPolloWalkServerState(ipollowalkServerState);
+    const ipolloworkServer = snapshotiPolloWorkServerState(ipolloworkServerState);
     const workspaces = engine.projectDir
       ? [{ id: normalizeWorkspaceKey(engine.projectDir), path: engine.projectDir, name: path.basename(engine.projectDir) || "Workspace" }]
       : [];
     return {
       running: engine.running,
       dataDir: null,
-      daemon: ipollowalkServer.running
-        ? { baseUrl: ipollowalkServer.baseUrl, port: ipollowalkServer.port, pid: ipollowalkServer.pid, runtime: "direct" }
+      daemon: ipolloworkServer.running
+        ? { baseUrl: ipolloworkServer.baseUrl, port: ipolloworkServer.port, pid: ipolloworkServer.pid, runtime: "direct" }
         : null,
       opencode: engine.running
         ? { baseUrl: engine.baseUrl, port: engine.port, pid: engine.pid, projectDir: engine.projectDir, runtime: "direct" }
@@ -1633,7 +1633,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
         status: -1,
         stdout: "",
         stderr:
-          "Guided install is not supported on Windows yet. Install the iPolloWalk-pinned OpenCode version manually, then restart iPolloWalk.",
+          "Guided install is not supported on Windows yet. Install the iPolloWork-pinned OpenCode version manually, then restart iPolloWork.",
       };
     }
 
@@ -1781,8 +1781,8 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     if (!name) {
       throw new Error("containerName is required");
     }
-    if (!name.startsWith("ipollowalk-orchestrator-")) {
-      throw new Error("Refusing to stop container: expected name starting with 'ipollowalk-orchestrator-'");
+    if (!name.startsWith("ipollowork-orchestrator-")) {
+      throw new Error("Refusing to stop container: expected name starting with 'ipollowork-orchestrator-'");
     }
     if (!/^[A-Za-z0-9_.-]+$/.test(name)) {
       throw new Error("containerName contains invalid characters");
@@ -1796,8 +1796,8 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     };
   }
 
-  async function sandboxCleanupiPolloWalkContainers() {
-    const candidates = await listiPolloWalkManagedContainers().catch((error) => {
+  async function sandboxCleanupiPolloWorkContainers() {
+    const candidates = await listiPolloWorkManagedContainers().catch((error) => {
       throw error;
     });
     const removed = [];
@@ -1834,12 +1834,12 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     const runId = String(options.runId ?? randomUUID()).trim();
     const containerName = wantsDockerSandbox ? deriveOrchestratorContainerName(runId) : null;
     const port = await findFreePort("127.0.0.1");
-    const token = String(options.ipollowalkToken ?? randomUUID()).trim();
-    const hostToken = String(options.ipollowalkHostToken ?? randomUUID()).trim();
-    const ipollowalkUrl = `http://127.0.0.1:${port}`;
-    const program = resolveBinary("ipollowalk-orchestrator") ?? resolveBinary("ipollowalk");
+    const token = String(options.ipolloworkToken ?? randomUUID()).trim();
+    const hostToken = String(options.ipolloworkHostToken ?? randomUUID()).trim();
+    const ipolloworkUrl = `http://127.0.0.1:${port}`;
+    const program = resolveBinary("ipollowork-orchestrator") ?? resolveBinary("ipollowork");
     if (!program) {
-      throw new Error("Failed to locate ipollowalk orchestrator.");
+      throw new Error("Failed to locate ipollowork orchestrator.");
     }
 
     const args = [
@@ -1849,7 +1849,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       "--approval",
       "auto",
       "--detach",
-      "--ipollowalk-port",
+      "--ipollowork-port",
       String(port),
       "--run-id",
       runId,
@@ -1858,18 +1858,18 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     ];
 
     const child = spawn(program, args, {
-      env: { ...(await buildChildEnv()), IPOLLOWALK_TOKEN: token, IPOLLOWALK_HOST_TOKEN: hostToken },
+      env: { ...(await buildChildEnv()), IPOLLOWORK_TOKEN: token, IPOLLOWORK_HOST_TOKEN: hostToken },
       detached: true,
       stdio: "ignore",
       windowsHide: true,
     });
     child.unref();
 
-    await waitForHttpOk(`${ipollowalkUrl}/health`, wantsDockerSandbox ? 90_000 : 12_000);
-    const ownerToken = await issueOwnerToken(ipollowalkUrl, hostToken).catch(() => null);
+    await waitForHttpOk(`${ipolloworkUrl}/health`, wantsDockerSandbox ? 90_000 : 12_000);
+    const ownerToken = await issueOwnerToken(ipolloworkUrl, hostToken).catch(() => null);
 
     return {
-      ipollowalkUrl,
+      ipolloworkUrl,
       token,
       ownerToken,
       hostToken,
@@ -1883,7 +1883,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   async function sandboxDebugProbe() {
     const startedAt = nowMs();
     const runId = `probe-${randomUUID()}`;
-    const workspacePath = path.join(os.tmpdir(), `ipollowalk-sandbox-probe-${randomUUID()}`);
+    const workspacePath = path.join(os.tmpdir(), `ipollowork-sandbox-probe-${randomUUID()}`);
     await mkdir(workspacePath, { recursive: true });
 
     const doctor = await sandboxDoctor();
@@ -1981,8 +1981,8 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     engineInfo,
     engineDoctor,
     engineInstall,
-    ipollowalkServerInfo,
-    ipollowalkServerRestart: (options) => withRuntimeLifecycle(() => ipollowalkServerRestart(options)),
+    ipolloworkServerInfo,
+    ipolloworkServerRestart: (options) => withRuntimeLifecycle(() => ipolloworkServerRestart(options)),
     orchestratorStatus,
     orchestratorWorkspaceActivate,
     orchestratorInstanceDispose,
@@ -1990,7 +1990,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     opencodeMcpAuth,
     sandboxDoctor,
     sandboxStop,
-    sandboxCleanupiPolloWalkContainers,
+    sandboxCleanupiPolloWorkContainers,
     sandboxDebugProbe,
   };
 }

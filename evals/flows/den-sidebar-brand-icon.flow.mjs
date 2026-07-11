@@ -1,10 +1,10 @@
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("den-sidebar-brand-icon");
-const DEN_API_URL = (process.env.IPOLLOWALK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
-const DEN_WEB_URL = (process.env.IPOLLOWALK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const DEN_API_URL = (process.env.IPOLLOWORK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
+const DEN_WEB_URL = (process.env.IPOLLOWORK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 const state = { token: null, iconUrl: null };
 
 async function apiRequest(path, options = {}) {
@@ -120,7 +120,7 @@ export default {
   id: "den-sidebar-brand-icon",
   title: "Den uses the managed organization square icon in its sidebar without flashes or broken images",
   kind: "user-facing",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "Setup",
@@ -168,7 +168,7 @@ export default {
     {
       name: "Frame 2",
       run: async (ctx) => {
-        await ctx.prove("The sidebar replaces the generic iPolloWalk mark with the managed organization icon", {
+        await ctx.prove("The sidebar replaces the generic iPolloWork mark with the managed organization icon", {
           voiceover: vo[1],
           action: async () => {
             await ctx.client.send("Network.emulateNetworkConditions", {
@@ -188,7 +188,7 @@ export default {
           },
           screenshot: {
             name: "sidebar-managed-brand-icon",
-            claim: "The Den sidebar visibly shows the organization's managed square icon instead of the iPolloWalk SVG.",
+            claim: "The Den sidebar visibly shows the organization's managed square icon instead of the iPolloWork SVG.",
             requireText: ["Dashboard"],
             rejectText: ["Something went wrong"],
           },
@@ -198,7 +198,7 @@ export default {
     {
       name: "Frame 3",
       run: async (ctx) => {
-        await ctx.prove("An organization without a managed icon gets the intact iPolloWalk fallback", {
+        await ctx.prove("An organization without a managed icon gets the intact iPolloWork fallback", {
           voiceover: vo[2],
           action: async () => {
             await clearManagedIcon(ctx);
@@ -211,7 +211,7 @@ export default {
           },
           screenshot: {
             name: "sidebar-brand-icon-fallback",
-            claim: "Without a custom square icon, Den shows the intact iPolloWalk fallback and no broken image.",
+            claim: "Without a custom square icon, Den shows the intact iPolloWork fallback and no broken image.",
             requireText: ["Dashboard"],
             rejectText: ["Something went wrong"],
           },

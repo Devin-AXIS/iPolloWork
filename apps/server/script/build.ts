@@ -26,7 +26,7 @@ function readArgs(argv: string[]): BuildOptions {
   const options: BuildOptions = {
     targets: [],
     outdir: resolve("dist", "bin"),
-    filename: "ipollowalk-server",
+    filename: "ipollowork-server",
   };
 
   for (let index = 0; index < argv.length; index += 1) {

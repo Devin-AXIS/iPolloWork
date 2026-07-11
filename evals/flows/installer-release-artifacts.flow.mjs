@@ -10,25 +10,25 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 // The runner fails this flow if the narration drifts from that script.
 const vo = await loadVoiceoverParagraphs("installer-release-artifacts");
 
-const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_API_URL);
-const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_WEB_URL);
-const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_WEB_CDP_ADMIN);
-const INVITEE_CDP_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_WEB_CDP_INVITEE);
-const RELEASE_TAG = process.env.IPOLLOWALK_EVAL_RELEASE_TAG?.trim() || "";
-const RELEASE_REPO = process.env.IPOLLOWALK_EVAL_RELEASE_REPO?.trim() || "Devin-AXIS/iPolloWalk";
-const DEN_API_LOG = process.env.IPOLLOWALK_EVAL_DEN_API_LOG?.trim() || "/tmp/ow-rel-den-api.log";
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
-const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
-const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_API_URL);
+const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_WEB_URL);
+const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_WEB_CDP_ADMIN);
+const INVITEE_CDP_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_WEB_CDP_INVITEE);
+const RELEASE_TAG = process.env.IPOLLOWORK_EVAL_RELEASE_TAG?.trim() || "";
+const RELEASE_REPO = process.env.IPOLLOWORK_EVAL_RELEASE_REPO?.trim() || "Devin-AXIS/iPolloWork";
+const DEN_API_LOG = process.env.IPOLLOWORK_EVAL_DEN_API_LOG?.trim() || "/tmp/ow-rel-den-api.log";
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
+const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 
-const MAC_ASSET = "ipollowalk-installer-mac-arm64.zip";
-const WIN_ASSET = "ipollowalk-installer-win-x64.exe";
-const INSTALL_SIDECAR_FILENAME = "ipollowalk-installer.json";
-const APP_BUNDLE_NAME = "iPolloWalk Installer.app";
-// Must match den-api's default IPOLLOWALK_INSTALLER_CACHE_DIR (env.installerCacheDir).
-const INSTALLER_CACHE_DIR = path.join(os.tmpdir(), "ipollowalk-installer-artifacts");
+const MAC_ASSET = "ipollowork-installer-mac-arm64.zip";
+const WIN_ASSET = "ipollowork-installer-win-x64.exe";
+const INSTALL_SIDECAR_FILENAME = "ipollowork-installer.json";
+const APP_BUNDLE_NAME = "iPolloWork Installer.app";
+// Must match den-api's default IPOLLOWORK_INSTALLER_CACHE_DIR (env.installerCacheDir).
+const INSTALLER_CACHE_DIR = path.join(os.tmpdir(), "ipollowork-installer-artifacts");
 
 const state = {
   adminToken: null,
@@ -46,15 +46,15 @@ export default {
   title: "One published release feeds every stamped install: the Mac download stays signed and notarized",
   kind: "user-facing",
   requiredEnv: [
-    "IPOLLOWALK_EVAL_DEN_API_URL",
-    "IPOLLOWALK_EVAL_DEN_TOKEN",
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
-    "IPOLLOWALK_EVAL_WEB_CDP_ADMIN",
-    "IPOLLOWALK_EVAL_WEB_CDP_INVITEE",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD",
-    "IPOLLOWALK_EVAL_MARK_VERIFIED_CMD",
-    "IPOLLOWALK_EVAL_RELEASE_TAG",
+    "IPOLLOWORK_EVAL_DEN_API_URL",
+    "IPOLLOWORK_EVAL_DEN_TOKEN",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_WEB_CDP_ADMIN",
+    "IPOLLOWORK_EVAL_WEB_CDP_INVITEE",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD",
+    "IPOLLOWORK_EVAL_MARK_VERIFIED_CMD",
+    "IPOLLOWORK_EVAL_RELEASE_TAG",
   ],
   steps: [
     {
@@ -63,7 +63,7 @@ export default {
         await withClient(ctx, ADMIN_CDP_URL, async () => {
           await ctx.prove("The public GitHub release carries the generic installer next to the app builds", {
             voiceover: vo[0],
-            // "Every iPolloWalk release now ships one more thing: the generic installer..."
+            // "Every iPolloWork release now ships one more thing: the generic installer..."
             action: async () => {
               await navigateToAbsolute(ctx, `https://github.com/${RELEASE_REPO}/releases/tag/${RELEASE_TAG}`);
               await ctx.waitFor("document.readyState === 'complete'", { timeoutMs: 45_000, label: "release page load" });
@@ -89,7 +89,7 @@ export default {
               const release = await response.json();
               const assets = Array.isArray(release.assets) ? release.assets : [];
               const published = {};
-              for (const name of [MAC_ASSET, "ipollowalk-installer-mac-x64.zip", WIN_ASSET]) {
+              for (const name of [MAC_ASSET, "ipollowork-installer-mac-x64.zip", WIN_ASSET]) {
                 const asset = assets.find((entry) => entry.name === name);
                 ctx.assert(Boolean(asset), `Release ${RELEASE_TAG} is missing public asset ${name}.`);
                 published[name] = { size: asset.size, downloadUrl: asset.browser_download_url, updatedAt: asset.updated_at };
@@ -162,12 +162,12 @@ export default {
             await withClient(ctx, INVITEE_CDP_URL, async () => {
               await navigateToAbsolute(ctx, requireStateValue(state.installPageUrl, "install page URL"));
               await ctx.waitFor("Boolean(document.querySelector('[data-testid=\"install-page\"]'))", { timeoutMs: 30_000, label: "install page" });
-              await ctx.waitForText("Download iPolloWalk for Acme Robotics", { timeoutMs: 30_000 });
-              await ctx.expectText("Download iPolloWalk for Acme Robotics");
+              await ctx.waitForText("Download iPolloWork for Acme Robotics", { timeoutMs: 30_000 });
+              await ctx.expectText("Download iPolloWork for Acme Robotics");
               await ctx.screenshot("install-page-serves-real-downloads", {
                 claim: "The install page now genuinely serves downloads backed by the published release",
                 voiceover: vo[1],
-                requireText: ["Download iPolloWalk for Acme Robotics"],
+                requireText: ["Download iPolloWork for Acme Robotics"],
               });
             });
           },
@@ -221,7 +221,7 @@ export default {
                 const cachedSourceZip = path.join(INSTALLER_CACHE_DIR, RELEASE_TAG, MAC_ASSET);
                 ctx.assert(existsSync(cachedSourceZip), `den-api release cache is missing ${cachedSourceZip}.`);
                 unzip(cachedSourceZip, sourceDir);
-                const binaryRelPath = path.join(APP_BUNDLE_NAME, "Contents", "MacOS", "ipollowalk-installer");
+                const binaryRelPath = path.join(APP_BUNDLE_NAME, "Contents", "MacOS", "ipollowork-installer");
                 const stampedSha = sha256File(path.join(stampedDir, binaryRelPath));
                 const sourceSha = sha256File(path.join(sourceDir, binaryRelPath));
                 ctx.assert(stampedSha === sourceSha, `Installer binary changed between published asset (${sourceSha}) and stamped download (${stampedSha}).`);
@@ -250,17 +250,17 @@ export default {
                 // Run the extracted installer binary itself (manual UI mode):
                 // the .app-bundle sidecar resolution finds Acme's config next
                 // to the bundle, exactly as a real unzip would lay it out.
-                state.frame3Ui = await startExtractedInstallerUi(path.join(stampedDir, APP_BUNDLE_NAME, "Contents", "MacOS", "ipollowalk-installer"), stampedDir);
+                state.frame3Ui = await startExtractedInstallerUi(path.join(stampedDir, APP_BUNDLE_NAME, "Contents", "MacOS", "ipollowork-installer"), stampedDir);
                 await navigateToAbsolute(ctx, state.frame3Ui.url);
-                await ctx.waitForText("This sets up iPolloWalk for Acme Robotics", { timeoutMs: 20_000 });
+                await ctx.waitForText("This sets up iPolloWork for Acme Robotics", { timeoutMs: 20_000 });
               },
               assert: async () => {
-                await ctx.expectText("This sets up iPolloWalk for Acme Robotics");
+                await ctx.expectText("This sets up iPolloWork for Acme Robotics");
                 await ctx.expectText("Configured via install link");
               },
               screenshot: {
                 name: "downloaded-installer-announces-acme",
-                requireText: ["This sets up iPolloWalk for Acme Robotics", "Configured via install link"],
+                requireText: ["This sets up iPolloWork for Acme Robotics", "Configured via install link"],
               },
             });
           });
@@ -282,7 +282,7 @@ export default {
 
               const win = await timedInstallDownload(ctx, "win-x64");
               const disposition = win.contentDisposition;
-              const expectedFilename = new RegExp(`^attachment; filename="iPolloWalk-Installer--127\\.0\\.0\\.1_8790--${token}\\.exe"$`);
+              const expectedFilename = new RegExp(`^attachment; filename="iPolloWork-Installer--127\\.0\\.0\\.1_8790--${token}\\.exe"$`);
               ctx.assert(win.status === 200, `Windows install download returned ${win.status}.`);
               ctx.assert(expectedFilename.test(disposition), `Windows Content-Disposition was ${disposition}.`);
 
@@ -313,7 +313,7 @@ export default {
               // focusing the Windows link then draws its :focus-visible ring
               // and keeps this frame visually distinct from frame 2.
               await navigateToAbsolute(ctx, requireStateValue(state.installPageUrl, "install page URL"));
-              await ctx.waitForText("Download iPolloWalk for Acme Robotics", { timeoutMs: 30_000 });
+              await ctx.waitForText("Download iPolloWork for Acme Robotics", { timeoutMs: 30_000 });
               await ctx.waitForText("Windows", { timeoutMs: 15_000 });
               await ctx.client.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
               await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
@@ -434,8 +434,8 @@ async function ensureAdminToken(ctx) {
     state.adminToken = signedIn.body.token;
     return state.adminToken;
   }
-  const token = process.env.IPOLLOWALK_EVAL_DEN_TOKEN?.trim() ?? "";
-  ctx.assert(token.length > 0, `Admin sign-in failed and IPOLLOWALK_EVAL_DEN_TOKEN is missing: ${signedIn.response.status}`);
+  const token = process.env.IPOLLOWORK_EVAL_DEN_TOKEN?.trim() ?? "";
+  ctx.assert(token.length > 0, `Admin sign-in failed and IPOLLOWORK_EVAL_DEN_TOKEN is missing: ${signedIn.response.status}`);
   state.adminToken = token;
   return token;
 }
@@ -496,7 +496,7 @@ async function ensurePlatformAdmin(ctx) {
 function markEmailVerified(ctx, email) {
   ctx.assert(
     MARK_VERIFIED_CMD.length > 0,
-    "Platform-admin provisioning requires a verified email; set IPOLLOWALK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
+    "Platform-admin provisioning requires a verified email; set IPOLLOWORK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
   );
   execSync(MARK_VERIFIED_CMD.replaceAll("{email}", email), { stdio: "ignore" });
 }
@@ -580,13 +580,13 @@ function sha256File(filePath) {
 async function startExtractedInstallerUi(binaryPath, cwd) {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
-    if (key.startsWith("IPOLLOWALK_INSTALLER_") || key === "IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH") {
+    if (key.startsWith("IPOLLOWORK_INSTALLER_") || key === "IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH") {
       delete env[key];
     }
   }
   const child = spawn(binaryPath, [], {
     cwd,
-    env: { ...env, IPOLLOWALK_INSTALLER_UI: "manual" },
+    env: { ...env, IPOLLOWORK_INSTALLER_UI: "manual" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";

@@ -6,18 +6,18 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 // The runner fails this flow if the narration drifts from that script.
 const vo = await loadVoiceoverParagraphs("org-connections-capability");
 
-const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_API_URL);
-const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_WEB_URL);
-const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_WEB_CDP_ADMIN);
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
-const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
-const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
-const ORG_ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ORG_ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_API_URL);
+const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_WEB_URL);
+const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_WEB_CDP_ADMIN);
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
+const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
+const ORG_ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ORG_ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 
 const ORG_FILTER_INPUT = 'input[placeholder="Org name, slug, or id"]';
 const NOTION_NAME = "Notion";
-const WORKSPACE_PATH = "/tmp/ipollowalk-org-connections-capability";
+const WORKSPACE_PATH = "/tmp/ipollowork-org-connections-capability";
 
 const state = {
   platformAdminToken: null,
@@ -32,13 +32,13 @@ export default {
   title: "Platform admins flip the mcpConnections org capability from /admin; den-web nav and the desktop react uniformly",
   kind: "user-facing",
   requiredEnv: [
-    "IPOLLOWALK_EVAL_DEN_API_URL",
-    "IPOLLOWALK_EVAL_DEN_TOKEN",
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
-    "IPOLLOWALK_EVAL_WEB_CDP_ADMIN",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD",
-    "IPOLLOWALK_EVAL_MARK_VERIFIED_CMD",
+    "IPOLLOWORK_EVAL_DEN_API_URL",
+    "IPOLLOWORK_EVAL_DEN_TOKEN",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_WEB_CDP_ADMIN",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD",
+    "IPOLLOWORK_EVAL_MARK_VERIFIED_CMD",
   ],
   steps: [
     {
@@ -357,7 +357,7 @@ async function denApiFetch(pathname, options = {}) {
 function markEmailVerified(ctx, email) {
   ctx.assert(
     MARK_VERIFIED_CMD.length > 0,
-    "Platform-admin provisioning requires a verified email; set IPOLLOWALK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
+    "Platform-admin provisioning requires a verified email; set IPOLLOWORK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
   );
   execSync(MARK_VERIFIED_CMD.replaceAll("{email}", email), { stdio: "ignore" });
 }
@@ -751,11 +751,11 @@ async function waitForManageableConnectionRow(ctx, name) {
 }
 
 async function ensureDesktopSignedInAsOrgAdmin(ctx) {
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 120_000, label: "desktop control API" });
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 120_000, label: "desktop control API" });
 
   const current = await ctx.eval(`(() => ({
-    token: (localStorage.getItem('ipollowalk.den.authToken') ?? '').trim(),
-    activeOrgId: (localStorage.getItem('ipollowalk.den.activeOrgId') ?? '').trim(),
+    token: (localStorage.getItem('ipollowork.den.authToken') ?? '').trim(),
+    activeOrgId: (localStorage.getItem('ipollowork.den.activeOrgId') ?? '').trim(),
   }))()`);
   if (current.token) {
     const org = await denApiFetch("/v1/org", {
@@ -772,22 +772,22 @@ async function ensureDesktopSignedInAsOrgAdmin(ctx) {
   const handoff = await denApiFetch("/v1/auth/desktop-handoff", {
     method: "POST",
     headers: { authorization: `Bearer ${requireStateValue(state.orgAdminToken, "org admin token")}` },
-    body: JSON.stringify({ desktopScheme: "ipollowalk" }),
+    body: JSON.stringify({ desktopScheme: "ipollowork" }),
   });
   ctx.assert(handoff.response.ok, `Desktop handoff create failed: ${handoff.response.status} ${handoff.text.slice(0, 300)}`);
-  ctx.assert(typeof handoff.body?.ipollowalkUrl === "string", "Desktop handoff response did not include ipollowalkUrl.");
+  ctx.assert(typeof handoff.body?.ipolloworkUrl === "string", "Desktop handoff response did not include ipolloworkUrl.");
 
   await ctx.navigateHash("/settings/cloud-account");
   await ctx.waitFor("window.location.hash.includes('/settings/cloud-account')", { timeoutMs: 30_000, label: "cloud account settings" });
   await ctx.clickText("Paste sign-in code", { timeoutMs: 30_000 });
-  await ctx.fill("#den-signin-link", handoff.body.ipollowalkUrl);
+  await ctx.fill("#den-signin-link", handoff.body.ipolloworkUrl);
   await ctx.clickText("Finish sign-in", { timeoutMs: 30_000 });
-  await ctx.waitFor("Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())", {
+  await ctx.waitFor("Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())", {
     timeoutMs: 45_000,
     label: "persisted den auth token",
   });
   await completeDesktopCloudOnboardingIfNeeded(ctx);
-  await ctx.waitFor(`localStorage.getItem('ipollowalk.den.activeOrgId') === ${JSON.stringify(requireStateValue(state.orgId, "organization id"))}`, {
+  await ctx.waitFor(`localStorage.getItem('ipollowork.den.activeOrgId') === ${JSON.stringify(requireStateValue(state.orgId, "organization id"))}`, {
     timeoutMs: 60_000,
     label: "Acme active org resolved",
   });
@@ -803,7 +803,7 @@ async function completeDesktopCloudOnboardingIfNeeded(ctx) {
     await ctx.waitFor("window.location.hash.includes('/workspace/')", { timeoutMs: 60_000, label: "workspace open after folder selection" });
   }
   await ctx.eval(`(() => {
-    const button = [...document.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Continue without iPolloWalk Models');
+    const button = [...document.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === 'Continue without iPolloWork Models');
     button?.click();
     return true;
   })()`);
@@ -811,15 +811,15 @@ async function completeDesktopCloudOnboardingIfNeeded(ctx) {
 
 async function clearDesktopDenSession(ctx) {
   await ctx.eval(`(() => {
-    localStorage.removeItem('ipollowalk.den.authToken');
-    localStorage.removeItem('ipollowalk.den.activeOrgId');
-    localStorage.removeItem('ipollowalk.den.activeOrgSlug');
-    localStorage.removeItem('ipollowalk.den.activeOrgName');
-    localStorage.removeItem('ipollowalk.den.mcp.sync');
+    localStorage.removeItem('ipollowork.den.authToken');
+    localStorage.removeItem('ipollowork.den.activeOrgId');
+    localStorage.removeItem('ipollowork.den.activeOrgSlug');
+    localStorage.removeItem('ipollowork.den.activeOrgName');
+    localStorage.removeItem('ipollowork.den.mcp.sync');
     return true;
   })()`);
   await ctx.eval("location.reload()");
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "desktop control API after sign-out reload" });
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "desktop control API after sign-out reload" });
 }
 
 async function closeDesktopDialogs(ctx) {
@@ -852,7 +852,7 @@ async function openDesktopMarketplace(ctx) {
 async function remountDesktopExtensions(ctx) {
   await closeDesktopDialogs(ctx);
   await ctx.eval("location.reload()");
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 120_000, label: "desktop control API after reload" });
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 120_000, label: "desktop control API after reload" });
   await completeDesktopCloudOnboardingIfNeeded(ctx);
   await openDesktopExtensions(ctx);
 }

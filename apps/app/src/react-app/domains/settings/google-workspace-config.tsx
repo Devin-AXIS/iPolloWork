@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import type { GoogleWorkspaceAuthStatus, iPolloWalkServerClient } from "../../../app/lib/ipollowalk-server";
+import type { GoogleWorkspaceAuthStatus, iPolloWorkServerClient } from "../../../app/lib/ipollowork-server";
 import { usePlatform } from "../../kernel/platform";
 import type { ExtensionConfigContext } from "./extension-registry";
 import { registerExtensionRuntime } from "./extension-registry";
@@ -25,7 +25,7 @@ type OptionalFeature = "gmailRead" | "driveFull" | "calendarWrite" | "chat";
 
 const OPTIONAL_FEATURES: { id: OptionalFeature; label: string; description: string }[] = [
   { id: "gmailRead", label: "Read Gmail", description: "Read your Gmail messages and threads." },
-  { id: "driveFull", label: "Full Google Drive access", description: "Search, read, and edit all files in your Drive, not just files created through iPolloWalk." },
+  { id: "driveFull", label: "Full Google Drive access", description: "Search, read, and edit all files in your Drive, not just files created through iPolloWork." },
   { id: "calendarWrite", label: "Create calendar events", description: "Create events on your Google Calendar." },
   { id: "chat", label: "Google Chat", description: "List spaces, read messages, and send messages in Google Chat." },
 ];
@@ -33,7 +33,7 @@ type GoogleWorkspaceCommand = () => Promise<unknown>;
 const DESKTOP_ACTION_TIMEOUT_MS = 6 * 60 * 1000;
 const CONNECT_POLL_INTERVAL_MS = 1_000;
 // Must match GOOGLE_WORKSPACE_DESKTOP_CLIENT_ID in apps/server/src/extensions/google-workspace.ts.
-const IPOLLOWALK_BUILTIN_GOOGLE_CLIENT_ID = "929071212606-pmkqimjhm2tnp68kbklnout0irllj99h.apps.googleusercontent.com";
+const IPOLLOWORK_BUILTIN_GOOGLE_CLIENT_ID = "929071212606-pmkqimjhm2tnp68kbklnout0irllj99h.apps.googleusercontent.com";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -95,7 +95,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function waitForGoogleWorkspaceConnection(client: iPolloWalkServerClient, flowId: string, expiresAt: number) {
+async function waitForGoogleWorkspaceConnection(client: iPolloWorkServerClient, flowId: string, expiresAt: number) {
   while (Date.now() < expiresAt + 5_000) {
     const result = await client.googleWorkspaceConnectStatus(flowId);
     if (result.status === "connected" && result.googleWorkspace) return result.googleWorkspace;
@@ -107,7 +107,7 @@ async function waitForGoogleWorkspaceConnection(client: iPolloWalkServerClient, 
   throw new Error("Google Workspace OAuth timed out.");
 }
 
-function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerClient, onExtensionConnectionChange, restartLocalServer }: ExtensionConfigContext) {
+function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerClient, onExtensionConnectionChange, restartLocalServer }: ExtensionConfigContext) {
   const platform = usePlatform();
   const [status, setStatus] = useState<GoogleWorkspaceAuthStatus | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
@@ -116,17 +116,17 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
   const [customClientId, setCustomClientId] = useState("");
   const [customClientSecret, setCustomClientSecret] = useState("");
   const [optionalFeatures, setOptionalFeatures] = useState<Record<OptionalFeature, boolean>>({ gmailRead: false, driveFull: false, calendarWrite: false, chat: false });
-  const serverAvailable = Boolean(ipollowalkServerClient);
-  const hostServerAvailable = Boolean(hostiPolloWalkServerClient);
+  const serverAvailable = Boolean(ipolloworkServerClient);
+  const hostServerAvailable = Boolean(hostiPolloWorkServerClient);
   const canConnect = serverAvailable && status?.configured === true && status.vault !== "unavailable";
   const canTest = serverAvailable && status?.connected === true;
 
   const loadStatus = async (options: { clearError?: boolean } = {}) => {
-    if (!ipollowalkServerClient) return;
+    if (!ipolloworkServerClient) return;
     setBusyAction("status");
     if (options.clearError !== false) setError(null);
     try {
-      const result = normalizeGoogleWorkspaceAuthStatus(await ipollowalkServerClient.googleWorkspaceStatus());
+      const result = normalizeGoogleWorkspaceAuthStatus(await ipolloworkServerClient.googleWorkspaceStatus());
       setStatus(result);
       onExtensionConnectionChange?.("google-workspace", result.connected);
     } catch (err) {
@@ -138,17 +138,17 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
 
   useEffect(() => {
     void loadStatus();
-  }, [ipollowalkServerClient]);
+  }, [ipolloworkServerClient]);
 
   const runDesktopAction = async (action: Exclude<BusyAction, "status">, command: GoogleWorkspaceCommand) => {
-    if (!ipollowalkServerClient) return;
+    if (!ipolloworkServerClient) return;
     setBusyAction(action);
     setError(null);
     try {
       const result = await Promise.race([
         command(),
         new Promise<never>((_, reject) => {
-          window.setTimeout(() => reject(new Error("Google Workspace connection is taking too long. Try again, or restart iPolloWalk if the browser already said authorization was received.")), DESKTOP_ACTION_TIMEOUT_MS);
+          window.setTimeout(() => reject(new Error("Google Workspace connection is taking too long. Try again, or restart iPolloWork if the browser already said authorization was received.")), DESKTOP_ACTION_TIMEOUT_MS);
         }),
       ]);
       const next = normalizeGoogleWorkspaceAuthStatus(result);
@@ -163,29 +163,29 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
   };
 
   const connectGoogleWorkspace = async () => {
-    if (!ipollowalkServerClient) return null;
+    if (!ipolloworkServerClient) return null;
     const features = status?.customClient === true ? OPTIONAL_FEATURES.filter((feature) => optionalFeatures[feature.id]).map((feature) => feature.id) : [];
-    const flow = await ipollowalkServerClient.googleWorkspaceConnectStart({ features });
+    const flow = await ipolloworkServerClient.googleWorkspaceConnectStart({ features });
     platform.openLink(flow.authUrl);
-    return waitForGoogleWorkspaceConnection(ipollowalkServerClient, flow.flowId, flow.expiresAt);
+    return waitForGoogleWorkspaceConnection(ipolloworkServerClient, flow.flowId, flow.expiresAt);
   };
 
   const saveOauthEnv = async (entries: { key: string; value: string }[], onSaved: () => void) => {
-    if (!hostiPolloWalkServerClient) {
+    if (!hostiPolloWorkServerClient) {
       setError("Google OAuth settings can only be saved from the local desktop app.");
       return;
     }
     setBusyAction("save-secret");
     setError(null);
     try {
-      await hostiPolloWalkServerClient.upsertUserEnv(entries);
-      await hostiPolloWalkServerClient.setUserEnvPendingChanges(true);
+      await hostiPolloWorkServerClient.upsertUserEnv(entries);
+      await hostiPolloWorkServerClient.setUserEnvPendingChanges(true);
       onSaved();
       if (restartLocalServer) {
         const restarted = await restartLocalServer();
-        if (!restarted) setError("Saved Google OAuth settings. Restart iPolloWalk to apply them.");
+        if (!restarted) setError("Saved Google OAuth settings. Restart iPolloWork to apply them.");
       } else {
-        setError("Saved Google OAuth settings. Restart iPolloWalk to apply them.");
+        setError("Saved Google OAuth settings. Restart iPolloWork to apply them.");
       }
       await loadStatus({ clearError: false });
     } catch (err) {
@@ -211,8 +211,8 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
       setError("Enter both the client ID and client secret from your own Google OAuth desktop client.");
       return;
     }
-    if (id === IPOLLOWALK_BUILTIN_GOOGLE_CLIENT_ID) {
-      setError("That is the built-in iPolloWalk client ID, which cannot unlock Gmail read access. Create your own OAuth client in Google Cloud Console (APIs & Services > Credentials > Create OAuth client ID > Desktop app) and paste its client ID here.");
+    if (id === IPOLLOWORK_BUILTIN_GOOGLE_CLIENT_ID) {
+      setError("That is the built-in iPolloWork client ID, which cannot unlock Gmail read access. Create your own OAuth client in Google Cloud Console (APIs & Services > Credentials > Create OAuth client ID > Desktop app) and paste its client ID here.");
       return;
     }
     await saveOauthEnv(
@@ -234,8 +234,8 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
       {!serverAvailable ? (
         <Alert variant="warning">
           <ShieldCheck />
-          <AlertTitle>iPolloWalk server required</AlertTitle>
-          <AlertDescription>Start iPolloWalk server to connect Google Workspace.</AlertDescription>
+          <AlertTitle>iPolloWork server required</AlertTitle>
+          <AlertDescription>Start iPolloWork server to connect Google Workspace.</AlertDescription>
         </Alert>
       ) : null}
 
@@ -253,7 +253,7 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
           <ShieldCheck />
           <AlertTitle>Connect Google Workspace</AlertTitle>
           <AlertDescription>
-            Let iPolloWalk use your calendar, selected Drive files, and Gmail drafts when you ask it to.
+            Let iPolloWork use your calendar, selected Drive files, and Gmail drafts when you ask it to.
           </AlertDescription>
         </Alert>
       )}
@@ -271,7 +271,7 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
           <CardHeader>
             <CardTitle>Set up Google OAuth</CardTitle>
             <CardDescription>
-              Use a Google Cloud OAuth desktop client. iPolloWalk already includes the desktop client ID; paste the matching client secret here.
+              Use a Google Cloud OAuth desktop client. iPolloWork already includes the desktop client ID; paste the matching client secret here.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -283,7 +283,7 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
               autoComplete="off"
             />
             <p className="text-xs leading-relaxed text-muted-foreground">
-              The secret is saved locally in iPolloWalk environment settings and applied after the local server restarts.
+              The secret is saved locally in iPolloWork environment settings and applied after the local server restarts.
             </p>
           </CardContent>
           <CardFooter>
@@ -299,7 +299,7 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
         <Alert variant="destructive">
           <XCircle />
           <AlertTitle>Encrypted token vault unavailable</AlertTitle>
-          <AlertDescription>iPolloWalk cannot securely save your Google connection on this machine right now.</AlertDescription>
+          <AlertDescription>iPolloWork cannot securely save your Google connection on this machine right now.</AlertDescription>
         </Alert>
       ) : null}
 
@@ -321,9 +321,9 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
 
       <Card variant="outline" size="sm">
         <CardHeader>
-          <CardTitle>What iPolloWalk can do</CardTitle>
+          <CardTitle>What iPolloWork can do</CardTitle>
           <CardDescription>
-            Connect Google Workspace so iPolloWalk can help with meeting prep, selected files, and draft emails.
+            Connect Google Workspace so iPolloWork can help with meeting prep, selected files, and draft emails.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-3">
@@ -340,7 +340,7 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
           <div className="rounded-2xl border border-border bg-card p-3">
             <FileText className="mb-2 size-4 text-green-11" />
             <div className="text-sm font-medium text-card-foreground">Selected Drive files</div>
-            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">Read files explicitly selected or created through iPolloWalk.</div>
+            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">Read files explicitly selected or created through iPolloWork.</div>
           </div>
         </CardContent>
       </Card>
@@ -359,13 +359,13 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
                     <Button variant="outline" size="sm" disabled={Boolean(busyAction)} onClick={() => {
                       const accountId = account.accountId;
                       if (!accountId) return;
-                      void runDesktopAction("set-active", () => ipollowalkServerClient?.googleWorkspaceSetActiveAccount(accountId) ?? Promise.resolve(null));
+                      void runDesktopAction("set-active", () => ipolloworkServerClient?.googleWorkspaceSetActiveAccount(accountId) ?? Promise.resolve(null));
                     }}>
                       {busyAction === "set-active" ? <Loader2 className="size-4 animate-spin" /> : null}
                       Make default
                     </Button>
                   ) : null}
-                  <Button variant="destructive" size="sm" disabled={Boolean(busyAction)} onClick={() => void runDesktopAction("disconnect", () => ipollowalkServerClient?.googleWorkspaceDisconnect(account.accountId) ?? Promise.resolve(null))}>
+                  <Button variant="destructive" size="sm" disabled={Boolean(busyAction)} onClick={() => void runDesktopAction("disconnect", () => ipolloworkServerClient?.googleWorkspaceDisconnect(account.accountId) ?? Promise.resolve(null))}>
                     Disconnect
                   </Button>
                 </div>
@@ -380,16 +380,16 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
               {status?.connected ? "Add another Google account" : "Connect with Google"}
             </Button>
             {connectedAccounts.length > 1 ? (
-              <Button variant="destructive" disabled={Boolean(busyAction)} onClick={() => void runDesktopAction("disconnect", () => ipollowalkServerClient?.googleWorkspaceDisconnect() ?? Promise.resolve(null))}>
+              <Button variant="destructive" disabled={Boolean(busyAction)} onClick={() => void runDesktopAction("disconnect", () => ipolloworkServerClient?.googleWorkspaceDisconnect() ?? Promise.resolve(null))}>
                 {busyAction === "disconnect" ? <Loader2 className="size-4 animate-spin" /> : null}
                 Disconnect all
               </Button>
             ) : null}
-            <Button variant="outline" disabled={Boolean(busyAction) || !canTest} onClick={() => void runDesktopAction("test", () => ipollowalkServerClient?.googleWorkspaceTestConnection() ?? Promise.resolve(null))}>
+            <Button variant="outline" disabled={Boolean(busyAction) || !canTest} onClick={() => void runDesktopAction("test", () => ipolloworkServerClient?.googleWorkspaceTestConnection() ?? Promise.resolve(null))}>
               {busyAction === "test" ? <Loader2 className="size-4 animate-spin" /> : null}
               Test connection
             </Button>
-            <Button variant="outline" disabled={Boolean(busyAction) || !canTest} onClick={() => void runDesktopAction("smoke-test", () => ipollowalkServerClient?.googleWorkspaceRunScopeSmokeTest() ?? Promise.resolve(null))}>
+            <Button variant="outline" disabled={Boolean(busyAction) || !canTest} onClick={() => void runDesktopAction("smoke-test", () => ipolloworkServerClient?.googleWorkspaceRunScopeSmokeTest() ?? Promise.resolve(null))}>
               {busyAction === "smoke-test" ? <Loader2 className="size-4 animate-spin" /> : null}
               Run diagnostic
             </Button>
@@ -426,7 +426,7 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
                   autoComplete="off"
                 />
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Create a desktop OAuth client in Google Cloud Console, then paste its client ID and secret. They are saved locally in iPolloWalk environment settings and applied after the local server restarts.
+                  Create a desktop OAuth client in Google Cloud Console, then paste its client ID and secret. They are saved locally in iPolloWork environment settings and applied after the local server restarts.
                 </p>
                 <Button disabled={busyAction === "save-secret" || !customClientId.trim() || !customClientSecret.trim() || !hostServerAvailable} onClick={() => void saveCustomOauthClient()}>
                   {busyAction === "save-secret" ? <Loader2 className="size-4 animate-spin" /> : null}
@@ -464,7 +464,7 @@ function GoogleWorkspaceConfig({ ipollowalkServerClient, hostiPolloWalkServerCli
 
 registerExtensionRuntime({
   id: "google-workspace",
-  settingsPanelRefs: ["ipollowalk.googleWorkspace.settings"],
+  settingsPanelRefs: ["ipollowork.googleWorkspace.settings"],
   settingsPanel: (ctx) => <GoogleWorkspaceConfig {...ctx} />,
   isConnected: (_entry, ctx) => ctx.extensionConnections?.["google-workspace"] === true,
 });

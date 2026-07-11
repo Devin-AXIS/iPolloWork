@@ -3,11 +3,11 @@
  */
 
 export function denWebUrl() {
-  return (process.env.IPOLLOWALK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
+  return (process.env.IPOLLOWORK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
 }
 
 export function denApiUrl() {
-  return (process.env.IPOLLOWALK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
+  return (process.env.IPOLLOWORK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
 }
 
 export async function denApiFetch(path, options = {}) {

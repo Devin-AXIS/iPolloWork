@@ -6,18 +6,18 @@ import type { McpServerEntry } from "../src/app/types";
 import { buildExtensionItems } from "../src/react-app/domains/settings/extension-items";
 
 const connectedBuiltIn: McpDirectoryInfo = {
-  id: "ipollowalk-browser",
-  name: "iPolloWalk Browser",
-  serverName: "ipollowalk-browser",
+  id: "ipollowork-browser",
+  name: "iPolloWork Browser",
+  serverName: "ipollowork-browser",
   description: "Connected by default.",
   oauth: false,
   kind: "extension",
   extensionManifest: {
     schemaVersion: 1,
-    id: "ipollowalk-browser",
-    name: "iPolloWalk Browser",
+    id: "ipollowork-browser",
+    name: "iPolloWork Browser",
     description: "Connected by default.",
-    source: { format: "ipollowalk-builtin", origin: "builtin", trusted: true },
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
     resources: [],
   },
 };
@@ -34,7 +34,7 @@ const availableBuiltIn: McpDirectoryInfo = {
     id: "computer-use",
     name: "Computer Use",
     description: "Marketplace-only until installed.",
-    source: { format: "ipollowalk-builtin", origin: "builtin", trusted: true },
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
     resources: [],
   },
 };
@@ -82,8 +82,8 @@ describe("extension item projection", () => {
       isBuiltInConnected: (entry) => entry.id === connectedBuiltIn.id,
     });
 
-    expect(result.installedMcpEntries.map((entry) => entry.name)).toEqual(["iPolloWalk Browser"]);
-    expect(result.builtInItems.map((item) => item.name)).toEqual(["iPolloWalk Browser", "Computer Use"]);
+    expect(result.installedMcpEntries.map((entry) => entry.name)).toEqual(["iPolloWork Browser"]);
+    expect(result.builtInItems.map((item) => item.name)).toEqual(["iPolloWork Browser", "Computer Use"]);
   });
 
   test("projects per-member org MCP grants as Marketplace items until connected", () => {

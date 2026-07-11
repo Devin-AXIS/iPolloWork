@@ -55,7 +55,7 @@ export default {
           voiceover: vo[1],
           action: async () => {
             await ctx.navigateHash("/settings/cloud-account");
-            await ctx.waitForText("iPolloWalk Cloud", { timeoutMs: 30_000 });
+            await ctx.waitForText("iPolloWork Cloud", { timeoutMs: 30_000 });
           },
           assert: async () => {
             await ctx.expectHashIncludes("/settings/cloud-account");
@@ -66,7 +66,7 @@ export default {
           },
           screenshot: {
             name: "cloud-account-copy",
-            requireText: ["iPolloWalk Cloud"],
+            requireText: ["iPolloWork Cloud"],
             rejectText: ["Cloud Workers", "Cloud workers"],
             hashIncludes: "/settings/cloud-account",
           },
@@ -93,7 +93,7 @@ export default {
           },
           assert: async () => {
             await ctx.expectHashIncludes("/settings/cloud-account");
-            await ctx.expectText("iPolloWalk Cloud");
+            await ctx.expectText("iPolloWork Cloud");
             const mentions = await ctx.eval(
               "document.body.innerText.toLowerCase().includes('cloud worker')",
             );

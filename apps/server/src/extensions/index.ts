@@ -18,7 +18,7 @@ import {
   OPENAI_IMAGE_GENERATION_EXTENSION_ID,
 } from "./openai-image-generation.js";
 
-const IPOLLOWALK_EXPERIMENTAL_EXTENSION_ACTIONS = [
+const IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS = [
   ...GOOGLE_WORKSPACE_EXTENSION_ACTIONS,
   ...OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS,
 ];
@@ -36,8 +36,8 @@ function readStringField(value: unknown, key: string): string {
 export function listExperimentalExtensionActions(extensionId: string, connectSnapshot?: ConnectSnapshot) {
   const filter = extensionId.trim();
   const actions = filter
-    ? IPOLLOWALK_EXPERIMENTAL_EXTENSION_ACTIONS.filter((action) => action.extensionId === filter)
-    : IPOLLOWALK_EXPERIMENTAL_EXTENSION_ACTIONS;
+    ? IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS.filter((action) => action.extensionId === filter)
+    : IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS;
   if (!connectSnapshot || !shouldGateLegacyGoogleWorkspace(connectSnapshot)) return actions;
   return actions.filter((action) => action.extensionId !== GOOGLE_WORKSPACE_EXTENSION_ID || action.action === "status");
 }
@@ -53,9 +53,9 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
   if (!extensionId || !action) {
     throw new ApiError(400, "invalid_payload", "extensionId and action are required");
   }
-  const registered = IPOLLOWALK_EXPERIMENTAL_EXTENSION_ACTIONS.find((item) => item.extensionId === extensionId && item.action === action);
+  const registered = IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS.find((item) => item.extensionId === extensionId && item.action === action);
   if (!registered) {
-    throw new ApiError(404, "extension_action_not_found", "iPolloWalk extension action not found");
+    throw new ApiError(404, "extension_action_not_found", "iPolloWork extension action not found");
   }
 
   if (
@@ -66,7 +66,7 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
   ) {
     return {
       ok: false,
-      error: "use_ipollowalk_cloud",
+      error: "use_ipollowork_cloud",
       message: googleWorkspaceConnectGuidance(connectSnapshot.cloudMcpPresent),
     };
   }
@@ -81,5 +81,5 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
     if (result) return result;
   }
 
-  throw new ApiError(501, "extension_action_not_implemented", `${registered.title} is registered but not implemented on ipollowalk-server yet.`, { extensionId, action, args });
+  throw new ApiError(501, "extension_action_not_implemented", `${registered.title} is registered but not implemented on ipollowork-server yet.`, { extensionId, action, args });
 }

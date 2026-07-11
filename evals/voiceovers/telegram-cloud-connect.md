@@ -1,15 +1,15 @@
-# telegram-cloud-connect — A private Telegram chat can securely reach one iPolloWalk Cloud worker
+# telegram-cloud-connect — A private Telegram chat can securely reach one iPolloWork Cloud worker
 
 This first release covers BotFather-created bots and paired private text chats. Managed Bots, Secretary Mode, groups, and inbound media remain follow-up work.
 
-1. I open Connections, choose Telegram, add my bot token, and select the iPolloWalk worker that should answer. iPolloWalk validates the bot and clearly explains that this first version accepts paired private chats only.
+1. I open Connections, choose Telegram, add my bot token, and select the iPolloWork worker that should answer. iPolloWork validates the bot and clearly explains that this first version accepts paired private chats only.
 
-2. The connection turns green with the bot's username and a healthy delivery status. iPolloWalk gives me a one-time pairing link, so I never have to copy a chat ID or expose the bot token.
+2. The connection turns green with the bot's username and a healthy delivery status. iPolloWork gives me a one-time pairing link, so I never have to copy a chat ID or expose the bot token.
 
 3. I open the link in Telegram and press Start. Telegram confirms that this private conversation is now connected to the worker I selected.
 
-4. I ask the bot to summarize the launch notes in my iPolloWalk workspace. The selected worker runs the task and returns its final answer in the same Telegram conversation.
+4. I ask the bot to summarize the launch notes in my iPolloWork workspace. The selected worker runs the task and returns its final answer in the same Telegram conversation.
 
-5. Back in iPolloWalk, I ask the agent to send an update to my paired Telegram chat. The message arrives under the same bot, proving the connection works in both directions.
+5. Back in iPolloWork, I ask the agent to send an update to my paired Telegram chat. The message arrives under the same bot, proving the connection works in both directions.
 
-6. I disconnect Telegram from iPolloWalk. The connection reports that delivery is disabled, and later messages can no longer reach the worker.
+6. I disconnect Telegram from iPolloWork. The connection reports that delivery is disabled, and later messages can no longer reach the worker.

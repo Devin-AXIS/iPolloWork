@@ -49,26 +49,26 @@ describe("cloud MCP user state", () => {
 
   test("ignores corrupt stored values", () => {
     const backing = installStorageStub();
-    backing.set("ipollowalk.den.mcp.cloudControlUserState", "banana");
+    backing.set("ipollowork.den.mcp.cloudControlUserState", "banana");
     expect(readCloudMcpUserState()).toBeNull();
   });
 
   test("rejects ambiguous legacy sync markers", () => {
     const backing = installStorageStub();
     const scope = {
-      denBaseUrl: "https://cloud.ipollowalk.test",
-      serverBaseUrl: "https://worker.ipollowalk.test",
+      denBaseUrl: "https://cloud.ipollowork.test",
+      serverBaseUrl: "https://worker.ipollowork.test",
       orgId: "organization_1",
       workspaceId: "workspace_1",
     };
 
-    backing.set("ipollowalk.den.mcp.sync", JSON.stringify({
+    backing.set("ipollowork.den.mcp.sync", JSON.stringify({
       orgId: scope.orgId,
       expiresAt: "2026-07-20T00:00:00.000Z",
     }));
     expect(readCloudMcpSyncMarker(scope)).toBeNull();
 
-    backing.set("ipollowalk.den.mcp.sync", JSON.stringify({
+    backing.set("ipollowork.den.mcp.sync", JSON.stringify({
       orgId: scope.orgId,
       workspaceId: scope.workspaceId,
       expiresAt: "2026-07-20T00:00:00.000Z",
@@ -78,8 +78,8 @@ describe("cloud MCP user state", () => {
 
   test("round-trips a fully scoped versioned sync marker", () => {
     const marker = {
-      denBaseUrl: "https://cloud.ipollowalk.test",
-      serverBaseUrl: "https://worker.ipollowalk.test",
+      denBaseUrl: "https://cloud.ipollowork.test",
+      serverBaseUrl: "https://worker.ipollowork.test",
       orgId: "organization_1",
       workspaceId: "workspace_1",
       expiresAt: "2026-07-20T00:00:00.000Z",

@@ -87,7 +87,7 @@ step is: **observe → act → observe → assert** — and repair before verdic
 Local Electron (fastest for a worktree you changed):
 
 ```bash
-IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT=9826 pnpm dev   # & in background
+IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=9826 pnpm dev   # & in background
 pnpm fraimz --flow <id> --cdp-url http://127.0.0.1:9826
 ```
 
@@ -105,10 +105,10 @@ the cloud stack for env-gated cloud flows.
 ## Pitfalls (learned the hard way)
 
 - **Target the right CDP page.** A sandbox can expose several targets; ad-hoc
-  `browser_eval` defaults to the first — pass the iPolloWalk `target_id` when
+  `browser_eval` defaults to the first — pass the iPolloWork `target_id` when
   probing manually.
-- **`__ipollowalkControl` readiness.** Attaches after boot and resets on config
-  reload: `ctx.waitFor("Boolean(window.__ipollowalkControl)")` before driving,
+- **`__ipolloworkControl` readiness.** Attaches after boot and resets on config
+  reload: `ctx.waitFor("Boolean(window.__ipolloworkControl)")` before driving,
   and re-wait after any "Reloading OpenCode config".
 - **Flows must be idempotent.** A failed run can leave dialogs open or state
   dirty; start steps by restoring the state you need (e.g. Escape a stale

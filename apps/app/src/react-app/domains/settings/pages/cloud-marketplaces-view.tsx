@@ -80,7 +80,7 @@ type MarketplacePackageRow = {
 
 type BuiltInMarketplaceRow = {
   source: "built-in";
-  marketplaceId: "ipollowalk-builtins";
+  marketplaceId: "ipollowork-builtins";
   marketplaceName: string;
   entry: McpDirectoryInfo;
   status: MarketplacePackageStatus;
@@ -150,7 +150,7 @@ function pluginComposition(plugin: DenOrgPlugin) {
 }
 
 function isCloudBuiltInPlugin(plugin: DenOrgPlugin) {
-  return plugin.extension?.sourceFormat === "ipollowalk-builtin";
+  return plugin.extension?.sourceFormat === "ipollowork-builtin";
 }
 
 function pluginManifestSearchText(plugin: DenOrgPlugin) {
@@ -300,8 +300,8 @@ export function CloudMarketplacesView({
       const active = item?.active ?? enablement?.active ?? isBuiltInConnected?.(entry) ?? false;
       return {
         source: "built-in",
-        marketplaceId: "ipollowalk-builtins",
-        marketplaceName: "iPolloWalk Built-ins",
+        marketplaceId: "ipollowork-builtins",
+        marketplaceName: "iPolloWork Built-ins",
         entry,
         active,
         status: item?.installState ?? (active ? "installed" : "available"),
@@ -358,7 +358,7 @@ export function CloudMarketplacesView({
 
   const marketplaceOptions = React.useMemo(
     () => canShowRows ? [
-      ...(builtInRows.length > 0 ? [{ id: "ipollowalk-builtins", name: "iPolloWalk Built-ins" }] : []),
+      ...(builtInRows.length > 0 ? [{ id: "ipollowork-builtins", name: "iPolloWork Built-ins" }] : []),
       ...marketplaces.map((marketplace) => ({ id: marketplace.marketplace.id, name: marketplace.marketplace.name })),
       ...(orgMcpRows.length > 0 ? [{ id: "org-mcp-connections", name: "Organization MCP Connections" }] : []),
     ] : [],
@@ -555,7 +555,7 @@ export function CloudMarketplacesView({
       {!isSignedIn ? (
         <SettingsNotice>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>You can use iPolloWalk without an account. Sign in to iPolloWalk Cloud to load the Marketplace, including iPolloWalk's built-in extensions and any organization marketplaces.</span>
+            <span>You can use iPolloWork without an account. Sign in to iPolloWork Cloud to load the Marketplace, including iPolloWork's built-in extensions and any organization marketplaces.</span>
             <Button size="sm" onClick={onOpenAccount}>
               {t("skills.share_team_sign_in")}
             </Button>
@@ -921,7 +921,7 @@ function OrgMcpConnectionDetailModal(props: {
             <SettingsPill>MCP</SettingsPill>
           </div>
           <SettingsNotice>
-            iPolloWalk stores this sign-in in the organization cloud. Once connected, your desktop agent can use the tools through iPolloWalk Cloud Control.
+            iPolloWork stores this sign-in in the organization cloud. Once connected, your desktop agent can use the tools through iPolloWork Cloud Control.
           </SettingsNotice>
         </div>
       )}

@@ -1,12 +1,12 @@
 # IMPORTANT: appId intentionally matches the Tauri shell so both builds share
 # the same macOS bundle identifier, keychain entries, Launchpad slot, and TCC
 # permissions. In-place migration from Tauri to Electron depends on this.
-appId: com.differentai.ipollowalk
+appId: com.differentai.ipollowork
 productName: iPollo Work
 protocols:
-  - name: iPolloWalk
+  - name: iPolloWork
     schemes:
-      - ipollowalk
+      - ipollowork
 directories:
   output: dist-electron
 files:
@@ -22,7 +22,7 @@ extraResources:
     filter:
       - "*.js"
   - from: ../../packages/docs
-    to: ipollowalk-docs
+    to: ipollowork-docs
     filter:
       - "**/*.md"
       - "**/*.mdx"
@@ -40,7 +40,7 @@ afterSign: scripts/electron-after-sign.cjs
 publish:
   - provider: github
     owner: different-ai
-    repo: ipollowalk
+    repo: ipollowork
     releaseType: release
 mac:
   icon: resources/icons/icon.icns
@@ -51,7 +51,7 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    NSMicrophoneUsageDescription: iPolloWalk uses the microphone when you start Voice Mode so you can speak commands to your agent.
+    NSMicrophoneUsageDescription: iPolloWork uses the microphone when you start Voice Mode so you can speak commands to your agent.
   extraResources:
     - from: resources/sidecars
       to: sidecars
@@ -59,16 +59,16 @@ mac:
         - opencode
         - opencode-aarch64-apple-darwin
         - opencode-x86_64-apple-darwin
-        - ipollowalk-orchestrator
-        - ipollowalk-orchestrator-aarch64-apple-darwin
-        - ipollowalk-orchestrator-x86_64-apple-darwin
+        - ipollowork-orchestrator
+        - ipollowork-orchestrator-aarch64-apple-darwin
+        - ipollowork-orchestrator-x86_64-apple-darwin
         - versions.json
         - versions.json-aarch64-apple-darwin
         - versions.json-x86_64-apple-darwin
     - from: resources/helpers
       to: helpers
       filter:
-        - "iPolloWalk Computer Use.app/**"
+        - "iPolloWork Computer Use.app/**"
   target:
     - dmg
     - zip
@@ -81,9 +81,9 @@ linux:
         - opencode
         - opencode-aarch64-unknown-linux-gnu
         - opencode-x86_64-unknown-linux-gnu
-        - ipollowalk-orchestrator
-        - ipollowalk-orchestrator-aarch64-unknown-linux-gnu
-        - ipollowalk-orchestrator-x86_64-unknown-linux-gnu
+        - ipollowork-orchestrator
+        - ipollowork-orchestrator-aarch64-unknown-linux-gnu
+        - ipollowork-orchestrator-x86_64-unknown-linux-gnu
         - versions.json
         - versions.json-aarch64-unknown-linux-gnu
         - versions.json-x86_64-unknown-linux-gnu
@@ -99,9 +99,9 @@ win:
         - opencode.exe
         - opencode-aarch64-pc-windows-msvc.exe
         - opencode-x86_64-pc-windows-msvc.exe
-        - ipollowalk-orchestrator.exe
-        - ipollowalk-orchestrator-aarch64-pc-windows-msvc.exe
-        - ipollowalk-orchestrator-x86_64-pc-windows-msvc.exe
+        - ipollowork-orchestrator.exe
+        - ipollowork-orchestrator-aarch64-pc-windows-msvc.exe
+        - ipollowork-orchestrator-x86_64-pc-windows-msvc.exe
         - versions.json
         - versions.json-aarch64-pc-windows-msvc.exe
         - versions.json-x86_64-pc-windows-msvc.exe
@@ -109,4 +109,4 @@ win:
     - nsis
 nsis:
   include: build/installer.nsh
-artifactName: ipollowalk-${os}-${arch}-${version}.${ext}
+artifactName: ipollowork-${os}-${arch}-${version}.${ext}

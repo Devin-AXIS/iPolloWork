@@ -2,7 +2,7 @@
 import { useBootState, useBootOverlayVisible } from "./boot-state";
 import { OwDotTicker } from "./dot-ticker";
 
-const RELEASES_URL = "https://github.com/Devin-AXIS/iPolloWalk/releases";
+const RELEASES_URL = "https://github.com/Devin-AXIS/iPolloWork/releases";
 
 /**
  * Quiet, opaque boot overlay. Solid surface fill so nothing bleeds through.

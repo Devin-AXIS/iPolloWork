@@ -3,7 +3,7 @@ const { existsSync, mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 
-const computerUseHelperAppName = "iPolloWalk Computer Use.app";
+const computerUseHelperAppName = "iPolloWork Computer Use.app";
 
 function run(command, args) {
   const result = spawnSync(command, args, { stdio: "inherit" });
@@ -55,7 +55,7 @@ async function afterSign(context) {
   const appPath = path.join(context.appOutDir, appName);
   verifyComputerUseHelper(appPath, process.env.MACOS_NOTARIZE === "true");
 
-  const notaryTempDir = mkdtempSync(path.join(tmpdir(), "ipollowalk-electron-notary-"));
+  const notaryTempDir = mkdtempSync(path.join(tmpdir(), "ipollowork-electron-notary-"));
   const notaryZipPath = path.join(notaryTempDir, `${context.packager.appInfo.productFilename}-notary.zip`);
   const keyPath = requireEnv("APPLE_API_KEY_PATH");
   const keyId = requireEnv("APPLE_API_KEY");

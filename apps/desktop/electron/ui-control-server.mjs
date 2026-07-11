@@ -1,6 +1,6 @@
 // Local UI-control HTTP bridge: a loopback server exposing /snapshot,
-// /actions, /execute, dispatched to the renderer's window.__ipollowalkControl
-// surface via executeJavaScript. Consumed over HTTP by ipollowalk-ui-mcp.
+// /actions, /execute, dispatched to the renderer's window.__ipolloworkControl
+// surface via executeJavaScript. Consumed over HTTP by ipollowork-ui-mcp.
 // Extracted from main.mjs; state and lifecycle live in this factory
 // (createRuntimeManager pattern).
 import { randomBytes } from "node:crypto";
@@ -58,7 +58,7 @@ export function createUiControlServer({ appName, appIdentifier, getWindow }) {
     return JSON.stringify(JSON.stringify(value ?? {}));
   }
 
-  async function evaluateiPolloWalkControl(expression, options = {}) {
+  async function evaluateiPolloWorkControl(expression, options = {}) {
     const win = await getWindow();
     if (options.focus === true) {
       win.show();
@@ -68,37 +68,37 @@ export function createUiControlServer({ appName, appIdentifier, getWindow }) {
     return win.webContents.executeJavaScript(expression, true);
   }
 
-  async function runiPolloWalkControlCommand(command, args = {}) {
+  async function runiPolloWorkControlCommand(command, args = {}) {
     const argsJsonLiteral = jsonForJavaScript(args);
     if (command === "snapshot") {
-      return evaluateiPolloWalkControl(`(async () => {
-        const control = window.__ipollowalkControl;
-        if (!control) return { ok: false, error: "iPolloWalk control surface is not available yet." };
+      return evaluateiPolloWorkControl(`(async () => {
+        const control = window.__ipolloworkControl;
+        if (!control) return { ok: false, error: "iPolloWork control surface is not available yet." };
         control.setEnabled?.(true);
         return { ok: true, ...control.snapshot() };
       })()`);
     }
     if (command === "actions") {
-      return evaluateiPolloWalkControl(`(async () => {
-        const control = window.__ipollowalkControl;
-        if (!control) return { ok: false, error: "iPolloWalk control surface is not available yet." };
+      return evaluateiPolloWorkControl(`(async () => {
+        const control = window.__ipolloworkControl;
+        if (!control) return { ok: false, error: "iPolloWork control surface is not available yet." };
         control.setEnabled?.(true);
         return { ok: true, actions: control.listActions() };
       })()`);
     }
     if (command === "execute") {
-      return evaluateiPolloWalkControl(`(async () => {
-        const control = window.__ipollowalkControl;
+      return evaluateiPolloWorkControl(`(async () => {
+        const control = window.__ipolloworkControl;
         const input = JSON.parse(${argsJsonLiteral});
-        if (!control) return { ok: false, error: "iPolloWalk control surface is not available yet." };
+        if (!control) return { ok: false, error: "iPolloWork control surface is not available yet." };
         if (!input || typeof input.actionId !== "string" || !input.actionId.trim()) {
-          return { ok: false, error: "Missing iPolloWalk actionId." };
+          return { ok: false, error: "Missing iPolloWork actionId." };
         }
         control.setEnabled?.(true);
         return control.execute(input.actionId, input.args ?? {});
       })()`, { focus: true });
     }
-    return { ok: false, error: `Unknown iPolloWalk control command: ${command}` };
+    return { ok: false, error: `Unknown iPolloWork control command: ${command}` };
   }
 
   async function start() {
@@ -115,15 +115,15 @@ export function createUiControlServer({ appName, appIdentifier, getWindow }) {
           return;
         }
         if (request.method === "GET" && url.pathname === "/snapshot") {
-          sendJsonResponse(response, 200, await runiPolloWalkControlCommand("snapshot"));
+          sendJsonResponse(response, 200, await runiPolloWorkControlCommand("snapshot"));
           return;
         }
         if (request.method === "GET" && url.pathname === "/actions") {
-          sendJsonResponse(response, 200, await runiPolloWalkControlCommand("actions"));
+          sendJsonResponse(response, 200, await runiPolloWorkControlCommand("actions"));
           return;
         }
         if (request.method === "POST" && url.pathname === "/execute") {
-          sendJsonResponse(response, 200, await runiPolloWalkControlCommand("execute", await readJsonRequestBody(request)));
+          sendJsonResponse(response, 200, await runiPolloWorkControlCommand("execute", await readJsonRequestBody(request)));
           return;
         }
         sendJsonResponse(response, 404, { ok: false, error: "Not found" });
@@ -137,15 +137,15 @@ export function createUiControlServer({ appName, appIdentifier, getWindow }) {
     });
     const address = uiControlServer.address();
     const port = typeof address === "object" && address ? address.port : null;
-    if (!port) throw new Error("Could not start iPolloWalk UI control bridge.");
-    uiControlDiscoveryPath = path.join(app.getPath("userData"), "ipollowalk-ui-control.json");
+    if (!port) throw new Error("Could not start iPolloWork UI control bridge.");
+    uiControlDiscoveryPath = path.join(app.getPath("userData"), "ipollowork-ui-control.json");
     await writeFile(
       uiControlDiscoveryPath,
       `${JSON.stringify({ version: 1, app: appName, identifier: appIdentifier, platform: process.platform, baseUrl: `http://127.0.0.1:${port}`, token: uiControlToken }, null, 2)}\n`,
       "utf8",
     );
     // Make the discovery path available to child processes (server → managed OpenCode → plugin).
-    process.env.IPOLLOWALK_UI_CONTROL_DISCOVERY = uiControlDiscoveryPath;
+    process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = uiControlDiscoveryPath;
   }
 
   async function stop() {

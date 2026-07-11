@@ -17,7 +17,7 @@ type EngineRequest = {
 };
 
 // Keep the engine sync retry backoff tiny so failure-path tests stay fast.
-process.env.IPOLLOWALK_MCP_SYNC_RETRY_DELAY_MS = "10";
+process.env.IPOLLOWORK_MCP_SYNC_RETRY_DELAY_MS = "10";
 
 const stops: Array<() => void | Promise<void>> = [];
 const roots: string[] = [];
@@ -28,7 +28,7 @@ afterEach(async () => {
 });
 
 async function createWorkspaceRoot() {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-mcp-engine-sync-"));
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-mcp-engine-sync-"));
   roots.push(root);
   return root;
 }
@@ -59,7 +59,7 @@ function startMockOpencode(options?: { failMcpNames?: string[] }) {
   return { server, requests };
 }
 
-async function startiPolloWalkServer(workspaceRoot: string, opencodeBaseUrl: string) {
+async function startiPolloWorkServer(workspaceRoot: string, opencodeBaseUrl: string) {
   const config: ServerConfig = {
     host: "127.0.0.1",
     port: 0,
@@ -113,15 +113,15 @@ const POSTHOG_CONFIG = {
 describe("runtime MCP engine sync", () => {
   test("hot-adds a runtime MCP into the running engine when added", async () => {
     const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     try {
       const mock = startMockOpencode();
-      const ipollowalk = await startiPolloWalkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
+      const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
 
-      const response = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp`, {
+      const response = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
         body: JSON.stringify({ name: "posthog", config: POSTHOG_CONFIG }),
       });
       expect(response.status).toBe(200);
@@ -131,22 +131,22 @@ describe("runtime MCP engine sync", () => {
       expect(addRequest?.body).toEqual({ name: "posthog", config: POSTHOG_CONFIG });
       expect(addRequest?.search).toContain(`directory=${encodeURIComponent(workspaceRoot)}`);
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 
   test("cloud plugin install writes a remote MCP and hot-syncs it into the engine", async () => {
     const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     try {
       const mock = startMockOpencode();
-      const ipollowalk = await startiPolloWalkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
+      const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
 
-      const response = await fetch(`${ipollowalk.base}/workspace/ws_1/cloud-plugins`, {
+      const response = await fetch(`${ipollowork.base}/workspace/ws_1/cloud-plugins`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
         body: JSON.stringify({
           marketplaceId: null,
           resolved: {
@@ -185,7 +185,7 @@ describe("runtime MCP engine sync", () => {
       expect(item.pluginId).toBe("plugin_cloud_mcp");
       expect(body.warnings).toEqual([]);
 
-      expect((await readRuntimeOpencodeConfig(ipollowalk.config, "ws_1")).mcp?.brief).toMatchObject({
+      expect((await readRuntimeOpencodeConfig(ipollowork.config, "ws_1")).mcp?.brief).toMatchObject({
         type: "remote",
         url: "https://example.com/mcp",
       });
@@ -196,22 +196,22 @@ describe("runtime MCP engine sync", () => {
         config: { type: "remote", url: "https://example.com/mcp", enabled: true },
       });
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 
   test("cloud plugin install warns for dropped MCP payloads while still installing skills", async () => {
     const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     try {
       const mock = startMockOpencode();
-      const ipollowalk = await startiPolloWalkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
+      const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
 
-      const response = await fetch(`${ipollowalk.base}/workspace/ws_1/cloud-plugins`, {
+      const response = await fetch(`${ipollowork.base}/workspace/ws_1/cloud-plugins`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
         body: JSON.stringify({
           marketplaceId: null,
           resolved: {
@@ -275,33 +275,33 @@ describe("runtime MCP engine sync", () => {
 
       const skillPath = join(workspaceRoot, ".opencode", "skills", "broken-plugin", "helpful-skill", "SKILL.md");
       expect(await readFile(skillPath, "utf8")).toContain("Installed skill body.");
-      expect((await readRuntimeOpencodeConfig(ipollowalk.config, "ws_1")).mcp?.broken).toBeUndefined();
+      expect((await readRuntimeOpencodeConfig(ipollowork.config, "ws_1")).mcp?.broken).toBeUndefined();
       expect(mock.requests.some((entry) => entry.method === "POST" && entry.pathname === "/mcp")).toBe(false);
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 
   test("re-registers runtime MCPs with the engine after a reload", async () => {
     const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     try {
       const mock = startMockOpencode();
-      const ipollowalk = await startiPolloWalkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
+      const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
 
-      const addResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp`, {
+      const addResponse = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
         body: JSON.stringify({ name: "posthog", config: POSTHOG_CONFIG }),
       });
       expect(addResponse.status).toBe(200);
       mock.requests.length = 0;
 
-      const reloadResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/engine/reload`, {
+      const reloadResponse = await fetch(`${ipollowork.base}/workspace/ws_1/engine/reload`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
       });
       expect(reloadResponse.status).toBe(200);
 
@@ -311,30 +311,30 @@ describe("runtime MCP engine sync", () => {
       expect(syncIndex).toBeGreaterThan(disposeIndex);
       expect(mock.requests[syncIndex]?.body).toEqual({ name: "posthog", config: POSTHOG_CONFIG });
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 
   test("pushes toggled enabled state to the engine", async () => {
     const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     try {
       const mock = startMockOpencode();
-      const ipollowalk = await startiPolloWalkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
+      const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
 
-      const addResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp`, {
+      const addResponse = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
         body: JSON.stringify({ name: "posthog", config: POSTHOG_CONFIG }),
       });
       expect(addResponse.status).toBe(200);
       mock.requests.length = 0;
 
-      const toggleResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp/posthog/enabled`, {
+      const toggleResponse = await fetch(`${ipollowork.base}/workspace/ws_1/mcp/posthog/enabled`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
         body: JSON.stringify({ enabled: false }),
       });
       expect(toggleResponse.status).toBe(200);
@@ -343,30 +343,30 @@ describe("runtime MCP engine sync", () => {
       expect(syncRequest).toBeDefined();
       expect(syncRequest?.body).toEqual({ name: "posthog", config: { ...POSTHOG_CONFIG, enabled: false } });
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 
   test("disconnects a removed MCP from the engine", async () => {
     const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     try {
       const mock = startMockOpencode();
-      const ipollowalk = await startiPolloWalkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
+      const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
 
-      const addResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp`, {
+      const addResponse = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
         body: JSON.stringify({ name: "posthog", config: POSTHOG_CONFIG }),
       });
       expect(addResponse.status).toBe(200);
       mock.requests.length = 0;
 
-      const removeResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp/posthog`, {
+      const removeResponse = await fetch(`${ipollowork.base}/workspace/ws_1/mcp/posthog`, {
         method: "DELETE",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
       });
       expect(removeResponse.status).toBe(200);
 
@@ -376,32 +376,32 @@ describe("runtime MCP engine sync", () => {
       expect(disconnectRequest).toBeDefined();
       expect(disconnectRequest?.search).toContain(`directory=${encodeURIComponent(workspaceRoot)}`);
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 
   test("reload keeps registering remaining MCPs when one entry fails", async () => {
     const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     try {
       const mock = startMockOpencode({ failMcpNames: ["bad"] });
-      const ipollowalk = await startiPolloWalkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
+      const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
 
       for (const [name, config] of [["bad", POSTHOG_CONFIG], ["posthog", POSTHOG_CONFIG]] as const) {
-        const response = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp`, {
+        const response = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, {
           method: "POST",
-          headers: auth(ipollowalk.token),
+          headers: auth(ipollowork.token),
           body: JSON.stringify({ name, config }),
         });
         expect(response.status).toBe(200);
       }
       mock.requests.length = 0;
 
-      const reloadResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/engine/reload`, {
+      const reloadResponse = await fetch(`${ipollowork.base}/workspace/ws_1/engine/reload`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
       });
       expect(reloadResponse.status).toBe(200);
 
@@ -416,8 +416,8 @@ describe("runtime MCP engine sync", () => {
 
       // The failure is surfaced on the MCP list endpoint instead of being
       // swallowed silently.
-      const listResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp`, {
-        headers: auth(ipollowalk.token),
+      const listResponse = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, {
+        headers: auth(ipollowork.token),
       });
       expect(listResponse.status).toBe(200);
       const listBody = await listResponse.json() as {
@@ -427,16 +427,16 @@ describe("runtime MCP engine sync", () => {
       expect(listBody.engineSync?.failures.map((failure) => failure.name)).toContain("bad");
       expect(listBody.engineSync?.failures.map((failure) => failure.name)).not.toContain("posthog");
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 
   test("startup sync pushes runtime MCPs for every workspace", async () => {
     const rootA = await createWorkspaceRoot();
     const rootB = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(rootA, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(rootA, "runtime.sqlite");
     try {
       const mock = startMockOpencode();
       const baseUrl = `http://127.0.0.1:${mock.server.port}`;
@@ -470,29 +470,29 @@ describe("runtime MCP engine sync", () => {
       expect(byName.get("posthog")).toContain(`directory=${encodeURIComponent(rootA)}`);
       expect(byName.get("stripe")).toContain(`directory=${encodeURIComponent(rootB)}`);
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 
   test("MCP add still succeeds when the engine is unreachable", async () => {
     const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     try {
-      const ipollowalk = await startiPolloWalkServer(workspaceRoot, "http://127.0.0.1:9");
+      const ipollowork = await startiPolloWorkServer(workspaceRoot, "http://127.0.0.1:9");
 
-      const response = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp`, {
+      const response = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
         body: JSON.stringify({ name: "posthog", config: POSTHOG_CONFIG }),
       });
       expect(response.status).toBe(200);
       const body = await response.json() as { items: Array<{ name: string }> };
       expect(body.items.some((item) => item.name === "posthog")).toBe(true);
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 
@@ -504,21 +504,21 @@ describe("runtime MCP engine sync", () => {
   // The desktop client uses this code to escalate to a full engine restart.
   test("engine reload reports engine-unreachable when the engine is down", async () => {
     const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-    process.env.IPOLLOWALK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     try {
-      const ipollowalk = await startiPolloWalkServer(workspaceRoot, "http://127.0.0.1:9");
+      const ipollowork = await startiPolloWorkServer(workspaceRoot, "http://127.0.0.1:9");
 
-      const response = await fetch(`${ipollowalk.base}/workspace/ws_1/engine/reload`, {
+      const response = await fetch(`${ipollowork.base}/workspace/ws_1/engine/reload`, {
         method: "POST",
-        headers: auth(ipollowalk.token),
+        headers: auth(ipollowork.token),
       });
       expect(response.status).toBe(503);
       const body = await response.json() as { code?: string };
       expect(body.code).toBe("opencode_engine_unreachable");
     } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-      else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
   });
 });

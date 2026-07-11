@@ -9,17 +9,17 @@ export type DownloadLinkEmailProps = {
 
 export function DownloadLinkEmail({ organizationName, downloadUrl }: DownloadLinkEmailProps) {
   const intro = organizationName
-    ? `Here's your link to download the iPolloWalk desktop app for ${organizationName}.`
-    : "Here's your link to download the iPolloWalk desktop app."
+    ? `Here's your link to download the iPolloWork desktop app for ${organizationName}.`
+    : "Here's your link to download the iPolloWork desktop app."
 
   return (
     <Html>
       <Head />
-      <Preview>Your iPolloWalk download link</Preview>
+      <Preview>Your iPolloWork download link</Preview>
       <Body style={styles.body}>
         <Container style={styles.container}>
-          <Text style={styles.eyebrow}>iPolloWalk desktop</Text>
-          <Heading style={styles.heading}>Download iPolloWalk</Heading>
+          <Text style={styles.eyebrow}>iPolloWork desktop</Text>
+          <Heading style={styles.heading}>Download iPolloWork</Heading>
           <Text style={styles.text}>{intro}</Text>
 
           <Section style={styles.capabilitiesBox}>
@@ -30,7 +30,7 @@ export function DownloadLinkEmail({ organizationName, downloadUrl }: DownloadLin
             ))}
           </Section>
 
-          <Button href={downloadUrl} style={styles.button}>Download iPolloWalk</Button>
+          <Button href={downloadUrl} style={styles.button}>Download iPolloWork</Button>
           <Text style={styles.footer}>Signing in inside the app syncs your team&apos;s shared skills.</Text>
         </Container>
       </Body>

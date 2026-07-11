@@ -8,7 +8,7 @@ const fakeApp = { getPath: (key) => (key === "home" ? "/Users/test" : `/Users/te
 describe("staleUpdaterStatePaths", () => {
   it("targets the ShipIt cache on macOS", { skip: process.platform !== "darwin" }, () => {
     assert.deepEqual(staleUpdaterStatePaths(fakeApp), [
-      "/Users/test/Library/Caches/com.differentai.ipollowalk.ShipIt",
+      "/Users/test/Library/Caches/com.differentai.ipollowork.ShipIt",
     ]);
   });
 

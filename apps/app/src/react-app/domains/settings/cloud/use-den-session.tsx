@@ -33,7 +33,7 @@ type SettingsTone = "ready" | "warning" | "neutral" | "error";
 
 declare global {
   interface WindowEventMap {
-    "ipollowalk-den-session-updated": CustomEvent<DenSessionUpdatedDetail>;
+    "ipollowork-den-session-updated": CustomEvent<DenSessionUpdatedDetail>;
   }
 }
 
@@ -54,7 +54,7 @@ function parseManualAuthInput(value: string) {
     const routeSegments = routePath.split("/").filter(Boolean);
     const routeTail = routeSegments[routeSegments.length - 1] ?? "";
     if (
-      (protocol === "ipollowalk:" || protocol === "ipollowalk-dev:") &&
+      (protocol === "ipollowork:" || protocol === "ipollowork-dev:") &&
       (routeHost === "den-auth" || routePath === "den-auth" || routeTail === "den-auth")
     ) {
       const grant = url.searchParams.get("grant")?.trim() ?? "";
@@ -181,7 +181,7 @@ export function useDenSession({
       // again, fresh cloud providers will be detected as new and surface
       // the toast (which is the intended behavior).
       try {
-        const raw = window.localStorage.getItem("ipollowalk.acknowledgedProviders");
+        const raw = window.localStorage.getItem("ipollowork.acknowledgedProviders");
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
@@ -189,7 +189,7 @@ export function useDenSession({
               (id: unknown) => typeof id === "string" && !/^lpr_/i.test(id),
             );
             window.localStorage.setItem(
-              "ipollowalk.acknowledgedProviders",
+              "ipollowork.acknowledgedProviders",
               JSON.stringify(kept),
             );
           }

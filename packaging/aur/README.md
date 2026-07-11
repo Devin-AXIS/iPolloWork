@@ -1,13 +1,13 @@
 # Arch Linux package
 
-Use this directory to build and install the iPolloWalk package locally on Arch Linux without Docker.
+Use this directory to build and install the iPolloWork package locally on Arch Linux without Docker.
 
 ## What this packaging does
 
 - Targets `x86_64` and `aarch64` Arch Linux.
 - Downloads the published Electron GitHub release asset for the current architecture.
-- Installs the Electron bundle under `/opt/ipollowalk`.
-- Adds `/usr/bin/ipollowalk`, a desktop entry, and the iPolloWalk icon.
+- Installs the Electron bundle under `/opt/ipollowork`.
+- Adds `/usr/bin/ipollowork`, a desktop entry, and the iPolloWork icon.
 
 ## Prerequisites
 
@@ -33,10 +33,10 @@ makepkg -si
 That will:
 
 1. download the Electron tarball pinned in `PKGBUILD`
-2. build an Arch package such as `ipollowalk-<version>-1-x86_64.pkg.tar.zst`
+2. build an Arch package such as `ipollowork-<version>-1-x86_64.pkg.tar.zst`
 3. install it locally with `pacman`
 
-After install, `ipollowalk` is available as the desktop launcher. The bundled sidecars remain inside `/opt/ipollowalk`; the package does not claim the standalone `opencode` command.
+After install, `ipollowork` is available as the desktop launcher. The bundled sidecars remain inside `/opt/ipollowork`; the package does not claim the standalone `opencode` command.
 
 ## Update the package to a newer release
 
@@ -63,17 +63,17 @@ makepkg -s
 This leaves the built package in `packaging/aur/` so you can install it later with:
 
 ```bash
-sudo pacman -U ipollowalk-<version>-1-x86_64.pkg.tar.zst
+sudo pacman -U ipollowork-<version>-1-x86_64.pkg.tar.zst
 ```
 
 ## Verify the installed app
 
 ```bash
-ipollowalk
+ipollowork
 ```
 
 If you want to confirm the package contents first:
 
 ```bash
-pacman -Ql ipollowalk
+pacman -Ql ipollowork
 ```

@@ -1,4 +1,4 @@
-# Daytona image for the iPolloWalk Den server stack.
+# Daytona image for the iPolloWork Den server stack.
 #
 # This intentionally does not run Docker inside Daytona. The sandbox runs the
 # same services as packaging/docker/docker-compose.den-dev.yml directly:
@@ -22,15 +22,15 @@ RUN apt-get update \
 
 WORKDIR /workspace
 
-RUN git clone --depth 1 --branch dev https://github.com/Devin-AXIS/iPolloWalk.git . \
-  && mkdir -p /workspace/.ipollowalk-daytona \
-  && sha256sum /workspace/pnpm-lock.yaml | cut -d ' ' -f 1 > /workspace/.ipollowalk-daytona/pnpm-lock.sha256 \
+RUN git clone --depth 1 --branch dev https://github.com/Devin-AXIS/iPolloWork.git . \
+  && mkdir -p /workspace/.ipollowork-daytona \
+  && sha256sum /workspace/pnpm-lock.yaml | cut -d ' ' -f 1 > /workspace/.ipollowork-daytona/pnpm-lock.sha256 \
   && git gc --prune=now \
   && rm -rf /home/daytona/.cache /home/daytona/.npm /home/daytona/.local/share/pnpm/store \
     /workspace/node_modules
 
 RUN chown -R daytona:daytona /workspace \
-  && printf 'daytona ALL=(ALL) NOPASSWD:ALL\n' >/etc/sudoers.d/daytona-ipollowalk \
-  && chmod 0440 /etc/sudoers.d/daytona-ipollowalk
+  && printf 'daytona ALL=(ALL) NOPASSWD:ALL\n' >/etc/sudoers.d/daytona-ipollowork \
+  && chmod 0440 /etc/sudoers.d/daytona-ipollowork
 
 USER daytona

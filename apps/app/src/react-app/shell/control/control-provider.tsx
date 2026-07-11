@@ -11,67 +11,67 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-export type iPolloWalkControlSideEffect = "none" | "navigation" | "mutation" | "external";
+export type iPolloWorkControlSideEffect = "none" | "navigation" | "mutation" | "external";
 
-export type iPolloWalkControlActionArg = {
+export type iPolloWorkControlActionArg = {
   name: string;
   type?: "string" | "number" | "boolean" | "object" | "array" | "unknown";
   required?: boolean;
   description?: string;
 };
 
-export type iPolloWalkControlActionMetadata = {
+export type iPolloWorkControlActionMetadata = {
   id: string;
   label: string;
   description?: string;
-  sideEffect: iPolloWalkControlSideEffect;
+  sideEffect: iPolloWorkControlSideEffect;
   requiresConfirmation: boolean;
   requiresArgs: boolean;
   hasPreviewArgs: boolean;
   previewArgs?: unknown;
-  args?: iPolloWalkControlActionArg[];
+  args?: iPolloWorkControlActionArg[];
   disabled: boolean;
   busy: boolean;
 };
 
-export type iPolloWalkControlSnapshot = {
+export type iPolloWorkControlSnapshot = {
   version: number;
   enabled: boolean;
   route: string;
   status: "off" | "ready" | "acting";
   busyActionId: string | null;
   narration: string;
-  actions: iPolloWalkControlActionMetadata[];
+  actions: iPolloWorkControlActionMetadata[];
 };
 
-export type iPolloWalkControlResult =
+export type iPolloWorkControlResult =
   | { ok: true; actionId: string; result?: unknown }
   | { ok: false; actionId: string; error: string };
 
-export type iPolloWalkControlHelpers = {
+export type iPolloWorkControlHelpers = {
   setNarration: (text: string) => void;
 };
 
-export type iPolloWalkControlTargetRef = {
+export type iPolloWorkControlTargetRef = {
   readonly current: HTMLElement | null;
 };
 
-export type iPolloWalkControlAction = {
+export type iPolloWorkControlAction = {
   id: string;
   label: string;
   description?: string;
-  sideEffect?: iPolloWalkControlSideEffect;
+  sideEffect?: iPolloWorkControlSideEffect;
   requiresConfirmation?: boolean;
   requiresArgs?: boolean;
-  args?: iPolloWalkControlActionArg[];
+  args?: iPolloWorkControlActionArg[];
   previewArgs?: unknown;
   disabled?: boolean;
-  targetRef?: iPolloWalkControlTargetRef;
-  execute: (args: unknown, helpers: iPolloWalkControlHelpers) => unknown | Promise<unknown>;
+  targetRef?: iPolloWorkControlTargetRef;
+  execute: (args: unknown, helpers: iPolloWorkControlHelpers) => unknown | Promise<unknown>;
 };
 
 type ControlActionRef = {
-  readonly current: iPolloWalkControlAction | null;
+  readonly current: iPolloWorkControlAction | null;
 };
 
 type RegisteredAction = {
@@ -87,35 +87,35 @@ type SpotlightState = {
   rect: { x: number; y: number; width: number; height: number } | null;
 };
 
-type iPolloWalkControlContextValue = {
+type iPolloWorkControlContextValue = {
   enabled: boolean;
   setEnabled: (enabled: boolean) => void;
   route: string;
   narration: string;
   busyActionId: string | null;
-  actions: iPolloWalkControlActionMetadata[];
+  actions: iPolloWorkControlActionMetadata[];
   registerAction: (actionId: string, actionRef: ControlActionRef) => () => void;
-  executeAction: (actionId: string, args?: unknown) => Promise<iPolloWalkControlResult>;
-  snapshot: () => iPolloWalkControlSnapshot;
+  executeAction: (actionId: string, args?: unknown) => Promise<iPolloWorkControlResult>;
+  snapshot: () => iPolloWorkControlSnapshot;
 };
 
-type iPolloWalkControlAPI = {
+type iPolloWorkControlAPI = {
   version: number;
-  snapshot: () => iPolloWalkControlSnapshot;
-  listActions: () => iPolloWalkControlActionMetadata[];
-  execute: (actionId: string, args?: unknown) => Promise<iPolloWalkControlResult>;
+  snapshot: () => iPolloWorkControlSnapshot;
+  listActions: () => iPolloWorkControlActionMetadata[];
+  execute: (actionId: string, args?: unknown) => Promise<iPolloWorkControlResult>;
   setEnabled: (enabled: boolean) => void;
-  subscribe: (listener: (snapshot: iPolloWalkControlSnapshot) => void) => () => void;
+  subscribe: (listener: (snapshot: iPolloWorkControlSnapshot) => void) => () => void;
 };
 
 declare global {
   interface Window {
-    __ipollowalkControl?: iPolloWalkControlAPI;
+    __ipolloworkControl?: iPolloWorkControlAPI;
   }
 }
 
 const CONTROL_API_VERSION = 1;
-const iPolloWalkControlContext = createContext<iPolloWalkControlContextValue | null>(null);
+const iPolloWorkControlContext = createContext<iPolloWorkControlContextValue | null>(null);
 const SPOTLIGHT_TIMING_MS = Object.freeze({
   missingTarget: 80,
   scrollIntoView: 180,
@@ -144,7 +144,7 @@ function isBrowser() {
   return typeof window !== "undefined" && typeof document !== "undefined";
 }
 
-function metadataForAction(registered: RegisteredAction, busyActionId: string | null): iPolloWalkControlActionMetadata {
+function metadataForAction(registered: RegisteredAction, busyActionId: string | null): iPolloWorkControlActionMetadata {
   const action = registered.ref.current;
   return {
     id: registered.id,
@@ -180,10 +180,10 @@ function ControlModeSpotlight({ spotlight }: { spotlight: SpotlightState }) {
   );
 }
 
-export function IPolloWalkControlProvider({ children }: { children: ReactNode }) {
+export function IPolloWorkControlProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const actionsRef = useRef(new Map<string, RegisteredAction>());
-  const listenersRef = useRef(new Set<(snapshot: iPolloWalkControlSnapshot) => void>());
+  const listenersRef = useRef(new Set<(snapshot: iPolloWorkControlSnapshot) => void>());
   const nextOrderRef = useRef(1);
   const [version, setVersion] = useState(0);
   const [enabledState, setEnabledState] = useState(false);
@@ -195,7 +195,7 @@ export function IPolloWalkControlProvider({ children }: { children: ReactNode })
 
   const route = `${location.pathname}${location.search}${location.hash}`;
   const enabled = enabledState;
-  const status: iPolloWalkControlSnapshot["status"] = !enabled ? "off" : busyActionId ? "acting" : "ready";
+  const status: iPolloWorkControlSnapshot["status"] = !enabled ? "off" : busyActionId ? "acting" : "ready";
 
   const setEnabled = useCallback((nextEnabled: boolean) => {
     setEnabledState(nextEnabled);
@@ -211,7 +211,7 @@ export function IPolloWalkControlProvider({ children }: { children: ReactNode })
     return listActionMetadata();
   }, [listActionMetadata]);
 
-  const snapshot = useCallback((): iPolloWalkControlSnapshot => ({
+  const snapshot = useCallback((): iPolloWorkControlSnapshot => ({
     version: CONTROL_API_VERSION,
     enabled,
     route,
@@ -241,7 +241,7 @@ export function IPolloWalkControlProvider({ children }: { children: ReactNode })
     };
   }, []);
 
-  const playTargetChoreography = useCallback(async (action: iPolloWalkControlAction, runId: number) => {
+  const playTargetChoreography = useCallback(async (action: iPolloWorkControlAction, runId: number) => {
     if (!isBrowser()) return;
     const stillCurrent = () => spotlightRunRef.current === runId;
     const target = action.targetRef?.current;
@@ -273,7 +273,7 @@ export function IPolloWalkControlProvider({ children }: { children: ReactNode })
     await wait(SPOTLIGHT_TIMING_MS.release);
   }, []);
 
-  const executeAction = useCallback(async (actionId: string, args?: unknown): Promise<iPolloWalkControlResult> => {
+  const executeAction = useCallback(async (actionId: string, args?: unknown): Promise<iPolloWorkControlResult> => {
     const registered = actionsRef.current.get(actionId);
     const action = registered?.ref.current;
     if (!registered || !action) return { ok: false, actionId, error: `Unknown action: ${actionId}` };
@@ -324,7 +324,7 @@ export function IPolloWalkControlProvider({ children }: { children: ReactNode })
     }
   }, [playTargetChoreography, setEnabled]);
 
-  const value = useMemo<iPolloWalkControlContextValue>(() => ({
+  const value = useMemo<iPolloWorkControlContextValue>(() => ({
     enabled,
     setEnabled,
     route,
@@ -347,7 +347,7 @@ export function IPolloWalkControlProvider({ children }: { children: ReactNode })
   useEffect(() => {
     if (!isBrowser()) return;
 
-    const api: iPolloWalkControlAPI = {
+    const api: iPolloWorkControlAPI = {
       version: CONTROL_API_VERSION,
       snapshot,
       listActions: () => snapshot().actions,
@@ -362,10 +362,10 @@ export function IPolloWalkControlProvider({ children }: { children: ReactNode })
       },
     };
 
-    window.__ipollowalkControl = api;
+    window.__ipolloworkControl = api;
     return () => {
-      if (window.__ipollowalkControl === api) {
-        delete window.__ipollowalkControl;
+      if (window.__ipolloworkControl === api) {
+        delete window.__ipolloworkControl;
       }
     };
   }, [executeAction, setEnabled, snapshot]);
@@ -380,21 +380,21 @@ export function IPolloWalkControlProvider({ children }: { children: ReactNode })
   }, [snapshot, version]);
 
   return (
-    <iPolloWalkControlContext.Provider value={value}>
+    <iPolloWorkControlContext.Provider value={value}>
       {children}
       <ControlModeSpotlight spotlight={spotlight} />
-    </iPolloWalkControlContext.Provider>
+    </iPolloWorkControlContext.Provider>
   );
 }
 
-export function useiPolloWalkControl() {
-  return use(iPolloWalkControlContext);
+export function useiPolloWorkControl() {
+  return use(iPolloWorkControlContext);
 }
 
-export function useControlAction(action: iPolloWalkControlAction | null | false | undefined) {
-  const control = useiPolloWalkControl();
+export function useControlAction(action: iPolloWorkControlAction | null | false | undefined) {
+  const control = useiPolloWorkControl();
   const registerAction = control?.registerAction;
-  const latestActionRef = useRef<iPolloWalkControlAction | null>(action || null);
+  const latestActionRef = useRef<iPolloWorkControlAction | null>(action || null);
   latestActionRef.current = action || null;
   const actionId = action ? action.id : null;
 
@@ -410,12 +410,12 @@ export function useControlAction(action: iPolloWalkControlAction | null | false 
  * violating the rules of hooks. Each action is tracked by its stable id; the
  * latest closure for that id is always used, and removed ids are unregistered.
  */
-export function useControlActions(actions: readonly iPolloWalkControlAction[]) {
-  const control = useiPolloWalkControl();
+export function useControlActions(actions: readonly iPolloWorkControlAction[]) {
+  const control = useiPolloWorkControl();
   const registerAction = control?.registerAction;
 
   // One ref per action id, so executeAction always sees the freshest closure.
-  const refsById = useRef<Map<string, { current: iPolloWalkControlAction | null }>>(new Map());
+  const refsById = useRef<Map<string, { current: iPolloWorkControlAction | null }>>(new Map());
   for (const action of actions) {
     const existing = refsById.current.get(action.id);
     if (existing) {
@@ -449,10 +449,10 @@ import { SETTINGS_TAB_VALUES } from "../../../app/types";
 
 const SETTINGS_TABS: ReadonlySet<string> = new Set<string>(SETTINGS_TAB_VALUES);
 
-export function IPolloWalkRouteControlActions() {
+export function IPolloWorkRouteControlActions() {
   const navigate = useNavigate();
 
-  const actions = useMemo<iPolloWalkControlAction[]>(() => [
+  const actions = useMemo<iPolloWorkControlAction[]>(() => [
     {
       id: "route.session",
       label: "Open sessions",
@@ -540,21 +540,21 @@ export function IPolloWalkRouteControlActions() {
     },
     {
       id: "help.capabilities",
-      label: "What can iPolloWalk do?",
-      description: "List the main capabilities of iPolloWalk.",
+      label: "What can iPolloWork do?",
+      description: "List the main capabilities of iPolloWork.",
       sideEffect: "none",
       execute: () => ({
         capabilities: [
           { id: "browse", label: "Browse the web", description: "Control a browser to navigate, scrape, and automate web tasks." },
           { id: "providers", label: "AI model providers", description: "Connect Anthropic, OpenAI, Google, OpenRouter, Ollama, or other LLM providers." },
           { id: "extensions", label: "MCP extensions", description: "Add MCP servers for Google Workspace, GitHub, databases, and more." },
-          { id: "voice", label: "Voice mode", description: "Talk to iPolloWalk with real-time voice using OpenAI Realtime." },
+          { id: "voice", label: "Voice mode", description: "Talk to iPolloWork with real-time voice using OpenAI Realtime." },
           { id: "files", label: "File management", description: "Read, write, and organize files in your workspace." },
           { id: "code", label: "Write and run code", description: "Generate, edit, and execute code with full tool access." },
           { id: "computer-use", label: "Computer use", description: "Control your computer with screenshots and mouse/keyboard actions." },
           { id: "skills", label: "Skills", description: "Install specialized skill packs for specific workflows." },
           { id: "automations", label: "Automations", description: "Schedule recurring tasks and background agents." },
-          { id: "sharing", label: "Share sessions", description: "Share workspace sessions with collaborators via iPolloWalk Cloud." },
+          { id: "sharing", label: "Share sessions", description: "Share workspace sessions with collaborators via iPolloWork Cloud." },
         ],
         hint: "Use settings.panel.open to configure any of these. For example: settings.panel.open({panel:'ai'}) for providers, settings.panel.open({panel:'extensions'}) for MCPs.",
       }),

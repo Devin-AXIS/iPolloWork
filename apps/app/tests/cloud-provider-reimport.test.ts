@@ -97,7 +97,7 @@ describe("cloud provider runtime patch (re-import diff #2346)", () => {
   test("cloud-managed key predicate guards re-import vs manual clobber", () => {
     expect(isCloudManagedProviderKey(LPR_ID)).toBe(true);
     expect(isCloudManagedProviderKey("lpr_anything")).toBe(true);
-    expect(isCloudManagedProviderKey("ipollowalk")).toBe(true);
+    expect(isCloudManagedProviderKey("ipollowork")).toBe(true);
     expect(isCloudManagedProviderKey("openai")).toBe(false);
     expect(isCloudManagedProviderKey("anthropic")).toBe(false);
   });

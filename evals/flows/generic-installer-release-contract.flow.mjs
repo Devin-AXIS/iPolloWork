@@ -8,11 +8,11 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const FLOW_ID = "generic-installer-release-contract";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const REPO = process.env.IPOLLOWALK_EVAL_RELEASE_REPO?.trim() || "Devin-AXIS/iPolloWalk";
-const UNIQUE_TAG = process.env.IPOLLOWALK_EVAL_RELEASE_TAG?.trim() || "";
-const RECOVERY_TAG = process.env.IPOLLOWALK_EVAL_RECOVERY_TAG?.trim() || "v0.17.19";
-const MAC_ARM_ASSET = "ipollowalk-installer-mac-arm64.zip";
-const APP_NAME = "iPolloWalk Installer.app";
+const REPO = process.env.IPOLLOWORK_EVAL_RELEASE_REPO?.trim() || "Devin-AXIS/iPolloWork";
+const UNIQUE_TAG = process.env.IPOLLOWORK_EVAL_RELEASE_TAG?.trim() || "";
+const RECOVERY_TAG = process.env.IPOLLOWORK_EVAL_RECOVERY_TAG?.trim() || "v0.17.19";
+const MAC_ARM_ASSET = "ipollowork-installer-mac-arm64.zip";
+const APP_NAME = "iPolloWork Installer.app";
 const vo = await loadVoiceoverParagraphs(FLOW_ID);
 
 function witness(ctx, condition, assertion, actual = "") {
@@ -49,7 +49,7 @@ async function downloadAndValidateMacInstaller(ctx, tag, label) {
   try {
     const response = await fetch(url, {
       redirect: "follow",
-      headers: { "user-agent": "ipollowalk-release-contract-eval" },
+      headers: { "user-agent": "ipollowork-release-contract-eval" },
     });
     const bytes = Buffer.from(await response.arrayBuffer());
     witness(ctx, response.status === 200, `${label} returns HTTP 200 anonymously`, String(response.status));
@@ -62,7 +62,7 @@ async function downloadAndValidateMacInstaller(ctx, tag, label) {
     witness(ctx, zipList.status === 0, `${label} zip entries can be listed`, String(zipList.status));
     const entries = zipList.output.split("\n").filter(Boolean);
     witness(ctx, entries.some((entry) => entry.startsWith(`${APP_NAME}/`)), `${APP_NAME} is at the zip root`);
-    witness(ctx, !entries.includes("ipollowalk-installer.json"), "The generic artifact has no organization sidecar");
+    witness(ctx, !entries.includes("ipollowork-installer.json"), "The generic artifact has no organization sidecar");
 
     const unzip = run("unzip", ["-q", zipPath, "-d", extractedPath]);
     witness(ctx, unzip.status === 0, `${label} extracts successfully`, unzip.output);
@@ -110,7 +110,7 @@ export default {
   title: "Generic installer release links are downloadable before a stable release becomes public",
   kind: "internal",
   requiresApp: false,
-  requiredEnv: ["IPOLLOWALK_EVAL_RELEASE_TAG"],
+  requiredEnv: ["IPOLLOWORK_EVAL_RELEASE_TAG"],
   steps: [
     {
       name: "A unique prerelease proves the artifact from this PR",
@@ -120,7 +120,7 @@ export default {
           assert: async () => {
             witness(ctx, !UNIQUE_TAG.startsWith("v"), "The proof tag is isolated from normal v* release tags", UNIQUE_TAG);
             const releaseResponse = await fetch(`https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(UNIQUE_TAG)}`, {
-              headers: { accept: "application/vnd.github+json", "user-agent": "ipollowalk-release-contract-eval" },
+              headers: { accept: "application/vnd.github+json", "user-agent": "ipollowork-release-contract-eval" },
             });
             witness(ctx, releaseResponse.status === 200, "The unique proof release exists", String(releaseResponse.status));
             const release = await releaseResponse.json();
@@ -157,13 +157,13 @@ export default {
             witness(ctx, genericWorkflow.includes("github.event_name != 'release'"), "A reusable call runs even though it retains the caller's push event");
             witness(ctx, releaseWorkflow.includes("publish-generic-installer:"), "The stable release workflow calls the generic installer workflow");
             witness(ctx, releaseWorkflow.includes("--draft $PRERELEASE_FLAG"), "Every newly created release begins as a draft");
-            witness(ctx, releaseWorkflow.includes("ipollowalk-installer-mac-arm64.zip"), "Stable publication asserts the ARM64 generic asset");
-            witness(ctx, releaseWorkflow.includes("ipollowalk-installer-mac-x64.zip"), "Stable publication asserts the x64 generic asset");
-            witness(ctx, releaseWorkflow.includes("ipollowalk-installer-win-x64.exe"), "Stable publication asserts the Windows generic asset");
+            witness(ctx, releaseWorkflow.includes("ipollowork-installer-mac-arm64.zip"), "Stable publication asserts the ARM64 generic asset");
+            witness(ctx, releaseWorkflow.includes("ipollowork-installer-mac-x64.zip"), "Stable publication asserts the x64 generic asset");
+            witness(ctx, releaseWorkflow.includes("ipollowork-installer-win-x64.exe"), "Stable publication asserts the Windows generic asset");
             witness(ctx, e2eWorkflow.includes('branches:\n      - "installer-release-e2e/**"'), "A collision-proof push caller exercises the reusable workflow end to end");
             witness(ctx, e2eWorkflow.includes("--cleanup-tag --yes"), "The isolated E2E release and tag are always cleaned up");
             witness(ctx, resolver.includes('method: "HEAD"'), "Legacy fallback probes the normal release asset before redirecting");
-            witness(ctx, constants.includes("https://ipollowalklabs.com/download"), "A missing normal asset falls back to the stable download page");
+            witness(ctx, constants.includes("https://ipolloworklabs.com/download"), "A missing normal asset falls back to the stable download page");
 
             const tests = run("pnpm", [
               "exec",

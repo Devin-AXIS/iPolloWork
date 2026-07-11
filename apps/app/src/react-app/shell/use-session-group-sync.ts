@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import type { iPolloWalkSessionGroupState } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkSessionGroupState } from "@/app/lib/ipollowork-server";
 import type { ResolvedWorkspaceEndpoint } from "@/app/lib/workspace-endpoint";
 import {
   applySessionGroupServerState,
@@ -13,7 +13,7 @@ import {
 } from "@/react-app/domains/session/sidebar/session-management-store";
 import type { RouteWorkspace } from "./route-workspaces";
 
-const MIGRATION_PREFIX = "ipollowalk.sessionGroups.migrated.v2";
+const MIGRATION_PREFIX = "ipollowork.sessionGroups.migrated.v2";
 
 type UseSessionGroupSyncInput = {
   workspaces: RouteWorkspace[];
@@ -24,7 +24,7 @@ function hasGroupData(state: SessionGroupServerState | WorkspaceGroupState | und
   return Boolean(state && (state.groups.length > 0 || Object.keys(state.assignments).length > 0));
 }
 
-function serverStateFromWorkspaceState(state: WorkspaceGroupState): iPolloWalkSessionGroupState {
+function serverStateFromWorkspaceState(state: WorkspaceGroupState): iPolloWorkSessionGroupState {
   return {
     groups: state.groups.map((group) => ({ id: group.id, label: group.label })),
     assignments: { ...state.assignments },

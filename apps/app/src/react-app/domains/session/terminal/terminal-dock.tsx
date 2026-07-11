@@ -32,7 +32,7 @@ export function TerminalDock({ workspaceRoot, isRemoteWorkspace, onClose }: Term
       return;
     }
 
-    const bridge = window.__IPOLLOWALK_ELECTRON__?.terminal;
+    const bridge = window.__IPOLLOWORK_ELECTRON__?.terminal;
     if (!bridge?.create || !bridge.write || !bridge.resize || !bridge.kill || !bridge.onData || !bridge.onExit) {
       setStatus("Terminal bridge is unavailable.");
       return;

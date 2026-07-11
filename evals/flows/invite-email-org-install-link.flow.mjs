@@ -4,13 +4,13 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 const FLOW_ID = "invite-email-org-install-link";
 const vo = await loadVoiceoverParagraphs(FLOW_ID);
 
-const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_API_URL);
-const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_WEB_URL);
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
-const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
-const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_API_URL);
+const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_WEB_URL);
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
+const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 const RUN_TAG = Date.now().toString(36);
 const INVITEE_EMAIL = `maya.install+${RUN_TAG}@acme.test`;
 const ORGANIZATION_NAME = "Acme Robotics";
@@ -83,7 +83,7 @@ async function ensureAdminToken(ctx) {
     state.adminToken = signedIn.body.token;
     return state.adminToken;
   }
-  const token = process.env.IPOLLOWALK_EVAL_DEN_TOKEN?.trim() ?? "";
+  const token = process.env.IPOLLOWORK_EVAL_DEN_TOKEN?.trim() ?? "";
   witness(ctx, token.length > 0, "A platform-admin token is available for eval setup", signedIn.response.status);
   state.adminToken = token;
   return token;
@@ -232,12 +232,12 @@ export default {
   title: "Invitation emails send teammates through the same organization installer as the dashboard",
   kind: "user-facing",
   requiredEnv: [
-    "IPOLLOWALK_EVAL_DEN_API_URL",
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
-    "IPOLLOWALK_EVAL_DEN_TOKEN",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD",
-    "IPOLLOWALK_EVAL_MARK_VERIFIED_CMD",
+    "IPOLLOWORK_EVAL_DEN_API_URL",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_DEN_TOKEN",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD",
+    "IPOLLOWORK_EVAL_MARK_VERIFIED_CMD",
   ],
   steps: [
     {
@@ -282,7 +282,7 @@ export default {
             witness(ctx, parsed.origin === new URL(DEN_WEB_URL).origin, "The email uses this deployment's public Den Web origin", parsed.origin);
             witness(ctx, parsed.pathname === "/install", "The email CTA targets the shared install page", parsed.pathname);
             witness(ctx, (parsed.searchParams.get("token") ?? "").length >= 8, "The email carries an opaque install token", parsed.searchParams.get("token")?.length);
-            witness(ctx, !email.html.includes("https://ipollowalklabs.com/download"), "The organization invitation no longer uses the generic marketing download", "generic URL absent");
+            witness(ctx, !email.html.includes("https://ipolloworklabs.com/download"), "The organization invitation no longer uses the generic marketing download", "generic URL absent");
             ctx.output("invite-email-install-link", JSON.stringify({ to: INVITEE_EMAIL, installPage: `${parsed.origin}${parsed.pathname}`, opaqueTokenLength: parsed.searchParams.get("token")?.length }, null, 2));
             await navigateTo(ctx, `${DEN_API_URL}/v1/dev/emails/last?template=organizationInvite`);
             const invitationEvidenceRedacted = await ctx.eval(`(() => {
@@ -344,7 +344,7 @@ export default {
               await ctx.waitFor("location.pathname === '/install'", { timeoutMs: 30_000, label: "Acme install page" });
               const currentUrl = await ctx.eval("location.href");
               witness(ctx, currentUrl === state.emailInstallUrl, "The email opens the exact organization install link", redactedInstallUrl(currentUrl));
-              await ctx.waitForText(`Download iPolloWalk for ${ORGANIZATION_NAME}`, { timeoutMs: 30_000 });
+              await ctx.waitForText(`Download iPolloWork for ${ORGANIZATION_NAME}`, { timeoutMs: 30_000 });
               await ctx.waitForText("Download for Windows", { timeoutMs: 20_000 });
             } finally {
               await ctx.eval(`(() => { History.prototype.replaceState.call(history, null, '', '/install?token=%5Bredacted%5D'); return true; })()`);
@@ -373,12 +373,12 @@ export default {
               witness(ctx, (firstResponse.headers.get("content-type") ?? "").includes("portable-executable"), "The generic response is a Windows executable", firstResponse.headers.get("content-type"));
               ctx.output("windows-invite-download", JSON.stringify({ mode: "generic organization installer", status: firstResponse.status, contentType: firstResponse.headers.get("content-type") }, null, 2));
             }
-            await ctx.expectText(`Download iPolloWalk for ${ORGANIZATION_NAME}`);
+            await ctx.expectText(`Download iPolloWork for ${ORGANIZATION_NAME}`);
             await ctx.expectText("Download for Windows");
           },
           screenshot: {
             name: "invite-email-org-link-windows-page",
-            requireText: [`Download iPolloWalk for ${ORGANIZATION_NAME}`, "Download for Windows", "Run it, then sign in"],
+            requireText: [`Download iPolloWork for ${ORGANIZATION_NAME}`, "Download for Windows", "Run it, then sign in"],
             rejectText: ["Not Found", "Something went wrong"],
           },
         });

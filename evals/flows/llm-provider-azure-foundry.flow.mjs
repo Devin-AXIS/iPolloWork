@@ -15,14 +15,14 @@
  *      hand-written: right npm package, right env var, right base URL.
  *
  * Required env:
- * - IPOLLOWALK_EVAL_DEN_WEB_URL          Den web origin
- * - IPOLLOWALK_EVAL_DEN_EMAIL            Seeded admin email
- * - IPOLLOWALK_EVAL_DEN_PASSWORD         Seeded admin password
- * - IPOLLOWALK_EVAL_AZURE_FOUNDRY_RESOURCE  Azure AI Foundry resource name
- * - IPOLLOWALK_EVAL_AZURE_FOUNDRY_API_KEY   Azure AI Foundry key (throwaway)
+ * - IPOLLOWORK_EVAL_DEN_WEB_URL          Den web origin
+ * - IPOLLOWORK_EVAL_DEN_EMAIL            Seeded admin email
+ * - IPOLLOWORK_EVAL_DEN_PASSWORD         Seeded admin password
+ * - IPOLLOWORK_EVAL_AZURE_FOUNDRY_RESOURCE  Azure AI Foundry resource name
+ * - IPOLLOWORK_EVAL_AZURE_FOUNDRY_API_KEY   Azure AI Foundry key (throwaway)
  */
 
-const RESOURCE_ORIGIN = `https://${process.env.IPOLLOWALK_EVAL_AZURE_FOUNDRY_RESOURCE ?? ""}.services.ai.azure.com`;
+const RESOURCE_ORIGIN = `https://${process.env.IPOLLOWORK_EVAL_AZURE_FOUNDRY_RESOURCE ?? ""}.services.ai.azure.com`;
 const HEALED_API = `${RESOURCE_ORIGIN}/openai/v1`;
 const PROVIDER_NAME = "Acme Azure Foundry";
 const PROVIDER_ID = "acme-foundry";
@@ -55,17 +55,17 @@ export default {
   title: "Azure Foundry sets up gpt-5-mini with only name + URL + key",
   spec: "evals/cloud-provider-sync-flows.md",
   requiredEnv: [
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
-    "IPOLLOWALK_EVAL_DEN_EMAIL",
-    "IPOLLOWALK_EVAL_DEN_PASSWORD",
-    "IPOLLOWALK_EVAL_AZURE_FOUNDRY_RESOURCE",
-    "IPOLLOWALK_EVAL_AZURE_FOUNDRY_API_KEY",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_DEN_EMAIL",
+    "IPOLLOWORK_EVAL_DEN_PASSWORD",
+    "IPOLLOWORK_EVAL_AZURE_FOUNDRY_RESOURCE",
+    "IPOLLOWORK_EVAL_AZURE_FOUNDRY_API_KEY",
   ],
   steps: [
     {
       name: "Signed-in dashboard session (signs in if needed)",
       run: async (ctx) => {
-        const origin = ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
+        const origin = ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
         await ctx.eval(`(() => { location.href = ${JSON.stringify(`${origin}/`)}; return true; })()`);
         await ctx.waitFor(
           `location.origin === ${JSON.stringify(origin)} && document.readyState === "complete"`,
@@ -82,8 +82,8 @@ export default {
               headers: { "content-type": "application/json" },
               credentials: "include",
               body: JSON.stringify({
-                email: ${JSON.stringify(ctx.env.IPOLLOWALK_EVAL_DEN_EMAIL)},
-                password: ${JSON.stringify(ctx.env.IPOLLOWALK_EVAL_DEN_PASSWORD)},
+                email: ${JSON.stringify(ctx.env.IPOLLOWORK_EVAL_DEN_EMAIL)},
+                password: ${JSON.stringify(ctx.env.IPOLLOWORK_EVAL_DEN_PASSWORD)},
               }),
             });
             return response.status;
@@ -96,7 +96,7 @@ export default {
     {
       name: "Open the custom provider form",
       run: async (ctx) => {
-        const origin = ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
+        const origin = ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
         await ctx.eval(`(() => { location.href = ${JSON.stringify(`${origin}/dashboard/custom-llm-providers/new`)}; return true; })()`);
         await ctx.waitForText("Add a new LLM provider", { timeoutMs: 45_000 });
         await ctx.clickText("Custom provider", { selector: "button, [role=tab]", timeoutMs: 15_000 });
@@ -124,7 +124,7 @@ export default {
               ));
               await ctx.eval(fillInputExpr(
                 `document.querySelector('input[type="password"]')`,
-                ctx.env.IPOLLOWALK_EVAL_AZURE_FOUNDRY_API_KEY,
+                ctx.env.IPOLLOWORK_EVAL_AZURE_FOUNDRY_API_KEY,
               ));
             },
             assert: async () => {

@@ -186,10 +186,10 @@ function authorize(req, res, url) {
   <head><title>Mock MCP OAuth</title></head>
   <body style="font-family: system-ui, sans-serif; max-width: 560px; margin: 48px auto;">
     <h1>Mock MCP OAuth</h1>
-    <p>This fake OAuth provider is for iPolloWalk MCP end-to-end tests.</p>
+    <p>This fake OAuth provider is for iPolloWork MCP end-to-end tests.</p>
     ${requestedScopesHtml}
     <form method="post" action="${approveUrl.pathname}${approveUrl.search}">
-      <button style="font: inherit; padding: 10px 14px;">Approve iPolloWalk</button>
+      <button style="font: inherit; padding: 10px 14px;">Approve iPolloWork</button>
     </form>
   </body>
 </html>`);

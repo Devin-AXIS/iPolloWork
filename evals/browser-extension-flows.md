@@ -21,17 +21,17 @@ Run these before shipping changes that touch:
 
 1. Start the dev app (CDP auto-exposes on port 9223):
    ```bash
-   pnpm --filter @ipollowalk/desktop dev
+   pnpm --filter @ipollowork/desktop dev
    ```
 2. Wait ~20s, then verify CDP:
    ```
    browser_list({ browser_url: "http://127.0.0.1:9223" })
    ```
-   You should see the iPolloWalk target.
+   You should see the iPolloWork target.
 3. Enable control mode:
    ```
    browser_eval({ browser_url: CDP_URL, target_id: APP_TARGET,
-     expression: "window.__ipollowalkControl.setEnabled(true); 'ok'" })
+     expression: "window.__ipolloworkControl.setEnabled(true); 'ok'" })
    ```
 
 ## Flow 1 — Plugin is loaded and browser tools exist
@@ -51,7 +51,7 @@ Steps:
 
 Pass criteria:
 - `opencode.jsonc` has `"plugin": ["opencode-chrome-devtools"]`.
-- No stale MCP keys (`ipollowalk-browser`, `chrome`, `chrome-devtools`,
+- No stale MCP keys (`ipollowork-browser`, `chrome`, `chrome-devtools`,
   `control-chrome`) exist in the `mcp` section.
 
 Known regressions this catches:
@@ -68,14 +68,14 @@ Steps:
 1. Create a new session:
    ```
    browser_eval({ browser_url: CDP_URL, target_id: APP_TARGET,
-     expression: "window.__ipollowalkControl.execute('session.create_task')" })
+     expression: "window.__ipolloworkControl.execute('session.create_task')" })
    ```
 2. Type and send the prompt:
    ```
    browser_eval({ browser_url: CDP_URL, target_id: APP_TARGET,
      expression: `(async () => {
-       const ctrl = window.__ipollowalkControl;
-       await ctrl.execute('composer.set_text', { text: 'Use the iPolloWalk Browser extension to navigate to https://example.com and tell me the page title' });
+       const ctrl = window.__ipolloworkControl;
+       await ctrl.execute('composer.set_text', { text: 'Use the iPolloWork Browser extension to navigate to https://example.com and tell me the page title' });
        await new Promise(r => setTimeout(r, 500));
        return JSON.stringify(await ctrl.execute('composer.send'));
      })()` })
@@ -103,7 +103,7 @@ read results.
 
 Steps:
 1. Create a new session.
-2. Send: "Use the iPolloWalk Browser extension to go to https://www.google.com,
+2. Send: "Use the iPolloWork Browser extension to go to https://www.google.com,
    search for 'opencode ai', and tell me the first result title"
 3. Wait 60s for the multi-step task.
 4. Check the transcript for tool calls.
@@ -147,12 +147,12 @@ Steps:
 3. Count visible extensions.
 
 Pass criteria:
-- "iPolloWalk Browser" is visible with a name and description.
-- "Chrome" is not visible as an iPolloWalk extension.
+- "iPolloWork Browser" is visible with a name and description.
+- "Chrome" is not visible as an iPolloWork extension.
 
 Known regressions this catches:
 - Extension catalog not loaded.
-- `isiPolloWalkExtensionEnabled` filtering incorrectly.
+- `isiPolloWorkExtensionEnabled` filtering incorrectly.
 
 ## Flow 5 — Extension chip inserts composerPrompt
 
@@ -160,11 +160,11 @@ Known regressions this catches:
 into the composer text.
 
 Steps:
-1. With the Extensions menu open, click the "iPolloWalk Browser" entry.
+1. With the Extensions menu open, click the "iPolloWork Browser" entry.
 2. Check the composer text.
 
 Pass criteria:
-- Composer contains "Use the iPolloWalk Browser extension to".
+- Composer contains "Use the iPolloWork Browser extension to".
 - The tool menu closed.
 
 Known regressions this catches:
@@ -177,13 +177,13 @@ Known regressions this catches:
 the composer menu.
 
 Steps:
-1. Disable iPolloWalk Browser:
+1. Disable iPolloWork Browser:
    ```
    browser_eval({ browser_url: CDP_URL, target_id: APP_TARGET,
      expression: `(() => {
-       localStorage.setItem('ipollowalk.extension.disabled.ipollowalk-browser', '1');
-       window.dispatchEvent(new CustomEvent('ipollowalk:extension-state-changed', {
-         detail: { id: 'ipollowalk-browser', enabled: false }
+       localStorage.setItem('ipollowork.extension.disabled.ipollowork-browser', '1');
+       window.dispatchEvent(new CustomEvent('ipollowork:extension-state-changed', {
+         detail: { id: 'ipollowork-browser', enabled: false }
        }));
        return 'disabled';
      })()` })
@@ -193,9 +193,9 @@ Steps:
    ```
    browser_eval({ browser_url: CDP_URL, target_id: APP_TARGET,
      expression: `(() => {
-       localStorage.removeItem('ipollowalk.extension.disabled.ipollowalk-browser');
-       window.dispatchEvent(new CustomEvent('ipollowalk:extension-state-changed', {
-         detail: { id: 'ipollowalk-browser', enabled: true }
+       localStorage.removeItem('ipollowork.extension.disabled.ipollowork-browser');
+       window.dispatchEvent(new CustomEvent('ipollowork:extension-state-changed', {
+         detail: { id: 'ipollowork-browser', enabled: true }
        }));
        return 'enabled';
      })()` })
@@ -203,9 +203,9 @@ Steps:
 4. Re-open Extensions menu and count.
 
 Pass criteria:
-- After disabling: iPolloWalk Browser is NOT in the Extensions menu.
-- After re-enabling: iPolloWalk Browser IS in the Extensions menu.
-- `localStorage` key `ipollowalk.extension.disabled.ipollowalk-browser` is `"1"`
+- After disabling: iPolloWork Browser is NOT in the Extensions menu.
+- After re-enabling: iPolloWork Browser IS in the Extensions menu.
+- `localStorage` key `ipollowork.extension.disabled.ipollowork-browser` is `"1"`
   when disabled, absent when enabled.
 
 Known regressions this catches:
@@ -215,18 +215,18 @@ Known regressions this catches:
 ## Flow 7 — Stale MCP migration
 
 **Why**: Workspaces from the pre-extension architecture have dead MCP entries
-(`ipollowalk-browser`, `chrome`) that must be cleaned up on activation.
+(`ipollowork-browser`, `chrome`) that must be cleaned up on activation.
 
 Steps:
 1. Write a stale config to the workspace `opencode.jsonc`:
    ```json
    {
      "$schema": "https://opencode.ai/config.json",
-     "default_agent": "ipollowalk",
+     "default_agent": "ipollowork",
      "mcp": {
-       "ipollowalk-browser": { "type": "remote", "url": "http://127.0.0.1:59674/mcp" },
+       "ipollowork-browser": { "type": "remote", "url": "http://127.0.0.1:59674/mcp" },
        "chrome": { "type": "remote", "url": "http://127.0.0.1:59675/mcp" },
-       "ipollowalk-ui": { "type": "remote", "url": "http://127.0.0.1:59673/mcp" }
+       "ipollowork-ui": { "type": "remote", "url": "http://127.0.0.1:59673/mcp" }
      }
    }
    ```
@@ -234,10 +234,10 @@ Steps:
 3. Read the migrated `opencode.jsonc`.
 
 Pass criteria:
-- `ipollowalk-browser` MCP entry removed.
+- `ipollowork-browser` MCP entry removed.
 - `chrome` MCP entry removed.
-- `ipollowalk-ui` MCP entry preserved (not a legacy browser MCP).
-- `default_agent: "ipollowalk"` preserved.
+- `ipollowork-ui` MCP entry preserved (not a legacy browser MCP).
+- `default_agent: "ipollowork"` preserved.
 - `plugin: ["opencode-chrome-devtools"]` added.
 
 Known regressions this catches:
@@ -253,17 +253,17 @@ when `Show hidden` is enabled.
 
 Steps:
 1. Open Settings -> Extensions.
-2. Open the "iPolloWalk Browser" detail modal and click `Hide`.
-3. Confirm "iPolloWalk Browser" disappears from the normal Extensions catalog.
+2. Open the "iPolloWork Browser" detail modal and click `Hide`.
+3. Confirm "iPolloWork Browser" disappears from the normal Extensions catalog.
 4. Open the composer tool menu -> Extensions.
-5. Confirm "iPolloWalk Browser" is not listed.
+5. Confirm "iPolloWork Browser" is not listed.
 6. Return to Settings -> Extensions and click `Show hidden`.
-7. Confirm "iPolloWalk Browser" reappears with a hidden badge.
+7. Confirm "iPolloWork Browser" reappears with a hidden badge.
 8. Open its detail modal and click `Show`.
 
 Pass criteria:
 - Hidden state is persisted in localStorage under
-  `ipollowalk.extension.hidden.ipollowalk-browser`.
+  `ipollowork.extension.hidden.ipollowork-browser`.
 - Normal Extensions catalog excludes the hidden card.
 - Composer Extensions excludes the hidden card.
 - `Show hidden` reveals the card and allows restoring visibility.
@@ -280,7 +280,7 @@ Marketplace, not Cloud settings. This flow verifies the marketplace import path
 still works from the new IA.
 
 Steps:
-1. Sign in to iPolloWalk Cloud with an org that has a marketplace plugin.
+1. Sign in to iPolloWork Cloud with an org that has a marketplace plugin.
 2. Open Settings -> Extensions.
 3. Click `Marketplace`.
 4. Verify marketplace packages are visible in one searchable list.

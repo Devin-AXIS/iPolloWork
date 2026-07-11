@@ -11,7 +11,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)))
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
 const version = String(pkg.version || "").trim()
 if (!version) {
-  throw new Error("ipollowalk-orchestrator version missing in apps/orchestrator/package.json")
+  throw new Error("ipollowork-orchestrator version missing in apps/orchestrator/package.json")
 }
 
 const outroot = join(root, "dist", "npm")
@@ -56,7 +56,7 @@ function writeJson(filepath, data) {
 function platformPkgName(target) {
   const platform = target.id.split("-")[0]
   const arch = target.id.split("-").slice(1).join("-")
-  return `ipollowalk-orchestrator-${platform}-${arch}`
+  return `ipollowork-orchestrator-${platform}-${arch}`
 }
 
 const optionalDependencies = {}
@@ -67,16 +67,16 @@ for (const target of targets) {
   optionalDependencies[name] = version
 
   const ext = target.id.startsWith("windows") ? ".exe" : ""
-  const src = join(root, "dist", "bin", `ipollowalk-${target.bun}${ext}`)
+  const src = join(root, "dist", "bin", `ipollowork-${target.bun}${ext}`)
   if (!existsSync(src)) {
-    throw new Error(`Missing ipollowalk binary at ${src}. Run: pnpm --filter ipollowalk-orchestrator build:bin:all`)
+    throw new Error(`Missing ipollowork binary at ${src}. Run: pnpm --filter ipollowork-orchestrator build:bin:all`)
   }
 
   const dir = join(outroot, name)
   const bindir = join(dir, "bin")
   mkdirSync(bindir, { recursive: true })
 
-  const dest = join(bindir, `ipollowalk${ext}`)
+  const dest = join(bindir, `ipollowork${ext}`)
   copyFileSync(src, dest)
   if (!target.id.startsWith("windows")) {
     chmodSync(dest, 0o755)
@@ -85,13 +85,13 @@ for (const target of targets) {
   writeJson(join(dir, "package.json"), {
     name,
     version,
-    description: "Platform binary for ipollowalk-orchestrator",
+    description: "Platform binary for ipollowork-orchestrator",
     license: "MIT",
     os: [target.os],
     cpu: [target.cpu],
     bin: {
-      ipollowalk: `./bin/ipollowalk${ext}`,
-      "ipollowalk-orchestrator": `./bin/ipollowalk${ext}`,
+      ipollowork: `./bin/ipollowork${ext}`,
+      "ipollowork-orchestrator": `./bin/ipollowork${ext}`,
     },
     files: ["bin"],
   })
@@ -99,15 +99,15 @@ for (const target of targets) {
   published.push({ name, dir })
 }
 
-const meta = join(outroot, "ipollowalk-orchestrator")
+const meta = join(outroot, "ipollowork-orchestrator")
 mkdirSync(join(meta, "bin"), { recursive: true })
 
-const wrapperSrc = join(root, "bin", "ipollowalk")
+const wrapperSrc = join(root, "bin", "ipollowork")
 if (!existsSync(wrapperSrc)) {
   throw new Error(`Missing wrapper at ${wrapperSrc}`)
 }
-copyFileSync(wrapperSrc, join(meta, "bin", "ipollowalk"))
-chmodSync(join(meta, "bin", "ipollowalk"), 0o755)
+copyFileSync(wrapperSrc, join(meta, "bin", "ipollowork"))
+chmodSync(join(meta, "bin", "ipollowork"), 0o755)
 
 const postinstallSrc = join(root, "scripts", "postinstall.mjs")
 if (!existsSync(postinstallSrc)) {
@@ -117,13 +117,13 @@ copyFileSync(postinstallSrc, join(meta, basename(postinstallSrc)))
 copyFileSync(constantsSrc, join(meta, "constants.json"))
 
 writeJson(join(meta, "package.json"), {
-  name: "ipollowalk-orchestrator",
+  name: "ipollowork-orchestrator",
   version,
-  description: "iPolloWalk host orchestrator for opencode + iPolloWalk server",
+  description: "iPolloWork host orchestrator for opencode + iPolloWork server",
   license: "MIT",
   bin: {
-    ipollowalk: "./bin/ipollowalk",
-    "ipollowalk-orchestrator": "./bin/ipollowalk",
+    ipollowork: "./bin/ipollowork",
+    "ipollowork-orchestrator": "./bin/ipollowork",
   },
   scripts: {
     postinstall: "node ./postinstall.mjs",
@@ -132,7 +132,7 @@ writeJson(join(meta, "package.json"), {
   files: ["bin", "postinstall.mjs", "constants.json"],
 })
 
-published.push({ name: "ipollowalk-orchestrator", dir: meta })
+published.push({ name: "ipollowork-orchestrator", dir: meta })
 
 for (const item of published) {
   if (dry) {

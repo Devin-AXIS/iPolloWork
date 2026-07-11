@@ -1,6 +1,6 @@
 # Daytona sandbox flows
 
-End-to-end scenarios that run against a real Electron iPolloWalk instance in a
+End-to-end scenarios that run against a real Electron iPolloWork instance in a
 Daytona cloud sandbox. The agent drives the app through CDP browser tools
 (`browser_list`, `browser_eval`, `browser_screenshot`, etc.) over the
 Daytona proxy.
@@ -14,21 +14,21 @@ daytona organization use "<org-name>"
 bash .devcontainer/test-on-daytona.sh [branch-or-commit] --artifacts-volume
 ```
 
-Use the helper. It creates from the reusable `ipollowalk-eval-vnc` snapshot,
+Use the helper. It creates from the reusable `ipollowork-eval-vnc` snapshot,
 mounts secrets, mounts the reusable pnpm store volume, checks out the requested
 ref, conditionally installs deps, starts services, waits for CDP, and prints the
 CDP/noVNC URLs. Keep `--artifacts-volume` on for UI validation so frame proof can
 be served from port 8090. If the snapshot is missing, create it with
-`bash .devcontainer/create-daytona-ipollowalk-snapshot.sh`.
+`bash .devcontainer/create-daytona-ipollowork-snapshot.sh`.
 
-The reusable `ipollowalk-eval-secrets` volume is mounted at `/daytona-secrets`.
+The reusable `ipollowork-eval-secrets` volume is mounted at `/daytona-secrets`.
 Create/populate it with `bash .devcontainer/setup-daytona-secrets-volume.sh
 .newtoken`; future eval sandboxes reuse it and source every
 `/daytona-secrets/*.env` file before Electron starts. The Electron starter also
 applies Daytona-safe Chromium flags via `ELECTRON_EXTRA_LAUNCH_ARGS`.
 
 To persist downloadable artifacts, pass `--artifacts-volume`. The helper mounts
-the reusable `ipollowalk-eval-artifacts` volume at `/daytona-artifacts`, starts a
+the reusable `ipollowork-eval-artifacts` volume at `/daytona-artifacts`, starts a
 static download server, and prints its Daytona preview URL. Capture screenshot
 checkpoints with `daytona exec <sandbox> -- 'bash .devcontainer/capture-daytona-screenshot.sh'`.
 
@@ -74,12 +74,12 @@ Use the `browser_list` tool:
 browser_list({ browser_url: "https://9825-xxx.daytonaproxy01.net" })
 ```
 
-Should return the iPolloWalk page target.
+Should return the iPolloWork page target.
 
 ### 4. Verify opencode sidecar
 
 ```bash
-daytona exec ipollowalk-test 'ps aux | grep opencode | grep -v grep'
+daytona exec ipollowork-test 'ps aux | grep opencode | grep -v grep'
 ```
 
 If no opencode process, the workspace hasn't been created yet (expected on fresh sandbox).
@@ -94,7 +94,7 @@ If no opencode process, the workspace hasn't been created yet (expected on fresh
 
 1. Create the workspace directory on the sandbox:
    ```bash
-   daytona exec ipollowalk-test 'mkdir -p /workspace/hello'
+   daytona exec ipollowork-test 'mkdir -p /workspace/hello'
    ```
 
 2. Verify we're on the Welcome page:
@@ -141,14 +141,14 @@ If no opencode process, the workspace hasn't been created yet (expected on fresh
 
 10. Verify opencode sidecar started:
     ```bash
-    daytona exec ipollowalk-test 'ps aux | grep opencode | grep -v grep'
+    daytona exec ipollowork-test 'ps aux | grep opencode | grep -v grep'
     → should show opencode serve process
     ```
 
 ### Expected outcome
 - URL contains `#/workspace/ws_.../session`
 - Sidebar shows "hello" workspace
-- Status bar shows "iPolloWalk Ready"
+- Status bar shows "iPolloWork Ready"
 - opencode process running on a random port
 
 ---
@@ -373,7 +373,7 @@ worker reload, completes the callback, and appears as `Ready`.
 
 1. Start the reusable mock OAuth MCP server in the Daytona sandbox:
    ```bash
-   daytona exec ipollowalk-test 'bash -lc "cd /workspace && nohup env PORT=3978 HOST=127.0.0.1 AUTO_APPROVE=1 node scripts/mock-oauth-mcp-server.mjs > /tmp/mock-mcp.log 2>&1 &"'
+   daytona exec ipollowork-test 'bash -lc "cd /workspace && nohup env PORT=3978 HOST=127.0.0.1 AUTO_APPROVE=1 node scripts/mock-oauth-mcp-server.mjs > /tmp/mock-mcp.log 2>&1 &"'
    ```
 
    Use `AUTO_APPROVE=0` when you specifically want to verify that a real browser
@@ -381,7 +381,7 @@ worker reload, completes the callback, and appears as `Ready`.
 
 2. Verify the mock server is healthy:
    ```bash
-   daytona exec ipollowalk-test 'bash -lc "curl -s http://127.0.0.1:3978/health"'
+   daytona exec ipollowork-test 'bash -lc "curl -s http://127.0.0.1:3978/health"'
    ```
 
    Expected: `{"ok":true,...}`.
@@ -428,7 +428,7 @@ worker reload, completes the callback, and appears as `Ready`.
 8. Wait up to 30s, then verify the mock OAuth server saw an authorization
    request and token exchange:
    ```bash
-   daytona exec ipollowalk-test 'bash -lc "curl -s http://127.0.0.1:3978/requests"'
+   daytona exec ipollowork-test 'bash -lc "curl -s http://127.0.0.1:3978/requests"'
    ```
 
    Expected request paths include `/authorize`, `/token`, and authenticated
@@ -487,7 +487,7 @@ Daytona-hosted Den server stack.
    URL, and the signed-out panel is visible.
 
 5. Create or sign in to a Den Web account, then use the desktop handoff code or
-   full `ipollowalk://den-auth?...` link in `Paste sign-in code`.
+   full `ipollowork://den-auth?...` link in `Paste sign-in code`.
 
 6. Verify Electron shows the cloud account as connected and can load orgs from
    the Daytona Den API.
@@ -511,8 +511,8 @@ variables.
 
 ### Verified run: 2026-06-02
 
-- Server sandbox: `ipollowalk-server-20260602-154721`
-- Electron sandbox: `ipollowalk-test-20260602-155000`
+- Server sandbox: `ipollowork-server-20260602-154721`
+- Electron sandbox: `ipollowork-test-20260602-155000`
 - Workspace: `ws_d3840983187b`, `/tmp/llm-den-provisioning-workspace`
 - Den org: `acme-robotics-demo`, `org_01kt58ejd1extvd0p7nqagxaky`
 - Recording: `https://8090-zz8rblselmaj10a5.daytonaproxy01.net/recordings/llm-api-provisioning-desktop-from-den.mp4`
@@ -536,7 +536,7 @@ variables.
 3. Restart Electron without local AI-provider secrets so the baseline has no
    local OpenAI provider:
    ```bash
-   DAYTONA_SECRETS_ENV=/tmp/no-daytona-secrets bash /opt/ipollowalk-daytona/start-daytona-electron.sh --detach
+   DAYTONA_SECRETS_ENV=/tmp/no-daytona-secrets bash /opt/ipollowork-daytona/start-daytona-electron.sh --detach
    ```
 
 4. Create a clean workspace and verify Settings -> AI Providers initially shows
@@ -612,8 +612,8 @@ latency, especially after changing Den provider payloads or desktop policy code.
      policy on transient failure.
 
 6. Local file checks:
-   - Confirm iPolloWalk-owned cloud import metadata is stored in the iPolloWalk
-     runtime DB, not `.opencode/ipollowalk.json`.
+   - Confirm iPolloWork-owned cloud import metadata is stored in the iPolloWork
+     runtime DB, not `.opencode/ipollowork.json`.
    - Confirm the provider executable config currently lands in `opencode.jsonc`;
      this remains a follow-up if the desired end state is no cloud-managed
      provider writes to user-owned OpenCode config.
@@ -642,8 +642,8 @@ parsed as a URL.`
 ## Teardown
 
 ```bash
-daytona stop ipollowalk-test    # preserves state
-daytona delete ipollowalk-test  # destroys everything
+daytona stop ipollowork-test    # preserves state
+daytona delete ipollowork-test  # destroys everything
 ```
 
 ---
@@ -663,11 +663,11 @@ Dependencies/sidecars need more than the default 3GB disk; use `--disk 10`.
 **CDP timeouts:**
 The renderer might be frozen (e.g., a blocking IPC call). Restart Electron:
 ```bash
-daytona exec ipollowalk-test 'bash -lc "pkill -f electron || true; pkill -f electron-dev || true"'
+daytona exec ipollowork-test 'bash -lc "pkill -f electron || true; pkill -f electron-dev || true"'
 sleep 3
-daytona exec ipollowalk-test 'bash -lc "cd /workspace && bash /opt/ipollowalk-daytona/start-daytona-electron.sh --detach"'
+daytona exec ipollowork-test 'bash -lc "cd /workspace && bash /opt/ipollowork-daytona/start-daytona-electron.sh --detach"'
 ```
 
-`[ipollowalk] Electron CDP exposed...` only means iPolloWalk requested CDP. The real
+`[ipollowork] Electron CDP exposed...` only means iPolloWork requested CDP. The real
 success marker is Chromium's own `DevTools listening on ws://127.0.0.1:9825/...`
 line in `/tmp/electron.log`.

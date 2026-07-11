@@ -1,12 +1,12 @@
-import type { iPolloWalkStore } from "./store";
+import type { iPolloWorkStore } from "./store";
 
-export const selectActiveWorkspace = (state: iPolloWalkStore) =>
+export const selectActiveWorkspace = (state: iPolloWorkStore) =>
   state.workspaces.find(
     (workspace) => workspace.id === state.activeWorkspaceId,
   ) ?? null;
 
-export const selectServerStatus = (state: iPolloWalkStore) => state.server.status;
+export const selectServerStatus = (state: iPolloWorkStore) => state.server.status;
 
-export const selectServerUrl = (state: iPolloWalkStore) => state.server.url;
+export const selectServerUrl = (state: iPolloWorkStore) => state.server.url;
 
-export const selectErrorBanner = (state: iPolloWalkStore) => state.errorBanner;
+export const selectErrorBanner = (state: iPolloWorkStore) => state.errorBanner;

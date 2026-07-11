@@ -31,7 +31,7 @@ import {
   drainPendingDeepLinks,
   type DeepLinkBridgeDetail,
 } from "../../../app/lib/deep-link-bridge";
-import { parseDenAuthDeepLink } from "../../../app/lib/ipollowalk-links";
+import { parseDenAuthDeepLink } from "../../../app/lib/ipollowork-links";
 
 export type DenAuthStatus =
   | "checking"
@@ -153,7 +153,7 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Failed to restore iPolloWalk Cloud session.",
+          : "Failed to restore iPolloWork Cloud session.",
       );
       updateStatus(failureStatus);
     }

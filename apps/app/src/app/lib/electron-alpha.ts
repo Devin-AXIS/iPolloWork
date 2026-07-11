@@ -11,10 +11,10 @@ export type ElectronAlphaArtifact = {
 };
 
 const ELECTRON_ALPHA_RELEASE_BASE_URL =
-  "https://github.com/Devin-AXIS/iPolloWalk/releases/download/alpha-macos-latest";
+  "https://github.com/Devin-AXIS/iPolloWork/releases/download/alpha-macos-latest";
 
 export const ELECTRON_ALPHA_RELEASE_PAGE_URL =
-  "https://github.com/Devin-AXIS/iPolloWalk/releases/tag/alpha-macos-latest";
+  "https://github.com/Devin-AXIS/iPolloWork/releases/tag/alpha-macos-latest";
 
 export const ELECTRON_ALPHA_LATEST_MAC_YML_URL = `${ELECTRON_ALPHA_RELEASE_BASE_URL}/latest-mac.yml`;
 

@@ -31,12 +31,12 @@ function auth(token: string) {
 }
 
 async function createWorkspaceRoot() {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-desktop-cloud-sync-"));
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-desktop-cloud-sync-"));
   roots.push(root);
   return root;
 }
 
-async function startiPolloWalkServer(workspaceRoot: string) {
+async function startiPolloWorkServer(workspaceRoot: string) {
   const config = {
     host: "127.0.0.1",
     port: 0,
@@ -62,7 +62,7 @@ async function startiPolloWalkServer(workspaceRoot: string) {
 describe("desktop cloud sync provider imports", () => {
   test("preserves workspace provider import baseline while recording sync state", async () => {
     const root = await createWorkspaceRoot();
-    const { base, token } = await startiPolloWalkServer(root);
+    const { base, token } = await startiPolloWorkServer(root);
     const providerImport = {
       cloudProviderId: "lpr_test",
       providerId: "ow_lpr_test",
@@ -78,7 +78,7 @@ describe("desktop cloud sync provider imports", () => {
       method: "PATCH",
       headers: auth(token),
       body: JSON.stringify({
-        ipollowalk: {
+        ipollowork: {
           cloudImports: {
             providers: { lpr_test: providerImport },
           },
@@ -112,8 +112,8 @@ describe("desktop cloud sync provider imports", () => {
     const configResponse = await fetch(`${base}/workspace/ws_1/config`, { headers: auth(token) });
     expect(configResponse.status).toBe(200);
     const configBody = expectRecord(await configResponse.json(), "workspace config response");
-    const ipollowalk = expectRecord(configBody.ipollowalk, "workspace ipollowalk config");
-    const cloudImports = expectRecord(ipollowalk.cloudImports, "workspace cloud imports");
+    const ipollowork = expectRecord(configBody.ipollowork, "workspace ipollowork config");
+    const cloudImports = expectRecord(ipollowork.cloudImports, "workspace cloud imports");
     const providers = expectRecord(cloudImports.providers, "workspace imported providers");
     const preservedProvider = expectRecord(providers.lpr_test, "preserved provider import baseline");
     expect(preservedProvider).toEqual(providerImport);

@@ -11,7 +11,7 @@ const PERMISSION_REPLY_PATH = "/opencode/permission/req_123/reply";
 describe("assertOpencodeProxyAllowed", () => {
   test("collaborators can reply to permission requests (#1918)", () => {
     // The SPA's only credential is the collaborator-scoped client token
-    // (IPOLLOWALK_TOKEN); an owner-only gate made every permission dialog
+    // (IPOLLOWORK_TOKEN); an owner-only gate made every permission dialog
     // un-answerable.
     expect(() =>
       assertOpencodeProxyAllowed(actor("collaborator"), "POST", PERMISSION_REPLY_PATH),

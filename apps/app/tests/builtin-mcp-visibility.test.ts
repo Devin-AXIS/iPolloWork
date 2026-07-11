@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import { MCP_QUICK_CONNECT } from "../src/app/constants";
 
-describe("built-in iPolloWalk MCP visibility", () => {
-  test("hides internal iPolloWalk MCPs and omits the retired admin connector", () => {
-    expect(MCP_QUICK_CONNECT.find((entry) => entry.serverName === "ipollowalk-cloud")?.defaultHidden).toBe(true);
-    expect(MCP_QUICK_CONNECT.find((entry) => entry.serverName === "ipollowalk-admin")).toBeUndefined();
-    expect(MCP_QUICK_CONNECT.find((entry) => entry.serverName === "ipollowalk-ui")?.defaultHidden).toBe(true);
+describe("built-in iPolloWork MCP visibility", () => {
+  test("hides internal iPolloWork MCPs and omits the retired admin connector", () => {
+    expect(MCP_QUICK_CONNECT.find((entry) => entry.serverName === "ipollowork-cloud")?.defaultHidden).toBe(true);
+    expect(MCP_QUICK_CONNECT.find((entry) => entry.serverName === "ipollowork-admin")).toBeUndefined();
+    expect(MCP_QUICK_CONNECT.find((entry) => entry.serverName === "ipollowork-ui")?.defaultHidden).toBe(true);
   });
 
   test("keeps directory apps visible by default", () => {

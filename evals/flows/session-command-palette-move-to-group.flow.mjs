@@ -56,12 +56,12 @@ export default {
       run: async (ctx) => {
         const userAgent = await ctx.eval("navigator.userAgent");
         ctx.assert(typeof userAgent === "string" && userAgent.includes("Electron/"), `Expected Electron userAgent, got: ${userAgent}`);
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 60_000,
           label: "control API",
         });
         await ctx.waitFor(
-          "window.__ipollowalkControl.listActions().some((a) => a.id === 'session.create_task' && !a.disabled)",
+          "window.__ipolloworkControl.listActions().some((a) => a.id === 'session.create_task' && !a.disabled)",
           { timeoutMs: 60_000, label: "enabled task creation action" },
         );
       },
@@ -71,7 +71,7 @@ export default {
       run: async (ctx) => {
         await ctx.control("session.create_task");
         const selected = await ctx.waitFor(`(() => {
-          const route = window.__ipollowalkControl.snapshot().route;
+          const route = window.__ipolloworkControl.snapshot().route;
           const match = new RegExp('session/([^/?#]+)').exec(route);
           if (!match) return null;
           const sessionId = decodeURIComponent(match[1]);

@@ -9,22 +9,22 @@ import { cn } from "@/lib/utils";
 import { t } from "@/i18n";
 import { usePlatform } from "../../../kernel/platform";
 import { useDenAuth } from "../../cloud/den-auth-provider";
-import { useControlAction, type iPolloWalkControlAction } from "../../../shell/control/control-provider";
+import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import { useShellConfig } from "../../../shell/shell-config";
-import type { iPolloWalkServerStatus } from "../../../../app/lib/ipollowalk-server";
+import type { iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import {
-  getiPolloWalkModelsActionUrl,
-  hasiPolloWalkModelsProvider,
-  hideiPolloWalkModelsPromo,
-  isiPolloWalkModelsPromoHidden,
-  markiPolloWalkModelsPromoShown,
-  IPOLLOWALK_MODELS_PROMO_SHOW_DELAY_MS,
-  IPOLLOWALK_MODELS_PROMO_VISIBLE_MS,
-  iPolloWalkModelsPromoChangedEvent,
-  shouldShowiPolloWalkModelsPromo,
-} from "../../cloud/ipollowalk-models-promo";
+  getiPolloWorkModelsActionUrl,
+  hasiPolloWorkModelsProvider,
+  hideiPolloWorkModelsPromo,
+  isiPolloWorkModelsPromoHidden,
+  markiPolloWorkModelsPromoShown,
+  IPOLLOWORK_MODELS_PROMO_SHOW_DELAY_MS,
+  IPOLLOWORK_MODELS_PROMO_VISIBLE_MS,
+  iPolloWorkModelsPromoChangedEvent,
+  shouldShowiPolloWorkModelsPromo,
+} from "../../cloud/ipollowork-models-promo";
 
-const DOCS_URL = "https://ipollowalklabs.com/docs";
+const DOCS_URL = "https://ipolloworklabs.com/docs";
 const STATUS_BAR_BOOT_STARTED_AT = Date.now();
 const STATUS_BAR_INITIALIZING_MS = 15_000;
 
@@ -57,7 +57,7 @@ function StatusDot({ variant }: StatusDotProps) {
 
 type StatusIndicatorProps = {
   clientConnected: boolean;
-  ipollowalkServerStatus: iPolloWalkServerStatus;
+  ipolloworkServerStatus: iPolloWorkServerStatus;
   developerMode: boolean;
   loading?: boolean;
   initializing: boolean;
@@ -94,7 +94,7 @@ function StatusIndicator(props: StatusIndicatorProps) {
     );
   }
 
-  if (props.loading || (props.ipollowalkServerStatus === "disconnected" && props.initializing)) {
+  if (props.loading || (props.ipolloworkServerStatus === "disconnected" && props.initializing)) {
     return (
       <div className="flex min-w-0 items-center gap-2.5">
         <StatusDot variant="loading" />
@@ -129,7 +129,7 @@ function StatusIndicator(props: StatusIndicatorProps) {
     );
   }
 
-  if (props.ipollowalkServerStatus === "limited") {
+  if (props.ipolloworkServerStatus === "limited") {
     return (
       <div className="flex min-w-0 items-center gap-2.5">
         <StatusDot variant="partial" />
@@ -158,7 +158,7 @@ function StatusIndicator(props: StatusIndicatorProps) {
 
 export type StatusBarProps = {
   clientConnected: boolean;
-  ipollowalkServerStatus: iPolloWalkServerStatus;
+  ipolloworkServerStatus: iPolloWorkServerStatus;
   developerMode: boolean;
   settingsOpen: boolean;
   onSendFeedback: () => void;
@@ -180,9 +180,9 @@ export function StatusBar(props: StatusBarProps) {
   const docsButtonRef = useRef<HTMLButtonElement>(null);
   const feedbackButtonRef = useRef<HTMLButtonElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
-  const [iPolloWalkModelsHintVisible, setiPolloWalkModelsHintVisible] = useState(false);
-  const hasiPolloWalkModels = useMemo(
-    () => hasiPolloWalkModelsProvider(props.providerConnectedIds),
+  const [iPolloWorkModelsHintVisible, setiPolloWorkModelsHintVisible] = useState(false);
+  const hasiPolloWorkModels = useMemo(
+    () => hasiPolloWorkModelsProvider(props.providerConnectedIds),
     [props.providerConnectedIds],
   );
   const [initializing, setInitializing] = useState(
@@ -201,30 +201,30 @@ export function StatusBar(props: StatusBarProps) {
 
   useEffect(() => {
     const handlePromoChanged = () => {
-      if (isiPolloWalkModelsPromoHidden()) {
-        setiPolloWalkModelsHintVisible(false);
+      if (isiPolloWorkModelsPromoHidden()) {
+        setiPolloWorkModelsHintVisible(false);
       }
     };
-    window.addEventListener(iPolloWalkModelsPromoChangedEvent, handlePromoChanged);
-    return () => window.removeEventListener(iPolloWalkModelsPromoChangedEvent, handlePromoChanged);
+    window.addEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
+    return () => window.removeEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
   }, []);
 
   useEffect(() => {
-    if (!shellConfig.cloudSignin || hasiPolloWalkModels) {
-      setiPolloWalkModelsHintVisible(false);
+    if (!shellConfig.cloudSignin || hasiPolloWorkModels) {
+      setiPolloWorkModelsHintVisible(false);
       return;
     }
     if (denAuth.status === "checking") return;
 
     let showTimeout: number | null = null;
     const maybeShow = () => {
-      if (showTimeout !== null || !shouldShowiPolloWalkModelsPromo()) return;
+      if (showTimeout !== null || !shouldShowiPolloWorkModelsPromo()) return;
       showTimeout = window.setTimeout(() => {
         showTimeout = null;
-        if (!shouldShowiPolloWalkModelsPromo()) return;
-        markiPolloWalkModelsPromoShown();
-        setiPolloWalkModelsHintVisible(true);
-      }, IPOLLOWALK_MODELS_PROMO_SHOW_DELAY_MS);
+        if (!shouldShowiPolloWorkModelsPromo()) return;
+        markiPolloWorkModelsPromoShown();
+        setiPolloWorkModelsHintVisible(true);
+      }, IPOLLOWORK_MODELS_PROMO_SHOW_DELAY_MS);
     };
 
     maybeShow();
@@ -235,33 +235,33 @@ export function StatusBar(props: StatusBarProps) {
       }
       window.clearInterval(interval);
     };
-  }, [denAuth.status, hasiPolloWalkModels, shellConfig.cloudSignin]);
+  }, [denAuth.status, hasiPolloWorkModels, shellConfig.cloudSignin]);
 
   useEffect(() => {
-    if (!iPolloWalkModelsHintVisible) return;
+    if (!iPolloWorkModelsHintVisible) return;
     const timeout = window.setTimeout(
-      () => setiPolloWalkModelsHintVisible(false),
-      IPOLLOWALK_MODELS_PROMO_VISIBLE_MS,
+      () => setiPolloWorkModelsHintVisible(false),
+      IPOLLOWORK_MODELS_PROMO_VISIBLE_MS,
     );
     return () => window.clearTimeout(timeout);
-  }, [iPolloWalkModelsHintVisible]);
+  }, [iPolloWorkModelsHintVisible]);
 
-  const openiPolloWalkModels = useCallback(() => {
-    setiPolloWalkModelsHintVisible(false);
+  const openiPolloWorkModels = useCallback(() => {
+    setiPolloWorkModelsHintVisible(false);
     if (!denAuth.isSignedIn) {
       navigate("/settings/cloud-account");
     }
-    platform.openLink(getiPolloWalkModelsActionUrl(denAuth.isSignedIn));
+    platform.openLink(getiPolloWorkModelsActionUrl(denAuth.isSignedIn));
   }, [denAuth.isSignedIn, navigate, platform]);
 
-  const hideiPolloWalkModels = useCallback(() => {
-    setiPolloWalkModelsHintVisible(false);
-    hideiPolloWalkModelsPromo();
+  const hideiPolloWorkModels = useCallback(() => {
+    setiPolloWorkModelsHintVisible(false);
+    hideiPolloWorkModelsPromo();
   }, []);
 
-  const docsControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const docsControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "status.docs.open",
-    label: "Open iPolloWalk docs",
+    label: "Open iPolloWork docs",
     description: "Open the documentation from the status bar.",
     sideEffect: "external",
     targetRef: docsButtonRef,
@@ -269,17 +269,17 @@ export function StatusBar(props: StatusBarProps) {
   }), [platform]);
   useControlAction(docsControlAction);
 
-  const feedbackControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const feedbackControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "status.feedback.open",
     label: "Send feedback",
-    description: "Open the iPolloWalk feedback surface from the status bar.",
+    description: "Open the iPolloWork feedback surface from the status bar.",
     sideEffect: "external",
     targetRef: feedbackButtonRef,
     execute: props.onSendFeedback,
   }), [props.onSendFeedback]);
   useControlAction(feedbackControlAction);
 
-  const settingsControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const settingsControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "status.settings.open",
     label: props.settingsOpen ? "Go back from settings" : "Open settings from the status bar",
     description: "Use the visible settings button in the status bar.",
@@ -295,7 +295,7 @@ export function StatusBar(props: StatusBarProps) {
       <div className="flex h-8 items-center justify-between gap-3 px-4 md:px-6">
         <StatusIndicator
           clientConnected={props.clientConnected}
-          ipollowalkServerStatus={props.ipollowalkServerStatus}
+          ipolloworkServerStatus={props.ipolloworkServerStatus}
           developerMode={props.developerMode}
           loading={props.loading}
           initializing={initializing}
@@ -304,15 +304,15 @@ export function StatusBar(props: StatusBarProps) {
         />
 
         <div className="flex items-center gap-1">
-          {iPolloWalkModelsHintVisible ? (
+          {iPolloWorkModelsHintVisible ? (
             <div className="mr-1 flex h-6 items-center overflow-hidden rounded-full border border-blue-6/60 bg-blue-2/70 shadow-[0_0_18px_rgba(var(--dls-accent-rgb),0.16)] animate-in fade-in slide-in-from-bottom-1 zoom-in-95 duration-300">
               <button
                 type="button"
                 className="flex min-w-0 items-center gap-1.5 px-2.5 text-xs font-medium text-blue-12 transition-colors hover:bg-blue-3/70"
-                onClick={openiPolloWalkModels}
+                onClick={openiPolloWorkModels}
               >
                 <Sparkles className="size-3.5 text-blue-11" />
-                <span className="whitespace-nowrap">iPolloWalk Models</span>
+                <span className="whitespace-nowrap">iPolloWork Models</span>
                 <span className="hidden whitespace-nowrap font-normal text-blue-11/75 lg:inline">
                   hosted frontier models
                 </span>
@@ -321,8 +321,8 @@ export function StatusBar(props: StatusBarProps) {
               <button
                 type="button"
                 className="flex size-6 shrink-0 items-center justify-center border-l border-blue-6/60 text-blue-11 transition-colors hover:bg-blue-3/70"
-                onClick={hideiPolloWalkModels}
-                aria-label="Hide iPolloWalk Models hint"
+                onClick={hideiPolloWorkModels}
+                aria-label="Hide iPolloWork Models hint"
               >
                 <X className="size-3" />
               </button>

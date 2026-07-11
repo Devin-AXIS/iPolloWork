@@ -9,7 +9,7 @@
  *   catalog card, connects through a real browser OAuth round trip against
  *   the mock Google IdP, and the card flips to Connected with no reload —
  *   all on desktop code that shipped with #2451, zero client changes.
- * - Frame 5: a real chat turn creates a Gmail draft through iPolloWalk Cloud
+ * - Frame 5: a real chat turn creates a Gmail draft through iPolloWork Cloud
  *   Control -> Den capability route -> mock Gmail; the mock's request log +
  *   decoded RFC 822 raw are the external witness.
  * - Frame 6: a freshly created second org sees no Google entry.
@@ -25,17 +25,17 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("org-google-workspace-demo");
 
-const DEN_API_URL = (process.env.IPOLLOWALK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
-const DEN_WEB_URL = (process.env.IPOLLOWALK_EVAL_DEN_WEB_URL ?? DEN_API_URL.replace("127.0.0.1", "localhost")).trim().replace(/\/+$/, "");
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MEMBER_EMAIL = process.env.IPOLLOWALK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
-const MEMBER_PASSWORD = process.env.IPOLLOWALK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const DEN_API_URL = (process.env.IPOLLOWORK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
+const DEN_WEB_URL = (process.env.IPOLLOWORK_EVAL_DEN_WEB_URL ?? DEN_API_URL.replace("127.0.0.1", "localhost")).trim().replace(/\/+$/, "");
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MEMBER_EMAIL = process.env.IPOLLOWORK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
+const MEMBER_PASSWORD = process.env.IPOLLOWORK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
 const MOCK_SERVER_URL = (process.env.MOCK_OAUTH_MCP_URL ?? "http://127.0.0.1:3978").trim().replace(/\/+$/, "");
 const RUN_TAG = Date.now();
 const DRAFT_SUBJECT = `Follow up ${RUN_TAG}`;
-const WORKSPACE_PATH = `/tmp/ipollowalk-org-google-workspace-${RUN_TAG}`;
+const WORKSPACE_PATH = `/tmp/ipollowork-org-google-workspace-${RUN_TAG}`;
 const GOOGLE_CARD_EXPR = (needle) =>
   `[...document.querySelectorAll("button")].some((el) => el.textContent.includes("Google Workspace") && el.textContent.includes(${JSON.stringify(needle)}))`;
 
@@ -89,7 +89,7 @@ async function ensureVerifiedUser(ctx, email, name, password) {
     body: JSON.stringify({ email, name, password }),
   });
   ctx.assert(signUp.response.ok, `Sign-up failed for ${email}: ${signUp.response.status}`);
-  ctx.assert(MARK_VERIFIED_CMD.length > 0, "Set IPOLLOWALK_EVAL_MARK_VERIFIED_CMD to verify eval accounts.");
+  ctx.assert(MARK_VERIFIED_CMD.length > 0, "Set IPOLLOWORK_EVAL_MARK_VERIFIED_CMD to verify eval accounts.");
   execSync(MARK_VERIFIED_CMD.replaceAll("{email}", email), { stdio: "ignore" });
   token = await signIn(email, password);
   ctx.assert(Boolean(token), `Sign-in still failing for ${email} after sign-up.`);
@@ -139,7 +139,7 @@ async function ensureWorkspace(ctx) {
       const hasFolderInput = Boolean(document.querySelector('input[placeholder="/workspace/my-project"]'));
       const hasWorkspaceRoute = window.location.hash.includes('/workspace/') && !text.includes('Choose your organization') && !hasFolderInput;
       const hasOnboardingStep = text.includes('Choose your organization') || text.includes('Continue to workspace') || text.includes('Loading available resources');
-      const hasCreateAction = !hasOnboardingStep && window.__ipollowalkControl?.listActions?.().find((a) => a.id === 'workspace.create')?.disabled === false;
+      const hasCreateAction = !hasOnboardingStep && window.__ipolloworkControl?.listActions?.().find((a) => a.id === 'workspace.create')?.disabled === false;
       return { hasFolderInput, hasWorkspaceRoute, hasCreateAction };
     })()`);
     if (step.hasWorkspaceRoute || step.hasCreateAction) break;
@@ -160,7 +160,7 @@ async function ensureWorkspace(ctx) {
     await sleep(1_000);
   }
   await ctx.eval(`(() => {
-    const btn = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Continue without iPolloWalk Models');
+    const btn = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Continue without iPolloWork Models');
     btn?.click();
     return true;
   })()`, { awaitPromise: true });
@@ -169,22 +169,22 @@ async function ensureWorkspace(ctx) {
 async function createFreshEvalWorkspace(ctx) {
   await ensureWorkspace(ctx);
   await ctx.waitFor(
-    "Boolean(localStorage.getItem('ipollowalk.server.port') && localStorage.getItem('ipollowalk.server.token') && localStorage.getItem('ipollowalk.server.hostToken'))",
-    { timeoutMs: 30_000, label: "iPolloWalk server auth for workspace setup" },
+    "Boolean(localStorage.getItem('ipollowork.server.port') && localStorage.getItem('ipollowork.server.token') && localStorage.getItem('ipollowork.server.hostToken'))",
+    { timeoutMs: 30_000, label: "iPolloWork server auth for workspace setup" },
   );
   let created = null;
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     created = await ctx.eval(`(async () => {
       try {
-        const port = localStorage.getItem('ipollowalk.server.port');
-        const token = localStorage.getItem('ipollowalk.server.token');
-        const hostToken = localStorage.getItem('ipollowalk.server.hostToken');
+        const port = localStorage.getItem('ipollowork.server.port');
+        const token = localStorage.getItem('ipollowork.server.token');
+        const hostToken = localStorage.getItem('ipollowork.server.hostToken');
         const base = 'http://127.0.0.1:' + port;
         const headers = {
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + token,
-          'X-iPolloWalk-Host-Token': hostToken,
+          'X-iPolloWork-Host-Token': hostToken,
         };
         const response = await fetch(base + '/workspaces/local', {
           method: 'POST',
@@ -199,7 +199,7 @@ async function createFreshEvalWorkspace(ctx) {
         if (!workspaceId) return { ok: false, status: response.status, text: 'workspace id missing' };
         const activate = await fetch(base + '/workspaces/' + workspaceId + '/activate?persist=true', { method: 'POST', headers });
         if (!activate.ok) return { ok: false, status: activate.status, text: await activate.text() };
-        localStorage.setItem('ipollowalk.react.activeWorkspace', workspaceId);
+        localStorage.setItem('ipollowork.react.activeWorkspace', workspaceId);
         return { ok: true, workspaceId };
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -266,7 +266,7 @@ export default {
   title: "Org Google Workspace: admin sets it up once, members connect their own account, the agent drafts Gmail as them",
   kind: "user-facing",
   spec: "evals/voiceovers/org-google-workspace-demo.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL"],
   steps: [
     {
       name: "Frame 1",
@@ -320,35 +320,35 @@ export default {
         await ctx.prove("The member desktop shows Google Workspace as an ordinary org catalog card", {
           voiceover: vo[1],
           action: async () => {
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 120_000 });
-            await ctx.waitFor("Boolean(window.__IPOLLOWALK_ELECTRON__?.invokeDesktop)", { timeoutMs: 30_000, label: "desktop bridge" });
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 120_000 });
+            await ctx.waitFor("Boolean(window.__IPOLLOWORK_ELECTRON__?.invokeDesktop)", { timeoutMs: 30_000, label: "desktop bridge" });
             const bootstrap = { baseUrl: DEN_API_URL, apiBaseUrl: DEN_API_URL, requireSignin: false, handoff: null };
             const written = await ctx.eval(`(async () => {
-              const bridge = window.__IPOLLOWALK_ELECTRON__?.invokeDesktop;
+              const bridge = window.__IPOLLOWORK_ELECTRON__?.invokeDesktop;
               if (!bridge) return { ok: false };
               await bridge("setDesktopBootstrapConfig", ${JSON.stringify(bootstrap)});
               return { ok: true };
             })()`, { awaitPromise: true });
             ctx.assert(written?.ok, "Failed to write desktop bootstrap config.");
             await ctx.eval(`(() => {
-              localStorage.setItem('ipollowalk.den.baseUrl', ${JSON.stringify(DEN_API_URL)});
-              localStorage.setItem('ipollowalk.den.apiBaseUrl', ${JSON.stringify(DEN_API_URL)});
-              const prefs = JSON.parse(localStorage.getItem('ipollowalk.preferences') || '{}');
-              localStorage.setItem('ipollowalk.preferences', JSON.stringify({ ...prefs, selectedAgent: 'ipollowalk' }));
+              localStorage.setItem('ipollowork.den.baseUrl', ${JSON.stringify(DEN_API_URL)});
+              localStorage.setItem('ipollowork.den.apiBaseUrl', ${JSON.stringify(DEN_API_URL)});
+              const prefs = JSON.parse(localStorage.getItem('ipollowork.preferences') || '{}');
+              localStorage.setItem('ipollowork.preferences', JSON.stringify({ ...prefs, selectedAgent: 'ipollowork' }));
               return true;
             })()`);
             await ctx.eval("location.reload()");
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "control API after bootstrap reload" });
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "control API after bootstrap reload" });
 
             const handoff = await denApiFetch("/v1/auth/desktop-handoff", {
               method: "POST",
               headers: { authorization: `Bearer ${state.memberSession}` },
-              body: JSON.stringify({ desktopScheme: "ipollowalk" }),
+              body: JSON.stringify({ desktopScheme: "ipollowork" }),
             });
             ctx.assert(handoff.response.ok, `Handoff create failed: ${handoff.response.status}`);
             await ctx.control("auth.exchange-grant", { grant: handoff.body.grant, baseUrl: DEN_API_URL });
-            await ctx.waitFor("Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())", { timeoutMs: 45_000, label: "persisted den auth token" });
-            await ctx.waitFor("Boolean((localStorage.getItem('ipollowalk.den.activeOrgId') ?? '').trim())", { timeoutMs: 60_000, label: "active org resolved" });
+            await ctx.waitFor("Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())", { timeoutMs: 45_000, label: "persisted den auth token" });
+            await ctx.waitFor("Boolean((localStorage.getItem('ipollowork.den.activeOrgId') ?? '').trim())", { timeoutMs: 60_000, label: "active org resolved" });
             await createFreshEvalWorkspace(ctx);
 
             await openMcpSettings(ctx);
@@ -386,7 +386,7 @@ export default {
               return Boolean(card);
             })()`);
             ctx.assert(opened, "Could not open the org Google Workspace card.");
-            await ctx.expectText("iPolloWalk stores this sign-in", { timeoutMs: 15_000 });
+            await ctx.expectText("iPolloWork stores this sign-in", { timeoutMs: 15_000 });
             state.clickedAt = new Date().toISOString();
             const clicked = await ctx.eval(`(() => {
               const dialog = document.querySelector('[role="dialog"]');
@@ -461,19 +461,19 @@ export default {
           action: async () => {
             await openMcpSettings(ctx);
             await revealHidden(ctx);
-            await ctx.expectText("iPolloWalk Cloud Control", { timeoutMs: 30_000 });
+            await ctx.expectText("iPolloWork Cloud Control", { timeoutMs: 30_000 });
             const alreadyConnected = await ctx.eval(`(() => {
-              const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWalk Cloud Control'));
+              const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWork Cloud Control'));
               return Boolean(card?.textContent.includes('Connected'));
             })()`);
             if (!alreadyConnected) {
               const openedCard = await ctx.eval(`(() => {
-                const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWalk Cloud Control'));
+                const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWork Cloud Control'));
                 card?.scrollIntoView({ block: 'center' });
                 card?.click();
                 return Boolean(card);
               })()`);
-              ctx.assert(openedCard, "Could not open the iPolloWalk Cloud Control card.");
+              ctx.assert(openedCard, "Could not open the iPolloWork Cloud Control card.");
               await ctx.expectText("Manage your org", { timeoutMs: 15_000 });
               const clicked = await ctx.eval(`(() => {
                 const dialog = document.querySelector('[role="dialog"]');
@@ -481,14 +481,14 @@ export default {
                 button?.click();
                 return Boolean(button);
               })()`);
-              ctx.assert(clicked, "Could not click Connect for iPolloWalk Cloud Control.");
+              ctx.assert(clicked, "Could not click Connect for iPolloWork Cloud Control.");
             }
             await ctx.waitFor(
               `(() => {
-                const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWalk Cloud Control'));
+                const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWork Cloud Control'));
                 return Boolean(card?.textContent.includes('Connected'));
               })()`,
-              { timeoutMs: 60_000, label: "iPolloWalk Cloud Control connected card" },
+              { timeoutMs: 60_000, label: "iPolloWork Cloud Control connected card" },
             );
             await ctx.clickText("Refresh", { timeoutMs: 15_000 }).catch(() => {});
             let runtime = null;
@@ -496,37 +496,37 @@ export default {
             while (Date.now() < deadline) {
               runtime = await ctx.eval(`(async () => {
                 const workspaceId = ${JSON.stringify(state.workspaceId)};
-                const port = localStorage.getItem('ipollowalk.server.port');
-                const token = localStorage.getItem('ipollowalk.server.token');
-                const hostToken = localStorage.getItem('ipollowalk.server.hostToken');
+                const port = localStorage.getItem('ipollowork.server.port');
+                const token = localStorage.getItem('ipollowork.server.token');
+                const hostToken = localStorage.getItem('ipollowork.server.hostToken');
                 if (!workspaceId || !port || !token) return { ok: false, reason: 'missing workspace/server auth' };
                 const headers = { Authorization: 'Bearer ' + token };
-                if (hostToken) headers['X-iPolloWalk-Host-Token'] = hostToken;
+                if (hostToken) headers['X-iPolloWork-Host-Token'] = hostToken;
                 const response = await fetch('http://127.0.0.1:' + port + '/workspace/' + workspaceId + '/mcp', { headers });
                 if (!response.ok) return { ok: false, status: response.status };
                 const payload = await response.json();
-                const entry = (payload?.items ?? []).find((item) => item.name === 'ipollowalk-cloud');
+                const entry = (payload?.items ?? []).find((item) => item.name === 'ipollowork-cloud');
                 return { ok: Boolean(entry?.config?.url?.includes('/mcp/agent') && payload?.engineSync?.status === 'ok') };
               })()`, { awaitPromise: true });
               if (runtime?.ok) break;
               await sleep(1_000);
             }
-            ctx.assert(runtime?.ok, `Runtime iPolloWalk Cloud Control MCP never became ready: ${JSON.stringify(runtime)}`);
+            ctx.assert(runtime?.ok, `Runtime iPolloWork Cloud Control MCP never became ready: ${JSON.stringify(runtime)}`);
 
             await ctx.navigateHash(`/workspace/${state.workspaceId}/session`);
             await ctx.waitFor("window.location.hash.includes('/session')", { timeoutMs: 20_000 });
             state.chatStartedAt = new Date().toISOString();
             await ctx.waitFor(
-              "window.__ipollowalkControl?.listActions?.().find((a) => a.id === 'session.create_task')?.disabled === false",
+              "window.__ipolloworkControl?.listActions?.().find((a) => a.id === 'session.create_task')?.disabled === false",
               { timeoutMs: 30_000, label: "session.create_task enabled" },
             );
             await ctx.control("session.create_task");
             await ctx.waitFor("window.location.hash.includes('/session/ses_')", { timeoutMs: 30_000, label: "fresh task session" });
             await ctx.waitFor("Boolean(document.querySelector('[contenteditable=\"true\"][data-lexical-editor=\"true\"]'))", { timeoutMs: 30_000, label: "composer" });
-            const prompt = `Use the iPolloWalk Cloud Control connection: call search_capabilities with query "gmail draft", then call execute_capability on the Gmail draft capability. For the body arguments use: to = customer@example.com, subject = ${DRAFT_SUBJECT}, body = Thanks for the call today. Reply with the draft id the tool returned.`;
+            const prompt = `Use the iPolloWork Cloud Control connection: call search_capabilities with query "gmail draft", then call execute_capability on the Gmail draft capability. For the body arguments use: to = customer@example.com, subject = ${DRAFT_SUBJECT}, body = Thanks for the call today. Reply with the draft id the tool returned.`;
             await ctx.control("composer.set_text", { text: prompt });
             await ctx.waitFor(
-              "window.__ipollowalkControl?.listActions?.().find((a) => a.id === 'composer.send')?.disabled === false",
+              "window.__ipolloworkControl?.listActions?.().find((a) => a.id === 'composer.send')?.disabled === false",
               { timeoutMs: 15_000, label: "composer.send enabled" },
             );
             await ctx.control("composer.send");

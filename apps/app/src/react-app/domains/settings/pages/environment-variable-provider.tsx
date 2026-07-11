@@ -2,18 +2,18 @@ import { createContext, use, useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient, type UseMutateFunction } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 
-import type { iPolloWalkServerClient } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { t } from "@/i18n";
-import { cleariPolloWalkEnvSystemContextCache } from "@/react-app/domains/session/sync/env-context";
+import { cleariPolloWorkEnvSystemContextCache } from "@/react-app/domains/session/sync/env-context";
 import type { EnvironmentVariableItem } from "./environment-variable-table";
 
 const KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const RESERVED_PREFIXES = ["IPOLLOWALK_", "OPENCODE_"] as const;
+const RESERVED_PREFIXES = ["IPOLLOWORK_", "OPENCODE_"] as const;
 const PERSISTABLE_INTERNAL_KEYS = new Set([
-  "IPOLLOWALK_API_KEY",
-  "IPOLLOWALK_MODELS_API_KEY",
-  "IPOLLOWALK_INFERENCE_BASE_URL",
-  "IPOLLOWALK_MODELS_BASE_URL",
+  "IPOLLOWORK_API_KEY",
+  "IPOLLOWORK_MODELS_API_KEY",
+  "IPOLLOWORK_INFERENCE_BASE_URL",
+  "IPOLLOWORK_MODELS_BASE_URL",
 ]);
 
 export type ApplyEnvironmentChangesResult = { statusMessage?: string } | void;
@@ -39,7 +39,7 @@ function validateKey(key: string): string | null {
 }
 
 type UseEnvironmentVariableListOptions = {
-  client: iPolloWalkServerClient | null;
+  client: iPolloWorkServerClient | null;
   isRemoteWorkspace: boolean;
   runtimeKey?: string | null;
 };
@@ -94,7 +94,7 @@ const EnvironmentVariableContext = createContext<EnvironmentVariableContextValue
 
 interface EnvironmentVariableProviderProps {
   children: React.ReactNode;
-  client: iPolloWalkServerClient | null;
+  client: iPolloWorkServerClient | null;
   runtimeKey?: string | null;
   onApplyChanges?: () => Promise<ApplyEnvironmentChangesResult>;
 }
@@ -115,7 +115,7 @@ export function EnvironmentVariableProvider({ children, client, runtimeKey, onAp
   const { mutate: applyAsync, isPending: isApplying, reset: resetApply, error: applyError } = useMutation({
     mutationFn: async () => onApplyChanges?.(),
     onSuccess: (result) => {
-      cleariPolloWalkEnvSystemContextCache();
+      cleariPolloWorkEnvSystemContextCache();
       queryClient.setQueryData(["settings", "environment", "pending-changes", runtimeKey], false);
       client?.setUserEnvPendingChanges(false, runtimeKey).catch(() => undefined);
       toast.success(result?.statusMessage ?? t("settings.environment.apply_success"));
@@ -126,7 +126,7 @@ export function EnvironmentVariableProvider({ children, client, runtimeKey, onAp
   });
 
   const markChangesPending = useCallback(() => {
-    cleariPolloWalkEnvSystemContextCache();
+    cleariPolloWorkEnvSystemContextCache();
     queryClient.setQueryData(["settings", "environment", "pending-changes", runtimeKey], true);
     resetApply();
     client?.setUserEnvPendingChanges(true, runtimeKey).catch(() => undefined);

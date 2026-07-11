@@ -18,9 +18,9 @@ import { recordAudit, readAuditEntries, readLastAudit } from "./audit.js";
 import { ReloadEventStore } from "./events.js";
 import { computeReloadFingerprint } from "./reload-fingerprint.js";
 import { startReloadWatchers } from "./reload-watcher.js";
-import { opencodeConfigPath, ipollowalkConfigPath, projectCommandsDir, projectSkillsDir } from "./workspace-files.js";
+import { opencodeConfigPath, ipolloworkConfigPath, projectCommandsDir, projectSkillsDir } from "./workspace-files.js";
 import { ensureDir, exists, hashToken, shortId } from "./utils.js";
-import { defaultWorkspaceiPolloWalkConfig, ensureWorkspaceFiles, readRawOpencodeConfig } from "./workspace-init.js";
+import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles, readRawOpencodeConfig } from "./workspace-init.js";
 import { sanitizeCommandName, validateMcpName } from "./validators.js";
 import { TokenService } from "./tokens.js";
 import { EnvService } from "./env-file.js";
@@ -36,7 +36,7 @@ import {
   applyMaterializedBlueprintSessions,
   normalizeBlueprintSessionTemplates,
   readMaterializedBlueprintSessions,
-  sanitizeiPolloWalkTemplateConfig,
+  sanitizeiPolloWorkTemplateConfig,
 } from "./blueprint-sessions.js";
 import { resolveWorkspaceOpencodeConnection } from "./opencode-connection.js";
 import { seedOpencodeSessionMessages } from "./opencode-db.js";
@@ -71,13 +71,13 @@ import {
   writeRuntimeOpencodeConfig,
 } from "./runtime-opencode-config-store.js";
 import {
-  hasiPolloWalkWorkspaceConfig,
-  mergeiPolloWalkWorkspaceConfigs,
-  readiPolloWalkWorkspaceConfig,
-  seediPolloWalkWorkspaceConfigIfEmpty,
-  writeiPolloWalkWorkspaceConfig,
-} from "./ipollowalk-workspace-config-store.js";
-import { buildiPolloWalkRuntimeConfigObject } from "./ipollowalk-runtime-config.js";
+  hasiPolloWorkWorkspaceConfig,
+  mergeiPolloWorkWorkspaceConfigs,
+  readiPolloWorkWorkspaceConfig,
+  seediPolloWorkWorkspaceConfigIfEmpty,
+  writeiPolloWorkWorkspaceConfig,
+} from "./ipollowork-workspace-config-store.js";
+import { buildiPolloWorkRuntimeConfigObject } from "./ipollowork-runtime-config.js";
 import pkg from "../package.json" with { type: "json" };
 import constants from "../../../constants.json" with { type: "json" };
 
@@ -90,31 +90,31 @@ export {
 const SERVER_VERSION = pkg.version;
 const OPENCODE_VERSION = constants.opencodeVersion.trim().replace(/^v/, "");
 
-const IPOLLOWALK_VOICE_REALTIME_MODEL = "gpt-realtime-2";
-const IPOLLOWALK_VOICE_TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
+const IPOLLOWORK_VOICE_REALTIME_MODEL = "gpt-realtime-2";
+const IPOLLOWORK_VOICE_TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
 let desktopCloudSyncQueue: Promise<void> = Promise.resolve();
 
-const IPOLLOWALK_VOICE_REALTIME_TOOLS = [
+const IPOLLOWORK_VOICE_REALTIME_TOOLS = [
   {
     type: "function",
-    name: "ipollowalk_snapshot",
-    description: "Read the current iPolloWalk UI control snapshot: route, status, narration, and visible action metadata.",
+    name: "ipollowork_snapshot",
+    description: "Read the current iPolloWork UI control snapshot: route, status, narration, and visible action metadata.",
     parameters: { type: "object", properties: {}, additionalProperties: false },
   },
   {
     type: "function",
-    name: "ipollowalk_list_actions",
-    description: "List semantic iPolloWalk UI actions. Call this before ipollowalk_execute_action when you do not know the exact action id.",
+    name: "ipollowork_list_actions",
+    description: "List semantic iPolloWork UI actions. Call this before ipollowork_execute_action when you do not know the exact action id.",
     parameters: { type: "object", properties: {}, additionalProperties: false },
   },
   {
     type: "function",
-    name: "ipollowalk_execute_action",
-    description: "Execute a semantic iPolloWalk UI action by id. Prefer this over screen coordinates or DOM guessing.",
+    name: "ipollowork_execute_action",
+    description: "Execute a semantic iPolloWork UI action by id. Prefer this over screen coordinates or DOM guessing.",
     parameters: {
       type: "object",
       properties: {
-        actionId: { type: "string", description: "The action id from ipollowalk_list_actions, such as composer.set_text or composer.send." },
+        actionId: { type: "string", description: "The action id from ipollowork_list_actions, such as composer.set_text or composer.send." },
         args: { type: "object", description: "Optional JSON arguments for the action.", additionalProperties: true },
       },
       required: ["actionId"],
@@ -139,21 +139,21 @@ const USER_OPENCODE_RUNTIME_CONFIG_KEYS = ["default_agent", "plugin", "mcp", "di
 type LegacyRuntimeConfigKey = typeof LEGACY_RUNTIME_CONFIG_KEYS[number];
 type UserOpencodeRuntimeConfigKey = typeof USER_OPENCODE_RUNTIME_CONFIG_KEYS[number];
 
-function legacyRuntimeConfigFromiPolloWalkConfig(ipollowalk: Record<string, unknown>): {
+function legacyRuntimeConfigFromiPolloWorkConfig(ipollowork: Record<string, unknown>): {
   config: RuntimeOpencodeConfig;
   keys: LegacyRuntimeConfigKey[];
 } {
   const keys: LegacyRuntimeConfigKey[] = [];
-  const plugin = Array.isArray(ipollowalk.plugin) ? ipollowalk.plugin.filter((item) => typeof item === "string") : [];
+  const plugin = Array.isArray(ipollowork.plugin) ? ipollowork.plugin.filter((item) => typeof item === "string") : [];
   const mcp: Record<string, Record<string, unknown>> = {};
-  if (isRecord(ipollowalk.mcp)) {
-    for (const [name, value] of Object.entries(ipollowalk.mcp)) {
+  if (isRecord(ipollowork.mcp)) {
+    for (const [name, value] of Object.entries(ipollowork.mcp)) {
       if (isRecord(value)) mcp[name] = value;
     }
   }
-  const permission = isRecord(ipollowalk.permission) ? ipollowalk.permission : null;
+  const permission = isRecord(ipollowork.permission) ? ipollowork.permission : null;
   const externalDirectory = permission && isRecord(permission.external_directory) ? permission.external_directory : null;
-  const provider = isRecord(ipollowalk.provider) ? ipollowalk.provider : null;
+  const provider = isRecord(ipollowork.provider) ? ipollowork.provider : null;
 
   if (plugin.length) keys.push("plugin");
   if (Object.keys(mcp).length) keys.push("mcp");
@@ -171,8 +171,8 @@ function legacyRuntimeConfigFromiPolloWalkConfig(ipollowalk: Record<string, unkn
   };
 }
 
-function removeLegacyRuntimeConfig(ipollowalk: Record<string, unknown>): Record<string, unknown> {
-  const next = { ...ipollowalk };
+function removeLegacyRuntimeConfig(ipollowork: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...ipollowork };
   for (const key of LEGACY_RUNTIME_CONFIG_KEYS) {
     delete next[key];
   }
@@ -184,7 +184,7 @@ function userRuntimeConfigFromOpencodeConfig(opencode: Record<string, unknown>):
   keys: UserOpencodeRuntimeConfigKey[];
 } {
   const keys: UserOpencodeRuntimeConfigKey[] = [];
-  const defaultAgent = opencode.default_agent === "ipollowalk" ? "ipollowalk" : undefined;
+  const defaultAgent = opencode.default_agent === "ipollowork" ? "ipollowork" : undefined;
   const plugin = Array.isArray(opencode.plugin) ? opencode.plugin.filter((item) => typeof item === "string") : undefined;
   const mcp: Record<string, Record<string, unknown>> = {};
   if (isRecord(opencode.mcp)) {
@@ -284,33 +284,33 @@ async function resolveOpenAiRealtimeApiKey(env: EnvService): Promise<string> {
     "";
   if (storedKey) return storedKey;
 
-  return process.env.IPOLLOWALK_OPENAI_REALTIME_API_KEY?.trim() ||
+  return process.env.IPOLLOWORK_OPENAI_REALTIME_API_KEY?.trim() ||
     process.env.OPENAI_REALTIME_API_KEY?.trim() ||
     process.env.OPENAI_API_KEY?.trim() ||
     "";
 }
 
-async function resolveiPolloWalkModelsVoiceConfig(env: EnvService): Promise<{ baseUrl: string; apiKey: string } | null> {
+async function resolveiPolloWorkModelsVoiceConfig(env: EnvService): Promise<{ baseUrl: string; apiKey: string } | null> {
   const records = await env.list();
   const apiKey =
-    records.find((entry) => entry.key === "IPOLLOWALK_API_KEY")?.value.trim() ||
-    records.find((entry) => entry.key === "IPOLLOWALK_MODELS_API_KEY")?.value.trim() ||
-    process.env.IPOLLOWALK_API_KEY?.trim() ||
-    process.env.IPOLLOWALK_MODELS_API_KEY?.trim() ||
+    records.find((entry) => entry.key === "IPOLLOWORK_API_KEY")?.value.trim() ||
+    records.find((entry) => entry.key === "IPOLLOWORK_MODELS_API_KEY")?.value.trim() ||
+    process.env.IPOLLOWORK_API_KEY?.trim() ||
+    process.env.IPOLLOWORK_MODELS_API_KEY?.trim() ||
     "";
   if (!apiKey) return null;
 
   const baseUrl =
-    records.find((entry) => entry.key === "IPOLLOWALK_INFERENCE_BASE_URL")?.value.trim() ||
-    records.find((entry) => entry.key === "IPOLLOWALK_MODELS_BASE_URL")?.value.trim() ||
-    process.env.IPOLLOWALK_INFERENCE_BASE_URL?.trim() ||
-    process.env.IPOLLOWALK_MODELS_BASE_URL?.trim() ||
+    records.find((entry) => entry.key === "IPOLLOWORK_INFERENCE_BASE_URL")?.value.trim() ||
+    records.find((entry) => entry.key === "IPOLLOWORK_MODELS_BASE_URL")?.value.trim() ||
+    process.env.IPOLLOWORK_INFERENCE_BASE_URL?.trim() ||
+    process.env.IPOLLOWORK_MODELS_BASE_URL?.trim() ||
     "";
   if (!baseUrl) return null;
   return { apiKey, baseUrl: baseUrl.replace(/\/+$/, "") };
 }
 
-function ipollowalkVoiceRealtimeInstructions(sessionContext: string) {
+function ipolloworkVoiceRealtimeInstructions(sessionContext: string) {
   const trimmedContext = sessionContext.trim();
   const contextSection = trimmedContext
     ? `
@@ -323,12 +323,12 @@ ${trimmedContext}`
     : "";
   return `# Role and Objective
 
-You are iPolloWalk Voice Mode, a voice-first control layer inside iPolloWalk.
-Help the user control iPolloWalk by using the semantic iPolloWalk UI tools.
+You are iPolloWork Voice Mode, a voice-first control layer inside iPolloWork.
+Help the user control iPolloWork by using the semantic iPolloWork UI tools.
 
 # Tool Policy
 
-- Prefer ipollowalk_snapshot, ipollowalk_list_actions, and ipollowalk_execute_action over visual guessing.
+- Prefer ipollowork_snapshot, ipollowork_list_actions, and ipollowork_execute_action over visual guessing.
 - If the user asks to write or draft something, use composer.set_text.
 - If the user asks to send or run the current prompt, use composer.send.
 - For navigation, settings, session, transcript, and composer work, inspect the action list first if the action id is unknown.
@@ -339,7 +339,7 @@ Help the user control iPolloWalk by using the semantic iPolloWalk UI tools.
 
 - Be concise, calm, and direct.
 - If audio is unclear, ask the user to repeat it instead of guessing.
-- Ignore background speech that is not addressed to iPolloWalk.
+- Ignore background speech that is not addressed to iPolloWork.
 - Summarize tool results briefly and offer the next useful step.${contextSection}`;
 }
 
@@ -366,7 +366,7 @@ function readOpenAiClientSecret(payload: unknown): { clientSecret: string; expir
 }
 
 async function createOpenAiRealtimeVoiceSession(env: EnvService, input: unknown) {
-  const managedVoice = await resolveiPolloWalkModelsVoiceConfig(env);
+  const managedVoice = await resolveiPolloWorkModelsVoiceConfig(env);
   if (managedVoice) {
     try {
       return await createManagedVoiceSession(managedVoice, input);
@@ -374,13 +374,13 @@ async function createOpenAiRealtimeVoiceSession(env: EnvService, input: unknown)
       if (error instanceof ApiError && error.status === 503) {
         const fallbackKey = await resolveOpenAiRealtimeApiKey(env);
         if (fallbackKey) {
-          console.warn("[voice] iPolloWalk Models broker returned 503 — falling back to direct OpenAI Realtime.");
+          console.warn("[voice] iPolloWork Models broker returned 503 — falling back to direct OpenAI Realtime.");
           return createDirectOpenAiVoiceSession(fallbackKey, input);
         }
         throw new ApiError(
           503,
-          "ipollowalk_models_voice_unavailable",
-          "iPolloWalk Models voice is active but the server is not fully configured. Ask your admin to add an OpenAI key, or save your own OPENAI_API_KEY in Environment settings.",
+          "ipollowork_models_voice_unavailable",
+          "iPolloWork Models voice is active but the server is not fully configured. Ask your admin to add an OpenAI key, or save your own OPENAI_API_KEY in Environment settings.",
         );
       }
       throw error;
@@ -392,7 +392,7 @@ async function createOpenAiRealtimeVoiceSession(env: EnvService, input: unknown)
     throw new ApiError(
       400,
       "openai_api_key_missing",
-      "OpenAI API key missing. Save OPENAI_API_KEY in iPolloWalk Environment Variables or configure the Voice Mode extension.",
+      "OpenAI API key missing. Save OPENAI_API_KEY in iPolloWork Environment Variables or configure the Voice Mode extension.",
     );
   }
 
@@ -418,7 +418,7 @@ async function createManagedVoiceSession(config: { baseUrl: string; apiKey: stri
   if (!response.ok) {
     const errorPayload = isRecord(payload) && isRecord(payload.error) ? payload.error : null;
     const message = typeof errorPayload?.message === "string" ? errorPayload.message : response.statusText;
-    throw new ApiError(response.status, "ipollowalk_models_voice_failed", message || "iPolloWalk Models could not create a voice session");
+    throw new ApiError(response.status, "ipollowork_models_voice_failed", message || "iPolloWork Models could not create a voice session");
   }
   if (
     !isRecord(payload) ||
@@ -428,21 +428,21 @@ async function createManagedVoiceSession(config: { baseUrl: string; apiKey: stri
     !Array.isArray(payload.tools) ||
     payload.tools.some((tool) => typeof tool !== "string")
   ) {
-    throw new ApiError(502, "ipollowalk_models_voice_invalid_response", "iPolloWalk Models did not return a usable Realtime session payload");
+    throw new ApiError(502, "ipollowork_models_voice_invalid_response", "iPolloWork Models did not return a usable Realtime session payload");
   }
   return {
     ok: true,
     clientSecret: payload.clientSecret,
     expiresAt: typeof payload.expiresAt === "number" ? payload.expiresAt : null,
     model: payload.model,
-    transcriptionModel: typeof payload.transcriptionModel === "string" ? payload.transcriptionModel : IPOLLOWALK_VOICE_TRANSCRIPTION_MODEL,
+    transcriptionModel: typeof payload.transcriptionModel === "string" ? payload.transcriptionModel : IPOLLOWORK_VOICE_TRANSCRIPTION_MODEL,
     tools: payload.tools,
     ...(typeof payload.source === "string" ? { source: payload.source } : {}),
   };
 }
 
 async function createDirectOpenAiVoiceSession(apiKey: string, input: unknown) {
-  const model = readStringField(input, "model") || IPOLLOWALK_VOICE_REALTIME_MODEL;
+  const model = readStringField(input, "model") || IPOLLOWORK_VOICE_REALTIME_MODEL;
   const sessionContext = readStringField(input, "sessionContext").slice(0, 6_000);
   const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",
@@ -457,7 +457,7 @@ async function createDirectOpenAiVoiceSession(apiKey: string, input: unknown) {
         output_modalities: ["audio"],
         audio: {
           input: {
-            transcription: { model: IPOLLOWALK_VOICE_TRANSCRIPTION_MODEL, language: "en" },
+            transcription: { model: IPOLLOWORK_VOICE_TRANSCRIPTION_MODEL, language: "en" },
             turn_detection: {
               type: "server_vad",
               threshold: 0.58,
@@ -468,9 +468,9 @@ async function createDirectOpenAiVoiceSession(apiKey: string, input: unknown) {
             },
           },
         },
-        instructions: ipollowalkVoiceRealtimeInstructions(sessionContext),
+        instructions: ipolloworkVoiceRealtimeInstructions(sessionContext),
         tool_choice: "auto",
-        tools: IPOLLOWALK_VOICE_REALTIME_TOOLS,
+        tools: IPOLLOWORK_VOICE_REALTIME_TOOLS,
       },
     }),
   });
@@ -499,8 +499,8 @@ async function createDirectOpenAiVoiceSession(apiKey: string, input: unknown) {
     clientSecret,
     expiresAt,
     model,
-    transcriptionModel: IPOLLOWALK_VOICE_TRANSCRIPTION_MODEL,
-    tools: IPOLLOWALK_VOICE_REALTIME_TOOLS.map((tool) => tool.name),
+    transcriptionModel: IPOLLOWORK_VOICE_TRANSCRIPTION_MODEL,
+    tools: IPOLLOWORK_VOICE_REALTIME_TOOLS.map((tool) => tool.name),
   };
 }
 
@@ -528,10 +528,10 @@ function toUnixNano(): string {
 }
 
 export function createServerLogger(config: ServerConfig): ServerLogger {
-  const runId = process.env.IPOLLOWALK_RUN_ID ?? shortId();
+  const runId = process.env.IPOLLOWORK_RUN_ID ?? shortId();
   const host = hostname().trim();
   const resource: Record<string, string> = {
-    "service.name": "ipollowalk-server",
+    "service.name": "ipollowork-server",
     "service.version": SERVER_VERSION,
     "service.instance.id": runId,
   };
@@ -642,7 +642,7 @@ export function assertOpencodeProxyAllowed(actor: Actor, method: string, proxyPa
   // Prevent viewers from self-approving OpenCode permission requests via the
   // proxy. OpenCode uses /permission/:requestId/reply (and historically also
   // a session-scoped variant). Collaborators must be allowed: the SPA's only
-  // credential is the collaborator-scoped client token (IPOLLOWALK_TOKEN), so
+  // credential is the collaborator-scoped client token (IPOLLOWORK_TOKEN), so
   // an owner-only gate made every interactive permission dialog un-answerable
   // (403 "Only owner tokens can reply") and left tool calls stuck in
   // "running" forever (#1918).
@@ -803,7 +803,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
         return finalize(response);
       } catch (error) {
         if (!(error instanceof ApiError)) {
-          console.error("[ipollowalk-server] Unhandled error:", error);
+          console.error("[ipollowork-server] Unhandled error:", error);
         }
         const apiError = error instanceof ApiError
           ? error
@@ -901,8 +901,8 @@ async function proxyOpencodeRequest(input: {
   const targetUrl = buildOpencodeProxyUrl(baseUrl, proxyPath, input.url.search);
   const headers = new Headers(input.request.headers);
   headers.delete("authorization");
-  headers.delete("x-ipollowalk-host-token");
-  headers.delete("x-ipollowalk-client-id");
+  headers.delete("x-ipollowork-host-token");
+  headers.delete("x-ipollowork-client-id");
   headers.delete("host");
   headers.delete("origin");
 
@@ -983,7 +983,7 @@ function withCors(response: Response, request: Request, config: ServerConfig) {
   headers.set("Access-Control-Allow-Origin", allowOrigin);
   headers.set(
     "Access-Control-Allow-Headers",
-    "Authorization, Content-Type, X-iPolloWalk-Host-Token, X-iPolloWalk-Client-Id, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
+    "Authorization, Content-Type, X-iPolloWork-Host-Token, X-iPolloWork-Client-Id, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
   );
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   headers.set("Vary", "Origin");
@@ -1001,12 +1001,12 @@ async function requireClient(request: Request, config: ServerConfig, tokens: Tok
   if (!scope) {
     throw new ApiError(401, "unauthorized", "Invalid bearer token");
   }
-  const clientId = request.headers.get("x-ipollowalk-client-id") ?? undefined;
+  const clientId = request.headers.get("x-ipollowork-client-id") ?? undefined;
   return { type: "remote", clientId, tokenHash: hashToken(token), scope };
 }
 
 function requireHostToken(request: Request, config: ServerConfig): Actor {
-  const hostToken = request.headers.get("x-ipollowalk-host-token");
+  const hostToken = request.headers.get("x-ipollowork-host-token");
   if (hostToken && hostToken === config.hostToken) {
     return { type: "host", tokenHash: hashToken(hostToken), scope: "owner" };
   }
@@ -1014,7 +1014,7 @@ function requireHostToken(request: Request, config: ServerConfig): Actor {
 }
 
 async function requireHost(request: Request, config: ServerConfig, tokens: TokenService): Promise<Actor> {
-  const hostToken = request.headers.get("x-ipollowalk-host-token");
+  const hostToken = request.headers.get("x-ipollowork-host-token");
   if (hostToken && hostToken === config.hostToken) {
     return { type: "host", tokenHash: hashToken(hostToken), scope: "owner" };
   }
@@ -1029,7 +1029,7 @@ async function requireHost(request: Request, config: ServerConfig, tokens: Token
   if (scope !== "owner") {
     throw new ApiError(401, "unauthorized", "Invalid host token");
   }
-  const clientId = request.headers.get("x-ipollowalk-client-id") ?? undefined;
+  const clientId = request.headers.get("x-ipollowork-client-id") ?? undefined;
   return { type: "remote", clientId, tokenHash: hashToken(bearer), scope };
 }
 
@@ -1048,12 +1048,12 @@ function buildCapabilities(config: ServerConfig): Capabilities {
     schemaVersion,
     serverVersion: SERVER_VERSION,
     opencodeVersion: OPENCODE_VERSION,
-    skills: { read: true, write: writeEnabled, source: "ipollowalk" },
+    skills: { read: true, write: writeEnabled, source: "ipollowork" },
     hub: {
       skills: {
         read: true,
         install: writeEnabled,
-        repo: { owner: "different-ai", name: "ipollowalk-hub", ref: "main" },
+        repo: { owner: "different-ai", name: "ipollowork-hub", ref: "main" },
       },
     },
     plugins: { read: true, write: writeEnabled },
@@ -1073,8 +1073,8 @@ function buildCapabilities(config: ServerConfig): Capabilities {
       files: {
         injection: writeEnabled && inboxEnabled,
         outbox: outboxEnabled,
-        inboxPath: ".opencode/ipollowalk/inbox/",
-        outboxPath: ".opencode/ipollowalk/outbox/",
+        inboxPath: ".opencode/ipollowork/inbox/",
+        outboxPath: ".opencode/ipollowork/outbox/",
         maxBytes,
       },
     },
@@ -1082,33 +1082,33 @@ function buildCapabilities(config: ServerConfig): Capabilities {
 }
 
 function resolveSandboxBackend(): Capabilities["sandbox"]["backend"] {
-  const raw = (process.env.IPOLLOWALK_SANDBOX_BACKEND ?? "").trim().toLowerCase();
+  const raw = (process.env.IPOLLOWORK_SANDBOX_BACKEND ?? "").trim().toLowerCase();
   if (raw === "docker") return "docker";
   if (raw === "container") return "container";
   return "none";
 }
 
 function resolveSandboxEnabled(backend: Capabilities["sandbox"]["backend"]): boolean {
-  const raw = (process.env.IPOLLOWALK_SANDBOX_ENABLED ?? "").trim().toLowerCase();
+  const raw = (process.env.IPOLLOWORK_SANDBOX_ENABLED ?? "").trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(raw)) return true;
   if (["0", "false", "no", "off"].includes(raw)) return false;
   return backend !== "none";
 }
 
 function resolveInboxEnabled(): boolean {
-  const raw = (process.env.IPOLLOWALK_INBOX_ENABLED ?? "").trim().toLowerCase();
+  const raw = (process.env.IPOLLOWORK_INBOX_ENABLED ?? "").trim().toLowerCase();
   if (!raw) return true;
   return ["1", "true", "yes", "on"].includes(raw);
 }
 
 function resolveOutboxEnabled(): boolean {
-  const raw = (process.env.IPOLLOWALK_OUTBOX_ENABLED ?? "").trim().toLowerCase();
+  const raw = (process.env.IPOLLOWORK_OUTBOX_ENABLED ?? "").trim().toLowerCase();
   if (!raw) return true;
   return ["1", "true", "yes", "on"].includes(raw);
 }
 
 function resolveInboxMaxBytes(): number {
-  const raw = (process.env.IPOLLOWALK_INBOX_MAX_BYTES ?? "").trim();
+  const raw = (process.env.IPOLLOWORK_INBOX_MAX_BYTES ?? "").trim();
   const parsed = raw ? Number(raw) : NaN;
   if (Number.isFinite(parsed) && parsed > 0) {
     return Math.min(Math.trunc(parsed), 250_000_000);
@@ -1117,22 +1117,22 @@ function resolveInboxMaxBytes(): number {
 }
 
 function resolveToyUiEnabled(): boolean {
-  const raw = (process.env.IPOLLOWALK_TOY_UI ?? "").trim().toLowerCase();
+  const raw = (process.env.IPOLLOWORK_TOY_UI ?? "").trim().toLowerCase();
   if (!raw) return true;
   return ["1", "true", "yes", "on"].includes(raw);
 }
 
-// Dev-only log sink target. When IPOLLOWALK_DEV_LOG_FILE is set to a path, the
+// Dev-only log sink target. When IPOLLOWORK_DEV_LOG_FILE is set to a path, the
 // /dev/log endpoint accepts JSON payloads and appends them to that file so an
 // operator can `tail -f` the file to see live browser activity. Returning null
 // disables the endpoint entirely.
 function resolveDevLogPath(): string | null {
-  const raw = (process.env.IPOLLOWALK_DEV_LOG_FILE ?? "").trim();
+  const raw = (process.env.IPOLLOWORK_DEV_LOG_FILE ?? "").trim();
   return raw.length > 0 ? raw : null;
 }
 
 function resolveBrowserProvider(): Capabilities["toolProviders"]["browser"] {
-  const raw = (process.env.IPOLLOWALK_BROWSER_PROVIDER ?? "").trim().toLowerCase();
+  const raw = (process.env.IPOLLOWORK_BROWSER_PROVIDER ?? "").trim().toLowerCase();
   if (raw === "sandbox-headless") {
     return { enabled: true, placement: "in-sandbox", mode: "headless" };
   }
@@ -1357,19 +1357,19 @@ function createRoutes(
 
   addRoute(routes, "GET", "/workspace/:id/config", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
-    const ipollowalk = await readiPolloWalkConfigForWorkspace(config, workspace);
+    const ipollowork = await readiPolloWorkConfigForWorkspace(config, workspace);
     const opencode = mergeOpencodeConfigs(
       await readOpencodeConfig(workspace.path),
       await readRuntimeOpencodeConfig(config, workspace.id),
     );
     const lastAudit = await readLastAudit(workspace.path, workspace.id);
-    return jsonResponse({ opencode, ipollowalk, updatedAt: lastAudit?.timestamp ?? null });
+    return jsonResponse({ opencode, ipollowork, updatedAt: lastAudit?.timestamp ?? null });
   });
 
   addRoute(routes, "GET", "/workspace/:id/desktop-cloud-sync", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
-    const ipollowalk = await readiPolloWalkConfigForWorkspace(config, workspace);
-    return jsonResponse(readDesktopCloudSyncState(ipollowalk));
+    const ipollowork = await readiPolloWorkConfigForWorkspace(config, workspace);
+    return jsonResponse(readDesktopCloudSyncState(ipollowork));
   });
 
   addRoute(routes, "POST", "/workspace/:id/desktop-cloud-sync", "client", async (ctx) => {
@@ -1383,17 +1383,17 @@ function createRoutes(
     }
 
     const result = await enqueueDesktopCloudSync(async () => {
-      const ipollowalk = await readiPolloWalkConfigForWorkspace(config, workspace);
+      const ipollowork = await readiPolloWorkConfigForWorkspace(config, workspace);
       const installed = await readInstalledCloudPlugins(config, workspace.id);
       const cloudImports = {
         ...installed,
-        providers: readWorkspaceCloudImports(ipollowalk).providers,
+        providers: readWorkspaceCloudImports(ipollowork).providers,
       };
-      const next = syncDesktopCloudResources({ ipollowalk: { ...ipollowalk, cloudImports }, snapshot });
+      const next = syncDesktopCloudResources({ ipollowork: { ...ipollowork, cloudImports }, snapshot });
       // The plugin DB owns plugins/marketplaces, but provider import baselines live in
       // the workspace config. Writing the merged cloudImports back erased providers
       // and drove the provider-sync dispose/create loop.
-      await writeiPolloWalkWorkspaceConfig(config, workspace.id, (current) => ({
+      await writeiPolloWorkWorkspaceConfig(config, workspace.id, (current) => ({
         ...current,
         desktopCloudSync: next.state,
       }));
@@ -1402,7 +1402,7 @@ function createRoutes(
         workspaceId: workspace.id,
         actor: ctx.actor ?? { type: "remote" },
         action: "desktop_cloud_sync.update",
-        target: ipollowalkConfigPath(workspace.path),
+        target: ipolloworkConfigPath(workspace.path),
         summary: "Updated desktop cloud sync state",
         timestamp: Date.now(),
       });
@@ -1434,7 +1434,7 @@ function createRoutes(
       workspaceId: workspace.id,
       action: "cloud_plugins.install",
       summary: `Install cloud plugin ${resolved.plugin.name}`,
-      paths: [ipollowalkConfigPath(workspace.path), join(workspace.path, ".opencode")],
+      paths: [ipolloworkConfigPath(workspace.path), join(workspace.path, ".opencode")],
     });
 
     const result = await installCloudPlugin({
@@ -1458,7 +1458,7 @@ function createRoutes(
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action: "cloud_plugins.install",
-      target: ipollowalkConfigPath(workspace.path),
+      target: ipolloworkConfigPath(workspace.path),
       summary: `Installed cloud plugin ${resolved.plugin.name}`,
       timestamp: Date.now(),
     });
@@ -1500,7 +1500,7 @@ function createRoutes(
       workspaceId: workspace.id,
       action: "cloud_plugins.install",
       summary: `Install Claude plugin ${bundle.resolved.plugin.name} from ${bundle.preview.source.owner}/${bundle.preview.source.repo}`,
-      paths: [ipollowalkConfigPath(workspace.path), join(workspace.path, ".opencode")],
+      paths: [ipolloworkConfigPath(workspace.path), join(workspace.path, ".opencode")],
     });
 
     const result = await installCloudPlugin({
@@ -1517,7 +1517,7 @@ function createRoutes(
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action: "cloud_plugins.install",
-      target: ipollowalkConfigPath(workspace.path),
+      target: ipolloworkConfigPath(workspace.path),
       summary: `Installed Claude plugin ${bundle.resolved.plugin.name} from ${url}`,
       timestamp: Date.now(),
     });
@@ -1546,7 +1546,7 @@ function createRoutes(
       workspaceId: workspace.id,
       action: "cloud_plugins.remove",
       summary: `Remove cloud plugin ${pluginId}`,
-      paths: [ipollowalkConfigPath(workspace.path), join(workspace.path, ".opencode")],
+      paths: [ipolloworkConfigPath(workspace.path), join(workspace.path, ".opencode")],
     });
 
     const removed = await removeCloudPlugin({
@@ -1561,7 +1561,7 @@ function createRoutes(
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action: "cloud_plugins.remove",
-      target: ipollowalkConfigPath(workspace.path),
+      target: ipolloworkConfigPath(workspace.path),
       summary: `Removed cloud plugin ${removed.name}`,
       timestamp: Date.now(),
     });
@@ -1593,7 +1593,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
     const folders = parseAuthorizedFoldersPayload(body.folders, workspace.path);
-    const configPath = ipollowalkConfigPath(workspace.path);
+    const configPath = ipolloworkConfigPath(workspace.path);
 
     await requireApproval(ctx, {
       workspaceId: workspace.id,
@@ -1648,7 +1648,7 @@ function createRoutes(
     ensureWritable(config);
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
-    const configPath = ipollowalkConfigPath(workspace.path);
+    const configPath = ipolloworkConfigPath(workspace.path);
 
     await requireApproval(ctx, {
       workspaceId: workspace.id,
@@ -1657,31 +1657,31 @@ function createRoutes(
       paths: [configPath],
     });
 
-    // Resolve the effective ipollowalk config (DB, migrating any legacy file
+    // Resolve the effective ipollowork config (DB, migrating any legacy file
     // contents in on read) so legacy runtime keys are detected wherever they
     // currently live.
-    let ipollowalkError: string | null = null;
-    let ipollowalkData: Record<string, unknown> = {};
+    let ipolloworkError: string | null = null;
+    let ipolloworkData: Record<string, unknown> = {};
     try {
-      ipollowalkData = await readiPolloWalkConfigForWorkspace(config, workspace);
+      ipolloworkData = await readiPolloWorkConfigForWorkspace(config, workspace);
     } catch (error) {
       if (error instanceof ApiError && error.code === "invalid_json") {
-        ipollowalkError = error.message;
+        ipolloworkError = error.message;
       } else {
         throw error;
       }
     }
-    const legacy = legacyRuntimeConfigFromiPolloWalkConfig(ipollowalkData);
+    const legacy = legacyRuntimeConfigFromiPolloWorkConfig(ipolloworkData);
     const user = userRuntimeConfigFromOpencodeConfig(await readOpencodeConfig(workspace.path));
     if (!legacy.keys.length && !user.keys.length) {
-      return jsonResponse({ migrated: false, keys: [], legacyKeys: [], userOpencodeKeys: [], updatedAt: null, legacyError: ipollowalkError });
+      return jsonResponse({ migrated: false, keys: [], legacyKeys: [], userOpencodeKeys: [], updatedAt: null, legacyError: ipolloworkError });
     }
 
     await writeRuntimeOpencodeConfig(config, workspace.id, (current) => (
       mergeLegacyRuntimeConfig(mergeLegacyRuntimeConfig(current, legacy.config), user.config)
     ));
-    if (legacy.keys.length && !ipollowalkError) {
-      await writeiPolloWalkConfigForWorkspace(config, workspace, removeLegacyRuntimeConfig(ipollowalkData), false);
+    if (legacy.keys.length && !ipolloworkError) {
+      await writeiPolloWorkConfigForWorkspace(config, workspace, removeLegacyRuntimeConfig(ipolloworkData), false);
     }
     await removeUserRuntimeConfigFromOpencode(workspace.path, user.keys);
 
@@ -1698,24 +1698,24 @@ function createRoutes(
     });
     emitReloadEvent(ctx.reloadEvents, workspace, "config", buildConfigTrigger(configPath));
 
-    return jsonResponse({ migrated: true, keys, legacyKeys: legacy.keys, userOpencodeKeys: user.keys, updatedAt, legacyError: ipollowalkError });
+    return jsonResponse({ migrated: true, keys, legacyKeys: legacy.keys, userOpencodeKeys: user.keys, updatedAt, legacyError: ipolloworkError });
   });
 
   addRoute(routes, "GET", "/workspace/:id/runtime-config", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const runtime = await readRuntimeOpencodeConfig(config, workspace.id);
-    // Report legacy runtime keys from the effective (DB-backed) ipollowalk config
+    // Report legacy runtime keys from the effective (DB-backed) ipollowork config
     // so the status reflects post-migration state, while still surfacing parse
     // errors from a malformed legacy file.
-    const fileStatus = await readiPolloWalkConfigForStatus(workspace.path);
-    const effectiveiPolloWalk = fileStatus.error ? {} : await readiPolloWalkConfigForWorkspace(config, workspace);
-    const legacy = legacyRuntimeConfigFromiPolloWalkConfig(effectiveiPolloWalk);
+    const fileStatus = await readiPolloWorkConfigForStatus(workspace.path);
+    const effectiveiPolloWork = fileStatus.error ? {} : await readiPolloWorkConfigForWorkspace(config, workspace);
+    const legacy = legacyRuntimeConfigFromiPolloWorkConfig(effectiveiPolloWork);
     const rawOpencode = await readRawOpencodeConfig(opencodeConfigPath(workspace.path));
     const persistedOpencode = await readOpencodeConfig(workspace.path);
     const globalOpencodePath = resolveOpencodeConfigFilePath("global", workspace.path);
     const rawGlobalOpencode = await readRawOpencodeConfig(globalOpencodePath);
     const globalOpencode = (await readJsoncFile(globalOpencodePath, {} as Record<string, unknown>, { allowInvalid: true })).data;
-    const effectiveRuntime = await buildiPolloWalkRuntimeConfigObject(config, workspace.id);
+    const effectiveRuntime = await buildiPolloWorkRuntimeConfigObject(config, workspace.id);
     const user = userRuntimeConfigFromOpencodeConfig(persistedOpencode);
 
     return jsonResponse({
@@ -1744,8 +1744,8 @@ function createRoutes(
           config: effectiveRuntime,
         },
       },
-      legacyiPolloWalk: {
-        path: ipollowalkConfigPath(workspace.path),
+      legacyiPolloWork: {
+        path: ipolloworkConfigPath(workspace.path),
         keys: legacy.keys,
         error: fileStatus.error,
       },
@@ -1830,22 +1830,22 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
     const opencode = body.opencode as Record<string, unknown> | undefined;
-    const ipollowalk = body.ipollowalk as Record<string, unknown> | undefined;
+    const ipollowork = body.ipollowork as Record<string, unknown> | undefined;
     let runtimeChanged = false;
 
-    if (!opencode && !ipollowalk) {
-      throw new ApiError(400, "invalid_payload", "opencode or ipollowalk updates required");
+    if (!opencode && !ipollowork) {
+      throw new ApiError(400, "invalid_payload", "opencode or ipollowork updates required");
     }
 
     await requireApproval(ctx, {
       workspaceId: workspace.id,
       action: "config.patch",
       summary: "Patch workspace config",
-      paths: [opencode || ipollowalk ? ipollowalkConfigPath(workspace.path) : null].filter(Boolean) as string[],
+      paths: [opencode || ipollowork ? ipolloworkConfigPath(workspace.path) : null].filter(Boolean) as string[],
     });
 
     if (opencode) {
-      const configPath = ipollowalkConfigPath(workspace.path);
+      const configPath = ipolloworkConfigPath(workspace.path);
       const nextOpencode = ensurePlainObject(opencode);
       const { permission, provider, ...topLevelUpdates } = nextOpencode;
       const logicalUpdates: Record<string, unknown> = { ...topLevelUpdates };
@@ -1888,10 +1888,10 @@ function createRoutes(
         runtimeChanged = result.changed;
       }
     }
-    if (ipollowalk) {
-      await writeiPolloWalkWorkspaceConfig(config, workspace.id, (current) => ({
+    if (ipollowork) {
+      await writeiPolloWorkWorkspaceConfig(config, workspace.id, (current) => ({
         ...current,
-        ...ipollowalk,
+        ...ipollowork,
       }));
     }
 
@@ -1900,7 +1900,7 @@ function createRoutes(
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action: "config.patch",
-      target: ipollowalkConfigPath(workspace.path),
+      target: ipolloworkConfigPath(workspace.path),
       summary: "Patched workspace config",
       timestamp: Date.now(),
     });
@@ -1908,7 +1908,7 @@ function createRoutes(
     // A no-op provider patch (for example cloud sync reconciling an identical
     // block) must not force an engine reload; that caused a dispose/create loop.
     if (opencode && runtimeChanged) {
-      emitReloadEvent(ctx.reloadEvents, workspace, "config", buildConfigTrigger(ipollowalkConfigPath(workspace.path)));
+      emitReloadEvent(ctx.reloadEvents, workspace, "config", buildConfigTrigger(ipolloworkConfigPath(workspace.path)));
     }
 
     return jsonResponse({ updatedAt: Date.now() });
@@ -1957,7 +1957,7 @@ function createRoutes(
       workspaceId: workspace.id,
       action: "plugins.add",
       summary: `Add plugin ${spec}`,
-      paths: [ipollowalkConfigPath(workspace.path)],
+      paths: [ipolloworkConfigPath(workspace.path)],
     });
     const changed = await addPlugin(config, workspace.id, spec);
     await recordAudit(workspace.path, {
@@ -1965,7 +1965,7 @@ function createRoutes(
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action: "plugins.add",
-      target: ipollowalkConfigPath(workspace.path),
+      target: ipolloworkConfigPath(workspace.path),
       summary: `Added ${spec}`,
       timestamp: Date.now(),
     });
@@ -1990,7 +1990,7 @@ function createRoutes(
       workspaceId: workspace.id,
       action: "plugins.remove",
       summary: `Remove plugin ${name}`,
-      paths: [ipollowalkConfigPath(workspace.path)],
+      paths: [ipolloworkConfigPath(workspace.path)],
     });
     const removed = await removePlugin(config, workspace.id, name);
     await recordAudit(workspace.path, {
@@ -1998,7 +1998,7 @@ function createRoutes(
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action: "plugins.remove",
-      target: ipollowalkConfigPath(workspace.path),
+      target: ipolloworkConfigPath(workspace.path),
       summary: `Removed ${name}`,
       timestamp: Date.now(),
     });
@@ -2019,7 +2019,7 @@ function createRoutes(
     const ref = ctx.url.searchParams.get("ref")?.trim();
     const items = await listHubSkills({
       owner: owner || "different-ai",
-      repo: repo || "ipollowalk-hub",
+      repo: repo || "ipollowork-hub",
       ref: ref || "main",
     });
     return jsonResponse({ items });
@@ -2167,7 +2167,7 @@ function createRoutes(
   });
 
   // Portable export of installed skills and MCP servers (including
-  // iPolloWalk-managed runtime MCPs that only live in the runtime DB), so
+  // iPolloWork-managed runtime MCPs that only live in the runtime DB), so
   // agents can package them into marketplace plugins. Read-only; MCP
   // secrets (headers/environment) are always redacted.
   addRoute(routes, "POST", "/workspace/:id/extensions/export", "client", async (ctx) => {
@@ -2206,7 +2206,7 @@ function createRoutes(
       workspaceId: workspace.id,
       action: "mcp.add",
       summary: `Add MCP ${name}`,
-      paths: [ipollowalkConfigPath(workspace.path)],
+      paths: [ipolloworkConfigPath(workspace.path)],
     });
     const result = await addMcp(config, workspace.id, name, configPayload);
     // Hot-add into the running engine so connect/auth works immediately,
@@ -2217,7 +2217,7 @@ function createRoutes(
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action: "mcp.add",
-      target: ipollowalkConfigPath(workspace.path),
+      target: ipolloworkConfigPath(workspace.path),
       summary: `Added MCP ${name}`,
       timestamp: Date.now(),
     });
@@ -2239,7 +2239,7 @@ function createRoutes(
       workspaceId: workspace.id,
       action: "mcp.remove",
       summary: `Remove MCP ${name}`,
-      paths: [ipollowalkConfigPath(workspace.path)],
+      paths: [ipolloworkConfigPath(workspace.path)],
     });
     const removed = await removeMcp(config, workspace.id, name);
     await recordAudit(workspace.path, {
@@ -2247,7 +2247,7 @@ function createRoutes(
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action: "mcp.remove",
-      target: ipollowalkConfigPath(workspace.path),
+      target: ipolloworkConfigPath(workspace.path),
       summary: `Removed MCP ${name}`,
       timestamp: Date.now(),
     });
@@ -2281,7 +2281,7 @@ function createRoutes(
       workspaceId: workspace.id,
       action,
       summary,
-      paths: [ipollowalkConfigPath(workspace.path)],
+      paths: [ipolloworkConfigPath(workspace.path)],
     });
     const updated = await setMcpEnabled(config, workspace.id, name, enabled);
     if (!updated) {
@@ -2293,7 +2293,7 @@ function createRoutes(
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action,
-      target: ipollowalkConfigPath(workspace.path),
+      target: ipolloworkConfigPath(workspace.path),
       summary: `${enabled ? "Enabled" : "Disabled"} MCP ${name}`,
       timestamp: Date.now(),
     });
@@ -2682,8 +2682,8 @@ function resolveOpencodeConfigFilePath(scope: "project" | "global", workspaceRoo
 }
 
 function getRuntimeControlConfig(): { baseUrl: string; token: string } | null {
-  const baseUrl = process.env.IPOLLOWALK_CONTROL_BASE_URL?.trim() ?? "";
-  const token = process.env.IPOLLOWALK_CONTROL_TOKEN?.trim() ?? "";
+  const baseUrl = process.env.IPOLLOWORK_CONTROL_BASE_URL?.trim() ?? "";
+  const token = process.env.IPOLLOWORK_CONTROL_TOKEN?.trim() ?? "";
   if (!baseUrl || !token) return null;
   return { baseUrl: baseUrl.replace(/\/+$/, ""), token };
 }
@@ -2714,23 +2714,23 @@ async function readOpencodeConfig(workspaceRoot: string): Promise<Record<string,
   return data;
 }
 
-async function readiPolloWalkConfig(workspaceRoot: string): Promise<Record<string, unknown>> {
-  const path = ipollowalkConfigPath(workspaceRoot);
+async function readiPolloWorkConfig(workspaceRoot: string): Promise<Record<string, unknown>> {
+  const path = ipolloworkConfigPath(workspaceRoot);
   if (!(await exists(path))) return {};
   try {
     const raw = await readFile(path, "utf8");
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    throw new ApiError(422, "invalid_json", "Failed to parse ipollowalk.json");
+    throw new ApiError(422, "invalid_json", "Failed to parse ipollowork.json");
   }
 }
 
-async function readiPolloWalkConfigForStatus(workspaceRoot: string): Promise<{
+async function readiPolloWorkConfigForStatus(workspaceRoot: string): Promise<{
   data: Record<string, unknown>;
   error: string | null;
 }> {
   try {
-    return { data: await readiPolloWalkConfig(workspaceRoot), error: null };
+    return { data: await readiPolloWorkConfig(workspaceRoot), error: null };
   } catch (error) {
     if (error instanceof ApiError && error.code === "invalid_json") {
       return { data: {}, error: error.message };
@@ -2740,49 +2740,49 @@ async function readiPolloWalkConfigForStatus(workspaceRoot: string): Promise<{
 }
 
 /**
- * Resolve the effective per-workspace ipollowalk config from the runtime DB,
- * migrating a legacy `.opencode/ipollowalk.json` file into the DB on first read.
+ * Resolve the effective per-workspace ipollowork config from the runtime DB,
+ * migrating a legacy `.opencode/ipollowork.json` file into the DB on first read.
  *
  * The DB is the source of truth. The file is only consulted to seed the DB
  * once (back-compat for workspaces created before the file->DB migration), and
  * is never written afterwards. Returns the merged view ({...file, ...db}) so a
  * partially-migrated install still surfaces every key.
  */
-async function readiPolloWalkConfigForWorkspace(
+async function readiPolloWorkConfigForWorkspace(
   config: ServerConfig,
   workspace: WorkspaceInfo,
 ): Promise<Record<string, unknown>> {
-  const stored = await readiPolloWalkWorkspaceConfig(config, workspace.id);
-  if (Object.keys(stored).length > 0 || (await hasiPolloWalkWorkspaceConfig(config, workspace.id))) {
+  const stored = await readiPolloWorkWorkspaceConfig(config, workspace.id);
+  if (Object.keys(stored).length > 0 || (await hasiPolloWorkWorkspaceConfig(config, workspace.id))) {
     return stored;
   }
-  const legacy = await readiPolloWalkConfigForStatus(workspace.path);
+  const legacy = await readiPolloWorkConfigForStatus(workspace.path);
   if (Object.keys(legacy.data).length === 0) {
     if (workspace.workspaceType !== "remote" && workspace.path.trim()) {
-      return seediPolloWalkWorkspaceConfigIfEmpty(
+      return seediPolloWorkWorkspaceConfigIfEmpty(
         config,
         workspace.id,
-        defaultWorkspaceiPolloWalkConfig(workspace.path, workspace.preset ?? "starter"),
+        defaultWorkspaceiPolloWorkConfig(workspace.path, workspace.preset ?? "starter"),
       );
     }
     return {};
   }
   // Migrate-on-read: copy the legacy file contents into the DB once.
-  await seediPolloWalkWorkspaceConfigIfEmpty(config, workspace.id, legacy.data);
-  return mergeiPolloWalkWorkspaceConfigs(legacy.data, await readiPolloWalkWorkspaceConfig(config, workspace.id));
+  await seediPolloWorkWorkspaceConfigIfEmpty(config, workspace.id, legacy.data);
+  return mergeiPolloWorkWorkspaceConfigs(legacy.data, await readiPolloWorkWorkspaceConfig(config, workspace.id));
 }
 
 /**
- * Persist a full ipollowalk config document for a workspace to the runtime DB.
+ * Persist a full ipollowork config document for a workspace to the runtime DB.
  * Replaces the legacy file write path; the file is no longer written.
  */
-async function writeiPolloWalkConfigForWorkspace(
+async function writeiPolloWorkConfigForWorkspace(
   config: ServerConfig,
   workspace: WorkspaceInfo,
   payload: Record<string, unknown>,
   merge: boolean,
 ): Promise<void> {
-  await writeiPolloWalkWorkspaceConfig(config, workspace.id, (current) =>
+  await writeiPolloWorkWorkspaceConfig(config, workspace.id, (current) =>
     merge ? { ...current, ...payload } : payload,
   );
 }
@@ -2897,7 +2897,7 @@ async function syncRuntimeMcpToOpencodeEngine(
   if (connection.authHeader) headers.Authorization = connection.authHeader;
 
   // Keep going past per-entry failures: one dead or invalid MCP must not
-  // block re-registration of every entry after it (e.g. ipollowalk-ui) on
+  // block re-registration of every entry after it (e.g. ipollowork-ui) on
   // each engine reload.
   const failures: EngineMcpSyncFailure[] = [];
   for (const [name, mcpConfig] of entries) {
@@ -2956,7 +2956,7 @@ async function postMcpEntryWithRetry(
 
 // Read lazily so tests can shrink the delay at runtime.
 function engineMcpSyncRetryDelayMs(): number {
-  const parsed = Number(process.env.IPOLLOWALK_MCP_SYNC_RETRY_DELAY_MS ?? "750");
+  const parsed = Number(process.env.IPOLLOWORK_MCP_SYNC_RETRY_DELAY_MS ?? "750");
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 750;
 }
 
@@ -3052,7 +3052,7 @@ async function exportWorkspace(
   const sensitiveMode = options?.sensitiveMode ?? "auto";
   const rawOpencode = await readOpencodeConfig(workspace.path);
   let opencode = sanitizePortableOpencodeConfig(rawOpencode);
-  const ipollowalk = sanitizeiPolloWalkTemplateConfig(await readiPolloWalkConfigForWorkspace(config, workspace));
+  const ipollowork = sanitizeiPolloWorkTemplateConfig(await readiPolloWorkConfigForWorkspace(config, workspace));
   const skills = await listSkills(workspace.path, false);
   const commands = await listCommands(workspace.path, "workspace");
   let files = await listPortableFiles(workspace.path);
@@ -3089,7 +3089,7 @@ async function exportWorkspace(
     workspaceId: workspace.id,
     exportedAt: Date.now(),
     opencode,
-    ipollowalk,
+    ipollowork,
     skills: skillContents,
     commands: commandContents,
     ...(files.length ? { files } : {}),
@@ -3143,13 +3143,13 @@ async function importWorkspace(config: ServerConfig, workspace: WorkspaceInfo, p
   }
 
   if (
-    input.ipollowalk !== undefined &&
-    changedPath("ipollowalk", workspaceImportRelativePath(workspace, ipollowalkConfigPath(workspace.path)))
+    input.ipollowork !== undefined &&
+    changedPath("ipollowork", workspaceImportRelativePath(workspace, ipolloworkConfigPath(workspace.path)))
   ) {
-    if (input.modes.ipollowalk === "replace") {
-      await writeiPolloWalkConfigForWorkspace(config, workspace, input.ipollowalk, false);
+    if (input.modes.ipollowork === "replace") {
+      await writeiPolloWorkConfigForWorkspace(config, workspace, input.ipollowork, false);
     } else {
-      await writeiPolloWalkConfigForWorkspace(config, workspace, input.ipollowalk, true);
+      await writeiPolloWorkConfigForWorkspace(config, workspace, input.ipollowork, true);
     }
   }
 
@@ -3206,13 +3206,13 @@ async function materializeBlueprintSessions(config: ServerConfig, workspace: Wor
   existing: Array<{ templateId: string; sessionId: string }>;
   openSessionId: string | null;
 }> {
-  const ipollowalk = await readiPolloWalkConfigForWorkspace(config, workspace);
-  const templates = normalizeBlueprintSessionTemplates(ipollowalk);
+  const ipollowork = await readiPolloWorkConfigForWorkspace(config, workspace);
+  const templates = normalizeBlueprintSessionTemplates(ipollowork);
   if (!templates.length) {
     return { ok: true, created: [], existing: [], openSessionId: null };
   }
 
-  const existing = readMaterializedBlueprintSessions(ipollowalk);
+  const existing = readMaterializedBlueprintSessions(ipollowork);
   if (existing.length > 0) {
     const preferredTemplate = templates.find((template) => template.openOnFirstLoad) ?? templates[0] ?? null;
     const openSessionId = preferredTemplate
@@ -3239,12 +3239,12 @@ async function materializeBlueprintSessions(config: ServerConfig, workspace: Wor
   }
 
   const now = Date.now();
-  const nextiPolloWalk = applyMaterializedBlueprintSessions(
-    ipollowalk,
+  const nextiPolloWork = applyMaterializedBlueprintSessions(
+    ipollowork,
     created.map(({ templateId, sessionId }) => ({ templateId, sessionId })),
     now,
   );
-  await writeiPolloWalkConfigForWorkspace(config, workspace, nextiPolloWalk, false);
+  await writeiPolloWorkConfigForWorkspace(config, workspace, nextiPolloWork, false);
 
   const preferredTemplate = templates.find((template) => template.openOnFirstLoad) ?? templates[0] ?? null;
   const openSessionId = preferredTemplate

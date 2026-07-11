@@ -1,9 +1,9 @@
 ---
 title: "GitHub connector for Helm"
-description: "Create a GitHub App and configure the iPolloWalk EE Helm chart for repository connectors."
+description: "Create a GitHub App and configure the iPolloWork EE Helm chart for repository connectors."
 ---
 
-The GitHub connector lets a self-hosted iPolloWalk deployment install a GitHub App, list repositories the installation can read, discover plugin or marketplace manifests, import selected repositories, and keep imported content fresh from GitHub webhooks.
+The GitHub connector lets a self-hosted iPolloWork deployment install a GitHub App, list repositories the installation can read, discover plugin or marketplace manifests, import selected repositories, and keep imported content fresh from GitHub webhooks.
 
 This is separate from GitHub social sign-in. Social sign-in uses `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` for Better Auth. The repository connector uses the `GITHUB_CONNECTOR_APP_*` settings below.
 
@@ -14,17 +14,17 @@ Use the same public hosts that you set in the Helm chart:
 ```yaml
 config:
   public:
-    webOrigin: "https://ipollowalk.example.com"
-    apiOrigin: "https://api.ipollowalk.example.com"
+    webOrigin: "https://ipollowork.example.com"
+    apiOrigin: "https://api.ipollowork.example.com"
 ```
 
-The GitHub App needs these iPolloWalk URLs:
+The GitHub App needs these iPolloWork URLs:
 
 | GitHub App field | Value |
 | --- | --- |
-| Homepage URL | `https://ipollowalk.example.com` |
-| Setup URL | `https://ipollowalk.example.com/dashboard/integrations/github` |
-| Webhook URL | `https://api.ipollowalk.example.com/v1/webhooks/connectors/github` |
+| Homepage URL | `https://ipollowork.example.com` |
+| Setup URL | `https://ipollowork.example.com/dashboard/integrations/github` |
+| Webhook URL | `https://api.ipollowork.example.com/v1/webhooks/connectors/github` |
 
 Enable **Redirect on update** for the setup URL. GitHub redirects back to the setup URL with `installation_id` and `state`; Den web completes the installation by calling Den API.
 
@@ -37,9 +37,9 @@ In GitHub, create a new GitHub App for the account that should own the connector
 Use these settings:
 
 - **Webhook**: active.
-- **Webhook URL**: `https://api.ipollowalk.example.com/v1/webhooks/connectors/github`.
+- **Webhook URL**: `https://api.ipollowork.example.com/v1/webhooks/connectors/github`.
 - **Webhook secret**: generate a strong random secret and keep it for Helm.
-- **Setup URL**: `https://ipollowalk.example.com/dashboard/integrations/github`.
+- **Setup URL**: `https://ipollowork.example.com/dashboard/integrations/github`.
 - **Redirect on update**: enabled.
 - **Repository permissions**:
   - **Contents**: read-only.
@@ -87,7 +87,7 @@ If you use an existing Kubernetes Secret instead of `secret.values`, keep `confi
 ```yaml
 secret:
   create: false
-  existingSecret: ipollowalk-ee-secrets
+  existingSecret: ipollowork-ee-secrets
 ```
 
 Required deployment values:
@@ -103,9 +103,9 @@ Optional connector keys:
 
 The chart writes `GITHUB_CONNECTOR_APP_ID` and `GITHUB_CONNECTOR_APP_CLIENT_ID` through the shared ConfigMap, and writes `GITHUB_CONNECTOR_APP_PRIVATE_KEY`, `GITHUB_CONNECTOR_APP_WEBHOOK_SECRET`, and `GITHUB_CONNECTOR_APP_CLIENT_SECRET` through the shared Secret.
 
-## What iPolloWalk does with it
+## What iPolloWork does with it
 
-When an admin clicks **Connect GitHub** in iPolloWalk:
+When an admin clicks **Connect GitHub** in iPolloWork:
 
 1. Den API calls `/v1/connectors/github/install/start`.
 2. Den API reads the GitHub App metadata with the app ID and private key.
@@ -121,9 +121,9 @@ When GitHub sends a webhook to `/v1/webhooks/connectors/github`, Den API verifie
 After deploying the chart, sign in to Den web and open:
 
 ```text
-https://ipollowalk.example.com/dashboard/integrations
+https://ipollowork.example.com/dashboard/integrations
 ```
 
-Choose GitHub, install the GitHub App on a test account or organization, select a repository, and start discovery. A working setup should return to iPolloWalk, show repositories visible to the installation, and allow discovery on a selected repository.
+Choose GitHub, install the GitHub App on a test account or organization, select a repository, and start discovery. A working setup should return to iPolloWork, show repositories visible to the installation, and allow discovery on a selected repository.
 
 For webhook validation, push to a connected repository and check Den API logs for an accepted or intentionally ignored GitHub webhook delivery. A `503` response from `/v1/webhooks/connectors/github` means the webhook secret is not configured in the Den API pod.

@@ -3,14 +3,14 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@ipollowalk/installer",
+      "name": "@ipollowork/installer",
       "dependencies": {
-        "@ipollowalk/install-config": "workspace:*",
+        "@ipollowork/install-config": "workspace:*",
         "webview-bun": "2.4.0",
       },
     },
     "../../packages/install-config": {
-      "name": "@ipollowalk/install-config",
+      "name": "@ipollowork/install-config",
       "dependencies": {
         "zod": "4.3.6",
       },
@@ -81,7 +81,7 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@ipollowalk/install-config": ["@ipollowalk/install-config@workspace:../../packages/install-config"],
+    "@ipollowork/install-config": ["@ipollowork/install-config@workspace:../../packages/install-config"],
 
     "@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.62.2", "", { "os": "android", "cpu": "arm" }, "sha512-6o7ZLZK+BeenkZCFNDXqpbjw9bD6nuWonvS/lwQJp7NoVVxm6p3qE7qQ5jGuBjiFsgvqjD8mZAU5oWxTmbOeOg=="],
 

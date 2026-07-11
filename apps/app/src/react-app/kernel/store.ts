@@ -1,10 +1,10 @@
 import { create } from "zustand";
 
 import type {
-  iPolloWalkServerCapabilities,
-  iPolloWalkServerDiagnostics,
-  iPolloWalkWorkspaceInfo,
-} from "../../app/lib/ipollowalk-server";
+  iPolloWorkServerCapabilities,
+  iPolloWorkServerDiagnostics,
+  iPolloWorkWorkspaceInfo,
+} from "../../app/lib/ipollowork-server";
 
 export type ServerState = {
   url: string;
@@ -12,8 +12,8 @@ export type ServerState = {
   status: "idle" | "connecting" | "connected" | "error";
   error: string | null;
   version: string | null;
-  capabilities: iPolloWalkServerCapabilities | null;
-  diagnostics: iPolloWalkServerDiagnostics | null;
+  capabilities: iPolloWorkServerCapabilities | null;
+  diagnostics: iPolloWorkServerDiagnostics | null;
 };
 
 const INITIAL_SERVER: ServerState = {
@@ -26,23 +26,23 @@ const INITIAL_SERVER: ServerState = {
   diagnostics: null,
 };
 
-export type iPolloWalkStore = {
+export type iPolloWorkStore = {
   bootstrapping: boolean;
   server: ServerState;
-  workspaces: iPolloWalkWorkspaceInfo[];
+  workspaces: iPolloWorkWorkspaceInfo[];
   activeWorkspaceId: string | null;
   selectedSessionId: string | null;
   errorBanner: string | null;
   setBootstrapping: (value: boolean) => void;
   setServer: (server: ServerState) => void;
-  setWorkspaces: (workspaces: iPolloWalkWorkspaceInfo[]) => void;
+  setWorkspaces: (workspaces: iPolloWorkWorkspaceInfo[]) => void;
   setActiveWorkspaceId: (workspaceId: string | null) => void;
   setSelectedSessionId: (sessionId: string | null) => void;
   setErrorBanner: (message: string | null) => void;
   clearErrorBanner: () => void;
 };
 
-export const useiPolloWalkStore = create<iPolloWalkStore>((set) => ({
+export const useiPolloWorkStore = create<iPolloWorkStore>((set) => ({
   bootstrapping: true,
   server: INITIAL_SERVER,
   workspaces: [],

@@ -18,7 +18,7 @@ function workspaceDirectoryCandidates(workspace) {
     .filter(Boolean);
 }
 
-export function selectiPolloWalkWorkspaceForConnection(list, directory) {
+export function selectiPolloWorkWorkspaceForConnection(list, directory) {
   const items = Array.isArray(list?.items)
     ? list.items
     : Array.isArray(list?.workspaces)
@@ -35,10 +35,10 @@ export function selectiPolloWalkWorkspaceForConnection(list, directory) {
   return (activeId ? items.find((item) => trim(item?.id) === activeId) : null) ?? items[0] ?? null;
 }
 
-export function ipollowalkWorkspaceDisplayName(workspace) {
+export function ipolloworkWorkspaceDisplayName(workspace) {
   return (
     trim(workspace?.displayName) ||
-    trim(workspace?.ipollowalkWorkspaceName) ||
+    trim(workspace?.ipolloworkWorkspaceName) ||
     trim(workspace?.name) ||
     trim(workspace?.id) ||
     null

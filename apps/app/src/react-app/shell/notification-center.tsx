@@ -20,7 +20,7 @@ import {
 } from "@/react-app/kernel/notification-store";
 import { useNavigate } from "react-router-dom";
 import { requestOpenModelPicker } from "./new-providers-listener";
-import { useControlAction, type iPolloWalkControlAction } from "./control/control-provider";
+import { useControlAction, type iPolloWorkControlAction } from "./control/control-provider";
 import { openNotificationCenterEvent, requestOpenMarketplacePlugin } from "./notifications";
 import { useReloadCoordinator } from "./reload-coordinator";
 import { useShellConfig } from "./shell-config";
@@ -65,7 +65,7 @@ export function NotificationBell() {
   const reloadCoordinator = useReloadCoordinator();
   const navigate = useNavigate();
 
-  const notificationsListAction = useMemo<iPolloWalkControlAction>(() => ({
+  const notificationsListAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "notifications.list",
     label: "List notifications",
     description: "Return the current notification center entries.",

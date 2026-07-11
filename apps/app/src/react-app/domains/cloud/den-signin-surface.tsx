@@ -7,7 +7,7 @@ import {
   Users,
   Share2,
 } from "lucide-react";
-import { PaperGrainGradient } from "@ipollowalk/ui/react";
+import { PaperGrainGradient } from "@ipollowork/ui/react";
 
 import { t } from "../../../i18n";
 import { DEFAULT_DEN_BASE_URL } from "../../../app/lib/den";
@@ -161,7 +161,7 @@ function ShowcasePanel() {
  */
 export function DenSignInSurface(props: DenSignInSurfaceProps) {
   const variant: DenSignInSurfaceVariant = props.variant ?? "panel";
-  const appName = props.appName?.trim() || "iPolloWalk";
+  const appName = props.appName?.trim() || "iPolloWork";
 
   /* -- Panel content (reused by both variants) -- */
   const panelContent = (

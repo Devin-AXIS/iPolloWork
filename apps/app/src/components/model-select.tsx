@@ -21,15 +21,15 @@ import { usePlatform } from "@/react-app/kernel/platform";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import {
-  getiPolloWalkModelsActionUrl,
-  hasiPolloWalkModelsProvider,
-  hideiPolloWalkModelsPromo,
-  isiPolloWalkModelsPromoHidden,
-  IPOLLOWALK_MODEL_PREVIEWS,
-  IPOLLOWALK_MODELS_PROVIDER_ID,
-  IPOLLOWALK_MODELS_PROVIDER_NAME,
-  iPolloWalkModelsPromoChangedEvent,
-} from "@/react-app/domains/cloud/ipollowalk-models-promo";
+  getiPolloWorkModelsActionUrl,
+  hasiPolloWorkModelsProvider,
+  hideiPolloWorkModelsPromo,
+  isiPolloWorkModelsPromoHidden,
+  IPOLLOWORK_MODEL_PREVIEWS,
+  IPOLLOWORK_MODELS_PROVIDER_ID,
+  IPOLLOWORK_MODELS_PROVIDER_NAME,
+  iPolloWorkModelsPromoChangedEvent,
+} from "@/react-app/domains/cloud/ipollowork-models-promo";
 import { getConnectedProviderItems, useProviderListQuery } from "@/react-app/infra/provider-list-query";
 import {
   Command,
@@ -130,14 +130,14 @@ type ModelSelectModelItem = {
   option: ModelOption;
 };
 
-type ModelSelectiPolloWalkItem = {
-  kind: "ipollowalk";
+type ModelSelectiPolloWorkItem = {
+  kind: "ipollowork";
   id: string;
   title: string;
   subtitle: string;
 };
 
-type ModelSelectItem = ModelSelectModelItem | ModelSelectiPolloWalkItem;
+type ModelSelectItem = ModelSelectModelItem | ModelSelectiPolloWorkItem;
 
 type ModelSelectGroup = {
   value: string;
@@ -174,12 +174,12 @@ function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
     .sort((a, b) => a.value.localeCompare(b.value));
 }
 
-function iPolloWalkModelsGroup(): ModelSelectGroup {
+function iPolloWorkModelsGroup(): ModelSelectGroup {
   return {
-    value: IPOLLOWALK_MODELS_PROVIDER_NAME,
+    value: IPOLLOWORK_MODELS_PROVIDER_NAME,
     promo: true,
-    items: IPOLLOWALK_MODEL_PREVIEWS.map((model) => ({
-      kind: "ipollowalk",
+    items: IPOLLOWORK_MODEL_PREVIEWS.map((model) => ({
+      kind: "ipollowork",
       id: model.id,
       title: model.title,
       subtitle: model.subtitle,
@@ -207,7 +207,7 @@ export function ModelSelect({
   disabled = false,
 }: ModelSelectProps) {
   const [search, setSearch] = React.useState("");
-  const [promoHidden, setPromoHidden] = React.useState(isiPolloWalkModelsPromoHidden);
+  const [promoHidden, setPromoHidden] = React.useState(isiPolloWorkModelsPromoHidden);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const modelOptions = useModelOptions(open);
   const denAuth = useDenAuth();
@@ -215,9 +215,9 @@ export function ModelSelect({
   const platform = usePlatform();
 
   React.useEffect(() => {
-    const handlePromoChanged = () => setPromoHidden(isiPolloWalkModelsPromoHidden());
-    window.addEventListener(iPolloWalkModelsPromoChangedEvent, handlePromoChanged);
-    return () => window.removeEventListener(iPolloWalkModelsPromoChangedEvent, handlePromoChanged);
+    const handlePromoChanged = () => setPromoHidden(isiPolloWorkModelsPromoHidden());
+    window.addEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
+    return () => window.removeEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
   }, []);
 
   const focusSearchInput = React.useCallback(() => {
@@ -248,17 +248,17 @@ export function ModelSelect({
     }),
   );
 
-  const showiPolloWalkModelsPromo = React.useMemo(
-    () => !promoHidden && !hasiPolloWalkModelsProvider(modelOptions.map((option) => option.providerID)),
+  const showiPolloWorkModelsPromo = React.useMemo(
+    () => !promoHidden && !hasiPolloWorkModelsProvider(modelOptions.map((option) => option.providerID)),
     [modelOptions, promoHidden],
   );
 
   const groups = React.useMemo(() => {
     const providerGroups = groupByProvider(modelOptions);
-    return showiPolloWalkModelsPromo
-      ? [iPolloWalkModelsGroup(), ...providerGroups]
+    return showiPolloWorkModelsPromo
+      ? [iPolloWorkModelsGroup(), ...providerGroups]
       : providerGroups;
-  }, [modelOptions, showiPolloWalkModelsPromo]);
+  }, [modelOptions, showiPolloWorkModelsPromo]);
 
   const handleSelect = (option: ModelOption) => {
     onChange({ providerID: option.providerID, modelID: option.modelID });
@@ -266,19 +266,19 @@ export function ModelSelect({
     onOpenChange(false);
   };
 
-  const handleiPolloWalkModels = React.useCallback(() => {
+  const handleiPolloWorkModels = React.useCallback(() => {
     onOpenChange(false);
     setSearch("");
     if (!denAuth.isSignedIn) {
       navigate("/settings/cloud-account");
     }
     window.setTimeout(() => {
-      platform.openLink(getiPolloWalkModelsActionUrl(denAuth.isSignedIn));
+      platform.openLink(getiPolloWorkModelsActionUrl(denAuth.isSignedIn));
     }, 0);
   }, [denAuth.isSignedIn, navigate, onOpenChange, platform]);
 
-  const handleHideiPolloWalkModels = React.useCallback(() => {
-    hideiPolloWalkModelsPromo();
+  const handleHideiPolloWorkModels = React.useCallback(() => {
+    hideiPolloWorkModelsPromo();
     setPromoHidden(true);
   }, []);
 
@@ -339,17 +339,17 @@ export function ModelSelect({
                 </CommandGroupLabel>
                 <CommandCollection>
                   {(item: ModelSelectItem) => {
-                    if (item.kind === "ipollowalk") {
+                    if (item.kind === "ipollowork") {
                       return (
                         <CommandItem
                           className="gap-2 border border-blue-6/50 bg-blue-2/40 data-highlighted:bg-blue-3"
                           key={item.id}
-                          value={`${IPOLLOWALK_MODELS_PROVIDER_NAME} ${item.title} ${item.id} sign in subscribe`}
-                          onClick={handleiPolloWalkModels}
+                          value={`${IPOLLOWORK_MODELS_PROVIDER_NAME} ${item.title} ${item.id} sign in subscribe`}
+                          onClick={handleiPolloWorkModels}
                         >
                           <ProviderIcon
-                            providerId={IPOLLOWALK_MODELS_PROVIDER_ID}
-                            providerName={IPOLLOWALK_MODELS_PROVIDER_NAME}
+                            providerId={IPOLLOWORK_MODELS_PROVIDER_ID}
+                            providerName={IPOLLOWORK_MODELS_PROVIDER_NAME}
                             className="size-3.5 text-blue-11"
                             size={14}
                           />
@@ -415,11 +415,11 @@ export function ModelSelect({
                 <Settings2 className="size-3.5" />
                 All models
               </button>
-              {showiPolloWalkModelsPromo ? (
+              {showiPolloWorkModelsPromo ? (
                 <button
                   type="button"
                   className="shrink-0 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                  onClick={handleHideiPolloWalkModels}
+                  onClick={handleHideiPolloWorkModels}
                 >
                   Hide
                 </button>

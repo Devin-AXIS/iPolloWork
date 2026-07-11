@@ -17,20 +17,20 @@ async function writeBootstrapConfig(targetPath, config) {
 }
 
 async function withIsolatedBootstrapStore(callback) {
-  const root = await mkdtemp(path.join(tmpdir(), "ipollowalk-bootstrap-store-"));
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-bootstrap-store-"));
   const home = path.join(root, "home");
   const xdg = path.join(root, "xdg");
   const previousHome = process.env.HOME;
   const previousXdg = process.env.XDG_CONFIG_HOME;
-  const previousOverride = process.env.IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH;
-  const previousBundleDir = process.env.IPOLLOWALK_BOOTSTRAP_BUNDLE_DIR;
-  const previousDevMode = process.env.IPOLLOWALK_DEV_MODE;
+  const previousOverride = process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH;
+  const previousBundleDir = process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR;
+  const previousDevMode = process.env.IPOLLOWORK_DEV_MODE;
 
   process.env.HOME = home;
   process.env.XDG_CONFIG_HOME = xdg;
-  delete process.env.IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH;
-  delete process.env.IPOLLOWALK_BOOTSTRAP_BUNDLE_DIR;
-  delete process.env.IPOLLOWALK_DEV_MODE;
+  delete process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH;
+  delete process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR;
+  delete process.env.IPOLLOWORK_DEV_MODE;
 
   try {
     const module = await import(`./workspace-store.mjs?bootstrap-test=${Date.now()}-${Math.random()}`);
@@ -44,22 +44,22 @@ async function withIsolatedBootstrapStore(callback) {
     return await callback({
       store,
       createStore,
-      canonicalPath: path.join(xdg, "ipollowalk", "desktop-bootstrap.json"),
-      legacyPath: path.join(home, ".config", "ipollowalk", "desktop-bootstrap.json"),
+      canonicalPath: path.join(xdg, "ipollowork", "desktop-bootstrap.json"),
+      legacyPath: path.join(home, ".config", "ipollowork", "desktop-bootstrap.json"),
       root,
       userDataPath: path.join(root, "userData"),
     });
   } finally {
     restoreEnv("HOME", previousHome);
     restoreEnv("XDG_CONFIG_HOME", previousXdg);
-    restoreEnv("IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH", previousOverride);
-    restoreEnv("IPOLLOWALK_BOOTSTRAP_BUNDLE_DIR", previousBundleDir);
-    restoreEnv("IPOLLOWALK_DEV_MODE", previousDevMode);
+    restoreEnv("IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH", previousOverride);
+    restoreEnv("IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR", previousBundleDir);
+    restoreEnv("IPOLLOWORK_DEV_MODE", previousDevMode);
   }
 }
 
 test("recovers empty desktop workspace state from token store paths", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "ipollowalk-workspace-store-"));
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-workspace-store-"));
   const userData = path.join(root, "userData");
   const oldWorkspace = path.join(root, "old-workspace");
   await mkdir(oldWorkspace, { recursive: true });
@@ -67,12 +67,12 @@ test("recovers empty desktop workspace state from token store paths", async () =
   await mkdir(userData, { recursive: true });
 
   await writeFile(
-    path.join(userData, "ipollowalk-workspaces.json"),
+    path.join(userData, "ipollowork-workspaces.json"),
     JSON.stringify({ selectedId: "ws_missing", activeId: "ws_missing", watchedId: null, workspaces: [] }),
     "utf8",
   );
   await writeFile(
-    path.join(userData, "ipollowalk-server-tokens.json"),
+    path.join(userData, "ipollowork-server-tokens.json"),
     JSON.stringify({
       version: 1,
       workspaces: {
@@ -84,8 +84,8 @@ test("recovers empty desktop workspace state from token store paths", async () =
     "utf8",
   );
 
-  const previous = process.env.IPOLLOWALK_SERVER_CONFIG;
-  process.env.IPOLLOWALK_SERVER_CONFIG = path.join(root, "missing-server.json");
+  const previous = process.env.IPOLLOWORK_SERVER_CONFIG;
+  process.env.IPOLLOWORK_SERVER_CONFIG = path.join(root, "missing-server.json");
   try {
     const store = createWorkspaceStore({
       app: { getPath: (name) => name === "userData" ? userData : root },
@@ -100,17 +100,17 @@ test("recovers empty desktop workspace state from token store paths", async () =
     assert.equal(state.selectedId, state.workspaces[0].id);
     assert.equal(state.watchedId, state.workspaces[0].id);
 
-    const persisted = JSON.parse(await readFile(path.join(userData, "ipollowalk-workspaces.json"), "utf8"));
+    const persisted = JSON.parse(await readFile(path.join(userData, "ipollowork-workspaces.json"), "utf8"));
     assert.equal(persisted.workspaces.length, 1);
     assert.equal(persisted.selectedWorkspaceId, state.workspaces[0].id);
   } finally {
-    if (previous === undefined) delete process.env.IPOLLOWALK_SERVER_CONFIG;
-    else process.env.IPOLLOWALK_SERVER_CONFIG = previous;
+    if (previous === undefined) delete process.env.IPOLLOWORK_SERVER_CONFIG;
+    else process.env.IPOLLOWORK_SERVER_CONFIG = previous;
   }
 });
 
 test("prefers server config workspaces when desktop state is empty", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "ipollowalk-workspace-store-"));
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-workspace-store-"));
   const userData = path.join(root, "userData");
   const oldWorkspace = path.join(root, "server-workspace");
   const serverConfig = path.join(root, "server.json");
@@ -119,7 +119,7 @@ test("prefers server config workspaces when desktop state is empty", async () =>
   const oldWorkspaceReal = await realpath(oldWorkspace);
 
   await writeFile(
-    path.join(userData, "ipollowalk-workspaces.json"),
+    path.join(userData, "ipollowork-workspaces.json"),
     JSON.stringify({ selectedId: "", activeId: null, watchedId: null, workspaces: [] }),
     "utf8",
   );
@@ -129,13 +129,13 @@ test("prefers server config workspaces when desktop state is empty", async () =>
     "utf8",
   );
   await writeFile(
-    path.join(userData, "ipollowalk-server-tokens.json"),
+    path.join(userData, "ipollowork-server-tokens.json"),
     JSON.stringify({ version: 1, workspaces: { [path.join(root, "other")]: { updatedAt: 9 } } }),
     "utf8",
   );
 
-  const previous = process.env.IPOLLOWALK_SERVER_CONFIG;
-  process.env.IPOLLOWALK_SERVER_CONFIG = serverConfig;
+  const previous = process.env.IPOLLOWORK_SERVER_CONFIG;
+  process.env.IPOLLOWORK_SERVER_CONFIG = serverConfig;
   try {
     const store = createWorkspaceStore({
       app: { getPath: (name) => name === "userData" ? userData : root },
@@ -149,19 +149,19 @@ test("prefers server config workspaces when desktop state is empty", async () =>
     assert.equal(state.workspaces[0].path, oldWorkspaceReal);
     assert.equal(state.workspaces[0].name, "From Server");
   } finally {
-    if (previous === undefined) delete process.env.IPOLLOWALK_SERVER_CONFIG;
-    else process.env.IPOLLOWALK_SERVER_CONFIG = previous;
+    if (previous === undefined) delete process.env.IPOLLOWORK_SERVER_CONFIG;
+    else process.env.IPOLLOWORK_SERVER_CONFIG = previous;
   }
 });
 
-test("normalizes recovered remote iPolloWalk entries before persisting", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "ipollowalk-workspace-store-"));
+test("normalizes recovered remote iPolloWork entries before persisting", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-workspace-store-"));
   const userData = path.join(root, "userData");
   const serverConfig = path.join(root, "server.json");
   await mkdir(userData, { recursive: true });
 
   await writeFile(
-    path.join(userData, "ipollowalk-workspaces.json"),
+    path.join(userData, "ipollowork-workspaces.json"),
     JSON.stringify({ selectedId: "", activeId: null, watchedId: null, workspaces: [] }),
     "utf8",
   );
@@ -173,14 +173,14 @@ test("normalizes recovered remote iPolloWalk entries before persisting", async (
           id: "legacy_one",
           path: "/workspace",
           workspaceType: "remote",
-          remoteType: "ipollowalk",
+          remoteType: "ipollowork",
           baseUrl: "https://worker.example.com/workspace/ws_remote",
         },
         {
           id: "legacy_two",
           path: "/workspace",
           workspaceType: "remote",
-          remoteType: "ipollowalk",
+          remoteType: "ipollowork",
           baseUrl: "https://worker.example.com/w/ws_remote",
         },
       ],
@@ -188,8 +188,8 @@ test("normalizes recovered remote iPolloWalk entries before persisting", async (
     "utf8",
   );
 
-  const previous = process.env.IPOLLOWALK_SERVER_CONFIG;
-  process.env.IPOLLOWALK_SERVER_CONFIG = serverConfig;
+  const previous = process.env.IPOLLOWORK_SERVER_CONFIG;
+  process.env.IPOLLOWORK_SERVER_CONFIG = serverConfig;
   try {
     const store = createWorkspaceStore({
       app: { getPath: (name) => name === "userData" ? userData : root },
@@ -202,11 +202,11 @@ test("normalizes recovered remote iPolloWalk entries before persisting", async (
     assert.equal(state.workspaces.length, 1);
     assert.equal(state.workspaces[0].id, "rem_ws_remote");
     assert.equal(state.workspaces[0].baseUrl, "https://worker.example.com");
-    assert.equal(state.workspaces[0].ipollowalkWorkspaceId, "ws_remote");
+    assert.equal(state.workspaces[0].ipolloworkWorkspaceId, "ws_remote");
     assert.equal(state.selectedId, "rem_ws_remote");
   } finally {
-    if (previous === undefined) delete process.env.IPOLLOWALK_SERVER_CONFIG;
-    else process.env.IPOLLOWALK_SERVER_CONFIG = previous;
+    if (previous === undefined) delete process.env.IPOLLOWORK_SERVER_CONFIG;
+    else process.env.IPOLLOWORK_SERVER_CONFIG = previous;
   }
 });
 
@@ -256,44 +256,44 @@ test("desktop bootstrap migrates a newer legacy writtenAt to canonical", async (
 test("desktop bootstrap prefers an older legacy organization config over a newer canonical hosted default", async () => {
   await withIsolatedBootstrapStore(async ({ store, canonicalPath, legacyPath }) => {
     await writeBootstrapConfig(canonicalPath, {
-      baseUrl: "https://app.ipollowalklabs.com/api/den/",
+      baseUrl: "https://app.ipolloworklabs.com/api/den/",
       apiBaseUrl: "https://api.unrelated.example",
       requireSignin: false,
       writtenAt: "2026-07-10T13:00:00.000Z",
     });
     await writeBootstrapConfig(legacyPath, {
-      baseUrl: "https://ipollowalk.organization.internal.example",
+      baseUrl: "https://ipollowork.organization.internal.example",
       apiBaseUrl: "https://api.organization.internal.example",
       requireSignin: true,
       writtenAt: "2026-07-09T12:00:00.000Z",
     });
 
     const config = await store.getDesktopBootstrapConfig();
-    assert.equal(config.baseUrl, "https://ipollowalk.organization.internal.example");
+    assert.equal(config.baseUrl, "https://ipollowork.organization.internal.example");
     const migrated = JSON.parse(await readFile(canonicalPath, "utf8"));
-    assert.equal(migrated.baseUrl, "https://ipollowalk.organization.internal.example");
+    assert.equal(migrated.baseUrl, "https://ipollowork.organization.internal.example");
   });
 });
 
 test("desktop bootstrap keeps an older canonical organization config over a newer legacy hosted default", async () => {
   await withIsolatedBootstrapStore(async ({ store, canonicalPath, legacyPath }) => {
     await writeBootstrapConfig(canonicalPath, {
-      baseUrl: "https://ipollowalk.organization.internal.example",
+      baseUrl: "https://ipollowork.organization.internal.example",
       apiBaseUrl: "https://api.organization.internal.example",
       requireSignin: true,
       writtenAt: "2026-07-09T12:00:00.000Z",
     });
     await writeBootstrapConfig(legacyPath, {
-      baseUrl: "https://api.ipollowalklabs.com/v1/",
+      baseUrl: "https://api.ipolloworklabs.com/v1/",
       apiBaseUrl: "https://api.unrelated.example",
       requireSignin: false,
       writtenAt: "2026-07-10T13:00:00.000Z",
     });
 
     const config = await store.getDesktopBootstrapConfig();
-    assert.equal(config.baseUrl, "https://ipollowalk.organization.internal.example");
+    assert.equal(config.baseUrl, "https://ipollowork.organization.internal.example");
     const persisted = JSON.parse(await readFile(canonicalPath, "utf8"));
-    assert.equal(persisted.baseUrl, "https://ipollowalk.organization.internal.example");
+    assert.equal(persisted.baseUrl, "https://ipollowork.organization.internal.example");
   });
 });
 
@@ -353,56 +353,56 @@ test("desktop bootstrap writes include a fresh writtenAt stamp", async () => {
 
 test("imports the newest organization bootstrap beside a Windows installer when config is absent", async () => {
   await withIsolatedBootstrapStore(async ({ store, canonicalPath, root }) => {
-    const bundleDir = path.join(root, "downloads", "iPolloWalk-example-org");
+    const bundleDir = path.join(root, "downloads", "iPolloWork-example-org");
     const olderBundleDir = path.join(bundleDir, "older");
     const newerBundleDir = path.join(bundleDir, "latest");
-    process.env.IPOLLOWALK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
+    process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
     await mkdir(olderBundleDir, { recursive: true });
     await mkdir(newerBundleDir, { recursive: true });
-    await writeFile(path.join(bundleDir, "ipollowalk-win-x64-10.0.0.exe"), "signed installer", "utf8");
+    await writeFile(path.join(bundleDir, "ipollowork-win-x64-10.0.0.exe"), "signed installer", "utf8");
     await writeBootstrapConfig(path.join(bundleDir, "desktop-bootstrap.json"), {
-      baseUrl: "https://app.ipollowalklabs.com/",
-      apiBaseUrl: "https://api.ipollowalklabs.com/",
+      baseUrl: "https://app.ipolloworklabs.com/",
+      apiBaseUrl: "https://api.ipolloworklabs.com/",
       requireSignin: false,
       writtenAt: "2026-07-10T13:00:00.000Z",
     });
-    await writeFile(path.join(olderBundleDir, "ipollowalk-win-x64-9.9.8.exe"), "signed installer", "utf8");
+    await writeFile(path.join(olderBundleDir, "ipollowork-win-x64-9.9.8.exe"), "signed installer", "utf8");
     await writeBootstrapConfig(path.join(olderBundleDir, "desktop-bootstrap.json"), {
       baseUrl: "https://older.internal.example",
       requireSignin: true,
       writtenAt: "2026-07-10T11:00:00.000Z",
     });
-    await writeFile(path.join(newerBundleDir, "ipollowalk-win-x64-9.9.9.exe"), "signed installer", "utf8");
+    await writeFile(path.join(newerBundleDir, "ipollowork-win-x64-9.9.9.exe"), "signed installer", "utf8");
     await writeBootstrapConfig(path.join(newerBundleDir, "desktop-bootstrap.json"), {
-      baseUrl: "https://ipollowalk.internal.example",
-      apiBaseUrl: "https://api.ipollowalk.internal.example",
+      baseUrl: "https://ipollowork.internal.example",
+      apiBaseUrl: "https://api.ipollowork.internal.example",
       requireSignin: true,
       brandAppName: "Example Org Work",
-      brandLogoUrl: "https://ipollowalk.internal.example/logo.png",
-      brandIconUrl: "https://ipollowalk.internal.example/icon.png",
+      brandLogoUrl: "https://ipollowork.internal.example/logo.png",
+      brandIconUrl: "https://ipollowork.internal.example/icon.png",
       writtenAt: "2026-07-10T12:00:00.000Z",
     });
 
     assert.equal(await store.importBundledDesktopBootstrapConfigIfPreferred(), true);
     const config = await store.getDesktopBootstrapConfig();
     assert.deepEqual(config, {
-      baseUrl: "https://ipollowalk.internal.example",
-      apiBaseUrl: "https://api.ipollowalk.internal.example",
+      baseUrl: "https://ipollowork.internal.example",
+      apiBaseUrl: "https://api.ipollowork.internal.example",
       requireSignin: true,
       brandAppName: "Example Org Work",
-      brandLogoUrl: "https://ipollowalk.internal.example/logo.png",
-      brandIconUrl: "https://ipollowalk.internal.example/icon.png",
+      brandLogoUrl: "https://ipollowork.internal.example/logo.png",
+      brandIconUrl: "https://ipollowork.internal.example/icon.png",
       writtenAt: "2026-07-10T12:00:00.000Z",
     });
     const persisted = JSON.parse(await readFile(canonicalPath, "utf8"));
-    assert.equal(persisted.baseUrl, "https://ipollowalk.internal.example");
+    assert.equal(persisted.baseUrl, "https://ipollowork.internal.example");
   });
 });
 
 test("ignores a downloaded bootstrap that is not beside a standard installer", async () => {
   await withIsolatedBootstrapStore(async ({ store, canonicalPath, root }) => {
     const bundleDir = path.join(root, "downloads");
-    process.env.IPOLLOWALK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
+    process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
     await writeBootstrapConfig(path.join(bundleDir, "desktop-bootstrap.json"), {
       baseUrl: "https://untrusted.example.com",
       requireSignin: true,
@@ -417,48 +417,48 @@ test("ignores a downloaded bootstrap that is not beside a standard installer", a
 test("keeps an installed organization bootstrap across a newer Windows installer bundle and restart", async () => {
   await withIsolatedBootstrapStore(async ({ store, createStore, canonicalPath, root }) => {
     const bundleDir = path.join(root, "downloads");
-    process.env.IPOLLOWALK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
+    process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
     await writeBootstrapConfig(canonicalPath, {
-      baseUrl: "https://ipollowalk.organization.internal.example",
+      baseUrl: "https://ipollowork.organization.internal.example",
       requireSignin: true,
       writtenAt: "2026-07-09T12:00:00.000Z",
     });
     await mkdir(bundleDir, { recursive: true });
-    await writeFile(path.join(bundleDir, "ipollowalk-win-x64-9.9.9.exe"), "signed installer", "utf8");
+    await writeFile(path.join(bundleDir, "ipollowork-win-x64-9.9.9.exe"), "signed installer", "utf8");
     await writeBootstrapConfig(path.join(bundleDir, "desktop-bootstrap.json"), {
-      baseUrl: "https://app.ipollowalklabs.com/",
-      apiBaseUrl: "https://api.ipollowalklabs.com/",
+      baseUrl: "https://app.ipolloworklabs.com/",
+      apiBaseUrl: "https://api.ipolloworklabs.com/",
       requireSignin: false,
       writtenAt: "2026-07-10T12:00:00.000Z",
     });
 
     assert.equal(await store.importBundledDesktopBootstrapConfigIfPreferred(), false);
     const config = await store.getDesktopBootstrapConfig();
-    assert.equal(config.baseUrl, "https://ipollowalk.organization.internal.example");
+    assert.equal(config.baseUrl, "https://ipollowork.organization.internal.example");
 
     const restartedStore = createStore();
     assert.equal(await restartedStore.importBundledDesktopBootstrapConfigIfPreferred(), false);
     const restartedConfig = await restartedStore.getDesktopBootstrapConfig();
-    assert.equal(restartedConfig.baseUrl, "https://ipollowalk.organization.internal.example");
+    assert.equal(restartedConfig.baseUrl, "https://ipollowork.organization.internal.example");
     const persisted = JSON.parse(await readFile(canonicalPath, "utf8"));
-    assert.equal(persisted.baseUrl, "https://ipollowalk.organization.internal.example");
+    assert.equal(persisted.baseUrl, "https://ipollowork.organization.internal.example");
   });
 });
 
 test("keeps and migrates an installed legacy bootstrap beside a newer Windows installer bundle", async () => {
   await withIsolatedBootstrapStore(async ({ store, canonicalPath, legacyPath, root }) => {
     const bundleDir = path.join(root, "downloads");
-    process.env.IPOLLOWALK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
+    process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
     await writeBootstrapConfig(legacyPath, {
       baseUrl: "https://legacy.organization.internal.example",
       requireSignin: true,
       writtenAt: "2026-07-09T12:00:00.000Z",
     });
     await mkdir(bundleDir, { recursive: true });
-    await writeFile(path.join(bundleDir, "ipollowalk-win-x64-9.9.9.exe"), "signed installer", "utf8");
+    await writeFile(path.join(bundleDir, "ipollowork-win-x64-9.9.9.exe"), "signed installer", "utf8");
     await writeBootstrapConfig(path.join(bundleDir, "desktop-bootstrap.json"), {
-      baseUrl: "https://app.ipollowalklabs.com/",
-      apiBaseUrl: "https://api.ipollowalklabs.com/",
+      baseUrl: "https://app.ipolloworklabs.com/",
+      apiBaseUrl: "https://api.ipolloworklabs.com/",
       requireSignin: false,
       writtenAt: "2026-07-10T12:00:00.000Z",
     });
@@ -474,15 +474,15 @@ test("keeps and migrates an installed legacy bootstrap beside a newer Windows in
 test("replaces an installed hosted default with a custom organization Windows bundle", async () => {
   await withIsolatedBootstrapStore(async ({ store, canonicalPath, root }) => {
     const bundleDir = path.join(root, "downloads");
-    process.env.IPOLLOWALK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
+    process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
     await writeBootstrapConfig(canonicalPath, {
-      baseUrl: "https://app.ipollowalklabs.com/",
-      apiBaseUrl: "https://api.ipollowalklabs.com/",
+      baseUrl: "https://app.ipolloworklabs.com/",
+      apiBaseUrl: "https://api.ipolloworklabs.com/",
       requireSignin: false,
       writtenAt: "2026-07-10T13:00:00.000Z",
     });
     await mkdir(bundleDir, { recursive: true });
-    await writeFile(path.join(bundleDir, "ipollowalk-win-x64-9.9.9.exe"), "signed installer", "utf8");
+    await writeFile(path.join(bundleDir, "ipollowork-win-x64-9.9.9.exe"), "signed installer", "utf8");
     await writeBootstrapConfig(path.join(bundleDir, "desktop-bootstrap.json"), {
       baseUrl: "https://custom.organization.internal.example",
       apiBaseUrl: "https://api.custom.organization.internal.example",
@@ -500,7 +500,7 @@ test("replaces an installed hosted default with a custom organization Windows bu
 
 test("clearDesktopBootstrapConfig removes bootstrap files without deleting workspace state", async () => {
   await withIsolatedBootstrapStore(async ({ store, canonicalPath, legacyPath, userDataPath }) => {
-    const workspaceStatePath = path.join(userDataPath, "ipollowalk-workspaces.json");
+    const workspaceStatePath = path.join(userDataPath, "ipollowork-workspaces.json");
     await writeBootstrapConfig(canonicalPath, {
       baseUrl: "https://canonical.example.com",
       requireSignin: false,

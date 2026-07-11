@@ -12,9 +12,9 @@ import { abortSessionSafe } from "@/app/lib/opencode-session";
 import { t } from "@/i18n";
 import { readWorkspaceCloudImports, type CloudImportedPlugin } from "@/app/cloud/import-state";
 import type {
-  iPolloWalkServerClient,
-  iPolloWalkSessionSnapshot,
-} from "@/app/lib/ipollowalk-server";
+  iPolloWorkServerClient,
+  iPolloWorkSessionSnapshot,
+} from "@/app/lib/ipollowork-server";
 import type {
   ComposerAttachment,
   ComposerDraft,
@@ -31,14 +31,14 @@ import {
   publishInspectorSlice,
   recordInspectorEvent,
 } from "@/app/lib/app-inspector";
-import { useControlAction, type iPolloWalkControlAction } from "@/react-app/shell/control/control-provider";
+import { useControlAction, type iPolloWorkControlAction } from "@/react-app/shell/control/control-provider";
 import { attemptSilentMcpReauth } from "@/react-app/domains/connections/mcp-silent-reauth";
 import { ReactSessionComposer } from "./composer/composer";
 import { decodeComposerMentionValue, encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import { desktopBridge } from "@/app/lib/desktop";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
 import { DevProfiler } from "@/react-app/shell/dev-profiler";
-import { PaperGrainGradient } from "@ipollowalk/ui/react";
+import { PaperGrainGradient } from "@ipollowork/ui/react";
 import { useShellConfig } from "@/react-app/shell/shell-config";
 import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog";
 import { SessionDebugPanel } from "./debug-panel";
@@ -83,7 +83,7 @@ import {
 
 const EMPTY_TRANSCRIPT: UIMessage[] = [];
 const IDLE_STATUS: SessionStatus = { type: "idle" };
-const DEFAULT_COMPOSER_CONTROL_TEXT = "Help me outline the next iPolloWalk task.";
+const DEFAULT_COMPOSER_CONTROL_TEXT = "Help me outline the next iPolloWork task.";
 const SESSION_SURFACE_SELECTOR = "[data-session-surface-id]";
 
 type SessionError = {
@@ -96,13 +96,13 @@ type SessionError = {
 };
 
 export type SessionSurfaceProps = {
-  client: iPolloWalkServerClient;
-  environmentClient?: iPolloWalkServerClient | null;
+  client: iPolloWorkServerClient;
+  environmentClient?: iPolloWorkServerClient | null;
   workspaceId: string;
   workspaceRoot: string;
   sessionId: string;
   opencodeBaseUrl: string;
-  ipollowalkToken: string;
+  ipolloworkToken: string;
   developerMode: boolean;
   modelLabel: string;
   onModelClick: () => void;
@@ -148,7 +148,7 @@ export type SessionSurfaceProps = {
 };
 
 function messageToReadableText(message: UIMessage) {
-  const header = message.role === "user" ? "You" : message.role === "assistant" ? "iPolloWalk" : message.role;
+  const header = message.role === "user" ? "You" : message.role === "assistant" ? "iPolloWork" : message.role;
   const body = message.parts
     .flatMap((part) => {
       if (part.type === "text") return [part.text];
@@ -197,7 +197,7 @@ function resolveFindOwnerSessionId() {
   return firstMountedSessionSurfaceId();
 }
 
-function statusLabel(snapshot: iPolloWalkSessionSnapshot | undefined, busy: boolean) {
+function statusLabel(snapshot: iPolloWorkSessionSnapshot | undefined, busy: boolean) {
   if (busy) return "Running...";
   if (snapshot?.status.type === "busy") return "Running...";
   if (snapshot?.status.type === "retry") return `Retrying: ${snapshot.status.message}`;
@@ -462,7 +462,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [sending, setSending] = useState(false);
   const [showDelayedLoading, setShowDelayedLoading] = useState(false);
   const [awaitingAssistantBaseline, setAwaitingAssistantBaseline] = useState<number | null>(null);
-  const [rendered, setRendered] = useState<{ sessionId: string; snapshot: iPolloWalkSessionSnapshot } | null>(null);
+  const [rendered, setRendered] = useState<{ sessionId: string; snapshot: iPolloWorkSessionSnapshot } | null>(null);
   const [toolSkills, setToolSkills] = useState<SkillCard[]>([]);
   const [toolMcpServers, setToolMcpServers] = useState<McpServerEntry[]>([]);
   const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
@@ -474,8 +474,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const autoOpenedTargetRef = useRef<string | null>(null);
   const initializedAutoOpenSessionRef = useRef<string | null>(null);
   const opencodeClient = useMemo(
-    () => createClient(props.opencodeBaseUrl, undefined, { token: props.ipollowalkToken, mode: "ipollowalk" }),
-    [props.opencodeBaseUrl, props.ipollowalkToken],
+    () => createClient(props.opencodeBaseUrl, undefined, { token: props.ipolloworkToken, mode: "ipollowork" }),
+    [props.opencodeBaseUrl, props.ipolloworkToken],
   );
 
   const snapshotQueryKey = useMemo(
@@ -490,7 +490,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => reactStatusKey(props.workspaceId, props.sessionId),
     [props.workspaceId, props.sessionId],
   );
-  const snapshotQuery = useQuery<iPolloWalkSessionSnapshot>({
+  const snapshotQuery = useQuery<iPolloWorkSessionSnapshot>({
     queryKey: snapshotQueryKey,
     queryFn: async () => (await props.client.getSessionSnapshot(props.workspaceId, props.sessionId, { limit: 140 })).item,
     staleTime: 500,
@@ -1007,7 +1007,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   };
 
   const typeComposerText = useCallback(async (text: string) => {
-    window.dispatchEvent(new Event("ipollowalk:focusPrompt"));
+    window.dispatchEvent(new Event("ipollowork:focusPrompt"));
     setComposerDraft(props.sessionId, text);
     await waitForControl(40);
   }, [props.sessionId, setComposerDraft]);
@@ -1026,11 +1026,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
         length: text.length,
       });
     };
-    window.addEventListener("ipollowalk:voice-transcript", handleVoiceTranscript);
-    return () => window.removeEventListener("ipollowalk:voice-transcript", handleVoiceTranscript);
+    window.addEventListener("ipollowork:voice-transcript", handleVoiceTranscript);
+    return () => window.removeEventListener("ipollowork:voice-transcript", handleVoiceTranscript);
   }, [attachments, buildDraft, props.onDraftChange, props.sessionId, props.workspaceId, typeComposerText]);
 
-  const composerSetTextControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const composerSetTextControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "composer.set_text",
     label: "Type into the composer",
     description: "Replace the current session draft and type the supplied text visibly.",
@@ -1049,7 +1049,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }), [attachments, buildDraft, props.onDraftChange, typeComposerText]);
   useControlAction(composerSetTextControlAction);
 
-  const composerSendControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const composerSendControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "composer.send",
     label: "Send the composer prompt",
     description: "Send the currently visible composer draft to the active session.",
@@ -1063,7 +1063,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable]);
   useControlAction(composerSendControlAction);
 
-  const composerStopControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const composerStopControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "composer.stop",
     label: "Stop the current run",
     description: "Stop the current streaming session run.",
@@ -1132,7 +1132,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
   const listImportedPlugins = async (): Promise<CloudImportedPlugin[]> => {
     const response = await props.client.getConfig(props.workspaceId);
-    const plugins = Object.values(readWorkspaceCloudImports(response.ipollowalk).plugins)
+    const plugins = Object.values(readWorkspaceCloudImports(response.ipollowork).plugins)
       .sort((left, right) => left.name.localeCompare(right.name));
     setToolImportedPlugins(plugins);
     return plugins;
@@ -1232,7 +1232,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     })();
   }, [props.onRevertToMessage, props.sessionId, typeComposerText]);
 
-  const sessionScrollTopControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const sessionScrollTopControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.scroll_top",
     label: "Go to the top of the session",
     description: "Scroll the visible session transcript to the first messages.",
@@ -1246,7 +1246,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }), []);
   useControlAction(sessionScrollTopControlAction);
 
-  const sessionScrollBottomControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const sessionScrollBottomControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.scroll_bottom",
     label: "Go to the bottom of the session",
     description: "Scroll the visible session transcript to the newest messages and composer area.",
@@ -1258,7 +1258,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }), [sessionScroll.jumpToLatest]);
   useControlAction(sessionScrollBottomControlAction);
 
-  const sessionLatestMessageControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const sessionLatestMessageControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.latest_message",
     label: "Read the latest session message",
     description: "Return the latest visible message in the current session transcript.",
@@ -1277,7 +1277,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }), [props.sessionId, renderedMessages]);
   useControlAction(sessionLatestMessageControlAction);
 
-  const sessionReadTranscriptControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const sessionReadTranscriptControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.read_transcript",
     label: "Read the current session transcript",
     description: "Return the last messages from the current session transcript as readable text, including the session ID, title, and message count.",

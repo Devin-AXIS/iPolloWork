@@ -14,10 +14,10 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { t } from "@/i18n";
 import type {
-  iPolloWalkServerCapabilities,
-  iPolloWalkServerClient,
-  iPolloWalkServerStatus,
-} from "../../../../app/lib/ipollowalk-server";
+  iPolloWorkServerCapabilities,
+  iPolloWorkServerClient,
+  iPolloWorkServerStatus,
+} from "../../../../app/lib/ipollowork-server";
 import { pickDirectory } from "../../../../app/lib/desktop";
 import {
   isDesktopRuntime,
@@ -41,9 +41,9 @@ import {
 } from "../settings-layout";
 
 export type AuthorizedFoldersPanelProps = {
-  ipollowalkServerClient: iPolloWalkServerClient | null;
-  ipollowalkServerStatus: iPolloWalkServerStatus;
-  ipollowalkServerCapabilities: iPolloWalkServerCapabilities | null;
+  ipolloworkServerClient: iPolloWorkServerClient | null;
+  ipolloworkServerStatus: iPolloWorkServerStatus;
+  ipolloworkServerCapabilities: iPolloWorkServerCapabilities | null;
   runtimeWorkspaceId: string | null;
   selectedWorkspaceRoot: string;
   activeWorkspaceType: "local" | "remote";
@@ -132,24 +132,24 @@ export function AuthorizedFoldersPanel(props: AuthorizedFoldersPanelProps) {
   const setAuthorizedFoldersStatus = (value: SetStateAction<string | null>) => dispatchFolderState({ type: "set", key: "status", value });
   const setAuthorizedFoldersError = (value: SetStateAction<string | null>) => dispatchFolderState({ type: "set", key: "error", value });
 
-  const ipollowalkServerReady = props.ipollowalkServerStatus === "connected";
-  const ipollowalkServerWorkspaceReady = Boolean(props.runtimeWorkspaceId);
+  const ipolloworkServerReady = props.ipolloworkServerStatus === "connected";
+  const ipolloworkServerWorkspaceReady = Boolean(props.runtimeWorkspaceId);
   const canReadConfig =
-    ipollowalkServerReady &&
-    ipollowalkServerWorkspaceReady &&
-    (props.ipollowalkServerCapabilities?.config?.read ?? false);
+    ipolloworkServerReady &&
+    ipolloworkServerWorkspaceReady &&
+    (props.ipolloworkServerCapabilities?.config?.read ?? false);
   const canWriteConfig =
-    ipollowalkServerReady &&
-    ipollowalkServerWorkspaceReady &&
-    (props.ipollowalkServerCapabilities?.config?.write ?? false);
+    ipolloworkServerReady &&
+    ipolloworkServerWorkspaceReady &&
+    (props.ipolloworkServerCapabilities?.config?.write ?? false);
 
   const authorizedFoldersHint = useMemo(() => {
-    if (!ipollowalkServerReady) return t("context_panel.server_disconnected");
-    if (!ipollowalkServerWorkspaceReady) return t("context_panel.no_server_workspace");
+    if (!ipolloworkServerReady) return t("context_panel.server_disconnected");
+    if (!ipolloworkServerWorkspaceReady) return t("context_panel.no_server_workspace");
     if (!canReadConfig) return t("context_panel.config_access_unavailable");
     if (!canWriteConfig) return t("context_panel.config_read_only");
     return null;
-  }, [canReadConfig, canWriteConfig, ipollowalkServerReady, ipollowalkServerWorkspaceReady]);
+  }, [canReadConfig, canWriteConfig, ipolloworkServerReady, ipolloworkServerWorkspaceReady]);
 
   const canPickAuthorizedFolder =
     isDesktopRuntime() && canWriteConfig && props.activeWorkspaceType === "local";
@@ -160,10 +160,10 @@ export function AuthorizedFoldersPanel(props: AuthorizedFoldersPanelProps) {
   }, [authorizedFolders, workspaceRootFolder]);
 
   useEffect(() => {
-    const ipollowalkClient = props.ipollowalkServerClient;
-    const ipollowalkWorkspaceId = props.runtimeWorkspaceId;
+    const ipolloworkClient = props.ipolloworkServerClient;
+    const ipolloworkWorkspaceId = props.runtimeWorkspaceId;
 
-    if (!ipollowalkClient || !ipollowalkWorkspaceId || !canReadConfig) {
+    if (!ipolloworkClient || !ipolloworkWorkspaceId || !canReadConfig) {
       setServerWorkspaceRoot("");
       dispatchFolderState({ type: "reset" });
       return;
@@ -174,7 +174,7 @@ export function AuthorizedFoldersPanel(props: AuthorizedFoldersPanelProps) {
 
     void (async () => {
       try {
-        const response = await ipollowalkClient.listAuthorizedFolders(ipollowalkWorkspaceId);
+        const response = await ipolloworkClient.listAuthorizedFolders(ipolloworkWorkspaceId);
         if (cancelled) return;
         setServerWorkspaceRoot(response.workspaceRoot.trim());
         dispatchFolderState({
@@ -194,12 +194,12 @@ export function AuthorizedFoldersPanel(props: AuthorizedFoldersPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [canReadConfig, props.ipollowalkServerClient, props.runtimeWorkspaceId]);
+  }, [canReadConfig, props.ipolloworkServerClient, props.runtimeWorkspaceId]);
 
   const persistAuthorizedFolders = useCallback(async (nextFolders: string[]) => {
-    const ipollowalkClient = props.ipollowalkServerClient;
-    const ipollowalkWorkspaceId = props.runtimeWorkspaceId;
-    if (!ipollowalkClient || !ipollowalkWorkspaceId || !canWriteConfig) {
+    const ipolloworkClient = props.ipolloworkServerClient;
+    const ipolloworkWorkspaceId = props.runtimeWorkspaceId;
+    if (!ipolloworkClient || !ipolloworkWorkspaceId || !canWriteConfig) {
       setAuthorizedFoldersError(t("context_panel.writable_workspace_required"));
       return false;
     }
@@ -209,7 +209,7 @@ export function AuthorizedFoldersPanel(props: AuthorizedFoldersPanelProps) {
     setAuthorizedFoldersStatus(t("context_panel.saving_folders"));
 
     try {
-      const response = await ipollowalkClient.setAuthorizedFolders(ipollowalkWorkspaceId, nextFolders);
+      const response = await ipolloworkClient.setAuthorizedFolders(ipolloworkWorkspaceId, nextFolders);
       setAuthorizedFolders(response.folders);
       setAuthorizedFoldersStatus(
         buildAuthorizedFoldersStatus(
@@ -227,7 +227,7 @@ export function AuthorizedFoldersPanel(props: AuthorizedFoldersPanelProps) {
     } finally {
       setAuthorizedFoldersSaving(false);
     }
-  }, [canWriteConfig, props.onConfigUpdated, props.ipollowalkServerClient, props.runtimeWorkspaceId]);
+  }, [canWriteConfig, props.onConfigUpdated, props.ipolloworkServerClient, props.runtimeWorkspaceId]);
 
   const removeAuthorizedFolder = useCallback(async (folder: string) => {
     const nextFolders = authorizedFolders.filter((entry) => entry !== folder);

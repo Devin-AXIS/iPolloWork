@@ -3,9 +3,9 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 const FLOW_ID = "download-light-card";
 const vo = await loadVoiceoverParagraphs(FLOW_ID);
 
-const CARD_SELECTOR = '[data-testid="download-ipollowalk-card"]';
-const LINK_SELECTOR = '[data-testid="download-ipollowalk-link"]';
-const RECOMMENDED_SELECTOR = '[data-testid="download-ipollowalk-link"][data-recommended="true"]';
+const CARD_SELECTOR = '[data-testid="download-ipollowork-card"]';
+const LINK_SELECTOR = '[data-testid="download-ipollowork-link"]';
+const RECOMMENDED_SELECTOR = '[data-testid="download-ipollowork-link"][data-recommended="true"]';
 const INSTALLER_LABELS = [
   "Apple Silicon (M1+)",
   "Intel",
@@ -18,13 +18,13 @@ const INSTALLER_LABELS = [
 ];
 
 function routeUrl(ctx, path) {
-  return new URL(path, ctx.env.IPOLLOWALK_EVAL_LANDING_URL).toString();
+  return new URL(path, ctx.env.IPOLLOWORK_EVAL_LANDING_URL).toString();
 }
 
 async function navigateToDownload(ctx) {
   await ctx.eval(`location.href = ${JSON.stringify(routeUrl(ctx, "/download"))}; true`);
   await ctx.waitFor(
-    `Boolean(document.querySelector(${JSON.stringify(CARD_SELECTOR)})) && document.body.innerText.includes("Download iPolloWalk")`,
+    `Boolean(document.querySelector(${JSON.stringify(CARD_SELECTOR)})) && document.body.innerText.includes("Download iPolloWork")`,
     { timeoutMs: 30_000, label: "/download light download card" },
   );
 }
@@ -41,16 +41,16 @@ function recordAssertion(ctx, assertion, passed, actual) {
 
 export default {
   id: FLOW_ID,
-  title: "Landing /download serves the light Download iPolloWalk card",
+  title: "Landing /download serves the light Download iPolloWork card",
   kind: "user-facing",
   spec: "evals/README.md",
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_LANDING_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_LANDING_URL"],
   steps: [
     {
       name: "/download renders the light-mode card",
       run: async (ctx) => {
-        await ctx.prove("/download renders the light-mode Download iPolloWalk card", {
+        await ctx.prove("/download renders the light-mode Download iPolloWork card", {
           voiceover: vo[0],
           action: async () => {
             await navigateToDownload(ctx);
@@ -63,7 +63,7 @@ export default {
               const channels = match ? [Number(match[1]), Number(match[2]), Number(match[3])] : [];
               return {
                 cardExists: Boolean(card),
-                bodyHasTitle: document.body.innerText.includes("Download iPolloWalk"),
+                bodyHasTitle: document.body.innerText.includes("Download iPolloWork"),
                 backgroundColor,
                 channels,
                 isLight: channels.length === 3 && channels.every((channel) => channel >= 240),
@@ -71,7 +71,7 @@ export default {
             })()`);
             recordAssertion(
               ctx,
-              "The Download iPolloWalk card exists on /download",
+              "The Download iPolloWork card exists on /download",
               actual.cardExists === true && actual.bodyHasTitle === true,
               actual,
             );
@@ -84,7 +84,7 @@ export default {
           },
           screenshot: {
             name: "download-light-card",
-            requireText: ["Download iPolloWalk"],
+            requireText: ["Download iPolloWork"],
           },
         });
       },

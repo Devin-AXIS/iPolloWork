@@ -13,7 +13,7 @@ export default {
       run: async (ctx) => {
         await ctx.prove("App boots to a session surface with the control API", {
           action: async () => {
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
               timeoutMs: 60_000,
               label: "control API",
             });
@@ -31,18 +31,18 @@ export default {
       run: async (ctx) => {
         await ctx.prove("A session is active and the artifact seed action is available", {
           action: async () => {
-            const hasSelectedSession = await ctx.eval(`window.__ipollowalkControl.snapshot().route.includes("/session/")`);
+            const hasSelectedSession = await ctx.eval(`window.__ipolloworkControl.snapshot().route.includes("/session/")`);
             if (!hasSelectedSession) {
               await ctx.control("session.create_task");
               await ctx.waitFor(
-                `window.__ipollowalkControl.snapshot().route.includes("/session/")`,
+                `window.__ipolloworkControl.snapshot().route.includes("/session/")`,
                 { timeoutMs: 60_000, label: "session route after task creation" },
               );
             }
             // Mount the side panel (which registers the seed action) only if it
             // is not already open — clicking "Browser" toggles the panel.
             await ctx.eval(`(() => {
-              const seedReady = window.__ipollowalkControl.listActions()
+              const seedReady = window.__ipolloworkControl.listActions()
                 .some((a) => a.id === "eval.artifact_tabs.seed_overflow" && !a.disabled);
               if (seedReady) return "already-open";
               const button = Array.from(document.querySelectorAll("button"))
@@ -53,7 +53,7 @@ export default {
           },
           assert: async () => {
             await ctx.waitFor(
-              `window.__ipollowalkControl.listActions().some((a) => a.id === "eval.artifact_tabs.seed_overflow" && !a.disabled)`,
+              `window.__ipolloworkControl.listActions().some((a) => a.id === "eval.artifact_tabs.seed_overflow" && !a.disabled)`,
               { timeoutMs: 30_000, label: "artifact seed action enabled" },
             );
           },

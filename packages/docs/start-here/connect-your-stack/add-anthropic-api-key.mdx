@@ -1,10 +1,10 @@
 ---
 title: "Add Anthropic API key"
-description: "Create an Anthropic API key and use it in iPolloWalk"
+description: "Create an Anthropic API key and use it in iPolloWork"
 ---
 
-Anthropic has disabled 3rd party authentication for their OAuth. In order to continue supporting Anthropic based models in iPolloWalk, we now default to manual API key entry for Anthropic.
-That means you create the key in Anthropic first, then paste it into iPolloWalk.
+Anthropic has disabled 3rd party authentication for their OAuth. In order to continue supporting Anthropic based models in iPolloWork, we now default to manual API key entry for Anthropic.
+That means you create the key in Anthropic first, then paste it into iPolloWork.
 
 ## Before you start
 
@@ -12,7 +12,7 @@ That means you create the key in Anthropic first, then paste it into iPolloWalk.
 - Your Claude subscription and your Anthropic API billing are not always the same thing, so make sure API access is enabled on your Anthropic account.
 - Treat the key like a password. Anthropic will only show the full value when you create it.
 
-If this key should be shared across a team, add Anthropic once in iPolloWalk Cloud `LLM Providers` and import it from [Settings -> Cloud](/cloud/share-with-your-team/managed-llm-provider) instead of pasting it into each workspace separately.
+If this key should be shared across a team, add Anthropic once in iPolloWork Cloud `LLM Providers` and import it from [Settings -> Cloud](/cloud/share-with-your-team/managed-llm-provider) instead of pasting it into each workspace separately.
 
 ## Create the key in Anthropic
 
@@ -24,30 +24,30 @@ If this key should be shared across a team, add Anthropic once in iPolloWalk Clo
 </Frame>
 
 3. Click `Create Key`.
-4. Give the key a recognizable name like `iPolloWalk`.
+4. Give the key a recognizable name like `iPolloWork`.
 
 <Frame>
-  ![Anthropic Create Key dialog](/images/anthropic-ipollowalk-key.png)
+  ![Anthropic Create Key dialog](/images/anthropic-ipollowork-key.png)
 </Frame>
 
 5. Copy the new key right away. It should look like `sk-ant-...`.
 
-## Add the key to iPolloWalk
+## Add the key to iPolloWork
 
 
-1. Open `Settings` in iPolloWalk.
+1. Open `Settings` in iPolloWork.
 2. Go to `Connect Provider` and choose `Anthropic`.
 3. Paste the API key into the manual key field.
 4. Save the provider, then choose an Anthropic model in chat.
 
 <Frame>
-  ![How to add a new provider in iPolloWalk](/images/ipollowalk-providers.png)
+  ![How to add a new provider in iPolloWork](/images/ipollowork-providers.png)
 </Frame>
 
 ## Common issues
 
 - If the key is rejected, make sure you copied the full value without extra spaces.
 - If you cannot see `API Keys`, check that your Anthropic account has API access and billing set up.
-- If you lose the key, create a new one in Anthropic and update iPolloWalk with the new value.
+- If you lose the key, create a new one in Anthropic and update iPolloWork with the new value.
 
-The same general process applies to most providers that use manual API keys: create the key in the provider's developer console, copy it once, and paste it into iPolloWalk.
+The same general process applies to most providers that use manual API keys: create the key in the provider's developer console, copy it once, and paste it into iPolloWork.

@@ -165,13 +165,13 @@ function estimatedRenderedImageHeight(image: HTMLImageElement) {
 }
 
 function syncMarkdownImagePreviews(root: HTMLElement) {
-  const previews = root.querySelectorAll("[data-ipollowalk-image-preview]");
+  const previews = root.querySelectorAll("[data-ipollowork-image-preview]");
 
   for (const preview of previews) {
     if (!(preview instanceof HTMLElement)) continue;
 
     const image = preview.querySelector("img");
-    const button = preview.querySelector("[data-ipollowalk-image-toggle]");
+    const button = preview.querySelector("[data-ipollowork-image-toggle]");
     if (!(image instanceof HTMLImageElement) || !(button instanceof HTMLButtonElement)) continue;
 
     const previewable = estimatedRenderedImageHeight(image) > MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT;
@@ -182,10 +182,10 @@ function syncMarkdownImagePreviews(root: HTMLElement) {
       continue;
     }
 
-    const expanded = preview.dataset.ipollowalkImagePreview === "expanded";
+    const expanded = preview.dataset.ipolloworkImagePreview === "expanded";
     preview.style.maxHeight = expanded ? "" : `${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px`;
 
-    const label = button.querySelector("[data-ipollowalk-image-toggle-label]");
+    const label = button.querySelector("[data-ipollowork-image-toggle-label]");
     if (label) label.textContent = expanded ? "Show less" : "Show full image";
   }
 }
@@ -195,12 +195,12 @@ function sanitizeMarkdownHtml(value: string) {
     ADD_ATTR: [
       "checked",
       "class",
-      "data-ipollowalk-image-preview",
-      "data-ipollowalk-image-toggle",
-      "data-ipollowalk-image-toggle-label",
-      "data-ipollowalk-link-href",
-      "data-ipollowalk-link-chevron",
-      "data-ipollowalk-shiki",
+      "data-ipollowork-image-preview",
+      "data-ipollowork-image-toggle",
+      "data-ipollowork-image-toggle-label",
+      "data-ipollowork-link-href",
+      "data-ipollowork-link-chevron",
+      "data-ipollowork-shiki",
       "decoding",
       "disabled",
       "hidden",
@@ -280,16 +280,16 @@ const baseMarkedOptions = {
         const fileIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5"/></svg>`;
         const chevron = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="m6 9 6 6 6-6"/></svg>`;
 
-        return `<span class="inline-flex items-stretch overflow-hidden rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground align-middle"><a href="${safe}" data-ipollowalk-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="inline-flex items-center gap-1 px-1.5 py-0.5 no-underline transition-colors hover:bg-muted">${fileIcon}${this.parser.parseInline(tokens)}</a><button type="button" data-ipollowalk-link-chevron="${originalHref}" class="inline-flex items-center border-l border-border/60 px-1 transition-colors hover:bg-muted" aria-label="Open with">${chevron}</button></span>`;
+        return `<span class="inline-flex items-stretch overflow-hidden rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground align-middle"><a href="${safe}" data-ipollowork-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="inline-flex items-center gap-1 px-1.5 py-0.5 no-underline transition-colors hover:bg-muted">${fileIcon}${this.parser.parseInline(tokens)}</a><button type="button" data-ipollowork-link-chevron="${originalHref}" class="inline-flex items-center border-l border-border/60 px-1 transition-colors hover:bg-muted" aria-label="Open with">${chevron}</button></span>`;
       }
 
-      return `<a href="${safe}" data-ipollowalk-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="text-indigo-10 underline underline-offset-2 transition-colors hover:text-indigo-8">${this.parser.parseInline(tokens)}</a>`;
+      return `<a href="${safe}" data-ipollowork-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="text-indigo-10 underline underline-offset-2 transition-colors hover:text-indigo-8">${this.parser.parseInline(tokens)}</a>`;
     },
     image({ href, title, text }) {
       const safe = escapeAttribute(safeHref(href));
       const titleAttr = title ? ` title="${escapeAttribute(title)}"` : "";
 
-      return `<span data-ipollowalk-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img src="${safe}" alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowalk-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowalk-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">Show full image</span></button></span>`;
+      return `<span data-ipollowork-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img src="${safe}" alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowork-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowork-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">Show full image</span></button></span>`;
     },
     table(token) {
       const header = token.header.map((cell) => this.tablecell({ ...cell, header: true })).join("");
@@ -352,7 +352,7 @@ const highlightedMarkdownParser = new Marked({
         ],
       });
     },
-    container: `<div data-ipollowalk-shiki="true" class="my-4 overflow-x-auto rounded-lg border border-border/70 bg-gray-1/80 p-4 text-xs leading-6">%s</div>`,
+    container: `<div data-ipollowork-shiki="true" class="my-4 overflow-x-auto rounded-lg border border-border/70 bg-gray-1/80 p-4 text-xs leading-6">%s</div>`,
   }),
 );
 
@@ -445,11 +445,11 @@ function MarkdownBlockInner({
     const handleClick = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return;
 
-      const chevron = event.target.closest("[data-ipollowalk-link-chevron]");
+      const chevron = event.target.closest("[data-ipollowork-link-chevron]");
       if (chevron instanceof HTMLElement) {
         event.preventDefault();
         event.stopPropagation();
-        const href = chevron.dataset.ipollowalkLinkChevron ?? "";
+        const href = chevron.dataset.ipolloworkLinkChevron ?? "";
         const target = openTargetForHref(href, openTargets);
         if (target) {
           setLinkMenu({ target, rect: chevron.getBoundingClientRect() });
@@ -457,9 +457,9 @@ function MarkdownBlockInner({
         return;
       }
 
-      const link = event.target.closest("a[data-ipollowalk-link-href]");
+      const link = event.target.closest("a[data-ipollowork-link-href]");
       if (link instanceof HTMLAnchorElement) {
-        const href = link.dataset.ipollowalkLinkHref ?? link.getAttribute("href") ?? "";
+        const href = link.dataset.ipolloworkLinkHref ?? link.getAttribute("href") ?? "";
         const target = openTargetForHref(href, openTargets);
 
         if (target && onOpenTarget) {
@@ -469,13 +469,13 @@ function MarkdownBlockInner({
         }
       }
 
-      const button = event.target.closest("[data-ipollowalk-image-toggle]");
+      const button = event.target.closest("[data-ipollowork-image-toggle]");
       if (!(button instanceof HTMLButtonElement)) return;
 
-      const preview = button.closest("[data-ipollowalk-image-preview]");
+      const preview = button.closest("[data-ipollowork-image-preview]");
       if (!(preview instanceof HTMLElement)) return;
 
-      preview.dataset.ipollowalkImagePreview = preview.dataset.ipollowalkImagePreview === "expanded"
+      preview.dataset.ipolloworkImagePreview = preview.dataset.ipolloworkImagePreview === "expanded"
         ? "collapsed"
         : "expanded";
       sync();

@@ -3,8 +3,8 @@ import { useEffect, type ReactNode } from "react";
 
 import { Toaster } from "@/components/ui/sonner";
 
-import { isWebDeployment } from "@/app/lib/ipollowalk-deployment";
-import { hydrateiPolloWalkServerSettingsFromEnv } from "@/app/lib/ipollowalk-server";
+import { isWebDeployment } from "@/app/lib/ipollowork-deployment";
+import { hydrateiPolloWorkServerSettingsFromEnv } from "@/app/lib/ipollowork-server";
 import { isDesktopRuntime } from "@/app/utils";
 import { DenAuthProvider } from "@/react-app/domains/cloud/den-auth-provider";
 import { BrandThemeProvider } from "@/react-app/domains/cloud/brand-theme";
@@ -16,18 +16,18 @@ import { ArchitectureMismatchGate } from "./architecture-mismatch-gate";
 import { BootStateProvider } from "./boot-state";
 import { DesktopRuntimeBoot } from "./desktop-runtime-boot";
 import { startDebugLogger, stopDebugLogger } from "./debug-logger";
-import { resolveiPolloWalkConnection } from "./ipollowalk-connection";
+import { resolveiPolloWorkConnection } from "./ipollowork-connection";
 import { ReloadCoordinatorProvider } from "./reload-coordinator";
 
 function resolveDefaultServerUrl(): string {
   if (isDesktopRuntime()) return "http://127.0.0.1:4096";
 
-  const ipollowalkUrl =
-    typeof import.meta.env?.VITE_IPOLLOWALK_URL === "string"
-      ? import.meta.env.VITE_IPOLLOWALK_URL.trim()
+  const ipolloworkUrl =
+    typeof import.meta.env?.VITE_IPOLLOWORK_URL === "string"
+      ? import.meta.env.VITE_IPOLLOWORK_URL.trim()
       : "";
-  if (ipollowalkUrl) {
-    return `${ipollowalkUrl.replace(/\/+$/, "")}/opencode`;
+  if (ipolloworkUrl) {
+    return `${ipolloworkUrl.replace(/\/+$/, "")}/opencode`;
   }
 
   if (isWebDeployment() && import.meta.env.PROD && typeof window !== "undefined") {
@@ -46,14 +46,14 @@ type AppProvidersProps = {
 };
 
 export function AppProviders({ children }: AppProvidersProps) {
-  hydrateiPolloWalkServerSettingsFromEnv();
+  hydrateiPolloWorkServerSettingsFromEnv();
 
   useEffect(() => {
-    // Start the dev observability forwarder. Reads the current ipollowalk-server
+    // Start the dev observability forwarder. Reads the current ipollowork-server
     // URL on every flush so reconnects after port changes still work. In prod
     // builds `startDebugLogger` is a no-op.
     startDebugLogger({
-      serverUrl: async () => (await resolveiPolloWalkConnection()).normalizedBaseUrl,
+      serverUrl: async () => (await resolveiPolloWorkConnection()).normalizedBaseUrl,
     });
     return () => {
       stopDebugLogger();

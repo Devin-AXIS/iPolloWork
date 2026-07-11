@@ -14,7 +14,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "status",
     title: "OpenAI image generation status",
-    description: "Check whether OpenAI image generation is configured and ready for iPolloWalk extension actions.",
+    description: "Check whether OpenAI image generation is configured and ready for iPolloWork extension actions.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -49,14 +49,14 @@ function slugifyImageArtifactName(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 48) || "ipollowalk-image";
+    .slice(0, 48) || "ipollowork-image";
 }
 
 async function resolveOpenAiImageApiKey(env: EnvService): Promise<string> {
   const records = await env.list();
-  return records.find((entry) => entry.key === "IPOLLOWALK_OPENAI_IMAGE_API_KEY")?.value.trim() ||
+  return records.find((entry) => entry.key === "IPOLLOWORK_OPENAI_IMAGE_API_KEY")?.value.trim() ||
     records.find((entry) => entry.key === "OPENAI_API_KEY")?.value.trim() ||
-    process.env.IPOLLOWALK_OPENAI_IMAGE_API_KEY?.trim() ||
+    process.env.IPOLLOWORK_OPENAI_IMAGE_API_KEY?.trim() ||
     process.env.OPENAI_API_KEY?.trim() ||
     "";
 }
@@ -157,7 +157,7 @@ async function generateOpenAiImageArtifact(config: ServerConfig, env: EnvService
 
   const apiKey = await resolveOpenAiImageApiKey(env);
   if (!apiKey) {
-    throw new ApiError(400, "openai_api_key_missing", "OpenAI API key missing. Save OPENAI_API_KEY in iPolloWalk Environment Variables or configure the OpenAI Image Gen extension.");
+    throw new ApiError(400, "openai_api_key_missing", "OpenAI API key missing. Save OPENAI_API_KEY in iPolloWork Environment Variables or configure the OpenAI Image Gen extension.");
   }
 
   const workspace = workspaceForContext(config, context);

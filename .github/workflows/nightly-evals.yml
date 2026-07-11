@@ -71,15 +71,15 @@ jobs:
       - name: Start Electron app under Xvfb
         shell: bash
         env:
-          IPOLLOWALK_DEV_MODE: "1"
+          IPOLLOWORK_DEV_MODE: "1"
           ELECTRON_DISABLE_SANDBOX: "1"
-          IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT: "9823"
+          IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT: "9823"
           DAYTONA_ELECTRON_EXTRA_LAUNCH_ARGS: "--no-sandbox --disable-gpu --disable-dev-shm-usage --enable-unsafe-swiftshader"
         run: |
           set -euo pipefail
           Xvfb :99 -screen 0 1600x1000x24 &
           export DISPLAY=:99
-          nohup pnpm dev > /tmp/ipollowalk-dev.log 2>&1 &
+          nohup pnpm dev > /tmp/ipollowork-dev.log 2>&1 &
           echo "Waiting for Electron CDP on :9823..."
           for i in $(seq 1 36); do
             if curl -sf http://127.0.0.1:9823/json/list > /dev/null 2>&1; then
@@ -89,16 +89,16 @@ jobs:
             sleep 5
           done
           echo "Electron CDP did not come up." >&2
-          tail -100 /tmp/ipollowalk-dev.log >&2
+          tail -100 /tmp/ipollowork-dev.log >&2
           exit 1
 
       - name: Run eval flows
         shell: bash
         env:
-          IPOLLOWALK_EVAL_CDP_URL: "http://127.0.0.1:9823"
+          IPOLLOWORK_EVAL_CDP_URL: "http://127.0.0.1:9823"
           # Optional cloud coverage: flows skip cleanly when unset.
-          IPOLLOWALK_EVAL_DEN_API_URL: ${{ secrets.IPOLLOWALK_EVAL_DEN_API_URL }}
-          IPOLLOWALK_EVAL_DEN_TOKEN: ${{ secrets.IPOLLOWALK_EVAL_DEN_TOKEN }}
+          IPOLLOWORK_EVAL_DEN_API_URL: ${{ secrets.IPOLLOWORK_EVAL_DEN_API_URL }}
+          IPOLLOWORK_EVAL_DEN_TOKEN: ${{ secrets.IPOLLOWORK_EVAL_DEN_TOKEN }}
         run: pnpm evals --all
 
       - name: Upload eval reports
@@ -108,6 +108,6 @@ jobs:
           name: eval-results
           path: |
             evals/results/
-            /tmp/ipollowalk-dev.log
+            /tmp/ipollowork-dev.log
           retention-days: 14
           if-no-files-found: warn

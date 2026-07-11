@@ -8,7 +8,7 @@ import fr from "./locales/fr";
 import ca from "./locales/ca";
 import es from "./locales/es";
 import ru from "./locales/ru";
-export const LANGUAGE_PREF_KEY = "ipollowalk.language";
+export const LANGUAGE_PREF_KEY = "ipollowork.language";
 
 /**
  * Supported languages

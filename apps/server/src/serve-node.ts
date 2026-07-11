@@ -1,5 +1,5 @@
 /**
- * Node.js HTTP adapter for the iPolloWalk server.
+ * Node.js HTTP adapter for the iPolloWork server.
  *
  * Provides a `serve()` function with the same interface as Bun.serve()
  * but backed by `node:http`. This allows the server to run in any Node.js

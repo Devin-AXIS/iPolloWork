@@ -18,9 +18,9 @@ export default {
     {
       name: "Automation control API becomes available",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 30_000,
-          label: "window.__ipollowalkControl",
+          label: "window.__ipolloworkControl",
         });
       },
     },
@@ -28,7 +28,7 @@ export default {
       name: "App reports a known route",
       run: async (ctx) => {
         const route = await ctx.waitFor(
-          "window.__ipollowalkControl.snapshot().route",
+          "window.__ipolloworkControl.snapshot().route",
           { label: "control snapshot route" },
         );
         ctx.log(`route: ${JSON.stringify(route)}`);

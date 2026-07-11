@@ -1,4 +1,4 @@
-import type { iPolloWalkSessionMessage } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkSessionMessage } from "@/app/lib/ipollowork-server";
 
 /** A session that can be deep-searched. */
 export type SearchableSession = {
@@ -41,7 +41,7 @@ type CacheEntry = {
 export type SessionMessageFetcher = (
   workspaceId: string,
   sessionId: string,
-) => Promise<iPolloWalkSessionMessage[]>;
+) => Promise<iPolloWorkSessionMessage[]>;
 
 const SNIPPET_BEFORE = 36;
 const SNIPPET_AFTER = 72;
@@ -61,7 +61,7 @@ export function buildSnippet(text: string, index: number, length: number): Sessi
   return { before, match: text.slice(index, index + length), after };
 }
 
-function toCacheEntry(updatedAt: number, messages: iPolloWalkSessionMessage[]): CacheEntry {
+function toCacheEntry(updatedAt: number, messages: iPolloWorkSessionMessage[]): CacheEntry {
   const texts: CacheEntry["texts"] = [];
   for (const message of messages) {
     const role = message.info.role;

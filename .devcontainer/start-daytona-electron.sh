@@ -5,7 +5,7 @@ set -euo pipefail
 # This centralizes the graphics-safe Chromium flags and optional secret-volume
 # env loading used by Daytona evals.
 
-cd "${IPOLLOWALK_WORKSPACE_DIR:-/workspace}"
+cd "${IPOLLOWORK_WORKSPACE_DIR:-/workspace}"
 
 if [ "${1:-}" = "--detach" ]; then
   shift
@@ -20,7 +20,7 @@ script_path, log_path, *args = sys.argv[1:]
 log = open(log_path, "ab", buffering=0)
 subprocess.Popen(
     ["bash", script_path, *args],
-    cwd=os.environ.get("IPOLLOWALK_WORKSPACE_DIR", "/workspace"),
+    cwd=os.environ.get("IPOLLOWORK_WORKSPACE_DIR", "/workspace"),
     env=os.environ.copy(),
     stdin=subprocess.DEVNULL,
     stdout=log,
@@ -61,9 +61,9 @@ fi
 export DISPLAY="${DISPLAY:-:99}"
 export ELECTRON_DISABLE_SANDBOX="${ELECTRON_DISABLE_SANDBOX:-1}"
 export ELECTRON_EXTRA_LAUNCH_ARGS="${ELECTRON_EXTRA_LAUNCH_ARGS:-$DAYTONA_ELECTRON_EXTRA_LAUNCH_ARGS}"
-export IPOLLOWALK_REACT_DEVTOOLS="${IPOLLOWALK_REACT_DEVTOOLS:-0}"
-export IPOLLOWALK_DEV_MODE="${IPOLLOWALK_DEV_MODE:-1}"
-export IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT="${IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT:-9825}"
-export IPOLLOWALK_ELECTRON_FAKE_MEDIA="${IPOLLOWALK_ELECTRON_FAKE_MEDIA:-0}"
+export IPOLLOWORK_REACT_DEVTOOLS="${IPOLLOWORK_REACT_DEVTOOLS:-0}"
+export IPOLLOWORK_DEV_MODE="${IPOLLOWORK_DEV_MODE:-1}"
+export IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT="${IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT:-9825}"
+export IPOLLOWORK_ELECTRON_FAKE_MEDIA="${IPOLLOWORK_ELECTRON_FAKE_MEDIA:-0}"
 
-exec pnpm --filter @ipollowalk/desktop dev:electron
+exec pnpm --filter @ipollowork/desktop dev:electron

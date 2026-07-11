@@ -11,14 +11,14 @@ type VersionInfo = {
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const targetDir = resolve(root, "dist");
 
-const serverBin = resolve(root, "..", "server", "dist", "bin", "ipollowalk-server");
+const serverBin = resolve(root, "..", "server", "dist", "bin", "ipollowork-server");
 
 const serverPkg = JSON.parse(
   await readFile(resolve(root, "..", "server", "package.json"), "utf8"),
 ) as { version: string };
 
 await mkdir(targetDir, { recursive: true });
-await copyFile(serverBin, resolve(targetDir, "ipollowalk-server"));
+await copyFile(serverBin, resolve(targetDir, "ipollowork-server"));
 
 const sha256 = async (path: string) => {
   const data = await readFile(path);
@@ -26,9 +26,9 @@ const sha256 = async (path: string) => {
 };
 
 const versions = {
-  "ipollowalk-server": {
+  "ipollowork-server": {
     version: serverPkg.version,
-    sha256: await sha256(resolve(targetDir, "ipollowalk-server")),
+    sha256: await sha256(resolve(targetDir, "ipollowork-server")),
   },
 } as Record<string, VersionInfo>;
 

@@ -1,6 +1,6 @@
 import React, { type CSSProperties } from "react"
 import { Body, Button, Container, Head, Heading, Hr, Html, Preview, Section, Text } from "@react-email/components"
-import { DEFAULT_IPOLLOWALK_DOWNLOAD_URL, desktopCapabilities } from "./desktop-capabilities.js"
+import { DEFAULT_IPOLLOWORK_DOWNLOAD_URL, desktopCapabilities } from "./desktop-capabilities.js"
 
 export type OrganizationInviteEmailProps = {
   inviteLink: string
@@ -17,22 +17,22 @@ export function OrganizationInviteEmail({
   invitedByEmail,
   organizationName,
   role,
-  downloadUrl = DEFAULT_IPOLLOWALK_DOWNLOAD_URL,
+  downloadUrl = DEFAULT_IPOLLOWORK_DOWNLOAD_URL,
 }: OrganizationInviteEmailProps) {
   const inviter = invitedByEmail ? `${invitedByName} (${invitedByEmail})` : invitedByName
 
   return (
     <Html>
       <Head />
-      <Preview>{invitedByName} invited you to join {organizationName} on iPolloWalk</Preview>
+      <Preview>{invitedByName} invited you to join {organizationName} on iPolloWork</Preview>
       <Body style={styles.body}>
         <Container style={styles.container}>
-          <Text style={styles.eyebrow}>iPolloWalk invite</Text>
+          <Text style={styles.eyebrow}>iPolloWork invite</Text>
           <Heading style={styles.heading}>Join {organizationName}</Heading>
           <Text style={styles.text}>{inviter} invited you to join {organizationName} as {articleFor(role)} {role}.</Text>
           <Button href={inviteLink} style={styles.button}>Accept invite</Button>
           <Section style={styles.desktopSection}>
-            <Text style={styles.sectionHeading}>What you&apos;ll get in the iPolloWalk desktop app</Text>
+            <Text style={styles.sectionHeading}>What you&apos;ll get in the iPolloWork desktop app</Text>
             {desktopCapabilities.map((capability) => (
               <Text key={capability.title} style={styles.capability}>
                 <strong>{capability.title}</strong> — {capability.description}

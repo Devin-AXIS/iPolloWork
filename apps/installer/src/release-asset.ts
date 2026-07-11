@@ -1,4 +1,4 @@
-const GITHUB_REPO = "Devin-AXIS/iPolloWalk"
+const GITHUB_REPO = "Devin-AXIS/iPolloWork"
 
 export type ReleaseAsset = {
   version: string
@@ -9,8 +9,8 @@ export type ReleaseAsset = {
 
 /**
  * Release assets follow a fixed naming scheme (see the stable release
- * workflow): ipollowalk-mac-<arch>-<v>.dmg, ipollowalk-win-x64-<v>.exe,
- * ipollowalk-linux-x86_64|arm64-<v>.AppImage — so the download URL is
+ * workflow): ipollowork-mac-<arch>-<v>.dmg, ipollowork-win-x64-<v>.exe,
+ * ipollowork-linux-x86_64|arm64-<v>.AppImage — so the download URL is
  * deterministic from (version, platform, arch); no releases-API listing needed.
  */
 export function releaseAssetFor(
@@ -32,16 +32,16 @@ export function releaseAssetFor(
   })
 
   if (platform === "darwin") {
-    return build(`ipollowalk-mac-${arch}-${normalized}.dmg`, "dmg")
+    return build(`ipollowork-mac-${arch}-${normalized}.dmg`, "dmg")
   }
   if (platform === "win32") {
     if (arch !== "x64") throw new Error(`unsupported Windows architecture: ${arch}`)
-    return build(`ipollowalk-win-x64-${normalized}.exe`, "exe")
+    return build(`ipollowork-win-x64-${normalized}.exe`, "exe")
   }
   if (platform === "linux") {
     // The AppImage uses x86_64 in its name while the tarball uses x64.
     const appImageArch = arch === "x64" ? "x86_64" : "arm64"
-    return build(`ipollowalk-linux-${appImageArch}-${normalized}.AppImage`, "appimage")
+    return build(`ipollowork-linux-${appImageArch}-${normalized}.AppImage`, "appimage")
   }
   throw new Error(`unsupported platform: ${platform}`)
 }

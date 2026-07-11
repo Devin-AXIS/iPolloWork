@@ -52,7 +52,7 @@ export function startInstallerServer(initialResolution: InstallerConfigResolutio
         if (request.method === "POST" && url.pathname === "/api/resolve-link") {
           const installLink = installLinkFromPayload(await request.json().catch(() => null))
           if (!installLink) {
-            return Response.json({ error: "missing_install_link", message: "Paste an iPolloWalk install link." }, { status: 400 })
+            return Response.json({ error: "missing_install_link", message: "Paste an iPolloWork install link." }, { status: 400 })
           }
           const config = await installLinkConfig(installLink)
           if (!config) {

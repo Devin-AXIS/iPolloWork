@@ -11,7 +11,7 @@ function baseInputs(): DiagnosticsBundleInputs {
     desktopRuntime: false,
     appInfo: null,
     engineInfo: null,
-    ipollowalkServerSettings: {},
+    ipolloworkServerSettings: {},
     hostInfo: null,
     developerLogs: [],
     perfLogs: [],
@@ -22,8 +22,8 @@ function baseInputs(): DiagnosticsBundleInputs {
       developerMode: false,
       hostConnectUrl: "",
       hostConnectUrlUsesMdns: false,
-      ipollowalkServerStatus: "disconnected",
-      ipollowalkServerUrl: "",
+      ipolloworkServerStatus: "disconnected",
+      ipolloworkServerUrl: "",
       runtimeWorkspaceId: null,
     },
   };
@@ -39,7 +39,7 @@ describe("diagnostics bundle", () => {
     const opencodeSecret = "opencode-password-1234";
     const input = baseInputs();
     input.desktopRuntime = true;
-    input.ipollowalkServerSettings = {
+    input.ipolloworkServerSettings = {
       urlOverride: "http://127.0.0.1:4096",
       token: settingsSecret,
       hostToken: settingsHostSecret,
@@ -67,7 +67,7 @@ describe("diagnostics bundle", () => {
       running: true,
       runtime: "direct",
       baseUrl: "http://127.0.0.1:4097",
-      projectDir: "/tmp/ipollowalk",
+      projectDir: "/tmp/ipollowork",
       hostname: "127.0.0.1",
       port: 4097,
       opencodeUsername: "do-not-include-user",
@@ -84,8 +84,8 @@ describe("diagnostics bundle", () => {
     const parsed = JSON.parse(json);
 
     expect(json).toContain('"tokenPresent": true');
-    expect(parsed.ipollowalkServer.settings.tokenPresent).toBe(true);
-    expect(parsed.ipollowalkServer.host.lastStderr).toContain("[redacted]");
+    expect(parsed.ipolloworkServer.settings.tokenPresent).toBe(true);
+    expect(parsed.ipolloworkServer.host.lastStderr).toContain("[redacted]");
     expect(parsed.opencodeEngine.lastStderr).toContain("[redacted]");
     expect(json).not.toContain(settingsSecret);
     expect(json).not.toContain(settingsHostSecret);
@@ -107,7 +107,7 @@ describe("diagnostics bundle", () => {
 
     expect(parsed.app).toBeNull();
     expect(parsed.opencodeEngine).toBeNull();
-    expect(parsed.ipollowalkServer.host).toBeNull();
-    expect(parsed.ipollowalkServer.settings.tokenPresent).toBe(false);
+    expect(parsed.ipolloworkServer.host).toBeNull();
+    expect(parsed.ipolloworkServer.settings.tokenPresent).toBe(false);
   });
 });

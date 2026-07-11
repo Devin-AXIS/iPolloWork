@@ -20,12 +20,12 @@ export function workspaceIdForRemote(baseUrl: string, directory?: string | null)
   return workspaceIdForKey(key);
 }
 
-export function workspaceIdForiPolloWalk(hostUrl: string, workspaceId?: string | null): string {
+export function workspaceIdForiPolloWork(hostUrl: string, workspaceId?: string | null): string {
   const normalizedHostUrl = hostUrl.trim();
   const normalizedWorkspaceId = workspaceId?.trim() ?? "";
   const key = normalizedWorkspaceId
-    ? `ipollowalk::${normalizedHostUrl}::${normalizedWorkspaceId}`
-    : `ipollowalk::${normalizedHostUrl}`;
+    ? `ipollowork::${normalizedHostUrl}::${normalizedWorkspaceId}`
+    : `ipollowork::${normalizedHostUrl}`;
   return workspaceIdForKey(key);
 }
 
@@ -40,13 +40,13 @@ export function buildWorkspaceInfos(
     const remoteType = workspace.remoteType;
     const id = workspace.id?.trim()
       || (workspaceType === "remote"
-        ? remoteType === "ipollowalk"
-          ? workspaceIdForiPolloWalk(workspace.ipollowalkHostUrl ?? workspace.baseUrl ?? "", workspace.ipollowalkWorkspaceId)
+        ? remoteType === "ipollowork"
+          ? workspaceIdForiPolloWork(workspace.ipolloworkHostUrl ?? workspace.baseUrl ?? "", workspace.ipolloworkWorkspaceId)
           : workspaceIdForRemote(workspace.baseUrl ?? "", workspace.directory)
         : workspaceIdForPath(resolvedPath));
     const name = workspace.name?.trim()
       || workspace.displayName?.trim()
-      || workspace.ipollowalkWorkspaceName?.trim()
+      || workspace.ipolloworkWorkspaceName?.trim()
       || basename(resolvedPath || workspace.directory?.trim() || workspace.baseUrl?.trim() || "Workspace");
     return {
       id,
@@ -58,10 +58,10 @@ export function buildWorkspaceInfos(
       baseUrl: workspace.baseUrl,
       directory: workspace.directory,
       displayName: workspace.displayName,
-      ipollowalkHostUrl: workspace.ipollowalkHostUrl,
-      ipollowalkToken: workspace.ipollowalkToken,
-      ipollowalkWorkspaceId: workspace.ipollowalkWorkspaceId,
-      ipollowalkWorkspaceName: workspace.ipollowalkWorkspaceName,
+      ipolloworkHostUrl: workspace.ipolloworkHostUrl,
+      ipolloworkToken: workspace.ipolloworkToken,
+      ipolloworkWorkspaceId: workspace.ipolloworkWorkspaceId,
+      ipolloworkWorkspaceName: workspace.ipolloworkWorkspaceName,
       sandboxBackend: workspace.sandboxBackend,
       sandboxRunId: workspace.sandboxRunId,
       sandboxContainerName: workspace.sandboxContainerName,

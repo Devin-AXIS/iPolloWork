@@ -10,10 +10,10 @@ import {
 } from "lucide-react";
 
 import type {
-  iPolloWalkAuditEntry,
-  iPolloWalkServerCapabilities,
-  iPolloWalkServerDiagnostics,
-} from "../../../../app/lib/ipollowalk-server";
+  iPolloWorkAuditEntry,
+  iPolloWorkServerCapabilities,
+  iPolloWorkServerDiagnostics,
+} from "../../../../app/lib/ipollowork-server";
 import type { SandboxDebugProbeResult } from "../../../../app/lib/desktop";
 import type {
   OpencodeConnectStatus,
@@ -42,7 +42,7 @@ type RuntimeSummary = {
   appVersionLabel: string;
   appCommitLabel: string;
   opencodeVersionLabel: string;
-  ipollowalkServerVersionLabel: string;
+  ipolloworkServerVersionLabel: string;
 };
 
 type StatusPill = {
@@ -123,41 +123,41 @@ export type DebugViewProps = {
   resetModalBusy: boolean;
   resetStatus: string | null;
   opencodeRestarting: boolean;
-  ipollowalkServerRestarting: boolean;
+  ipolloworkServerRestarting: boolean;
   opencodeServiceStatus: ServiceStatus;
-  ipollowalkServiceStatus: ServiceStatus;
+  ipolloworkServiceStatus: ServiceStatus;
   opencodeLogStatus: string | null;
-  ipollowalkLogStatus: string | null;
+  ipolloworkLogStatus: string | null;
   onCopyOpencodeLogs: () => void | Promise<void>;
   onExportOpencodeLogs: () => void | Promise<void>;
-  onCopyiPolloWalkLogs: () => void | Promise<void>;
-  onExportiPolloWalkLogs: () => void | Promise<void>;
+  onCopyiPolloWorkLogs: () => void | Promise<void>;
+  onExportiPolloWorkLogs: () => void | Promise<void>;
   serviceRestartError: string | null;
   onRestartOpencode: () => void | Promise<void>;
-  onRestartiPolloWalkServer: () => void | Promise<void>;
+  onRestartiPolloWorkServer: () => void | Promise<void>;
   engineCard: RuntimeServiceCard;
   opencodeConnectCard: OpenCodeConnectDebugCard;
-  ipollowalkCard: RuntimeServiceCard;
-  ipollowalkServerDiagnostics: iPolloWalkServerDiagnostics | null;
+  ipolloworkCard: RuntimeServiceCard;
+  ipolloworkServerDiagnostics: iPolloWorkServerDiagnostics | null;
   runtimeWorkspaceId: string | null;
-  ipollowalkServerCapabilities: iPolloWalkServerCapabilities | null;
+  ipolloworkServerCapabilities: iPolloWorkServerCapabilities | null;
   pendingPermissions: unknown;
   events: unknown;
   workspaceDebugEvents: unknown;
   workspaceDebugEventsStatus: string | null;
   safeStringify: (value: unknown) => string;
   onClearWorkspaceDebugEvents: () => void | Promise<void>;
-  ipollowalkAuditEntries: iPolloWalkAuditEntry[];
-  ipollowalkAuditStatus: StatusPill;
-  ipollowalkAuditError: string | null;
+  ipolloworkAuditEntries: iPolloWorkAuditEntry[];
+  ipolloworkAuditStatus: StatusPill;
+  ipolloworkAuditError: string | null;
   opencodeConnectStatus: OpencodeConnectStatus | null;
   opencodeDevModeEnabled: boolean;
   nukeConfigBusy: boolean;
   nukeConfigStatus: string | null;
-  onNukeiPolloWalkAndOpencodeConfig: () => void | Promise<void>;
+  onNukeiPolloWorkAndOpencodeConfig: () => void | Promise<void>;
 };
 
-function formatActor(entry: iPolloWalkAuditEntry) {
+function formatActor(entry: iPolloWorkAuditEntry) {
   if (entry.actor.type === "host") return t("settings.audit_actor_host");
   if (entry.actor.clientId) return entry.actor.clientId;
   if (entry.actor.tokenHash) return entry.actor.tokenHash;
@@ -224,7 +224,7 @@ function ExecutionDetails(props: { execution: OpencodeExecutionSnapshot }) {
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-11">OpenCode execution</div>
-          <div className="text-[11px] text-dls-secondary">Command, working directory, and iPolloWalk-injected environment.</div>
+          <div className="text-[11px] text-dls-secondary">Command, working directory, and iPolloWork-injected environment.</div>
         </div>
         <div className="shrink-0 rounded-full border border-blue-7/30 bg-blue-7/10 px-2 py-1 text-[10px] font-medium text-blue-11">
           redacted
@@ -405,8 +405,8 @@ export function DebugView(props: DebugViewProps) {
             {t("settings.debug_opencode_version", { version: props.runtimeSummary.opencodeVersionLabel })}
           </div>
           <div>
-            {t("settings.debug_ipollowalk_server_version", {
-              version: props.runtimeSummary.ipollowalkServerVersionLabel,
+            {t("settings.debug_ipollowork_server_version", {
+              version: props.runtimeSummary.ipolloworkServerVersionLabel,
             })}
           </div>
         </div>
@@ -435,21 +435,21 @@ export function DebugView(props: DebugViewProps) {
 
         <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
           <ServiceCard
-            title={t("settings.ipollowalk_server_label")}
-            description={t("settings.ipollowalk_config_sidecar_desc")}
-            pill={props.ipollowalkCard}
-            lines={props.ipollowalkCard.lines}
-            stdout={props.ipollowalkCard.stdout ?? null}
-            stderr={props.ipollowalkCard.stderr ?? null}
-            execution={props.ipollowalkCard.execution ?? null}
-            error={props.ipollowalkCard.error ?? null}
-            restarting={props.ipollowalkServerRestarting}
-            restartLabel={t("settings.restart_ipollowalk_server")}
-            onRestart={props.onRestartiPolloWalkServer}
-            serviceStatus={props.ipollowalkServiceStatus}
-            logStatus={props.ipollowalkLogStatus}
-            onCopyLogs={props.onCopyiPolloWalkLogs}
-            onExportLogs={props.onExportiPolloWalkLogs}
+            title={t("settings.ipollowork_server_label")}
+            description={t("settings.ipollowork_config_sidecar_desc")}
+            pill={props.ipolloworkCard}
+            lines={props.ipolloworkCard.lines}
+            stdout={props.ipolloworkCard.stdout ?? null}
+            stderr={props.ipolloworkCard.stderr ?? null}
+            execution={props.ipolloworkCard.execution ?? null}
+            error={props.ipolloworkCard.error ?? null}
+            restarting={props.ipolloworkServerRestarting}
+            restartLabel={t("settings.restart_ipollowork_server")}
+            onRestart={props.onRestartiPolloWorkServer}
+            serviceStatus={props.ipolloworkServiceStatus}
+            logStatus={props.ipolloworkLogStatus}
+            onCopyLogs={props.onCopyiPolloWorkLogs}
+            onExportLogs={props.onExportiPolloWorkLogs}
             isDesktop={isDesktop}
           />
 
@@ -509,52 +509,52 @@ export function DebugView(props: DebugViewProps) {
       {/* Section: Diagnostics */}
       <div className={cardClass}>
         <div className={sectionHeaderClass}>
-          <div className={sectionTitleClass}>{t("settings.ipollowalk_diagnostics_title")}</div>
+          <div className={sectionTitleClass}>{t("settings.ipollowork_diagnostics_title")}</div>
           <div className={sectionDescClass}>
             <span className="font-mono text-[11px] text-dls-secondary">
-              {props.ipollowalkServerDiagnostics?.version ?? "—"}
+              {props.ipolloworkServerDiagnostics?.version ?? "—"}
             </span>
           </div>
         </div>
 
-        {props.ipollowalkServerDiagnostics ? (
+        {props.ipolloworkServerDiagnostics ? (
           <div className="grid gap-2 text-[12px] text-dls-secondary md:grid-cols-2">
-            <div>{t("settings.diag_started", { time: formatUptime(props.ipollowalkServerDiagnostics.uptimeMs) })}</div>
+            <div>{t("settings.diag_started", { time: formatUptime(props.ipolloworkServerDiagnostics.uptimeMs) })}</div>
             <div>
               {t("settings.diag_read_only", {
-                value: props.ipollowalkServerDiagnostics.readOnly ? "true" : "false",
+                value: props.ipolloworkServerDiagnostics.readOnly ? "true" : "false",
               })}
             </div>
             <div>
               {t("settings.diag_approval", {
-                mode: props.ipollowalkServerDiagnostics.approval.mode,
-                ms: String(props.ipollowalkServerDiagnostics.approval.timeoutMs),
+                mode: props.ipolloworkServerDiagnostics.approval.mode,
+                ms: String(props.ipolloworkServerDiagnostics.approval.timeoutMs),
               })}
             </div>
-            <div>{t("settings.diag_workspaces", { count: String(props.ipollowalkServerDiagnostics.workspaceCount) })}</div>
+            <div>{t("settings.diag_workspaces", { count: String(props.ipolloworkServerDiagnostics.workspaceCount) })}</div>
             <div>
               {t("settings.diag_selected_workspace", {
-                id: props.ipollowalkServerDiagnostics.selectedWorkspaceId ?? "—",
+                id: props.ipolloworkServerDiagnostics.selectedWorkspaceId ?? "—",
               })}
             </div>
             <div>
               {t("settings.diag_runtime_workspace", {
-                id: props.ipollowalkServerDiagnostics.activeWorkspaceId ?? "—",
+                id: props.ipolloworkServerDiagnostics.activeWorkspaceId ?? "—",
               })}
             </div>
             <div>
               {t("settings.diag_config_path", {
-                path: props.ipollowalkServerDiagnostics.server.configPath ?? t("settings.diag_default"),
+                path: props.ipolloworkServerDiagnostics.server.configPath ?? t("settings.diag_default"),
               })}
             </div>
             <div>
               {t("settings.diag_token_source", {
-                source: props.ipollowalkServerDiagnostics.tokenSource.client,
+                source: props.ipolloworkServerDiagnostics.tokenSource.client,
               })}
             </div>
             <div>
               {t("settings.diag_host_token_source", {
-                source: props.ipollowalkServerDiagnostics.tokenSource.host,
+                source: props.ipolloworkServerDiagnostics.tokenSource.host,
               })}
             </div>
           </div>
@@ -573,17 +573,17 @@ export function DebugView(props: DebugViewProps) {
                 : t("settings.worker_unresolved")}
             </div>
           </div>
-          {props.ipollowalkServerCapabilities ? (
+          {props.ipolloworkServerCapabilities ? (
             <div className="grid gap-2 text-[12px] text-dls-secondary md:grid-cols-2">
-              <div>{t("settings.cap_skills", { value: formatCapability(props.ipollowalkServerCapabilities.skills) })}</div>
-              <div>{t("settings.cap_plugins", { value: formatCapability(props.ipollowalkServerCapabilities.plugins) })}</div>
-              <div>{t("settings.cap_mcp", { value: formatCapability(props.ipollowalkServerCapabilities.mcp) })}</div>
-              <div>{t("settings.cap_commands", { value: formatCapability(props.ipollowalkServerCapabilities.commands) })}</div>
-              <div>{t("settings.cap_config", { value: formatCapability(props.ipollowalkServerCapabilities.config) })}</div>
+              <div>{t("settings.cap_skills", { value: formatCapability(props.ipolloworkServerCapabilities.skills) })}</div>
+              <div>{t("settings.cap_plugins", { value: formatCapability(props.ipolloworkServerCapabilities.plugins) })}</div>
+              <div>{t("settings.cap_mcp", { value: formatCapability(props.ipolloworkServerCapabilities.mcp) })}</div>
+              <div>{t("settings.cap_commands", { value: formatCapability(props.ipolloworkServerCapabilities.commands) })}</div>
+              <div>{t("settings.cap_config", { value: formatCapability(props.ipolloworkServerCapabilities.config) })}</div>
               <div>
                 {t("settings.cap_browser_tools", {
                   value: (() => {
-                    const browser = props.ipollowalkServerCapabilities.toolProviders?.browser;
+                    const browser = props.ipolloworkServerCapabilities.toolProviders?.browser;
                     if (!browser?.enabled) return t("settings.disabled");
                     return `${browser.mode} · ${browser.placement}`;
                   })(),
@@ -592,7 +592,7 @@ export function DebugView(props: DebugViewProps) {
               <div>
                 {t("settings.cap_file_tools", {
                   value: (() => {
-                    const files = props.ipollowalkServerCapabilities.toolProviders?.files;
+                    const files = props.ipolloworkServerCapabilities.toolProviders?.files;
                     if (!files) return t("config.unavailable");
                     return [
                       files.injection ? t("settings.cap_inbox_on") : t("settings.cap_inbox_off"),
@@ -603,8 +603,8 @@ export function DebugView(props: DebugViewProps) {
               </div>
               <div>
                 {t("settings.cap_sandbox", {
-                  value: props.ipollowalkServerCapabilities.sandbox
-                    ? `${props.ipollowalkServerCapabilities.sandbox.backend} (${props.ipollowalkServerCapabilities.sandbox.enabled ? t("settings.on") : t("settings.off")})`
+                  value: props.ipolloworkServerCapabilities.sandbox
+                    ? `${props.ipolloworkServerCapabilities.sandbox.backend} (${props.ipolloworkServerCapabilities.sandbox.enabled ? t("settings.on") : t("settings.off")})`
                     : t("config.unavailable"),
                 })}
               </div>
@@ -627,14 +627,14 @@ export function DebugView(props: DebugViewProps) {
             <div className="text-sm font-semibold tracking-[-0.1px] text-dls-text">
               {t("settings.audit_log_title")}
             </div>
-            <div className={`rounded-full border px-2 py-1 text-[11px] font-medium ${props.ipollowalkAuditStatus.className}`}>
-              {props.ipollowalkAuditStatus.label}
+            <div className={`rounded-full border px-2 py-1 text-[11px] font-medium ${props.ipolloworkAuditStatus.className}`}>
+              {props.ipolloworkAuditStatus.label}
             </div>
           </div>
-          {props.ipollowalkAuditError ? <StatusBanner tone="error" message={props.ipollowalkAuditError} /> : null}
-          {props.ipollowalkAuditEntries.length > 0 ? (
+          {props.ipolloworkAuditError ? <StatusBanner tone="error" message={props.ipolloworkAuditError} /> : null}
+          {props.ipolloworkAuditEntries.length > 0 ? (
             <div className="divide-y divide-dls-border/60">
-              {props.ipollowalkAuditEntries.map((entry) => (
+              {props.ipolloworkAuditEntries.map((entry) => (
                 <div key={entry.id} className="flex items-start justify-between gap-4 py-2">
                   <div className="min-w-0">
                     <div className="truncate text-sm text-dls-text">{entry.summary}</div>
@@ -947,7 +947,7 @@ export function DebugView(props: DebugViewProps) {
           <div className="rounded-xl border border-green-7/25 bg-green-3/10 px-3 py-2 text-[12px] leading-relaxed text-green-11">
             Safe default: use <strong>Prepare migration data</strong> first. It writes the Electron snapshot only and does
             not replace, quit, or delete the Tauri app. The install handoff keeps rollback backup at{" "}
-            <code className="font-mono">iPolloWalk.app.migrate-bak</code>.
+            <code className="font-mono">iPolloWork.app.migrate-bak</code>.
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -1018,7 +1018,7 @@ export function DebugView(props: DebugViewProps) {
               size="sm"
               onClick={() => void props.onInstallElectronPreviewFromTauri()}
               disabled={props.electronMigrationBusy || !props.electronMigrationUrl.trim()}
-              title="Requires a trusted artifact URL. macOS keeps iPolloWalk.app.migrate-bak for rollback."
+              title="Requires a trusted artifact URL. macOS keeps iPolloWork.app.migrate-bak for rollback."
             >
               Start install handoff…
             </Button>
@@ -1107,12 +1107,12 @@ export function DebugView(props: DebugViewProps) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-semibold tracking-[-0.1px] text-dls-text">
-                {t("settings.reset_ipollowalk_title")}
+                {t("settings.reset_ipollowork_title")}
               </div>
               <div className="text-[12px] text-dls-secondary">
                 {props.opencodeDevModeEnabled
-                  ? t("settings.reset_ipollowalk_desc_dev")
-                  : t("settings.reset_ipollowalk_desc_prod")}
+                  ? t("settings.reset_ipollowork_desc_dev")
+                  : t("settings.reset_ipollowork_desc_prod")}
               </div>
             </div>
             <div
@@ -1134,7 +1134,7 @@ export function DebugView(props: DebugViewProps) {
             <button
               type="button"
               className={compactDangerActionClass}
-              onClick={() => void props.onNukeiPolloWalkAndOpencodeConfig()}
+              onClick={() => void props.onNukeiPolloWorkAndOpencodeConfig()}
               disabled={props.busy || props.nukeConfigBusy}
             >
               <CircleAlert size={14} />

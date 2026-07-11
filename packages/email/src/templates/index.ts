@@ -22,11 +22,11 @@ export type EmailTemplateProps = {
 export type EmailTemplate = keyof EmailTemplateProps
 
 export const emailSubjects: { [Template in EmailTemplate]: (props: EmailTemplateProps[Template]) => string } = {
-  verification: ({ verificationCode }) => `Your iPolloWalk verification code is ${verificationCode}`,
-  passwordReset: () => "Reset your iPolloWalk password",
-  organizationInvite: ({ organizationName }) => `You're invited to join ${organizationName} on iPolloWalk`,
-  downloadLink: () => "Your iPolloWalk download link",
-  feedback: ({ name, source }) => `iPolloWalk feedback from ${name}${source ? ` (${source})` : ""}`,
+  verification: ({ verificationCode }) => `Your iPolloWork verification code is ${verificationCode}`,
+  passwordReset: () => "Reset your iPolloWork password",
+  organizationInvite: ({ organizationName }) => `You're invited to join ${organizationName} on iPolloWork`,
+  downloadLink: () => "Your iPolloWork download link",
+  feedback: ({ name, source }) => `iPolloWork feedback from ${name}${source ? ` (${source})` : ""}`,
 }
 
 export const emailReplyTo: { [Template in EmailTemplate]: (props: EmailTemplateProps[Template]) => string | undefined } = {

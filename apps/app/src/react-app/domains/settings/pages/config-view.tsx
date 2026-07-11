@@ -2,12 +2,12 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { buildDiagnosticsBundleJson } from "../../../../app/lib/diagnostics-bundle";
 import {
-  buildiPolloWalkWorkspaceBaseUrl,
-  parseiPolloWalkWorkspaceIdFromUrl,
-  type iPolloWalkServerSettings,
-  type iPolloWalkServerStatus,
-} from "../../../../app/lib/ipollowalk-server";
-import type { iPolloWalkServerInfo } from "../../../../app/lib/desktop";
+  buildiPolloWorkWorkspaceBaseUrl,
+  parseiPolloWorkWorkspaceIdFromUrl,
+  type iPolloWorkServerSettings,
+  type iPolloWorkServerStatus,
+} from "../../../../app/lib/ipollowork-server";
+import type { iPolloWorkServerInfo } from "../../../../app/lib/desktop";
 import { isDesktopRuntime } from "../../../../app/utils";
 import { t } from "../../../../i18n";
 import {
@@ -24,16 +24,16 @@ export type ConfigViewProps = {
   clientConnected: boolean;
   anyActiveRuns: boolean;
 
-  ipollowalkServerStatus: iPolloWalkServerStatus;
-  ipollowalkServerUrl: string;
-  ipollowalkServerSettings: iPolloWalkServerSettings;
-  ipollowalkServerHostInfo: iPolloWalkServerInfo | null;
+  ipolloworkServerStatus: iPolloWorkServerStatus;
+  ipolloworkServerUrl: string;
+  ipolloworkServerSettings: iPolloWorkServerSettings;
+  ipolloworkServerHostInfo: iPolloWorkServerInfo | null;
   runtimeWorkspaceId: string | null;
 
-  updateiPolloWalkServerSettings: (next: iPolloWalkServerSettings) => void;
-  resetiPolloWalkServerSettings: () => void;
-  testiPolloWalkServerConnection: (
-    next: iPolloWalkServerSettings,
+  updateiPolloWorkServerSettings: (next: iPolloWorkServerSettings) => void;
+  resetiPolloWorkServerSettings: () => void;
+  testiPolloWorkServerConnection: (
+    next: iPolloWorkServerSettings,
   ) => Promise<boolean>;
 
   canReloadWorkspace: boolean;
@@ -48,11 +48,11 @@ export function ConfigView(props: ConfigViewProps) {
     configLocalReducer,
     initialConfigLocalState,
   );
-  const { ipollowalkConnection, tokenVisible, copyingField } = localState;
-  const ipollowalkUrl = ipollowalkConnection.url;
-  const ipollowalkToken = ipollowalkConnection.token;
-  const ipollowalkTestState = ipollowalkConnection.testState;
-  const ipollowalkTestMessage = ipollowalkConnection.testMessage;
+  const { ipolloworkConnection, tokenVisible, copyingField } = localState;
+  const ipolloworkUrl = ipolloworkConnection.url;
+  const ipolloworkToken = ipolloworkConnection.token;
+  const ipolloworkTestState = ipolloworkConnection.testState;
+  const ipolloworkTestMessage = ipolloworkConnection.testMessage;
   const copyTimeoutRef = useRef<number | undefined>(undefined);
   const [diagnosticsBundleJson, setDiagnosticsBundleJson] = useState("");
 
@@ -60,13 +60,13 @@ export function ConfigView(props: ConfigViewProps) {
     dispatchLocal({
       type: "serverSettings",
       connection: {
-        url: props.ipollowalkServerSettings.urlOverride ?? "",
-        token: props.ipollowalkServerSettings.token ?? "",
+        url: props.ipolloworkServerSettings.urlOverride ?? "",
+        token: props.ipolloworkServerSettings.token ?? "",
         testState: "idle",
         testMessage: null,
       },
     });
-  }, [props.ipollowalkServerSettings]);
+  }, [props.ipolloworkServerSettings]);
 
   useEffect(() => {
     return () => {
@@ -76,8 +76,8 @@ export function ConfigView(props: ConfigViewProps) {
     };
   }, []);
 
-  const ipollowalkStatusLabel = (() => {
-    switch (props.ipollowalkServerStatus) {
+  const ipolloworkStatusLabel = (() => {
+    switch (props.ipolloworkServerStatus) {
       case "connected":
         return t("config.status_connected");
       case "limited":
@@ -87,8 +87,8 @@ export function ConfigView(props: ConfigViewProps) {
     }
   })();
 
-  const ipollowalkStatusStyle = (() => {
-    switch (props.ipollowalkServerStatus) {
+  const ipolloworkStatusStyle = (() => {
+    switch (props.ipolloworkServerStatus) {
       case "connected":
         return "bg-green-7/10 text-green-11 border-green-7/20";
       case "limited":
@@ -113,33 +113,33 @@ export function ConfigView(props: ConfigViewProps) {
   const reloadButtonDisabled =
     props.reloadBusy || Boolean(reloadAvailabilityReason);
 
-  const buildiPolloWalkSettings = (): iPolloWalkServerSettings => ({
-    ...props.ipollowalkServerSettings,
-    urlOverride: ipollowalkUrl.trim() || undefined,
-    token: ipollowalkToken.trim() || undefined,
+  const buildiPolloWorkSettings = (): iPolloWorkServerSettings => ({
+    ...props.ipolloworkServerSettings,
+    urlOverride: ipolloworkUrl.trim() || undefined,
+    token: ipolloworkToken.trim() || undefined,
   });
 
-  const hasiPolloWalkChanges = (() => {
-    const currentUrl = props.ipollowalkServerSettings.urlOverride ?? "";
-    const currentToken = props.ipollowalkServerSettings.token ?? "";
+  const hasiPolloWorkChanges = (() => {
+    const currentUrl = props.ipolloworkServerSettings.urlOverride ?? "";
+    const currentToken = props.ipolloworkServerSettings.token ?? "";
     return (
-      ipollowalkUrl.trim() !== currentUrl || ipollowalkToken.trim() !== currentToken
+      ipolloworkUrl.trim() !== currentUrl || ipolloworkToken.trim() !== currentToken
     );
   })();
 
   const resolvedWorkspaceId = (() => {
     const explicitId = props.runtimeWorkspaceId?.trim() ?? "";
     if (explicitId) return explicitId;
-    return parseiPolloWalkWorkspaceIdFromUrl(ipollowalkUrl) ?? "";
+    return parseiPolloWorkWorkspaceIdFromUrl(ipolloworkUrl) ?? "";
   })();
 
   const resolvedWorkspaceUrl = (() => {
-    const baseUrl = ipollowalkUrl.trim();
+    const baseUrl = ipolloworkUrl.trim();
     if (!baseUrl) return "";
-    return buildiPolloWalkWorkspaceBaseUrl(baseUrl, resolvedWorkspaceId) ?? baseUrl;
+    return buildiPolloWorkWorkspaceBaseUrl(baseUrl, resolvedWorkspaceId) ?? baseUrl;
   })();
 
-  const hostInfo = props.ipollowalkServerHostInfo;
+  const hostInfo = props.ipolloworkServerHostInfo;
   const hostRemoteAccessEnabled = hostInfo?.remoteAccessEnabled === true;
   const hostStatusLabel = !hostInfo?.running
     ? t("config.host_offline")
@@ -166,8 +166,8 @@ export function ConfigView(props: ConfigViewProps) {
       hostConnectUrl,
       hostConnectUrlUsesMdns,
       hostInfo,
-      ipollowalkServerStatus: props.ipollowalkServerStatus,
-      ipollowalkServerUrl: props.ipollowalkServerUrl,
+      ipolloworkServerStatus: props.ipolloworkServerStatus,
+      ipolloworkServerUrl: props.ipolloworkServerUrl,
       runtimeWorkspaceId: props.runtimeWorkspaceId,
     });
   }, [
@@ -178,11 +178,11 @@ export function ConfigView(props: ConfigViewProps) {
     props.canReloadWorkspace,
     props.clientConnected,
     props.developerMode,
-    props.ipollowalkServerSettings.hostToken,
-    props.ipollowalkServerSettings.token,
-    props.ipollowalkServerSettings.urlOverride,
-    props.ipollowalkServerStatus,
-    props.ipollowalkServerUrl,
+    props.ipolloworkServerSettings.hostToken,
+    props.ipolloworkServerSettings.token,
+    props.ipolloworkServerSettings.urlOverride,
+    props.ipolloworkServerStatus,
+    props.ipolloworkServerUrl,
     props.runtimeWorkspaceId,
   ]);
 
@@ -222,16 +222,16 @@ export function ConfigView(props: ConfigViewProps) {
   };
 
   const handleTestConnection = async () => {
-    if (ipollowalkTestState === "testing") return;
-    const next = buildiPolloWalkSettings();
-    props.updateiPolloWalkServerSettings(next);
+    if (ipolloworkTestState === "testing") return;
+    const next = buildiPolloWorkSettings();
+    props.updateiPolloWorkServerSettings(next);
     dispatchLocal({
       type: "testState",
       testState: "testing",
       testMessage: null,
     });
     try {
-      const ok = await props.testiPolloWalkServerConnection(next);
+      const ok = await props.testiPolloWorkServerConnection(next);
       dispatchLocal({
         type: "testState",
         testState: ok ? "success" : "error",
@@ -288,22 +288,22 @@ export function ConfigView(props: ConfigViewProps) {
       ) : null}
       <ConfigServerConnectionSection
         busy={props.busy}
-        ipollowalkUrl={ipollowalkUrl}
-        ipollowalkToken={ipollowalkToken}
-        tokenVisible={tokenVisible.ipollowalk}
-        ipollowalkStatusLabel={ipollowalkStatusLabel}
-        ipollowalkStatusStyle={ipollowalkStatusStyle}
+        ipolloworkUrl={ipolloworkUrl}
+        ipolloworkToken={ipolloworkToken}
+        tokenVisible={tokenVisible.ipollowork}
+        ipolloworkStatusLabel={ipolloworkStatusLabel}
+        ipolloworkStatusStyle={ipolloworkStatusStyle}
         resolvedWorkspaceUrl={resolvedWorkspaceUrl}
         resolvedWorkspaceId={resolvedWorkspaceId}
-        ipollowalkTestState={ipollowalkTestState}
-        ipollowalkTestMessage={ipollowalkTestMessage}
-        hasiPolloWalkChanges={hasiPolloWalkChanges}
+        ipolloworkTestState={ipolloworkTestState}
+        ipolloworkTestMessage={ipolloworkTestMessage}
+        hasiPolloWorkChanges={hasiPolloWorkChanges}
         onUrlChange={(url) => dispatchLocal({ type: "url", url })}
         onTokenChange={(token) => dispatchLocal({ type: "token", token })}
-        onToggleToken={() => dispatchLocal({ type: "toggleToken", key: "ipollowalk" })}
+        onToggleToken={() => dispatchLocal({ type: "toggleToken", key: "ipollowork" })}
         onTestConnection={handleTestConnection}
-        onSave={() => props.updateiPolloWalkServerSettings(buildiPolloWalkSettings())}
-        onReset={props.resetiPolloWalkServerSettings}
+        onSave={() => props.updateiPolloWorkServerSettings(buildiPolloWorkSettings())}
+        onReset={props.resetiPolloWorkServerSettings}
       />
       {!isDesktopRuntime() ? <div className="text-xs text-gray-9">{t("config.desktop_only_hint")}</div> : null}
     </section>

@@ -1,22 +1,22 @@
 import { getMcpServerName, type McpDirectoryInfo } from "../../../app/constants";
 
-const EXTENSION_DISABLED_KEY_PREFIX = "ipollowalk.extension.disabled.";
-const EXTENSION_ENABLED_KEY_PREFIX = "ipollowalk.extension.enabled.";
-const EXTENSION_HIDDEN_KEY_PREFIX = "ipollowalk.extension.hidden.";
-export const IPOLLOWALK_EXTENSION_STATE_CHANGED = "ipollowalk:extension-state-changed";
+const EXTENSION_DISABLED_KEY_PREFIX = "ipollowork.extension.disabled.";
+const EXTENSION_ENABLED_KEY_PREFIX = "ipollowork.extension.enabled.";
+const EXTENSION_HIDDEN_KEY_PREFIX = "ipollowork.extension.hidden.";
+export const IPOLLOWORK_EXTENSION_STATE_CHANGED = "ipollowork:extension-state-changed";
 
 export function getExtensionId(entry: McpDirectoryInfo): string {
   return entry.id ?? entry.serverName ?? getMcpServerName(entry);
 }
 
-export function isiPolloWalkExtensionEnabled(entry: McpDirectoryInfo): boolean {
+export function isiPolloWorkExtensionEnabled(entry: McpDirectoryInfo): boolean {
   if (typeof window === "undefined") return Boolean(entry.defaultEnabled);
   const id = getExtensionId(entry);
   if (!entry.defaultEnabled) return window.localStorage.getItem(`${EXTENSION_ENABLED_KEY_PREFIX}${id}`) === "1";
   return window.localStorage.getItem(`${EXTENSION_DISABLED_KEY_PREFIX}${id}`) !== "1";
 }
 
-export function setiPolloWalkExtensionEnabled(entry: McpDirectoryInfo, enabled: boolean) {
+export function setiPolloWorkExtensionEnabled(entry: McpDirectoryInfo, enabled: boolean) {
   if (typeof window === "undefined") return;
   const id = getExtensionId(entry);
   if (entry.defaultEnabled) {
@@ -34,12 +34,12 @@ export function setiPolloWalkExtensionEnabled(entry: McpDirectoryInfo, enabled: 
       window.localStorage.removeItem(enabledKey);
     }
   }
-  window.dispatchEvent(new CustomEvent(IPOLLOWALK_EXTENSION_STATE_CHANGED, {
+  window.dispatchEvent(new CustomEvent(IPOLLOWORK_EXTENSION_STATE_CHANGED, {
     detail: { id, enabled },
   }));
 }
 
-export function isiPolloWalkExtensionHidden(entryOrId: McpDirectoryInfo | string): boolean {
+export function isiPolloWorkExtensionHidden(entryOrId: McpDirectoryInfo | string): boolean {
   const id = typeof entryOrId === "string" ? entryOrId : getExtensionId(entryOrId);
   if (typeof window === "undefined") return false;
   const stored = window.localStorage.getItem(`${EXTENSION_HIDDEN_KEY_PREFIX}${id}`);
@@ -48,12 +48,12 @@ export function isiPolloWalkExtensionHidden(entryOrId: McpDirectoryInfo | string
   return typeof entryOrId !== "string" && entryOrId.defaultHidden === true;
 }
 
-export function setiPolloWalkExtensionHidden(entryOrId: McpDirectoryInfo | string, hidden: boolean) {
+export function setiPolloWorkExtensionHidden(entryOrId: McpDirectoryInfo | string, hidden: boolean) {
   const id = typeof entryOrId === "string" ? entryOrId : getExtensionId(entryOrId);
   if (typeof window === "undefined") return;
   const key = `${EXTENSION_HIDDEN_KEY_PREFIX}${id}`;
   window.localStorage.setItem(key, hidden ? "1" : "0");
-  window.dispatchEvent(new CustomEvent(IPOLLOWALK_EXTENSION_STATE_CHANGED, {
+  window.dispatchEvent(new CustomEvent(IPOLLOWORK_EXTENSION_STATE_CHANGED, {
     detail: { id, hidden },
   }));
 }

@@ -6,16 +6,16 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 // The runner fails this flow if the narration drifts from that script.
 const vo = await loadVoiceoverParagraphs("invite-to-desktop");
 
-const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_API_URL);
-const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_WEB_URL);
-const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_WEB_CDP_ADMIN);
-const INVITEE_CDP_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_WEB_CDP_INVITEE);
-const MOBILE_CDP_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_WEB_CDP_MOBILE);
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MEMBER_PASSWORD = "iPolloWalkDemo123!";
-const DOWNLOAD_URL = "https://ipollowalklabs.com/download";
+const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_API_URL);
+const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_WEB_URL);
+const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_WEB_CDP_ADMIN);
+const INVITEE_CDP_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_WEB_CDP_INVITEE);
+const MOBILE_CDP_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_WEB_CDP_MOBILE);
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MEMBER_PASSWORD = "iPolloWorkDemo123!";
+const DOWNLOAD_URL = "https://ipolloworklabs.com/download";
 const RUN_TAG = Date.now().toString(36);
 const MAYA_EMAIL = `maya+${RUN_TAG}@acme.test`;
 const RILEY_EMAIL = `riley+${RUN_TAG}@acme.test`;
@@ -36,13 +36,13 @@ export default {
   title: "Invited teammates join Acme, get a desktop handoff, and receive mobile-safe download guidance",
   kind: "user-facing",
   requiredEnv: [
-    "IPOLLOWALK_EVAL_DEN_API_URL",
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
-    "IPOLLOWALK_EVAL_DEN_TOKEN",
-    "IPOLLOWALK_EVAL_WEB_CDP_ADMIN",
-    "IPOLLOWALK_EVAL_WEB_CDP_INVITEE",
-    "IPOLLOWALK_EVAL_WEB_CDP_MOBILE",
-    "IPOLLOWALK_EVAL_MARK_VERIFIED_CMD",
+    "IPOLLOWORK_EVAL_DEN_API_URL",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_DEN_TOKEN",
+    "IPOLLOWORK_EVAL_WEB_CDP_ADMIN",
+    "IPOLLOWORK_EVAL_WEB_CDP_INVITEE",
+    "IPOLLOWORK_EVAL_WEB_CDP_MOBILE",
+    "IPOLLOWORK_EVAL_MARK_VERIFIED_CMD",
   ],
   steps: [
     {
@@ -161,7 +161,7 @@ export default {
             await withClient(ctx, INVITEE_CDP_URL, async () => {
               await ctx.waitFor("Boolean(document.querySelector('[data-testid=\"join-org-success\"]'))", { timeoutMs: 45_000, label: "join-org success" });
               await ctx.expectText("You're in");
-              await ctx.expectText("Open iPolloWalk");
+              await ctx.expectText("Open iPolloWork");
               await ctx.expectText("Download the desktop app");
               const pathname = await ctx.eval("location.pathname");
               ctx.assert(typeof pathname === "string" && !pathname.startsWith("/dashboard"), `Join success redirected unexpectedly to ${pathname}.`);
@@ -169,7 +169,7 @@ export default {
           },
           screenshot: {
             name: "maya-success-desktop-cta",
-            requireText: ["Open iPolloWalk", "Download the desktop app", "Edit spreadsheets"],
+            requireText: ["Open iPolloWork", "Download the desktop app", "Edit spreadsheets"],
             rejectText: ["Something went wrong"],
           },
         });
@@ -195,7 +195,7 @@ export default {
             ctx.assert(disabled === false, "Welcome team sign-in affordance is disabled.");
             ctx.output(
               "desktop-welcome-handler",
-              "WelcomeRoute.handleTeamSignIn calls platform.openLink(buildDenAuthUrl(settings.baseUrl || DEFAULT_DEN_BASE_URL, 'sign-in')); buildDenAuthUrl adds desktopAuth=1 and desktopScheme=ipollowalk in desktop builds.",
+              "WelcomeRoute.handleTeamSignIn calls platform.openLink(buildDenAuthUrl(settings.baseUrl || DEFAULT_DEN_BASE_URL, 'sign-in')); buildDenAuthUrl adds desktopAuth=1 and desktopScheme=ipollowork in desktop builds.",
             );
           },
           screenshot: {
@@ -209,41 +209,41 @@ export default {
     {
       name: "Frame 6",
       run: async (ctx) => {
-        await ctx.prove("Maya clicks Open iPolloWalk and the Electron app signs into Acme", {
+        await ctx.prove("Maya clicks Open iPolloWork and the Electron app signs into Acme", {
           voiceover: vo[5],
           action: async () => {
             await withClient(ctx, INVITEE_CDP_URL, async () => {
               await stubClipboardCapture(ctx);
               await ctx.clickText("Copy sign-in link", { selector: "button", timeoutMs: 20_000 });
               state.copiedDesktopUrl = await ctx.waitFor(
-                "typeof window.__capturedSignin === 'string' && window.__capturedSignin.startsWith('ipollowalk://den-auth') && window.__capturedSignin",
-                { timeoutMs: 30_000, label: "captured iPolloWalk sign-in link" },
+                "typeof window.__capturedSignin === 'string' && window.__capturedSignin.startsWith('ipollowork://den-auth') && window.__capturedSignin",
+                { timeoutMs: 30_000, label: "captured iPolloWork sign-in link" },
               );
               const clicked = await ctx.eval(`(() => {
-                const button = document.querySelector('[data-testid="join-org-open-ipollowalk"]');
+                const button = document.querySelector('[data-testid="join-org-open-ipollowork"]');
                 button?.scrollIntoView({ block: "center" });
                 button?.click();
                 return Boolean(button);
               })()`);
-              ctx.assert(clicked, "Open iPolloWalk button was not available on Maya's success page.");
+              ctx.assert(clicked, "Open iPolloWork button was not available on Maya's success page.");
             });
 
             useDesktopClient(ctx);
             await ensureDesktopReady(ctx);
             await resetDesktopDenSession(ctx);
-            // Dev Electron does not register the OS ipollowalk:// protocol handler;
+            // Dev Electron does not register the OS ipollowork:// protocol handler;
             // this delivers the exact copied URL through the same renderer bridge
             // event shape used by the native deep-link bridge.
             await deliverDeepLinkToDesktop(ctx, requireStateValue(state.copiedDesktopUrl, "copied desktop sign-in URL"));
             ctx.output(
               "desktop-deep-link-delivery",
-              "Dev Electron lacks OS protocol registration in evals, so the flow dispatches ipollowalk:deep-link with { detail: { urls: [ipollowalkUrl] } } — the same renderer bridge DenAuthProvider consumes.",
+              "Dev Electron lacks OS protocol registration in evals, so the flow dispatches ipollowork:deep-link with { detail: { urls: [ipolloworkUrl] } } — the same renderer bridge DenAuthProvider consumes.",
             );
           },
           assert: async () => {
             useDesktopClient(ctx);
-            await ctx.waitFor("Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())", { timeoutMs: 60_000, label: "persisted Den auth token" });
-            await ctx.waitFor("(localStorage.getItem('ipollowalk.den.activeOrgName') ?? '').includes('Acme Robotics')", { timeoutMs: 60_000, label: "Acme active org" });
+            await ctx.waitFor("Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())", { timeoutMs: 60_000, label: "persisted Den auth token" });
+            await ctx.waitFor("(localStorage.getItem('ipollowork.den.activeOrgName') ?? '').includes('Acme Robotics')", { timeoutMs: 60_000, label: "Acme active org" });
             // The handoff sign-in routes the app into org onboarding; walk the
             // real journey (choose org -> resources -> workspace) before
             // asserting the signed-in account surface.
@@ -327,11 +327,11 @@ export default {
           assert: async () => {
             await withClient(ctx, MOBILE_CDP_URL, async () => {
               await applyMobileEmulation(ctx);
-              await ctx.expectText("iPolloWalk runs on your computer.");
+              await ctx.expectText("iPolloWork runs on your computer.");
               await ctx.expectText("Email me the download link");
-              await ctx.expectNoText("Open iPolloWalk");
+              await ctx.expectNoText("Open iPolloWork");
               const hiddenDesktopButtons = await ctx.eval(`(() => {
-                return document.querySelector('[data-testid="join-org-open-ipollowalk"]') === null
+                return document.querySelector('[data-testid="join-org-open-ipollowork"]') === null
                   && document.querySelector('[data-testid="join-org-download"]') === null;
               })()`);
               ctx.assert(hiddenDesktopButtons, "Mobile success rendered a desktop-only open or download button.");
@@ -339,8 +339,8 @@ export default {
           },
           screenshot: {
             name: "riley-mobile-honest-next-step",
-            requireText: ["iPolloWalk runs on your computer", "Email me the download link"],
-            rejectText: ["Open iPolloWalk", "Download the desktop app", "Something went wrong"],
+            requireText: ["iPolloWork runs on your computer", "Email me the download link"],
+            rejectText: ["Open iPolloWork", "Download the desktop app", "Something went wrong"],
           },
         });
         });
@@ -362,18 +362,18 @@ export default {
           assert: async () => {
             const { entry, html } = await getLatestDevEmail(ctx, "downloadLink", RILEY_EMAIL);
             ctx.assert(html.includes(DOWNLOAD_URL), `Download email is missing ${DOWNLOAD_URL}.`);
-            ctx.assert(html.includes("Download iPolloWalk"), "Download email is missing its primary heading/CTA.");
+            ctx.assert(html.includes("Download iPolloWork"), "Download email is missing its primary heading/CTA.");
             ctx.output("riley-download-email", JSON.stringify({ to: entry.to, subject: entry.subject }, null, 2));
             await withClient(ctx, MOBILE_CDP_URL, async () => {
               await applyMobileEmulation(ctx);
               await navigateToAbsolute(ctx, `${DEN_API_URL}/v1/dev/emails/last?template=downloadLink`);
-              await ctx.waitForText("Download iPolloWalk", { timeoutMs: 20_000 });
+              await ctx.waitForText("Download iPolloWork", { timeoutMs: 20_000 });
               await ctx.expectText("Edit spreadsheets");
             });
           },
           screenshot: {
             name: "riley-download-email",
-            requireText: ["Download iPolloWalk", "Edit spreadsheets"],
+            requireText: ["Download iPolloWork", "Edit spreadsheets"],
             rejectText: ["Something went wrong"],
           },
         });
@@ -481,8 +481,8 @@ async function ensureAdminToken(ctx) {
     state.adminToken = signedIn.body.token;
     return state.adminToken;
   }
-  const token = process.env.IPOLLOWALK_EVAL_DEN_TOKEN?.trim() ?? "";
-  ctx.assert(token.length > 0, `Admin sign-in failed and IPOLLOWALK_EVAL_DEN_TOKEN is missing: ${signedIn.response.status}`);
+  const token = process.env.IPOLLOWORK_EVAL_DEN_TOKEN?.trim() ?? "";
+  ctx.assert(token.length > 0, `Admin sign-in failed and IPOLLOWORK_EVAL_DEN_TOKEN is missing: ${signedIn.response.status}`);
   state.adminToken = token;
   return token;
 }
@@ -612,7 +612,7 @@ async function completeInviteSignup(ctx, email, password) {
 function markEmailVerified(ctx, email) {
   ctx.assert(
     MARK_VERIFIED_CMD.length > 0,
-    "Invitation acceptance requires a verified email; set IPOLLOWALK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
+    "Invitation acceptance requires a verified email; set IPOLLOWORK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
   );
   execSync(MARK_VERIFIED_CMD.replaceAll("{email}", email), { stdio: "ignore" });
 }
@@ -669,21 +669,21 @@ function extractInstallFromHtml(html, ctx) {
 function rewriteInviteLink(inviteLink) {
   // The local stack's trusted-origin used to render email links can differ from
   // the den-web origin the eval browser drives, so keep the path/search and
-  // explicitly trust IPOLLOWALK_EVAL_DEN_WEB_URL for the browser navigation.
+  // explicitly trust IPOLLOWORK_EVAL_DEN_WEB_URL for the browser navigation.
   const parsed = new URL(inviteLink, DEN_WEB_URL);
   return new URL(`${parsed.pathname}${parsed.search}${parsed.hash}`, DEN_WEB_URL).toString();
 }
 
 async function ensureDesktopReady(ctx) {
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "desktop control API" });
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "desktop control API" });
 }
 
 async function showDesktopWelcome(ctx) {
   await ctx.eval(`(() => {
-    const raw = localStorage.getItem('ipollowalk.preferences');
+    const raw = localStorage.getItem('ipollowork.preferences');
     let prefs = {};
     try { prefs = raw ? JSON.parse(raw) : {}; } catch { prefs = {}; }
-    localStorage.setItem('ipollowalk.preferences', JSON.stringify({ ...prefs, hasCompletedOnboarding: false }));
+    localStorage.setItem('ipollowork.preferences', JSON.stringify({ ...prefs, hasCompletedOnboarding: false }));
     location.hash = '#/welcome';
     location.reload();
     return true;
@@ -709,13 +709,13 @@ async function stubClipboardCapture(ctx) {
   })()`);
 }
 
-async function deliverDeepLinkToDesktop(ctx, ipollowalkUrl) {
+async function deliverDeepLinkToDesktop(ctx, ipolloworkUrl) {
   await ctx.eval(`(() => {
-    const url = ${JSON.stringify(ipollowalkUrl)};
-    window.__IPOLLOWALK__ = window.__IPOLLOWALK__ || {};
-    const pending = window.__IPOLLOWALK__.deepLinks || [];
-    window.__IPOLLOWALK__.deepLinks = [...pending, url];
-    window.dispatchEvent(new CustomEvent("ipollowalk:deep-link", { detail: { urls: [url] } }));
+    const url = ${JSON.stringify(ipolloworkUrl)};
+    window.__IPOLLOWORK__ = window.__IPOLLOWORK__ || {};
+    const pending = window.__IPOLLOWORK__.deepLinks || [];
+    window.__IPOLLOWORK__.deepLinks = [...pending, url];
+    window.dispatchEvent(new CustomEvent("ipollowork:deep-link", { detail: { urls: [url] } }));
     return true;
   })()`);
 }
@@ -723,14 +723,14 @@ async function deliverDeepLinkToDesktop(ctx, ipollowalkUrl) {
 async function resetDesktopDenSession(ctx) {
   await ctx.eval(`(() => {
     for (const key of [
-      'ipollowalk.den.authToken',
-      'ipollowalk.den.activeOrgId',
-      'ipollowalk.den.activeOrgSlug',
-      'ipollowalk.den.activeOrgName',
+      'ipollowork.den.authToken',
+      'ipollowork.den.activeOrgId',
+      'ipollowork.den.activeOrgSlug',
+      'ipollowork.den.activeOrgName',
     ]) {
       localStorage.removeItem(key);
     }
-    window.dispatchEvent(new CustomEvent('ipollowalk-den-session-updated', { detail: { status: 'signed_out' } }));
+    window.dispatchEvent(new CustomEvent('ipollowork-den-session-updated', { detail: { status: 'signed_out' } }));
     return true;
   })()`);
 }

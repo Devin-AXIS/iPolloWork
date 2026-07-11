@@ -36,11 +36,11 @@ interface RegisterFileRoutesOptions {
 }
 
 function resolveInboxDir(workspaceRoot: string): string {
-  return join(workspaceRoot, ".opencode", "ipollowalk", "inbox");
+  return join(workspaceRoot, ".opencode", "ipollowork", "inbox");
 }
 
 function resolveOutboxDir(workspaceRoot: string): string {
-  return join(workspaceRoot, ".opencode", "ipollowalk", "outbox");
+  return join(workspaceRoot, ".opencode", "ipollowork", "outbox");
 }
 
 export function normalizeWorkspaceRelativePath(input: string, options: { allowSubdirs: boolean }): string {

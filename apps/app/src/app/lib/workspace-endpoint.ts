@@ -1,16 +1,16 @@
 /**
  * Single source of truth for "where does a workspace's server live?".
  *
- * Every workspace-scoped API call in the app must route to the iPolloWalk server
+ * Every workspace-scoped API call in the app must route to the iPolloWork server
  * that actually owns that workspace. For local workspaces that's the user's
- * local iPolloWalk server. For workspaces hosted on a remote iPolloWalk worker
+ * local iPolloWork server. For workspaces hosted on a remote iPolloWork worker
  * (`id` starts with `rem_` and `workspaceType === "remote"`), it's the
- * `baseUrl`/`ipollowalkHostUrl` and `ipollowalkToken` saved on the workspace
+ * `baseUrl`/`ipolloworkHostUrl` and `ipolloworkToken` saved on the workspace
  * record, with the workspace addressed by its server-side id (the `rem_`
- * prefix is stripped, or `ipollowalkWorkspaceId` is used when present).
+ * prefix is stripped, or `ipolloworkWorkspaceId` is used when present).
  *
  * Always go through {@link resolveWorkspaceEndpoint} when you need:
- *   - an `iPolloWalkServerClient` for a workspace
+ *   - an `iPolloWorkServerClient` for a workspace
  *   - a mounted `/workspace/<id>` URL prefix
  *   - the `/opencode` URL for the OpenCode SDK
  *
@@ -21,22 +21,22 @@
 
 import type { WorkspaceInfo } from "./desktop";
 import {
-  buildiPolloWalkWorkspaceBaseUrl,
-  createiPolloWalkServerClient,
-  type iPolloWalkServerClient,
-} from "./ipollowalk-server";
+  buildiPolloWorkWorkspaceBaseUrl,
+  createiPolloWorkServerClient,
+  type iPolloWorkServerClient,
+} from "./ipollowork-server";
 
 export type ResolvedWorkspaceEndpoint = {
-  /** Host URL of the iPolloWalk server that owns this workspace (no `/workspace` mount). */
+  /** Host URL of the iPolloWork server that owns this workspace (no `/workspace` mount). */
   baseUrl: string;
   /** Auth token for that server. May be empty for unauthenticated local servers. */
   token: string;
   /** Workspace id as the owning server expects it in URL paths. No `rem_` prefix. */
   workspaceId: string;
-  /** True when the workspace lives on a remote iPolloWalk worker, not the user's local server. */
+  /** True when the workspace lives on a remote iPolloWork worker, not the user's local server. */
   isRemote: boolean;
-  /** iPolloWalkServerClient bound to {@link baseUrl}/{@link token}. */
-  client: iPolloWalkServerClient;
+  /** iPolloWorkServerClient bound to {@link baseUrl}/{@link token}. */
+  client: iPolloWorkServerClient;
   /** Mounted base url: `<baseUrl>/workspace/<workspaceId>`. No trailing slash. */
   mountedBaseUrl: string;
   /** OpenCode SDK base url: `<mountedBaseUrl>/opencode`. */
@@ -53,11 +53,11 @@ type WorkspaceEndpointInput = Pick<
   | "id"
   | "workspaceType"
   | "baseUrl"
-  | "ipollowalkHostUrl"
-  | "ipollowalkToken"
-  | "ipollowalkClientToken"
-  | "ipollowalkHostToken"
-  | "ipollowalkWorkspaceId"
+  | "ipolloworkHostUrl"
+  | "ipolloworkToken"
+  | "ipolloworkClientToken"
+  | "ipolloworkHostToken"
+  | "ipolloworkWorkspaceId"
 > | null | undefined;
 
 /**
@@ -80,22 +80,22 @@ export function workspaceServerId(workspace: WorkspaceEndpointInput): string {
   if (!workspace) return "";
   const id = workspace.id.trim();
   if (!isRemoteWorkspace(workspace)) return id;
-  const explicit = workspace.ipollowalkWorkspaceId?.trim();
+  const explicit = workspace.ipolloworkWorkspaceId?.trim();
   if (explicit) return explicit;
   return id.startsWith("rem_") ? id.slice("rem_".length) : id;
 }
 
 function pickRemoteBaseUrl(workspace: WorkspaceEndpointInput): string {
   if (!workspace) return "";
-  return (workspace.baseUrl ?? workspace.ipollowalkHostUrl ?? "").trim();
+  return (workspace.baseUrl ?? workspace.ipolloworkHostUrl ?? "").trim();
 }
 
 function pickRemoteToken(workspace: WorkspaceEndpointInput): string {
   if (!workspace) return "";
   return (
-    workspace.ipollowalkToken ??
-    workspace.ipollowalkClientToken ??
-    workspace.ipollowalkHostToken ??
+    workspace.ipolloworkToken ??
+    workspace.ipolloworkClientToken ??
+    workspace.ipolloworkHostToken ??
     ""
   ).trim();
 }
@@ -117,12 +117,12 @@ export function resolveWorkspaceEndpoint(
     if (!baseUrl) return null;
     const token = pickRemoteToken(workspace);
     const workspaceId = workspaceServerId(workspace);
-    const client = createiPolloWalkServerClient({
+    const client = createiPolloWorkServerClient({
       baseUrl,
       token: token || undefined,
     });
     const mountedBaseUrl = (
-      buildiPolloWalkWorkspaceBaseUrl(baseUrl, workspaceId) ?? baseUrl
+      buildiPolloWorkWorkspaceBaseUrl(baseUrl, workspaceId) ?? baseUrl
     ).replace(/\/+$/, "");
     return {
       baseUrl,
@@ -139,12 +139,12 @@ export function resolveWorkspaceEndpoint(
   if (!localBaseUrl) return null;
   const localToken = (localServer.token ?? "").trim();
   const workspaceId = workspace.id.trim();
-  const client = createiPolloWalkServerClient({
+  const client = createiPolloWorkServerClient({
     baseUrl: localBaseUrl,
     token: localToken || undefined,
   });
   const mountedBaseUrl = (
-    buildiPolloWalkWorkspaceBaseUrl(localBaseUrl, workspaceId) ?? localBaseUrl
+    buildiPolloWorkWorkspaceBaseUrl(localBaseUrl, workspaceId) ?? localBaseUrl
   ).replace(/\/+$/, "");
   return {
     baseUrl: localBaseUrl,

@@ -26,7 +26,7 @@ function readArgs(argv: string[]): BuildOptions {
   const options: BuildOptions = {
     targets: [],
     outdir: resolve("dist", "bin"),
-    filename: "ipollowalk",
+    filename: "ipollowork",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -101,7 +101,7 @@ async function buildOnce(entrypoint: string, outdir: string, filename: string, t
   try {
     const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
     if (typeof pkg.version === "string" && pkg.version.trim()) {
-      define.__IPOLLOWALK_ORCHESTRATOR_VERSION__ = `\"${pkg.version.trim()}\"`;
+      define.__IPOLLOWORK_ORCHESTRATOR_VERSION__ = `\"${pkg.version.trim()}\"`;
     }
   } catch {
     // ignore
@@ -114,7 +114,7 @@ async function buildOnce(entrypoint: string, outdir: string, filename: string, t
       typeof constants.opencodeVersion === "string" &&
       constants.opencodeVersion.trim()
     ) {
-      define.__IPOLLOWALK_PINNED_OPENCODE_VERSION__ = `\"${constants.opencodeVersion
+      define.__IPOLLOWORK_PINNED_OPENCODE_VERSION__ = `\"${constants.opencodeVersion
         .trim()
         .replace(/^v/, "")}\"`;
     }

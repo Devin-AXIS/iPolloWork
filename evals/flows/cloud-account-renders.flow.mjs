@@ -11,7 +11,7 @@ export default {
     {
       name: "App booted",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 30_000 });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30_000 });
       },
     },
     {

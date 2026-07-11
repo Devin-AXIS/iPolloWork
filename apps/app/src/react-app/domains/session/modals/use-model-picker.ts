@@ -91,7 +91,7 @@ export function useModelPicker(input: UseModelPickerInput) {
         // (2) providers passed via the openModelPickerEvent from the toast.
         let seenIds: Set<string>;
         try {
-          const raw = window.localStorage.getItem("ipollowalk.seenProviderIds");
+          const raw = window.localStorage.getItem("ipollowork.seenProviderIds");
           seenIds = new Set(raw ? JSON.parse(raw) : []);
         } catch {
           seenIds = new Set();

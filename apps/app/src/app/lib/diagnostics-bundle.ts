@@ -2,18 +2,18 @@ import { readDevLogs, type DevLogRecord } from "./dev-log";
 import {
   appBuildInfo,
   engineInfo,
-  ipollowalkServerInfo,
+  ipolloworkServerInfo,
   type AppBuildInfo,
   type EngineInfo,
   type OpencodeExecutionSnapshot,
-  type iPolloWalkServerInfo,
+  type iPolloWorkServerInfo,
 } from "./desktop";
 import { readPerfLogs, type PerfLogRecord } from "./perf-log";
 import {
-  readiPolloWalkServerSettings,
-  type iPolloWalkServerSettings,
-  type iPolloWalkServerStatus,
-} from "./ipollowalk-server";
+  readiPolloWorkServerSettings,
+  type iPolloWorkServerSettings,
+  type iPolloWorkServerStatus,
+} from "./ipollowork-server";
 import { isDesktopRuntime } from "../utils";
 
 export type DiagnosticsBundleContext = {
@@ -23,9 +23,9 @@ export type DiagnosticsBundleContext = {
   developerMode?: boolean;
   hostConnectUrl?: string;
   hostConnectUrlUsesMdns?: boolean;
-  hostInfo?: iPolloWalkServerInfo | null;
-  ipollowalkServerStatus?: iPolloWalkServerStatus;
-  ipollowalkServerUrl?: string;
+  hostInfo?: iPolloWorkServerInfo | null;
+  ipolloworkServerStatus?: iPolloWorkServerStatus;
+  ipolloworkServerUrl?: string;
   runtimeWorkspaceId?: string | null;
 };
 
@@ -34,8 +34,8 @@ export type DiagnosticsBundleInputs = {
   desktopRuntime: boolean;
   appInfo: AppBuildInfo | null;
   engineInfo: EngineInfo | null;
-  ipollowalkServerSettings: iPolloWalkServerSettings;
-  hostInfo: iPolloWalkServerInfo | null;
+  ipolloworkServerSettings: iPolloWorkServerSettings;
+  hostInfo: iPolloWorkServerInfo | null;
   developerLogs: DevLogRecord[];
   perfLogs: PerfLogRecord[];
   context?: DiagnosticsBundleContext;
@@ -58,7 +58,7 @@ function pickAppInfo(info: AppBuildInfo | null) {
     version: info.version,
     gitSha: info.gitSha ?? null,
     buildEpoch: info.buildEpoch ?? null,
-    ipollowalkDevMode: info.ipollowalkDevMode ?? null,
+    ipolloworkDevMode: info.ipolloworkDevMode ?? null,
   };
 }
 
@@ -94,7 +94,7 @@ function pickEngineInfo(info: EngineInfo | null) {
   };
 }
 
-function pickHostInfo(info: iPolloWalkServerInfo | null) {
+function pickHostInfo(info: iPolloWorkServerInfo | null) {
   if (!info) return null;
   return {
     running: Boolean(info.running),
@@ -108,7 +108,7 @@ function pickHostInfo(info: iPolloWalkServerInfo | null) {
   };
 }
 
-function defaultHostConnectUrl(hostInfo: iPolloWalkServerInfo | null) {
+function defaultHostConnectUrl(hostInfo: iPolloWorkServerInfo | null) {
   return hostInfo?.connectUrl ?? hostInfo?.mdnsUrl ?? hostInfo?.lanUrl ?? hostInfo?.baseUrl ?? "";
 }
 
@@ -120,8 +120,8 @@ function addSecretValue(secrets: string[], value: string | null | undefined) {
 
 function collectSecretValues(input: DiagnosticsBundleInputs) {
   const secrets: string[] = [];
-  addSecretValue(secrets, input.ipollowalkServerSettings.token);
-  addSecretValue(secrets, input.ipollowalkServerSettings.hostToken);
+  addSecretValue(secrets, input.ipolloworkServerSettings.token);
+  addSecretValue(secrets, input.ipolloworkServerSettings.hostToken);
   addSecretValue(secrets, input.hostInfo?.clientToken);
   addSecretValue(secrets, input.hostInfo?.ownerToken);
   addSecretValue(secrets, input.hostInfo?.hostToken);
@@ -139,8 +139,8 @@ function scrubKnownSecretValues(value: string, secrets: string[]) {
 
 export function composeDiagnosticsBundleJson(input: DiagnosticsBundleInputs): string {
   const context = input.context;
-  const urlOverride = input.ipollowalkServerSettings.urlOverride?.trim() ?? "";
-  const token = input.ipollowalkServerSettings.token?.trim() ?? "";
+  const urlOverride = input.ipolloworkServerSettings.urlOverride?.trim() ?? "";
+  const token = input.ipolloworkServerSettings.token?.trim() ?? "";
   const hostConnectUrl = context?.hostConnectUrl ?? defaultHostConnectUrl(input.hostInfo);
   const hostConnectUrlUsesMdns = context?.hostConnectUrlUsesMdns ?? hostConnectUrl.includes(".local");
   const clientConnected = context?.clientConnected === true;
@@ -157,9 +157,9 @@ export function composeDiagnosticsBundleJson(input: DiagnosticsBundleInputs): st
       clientConnected,
       anyActiveRuns: context?.anyActiveRuns === true,
     },
-    ipollowalkServer: {
-      status: context?.ipollowalkServerStatus ?? (clientConnected ? "connected" : "disconnected"),
-      url: context?.ipollowalkServerUrl ?? "",
+    ipolloworkServer: {
+      status: context?.ipolloworkServerStatus ?? (clientConnected ? "connected" : "disconnected"),
+      url: context?.ipolloworkServerUrl ?? "",
       settings: {
         urlOverride: urlOverride || null,
         tokenPresent: Boolean(token),
@@ -206,7 +206,7 @@ async function readEngineInfo(desktopRuntime: boolean) {
 async function readHostInfo(desktopRuntime: boolean) {
   if (!desktopRuntime) return null;
   try {
-    return await ipollowalkServerInfo();
+    return await ipolloworkServerInfo();
   } catch {
     return null;
   }
@@ -224,7 +224,7 @@ export async function buildDiagnosticsBundleJson(context?: DiagnosticsBundleCont
     desktopRuntime,
     appInfo,
     engineInfo: engine,
-    ipollowalkServerSettings: readiPolloWalkServerSettings(),
+    ipolloworkServerSettings: readiPolloWorkServerSettings(),
     hostInfo,
     developerLogs: readDevLogs(80),
     perfLogs: readPerfLogs(80),

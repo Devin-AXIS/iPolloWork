@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { type ReactNode } from "react";
 import { ShareIcon, UserGroupIcon } from "@heroicons/react/24/solid";
-import { PaperGrainGradient } from "@ipollowalk/ui/react";
+import { PaperGrainGradient } from "@ipollowork/ui/react";
 
 import { t } from "../../../i18n";
 import {
@@ -199,7 +199,7 @@ export function WelcomePage({
                     Choose any folder on your machine to get started.
                   </OnboardingStep>
                   <OnboardingStep number="2" title="Chat">
-                    Describe what you need. iPolloWalk handles the rest.
+                    Describe what you need. iPolloWork handles the rest.
                   </OnboardingStep>
                   <OnboardingStep number="3" title="Interact">
                     Review results, approve actions, and iterate.

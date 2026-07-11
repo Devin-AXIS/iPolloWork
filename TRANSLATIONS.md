@@ -1,6 +1,6 @@
-# Help Translate iPolloWalk
+# Help Translate iPolloWork
 
-We are actively looking for contributors to translate iPolloWalk to your own native language.
+We are actively looking for contributors to translate iPolloWork to your own native language.
 
 ## README translations
 

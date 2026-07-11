@@ -1,5 +1,5 @@
 /**
- * Single entry point for embedding the iPolloWalk server in-process.
+ * Single entry point for embedding the iPolloWork server in-process.
  *
  * Handles config resolution, managed OpenCode spawn, and server start
  * in one call -- mirrors what cli.ts does but returns a handle instead
@@ -11,14 +11,14 @@ import { createManagedOpencodeServer, type ManagedOpencodeServer, type OpencodeE
 import { startServer, syncAllWorkspacesRuntimeMcpToEngine } from "./server.js";
 import { ensureLocalWorkspaceFiles } from "./workspace-init.js";
 import { findManagedEngineWorkspace } from "./workspaces.js";
-import { keepiPolloWalkRuntimeConfigFileFresh, writeiPolloWalkRuntimeConfigFile } from "./ipollowalk-runtime-config.js";
+import { keepiPolloWorkRuntimeConfigFileFresh, writeiPolloWorkRuntimeConfigFile } from "./ipollowork-runtime-config.js";
 import type { ServeResult } from "./serve-node.js";
 import type { ServerConfig } from "./types.js";
 
 export type EmbeddedServerOptions = CliArgs & {
   /** When true, spawn a managed OpenCode child process. */
   manageOpencode?: boolean;
-  /** Path to the OpenCode binary. Falls back to IPOLLOWALK_OPENCODE_BIN env. */
+  /** Path to the OpenCode binary. Falls back to IPOLLOWORK_OPENCODE_BIN env. */
   opencodeBin?: string;
   /** Working directory for the managed OpenCode process. */
   opencodeCwd?: string;
@@ -40,9 +40,9 @@ export type EmbeddedServerHandle = {
 export async function startEmbeddedServer(options: EmbeddedServerOptions): Promise<EmbeddedServerHandle> {
   const config = await resolveServerConfig(options);
   const serverUrl = `http://${config.host === "0.0.0.0" ? "127.0.0.1" : config.host}:${config.port}`;
-  const opencodeModelsUrl = process.env.IPOLLOWALK_DEV_MODE === "1"
+  const opencodeModelsUrl = process.env.IPOLLOWORK_DEV_MODE === "1"
     ? "http://localhost:8791/models"
-    : "https://models.ipollowalklabs.com/";
+    : "https://models.ipolloworklabs.com/";
 
   // Spawn managed OpenCode if requested and no explicit base URL was provided.
   let managedOpencode: ManagedOpencodeServer | null = null;
@@ -55,24 +55,24 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
     const workspace = findManagedEngineWorkspace(config.workspaces);
     if (workspace) {
       // Server-managed config file: the engine re-reads it from disk on every
-      // instance rebuild, and keepiPolloWalkRuntimeConfigFileFresh rewrites it
+      // instance rebuild, and keepiPolloWorkRuntimeConfigFileFresh rewrites it
       // on every runtime-DB write — so disposes always pick up current state.
-      const runtimeConfigPath = await writeiPolloWalkRuntimeConfigFile(config, workspace.id);
-      keepiPolloWalkRuntimeConfigFileFresh(config, workspace.id);
+      const runtimeConfigPath = await writeiPolloWorkRuntimeConfigFile(config, workspace.id);
+      keepiPolloWorkRuntimeConfigFileFresh(config, workspace.id);
       const cwd = options.opencodeCwd
-        || process.env.IPOLLOWALK_MANAGED_OPENCODE_CWD?.trim()
+        || process.env.IPOLLOWORK_MANAGED_OPENCODE_CWD?.trim()
         || workspace.path;
       await mkdir(cwd, { recursive: true });
 
       managedOpencode = await createManagedOpencodeServer({
-        bin: options.opencodeBin || process.env.IPOLLOWALK_OPENCODE_BIN,
+        bin: options.opencodeBin || process.env.IPOLLOWORK_OPENCODE_BIN,
         cwd,
         excludedPorts: [config.port],
         env: {
-          ...(process.env.IPOLLOWALK_DEV_MODE ? { IPOLLOWALK_DEV_MODE: process.env.IPOLLOWALK_DEV_MODE } : {}),
-          ...(process.env.IPOLLOWALK_UI_CONTROL_DISCOVERY ? { IPOLLOWALK_UI_CONTROL_DISCOVERY: process.env.IPOLLOWALK_UI_CONTROL_DISCOVERY } : {}),
-          IPOLLOWALK_SERVER_URL: serverUrl,
-          IPOLLOWALK_SERVER_TOKEN: config.token,
+          ...(process.env.IPOLLOWORK_DEV_MODE ? { IPOLLOWORK_DEV_MODE: process.env.IPOLLOWORK_DEV_MODE } : {}),
+          ...(process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY ? { IPOLLOWORK_UI_CONTROL_DISCOVERY: process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY } : {}),
+          IPOLLOWORK_SERVER_URL: serverUrl,
+          IPOLLOWORK_SERVER_TOKEN: config.token,
           OPENCODE_CONFIG: runtimeConfigPath,
           OPENCODE_MODELS_URL: opencodeModelsUrl,
         },

@@ -43,10 +43,10 @@ sandboxes when validating owner and member UI simultaneously.
   daytona exec <electron-sandbox> -- 'bash -lc "kill <electron/opencode-pids> 2>/dev/null || true"'
   daytona exec <electron-sandbox> -- \
     "bash -lc 'cd /workspace && \
-      IPOLLOWALK_DEN_BASE_URL=DEN_WEB_URL \
-      IPOLLOWALK_DEN_API_BASE_URL=DEN_API_URL \
+      IPOLLOWORK_DEN_BASE_URL=DEN_WEB_URL \
+      IPOLLOWORK_DEN_API_BASE_URL=DEN_API_URL \
       DAYTONA_SECRETS_ENV=/tmp/no-daytona-secrets \
-      bash /opt/ipollowalk-daytona/start-daytona-electron.sh --detach'"
+      bash /opt/ipollowork-daytona/start-daytona-electron.sh --detach'"
   ```
 - Do not chain `pkill -f electron` with restart in one `daytona exec`; it can
   terminate the exec wrapper and leave CDP half-hung. Use direct PIDs or split
@@ -55,14 +55,14 @@ sandboxes when validating owner and member UI simultaneously.
   create an invitation as owner, sign up the member, mark the test email verified
   in the local Den DB when email delivery is not available, then accept the invite.
 - The desktop member state can be bootstrapped for CDP-driven evals by setting:
-  `ipollowalk.den.baseUrl`, `ipollowalk.den.apiBaseUrl`, `ipollowalk.den.authToken`,
-  `ipollowalk.den.activeOrgId`, `ipollowalk.den.activeOrgSlug`, and
-  `ipollowalk.den.activeOrgName` in localStorage, then reloading the renderer.
+  `ipollowork.den.baseUrl`, `ipollowork.den.apiBaseUrl`, `ipollowork.den.authToken`,
+  `ipollowork.den.activeOrgId`, `ipollowork.den.activeOrgSlug`, and
+  `ipollowork.den.activeOrgName` in localStorage, then reloading the renderer.
 
 ## Verified run: 2026-06-02
 
-- Server sandbox: `ipollowalk-server-20260602-154721`
-- Electron sandbox: `ipollowalk-test-20260602-155000`
+- Server sandbox: `ipollowork-server-20260602-154721`
+- Electron sandbox: `ipollowork-test-20260602-155000`
 - Org: `Acme Robotics`, `org_01kt58ejd1extvd0p7nqagxaky`
 - Member email: `eval-member-1780444561@acme.test`
 - Member org membership id: `om_01kt5c8w72fk4skf8bs9qywk9v`

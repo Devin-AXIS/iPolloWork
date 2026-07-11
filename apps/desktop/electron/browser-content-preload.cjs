@@ -1,7 +1,7 @@
 const { ipcRenderer } = require("electron");
 
 function dismissMenuOverlay() {
-  ipcRenderer.send("ipollowalk:menu-overlay:dismiss");
+  ipcRenderer.send("ipollowork:menu-overlay:dismiss");
 }
 
 function installDismissListeners() {

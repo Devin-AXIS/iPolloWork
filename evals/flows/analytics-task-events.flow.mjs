@@ -2,7 +2,7 @@
  * Product analytics instrumentation fires for app open and task creation.
  *
  * Every analytics capture is mirrored into the local app inspector
- * (window.__ipollowalk.record("analytics.<event>")), so this flow asserts
+ * (window.__ipollowork.record("analytics.<event>")), so this flow asserts
  * instrumentation without any analytics backend or network access.
  *
  * Requires an onboarded profile with at least one workspace (so the
@@ -14,13 +14,13 @@ export default {
   title: "Analytics events fire for app open and task creation",
   spec: "evals/react-session-flows.md",
   precondition: async (ctx) => {
-    await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+    await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
       timeoutMs: 60_000,
       label: "control API",
     });
     const state = await ctx.waitFor(
       `(() => {
-        const control = window.__ipollowalkControl;
+        const control = window.__ipolloworkControl;
         if (control.snapshot().route.startsWith("/welcome")) return "welcome";
         const action = control.listActions().find((a) => a.id === "session.create_task");
         if (action && !action.disabled) return "ready";
@@ -36,7 +36,7 @@ export default {
     {
       name: "App booted",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl) && Boolean(window.__ipollowalk)", {
+        await ctx.waitFor("Boolean(window.__ipolloworkControl) && Boolean(window.__ipollowork)", {
           timeoutMs: 60_000,
           label: "control + inspector APIs",
         });
@@ -46,7 +46,7 @@ export default {
       name: "app_opened captured",
       run: async (ctx) => {
         await ctx.waitFor(
-          "window.__ipollowalk.events(200).some((e) => e.name === 'analytics.app_opened')",
+          "window.__ipollowork.events(200).some((e) => e.name === 'analytics.app_opened')",
           { timeoutMs: 15_000, label: "analytics.app_opened in inspector" },
         );
       },
@@ -55,7 +55,7 @@ export default {
       name: "Create a task via control action",
       run: async (ctx) => {
         await ctx.waitFor(
-          "window.__ipollowalkControl.listActions().some((a) => a.id === 'session.create_task')",
+          "window.__ipolloworkControl.listActions().some((a) => a.id === 'session.create_task')",
           { timeoutMs: 30_000, label: "session.create_task action available" },
         );
         await ctx.control("session.create_task");
@@ -65,11 +65,11 @@ export default {
       name: "task_created captured",
       run: async (ctx) => {
         await ctx.waitFor(
-          "window.__ipollowalk.events(200).some((e) => e.name === 'analytics.task_created')",
+          "window.__ipollowork.events(200).some((e) => e.name === 'analytics.task_created')",
           { timeoutMs: 30_000, label: "analytics.task_created in inspector" },
         );
         const events = await ctx.eval(
-          "window.__ipollowalk.events(200).filter((e) => e.name.startsWith('analytics.')).map((e) => e.name)",
+          "window.__ipollowork.events(200).filter((e) => e.name.startsWith('analytics.')).map((e) => e.name)",
         );
         ctx.log(`analytics events: ${JSON.stringify(events)}`);
         await ctx.screenshot("task-created", {

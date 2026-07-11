@@ -3,8 +3,8 @@
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 
-export const MOCK_TELEGRAM_BOT_TOKEN = "900100:IPOLLOWALK_TEST_TOKEN";
-export const MOCK_TELEGRAM_WEBHOOK_SECRET = "ipollowalk-telegram-webhook-secret";
+export const MOCK_TELEGRAM_BOT_TOKEN = "900100:IPOLLOWORK_TEST_TOKEN";
+export const MOCK_TELEGRAM_WEBHOOK_SECRET = "ipollowork-telegram-webhook-secret";
 export const MOCK_MICROSOFT_ACCESS_TOKEN = "mock-microsoft-access-token";
 export const MOCK_MICROSOFT_REFRESH_TOKEN = "mock-microsoft-refresh-token";
 export const MOCK_WORKER_HOST_TOKEN = "mock-worker-host-token";
@@ -32,7 +32,7 @@ const MICROSOFT_MESSAGES = [
       content: "The launch checklist is complete. The only remaining item is the final support handoff.",
     },
     from: { emailAddress: { name: "Ada Lovelace", address: "ada@example.test" } },
-    toRecipients: [{ emailAddress: { name: "iPolloWalk Tester", address: "tester@example.test" } }],
+    toRecipients: [{ emailAddress: { name: "iPolloWork Tester", address: "tester@example.test" } }],
     webLink: "https://outlook.office.test/mail/message-launch-readiness",
   },
   {
@@ -42,7 +42,7 @@ const MICROSOFT_MESSAGES = [
     bodyPreview: "Finance approved the Q3 budget with no changes.",
     body: { contentType: "text", content: "Finance approved the Q3 budget with no changes." },
     from: { emailAddress: { name: "Grace Hopper", address: "grace@example.test" } },
-    toRecipients: [{ emailAddress: { name: "iPolloWalk Tester", address: "tester@example.test" } }],
+    toRecipients: [{ emailAddress: { name: "iPolloWork Tester", address: "tester@example.test" } }],
     webLink: "https://outlook.office.test/mail/message-q3-budget",
   },
   {
@@ -55,7 +55,7 @@ const MICROSOFT_MESSAGES = [
       content: "Pilot customers highlighted faster setup and asked for clearer connection health.",
     },
     from: { emailAddress: { name: "Katherine Johnson", address: "katherine@example.test" } },
-    toRecipients: [{ emailAddress: { name: "iPolloWalk Tester", address: "tester@example.test" } }],
+    toRecipients: [{ emailAddress: { name: "iPolloWork Tester", address: "tester@example.test" } }],
     webLink: "https://outlook.office.test/mail/message-customer-feedback",
   },
 ];
@@ -69,7 +69,7 @@ const MICROSOFT_EVENTS = [
     end: { dateTime: "2026-07-10T09:30:00", timeZone: "America/Los_Angeles" },
     organizer: { emailAddress: { name: "Ada Lovelace", address: "ada@example.test" } },
     attendees: [],
-    location: { displayName: "iPolloWalk Room" },
+    location: { displayName: "iPolloWork Room" },
     isCancelled: false,
     webLink: "https://outlook.office.test/calendar/event-launch-review",
   },
@@ -94,7 +94,7 @@ const MICROSOFT_Q3_FILE = {
   lastModifiedDateTime: "2026-07-09T13:00:00Z",
   webUrl: "https://onedrive.office.test/files/file-q3-plan",
   file: { mimeType: "text/plain", hashes: { quickXorHash: "mock-hash" } },
-  parentReference: { driveId: "drive-ipollowalk-test", path: "/drive/root:" },
+  parentReference: { driveId: "drive-ipollowork-test", path: "/drive/root:" },
 };
 
 const Q3_FILE_CONTENT = [
@@ -109,7 +109,7 @@ function sendJson(response, status, body, headers = {}) {
   response.writeHead(status, {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
-    "access-control-allow-headers": "authorization,content-type,x-ipollowalk-host-token,x-telegram-bot-api-secret-token",
+    "access-control-allow-headers": "authorization,content-type,x-ipollowork-host-token,x-telegram-bot-api-secret-token",
     "content-type": "application/json; charset=utf-8",
     ...headers,
   });
@@ -203,8 +203,8 @@ function telegramUser() {
   return {
     id: 900100,
     is_bot: true,
-    first_name: "iPolloWalk Test Bot",
-    username: "ipollowalk_test_bot",
+    first_name: "iPolloWork Test Bot",
+    username: "ipollowork_test_bot",
     can_join_groups: false,
     can_read_all_group_messages: false,
     supports_inline_queries: false,
@@ -217,8 +217,8 @@ export function telegramUpdate(text = "Summarize the launch notes", updateId = 8
     message: {
       message_id: 61001,
       date: 1783612800,
-      chat: { id: 42001, type: "private", first_name: "iPolloWalk", username: "ipollowalk_tester" },
-      from: { id: 42001, is_bot: false, first_name: "iPolloWalk", username: "ipollowalk_tester" },
+      chat: { id: 42001, type: "private", first_name: "iPolloWork", username: "ipollowork_tester" },
+      from: { id: 42001, is_bot: false, first_name: "iPolloWork", username: "ipollowork_tester" },
       text,
     },
   };
@@ -364,9 +364,9 @@ function handleMicrosoftGraph(request, response, url) {
 
   if (url.pathname === "/graph/v1.0/me" && request.method === "GET") {
     sendJson(response, 200, {
-      id: "microsoft-user-ipollowalk-test",
-      displayName: "iPolloWalk Tester",
-      givenName: "iPolloWalk",
+      id: "microsoft-user-ipollowork-test",
+      displayName: "iPolloWork Tester",
+      givenName: "iPolloWork",
       surname: "Tester",
       mail: "tester@example.test",
       userPrincipalName: "tester@example.test",
@@ -422,14 +422,14 @@ function handleMicrosoftGraph(request, response, url) {
 }
 
 function hasWorkerDualAuth(request) {
-  return request.headers["x-ipollowalk-host-token"] === MOCK_WORKER_HOST_TOKEN
+  return request.headers["x-ipollowork-host-token"] === MOCK_WORKER_HOST_TOKEN
     && request.headers.authorization === `Bearer ${MOCK_WORKER_CLIENT_TOKEN}`;
 }
 
 function workerUnauthorized(response) {
   sendJson(response, 401, {
     error: "worker_mock_unauthorized",
-    message: "Both the iPolloWalk host token and client bearer token are required.",
+    message: "Both the iPolloWork host token and client bearer token are required.",
   });
 }
 
@@ -446,7 +446,7 @@ function workerSnapshot(session, status) {
     messages.push(workerMessage(session, "user", session.messageId, session.prompt));
   }
   if (status === "idle" && session.prompt) {
-    messages.push(workerMessage(session, "assistant", `${session.messageId}-assistant`, `iPolloWalk worker reply: ${session.prompt}`, session.messageId));
+    messages.push(workerMessage(session, "assistant", `${session.messageId}-assistant`, `iPolloWork worker reply: ${session.prompt}`, session.messageId));
   }
   return {
     item: {

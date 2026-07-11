@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 final class FrontmostApplicationMonitor: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "ipollowalk.computer-use.frontmost-monitor")
+    private let queue = DispatchQueue(label: "ipollowork.computer-use.frontmost-monitor")
     private var timer: DispatchSourceTimer?
     private var lastPID: pid_t?
 

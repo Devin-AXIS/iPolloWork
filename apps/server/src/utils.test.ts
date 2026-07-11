@@ -55,7 +55,7 @@ describe("parseList", () => {
 
 describe("ensureDir + exists", () => {
   test("creates nested directory and reports it exists", async () => {
-    const dir = join(tmpdir(), `ipollowalk-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const dir = join(tmpdir(), `ipollowork-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const nested = join(dir, "a", "b", "c");
 
     expect(await exists(nested)).toBe(false);

@@ -269,7 +269,7 @@ export const useSessionManagementStore = create<SessionManagementStore>()(
           const ws = state.groupsByWorkspace[workspaceId] ?? EMPTY_GROUP_STATE;
           const knownGroupIds = new Set(serverState.groups.map((group) => group.id));
           const collapsedGroupIds = (ws.collapsedGroupIds ?? []).filter(
-            (id) => id === "__ipollowalk_ungrouped" || knownGroupIds.has(id),
+            (id) => id === "__ipollowork_ungrouped" || knownGroupIds.has(id),
           );
           return {
             groupsByWorkspace: {
@@ -311,7 +311,7 @@ export const useSessionManagementStore = create<SessionManagementStore>()(
         }),
     }),
     {
-      name: "ipollowalk.react.sessionManagement",
+      name: "ipollowork.react.sessionManagement",
       storage: createJSONStorage(() => localStorage),
     },
   ),

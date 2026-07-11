@@ -75,9 +75,9 @@ const updatePackageJson = async (nextVersion) => {
   tauriData.version = nextVersion;
   orchestratorData.version = nextVersion;
 
-  // Ensure ipollowalk-orchestrator uses the same ipollowalk-server version.
+  // Ensure ipollowork-orchestrator uses the same ipollowork-server version.
   orchestratorData.dependencies = orchestratorData.dependencies ?? {};
-  orchestratorData.dependencies["ipollowalk-server"] = nextVersion;
+  orchestratorData.dependencies["ipollowork-server"] = nextVersion;
 
   serverData.version = nextVersion;
   if (!isDryRun) {

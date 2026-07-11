@@ -31,7 +31,7 @@ untouched:
 
 ```bash
 git fetch origin dev
-git worktree add ../_worktrees/ipollowalk-<flow-id> -b feat/<flow-id> origin/dev
+git worktree add ../_worktrees/ipollowork-<flow-id> -b feat/<flow-id> origin/dev
 ```
 
 Then, inside the worktree:

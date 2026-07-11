@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { desktopPolicyKeys } from "@ipollowalk/types/den/desktop-policies";
+import { desktopPolicyKeys } from "@ipollowork/types/den/desktop-policies";
 
 import {
   checkDesktopAppRestriction,
@@ -25,12 +25,12 @@ import {
   type DenDesktopConfig,
 } from "../../../app/lib/den";
 import { applyBrandAppName, applyBrandIcon } from "../../../app/lib/desktop";
-import { createiPolloWalkServerClient } from "../../../app/lib/ipollowalk-server";
+import { createiPolloWorkServerClient } from "../../../app/lib/ipollowork-server";
 import {
   denSessionUpdatedEvent,
   denSettingsChangedEvent,
 } from "../../../app/lib/den-session-events";
-import { resolveiPolloWalkConnection } from "../../shell/ipollowalk-connection";
+import { resolveiPolloWorkConnection } from "../../shell/ipollowork-connection";
 import { useDenAuth } from "./den-auth-provider";
 
 export type DesktopConfigStore = {
@@ -51,7 +51,7 @@ const DesktopConfigContext = createContext<DesktopConfigStore | undefined>(
 
 const DEFAULT_DESKTOP_CONFIG: DenDesktopConfig = {};
 const DESKTOP_CONFIG_REFRESH_MS = 60 * 60 * 1000;
-const DESKTOP_CONFIG_CACHE_PREFIX = "ipollowalk.den.desktopConfig:";
+const DESKTOP_CONFIG_CACHE_PREFIX = "ipollowork.den.desktopConfig:";
 const DESKTOP_CONFIG_ITEMS = [
   ...desktopPolicyKeys,
   "allowedDesktopVersions",
@@ -189,7 +189,7 @@ export function DesktopConfigProvider({ children }: DesktopConfigProviderProps) 
     const brandAppNameAction = actions.find((action) => action.item === "brandAppName");
     if (brandAppNameAction) {
       const appName = typeof brandAppNameAction.nextValue === "string" ? brandAppNameAction.nextValue : null;
-      document.title = appName ?? "iPolloWalk";
+      document.title = appName ?? "iPolloWork";
       void applyBrandAppName(appName).catch(() => null);
     }
 
@@ -308,10 +308,10 @@ export function DesktopConfigProvider({ children }: DesktopConfigProviderProps) 
     let cancelled = false;
 
     void (async () => {
-      const connection = await resolveiPolloWalkConnection();
+      const connection = await resolveiPolloWorkConnection();
       if (cancelled || !connection.normalizedBaseUrl || !connection.resolvedHostToken) return;
       lastPushedConnectEnabledRef.current = connectEnabled;
-      await createiPolloWalkServerClient({
+      await createiPolloWorkServerClient({
         baseUrl: connection.normalizedBaseUrl,
         token: connection.resolvedToken,
         hostToken: connection.resolvedHostToken,
@@ -332,9 +332,9 @@ export function DesktopConfigProvider({ children }: DesktopConfigProviderProps) 
         normalizeDenDesktopConfig(configPayload),
       );
     };
-    Object.defineProperty(window, "__ipollowalkApplyDesktopConfig", { value: bridge, configurable: true });
+    Object.defineProperty(window, "__ipolloworkApplyDesktopConfig", { value: bridge, configurable: true });
     return () => {
-      Object.defineProperty(window, "__ipollowalkApplyDesktopConfig", { value: undefined, configurable: true });
+      Object.defineProperty(window, "__ipolloworkApplyDesktopConfig", { value: undefined, configurable: true });
     };
   }, [applyDesktopConfigActions]);
 

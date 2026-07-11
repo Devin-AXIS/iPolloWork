@@ -1,15 +1,15 @@
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const FLOW_ID = "landing-connect-mcp";
-const MCP_SERVER_URL = "https://api.ipollowalklabs.com/mcp/agent";
-const DOCS_URL = "https://ipollowalklabs.com/docs/cloud/run-in-the-cloud/cloud-mcp#connect-mcp-install-codex";
+const MCP_SERVER_URL = "https://api.ipolloworklabs.com/mcp/agent";
+const DOCS_URL = "https://ipolloworklabs.com/docs/cloud/run-in-the-cloud/cloud-mcp#connect-mcp-install-codex";
 const SECTION_SELECTOR = "#connect-mcp";
 const BRING_SELECTOR = '[data-testid="connect-mcp-bring"]';
 const EXAMPLE_SELECTOR = '[data-testid="connect-mcp-example"]';
 const INSTALL_SELECTOR = '[data-testid="connect-mcp-install"]';
-const CODEX_COMMAND = `codex mcp add ipollowalk --url ${MCP_SERVER_URL}`;
+const CODEX_COMMAND = `codex mcp add ipollowork --url ${MCP_SERVER_URL}`;
 const CODEX_CONNECTIONS_DEEPLINK = "codex://settings/connections";
-const INSTALL_COPY_BUTTON_SELECTOR = `${SECTION_SELECTOR} [role="tabpanel"]:not([hidden]) button[aria-label="Copy the iPolloWalk MCP install command"]`;
+const INSTALL_COPY_BUTTON_SELECTOR = `${SECTION_SELECTOR} [role="tabpanel"]:not([hidden]) button[aria-label="Copy the iPolloWork MCP install command"]`;
 
 // Narration is loaded from the approved script (evals/voiceovers/landing-connect-mcp.md).
 // The runner fails this flow if the narration drifts from that script.
@@ -18,7 +18,7 @@ const vo = await loadVoiceoverParagraphs(FLOW_ID);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function routeUrl(ctx, path) {
-  return new URL(path, ctx.env.IPOLLOWALK_EVAL_LANDING_URL).toString();
+  return new URL(path, ctx.env.IPOLLOWORK_EVAL_LANDING_URL).toString();
 }
 
 function recordAssertion(ctx, assertion, passed, actual) {
@@ -37,7 +37,7 @@ async function grantClipboardPermissions(ctx) {
     return;
   }
 
-  const origin = new URL(ctx.env.IPOLLOWALK_EVAL_LANDING_URL).origin;
+  const origin = new URL(ctx.env.IPOLLOWORK_EVAL_LANDING_URL).origin;
   await ctx.client.send("Browser.grantPermissions", {
     origin,
     permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
@@ -92,7 +92,7 @@ async function ensureConnectSection(ctx, { forceReload = false } = {}) {
       const text = section ? section.innerText : "";
       return Boolean(section)
         && text.includes("Already doing it in your agent?")
-        && text.includes("Add it to iPolloWalk")
+        && text.includes("Add it to iPolloWork")
         && text.includes(${JSON.stringify(MCP_SERVER_URL)});
     })()`,
     { timeoutMs: 30_000, label: "Connect section with new sharing headline" },
@@ -163,16 +163,16 @@ async function scrollExampleTextIntoView(ctx, text) {
 
 export default {
   id: FLOW_ID,
-  title: "Add existing agent work to iPolloWalk and share it with your team",
+  title: "Add existing agent work to iPolloWork and share it with your team",
   kind: "user-facing",
   spec: "evals/README.md",
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_LANDING_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_LANDING_URL"],
   steps: [
     {
       name: "Frame 1",
       run: async (ctx) => {
-        await ctx.prove("The landing page leads with adding existing agent work to iPolloWalk and sharing it with the team.", {
+        await ctx.prove("The landing page leads with adding existing agent work to iPolloWork and sharing it with the team.", {
           voiceover: vo[0],
           action: async () => {
             await ensureConnectSection(ctx, { forceReload: true });
@@ -184,14 +184,14 @@ export default {
               return {
                 sectionExists: Boolean(section),
                 hasAlreadyDoingHeading: text.includes("Already doing it in your agent?"),
-                hasAddItHeading: text.includes("Add it to iPolloWalk"),
+                hasAddItHeading: text.includes("Add it to iPolloWork"),
                 hasServerUrl: text.includes(${JSON.stringify(MCP_SERVER_URL)}),
                 hasProtocolJargon: text.includes("search_capabilities"),
               };
             })()`);
             recordAssertion(
               ctx,
-              "The Connect section includes the new heading and iPolloWalk MCP server URL without tool-name jargon",
+              "The Connect section includes the new heading and iPolloWork MCP server URL without tool-name jargon",
               actual.sectionExists === true
                 && actual.hasAlreadyDoingHeading === true
                 && actual.hasAddItHeading === true
@@ -200,14 +200,14 @@ export default {
               actual,
             );
           },
-          screenshot: { name: "frame-1", requireText: ["Add it to iPolloWalk"] },
+          screenshot: { name: "frame-1", requireText: ["Add it to iPolloWork"] },
         });
       },
     },
     {
       name: "Frame 2",
       run: async (ctx) => {
-        await ctx.prove("The agent terminal shows existing skills, MCPs, and commands shared to iPolloWalk in one link.", {
+        await ctx.prove("The agent terminal shows existing skills, MCPs, and commands shared to iPolloWork in one link.", {
           voiceover: vo[1],
           action: async () => {
             await ensureConnectSection(ctx);
@@ -217,7 +217,7 @@ export default {
                 const card = document.querySelector(${JSON.stringify(BRING_SELECTOR)});
                 const text = card ? card.innerText : "";
                 return text.includes("agent — terminal")
-                  && text.includes("share my skills and MCPs with my iPolloWalk org")
+                  && text.includes("share my skills and MCPs with my iPolloWork org")
                   && text.includes("granola")
                   && text.includes("meeting-brief")
                   && text.includes("review-pr")
@@ -234,7 +234,7 @@ export default {
               return {
                 exists: Boolean(card),
                 hasTerminalTitle: text.includes("agent — terminal"),
-                hasSharePrompt: text.includes("share my skills and MCPs with my iPolloWalk org"),
+                hasSharePrompt: text.includes("share my skills and MCPs with my iPolloWork org"),
                 hasGranola: text.includes("granola"),
                 hasMeetingBrief: text.includes("meeting-brief"),
                 hasReviewPr: text.includes("review-pr"),
@@ -263,7 +263,7 @@ export default {
     {
       name: "Frame 3",
       run: async (ctx) => {
-        await ctx.prove("The mini iPolloWalk app shows a teammate using the shared Granola connection and meeting-brief skill.", {
+        await ctx.prove("The mini iPolloWork app shows a teammate using the shared Granola connection and meeting-brief skill.", {
           voiceover: vo[2],
           action: async () => {
             await ensureConnectSection(ctx);
@@ -280,7 +280,7 @@ export default {
                   && text.includes("Queried the shared Granola MCP")
                   && text.includes("Your teammate's view");
               })()`,
-              { timeoutMs: 10_000, label: "mini iPolloWalk teammate view" },
+              { timeoutMs: 10_000, label: "mini iPolloWork teammate view" },
             );
           },
           assert: async () => {
@@ -296,7 +296,7 @@ export default {
             })()`);
             recordAssertion(
               ctx,
-              "The mini iPolloWalk UI shows a teammate prompt and shared Granola execution",
+              "The mini iPolloWork UI shows a teammate prompt and shared Granola execution",
               actual.exists === true
                 && actual.hasPrompt === true
                 && actual.hasGranolaExecution === true
@@ -324,7 +324,7 @@ export default {
                   && text.includes("3 talking points")
                   && text.includes("Run Task");
               })()`,
-              { timeoutMs: 10_000, label: "mini iPolloWalk run result" },
+              { timeoutMs: 10_000, label: "mini iPolloWork run result" },
             );
           },
           assert: async () => {
@@ -340,7 +340,7 @@ export default {
             })()`);
             recordAssertion(
               ctx,
-              "The mini iPolloWalk UI shows the shared meeting-brief run, talking points, and Run Task input",
+              "The mini iPolloWork UI shows the shared meeting-brief run, talking points, and Run Task input",
               actual.exists === true
                 && actual.hasMeetingBriefRun === true
                 && actual.hasTalkingPoints === true
@@ -385,7 +385,7 @@ export default {
             await realMouseClick(
               ctx,
               `document.querySelector(${JSON.stringify(INSTALL_COPY_BUTTON_SELECTOR)})`,
-              "visible iPolloWalk MCP install copy button",
+              "visible iPolloWork MCP install copy button",
             );
             await ctx.waitFor(
               `(() => {
@@ -481,7 +481,7 @@ export default {
             );
             recordAssertion(
               ctx,
-              "Opening ChatGPT Desktop MCP settings copies the iPolloWalk server URL",
+              "Opening ChatGPT Desktop MCP settings copies the iPolloWork server URL",
               desktopClipboardRead.error === "" && desktopClipboardRead.text === MCP_SERVER_URL,
               desktopClipboardRead,
             );
@@ -535,7 +535,7 @@ export default {
             })()`);
             recordAssertion(
               ctx,
-              "Read the docs points exactly to the iPolloWalk Cloud MCP guide",
+              "Read the docs points exactly to the iPolloWork Cloud MCP guide",
               actual.exists === true && actual.href === DOCS_URL,
               actual,
             );

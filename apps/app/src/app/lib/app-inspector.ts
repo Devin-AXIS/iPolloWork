@@ -5,7 +5,7 @@
  * workspaces, sessions, composer draft, boot phase, and the last
  * refreshRouteState() call — without crawling the UI tree.
  *
- * Consumers read via `window.__ipollowalk` from a devtools console or from
+ * Consumers read via `window.__ipollowork` from a devtools console or from
  * browser-tool `evaluate_script`. The surface is intentionally plain JSON so
  * it survives postMessage-style bridges.
  *
@@ -30,7 +30,7 @@ type InspectorAPI = {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __ipollowalk: InspectorAPI | undefined;
+  var __ipollowork: InspectorAPI | undefined;
 }
 
 const INSPECTOR_VERSION = 1;
@@ -97,7 +97,7 @@ function installIfNeeded() {
     },
   };
 
-  Object.defineProperty(window, "__ipollowalk", {
+  Object.defineProperty(window, "__ipollowork", {
     value: api,
     configurable: true,
     writable: false,
@@ -120,7 +120,7 @@ export function publishInspectorSlice(
 
 export function recordInspectorEvent(name: string, data?: unknown) {
   installIfNeeded();
-  window.__ipollowalk?.record(name, data);
+  window.__ipollowork?.record(name, data);
 }
 
 export function ensureInspectorInstalled() {

@@ -1,29 +1,29 @@
-# iPolloWalk
+# iPolloWork
 
-iPolloWalk is a free, open-source desktop app (macOS, Windows, Linux) for doing work with AI agents on your own files — the open source alternative to Claude Cowork and Codex. Bring any of 50+ LLMs with your own provider keys, extend agents with skills, plugins, and MCP servers, and share complete setups with your team in one link.
+iPolloWork is a free, open-source desktop app (macOS, Windows, Linux) for doing work with AI agents on your own files — the open source alternative to Claude Cowork and Codex. Bring any of 50+ LLMs with your own provider keys, extend agents with skills, plugins, and MCP servers, and share complete setups with your team in one link.
 
 
 ## Core Philosophy
 
-- Local-first, cloud-ready: iPolloWalk runs on your machine in one click. Send a message instantly.
+- Local-first, cloud-ready: iPolloWork runs on your machine in one click. Send a message instantly.
 - Composable: desktop app, Slack/Telegram connector, or server. Use what fits, no lock-in.
-- Ejectable: iPolloWalk is powered by OpenCode, so everything OpenCode can do works in iPolloWalk, even without a UI yet.
+- Ejectable: iPolloWork is powered by OpenCode, so everything OpenCode can do works in iPolloWork, even without a UI yet.
 - Sharing is caring: start solo on localhost, then explicitly opt into remote sharing when you need it.
 
 <p align="center">
-  <img src="./app-demo.gif" alt="iPolloWalk demo" width="800" />
+  <img src="./app-demo.gif" alt="iPolloWork demo" width="800" />
 </p>
 
-iPolloWalk is designed around the idea that you can easily ship your agentic workflows for your team as a repeatable, productized process.
+iPolloWork is designed around the idea that you can easily ship your agentic workflows for your team as a repeatable, productized process.
 
 > [!TIP]
 >
 > Get enhanced capabilities including feature prioritization, SSO, SLA support, LTS versions, and more.
 
 ## Alternate UIs
-- **iPolloWalk Orchestrator (CLI host)**: run OpenCode + iPolloWalk server without the desktop UI.
-  - install: `npm install -g ipollowalk-orchestrator`
-  - run: `ipollowalk start --workspace /path/to/workspace --approval auto`
+- **iPolloWork Orchestrator (CLI host)**: run OpenCode + iPolloWork server without the desktop UI.
+  - install: `npm install -g ipollowork-orchestrator`
+  - run: `ipollowork start --workspace /path/to/workspace --approval auto`
   - docs: [apps/orchestrator/README.md](./apps/orchestrator/README.md)
 
 ## Quick start
@@ -40,12 +40,12 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 
 Current CLI and GUIs for opencode are anchored around developers. That means a focus on file diffs, tool names, and hard to extend capabilities without relying on exposing some form of cli.
 
-iPolloWalk is designed to be:
+iPolloWork is designed to be:
 
 - **Extensible**: skill and opencode plugins are installable modules.
 - **Auditable**: show what happened, when, and why.
 - **Permissioned**: access to privileged flows.
-- **Local/Remote**: iPolloWalk works locally as well as can connect to remote servers.
+- **Local/Remote**: iPolloWork works locally as well as can connect to remote servers.
 
 ## What’s Included
 
@@ -99,7 +99,7 @@ pnpm install --frozen-lockfile
 
 which bun
 bun --version
-pnpm --filter @ipollowalk/desktop exec tauri --version
+pnpm --filter @ipollowork/desktop exec tauri --version
 ```
 
 ### Install
@@ -108,7 +108,7 @@ pnpm --filter @ipollowalk/desktop exec tauri --version
 pnpm install
 ```
 
-iPolloWalk now lives in `apps/app` (UI) and `apps/desktop` (desktop shell).
+iPolloWork now lives in `apps/app` (UI) and `apps/desktop` (desktop shell).
 
 ### Run (Desktop)
 
@@ -116,7 +116,7 @@ iPolloWalk now lives in `apps/app` (UI) and `apps/desktop` (desktop shell).
 pnpm dev
 ```
 
-`pnpm dev` now enables `IPOLLOWALK_DEV_MODE=1` automatically, so desktop dev uses an isolated OpenCode state instead of your personal global config/auth/data.
+`pnpm dev` now enables `IPOLLOWORK_DEV_MODE=1` automatically, so desktop dev uses an isolated OpenCode state instead of your personal global config/auth/data.
 
 ### Run (Web UI only)
 
@@ -124,7 +124,7 @@ pnpm dev
 pnpm dev:ui
 ```
 
-All repo `dev` entrypoints now opt into the same dev-mode isolation so local testing uses the iPolloWalk-managed OpenCode state consistently.
+All repo `dev` entrypoints now opt into the same dev-mode isolation so local testing uses the iPolloWork-managed OpenCode state consistently.
 
 ### Arch Users:
 
@@ -135,11 +135,11 @@ curl -fsSL https://opencode.ai/install | bash -s -- --version "$(node -e "const 
 
 ## Architecture (high-level)
 
-- In **Host mode**, iPolloWalk runs a local host stack and connects the UI to it.
-  - Default runtime: `ipollowalk` (installed from `ipollowalk-orchestrator`), which orchestrates `opencode` and `ipollowalk-server`.
+- In **Host mode**, iPolloWork runs a local host stack and connects the UI to it.
+  - Default runtime: `ipollowork` (installed from `ipollowork-orchestrator`), which orchestrates `opencode` and `ipollowork-server`.
   - Fallback runtime: `direct`, where the desktop app spawns `opencode serve --hostname 127.0.0.1 --port <free-port>` directly.
 
-When you select a project folder, iPolloWalk runs the host stack locally using that folder and connects the desktop UI.
+When you select a project folder, iPolloWork runs the host stack locally using that folder and connects the desktop UI.
 This lets you run agentic workflows, send prompts, and see progress entirely on your machine without a remote server.
 
 - The UI uses `@opencode-ai/sdk/v2/client` to:
@@ -158,13 +158,13 @@ Capability permissions are defined in:
 
 ## OpenCode Plugins
 
-Plugins are the **native** way to extend OpenCode. iPolloWalk now manages them from the Skills tab by
+Plugins are the **native** way to extend OpenCode. iPolloWork now manages them from the Skills tab by
 reading and writing `opencode.json`.
 
 - **Project scope**: `<workspace>/opencode.json`
 - **Global scope**: `~/.config/opencode/opencode.json` (or `$XDG_CONFIG_HOME/opencode/opencode.json`)
 
-You can still edit `opencode.json` manually; iPolloWalk uses the same format as the OpenCode CLI:
+You can still edit `opencode.json` manually; iPolloWork uses the same format as the OpenCode CLI:
 
 ```json
 {
@@ -190,19 +190,19 @@ If you need to report a desktop or session bug, open Settings -> Debug and expor
 
 ### Linux / Wayland (Hyprland)
 
-If iPolloWalk crashes on launch with WebKitGTK errors like `Failed to create GBM buffer`, disable dmabuf or compositing before launch. Try one of the following environment flags.
+If iPolloWork crashes on launch with WebKitGTK errors like `Failed to create GBM buffer`, disable dmabuf or compositing before launch. Try one of the following environment flags.
 
 ```bash
-WEBKIT_DISABLE_DMABUF_RENDERER=1 ipollowalk
+WEBKIT_DISABLE_DMABUF_RENDERER=1 ipollowork
 ```
 
 ```bash
-WEBKIT_DISABLE_COMPOSITING_MODE=1 ipollowalk
+WEBKIT_DISABLE_COMPOSITING_MODE=1 ipollowork
 ```
 
 ## Security Notes
 
-- iPolloWalk hides model reasoning and sensitive tool metadata by default.
+- iPolloWork hides model reasoning and sensitive tool metadata by default.
 - Host mode binds to `127.0.0.1` by default.
 
 ## Contributing

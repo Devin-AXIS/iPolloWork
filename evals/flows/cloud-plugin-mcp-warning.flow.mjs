@@ -31,16 +31,16 @@ function slugify(value) {
 }
 
 function baseWorkspacePath(ctx) {
-  return ctx.env.IPOLLOWALK_EVAL_WORKSPACE_PATH.trim().replace(/\/+$/, "");
+  return ctx.env.IPOLLOWORK_EVAL_WORKSPACE_PATH.trim().replace(/\/+$/, "");
 }
 
 async function denJson(ctx, path, options = {}) {
-  const apiBase = ctx.env.IPOLLOWALK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
+  const apiBase = ctx.env.IPOLLOWORK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN.trim()}`,
+      authorization: `Bearer ${ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN.trim()}`,
       ...(options.headers ?? {}),
     },
   });
@@ -144,11 +144,11 @@ async function setupCloudPlugins(ctx) {
 }
 
 async function signInViaHandoff(ctx) {
-  const apiBase = ctx.env.IPOLLOWALK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
+  const apiBase = ctx.env.IPOLLOWORK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
   const response = await fetch(`${apiBase}/v1/auth/desktop-handoff`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN.trim()}`,
+      authorization: `Bearer ${ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN.trim()}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({}),
@@ -157,11 +157,11 @@ async function signInViaHandoff(ctx) {
   ctx.assert(response.ok && typeof payload.grant === "string", `Handoff create failed: ${response.status}`);
   await ctx.control("auth.exchange-grant", { grant: payload.grant, baseUrl: apiBase });
   await ctx.waitFor(
-    "window.__ipollowalkControl.execute('auth.status').then(r => r.result?.status === 'signed_in')",
+    "window.__ipolloworkControl.execute('auth.status').then(r => r.result?.status === 'signed_in')",
     { timeoutMs: 30_000, label: "auth signed_in" },
   );
   await ctx.waitFor(
-    "Boolean((localStorage.getItem('ipollowalk.den.activeOrgId') ?? '').trim())",
+    "Boolean((localStorage.getItem('ipollowork.den.activeOrgId') ?? '').trim())",
     { timeoutMs: 60_000, label: "active org resolved" },
   );
 }
@@ -207,7 +207,7 @@ async function createFreshWorkspace(ctx) {
   await handleOnboarding(ctx);
 
   const hasActiveWorkspace = await ctx.eval(
-    "location.hash.includes('/workspace/') || Boolean(localStorage.getItem('ipollowalk.react.activeWorkspace'))",
+    "location.hash.includes('/workspace/') || Boolean(localStorage.getItem('ipollowork.react.activeWorkspace'))",
   );
   if (!hasActiveWorkspace) {
     await useWelcomeFolder(ctx);
@@ -228,7 +228,7 @@ async function createFreshWorkspace(ctx) {
   );
   await ensureRenderedApp(ctx);
   await ctx.waitFor(
-    "Boolean(window.__ipollowalkControl?.listActions().find(a => a.id === 'workspace.create'))",
+    "Boolean(window.__ipolloworkControl?.listActions().find(a => a.id === 'workspace.create'))",
     { timeoutMs: 20_000, label: "workspace.create control action on session route" },
   );
   await ctx.control("workspace.create", {
@@ -247,7 +247,7 @@ async function waitForWorkspaceReady(ctx) {
 
 async function activeWorkspaceId(ctx) {
   const workspaceId = await ctx.eval(
-    "(location.hash.match(/\\/workspace\\/([^/]+)/) || [])[1] || localStorage.getItem('ipollowalk.react.activeWorkspace') || ''",
+    "(location.hash.match(/\\/workspace\\/([^/]+)/) || [])[1] || localStorage.getItem('ipollowork.react.activeWorkspace') || ''",
   );
   ctx.assert(typeof workspaceId === "string" && workspaceId.trim().length > 0, "No active workspace id for settings route.");
   return workspaceId.trim();
@@ -266,12 +266,12 @@ async function showWorkspaceSettings(ctx, panel) {
 
 async function ensureRenderedApp(ctx) {
   const ready = await ctx.waitFor(
-    "Boolean(window.__ipollowalkControl) && document.body.innerText.trim().length > 20",
+    "Boolean(window.__ipolloworkControl) && document.body.innerText.trim().length > 20",
     { timeoutMs: 8_000, label: "rendered app shell" },
   ).then(() => true).catch(() => false);
   if (ready) return;
   await ctx.eval("location.reload()");
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
     timeoutMs: 60_000,
     label: "control API after app reload",
   });
@@ -284,7 +284,7 @@ async function ensureRenderedApp(ctx) {
 async function useMarketplaceImportMode(ctx) {
   await ctx.waitFor(
     `(() => {
-      const bridge = window.__ipollowalkApplyDesktopConfig;
+      const bridge = window.__ipolloworkApplyDesktopConfig;
       if (typeof bridge !== "function") return false;
       bridge({ connectEnabled: false });
       return document.body.innerText.includes("Extension Marketplace");
@@ -299,7 +299,7 @@ async function openMarketplace(ctx) {
   await useMarketplaceImportMode(ctx);
   await ctx.waitForText("Marketplace", { timeoutMs: 30_000 });
   const hasRefresh = await ctx.eval(
-    "Boolean(window.__ipollowalkControl?.listActions().find(a => a.id === 'extensions.refresh-marketplace'))",
+    "Boolean(window.__ipolloworkControl?.listActions().find(a => a.id === 'extensions.refresh-marketplace'))",
   );
   if (hasRefresh) {
     await ctx.control("extensions.refresh-marketplace");
@@ -326,13 +326,13 @@ async function installMarketplacePlugin(ctx, pluginName) {
 
 async function workspaceServerJson(ctx, path) {
   return ctx.eval(`(async () => {
-    const bridge = window.__IPOLLOWALK_ELECTRON__?.invokeDesktop;
+    const bridge = window.__IPOLLOWORK_ELECTRON__?.invokeDesktop;
     if (!bridge) throw new Error("Electron bridge unavailable");
-    const info = await bridge("ipollowalkServerInfo");
+    const info = await bridge("ipolloworkServerInfo");
     const baseUrl = String(info?.baseUrl ?? "").replace(/\\/+$/, "");
     const token = String(info?.ownerToken || info?.clientToken || "").trim();
-    const workspaceId = (location.hash.match(/\\/workspace\\/([^/]+)/) || [])[1] || localStorage.getItem("ipollowalk.react.activeWorkspace") || "";
-    if (!baseUrl || !token || !workspaceId) throw new Error("Missing iPolloWalk server connection");
+    const workspaceId = (location.hash.match(/\\/workspace\\/([^/]+)/) || [])[1] || localStorage.getItem("ipollowork.react.activeWorkspace") || "";
+    if (!baseUrl || !token || !workspaceId) throw new Error("Missing iPolloWork server connection");
     const response = await fetch(baseUrl + "/workspace/" + encodeURIComponent(workspaceId) + ${JSON.stringify(path)}, {
       headers: { authorization: "Bearer " + token },
     });
@@ -346,16 +346,16 @@ async function workspaceServerJson(ctx, path) {
 
 async function waitForSkill(ctx, skillName) {
   await ctx.waitFor(
-    `window.__IPOLLOWALK_ELECTRON__?.invokeDesktop ? true : false`,
+    `window.__IPOLLOWORK_ELECTRON__?.invokeDesktop ? true : false`,
     { timeoutMs: 15_000, label: "Electron bridge for skill check" },
   );
   await ctx.waitFor(
     `(async () => {
-      const bridge = window.__IPOLLOWALK_ELECTRON__?.invokeDesktop;
-      const info = await bridge("ipollowalkServerInfo");
+      const bridge = window.__IPOLLOWORK_ELECTRON__?.invokeDesktop;
+      const info = await bridge("ipolloworkServerInfo");
       const baseUrl = String(info?.baseUrl ?? "").replace(/\\/+$/, "");
       const token = String(info?.ownerToken || info?.clientToken || "").trim();
-      const workspaceId = (location.hash.match(/\\/workspace\\/([^/]+)/) || [])[1] || localStorage.getItem("ipollowalk.react.activeWorkspace") || "";
+      const workspaceId = (location.hash.match(/\\/workspace\\/([^/]+)/) || [])[1] || localStorage.getItem("ipollowork.react.activeWorkspace") || "";
       if (!baseUrl || !token || !workspaceId) return false;
       const response = await fetch(baseUrl + "/workspace/" + encodeURIComponent(workspaceId) + "/skills", {
         headers: { authorization: "Bearer " + token },
@@ -383,12 +383,12 @@ async function assertNoBrokenMcp(ctx) {
 async function assertLinearMcpSynced(ctx) {
   await ctx.waitFor(
     `(async () => {
-      const bridge = window.__IPOLLOWALK_ELECTRON__?.invokeDesktop;
+      const bridge = window.__IPOLLOWORK_ELECTRON__?.invokeDesktop;
       if (!bridge) return false;
-      const info = await bridge("ipollowalkServerInfo");
+      const info = await bridge("ipolloworkServerInfo");
       const baseUrl = String(info?.baseUrl ?? "").replace(/\\/+$/, "");
       const token = String(info?.ownerToken || info?.clientToken || "").trim();
-      const workspaceId = (location.hash.match(/\\/workspace\\/([^/]+)/) || [])[1] || localStorage.getItem("ipollowalk.react.activeWorkspace") || "";
+      const workspaceId = (location.hash.match(/\\/workspace\\/([^/]+)/) || [])[1] || localStorage.getItem("ipollowork.react.activeWorkspace") || "";
       if (!baseUrl || !token || !workspaceId) return false;
       const response = await fetch(baseUrl + "/workspace/" + encodeURIComponent(workspaceId) + "/mcp", {
         headers: { authorization: "Bearer " + token },
@@ -425,7 +425,7 @@ export default {
   id: FLOW_ID,
   title: "Cloud marketplace plugins warn on malformed MCP payloads and hot-sync valid MCPs",
   kind: "user-facing",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN", "IPOLLOWALK_EVAL_WORKSPACE_PATH"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN", "IPOLLOWORK_EVAL_WORKSPACE_PATH"],
   steps: [
     {
       name: "Prepare Den plugins and desktop workspace",

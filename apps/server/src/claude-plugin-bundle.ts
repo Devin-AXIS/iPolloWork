@@ -49,11 +49,11 @@ export type ClaudePluginBundle = {
 };
 
 function githubApiBase(): string {
-  return (process.env.IPOLLOWALK_GITHUB_API_BASE?.trim() || "https://api.github.com").replace(/\/+$/, "");
+  return (process.env.IPOLLOWORK_GITHUB_API_BASE?.trim() || "https://api.github.com").replace(/\/+$/, "");
 }
 
 function githubRawBase(): string {
-  return (process.env.IPOLLOWALK_GITHUB_RAW_BASE?.trim() || "https://raw.githubusercontent.com").replace(/\/+$/, "");
+  return (process.env.IPOLLOWORK_GITHUB_RAW_BASE?.trim() || "https://raw.githubusercontent.com").replace(/\/+$/, "");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -98,7 +98,7 @@ export function parseClaudePluginSource(input: string): ClaudePluginSource {
 
 async function fetchGithubJson(url: string): Promise<unknown> {
   const response = await fetch(url, {
-    headers: { Accept: "application/vnd.github+json", "User-Agent": "ipollowalk-server" },
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "ipollowork-server" },
     signal: AbortSignal.timeout(20_000),
   });
   if (!response.ok) {
@@ -110,7 +110,7 @@ async function fetchGithubJson(url: string): Promise<unknown> {
 
 async function fetchGithubText(url: string): Promise<string> {
   const response = await fetch(url, {
-    headers: { Accept: "text/plain", "User-Agent": "ipollowalk-server" },
+    headers: { Accept: "text/plain", "User-Agent": "ipollowork-server" },
     signal: AbortSignal.timeout(20_000),
   });
   if (!response.ok) {
@@ -289,7 +289,7 @@ export async function resolveClaudePluginBundle(input: { url: string; ref?: stri
   const description = readString(manifest.description);
   const version = readString(manifest.version);
   if (manifest.hooks !== undefined) {
-    warnings.push("This plugin declares hooks, which iPolloWalk does not support yet. Hooks were skipped.");
+    warnings.push("This plugin declares hooks, which iPolloWork does not support yet. Hooks were skipped.");
   }
 
   // --- Collect component file paths -----------------------------------------
@@ -342,7 +342,7 @@ export async function resolveClaudePluginBundle(input: { url: string; ref?: stri
     for (const [name, config] of Object.entries(record)) {
       if (!isRecord(config)) continue;
       if (mcpConfigReferencesPluginRoot(config)) {
-        warnings.push(`MCP server "${name}" uses \${CLAUDE_PLUGIN_ROOT} (a plugin-local command), which iPolloWalk does not support yet. It was skipped.`);
+        warnings.push(`MCP server "${name}" uses \${CLAUDE_PLUGIN_ROOT} (a plugin-local command), which iPolloWork does not support yet. It was skipped.`);
         continue;
       }
       mcpServers[name] = config;
@@ -446,7 +446,7 @@ export async function resolveClaudePluginBundle(input: { url: string; ref?: stri
   }
 
   if (memberships.length === 0) {
-    throw new ApiError(400, "plugin_empty", "This plugin has no MCP servers, skills, commands, or agents iPolloWalk can install.");
+    throw new ApiError(400, "plugin_empty", "This plugin has no MCP servers, skills, commands, or agents iPolloWork can install.");
   }
 
   const resolved: CloudPluginResolved = {

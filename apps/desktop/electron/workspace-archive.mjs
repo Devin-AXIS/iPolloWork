@@ -224,7 +224,7 @@ function isSafeArchivePath(name) {
   return !normalized.split("/").some((part) => part === ".." || part === "");
 }
 
-function defaultiPolloWalkConfig(targetDir, preset = "starter") {
+function defaultiPolloWorkConfig(targetDir, preset = "starter") {
   return {
     version: 1,
     workspace: {
@@ -289,12 +289,12 @@ export async function importWorkspaceConfig({ archivePath, targetDir, name }) {
   const opencodeDir = path.join(targetDir, ".opencode");
   if (!(await pathExists(opencodeDir))) throw new Error("Archive is missing .opencode config");
 
-  const ipollowalkPath = path.join(opencodeDir, "ipollowalk.json");
+  const ipolloworkPath = path.join(opencodeDir, "ipollowork.json");
   let preset = "starter";
   let workspaceName = typeof name === "string" && name.trim() ? name.trim() : null;
 
-  if (await pathExists(ipollowalkPath)) {
-    const raw = await readFile(ipollowalkPath, "utf8");
+  if (await pathExists(ipolloworkPath)) {
+    const raw = await readFile(ipolloworkPath, "utf8");
     try {
       const config = JSON.parse(raw);
       config.authorizedRoots = [targetDir];
@@ -304,14 +304,14 @@ export async function importWorkspaceConfig({ archivePath, targetDir, name }) {
       if (typeof config.workspace?.preset === "string" && config.workspace.preset.trim()) {
         preset = config.workspace.preset.trim();
       }
-      await writeFile(ipollowalkPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+      await writeFile(ipolloworkPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
     } catch {
-      const config = defaultiPolloWalkConfig(targetDir, preset);
-      await writeFile(ipollowalkPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+      const config = defaultiPolloWorkConfig(targetDir, preset);
+      await writeFile(ipolloworkPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
     }
   } else {
-    const config = defaultiPolloWalkConfig(targetDir, preset);
-    await writeFile(ipollowalkPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    const config = defaultiPolloWorkConfig(targetDir, preset);
+    await writeFile(ipolloworkPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   }
 
   return {

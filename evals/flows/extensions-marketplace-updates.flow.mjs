@@ -18,7 +18,7 @@ export default {
     {
       name: "App booted",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 30_000 });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30_000 });
       },
     },
     {
@@ -40,7 +40,7 @@ export default {
       name: "Signed-out state explains how to load the Marketplace",
       run: async (ctx) => {
         const signedOutNotice = await ctx.hasText(
-          "Sign in to iPolloWalk Cloud to load the Marketplace",
+          "Sign in to iPolloWork Cloud to load the Marketplace",
         );
         const hasRows = await ctx.eval(
           "document.querySelectorAll('[data-slot=card], article, li').length > 0",

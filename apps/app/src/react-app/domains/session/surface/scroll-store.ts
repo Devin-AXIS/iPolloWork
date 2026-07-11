@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-const SESSION_SCROLL_STORAGE_KEY = "ipollowalk:session-scroll:v1";
+const SESSION_SCROLL_STORAGE_KEY = "ipollowork:session-scroll:v1";
 
 type StickyBottomSessionScrollState = {
   mode: "stickyBottom";

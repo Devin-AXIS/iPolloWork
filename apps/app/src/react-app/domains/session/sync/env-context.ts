@@ -1,12 +1,12 @@
-import type { iPolloWalkServerClient } from "../../../../app/lib/ipollowalk-server";
-import { readiPolloWalkEnvPendingChanges } from "../../../../app/lib/ipollowalk-env-runtime";
+import type { iPolloWorkServerClient } from "../../../../app/lib/ipollowork-server";
+import { readiPolloWorkEnvPendingChanges } from "../../../../app/lib/ipollowork-env-runtime";
 
-const DEFAULT_CACHE_KEY = "__ipollowalk_env_default__";
+const DEFAULT_CACHE_KEY = "__ipollowork_env_default__";
 const MAX_CONTEXT_CACHE_ENTRIES = 100;
 
 const envSystemContextCache = new Map<string, string | undefined>();
 
-export function cleariPolloWalkEnvSystemContextCache(): void {
+export function cleariPolloWorkEnvSystemContextCache(): void {
   envSystemContextCache.clear();
 }
 
@@ -21,8 +21,8 @@ function normalizeEnvKeys(keys: string[]): string[] {
   ).sort((a, b) => a.localeCompare(b));
 }
 
-export async function buildiPolloWalkEnvSystemContext(
-  client: iPolloWalkServerClient | null,
+export async function buildiPolloWorkEnvSystemContext(
+  client: iPolloWorkServerClient | null,
   options: {
     cacheKey?: string;
     runtimeKey?: string | null;
@@ -31,7 +31,7 @@ export async function buildiPolloWalkEnvSystemContext(
 ): Promise<string | undefined> {
   if (!client) return undefined;
   const readPendingChanges = options.readPendingChanges ??
-    (() => readiPolloWalkEnvPendingChanges(options.runtimeKey));
+    (() => readiPolloWorkEnvPendingChanges(options.runtimeKey));
   if (readPendingChanges()) return undefined;
 
   const cacheKey = `${client.baseUrl}:${options.cacheKey ?? DEFAULT_CACHE_KEY}`;
@@ -50,7 +50,7 @@ export async function buildiPolloWalkEnvSystemContext(
     const keyList = keys.map((key) => `- ${key}`).join("\n");
 
     const context = [
-      "iPolloWalk environment variables configured:",
+      "iPolloWork environment variables configured:",
       keyList,
       "Only names are shown; values are secret. Use these names when relevant.",
     ].join("\n");

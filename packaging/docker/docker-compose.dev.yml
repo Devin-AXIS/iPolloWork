@@ -6,19 +6,19 @@
 # Then open the printed Web UI URL — already wired to headless, no config needed.
 #
 # Env overrides (optional, via .env or export):
-#   IPOLLOWALK_TOKEN        — shared client token (auto-generated if unset)
-#   IPOLLOWALK_HOST_TOKEN   — host/admin token (auto-generated if unset)
-#   IPOLLOWALK_WORKSPACE    — host path to mount as workspace (default: ./workspace)
-#   IPOLLOWALK_PORT         — host port to map to container :8787 (default: 8787)
+#   IPOLLOWORK_TOKEN        — shared client token (auto-generated if unset)
+#   IPOLLOWORK_HOST_TOKEN   — host/admin token (auto-generated if unset)
+#   IPOLLOWORK_WORKSPACE    — host path to mount as workspace (default: ./workspace)
+#   IPOLLOWORK_PORT         — host port to map to container :8787 (default: 8787)
 #   WEB_PORT              — host port to map to container :5173 (default: 5173)
-#   IPOLLOWALK_DEV_ID       — unique ID for this stack (default: default)
-#   IPOLLOWALK_DEV_MODE     — enables isolated OpenCode dev state
-#   IPOLLOWALK_PUBLIC_HOST  — browser-facing host/IP for LAN-accessible URLs
-#   IPOLLOWALK_DOCKER_DEV_MOUNT_HOST_OPENCODE=1 — import host OpenCode config/auth into the isolated dev state
-#   IPOLLOWALK_OPENCODE_CONFIG_DIR      — host OpenCode config dir detection override
-#   IPOLLOWALK_OPENCODE_DATA_DIR        — host OpenCode data dir detection override
-#   IPOLLOWALK_HOST_OPENCODE_CONFIG_DIR — import source for OpenCode config
-#   IPOLLOWALK_HOST_OPENCODE_DATA_DIR   — import source for OpenCode auth/data
+#   IPOLLOWORK_DEV_ID       — unique ID for this stack (default: default)
+#   IPOLLOWORK_DEV_MODE     — enables isolated OpenCode dev state
+#   IPOLLOWORK_PUBLIC_HOST  — browser-facing host/IP for LAN-accessible URLs
+#   IPOLLOWORK_DOCKER_DEV_MOUNT_HOST_OPENCODE=1 — import host OpenCode config/auth into the isolated dev state
+#   IPOLLOWORK_OPENCODE_CONFIG_DIR      — host OpenCode config dir detection override
+#   IPOLLOWORK_OPENCODE_DATA_DIR        — host OpenCode data dir detection override
+#   IPOLLOWORK_HOST_OPENCODE_CONFIG_DIR — import source for OpenCode config
+#   IPOLLOWORK_HOST_OPENCODE_DATA_DIR   — import source for OpenCode auth/data
 
 x-shared: &shared
   image: node:22-bookworm-slim
@@ -28,9 +28,9 @@ x-shared: &shared
     - ../../:/app
     - pnpm-store:/root/.local/share/pnpm/store
     - bun-install:/root/.bun
-    - ${IPOLLOWALK_WORKSPACE:-./workspace}:/workspace
-    - ${IPOLLOWALK_HOST_OPENCODE_CONFIG_DIR:-./workspace/.ipollowalk-host-opencode-config}:/persist/.config/opencode:ro
-    - ${IPOLLOWALK_HOST_OPENCODE_DATA_DIR:-./workspace/.ipollowalk-host-opencode-data}:/persist/.ipollowalk-host-opencode-data:ro
+    - ${IPOLLOWORK_WORKSPACE:-./workspace}:/workspace
+    - ${IPOLLOWORK_HOST_OPENCODE_CONFIG_DIR:-./workspace/.ipollowork-host-opencode-config}:/persist/.config/opencode:ro
+    - ${IPOLLOWORK_HOST_OPENCODE_DATA_DIR:-./workspace/.ipollowork-host-opencode-data}:/persist/.ipollowork-host-opencode-data:ro
 
 services:
   orchestrator:
@@ -65,45 +65,45 @@ services:
         # --- Use source entrypoints for the dev stack ---
         # The orchestrator can spawn .ts files via Bun directly, which avoids bind-mount
         # issues from bun --compile inside Docker on macOS.
-        export IPOLLOWALK_SERVER_BIN="/app/apps/server/src/cli.ts"
+        export IPOLLOWORK_SERVER_BIN="/app/apps/server/src/cli.ts"
 
         # --- Resolve tokens ---
-        if [ -z "$$IPOLLOWALK_TOKEN" ]; then
-          IPOLLOWALK_TOKEN=$$(cat /proc/sys/kernel/random/uuid)
-          export IPOLLOWALK_TOKEN
+        if [ -z "$$IPOLLOWORK_TOKEN" ]; then
+          IPOLLOWORK_TOKEN=$$(cat /proc/sys/kernel/random/uuid)
+          export IPOLLOWORK_TOKEN
         fi
-        if [ -z "$$IPOLLOWALK_HOST_TOKEN" ]; then
-          IPOLLOWALK_HOST_TOKEN=$$(cat /proc/sys/kernel/random/uuid)
-          export IPOLLOWALK_HOST_TOKEN
+        if [ -z "$$IPOLLOWORK_HOST_TOKEN" ]; then
+          IPOLLOWORK_HOST_TOKEN=$$(cat /proc/sys/kernel/random/uuid)
+          export IPOLLOWORK_HOST_TOKEN
         fi
 
         # Write tokens so the web service can source them
         mkdir -p /app/tmp
-        printf 'IPOLLOWALK_TOKEN=%s\nIPOLLOWALK_HOST_TOKEN=%s\n' \
-          "$$IPOLLOWALK_TOKEN" "$$IPOLLOWALK_HOST_TOKEN" > "/app/tmp/.dev-env-${IPOLLOWALK_DEV_ID:-default}"
+        printf 'IPOLLOWORK_TOKEN=%s\nIPOLLOWORK_HOST_TOKEN=%s\n' \
+          "$$IPOLLOWORK_TOKEN" "$$IPOLLOWORK_HOST_TOKEN" > "/app/tmp/.dev-env-${IPOLLOWORK_DEV_ID:-default}"
 
         echo ""
         echo "============================================"
-        echo "  iPolloWalk orchestrator"
-        echo "  Server:     http://localhost:${IPOLLOWALK_PORT:-8787}"
-        echo "  Health:     http://localhost:${IPOLLOWALK_PORT:-8787}/health"
-        echo "  Token:      $$IPOLLOWALK_TOKEN"
-        echo "  Host token: $$IPOLLOWALK_HOST_TOKEN"
+        echo "  iPolloWork orchestrator"
+        echo "  Server:     http://localhost:${IPOLLOWORK_PORT:-8787}"
+        echo "  Health:     http://localhost:${IPOLLOWORK_PORT:-8787}/health"
+        echo "  Token:      $$IPOLLOWORK_TOKEN"
+        echo "  Host token: $$IPOLLOWORK_HOST_TOKEN"
         echo "============================================"
         echo ""
 
-        exec pnpm --filter ipollowalk-orchestrator dev -- start \
+        exec pnpm --filter ipollowork-orchestrator dev -- start \
           --workspace /workspace \
           --remote-access \
-          --ipollowalk-port 8787 \
-          --ipollowalk-token "$$IPOLLOWALK_TOKEN" \
-          --ipollowalk-host-token "$$IPOLLOWALK_HOST_TOKEN" \
-          --ipollowalk-server-bin "$$IPOLLOWALK_SERVER_BIN" \
+          --ipollowork-port 8787 \
+          --ipollowork-token "$$IPOLLOWORK_TOKEN" \
+          --ipollowork-host-token "$$IPOLLOWORK_HOST_TOKEN" \
+          --ipollowork-server-bin "$$IPOLLOWORK_SERVER_BIN" \
           --approval auto \
           --allow-external \
           --cors "*"
     ports:
-      - "${IPOLLOWALK_PORT:-8787}:8787"
+      - "${IPOLLOWORK_PORT:-8787}:8787"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8787/health || exit 1"]
       interval: 5s
@@ -112,13 +112,13 @@ services:
       start_period: 90s
     environment:
       CI: "true"
-      IPOLLOWALK_TOKEN: ${IPOLLOWALK_TOKEN:-}
-      IPOLLOWALK_HOST_TOKEN: ${IPOLLOWALK_HOST_TOKEN:-}
-      IPOLLOWALK_DEV_ID: ${IPOLLOWALK_DEV_ID:-default}
-      IPOLLOWALK_DEV_MODE: ${IPOLLOWALK_DEV_MODE:-1}
-      IPOLLOWALK_DEV_OPENCODE_IMPORT_CONFIG_DIR: /persist/.config/opencode
-      IPOLLOWALK_DEV_OPENCODE_IMPORT_DATA_DIR: /persist/.ipollowalk-host-opencode-data
-      IPOLLOWALK_SIDECAR_SOURCE: external
+      IPOLLOWORK_TOKEN: ${IPOLLOWORK_TOKEN:-}
+      IPOLLOWORK_HOST_TOKEN: ${IPOLLOWORK_HOST_TOKEN:-}
+      IPOLLOWORK_DEV_ID: ${IPOLLOWORK_DEV_ID:-default}
+      IPOLLOWORK_DEV_MODE: ${IPOLLOWORK_DEV_MODE:-1}
+      IPOLLOWORK_DEV_OPENCODE_IMPORT_CONFIG_DIR: /persist/.config/opencode
+      IPOLLOWORK_DEV_OPENCODE_IMPORT_DATA_DIR: /persist/.ipollowork-host-opencode-data
+      IPOLLOWORK_SIDECAR_SOURCE: external
 
   web:
     <<: *shared
@@ -143,36 +143,36 @@ services:
         corepack enable && corepack prepare pnpm@10.27.0 --activate
 
         # --- Read token written by orchestrator ---
-        if [ -f "/app/tmp/.dev-env-${IPOLLOWALK_DEV_ID:-default}" ]; then
-          . "/app/tmp/.dev-env-${IPOLLOWALK_DEV_ID:-default}"
-          export VITE_IPOLLOWALK_TOKEN="$$IPOLLOWALK_TOKEN"
+        if [ -f "/app/tmp/.dev-env-${IPOLLOWORK_DEV_ID:-default}" ]; then
+          . "/app/tmp/.dev-env-${IPOLLOWORK_DEV_ID:-default}"
+          export VITE_IPOLLOWORK_TOKEN="$$IPOLLOWORK_TOKEN"
         fi
 
         echo ""
         echo "============================================"
-        echo "  iPolloWalk web UI"
+        echo "  iPolloWork web UI"
         echo "  URL:   http://localhost:${WEB_PORT:-5173}"
-        echo "  Token: $${VITE_IPOLLOWALK_TOKEN:-<see orchestrator logs>}"
+        echo "  Token: $${VITE_IPOLLOWORK_TOKEN:-<see orchestrator logs>}"
         echo "============================================"
         echo ""
 
-        export VITE_IPOLLOWALK_URL="http://${IPOLLOWALK_PUBLIC_HOST:-localhost}:${IPOLLOWALK_PORT:-8787}"
-        export VITE_IPOLLOWALK_PORT="${IPOLLOWALK_PORT:-8787}"
+        export VITE_IPOLLOWORK_URL="http://${IPOLLOWORK_PUBLIC_HOST:-localhost}:${IPOLLOWORK_PORT:-8787}"
+        export VITE_IPOLLOWORK_PORT="${IPOLLOWORK_PORT:-8787}"
         export VITE_ALLOWED_HOSTS="all"
         export HOST="0.0.0.0"
         export PORT="5173"
 
-        exec pnpm --filter @ipollowalk/app exec vite \
+        exec pnpm --filter @ipollowork/app exec vite \
           --host 0.0.0.0 \
           --port 5173 \
           --strictPort
     ports:
       - "${WEB_PORT:-5173}:5173"
     environment:
-      IPOLLOWALK_DEV_ID: ${IPOLLOWALK_DEV_ID:-default}
+      IPOLLOWORK_DEV_ID: ${IPOLLOWORK_DEV_ID:-default}
 
 volumes:
   pnpm-store:
-    name: ipollowalk-dev-pnpm-store
+    name: ipollowork-dev-pnpm-store
   bun-install:
-    name: ipollowalk-dev-bun-install
+    name: ipollowork-dev-bun-install

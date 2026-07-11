@@ -110,14 +110,14 @@ function startMockOpencode() {
   return { server, requests };
 }
 
-async function startiPolloWalk(options?: { branch?: string }) {
-  const workspaceRoot = await mkdtemp(join(tmpdir(), "ipollowalk-claude-plugin-"));
+async function startiPolloWork(options?: { branch?: string }) {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "ipollowork-claude-plugin-"));
   roots.push(workspaceRoot);
-  setEnv("IPOLLOWALK_RUNTIME_DB", join(workspaceRoot, "runtime.sqlite"));
+  setEnv("IPOLLOWORK_RUNTIME_DB", join(workspaceRoot, "runtime.sqlite"));
 
   const github = startMockGithub(options);
-  setEnv("IPOLLOWALK_GITHUB_API_BASE", `http://127.0.0.1:${github.port}`);
-  setEnv("IPOLLOWALK_GITHUB_RAW_BASE", `http://127.0.0.1:${github.port}`);
+  setEnv("IPOLLOWORK_GITHUB_API_BASE", `http://127.0.0.1:${github.port}`);
+  setEnv("IPOLLOWORK_GITHUB_RAW_BASE", `http://127.0.0.1:${github.port}`);
 
   const engine = startMockOpencode();
   const config: ServerConfig = {
@@ -200,11 +200,11 @@ describe("parseClaudePluginSource", () => {
 
 describe("claude plugin bundles", () => {
   test("dryRun returns the Will-install preview with warnings", async () => {
-    const ipollowalk = await startiPolloWalk();
+    const ipollowork = await startiPolloWork();
 
-    const response = await fetch(`${ipollowalk.base}/workspace/ws_1/claude-plugins`, {
+    const response = await fetch(`${ipollowork.base}/workspace/ws_1/claude-plugins`, {
       method: "POST",
-      headers: ipollowalk.headers,
+      headers: ipollowork.headers,
       body: JSON.stringify({ url: "https://github.com/slackapi/slack-mcp-plugin", dryRun: true }),
     });
     expect(response.status).toBe(200);
@@ -219,15 +219,15 @@ describe("claude plugin bundles", () => {
     // local-helper uses ${CLAUDE_PLUGIN_ROOT} and must be skipped with a warning.
     expect(body.preview.warnings.some((warning) => warning.includes("local-helper"))).toBe(true);
     // Nothing installed on dryRun.
-    expect(existsSync(join(ipollowalk.workspaceRoot, ".opencode/skills/slack-plugin"))).toBe(false);
+    expect(existsSync(join(ipollowork.workspaceRoot, ".opencode/skills/slack-plugin"))).toBe(false);
   });
 
   test("resolves branch names containing slashes in /tree/ URLs", async () => {
-    const ipollowalk = await startiPolloWalk({ branch: "release/v1" });
+    const ipollowork = await startiPolloWork({ branch: "release/v1" });
 
-    const response = await fetch(`${ipollowalk.base}/workspace/ws_1/claude-plugins`, {
+    const response = await fetch(`${ipollowork.base}/workspace/ws_1/claude-plugins`, {
       method: "POST",
-      headers: ipollowalk.headers,
+      headers: ipollowork.headers,
       body: JSON.stringify({
         url: "https://github.com/slackapi/slack-mcp-plugin/tree/release/v1",
         dryRun: true,
@@ -242,11 +242,11 @@ describe("claude plugin bundles", () => {
   });
 
   test("installs skills, commands, and MCP servers; uninstall cleans up", async () => {
-    const ipollowalk = await startiPolloWalk();
+    const ipollowork = await startiPolloWork();
 
-    const installResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/claude-plugins`, {
+    const installResponse = await fetch(`${ipollowork.base}/workspace/ws_1/claude-plugins`, {
       method: "POST",
-      headers: ipollowalk.headers,
+      headers: ipollowork.headers,
       body: JSON.stringify({ url: "https://github.com/slackapi/slack-mcp-plugin" }),
     });
     expect(installResponse.status).toBe(200);
@@ -254,28 +254,28 @@ describe("claude plugin bundles", () => {
     expect(installBody.item.pluginId).toBe("github:slackapi/slack-mcp-plugin");
 
     // Skill and command land namespaced under .opencode/.
-    const skillPath = join(ipollowalk.workspaceRoot, ".opencode/skills/slack-plugin/slack-search/SKILL.md");
-    const commandPath = join(ipollowalk.workspaceRoot, ".opencode/commands/slack-plugin/standup.md");
+    const skillPath = join(ipollowork.workspaceRoot, ".opencode/skills/slack-plugin/slack-search/SKILL.md");
+    const commandPath = join(ipollowork.workspaceRoot, ".opencode/commands/slack-plugin/standup.md");
     expect(existsSync(skillPath)).toBe(true);
     expect(existsSync(commandPath)).toBe(true);
     expect(await readFile(skillPath, "utf8")).toContain("Search Slack messages effectively");
 
     // MCP registered in the runtime DB and pushed to the engine.
-    const listResponse = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp`, { headers: ipollowalk.headers });
+    const listResponse = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, { headers: ipollowork.headers });
     const listBody = await listResponse.json() as { items: Array<{ name: string; source: string }> };
     const slackEntry = listBody.items.find((entry) => entry.name === "slack");
     expect(slackEntry?.source).toBe("config.remote");
-    expect(ipollowalk.engine.requests.some((entry) => entry.method === "POST" && entry.pathname === "/mcp")).toBe(true);
+    expect(ipollowork.engine.requests.some((entry) => entry.method === "POST" && entry.pathname === "/mcp")).toBe(true);
 
     // Uninstall through the shared cloud-plugins route.
     const removeResponse = await fetch(
-      `${ipollowalk.base}/workspace/ws_1/cloud-plugins/${encodeURIComponent(installBody.item.pluginId)}`,
-      { method: "DELETE", headers: ipollowalk.headers },
+      `${ipollowork.base}/workspace/ws_1/cloud-plugins/${encodeURIComponent(installBody.item.pluginId)}`,
+      { method: "DELETE", headers: ipollowork.headers },
     );
     expect(removeResponse.status).toBe(200);
     expect(existsSync(skillPath)).toBe(false);
     expect(existsSync(commandPath)).toBe(false);
-    const afterRemove = await fetch(`${ipollowalk.base}/workspace/ws_1/mcp`, { headers: ipollowalk.headers });
+    const afterRemove = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, { headers: ipollowork.headers });
     const afterRemoveBody = await afterRemove.json() as { items: Array<{ name: string }> };
     expect(afterRemoveBody.items.some((entry) => entry.name === "slack")).toBe(false);
   });

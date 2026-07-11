@@ -8,12 +8,12 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 const FLOW_ID = "standard-dmg-bootstrap-zip";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const vo = await loadVoiceoverParagraphs(FLOW_ID);
-const DEN_WEB_URL = cleanUrl(process.env.IPOLLOWALK_EVAL_DEN_WEB_URL);
-const INSTALL_TOKEN = process.env.IPOLLOWALK_EVAL_INSTALL_TOKEN?.trim() ?? "";
-const BUNDLE_ZIP = process.env.IPOLLOWALK_EVAL_BUNDLE_ZIP?.trim() ?? "";
-const BUNDLE_DIR = process.env.IPOLLOWALK_EVAL_BUNDLE_DIR?.trim() ?? "";
-const BOOTSTRAP_PATH = process.env.IPOLLOWALK_EVAL_BOOTSTRAP_PATH?.trim() ?? "";
-const DESKTOP_CDP_URL = cleanUrl(process.env.IPOLLOWALK_EVAL_DESKTOP_CDP_URL);
+const DEN_WEB_URL = cleanUrl(process.env.IPOLLOWORK_EVAL_DEN_WEB_URL);
+const INSTALL_TOKEN = process.env.IPOLLOWORK_EVAL_INSTALL_TOKEN?.trim() ?? "";
+const BUNDLE_ZIP = process.env.IPOLLOWORK_EVAL_BUNDLE_ZIP?.trim() ?? "";
+const BUNDLE_DIR = process.env.IPOLLOWORK_EVAL_BUNDLE_DIR?.trim() ?? "";
+const BOOTSTRAP_PATH = process.env.IPOLLOWORK_EVAL_BOOTSTRAP_PATH?.trim() ?? "";
+const DESKTOP_CDP_URL = cleanUrl(process.env.IPOLLOWORK_EVAL_DESKTOP_CDP_URL);
 
 function cleanUrl(value) {
   return (value ?? "").trim().replace(/\/+$/, "");
@@ -61,15 +61,15 @@ function zipEntries() {
 
 export default {
   id: FLOW_ID,
-  title: "Organization downloads reuse the standard signed installer and configure iPolloWalk on first launch",
+  title: "Organization downloads reuse the standard signed installer and configure iPolloWork on first launch",
   kind: "user-facing",
   requiredEnv: [
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
-    "IPOLLOWALK_EVAL_INSTALL_TOKEN",
-    "IPOLLOWALK_EVAL_BUNDLE_ZIP",
-    "IPOLLOWALK_EVAL_BUNDLE_DIR",
-    "IPOLLOWALK_EVAL_BOOTSTRAP_PATH",
-    "IPOLLOWALK_EVAL_DESKTOP_CDP_URL",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_INSTALL_TOKEN",
+    "IPOLLOWORK_EVAL_BUNDLE_ZIP",
+    "IPOLLOWORK_EVAL_BUNDLE_DIR",
+    "IPOLLOWORK_EVAL_BOOTSTRAP_PATH",
+    "IPOLLOWORK_EVAL_DESKTOP_CDP_URL",
   ],
   steps: [
     {
@@ -120,9 +120,9 @@ export default {
           assert: async () => {
             const entries = zipEntries();
             witness(ctx, entries.length === 2, "The organization ZIP has exactly two top-level files", entries);
-            witness(ctx, entries.some((entry) => /^ipollowalk-mac-arm64-.+\.dmg$/.test(entry)), "The ZIP contains the normal versioned macOS DMG", entries);
+            witness(ctx, entries.some((entry) => /^ipollowork-mac-arm64-.+\.dmg$/.test(entry)), "The ZIP contains the normal versioned macOS DMG", entries);
             witness(ctx, entries.includes("desktop-bootstrap.json"), "The ZIP contains desktop-bootstrap.json", entries);
-            witness(ctx, !entries.some((entry) => entry.includes("ipollowalk-installer")), "The ZIP contains no separate installer application", entries);
+            witness(ctx, !entries.some((entry) => entry.includes("ipollowork-installer")), "The ZIP contains no separate installer application", entries);
             ctx.output("organization-download.zip", `${entries.join("\n")}\n\n${statSync(BUNDLE_ZIP).size} bytes`);
           },
         });
@@ -181,7 +181,7 @@ export default {
     {
       name: "Hosted opt-in and self-host defaults remain explicit",
       run: async (ctx) => {
-        await ctx.prove("Hosted gating requires opt-in while self-hosted iPolloWalk enables downloads by default", {
+        await ctx.prove("Hosted gating requires opt-in while self-hosted iPolloWork enables downloads by default", {
           voiceover: vo[5],
           assert: async () => {
             const result = spawnSync(

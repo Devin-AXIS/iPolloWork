@@ -1,8 +1,8 @@
 # App Architecture (`src/react-app/` + `src/app/`)
 
-`apps/app` is a React 19 + Vite app. It is the UI for every iPolloWalk
+`apps/app` is a React 19 + Vite app. It is the UI for every iPolloWork
 deployment: the Electron desktop shell loads it, plain web serves it, and it
-talks to ipollowalk-server / opencode / Den over HTTP. (The Solid runtime it
+talks to ipollowork-server / opencode / Den over HTTP. (The Solid runtime it
 replaced is fully removed; `src/index.react.tsx` is the only entry.)
 
 ## Layers
@@ -10,7 +10,7 @@ replaced is fully removed; `src/index.react.tsx` is the only entry.)
 ```text
 src/
 ├── app/                       Framework-agnostic layer (no React imports — enforced invariant)
-│   ├── lib/                   Clients + bridges: opencode, ipollowalk-server, den, desktop (IPC),
+│   ├── lib/                   Clients + bridges: opencode, ipollowork-server, den, desktop (IPC),
 │   │   │                      analytics, app-inspector
 │   │   ├── runtime-env.ts     Leaf: isElectronRuntime/isDesktopRuntime
 │   │   ├── desktop-types.ts   Leaf: desktop IPC wire types (WorkspaceInfo = shared WorkspaceWire)
@@ -44,7 +44,7 @@ src/
    invert it (callback registration) or move the primitive down.
 2. Leaf modules (`runtime-env`, `desktop-types`, `den-types`, `extensions`)
    import nothing (or types-only from other leaves). Low-level clients
-   (`opencode`, `ipollowalk-server`, `den`) import leaves — never the `utils/`
+   (`opencode`, `ipollowork-server`, `den`) import leaves — never the `utils/`
    barrel (it drags in i18n).
 3. `kernel/` and `infra/` sit below `domains/`: they must not import domain
    code. Shared query/state infrastructure lives in `infra/`.
@@ -101,8 +101,8 @@ Rules for agents and future code:
   from the URL `workspaceId` param first.
 - Read the active session from the URL `sessionId` param. A selected session
   should never imply a different workspace than the URL workspace.
-- The legacy `ipollowalk.react.activeWorkspace` and
-  `ipollowalk.react.sessionByWorkspace` values are only restore/fallback memory.
+- The legacy `ipollowork.react.activeWorkspace` and
+  `ipollowork.react.sessionByWorkspace` values are only restore/fallback memory.
   They are not authoritative while a workspace-scoped URL is active.
 - `/session`, `/session/:sessionId`, and `/settings/*` are compatibility entry
   points. They should redirect to workspace-scoped URLs when the workspace can

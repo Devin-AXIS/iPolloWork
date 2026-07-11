@@ -109,26 +109,26 @@ type OpencodeHotReload = {
 
 const FALLBACK_VERSION = "0.1.0";
 
-declare const __IPOLLOWALK_ORCHESTRATOR_VERSION__: string | undefined;
-declare const __IPOLLOWALK_PINNED_OPENCODE_VERSION__: string | undefined;
-const DEFAULT_IPOLLOWALK_PORT = 8787;
+declare const __IPOLLOWORK_ORCHESTRATOR_VERSION__: string | undefined;
+declare const __IPOLLOWORK_PINNED_OPENCODE_VERSION__: string | undefined;
+const DEFAULT_IPOLLOWORK_PORT = 8787;
 const DEFAULT_APPROVAL_TIMEOUT = 30000;
 const MANAGED_OPENCODE_CREDENTIAL_LENGTH = 512;
 const INTERNAL_OPENCODE_CREDENTIALS_ENV =
-  "IPOLLOWALK_INTERNAL_ALLOW_OPENCODE_CREDENTIALS";
+  "IPOLLOWORK_INTERNAL_ALLOW_OPENCODE_CREDENTIALS";
 const DEFAULT_OPENCODE_HOT_RELOAD_DEBOUNCE_MS = 700;
 const DEFAULT_OPENCODE_HOT_RELOAD_COOLDOWN_MS = 1500;
 const DEFAULT_ACTIVITY_WINDOW_MS = 5 * 60_000;
 const DEFAULT_ACTIVITY_HEARTBEAT_INTERVAL_MS = 5 * 60_000;
 
 const SANDBOX_INTERNAL_OPENCODE_PORT = 4096;
-const SANDBOX_INTERNAL_IPOLLOWALK_PORT = DEFAULT_IPOLLOWALK_PORT;
-const IPOLLOWALK_DEV_DATA_DIR = "ipollowalk-dev-data";
+const SANDBOX_INTERNAL_IPOLLOWORK_PORT = DEFAULT_IPOLLOWORK_PORT;
+const IPOLLOWORK_DEV_DATA_DIR = "ipollowork-dev-data";
 
 const SANDBOX_OPENCODE_GLOBAL_CONFIG_CONTAINER_PATH =
   "/persist/.config/opencode";
 const SANDBOX_OPENCODE_GLOBAL_DATA_IMPORT_CONTAINER_PATH =
-  "/persist/.ipollowalk-host-opencode-data";
+  "/persist/.ipollowork-host-opencode-data";
 const CLI_SOURCE_DIR = dirname(fileURLToPath(import.meta.url));
 const ORCHESTRATOR_ROOT_DIR = resolve(CLI_SOURCE_DIR, "..");
 const REPO_ROOT_DIR = resolve(ORCHESTRATOR_ROOT_DIR, "..", "..");
@@ -148,7 +148,7 @@ type VersionInfo = {
   sha256: string;
 };
 
-type SidecarName = "ipollowalk-server" | "opencode";
+type SidecarName = "ipollowork-server" | "opencode";
 
 type SidecarTarget =
   | "darwin-arm64"
@@ -205,7 +205,7 @@ type BinaryDiagnostics = {
   actualVersion?: string;
 };
 
-type RuntimeServiceName = "ipollowalk-server" | "opencode";
+type RuntimeServiceName = "ipollowork-server" | "opencode";
 
 type RuntimeServiceSnapshot = {
   name: RuntimeServiceName;
@@ -594,9 +594,9 @@ let cachedSandboxAllowlist: SandboxMountAllowlist | null | undefined;
 let cachedSandboxAllowlistError: string | null = null;
 
 function resolveSandboxAllowlistPath(): string {
-  const override = process.env.IPOLLOWALK_SANDBOX_MOUNT_ALLOWLIST?.trim();
+  const override = process.env.IPOLLOWORK_SANDBOX_MOUNT_ALLOWLIST?.trim();
   if (override) return resolve(override);
-  return join(homedir(), ".config", "ipollowalk", "sandbox-mount-allowlist.json");
+  return join(homedir(), ".config", "ipollowork", "sandbox-mount-allowlist.json");
 }
 
 function expandTildePath(input: string): string {
@@ -618,7 +618,7 @@ async function isDir(input: string): Promise<boolean> {
 async function resolveHostOpencodeGlobalConfigDir(): Promise<string | null> {
   const enabled =
     (
-      process.env.IPOLLOWALK_SANDBOX_MOUNT_OPENCODE_CONFIG ??
+      process.env.IPOLLOWORK_SANDBOX_MOUNT_OPENCODE_CONFIG ??
       (internalDevModeFromEnv() ? "0" : "1")
     ).trim() !== "0";
   if (!enabled) return null;
@@ -663,7 +663,7 @@ async function resolveHostOpencodeGlobalConfigDir(): Promise<string | null> {
 async function resolveHostOpencodeGlobalDataDir(): Promise<string | null> {
   const enabled =
     (
-      process.env.IPOLLOWALK_SANDBOX_MOUNT_OPENCODE_CONFIG ??
+      process.env.IPOLLOWORK_SANDBOX_MOUNT_OPENCODE_CONFIG ??
       (internalDevModeFromEnv() ? "0" : "1")
     ).trim() !== "0";
   if (!enabled) return null;
@@ -918,10 +918,10 @@ async function fileExists(path: string): Promise<boolean> {
 
 async function resolveCliVersion(): Promise<string> {
   if (
-    typeof __IPOLLOWALK_ORCHESTRATOR_VERSION__ === "string" &&
-    __IPOLLOWALK_ORCHESTRATOR_VERSION__.trim()
+    typeof __IPOLLOWORK_ORCHESTRATOR_VERSION__ === "string" &&
+    __IPOLLOWORK_ORCHESTRATOR_VERSION__.trim()
   ) {
-    return __IPOLLOWALK_ORCHESTRATOR_VERSION__.trim();
+    return __IPOLLOWORK_ORCHESTRATOR_VERSION__.trim();
   }
   const candidates = [
     join(dirname(process.execPath), "..", "package.json"),
@@ -945,10 +945,10 @@ async function resolveCliVersion(): Promise<string> {
 
 async function readPinnedOpencodeVersion(): Promise<string | undefined> {
   if (
-    typeof __IPOLLOWALK_PINNED_OPENCODE_VERSION__ === "string" &&
-    __IPOLLOWALK_PINNED_OPENCODE_VERSION__.trim()
+    typeof __IPOLLOWORK_PINNED_OPENCODE_VERSION__ === "string" &&
+    __IPOLLOWORK_PINNED_OPENCODE_VERSION__.trim()
   ) {
-    return __IPOLLOWALK_PINNED_OPENCODE_VERSION__.trim();
+    return __IPOLLOWORK_PINNED_OPENCODE_VERSION__.trim();
   }
 
   const candidates = [
@@ -1024,7 +1024,7 @@ async function resolveDockerCandidates(): Promise<string[]> {
   };
 
   for (const key of [
-    "IPOLLOWALK_DOCKER_BIN",
+    "IPOLLOWORK_DOCKER_BIN",
     "OPENWRK_DOCKER_BIN",
     "DOCKER_BIN",
   ]) {
@@ -1217,12 +1217,12 @@ function resolveManagedOpencodeCredentials(args: ParsedArgs): {
   const requestedUsername =
     typeof explicitUsernameFlag === "string"
       ? explicitUsernameFlag
-      : process.env.IPOLLOWALK_OPENCODE_USERNAME ??
+      : process.env.IPOLLOWORK_OPENCODE_USERNAME ??
         process.env.OPENCODE_SERVER_USERNAME;
   const requestedPassword =
     typeof explicitPasswordFlag === "string"
       ? explicitPasswordFlag
-      : process.env.IPOLLOWALK_OPENCODE_PASSWORD ??
+      : process.env.IPOLLOWORK_OPENCODE_PASSWORD ??
         process.env.OPENCODE_SERVER_PASSWORD;
   const allowInjectedCredentials =
     (process.env[INTERNAL_OPENCODE_CREDENTIALS_ENV] ?? "").trim() === "1";
@@ -1243,7 +1243,7 @@ function resolveManagedOpencodeCredentials(args: ParsedArgs): {
   if (requestedUsername && requestedPassword && hasExplicitCredentialFlags) {
     if (!allowInjectedCredentials) {
       throw new Error(
-        "OpenCode credentials are managed by iPolloWalk. Custom --opencode-username/--opencode-password values are not supported.",
+        "OpenCode credentials are managed by iPolloWork. Custom --opencode-username/--opencode-password values are not supported.",
       );
     }
     return {
@@ -1267,11 +1267,11 @@ function assertManagedOpencodeAuth(args: ParsedArgs) {
     args.flags,
     "opencode-auth",
     true,
-    "IPOLLOWALK_OPENCODE_AUTH",
+    "IPOLLOWORK_OPENCODE_AUTH",
   );
   if (!authEnabled) {
     throw new Error(
-      "OpenCode basic auth is always enabled when iPolloWalk launches OpenCode.",
+      "OpenCode basic auth is always enabled when iPolloWork launches OpenCode.",
     );
   }
 }
@@ -1301,11 +1301,11 @@ function resolveOpencodeLogLevel(requested?: string): string | undefined {
   return normalized;
 }
 
-function resolveiPolloWalkRemoteAccess(args: ParsedArgs): boolean {
+function resolveiPolloWorkRemoteAccess(args: ParsedArgs): boolean {
   const explicitHost =
-    readFlag(args.flags, "ipollowalk-host") ?? process.env.IPOLLOWALK_HOST;
+    readFlag(args.flags, "ipollowork-host") ?? process.env.IPOLLOWORK_HOST;
   const remoteAccessRequested =
-    readBool(args.flags, "remote-access", false, "IPOLLOWALK_REMOTE_ACCESS") ||
+    readBool(args.flags, "remote-access", false, "IPOLLOWORK_REMOTE_ACCESS") ||
     explicitHost?.trim() === "0.0.0.0";
 
   if (explicitHost) {
@@ -1314,7 +1314,7 @@ function resolveiPolloWalkRemoteAccess(args: ParsedArgs): boolean {
     if (normalized === "0.0.0.0") return true;
     if (!isLoopbackHost(normalized)) {
       throw new Error(
-        `Unsupported --ipollowalk-host value: ${normalized}. Use loopback by default or --remote-access for shared access.`,
+        `Unsupported --ipollowork-host value: ${normalized}. Use loopback by default or --remote-access for shared access.`,
       );
     }
   }
@@ -1454,7 +1454,7 @@ async function postWorkerActivityHeartbeat(input: {
       lastActivityAt: payload.lastActivityAt,
       openSessionCount: payload.openSessionCount,
     },
-    "ipollowalk-orchestrator",
+    "ipollowork-orchestrator",
   );
 }
 
@@ -1503,7 +1503,7 @@ function prefixStream(
 
 function shouldUseBun(bin: string): boolean {
   if (!bin.endsWith(`${join("dist", "cli.js")}`)) return false;
-  if (bin.includes("ipollowalk-server")) return true;
+  if (bin.includes("ipollowork-server")) return true;
   return bin.includes(`${join("packages", "server")}`);
 }
 
@@ -1526,8 +1526,8 @@ function resolveBinCommand(bin: string): {
 async function readVersionManifest(): Promise<VersionManifest | null> {
   const binDir = dirname(process.execPath);
   const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const envManifestPath = process.env.IPOLLOWALK_VERSION_MANIFEST?.trim();
-  const envSidecarDir = process.env.IPOLLOWALK_BUNDLED_SIDECAR_DIR?.trim();
+  const envManifestPath = process.env.IPOLLOWORK_VERSION_MANIFEST?.trim();
+  const envSidecarDir = process.env.IPOLLOWORK_BUNDLED_SIDECAR_DIR?.trim();
   const candidates = [
     ...(envManifestPath
       ? [
@@ -1603,7 +1603,7 @@ function resolveExtraPathEntries(): string[] {
 
   const entries: string[] = [];
   const sidecarOverride =
-    process.env.OPENWRK_SIDECAR_DIR ?? process.env.IPOLLOWALK_SIDECAR_DIR;
+    process.env.OPENWRK_SIDECAR_DIR ?? process.env.IPOLLOWORK_SIDECAR_DIR;
   const sidecarCandidates = [
     sidecarOverride,
     dirname(process.execPath),
@@ -1670,21 +1670,21 @@ function resolveExtraPathEntries(): string[] {
   return entries;
 }
 
-// Resolves ~/.config/ipollowalk/env.json (or %APPDATA%\ipollowalk\env.json on
+// Resolves ~/.config/ipollowork/env.json (or %APPDATA%\ipollowork\env.json on
 // Windows) — must agree byte-for-byte with apps/server/src/env-file.ts and
-// apps/desktop/electron/runtime.mjs. Honor IPOLLOWALK_ENV_STORE override.
+// apps/desktop/electron/runtime.mjs. Honor IPOLLOWORK_ENV_STORE override.
 function resolveUserEnvFilePath(): string {
-  const override = (process.env.IPOLLOWALK_ENV_STORE ?? "").trim();
+  const override = (process.env.IPOLLOWORK_ENV_STORE ?? "").trim();
   if (override) return resolve(override);
   if (platform() === "win32") {
     const appData = (process.env.APPDATA ?? "").trim();
     const root = appData || join(homedir(), "AppData", "Roaming");
-    return join(root, "ipollowalk", "env.json");
+    return join(root, "ipollowork", "env.json");
   }
-  return join(homedir(), ".config", "ipollowalk", "env.json");
+  return join(homedir(), ".config", "ipollowork", "env.json");
 }
 
-const USER_ENV_RESERVED_PREFIXES = ["IPOLLOWALK_", "OPENCODE_"] as const;
+const USER_ENV_RESERVED_PREFIXES = ["IPOLLOWORK_", "OPENCODE_"] as const;
 
 // Synchronous, best-effort, never throws. Absent or malformed files return {}.
 // Reads on every spawn so UI edits are picked up on the next child start.
@@ -1713,7 +1713,7 @@ function buildSpawnEnv(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   // User env is layered first so existing process.env / caller overrides
   // always win. This is what makes Linux GUI launches work: the shell env
   // is empty for ANTHROPIC_API_KEY, the user file supplies it, but anything
-  // the shell or spawn-site already set (IPOLLOWALK_TOKEN, etc.) is untouched.
+  // the shell or spawn-site already set (IPOLLOWORK_TOKEN, etc.) is untouched.
   const merged: NodeJS.ProcessEnv = { ...loadUserEnvFile() };
   for (const [key, value] of Object.entries(base)) {
     if (value !== undefined) merged[key] = value;
@@ -1851,12 +1851,12 @@ function addEnvPassThroughArgs(args: string[], names: string[]) {
 }
 
 const SANDBOX_INTERNAL_ENV_NAMES = [
-  "IPOLLOWALK_TOKEN",
-  "IPOLLOWALK_HOST_TOKEN",
+  "IPOLLOWORK_TOKEN",
+  "IPOLLOWORK_HOST_TOKEN",
   "OPENCODE_SERVER_USERNAME",
   "OPENCODE_SERVER_PASSWORD",
-  "IPOLLOWALK_OPENCODE_USERNAME",
-  "IPOLLOWALK_OPENCODE_PASSWORD",
+  "IPOLLOWORK_OPENCODE_USERNAME",
+  "IPOLLOWORK_OPENCODE_PASSWORD",
 ] as const;
 
 function sandboxEnvPassThroughNames(userEnv: Record<string, string>): string[] {
@@ -1867,7 +1867,7 @@ function sandboxEnvPassThroughNames(userEnv: Record<string, string>): string[] {
 
 function resolveSidecarDir(flags: Map<string, string | boolean>): string {
   const override =
-    readFlag(flags, "sidecar-dir") ?? process.env.IPOLLOWALK_SIDECAR_DIR;
+    readFlag(flags, "sidecar-dir") ?? process.env.IPOLLOWORK_SIDECAR_DIR;
   if (override && override.trim()) return resolve(override.trim());
   return join(resolveRouterDataDir(flags), "sidecars");
 }
@@ -1878,9 +1878,9 @@ function resolveSidecarBaseUrl(
 ): string {
   const override =
     readFlag(flags, "sidecar-base-url") ??
-    process.env.IPOLLOWALK_SIDECAR_BASE_URL;
+    process.env.IPOLLOWORK_SIDECAR_BASE_URL;
   if (override && override.trim()) return override.trim();
-  return `https://github.com/Devin-AXIS/iPolloWalk/releases/download/ipollowalk-orchestrator-v${cliVersion}`;
+  return `https://github.com/Devin-AXIS/iPolloWork/releases/download/ipollowork-orchestrator-v${cliVersion}`;
 }
 
 function resolveSidecarManifestUrl(
@@ -1889,9 +1889,9 @@ function resolveSidecarManifestUrl(
 ): string {
   const override =
     readFlag(flags, "sidecar-manifest") ??
-    process.env.IPOLLOWALK_SIDECAR_MANIFEST_URL;
+    process.env.IPOLLOWORK_SIDECAR_MANIFEST_URL;
   if (override && override.trim()) return override.trim();
-  return `${baseUrl.replace(/\/$/, "")}/ipollowalk-orchestrator-sidecars.json`;
+  return `${baseUrl.replace(/\/$/, "")}/ipollowork-orchestrator-sidecars.json`;
 }
 
 function resolveSidecarConfig(
@@ -2081,7 +2081,7 @@ async function resolveOpencodeDownload(
   if (!sidecar.target) return null;
 
   const assetOverride =
-    process.env.IPOLLOWALK_OPENCODE_ASSET ?? process.env.OPENCODE_ASSET;
+    process.env.IPOLLOWORK_OPENCODE_ASSET ?? process.env.OPENCODE_ASSET;
   const asset = assetOverride?.trim() || resolveOpencodeAsset(sidecar.target);
   if (!asset) return null;
 
@@ -2114,10 +2114,10 @@ async function resolveOpencodeDownload(
   const stamp = Date.now();
   const archivePath = join(
     tmpdir(),
-    `ipollowalk-orchestrator-opencode-${stamp}-${asset}`,
+    `ipollowork-orchestrator-opencode-${stamp}-${asset}`,
   );
   const extractDir = await mkdtemp(
-    join(tmpdir(), "ipollowalk-orchestrator-opencode-"),
+    join(tmpdir(), "ipollowork-orchestrator-opencode-"),
   );
 
   try {
@@ -2229,7 +2229,7 @@ async function resolveExpectedVersion(
 
   try {
     const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-    if (name === "ipollowalk-server") {
+    if (name === "ipollowork-server") {
       const localPath = join(root, "..", "server", "package.json");
       const localVersion = await readPackageVersion(localPath);
       if (localVersion) return localVersion;
@@ -2243,9 +2243,9 @@ async function resolveExpectedVersion(
   }
 
   const require = createRequire(import.meta.url);
-  if (name === "ipollowalk-server") {
+  if (name === "ipollowork-server") {
     try {
-      const pkgPath = require.resolve("ipollowalk-server/package.json");
+      const pkgPath = require.resolve("ipollowork-server/package.json");
       const version = await readPackageVersion(pkgPath);
       if (version) return version;
     } catch {
@@ -2425,7 +2425,7 @@ async function assertSandboxBinaryFile(
   }
 }
 
-async function resolveiPolloWalkServerBin(options: {
+async function resolveiPolloWorkServerBin(options: {
   explicit?: string;
   manifest: VersionManifest | null;
   allowExternal: boolean;
@@ -2433,7 +2433,7 @@ async function resolveiPolloWalkServerBin(options: {
   source: BinarySourcePreference;
 }): Promise<ResolvedBinary> {
   if (options.explicit && !options.allowExternal) {
-    throw new Error("ipollowalk-server-bin requires --allow-external");
+    throw new Error("ipollowork-server-bin requires --allow-external");
   }
   if (
     options.explicit &&
@@ -2441,17 +2441,17 @@ async function resolveiPolloWalkServerBin(options: {
     options.source !== "external"
   ) {
     throw new Error(
-      "ipollowalk-server-bin requires --sidecar-source external or auto",
+      "ipollowork-server-bin requires --sidecar-source external or auto",
     );
   }
 
   const expectedVersion = await resolveExpectedVersion(
     options.manifest,
-    "ipollowalk-server",
+    "ipollowork-server",
   );
   const resolveExternal = async (): Promise<ResolvedBinary> => {
     if (!options.allowExternal) {
-      throw new Error("External ipollowalk-server requires --allow-external");
+      throw new Error("External ipollowork-server requires --allow-external");
     }
     if (options.explicit) {
       const resolved = resolveBinPath(options.explicit);
@@ -2459,16 +2459,16 @@ async function resolveiPolloWalkServerBin(options: {
         (resolved.includes("/") || resolved.startsWith(".")) &&
         !(await fileExists(resolved))
       ) {
-        throw new Error(`ipollowalk-server-bin not found: ${resolved}`);
+        throw new Error(`ipollowork-server-bin not found: ${resolved}`);
       }
       return { bin: resolved, source: "external", expectedVersion };
     }
 
     const require = createRequire(import.meta.url);
     try {
-      const pkgPath = require.resolve("ipollowalk-server/package.json");
+      const pkgPath = require.resolve("ipollowork-server/package.json");
       const pkgDir = dirname(pkgPath);
-      const binaryPath = join(pkgDir, "dist", "bin", "ipollowalk-server");
+      const binaryPath = join(pkgDir, "dist", "bin", "ipollowork-server");
       if (await isExecutable(binaryPath)) {
         return { bin: binaryPath, source: "external", expectedVersion };
       }
@@ -2480,17 +2480,17 @@ async function resolveiPolloWalkServerBin(options: {
       // ignore
     }
 
-    return { bin: "ipollowalk-server", source: "external", expectedVersion };
+    return { bin: "ipollowork-server", source: "external", expectedVersion };
   };
 
   if (options.source === "bundled") {
     const bundled = await resolveBundledBinary(
       options.manifest,
-      "ipollowalk-server",
+      "ipollowork-server",
     );
     if (!bundled) {
       throw new Error(
-        "Bundled ipollowalk-server binary missing. Build with pnpm --filter ipollowalk-orchestrator build:bin:bundled.",
+        "Bundled ipollowork-server binary missing. Build with pnpm --filter ipollowork-orchestrator build:bin:bundled.",
       );
     }
     return { bin: bundled, source: "bundled", expectedVersion };
@@ -2498,12 +2498,12 @@ async function resolveiPolloWalkServerBin(options: {
 
   if (options.source === "downloaded") {
     const downloaded = await downloadSidecarBinary({
-      name: "ipollowalk-server",
+      name: "ipollowork-server",
       sidecar: options.sidecar,
     });
     if (!downloaded) {
       throw new Error(
-        "ipollowalk-server download failed. Check sidecar manifest or base URL.",
+        "ipollowork-server download failed. Check sidecar manifest or base URL.",
       );
     }
     return downloaded;
@@ -2515,7 +2515,7 @@ async function resolveiPolloWalkServerBin(options: {
 
   const bundled = await resolveBundledBinary(
     options.manifest,
-    "ipollowalk-server",
+    "ipollowork-server",
   );
   if (bundled && !(options.allowExternal && options.explicit)) {
     return { bin: bundled, source: "bundled", expectedVersion };
@@ -2526,14 +2526,14 @@ async function resolveiPolloWalkServerBin(options: {
   }
 
   const downloaded = await downloadSidecarBinary({
-    name: "ipollowalk-server",
+    name: "ipollowork-server",
     sidecar: options.sidecar,
   });
   if (downloaded) return downloaded;
 
   if (!options.allowExternal) {
     throw new Error(
-      "Bundled ipollowalk-server binary missing and download failed. Use --allow-external or --sidecar-source external.",
+      "Bundled ipollowork-server binary missing and download failed. Use --allow-external or --sidecar-source external.",
     );
   }
 
@@ -2583,7 +2583,7 @@ async function resolveOpencodeBin(options: {
     const bundled = await resolveBundledBinary(options.manifest, "opencode");
     if (!bundled) {
       throw new Error(
-        "Bundled opencode binary missing. Build with pnpm --filter ipollowalk-orchestrator build:bin:bundled.",
+        "Bundled opencode binary missing. Build with pnpm --filter ipollowork-orchestrator build:bin:bundled.",
       );
     }
     return { bin: bundled, source: "bundled", expectedVersion };
@@ -2646,19 +2646,19 @@ async function resolveOpencodeBin(options: {
 }
 
 function resolveRouterDataDir(flags: Map<string, string | boolean>): string {
-  const override = readFlag(flags, "data-dir") ?? process.env.IPOLLOWALK_DATA_DIR;
+  const override = readFlag(flags, "data-dir") ?? process.env.IPOLLOWORK_DATA_DIR;
   if (override && override.trim()) {
     return resolve(override.trim());
   }
-  return join(homedir(), ".ipollowalk", "ipollowalk-orchestrator");
+  return join(homedir(), ".ipollowork", "ipollowork-orchestrator");
 }
 
 function resolveInternalDevMode(flags: Map<string, string | boolean>): boolean {
-  return readBool(flags, "internal-dev-mode", false, "IPOLLOWALK_DEV_MODE");
+  return readBool(flags, "internal-dev-mode", false, "IPOLLOWORK_DEV_MODE");
 }
 
 function internalDevModeFromEnv(): boolean {
-  const value = process.env.IPOLLOWALK_DEV_MODE?.trim().toLowerCase();
+  const value = process.env.IPOLLOWORK_DEV_MODE?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
@@ -2676,7 +2676,7 @@ function resolveOpencodeStateLayout(options: {
     };
   }
 
-  const rootDir = join(options.dataDir, IPOLLOWALK_DEV_DATA_DIR);
+  const rootDir = join(options.dataDir, IPOLLOWORK_DEV_DATA_DIR);
   const homeDir = join(rootDir, "home");
   const xdgConfigHome = join(rootDir, "xdg", "config");
   const xdgDataHome = join(rootDir, "xdg", "data");
@@ -2689,11 +2689,11 @@ function resolveOpencodeStateLayout(options: {
     rootDir,
     configDir,
     importConfigDir:
-      process.env.IPOLLOWALK_DEV_OPENCODE_IMPORT_CONFIG_DIR?.trim() || undefined,
+      process.env.IPOLLOWORK_DEV_OPENCODE_IMPORT_CONFIG_DIR?.trim() || undefined,
     importDataDir:
-      process.env.IPOLLOWALK_DEV_OPENCODE_IMPORT_DATA_DIR?.trim() || undefined,
+      process.env.IPOLLOWORK_DEV_OPENCODE_IMPORT_DATA_DIR?.trim() || undefined,
     env: {
-      IPOLLOWALK_DEV_MODE: "1",
+      IPOLLOWORK_DEV_MODE: "1",
       OPENCODE_TEST_HOME: homeDir,
       HOME: homeDir,
       XDG_CONFIG_HOME: xdgConfigHome,
@@ -2760,7 +2760,7 @@ async function ensureOpencodeStateLayout(
 }
 
 function routerStatePath(dataDir: string): string {
-  return join(dataDir, "ipollowalk-orchestrator-state.json");
+  return join(dataDir, "ipollowork-orchestrator-state.json");
 }
 
 function nowMs(): number {
@@ -2903,7 +2903,7 @@ async function waitForOpencodeHealthy(
 }
 
 /**
- * In sandbox mode the released ipollowalk-server binary may not have our latest
+ * In sandbox mode the released ipollowork-server binary may not have our latest
  * token/proxy changes.  Instead of relying on the OpenCode SDK client (which
  * sends Bearer auth that the proxy may not understand yet), we do a simple
  * HTTP fetch through the proxy path.  The server's /opencode/* proxy already
@@ -2914,7 +2914,7 @@ async function waitForOpencodeHealthy(
  * We try multiple path patterns because:
  * - `/opencode/health` — most common OpenCode health endpoint proxied by the
  *   server's catch-all /opencode/* route.
- * - `/health` on the ipollowalk-server itself — already verified by the caller,
+ * - `/health` on the ipollowork-server itself — already verified by the caller,
  *   but serves as a fallback signal.
  */
 async function waitForHealthyViaProxy(
@@ -2938,7 +2938,7 @@ async function waitForHealthyViaProxy(
       if (res.ok) return;
       // Some older server versions may return 401/403 on the proxy but that
       // still proves the server is up and proxying.  Accept any non-5xx as
-      // "alive" — the real auth validation happens in verifyiPolloWalkServer.
+      // "alive" — the real auth validation happens in verifyiPolloWorkServer.
       if (res.status < 500) return;
       lastError = `Proxy returned ${res.status}`;
     } catch (error) {
@@ -2953,21 +2953,21 @@ async function waitForHealthyViaProxy(
 
 function printHelp(): void {
   const message = [
-    "ipollowalk",
+    "ipollowork",
     "",
     "Usage:",
-    "  ipollowalk start [--workspace <path>] [options]",
-    "  ipollowalk serve [--workspace <path>] [options]",
-    "  ipollowalk daemon [run|start|stop|status] [options]",
-    "  ipollowalk workspace <action> [options]",
-    "  ipollowalk instance dispose <id> [options]",
-    "  ipollowalk approvals list --ipollowalk-url <url> --host-token <token>",
-    "  ipollowalk approvals reply <id> --allow|--deny --ipollowalk-url <url> --host-token <token>",
-    "  ipollowalk files <action> [options]",
-    "  ipollowalk status [--ipollowalk-url <url>] [--opencode-url <url>]",
+    "  ipollowork start [--workspace <path>] [options]",
+    "  ipollowork serve [--workspace <path>] [options]",
+    "  ipollowork daemon [run|start|stop|status] [options]",
+    "  ipollowork workspace <action> [options]",
+    "  ipollowork instance dispose <id> [options]",
+    "  ipollowork approvals list --ipollowork-url <url> --host-token <token>",
+    "  ipollowork approvals reply <id> --allow|--deny --ipollowork-url <url> --host-token <token>",
+    "  ipollowork files <action> [options]",
+    "  ipollowork status [--ipollowork-url <url>] [--opencode-url <url>]",
     "",
     "Commands:",
-    "  start                   Start OpenCode + iPolloWalk server",
+    "  start                   Start OpenCode + iPolloWork server",
     "  serve                   Start services and stream logs (no TUI)",
     "  daemon                  Run orchestrator router daemon (multi-workspace)",
     "  workspace               Manage workspaces (add/list/switch/path)",
@@ -2975,7 +2975,7 @@ function printHelp(): void {
     "  approvals list           List pending approval requests",
     "  approvals reply <id>     Approve or deny a request",
     "  files                   Manage file sessions and batch file sync",
-    "  status                  Check OpenCode/iPolloWalk health",
+    "  status                  Check OpenCode/iPolloWork health",
     "",
     "Options:",
     "  --workspace <path>        Workspace directory (default: cwd)",
@@ -2993,11 +2993,11 @@ function printHelp(): void {
     "  --opencode-hot-reload-cooldown-ms <ms>  Minimum interval between hot reloads (default: 1500)",
     "  --opencode-username <u>   Internal-only override for managed OpenCode auth username",
     "  --opencode-password <p>   Internal-only override for managed OpenCode auth password",
-    "  --ipollowalk-host <host>    Bind host for ipollowalk-server (default: 127.0.0.1)",
-    "  --ipollowalk-port <port>    Port for ipollowalk-server (default: 8787)",
-    "  --remote-access           Expose iPolloWalk on 0.0.0.0 for remote sharing",
-    "  --ipollowalk-token <token>  Client token for ipollowalk-server",
-    "  --ipollowalk-host-token <t> Host token for approvals",
+    "  --ipollowork-host <host>    Bind host for ipollowork-server (default: 127.0.0.1)",
+    "  --ipollowork-port <port>    Port for ipollowork-server (default: 8787)",
+    "  --remote-access           Expose iPolloWork on 0.0.0.0 for remote sharing",
+    "  --ipollowork-token <token>  Client token for ipollowork-server",
+    "  --ipollowork-host-token <t> Host token for approvals",
     "  --workspace-id <id>       Workspace id for file session commands",
     "  --session-id <id>         File session id for file session commands",
     "  --path <path>             Workspace-relative file path",
@@ -3014,10 +3014,10 @@ function printHelp(): void {
     "  --recursive               Recursive delete for files delete",
     "  --approval <mode>         manual | auto (default: manual)",
     "  --approval-timeout <ms>   Approval timeout in ms",
-    "  --read-only               Start iPolloWalk server in read-only mode",
+    "  --read-only               Start iPolloWork server in read-only mode",
     "  --cors <origins>          Comma-separated CORS origins or *",
     "  --connect-host <host>     Override LAN host used for pairing URLs",
-    "  --ipollowalk-server-bin <p> Path to ipollowalk-server binary (requires --allow-external)",
+    "  --ipollowork-server-bin <p> Path to ipollowork-server binary (requires --allow-external)",
     "  --allow-external          Allow external sidecar binaries (dev only, required for custom bins)",
     "  --sidecar-dir <path>      Cache directory for downloaded sidecars",
     "  --sidecar-base-url <url>  Base URL for sidecar downloads",
@@ -3106,10 +3106,10 @@ async function startOpencode(options: {
     env: {
       ...process.env,
       ...(options.stateLayout?.env ?? {}),
-      OPENCODE_CLIENT: "ipollowalk-orchestrator",
-      IPOLLOWALK: "1",
-      IPOLLOWALK_RUN_ID: options.runId,
-      IPOLLOWALK_LOG_FORMAT: options.logFormat,
+      OPENCODE_CLIENT: "ipollowork-orchestrator",
+      IPOLLOWORK: "1",
+      IPOLLOWORK_RUN_ID: options.runId,
+      IPOLLOWORK_LOG_FORMAT: options.logFormat,
       OTEL_RESOURCE_ATTRIBUTES: mergeResourceAttributes(
         {
           "service.name": "opencode",
@@ -3150,7 +3150,7 @@ async function startOpencode(options: {
   return child;
 }
 
-async function startiPolloWalkServer(options: {
+async function startiPolloWorkServer(options: {
   bin: string;
   host: string;
   port: number;
@@ -3211,34 +3211,34 @@ async function startiPolloWalkServer(options: {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
-        IPOLLOWALK_TOKEN: options.token,
-        IPOLLOWALK_HOST_TOKEN: options.hostToken,
-        IPOLLOWALK_RUN_ID: options.runId,
-        IPOLLOWALK_LOG_FORMAT: options.logFormat,
+        IPOLLOWORK_TOKEN: options.token,
+        IPOLLOWORK_HOST_TOKEN: options.hostToken,
+        IPOLLOWORK_RUN_ID: options.runId,
+        IPOLLOWORK_LOG_FORMAT: options.logFormat,
         OTEL_RESOURCE_ATTRIBUTES: mergeResourceAttributes(
           {
-            "service.name": "ipollowalk-server",
+            "service.name": "ipollowork-server",
             "service.instance.id": options.runId,
           },
           process.env.OTEL_RESOURCE_ATTRIBUTES,
         ),
         ...(options.opencodeBaseUrl
-          ? { IPOLLOWALK_OPENCODE_BASE_URL: options.opencodeBaseUrl }
+          ? { IPOLLOWORK_OPENCODE_BASE_URL: options.opencodeBaseUrl }
           : {}),
         ...(options.opencodeDirectory
-          ? { IPOLLOWALK_OPENCODE_DIRECTORY: options.opencodeDirectory }
+          ? { IPOLLOWORK_OPENCODE_DIRECTORY: options.opencodeDirectory }
           : {}),
         ...(options.opencodeUsername
-          ? { IPOLLOWALK_OPENCODE_USERNAME: options.opencodeUsername }
+          ? { IPOLLOWORK_OPENCODE_USERNAME: options.opencodeUsername }
           : {}),
         ...(options.opencodePassword
-          ? { IPOLLOWALK_OPENCODE_PASSWORD: options.opencodePassword }
+          ? { IPOLLOWORK_OPENCODE_PASSWORD: options.opencodePassword }
           : {}),
         ...(options.controlBaseUrl
-          ? { IPOLLOWALK_CONTROL_BASE_URL: options.controlBaseUrl }
+          ? { IPOLLOWORK_CONTROL_BASE_URL: options.controlBaseUrl }
           : {}),
         ...(options.controlToken
-          ? { IPOLLOWALK_CONTROL_TOKEN: options.controlToken }
+          ? { IPOLLOWORK_CONTROL_TOKEN: options.controlToken }
           : {}),
       },
     },
@@ -3246,14 +3246,14 @@ async function startiPolloWalkServer(options: {
 
   prefixStream(
     child.stdout,
-    "ipollowalk-server",
+    "ipollowork-server",
     "stdout",
     options.logger,
     child.pid ?? undefined,
   );
   prefixStream(
     child.stderr,
-    "ipollowalk-server",
+    "ipollowork-server",
     "stderr",
     options.logger,
     child.pid ?? undefined,
@@ -3353,7 +3353,7 @@ async function stageSandboxRuntime(options: {
   containerName: string;
   sidecars: {
     opencode: string;
-    ipollowalkServer: string;
+    ipolloworkServer: string;
   };
   detach: boolean;
 }): Promise<{
@@ -3364,7 +3364,7 @@ async function stageSandboxRuntime(options: {
 }> {
   const baseDir = join(
     options.persistDir,
-    "ipollowalk-orchestrator-sandbox",
+    "ipollowork-orchestrator-sandbox",
     options.containerName,
   );
   await mkdir(baseDir, { recursive: true });
@@ -3374,13 +3374,13 @@ async function stageSandboxRuntime(options: {
   const entrypointHostPath = join(baseDir, "entrypoint.sh");
 
   const stagedOpencode = join(sidecarsDir, "opencode");
-  const stagediPolloWalk = join(sidecarsDir, "ipollowalk-server");
+  const stagediPolloWork = join(sidecarsDir, "ipollowork-server");
   await copyFile(options.sidecars.opencode, stagedOpencode);
-  await copyFile(options.sidecars.ipollowalkServer, stagediPolloWalk);
+  await copyFile(options.sidecars.ipolloworkServer, stagediPolloWork);
   await ensureExecutable(stagedOpencode);
-  await ensureExecutable(stagediPolloWalk);
+  await ensureExecutable(stagediPolloWork);
 
-  const rootInContainer = `/persist/ipollowalk-orchestrator-sandbox/${options.containerName}`;
+  const rootInContainer = `/persist/ipollowork-orchestrator-sandbox/${options.containerName}`;
   const cleanup = async () => {
     if (options.detach) return;
     try {
@@ -3405,7 +3405,7 @@ async function writeSandboxEntrypoint(options: {
     hotReload: OpencodeHotReload;
     logLevel?: string;
   };
-  ipollowalk: {
+  ipollowork: {
     token: string;
     hostToken: string;
     approvalMode: ApprovalMode;
@@ -3420,7 +3420,7 @@ async function writeSandboxEntrypoint(options: {
   logFormat: LogFormat;
 }): Promise<void> {
   const opencodeBin = `${options.rootInContainer}/sidecars/opencode`;
-  const ipollowalkBin = `${options.rootInContainer}/sidecars/ipollowalk-server`;
+  const ipolloworkBin = `${options.rootInContainer}/sidecars/ipollowork-server`;
   const workspaceDir = "/workspace";
   const opencodeConfigDir = options.opencodeConfigDirInContainer;
   const hostOpencodeConfigDir = SANDBOX_OPENCODE_GLOBAL_CONFIG_CONTAINER_PATH;
@@ -3435,31 +3435,31 @@ async function writeSandboxEntrypoint(options: {
     ? `--log-level ${shQuote(options.opencode.logLevel)}`
     : "";
 
-  const ipollowalkCors = options.ipollowalk.corsOrigins.length
-    ? `--cors ${shQuote(options.ipollowalk.corsOrigins.join(","))}`
+  const ipolloworkCors = options.ipollowork.corsOrigins.length
+    ? `--cors ${shQuote(options.ipollowork.corsOrigins.join(","))}`
     : "";
 
   const requiredSecretEnv = [
-    ': "${IPOLLOWALK_TOKEN:?IPOLLOWALK_TOKEN is required}"',
-    ': "${IPOLLOWALK_HOST_TOKEN:?IPOLLOWALK_HOST_TOKEN is required}"',
+    ': "${IPOLLOWORK_TOKEN:?IPOLLOWORK_TOKEN is required}"',
+    ': "${IPOLLOWORK_HOST_TOKEN:?IPOLLOWORK_HOST_TOKEN is required}"',
     options.opencode.username
       ? ': "${OPENCODE_SERVER_USERNAME:?OPENCODE_SERVER_USERNAME is required}"'
       : "",
     options.opencode.password
       ? ': "${OPENCODE_SERVER_PASSWORD:?OPENCODE_SERVER_PASSWORD is required}"'
       : "",
-    options.ipollowalk.opencodeUsername
-      ? ': "${IPOLLOWALK_OPENCODE_USERNAME:?IPOLLOWALK_OPENCODE_USERNAME is required}"'
+    options.ipollowork.opencodeUsername
+      ? ': "${IPOLLOWORK_OPENCODE_USERNAME:?IPOLLOWORK_OPENCODE_USERNAME is required}"'
       : "",
-    options.ipollowalk.opencodePassword
-      ? ': "${IPOLLOWALK_OPENCODE_PASSWORD:?IPOLLOWALK_OPENCODE_PASSWORD is required}"'
+    options.ipollowork.opencodePassword
+      ? ': "${IPOLLOWORK_OPENCODE_PASSWORD:?IPOLLOWORK_OPENCODE_PASSWORD is required}"'
       : "",
   ]
     .filter(Boolean)
     .join("\n");
 
-  const ipollowalkDevMode = (process.env.IPOLLOWALK_DEV_MODE ?? "").trim() === "1";
-  const sandboxHomeDir = ipollowalkDevMode ? "/persist/ipollowalk-dev-data/home" : "/persist";
+  const ipolloworkDevMode = (process.env.IPOLLOWORK_DEV_MODE ?? "").trim() === "1";
+  const sandboxHomeDir = ipolloworkDevMode ? "/persist/ipollowork-dev-data/home" : "/persist";
 
   const script = [
     "set -eu",
@@ -3481,16 +3481,16 @@ async function writeSandboxEntrypoint(options: {
     'mkdir -p "$XDG_DATA_HOME/opencode"',
     `if [ -d ${shQuote(hostOpencodeDataDir)} ]; then cp ${shQuote(`${hostOpencodeDataDir}/auth.json`)} \"$XDG_DATA_HOME/opencode/auth.json\" 2>/dev/null || true; cp ${shQuote(`${hostOpencodeDataDir}/mcp-auth.json`)} \"$XDG_DATA_HOME/opencode/mcp-auth.json\" 2>/dev/null || true; fi`,
     `export OPENCODE_URL=${shQuote(`http://127.0.0.1:${SANDBOX_INTERNAL_OPENCODE_PORT}`)}`,
-    `export OPENCODE_CLIENT=ipollowalk-orchestrator`,
+    `export OPENCODE_CLIENT=ipollowork-orchestrator`,
     `export OPENCODE_HOT_RELOAD=${shQuote(options.opencode.hotReload.enabled ? "1" : "0")}`,
     `export OPENCODE_HOT_RELOAD_DEBOUNCE_MS=${shQuote(String(options.opencode.hotReload.debounceMs))}`,
     `export OPENCODE_HOT_RELOAD_COOLDOWN_MS=${shQuote(String(options.opencode.hotReload.cooldownMs))}`,
-    `export IPOLLOWALK=1`,
-    `export IPOLLOWALK_DEV_MODE=${shQuote(ipollowalkDevMode ? "1" : "0")}`,
-    `export IPOLLOWALK_RUN_ID=${shQuote(options.runId)}`,
-    `export IPOLLOWALK_LOG_FORMAT=${shQuote(options.logFormat)}`,
-    `export IPOLLOWALK_SANDBOX_ENABLED=1`,
-    `export IPOLLOWALK_SANDBOX_BACKEND=${shQuote(options.backend)}`,
+    `export IPOLLOWORK=1`,
+    `export IPOLLOWORK_DEV_MODE=${shQuote(ipolloworkDevMode ? "1" : "0")}`,
+    `export IPOLLOWORK_RUN_ID=${shQuote(options.runId)}`,
+    `export IPOLLOWORK_LOG_FORMAT=${shQuote(options.logFormat)}`,
+    `export IPOLLOWORK_SANDBOX_ENABLED=1`,
+    `export IPOLLOWORK_SANDBOX_BACKEND=${shQuote(options.backend)}`,
     requiredSecretEnv,
     'opencode_pid=""',
     "cleanup() {",
@@ -3499,15 +3499,15 @@ async function writeSandboxEntrypoint(options: {
     "trap cleanup INT TERM",
     `${shQuote(opencodeBin)} serve --hostname 127.0.0.1 --port ${shQuote(String(SANDBOX_INTERNAL_OPENCODE_PORT))}${opencodeLogLevelArg ? ` ${opencodeLogLevelArg}` : ""} ${opencodeCors} &`,
     "opencode_pid=$!",
-    `exec ${shQuote(ipollowalkBin)} --host 0.0.0.0 --port ${shQuote(String(SANDBOX_INTERNAL_IPOLLOWALK_PORT))}` +
+    `exec ${shQuote(ipolloworkBin)} --host 0.0.0.0 --port ${shQuote(String(SANDBOX_INTERNAL_IPOLLOWORK_PORT))}` +
       ` --workspace ${shQuote(workspaceDir)}` +
-      ` --approval ${shQuote(options.ipollowalk.approvalMode)}` +
-      ` --approval-timeout ${shQuote(String(options.ipollowalk.approvalTimeoutMs))}` +
-      (options.ipollowalk.readOnly ? " --read-only" : "") +
+      ` --approval ${shQuote(options.ipollowork.approvalMode)}` +
+      ` --approval-timeout ${shQuote(String(options.ipollowork.approvalTimeoutMs))}` +
+      (options.ipollowork.readOnly ? " --read-only" : "") +
       ` --opencode-base-url ${shQuote(`http://127.0.0.1:${SANDBOX_INTERNAL_OPENCODE_PORT}`)}` +
       ` --opencode-directory ${shQuote(workspaceDir)}` +
-      ` --log-format ${shQuote(options.ipollowalk.logFormat)}` +
-      (ipollowalkCors ? ` ${ipollowalkCors}` : ""),
+      ` --log-format ${shQuote(options.ipollowork.logFormat)}` +
+      (ipolloworkCors ? ` ${ipolloworkCors}` : ""),
   ]
     .filter(Boolean)
     .join("\n");
@@ -3525,9 +3525,9 @@ async function startDockerSandbox(options: {
   extraMounts: SandboxMount[];
   sidecars: {
     opencode: string;
-    ipollowalkServer: string;
+    ipolloworkServer: string;
   };
-  ports: { ipollowalk: number };
+  ports: { ipollowork: number };
   opencode: {
     corsOrigins: string[];
     username?: string;
@@ -3535,7 +3535,7 @@ async function startDockerSandbox(options: {
     hotReload: OpencodeHotReload;
     logLevel?: string;
   };
-  ipollowalk: {
+  ipollowork: {
     token: string;
     hostToken: string;
     approvalMode: ApprovalMode;
@@ -3564,16 +3564,16 @@ async function startDockerSandbox(options: {
     opencodeConfigDirInContainer: "/opencode-config",
     backend: "docker",
     opencode: options.opencode,
-    ipollowalk: {
-      token: options.ipollowalk.token,
-      hostToken: options.ipollowalk.hostToken,
-      approvalMode: options.ipollowalk.approvalMode,
-      approvalTimeoutMs: options.ipollowalk.approvalTimeoutMs,
-      readOnly: options.ipollowalk.readOnly,
-      corsOrigins: options.ipollowalk.corsOrigins,
-      opencodeUsername: options.ipollowalk.opencodeUsername,
-      opencodePassword: options.ipollowalk.opencodePassword,
-      logFormat: options.ipollowalk.logFormat,
+    ipollowork: {
+      token: options.ipollowork.token,
+      hostToken: options.ipollowork.hostToken,
+      approvalMode: options.ipollowork.approvalMode,
+      approvalTimeoutMs: options.ipollowork.approvalTimeoutMs,
+      readOnly: options.ipollowork.readOnly,
+      corsOrigins: options.ipollowork.corsOrigins,
+      opencodeUsername: options.ipollowork.opencodeUsername,
+      opencodePassword: options.ipollowork.opencodePassword,
+      logFormat: options.ipollowork.logFormat,
     },
     runId: options.runId,
     logFormat: options.logFormat,
@@ -3585,7 +3585,7 @@ async function startDockerSandbox(options: {
     "--name",
     options.containerName,
     "-p",
-    `127.0.0.1:${options.ports.ipollowalk}:${SANDBOX_INTERNAL_IPOLLOWALK_PORT}`,
+    `127.0.0.1:${options.ports.ipollowork}:${SANDBOX_INTERNAL_IPOLLOWORK_PORT}`,
     "-v",
     `${options.workspace}:/workspace`,
     "-v",
@@ -3655,19 +3655,19 @@ async function startDockerSandbox(options: {
     env: {
       ...userEnv,
       ...process.env,
-      IPOLLOWALK_TOKEN: options.ipollowalk.token,
-      IPOLLOWALK_HOST_TOKEN: options.ipollowalk.hostToken,
+      IPOLLOWORK_TOKEN: options.ipollowork.token,
+      IPOLLOWORK_HOST_TOKEN: options.ipollowork.hostToken,
       ...(options.opencode.username
         ? { OPENCODE_SERVER_USERNAME: options.opencode.username }
         : {}),
       ...(options.opencode.password
         ? { OPENCODE_SERVER_PASSWORD: options.opencode.password }
         : {}),
-      ...(options.ipollowalk.opencodeUsername
-        ? { IPOLLOWALK_OPENCODE_USERNAME: options.ipollowalk.opencodeUsername }
+      ...(options.ipollowork.opencodeUsername
+        ? { IPOLLOWORK_OPENCODE_USERNAME: options.ipollowork.opencodeUsername }
         : {}),
-      ...(options.ipollowalk.opencodePassword
-        ? { IPOLLOWALK_OPENCODE_PASSWORD: options.ipollowalk.opencodePassword }
+      ...(options.ipollowork.opencodePassword
+        ? { IPOLLOWORK_OPENCODE_PASSWORD: options.ipollowork.opencodePassword }
         : {}),
     },
   });
@@ -3698,9 +3698,9 @@ async function startAppleContainerSandbox(options: {
   extraMounts: SandboxMount[];
   sidecars: {
     opencode: string;
-    ipollowalkServer: string;
+    ipolloworkServer: string;
   };
-  ports: { ipollowalk: number };
+  ports: { ipollowork: number };
   opencode: {
     corsOrigins: string[];
     username?: string;
@@ -3708,7 +3708,7 @@ async function startAppleContainerSandbox(options: {
     hotReload: OpencodeHotReload;
     logLevel?: string;
   };
-  ipollowalk: {
+  ipollowork: {
     token: string;
     hostToken: string;
     approvalMode: ApprovalMode;
@@ -3739,16 +3739,16 @@ async function startAppleContainerSandbox(options: {
     opencodeConfigDirInContainer: "/opencode-config",
     backend: "container",
     opencode: options.opencode,
-    ipollowalk: {
-      token: options.ipollowalk.token,
-      hostToken: options.ipollowalk.hostToken,
-      approvalMode: options.ipollowalk.approvalMode,
-      approvalTimeoutMs: options.ipollowalk.approvalTimeoutMs,
-      readOnly: options.ipollowalk.readOnly,
-      corsOrigins: options.ipollowalk.corsOrigins,
-      opencodeUsername: options.ipollowalk.opencodeUsername,
-      opencodePassword: options.ipollowalk.opencodePassword,
-      logFormat: options.ipollowalk.logFormat,
+    ipollowork: {
+      token: options.ipollowork.token,
+      hostToken: options.ipollowork.hostToken,
+      approvalMode: options.ipollowork.approvalMode,
+      approvalTimeoutMs: options.ipollowork.approvalTimeoutMs,
+      readOnly: options.ipollowork.readOnly,
+      corsOrigins: options.ipollowork.corsOrigins,
+      opencodeUsername: options.ipollowork.opencodeUsername,
+      opencodePassword: options.ipollowork.opencodePassword,
+      logFormat: options.ipollowork.logFormat,
     },
     runId: options.runId,
     logFormat: options.logFormat,
@@ -3760,7 +3760,7 @@ async function startAppleContainerSandbox(options: {
     "--name",
     options.containerName,
     "-p",
-    `127.0.0.1:${options.ports.ipollowalk}:${SANDBOX_INTERNAL_IPOLLOWALK_PORT}`,
+    `127.0.0.1:${options.ports.ipollowork}:${SANDBOX_INTERNAL_IPOLLOWORK_PORT}`,
     "-v",
     `${options.workspace}:/workspace`,
     "-v",
@@ -3828,19 +3828,19 @@ async function startAppleContainerSandbox(options: {
     env: {
       ...userEnv,
       ...process.env,
-      IPOLLOWALK_TOKEN: options.ipollowalk.token,
-      IPOLLOWALK_HOST_TOKEN: options.ipollowalk.hostToken,
+      IPOLLOWORK_TOKEN: options.ipollowork.token,
+      IPOLLOWORK_HOST_TOKEN: options.ipollowork.hostToken,
       ...(options.opencode.username
         ? { OPENCODE_SERVER_USERNAME: options.opencode.username }
         : {}),
       ...(options.opencode.password
         ? { OPENCODE_SERVER_PASSWORD: options.opencode.password }
         : {}),
-      ...(options.ipollowalk.opencodeUsername
-        ? { IPOLLOWALK_OPENCODE_USERNAME: options.ipollowalk.opencodeUsername }
+      ...(options.ipollowork.opencodeUsername
+        ? { IPOLLOWORK_OPENCODE_USERNAME: options.ipollowork.opencodeUsername }
         : {}),
-      ...(options.ipollowalk.opencodePassword
-        ? { IPOLLOWALK_OPENCODE_PASSWORD: options.ipollowalk.opencodePassword }
+      ...(options.ipollowork.opencodePassword
+        ? { IPOLLOWORK_OPENCODE_PASSWORD: options.ipollowork.opencodePassword }
         : {}),
     },
   });
@@ -3868,7 +3868,7 @@ async function verifyOpencodeVersion(
   const actual = await readCliVersion(binary.bin);
   // When the binary was explicitly provided via --opencode-bin (source "external"),
   // a strict version check would break desktop app users whenever a new opencode
-  // release ships on GitHub before iPolloWalk updates its bundled binary. Log a
+  // release ships on GitHub before iPolloWork updates its bundled binary. Log a
   // warning instead of throwing so the caller can still proceed.
   if (
     binary.source === "external" &&
@@ -3877,7 +3877,7 @@ async function verifyOpencodeVersion(
     binary.expectedVersion !== actual
   ) {
     process.stderr.write(
-      `[ipollowalk-orchestrator] Warning: opencode version mismatch (expected ${binary.expectedVersion}, got ${actual}). Proceeding with ${binary.bin}.\n`,
+      `[ipollowork-orchestrator] Warning: opencode version mismatch (expected ${binary.expectedVersion}, got ${actual}). Proceeding with ${binary.bin}.\n`,
     );
     return actual;
   }
@@ -3885,7 +3885,7 @@ async function verifyOpencodeVersion(
   return actual;
 }
 
-async function verifyiPolloWalkServer(input: {
+async function verifyiPolloWorkServer(input: {
   baseUrl: string;
   token: string;
   hostToken: string;
@@ -3900,7 +3900,7 @@ async function verifyiPolloWalkServer(input: {
   const actualVersion =
     typeof health?.version === "string" ? health.version : undefined;
   assertVersionMatch(
-    "ipollowalk-server",
+    "ipollowork-server",
     input.expectedVersion,
     actualVersion,
     `${input.baseUrl}/health`,
@@ -3914,7 +3914,7 @@ async function verifyiPolloWalkServer(input: {
     ? (workspaces.items as Array<Record<string, unknown>>)
     : [];
   if (!items.length) {
-    throw new Error("iPolloWalk server returned no workspaces");
+    throw new Error("iPolloWork server returned no workspaces");
   }
 
   const expectedPath = normalizeWorkspacePath(input.expectedWorkspace);
@@ -3937,7 +3937,7 @@ async function verifyiPolloWalkServer(input: {
 
   if (!matched) {
     throw new Error(
-      `iPolloWalk server workspace mismatch. Expected ${expectedPath}.`,
+      `iPolloWork server workspace mismatch. Expected ${expectedPath}.`,
     );
   }
 
@@ -3947,7 +3947,7 @@ async function verifyiPolloWalkServer(input: {
     opencode?.baseUrl !== input.expectedOpencodeBaseUrl
   ) {
     throw new Error(
-      `iPolloWalk server OpenCode base URL mismatch: expected ${input.expectedOpencodeBaseUrl}, got ${opencode?.baseUrl ?? "<missing>"}.`,
+      `iPolloWork server OpenCode base URL mismatch: expected ${input.expectedOpencodeBaseUrl}, got ${opencode?.baseUrl ?? "<missing>"}.`,
     );
   }
   if (
@@ -3955,23 +3955,23 @@ async function verifyiPolloWalkServer(input: {
     opencode?.directory !== input.expectedOpencodeDirectory
   ) {
     throw new Error(
-      `iPolloWalk server OpenCode directory mismatch: expected ${input.expectedOpencodeDirectory}, got ${opencode?.directory ?? "<missing>"}.`,
+      `iPolloWork server OpenCode directory mismatch: expected ${input.expectedOpencodeDirectory}, got ${opencode?.directory ?? "<missing>"}.`,
     );
   }
   if (
     input.expectedOpencodeUsername &&
     opencode?.username !== input.expectedOpencodeUsername
   ) {
-    throw new Error("iPolloWalk server OpenCode username mismatch.");
+    throw new Error("iPolloWork server OpenCode username mismatch.");
   }
   if (
     input.expectedOpencodePassword &&
     opencode?.password !== input.expectedOpencodePassword
   ) {
-    throw new Error("iPolloWalk server OpenCode password mismatch.");
+    throw new Error("iPolloWork server OpenCode password mismatch.");
   }
 
-  const hostHeaders = { "X-iPolloWalk-Host-Token": input.hostToken };
+  const hostHeaders = { "X-iPolloWork-Host-Token": input.hostToken };
   await fetchJson(`${input.baseUrl}/approvals`, { headers: hostHeaders });
 
   return actualVersion;
@@ -4012,22 +4012,22 @@ function buildRuntimeServiceSnapshot(input: {
 
 async function runChecks(input: {
   opencodeClient: ReturnType<typeof createOpencodeClient>;
-  ipollowalkUrl: string;
-  ipollowalkToken: string;
+  ipolloworkUrl: string;
+  ipolloworkToken: string;
   checkEvents: boolean;
 }) {
-  const baseUrl = input.ipollowalkUrl.replace(/\/$/, "");
-  const headers = { Authorization: `Bearer ${input.ipollowalkToken}` };
+  const baseUrl = input.ipolloworkUrl.replace(/\/$/, "");
+  const headers = { Authorization: `Bearer ${input.ipolloworkToken}` };
   const workspaces = await fetchJson(`${baseUrl}/workspaces`, { headers });
   if (!workspaces?.items?.length) {
-    throw new Error("iPolloWalk server returned no workspaces");
+    throw new Error("iPolloWork server returned no workspaces");
   }
 
   const workspaceId = workspaces.items[0].id as string;
   await fetchJson(`${baseUrl}/workspace/${workspaceId}/config`, { headers });
 
   const created = await input.opencodeClient.session.create({
-    title: "iPolloWalk headless check",
+    title: "iPolloWork headless check",
   });
   const createdSession = unwrap(created);
   unwrap(
@@ -4058,7 +4058,7 @@ async function runChecks(input: {
 
     unwrap(
       await input.opencodeClient.session.create({
-        title: "iPolloWalk headless check events",
+        title: "iPolloWork headless check events",
       }),
     );
     await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -4076,29 +4076,29 @@ async function runChecks(input: {
 
 /**
  * Lighter check suite for sandbox mode.  Uses only raw HTTP against the
- * ipollowalk-server endpoints — no OpenCode SDK calls that rely on Bearer
+ * ipollowork-server endpoints — no OpenCode SDK calls that rely on Bearer
  * auth through the proxy (since the released server binary may predate our
  * token/proxy changes).
  */
 async function runSandboxChecks(input: {
-  ipollowalkUrl: string;
-  ipollowalkToken: string;
+  ipolloworkUrl: string;
+  ipolloworkToken: string;
   hostToken: string;
 }) {
-  const baseUrl = input.ipollowalkUrl.replace(/\/$/, "");
-  const headers = { Authorization: `Bearer ${input.ipollowalkToken}` };
-  const hostHeaders = { "X-iPolloWalk-Host-Token": input.hostToken };
+  const baseUrl = input.ipolloworkUrl.replace(/\/$/, "");
+  const headers = { Authorization: `Bearer ${input.ipolloworkToken}` };
+  const hostHeaders = { "X-iPolloWork-Host-Token": input.hostToken };
 
   // 1. Server health
   const health = await fetchJson(`${baseUrl}/health`);
   if (!health || typeof health !== "object") {
-    throw new Error("ipollowalk-server /health returned invalid payload");
+    throw new Error("ipollowork-server /health returned invalid payload");
   }
 
   // 2. Workspaces list
   const workspaces = await fetchJson(`${baseUrl}/workspaces`, { headers });
   if (!workspaces?.items?.length) {
-    throw new Error("ipollowalk-server returned no workspaces");
+    throw new Error("ipollowork-server returned no workspaces");
   }
   const workspaceId = workspaces.items[0].id as string;
 
@@ -4135,22 +4135,22 @@ async function fetchJson(url: string, init?: RequestInit): Promise<any> {
   return payload;
 }
 
-async function issueiPolloWalkOwnerToken(
+async function issueiPolloWorkOwnerToken(
   baseUrl: string,
   hostToken: string,
-  label = "iPolloWalk owner token",
+  label = "iPolloWork owner token",
 ): Promise<string> {
   const payload = await fetchJson(`${baseUrl.replace(/\/$/, "")}/tokens`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-iPolloWalk-Host-Token": hostToken,
+      "X-iPolloWork-Host-Token": hostToken,
     },
     body: JSON.stringify({ scope: "owner", label }),
   });
   const token = typeof payload?.token === "string" ? payload.token.trim() : "";
   if (!token) {
-    throw new Error("iPolloWalk server did not return an owner token");
+    throw new Error("iPolloWork server did not return an owner token");
   }
   return token;
 }
@@ -4210,7 +4210,7 @@ function outputError(error: unknown, json: boolean): void {
 function createVerboseLogger(
   enabled: boolean,
   logger?: Logger,
-  component = "ipollowalk-orchestrator",
+  component = "ipollowork-orchestrator",
 ) {
   return (message: string) => {
     if (!enabled) return;
@@ -4277,8 +4277,8 @@ const REDACTED_LOG_VALUE = "[REDACTED]";
 const SENSITIVE_FLAG_NAMES = [
   "--token",
   "--host-token",
-  "--ipollowalk-token",
-  "--ipollowalk-host-token",
+  "--ipollowork-token",
+  "--ipollowork-host-token",
   "--opencode-password",
   "--opencode-username",
 ];
@@ -4307,7 +4307,7 @@ function isSensitiveAttributeKey(key?: string): boolean {
   const normalized = trimmed.toLowerCase();
   if (SENSITIVE_ATTRIBUTE_KEYS.has(normalized)) return true;
   return (
-    (trimmed.startsWith("IPOLLOWALK_") ||
+    (trimmed.startsWith("IPOLLOWORK_") ||
       trimmed.startsWith("OPENCODE_") ||
       trimmed.startsWith("DEN_")) &&
     /TOKEN|PASSWORD|USERNAME|AUTHORIZATION/.test(trimmed)
@@ -4319,7 +4319,7 @@ function redactSensitiveString(input: string): string {
   redacted = redacted.replace(/\b(Bearer)\s+[^\s"']+/gi, "$1 [REDACTED]");
   redacted = redacted.replace(/\b(Basic)\s+[A-Za-z0-9+/=]+/g, "$1 [REDACTED]");
   redacted = redacted.replace(
-    /((?:IPOLLOWALK|OPENCODE|DEN)_[A-Z0-9_]*(?:TOKEN|PASSWORD|USERNAME|AUTHORIZATION)[A-Z0-9_]*=)([^\s]+)/g,
+    /((?:IPOLLOWORK|OPENCODE|DEN)_[A-Z0-9_]*(?:TOKEN|PASSWORD|USERNAME|AUTHORIZATION)[A-Z0-9_]*=)([^\s]+)/g,
     `$1${REDACTED_LOG_VALUE}`,
   );
   redacted = redacted.replace(
@@ -4401,10 +4401,10 @@ function createLogger(options: {
   const output = options.output ?? "stdout";
   const colorEnabled = options.color ?? false;
   const componentColors: Record<string, string> = {
-    "ipollowalk-orchestrator": ANSI.gray,
+    "ipollowork-orchestrator": ANSI.gray,
     opencode: ANSI.cyan,
-    "ipollowalk-server": ANSI.green,
-    "ipollowalk-orchestrator-router": ANSI.cyan,
+    "ipollowork-server": ANSI.green,
+    "ipollowork-orchestrator-router": ANSI.cyan,
   };
   const levelColors: Record<LogLevel, string> = {
     debug: ANSI.gray,
@@ -4610,50 +4610,50 @@ async function spawnRouterDaemon(
   ];
 
   const opencodeBin =
-    readFlag(args.flags, "opencode-bin") ?? process.env.IPOLLOWALK_OPENCODE_BIN;
+    readFlag(args.flags, "opencode-bin") ?? process.env.IPOLLOWORK_OPENCODE_BIN;
   assertManagedOpencodeAuth(args);
   const opencodeHost = resolveManagedOpencodeHost(
-    readFlag(args.flags, "opencode-host") ?? process.env.IPOLLOWALK_OPENCODE_HOST,
+    readFlag(args.flags, "opencode-host") ?? process.env.IPOLLOWORK_OPENCODE_HOST,
   );
   const opencodePort =
-    readFlag(args.flags, "opencode-port") ?? process.env.IPOLLOWALK_OPENCODE_PORT;
+    readFlag(args.flags, "opencode-port") ?? process.env.IPOLLOWORK_OPENCODE_PORT;
   const opencodeWorkdir =
     readFlag(args.flags, "opencode-workdir") ??
-    process.env.IPOLLOWALK_OPENCODE_WORKDIR;
+    process.env.IPOLLOWORK_OPENCODE_WORKDIR;
   const opencodeLogLevel = resolveOpencodeLogLevel(
     readFlag(args.flags, "opencode-log-level") ??
-      process.env.IPOLLOWALK_OPENCODE_LOG_LEVEL,
+      process.env.IPOLLOWORK_OPENCODE_LOG_LEVEL,
   );
   const opencodeHotReload =
     readFlag(args.flags, "opencode-hot-reload") ??
-    process.env.IPOLLOWALK_OPENCODE_HOT_RELOAD;
+    process.env.IPOLLOWORK_OPENCODE_HOT_RELOAD;
   const opencodeHotReloadDebounceMs =
     readFlag(args.flags, "opencode-hot-reload-debounce-ms") ??
-    process.env.IPOLLOWALK_OPENCODE_HOT_RELOAD_DEBOUNCE_MS;
+    process.env.IPOLLOWORK_OPENCODE_HOT_RELOAD_DEBOUNCE_MS;
   const opencodeHotReloadCooldownMs =
     readFlag(args.flags, "opencode-hot-reload-cooldown-ms") ??
-    process.env.IPOLLOWALK_OPENCODE_HOT_RELOAD_COOLDOWN_MS;
+    process.env.IPOLLOWORK_OPENCODE_HOT_RELOAD_COOLDOWN_MS;
   const opencodeCredentials = resolveManagedOpencodeCredentials(args);
   const opencodeUsername = opencodeCredentials.username;
   const opencodePassword = opencodeCredentials.password;
   const corsValue =
-    readFlag(args.flags, "cors") ?? process.env.IPOLLOWALK_OPENCODE_CORS;
+    readFlag(args.flags, "cors") ?? process.env.IPOLLOWORK_OPENCODE_CORS;
   const allowExternal = readBool(
     args.flags,
     "allow-external",
     false,
-    "IPOLLOWALK_ALLOW_EXTERNAL",
+    "IPOLLOWORK_ALLOW_EXTERNAL",
   );
   const sidecarSource =
     readFlag(args.flags, "sidecar-source") ??
-    process.env.IPOLLOWALK_SIDECAR_SOURCE;
+    process.env.IPOLLOWORK_SIDECAR_SOURCE;
   const opencodeSource =
     readFlag(args.flags, "opencode-source") ??
-    process.env.IPOLLOWALK_OPENCODE_SOURCE;
-  const verbose = readBool(args.flags, "verbose", false, "IPOLLOWALK_VERBOSE");
+    process.env.IPOLLOWORK_OPENCODE_SOURCE;
+  const verbose = readBool(args.flags, "verbose", false, "IPOLLOWORK_VERBOSE");
   const logFormat =
-    readFlag(args.flags, "log-format") ?? process.env.IPOLLOWALK_LOG_FORMAT;
-  const runId = readFlag(args.flags, "run-id") ?? process.env.IPOLLOWALK_RUN_ID;
+    readFlag(args.flags, "log-format") ?? process.env.IPOLLOWORK_LOG_FORMAT;
+  const runId = readFlag(args.flags, "run-id") ?? process.env.IPOLLOWORK_RUN_ID;
 
   if (opencodeBin) commandArgs.push("--opencode-bin", opencodeBin);
   if (opencodeHost) commandArgs.push("--opencode-host", opencodeHost);
@@ -4686,8 +4686,8 @@ async function spawnRouterDaemon(
     stdio: "ignore",
     env: {
       ...process.env,
-      IPOLLOWALK_OPENCODE_USERNAME: opencodeUsername,
-      IPOLLOWALK_OPENCODE_PASSWORD: opencodePassword,
+      IPOLLOWORK_OPENCODE_USERNAME: opencodeUsername,
+      IPOLLOWORK_OPENCODE_PASSWORD: opencodePassword,
     },
   });
   child.unref();
@@ -4716,7 +4716,7 @@ async function ensureRouterDaemon(
 
   const host = readFlag(args.flags, "daemon-host") ?? "127.0.0.1";
   const port = await resolvePort(
-    readNumber(args.flags, "daemon-port", undefined, "IPOLLOWALK_DAEMON_PORT"),
+    readNumber(args.flags, "daemon-port", undefined, "IPOLLOWORK_DAEMON_PORT"),
     "127.0.0.1",
   );
   const baseUrl = `http://${host}:${port}`;
@@ -4878,25 +4878,25 @@ async function runInstanceCommand(args: ParsedArgs) {
 
 async function runRouterDaemon(args: ParsedArgs) {
   const outputJson = readBool(args.flags, "json", false);
-  const verbose = readBool(args.flags, "verbose", false, "IPOLLOWALK_VERBOSE");
+  const verbose = readBool(args.flags, "verbose", false, "IPOLLOWORK_VERBOSE");
   const logFormat = readLogFormat(
     args.flags,
     "log-format",
     "pretty",
-    "IPOLLOWALK_LOG_FORMAT",
+    "IPOLLOWORK_LOG_FORMAT",
   );
   const colorEnabled =
-    readBool(args.flags, "color", process.stdout.isTTY, "IPOLLOWALK_COLOR") &&
+    readBool(args.flags, "color", process.stdout.isTTY, "IPOLLOWORK_COLOR") &&
     !process.env.NO_COLOR;
   const runId =
     readFlag(args.flags, "run-id") ??
-    process.env.IPOLLOWALK_RUN_ID ??
+    process.env.IPOLLOWORK_RUN_ID ??
     randomUUID();
   const cliVersion = await resolveCliVersion();
   const logger = createLogger({
     format: logFormat,
     runId,
-    serviceName: "ipollowalk-orchestrator",
+    serviceName: "ipollowork-orchestrator",
     serviceVersion: cliVersion,
     output: "stdout",
     color: colorEnabled,
@@ -4904,19 +4904,19 @@ async function runRouterDaemon(args: ParsedArgs) {
   const logVerbose = createVerboseLogger(
     verbose && !outputJson,
     logger,
-    "ipollowalk-orchestrator",
+    "ipollowork-orchestrator",
   );
   const sidecarSourceInput = readBinarySource(
     args.flags,
     "sidecar-source",
     "auto",
-    "IPOLLOWALK_SIDECAR_SOURCE",
+    "IPOLLOWORK_SIDECAR_SOURCE",
   );
   const opencodeSourceInput = readBinarySource(
     args.flags,
     "opencode-source",
     "auto",
-    "IPOLLOWALK_OPENCODE_SOURCE",
+    "IPOLLOWORK_OPENCODE_SOURCE",
   );
   const sidecarSource = sidecarSourceInput;
   const opencodeSource = opencodeSourceInput;
@@ -4926,15 +4926,15 @@ async function runRouterDaemon(args: ParsedArgs) {
 
   const host = readFlag(args.flags, "daemon-host") ?? "127.0.0.1";
   const port = await resolvePort(
-    readNumber(args.flags, "daemon-port", undefined, "IPOLLOWALK_DAEMON_PORT"),
+    readNumber(args.flags, "daemon-port", undefined, "IPOLLOWORK_DAEMON_PORT"),
     "127.0.0.1",
   );
 
   const opencodeBin =
-    readFlag(args.flags, "opencode-bin") ?? process.env.IPOLLOWALK_OPENCODE_BIN;
+    readFlag(args.flags, "opencode-bin") ?? process.env.IPOLLOWORK_OPENCODE_BIN;
   assertManagedOpencodeAuth(args);
   const opencodeHost = resolveManagedOpencodeHost(
-    readFlag(args.flags, "opencode-host") ?? process.env.IPOLLOWALK_OPENCODE_HOST,
+    readFlag(args.flags, "opencode-host") ?? process.env.IPOLLOWORK_OPENCODE_HOST,
   );
   const opencodeCredentials = resolveManagedOpencodeCredentials(args);
   const opencodeUsername = opencodeCredentials.username;
@@ -4947,14 +4947,14 @@ async function runRouterDaemon(args: ParsedArgs) {
       args.flags,
       "opencode-port",
       state.opencode?.port,
-      "IPOLLOWALK_OPENCODE_PORT",
+      "IPOLLOWORK_OPENCODE_PORT",
     ),
     "127.0.0.1",
     state.opencode?.port,
   );
   const opencodeLogLevel = resolveOpencodeLogLevel(
     readFlag(args.flags, "opencode-log-level") ??
-      process.env.IPOLLOWALK_OPENCODE_LOG_LEVEL,
+      process.env.IPOLLOWORK_OPENCODE_LOG_LEVEL,
   );
   const opencodeHotReload = readOpencodeHotReload(
     args.flags,
@@ -4964,19 +4964,19 @@ async function runRouterDaemon(args: ParsedArgs) {
       cooldownMs: DEFAULT_OPENCODE_HOT_RELOAD_COOLDOWN_MS,
     },
     {
-      enabled: "IPOLLOWALK_OPENCODE_HOT_RELOAD",
-      debounceMs: "IPOLLOWALK_OPENCODE_HOT_RELOAD_DEBOUNCE_MS",
-      cooldownMs: "IPOLLOWALK_OPENCODE_HOT_RELOAD_COOLDOWN_MS",
+      enabled: "IPOLLOWORK_OPENCODE_HOT_RELOAD",
+      debounceMs: "IPOLLOWORK_OPENCODE_HOT_RELOAD_DEBOUNCE_MS",
+      cooldownMs: "IPOLLOWORK_OPENCODE_HOT_RELOAD_COOLDOWN_MS",
     },
   );
   const corsValue =
     readFlag(args.flags, "cors") ??
-    process.env.IPOLLOWALK_OPENCODE_CORS ??
+    process.env.IPOLLOWORK_OPENCODE_CORS ??
     "http://localhost:5173,tauri://localhost,http://tauri.localhost";
   const corsOrigins = parseList(corsValue);
   const opencodeWorkdirFlag =
     readFlag(args.flags, "opencode-workdir") ??
-    process.env.IPOLLOWALK_OPENCODE_WORKDIR;
+    process.env.IPOLLOWORK_OPENCODE_WORKDIR;
   const activeWorkspace = state.workspaces.find(
     (entry) => entry.id === state.activeId && entry.workspaceType === "local",
   );
@@ -4993,7 +4993,7 @@ async function runRouterDaemon(args: ParsedArgs) {
   logger.info(
     "Daemon starting",
     { runId, logFormat, workdir: resolvedWorkdir, host, port },
-    "ipollowalk-orchestrator",
+    "ipollowork-orchestrator",
   );
 
   const sidecar = resolveSidecarConfig(args.flags, cliVersion);
@@ -5001,7 +5001,7 @@ async function runRouterDaemon(args: ParsedArgs) {
     args.flags,
     "allow-external",
     false,
-    "IPOLLOWALK_ALLOW_EXTERNAL",
+    "IPOLLOWORK_ALLOW_EXTERNAL",
   );
   const manifest = await readVersionManifest();
   logVerbose(`cli version: ${cliVersion}`);
@@ -5126,7 +5126,7 @@ async function runRouterDaemon(args: ParsedArgs) {
           durationMs: Date.now() - startedAt,
           activeId: state.activeId,
         },
-        "ipollowalk-orchestrator-router",
+        "ipollowork-orchestrator-router",
       );
     });
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -5374,7 +5374,7 @@ async function runRouterDaemon(args: ParsedArgs) {
     logger.info(
       "Daemon shutting down",
       { host, port },
-      "ipollowalk-orchestrator-router",
+      "ipollowork-orchestrator-router",
     );
     try {
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -5410,7 +5410,7 @@ async function runRouterDaemon(args: ParsedArgs) {
         logger.info(
           "Daemon running",
           { host, port },
-          "ipollowalk-orchestrator-router",
+          "ipollowork-orchestrator-router",
         );
       } else {
         console.log(`orchestrator daemon running on ${host}:${port}`);
@@ -5423,26 +5423,26 @@ async function runRouterDaemon(args: ParsedArgs) {
   await new Promise(() => undefined);
 }
 
-function readiPolloWalkClientAuth(args: ParsedArgs): {
-  ipollowalkUrl: string;
+function readiPolloWorkClientAuth(args: ParsedArgs): {
+  ipolloworkUrl: string;
   token: string;
 } {
-  const ipollowalkUrl =
-    readFlag(args.flags, "ipollowalk-url") ??
-    process.env.IPOLLOWALK_URL ??
-    process.env.IPOLLOWALK_SERVER_URL ??
+  const ipolloworkUrl =
+    readFlag(args.flags, "ipollowork-url") ??
+    process.env.IPOLLOWORK_URL ??
+    process.env.IPOLLOWORK_SERVER_URL ??
     "";
   const token =
     readFlag(args.flags, "token") ??
-    readFlag(args.flags, "ipollowalk-token") ??
-    process.env.IPOLLOWALK_TOKEN ??
+    readFlag(args.flags, "ipollowork-token") ??
+    process.env.IPOLLOWORK_TOKEN ??
     "";
 
-  if (!ipollowalkUrl || !token) {
-    throw new Error("ipollowalk-url and token are required");
+  if (!ipolloworkUrl || !token) {
+    throw new Error("ipollowork-url and token are required");
   }
 
-  return { ipollowalkUrl, token };
+  return { ipolloworkUrl, token };
 }
 
 function readSessionId(args: ParsedArgs, fallbackIndex: number): string {
@@ -5458,8 +5458,8 @@ function readSessionId(args: ParsedArgs, fallbackIndex: number): string {
 async function runFiles(args: ParsedArgs) {
   const outputJson = readBool(args.flags, "json", false);
   const subcommand = args.positionals[1] ?? "";
-  const { ipollowalkUrl, token } = readiPolloWalkClientAuth(args);
-  const baseUrl = ipollowalkUrl.replace(/\/$/, "");
+  const { ipolloworkUrl, token } = readiPolloWorkClientAuth(args);
+  const baseUrl = ipolloworkUrl.replace(/\/$/, "");
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
@@ -5715,26 +5715,26 @@ async function runApprovals(args: ParsedArgs) {
     throw new Error("approvals requires 'list' or 'reply'");
   }
 
-  const ipollowalkUrl =
-    readFlag(args.flags, "ipollowalk-url") ??
-    process.env.IPOLLOWALK_URL ??
-    process.env.IPOLLOWALK_SERVER_URL ??
+  const ipolloworkUrl =
+    readFlag(args.flags, "ipollowork-url") ??
+    process.env.IPOLLOWORK_URL ??
+    process.env.IPOLLOWORK_SERVER_URL ??
     "";
   const hostToken =
-    readFlag(args.flags, "host-token") ?? process.env.IPOLLOWALK_HOST_TOKEN ?? "";
+    readFlag(args.flags, "host-token") ?? process.env.IPOLLOWORK_HOST_TOKEN ?? "";
 
-  if (!ipollowalkUrl || !hostToken) {
-    throw new Error("ipollowalk-url and host-token are required for approvals");
+  if (!ipolloworkUrl || !hostToken) {
+    throw new Error("ipollowork-url and host-token are required for approvals");
   }
 
   const headers = {
     "Content-Type": "application/json",
-    "X-iPolloWalk-Host-Token": hostToken,
+    "X-iPolloWork-Host-Token": hostToken,
   };
 
   if (subcommand === "list") {
     const response = await fetch(
-      `${ipollowalkUrl.replace(/\/$/, "")}/approvals`,
+      `${ipolloworkUrl.replace(/\/$/, "")}/approvals`,
       { headers },
     );
     if (!response.ok) {
@@ -5758,7 +5758,7 @@ async function runApprovals(args: ParsedArgs) {
 
   const payload = { reply: allow ? "allow" : "deny" };
   const response = await fetch(
-    `${ipollowalkUrl.replace(/\/$/, "")}/approvals/${approvalId}`,
+    `${ipolloworkUrl.replace(/\/$/, "")}/approvals/${approvalId}`,
     {
       method: "POST",
       headers,
@@ -5773,8 +5773,8 @@ async function runApprovals(args: ParsedArgs) {
 }
 
 async function runStatus(args: ParsedArgs) {
-  const ipollowalkUrl =
-    readFlag(args.flags, "ipollowalk-url") ?? process.env.IPOLLOWALK_URL ?? "";
+  const ipolloworkUrl =
+    readFlag(args.flags, "ipollowork-url") ?? process.env.IPOLLOWORK_URL ?? "";
   const opencodeUrl =
     readFlag(args.flags, "opencode-url") ?? process.env.OPENCODE_URL ?? "";
   const username =
@@ -5787,12 +5787,12 @@ async function runStatus(args: ParsedArgs) {
 
   const status: Record<string, unknown> = {};
 
-  if (ipollowalkUrl) {
+  if (ipolloworkUrl) {
     try {
-      await waitForHealthy(ipollowalkUrl, 5000, 400);
-      status.ipollowalk = { ok: true, url: ipollowalkUrl };
+      await waitForHealthy(ipolloworkUrl, 5000, 400);
+      status.ipollowork = { ok: true, url: ipolloworkUrl };
     } catch (error) {
-      status.ipollowalk = { ok: false, url: ipollowalkUrl, error: String(error) };
+      status.ipollowork = { ok: false, url: ipolloworkUrl, error: String(error) };
     }
   }
 
@@ -5816,16 +5816,16 @@ async function runStatus(args: ParsedArgs) {
   if (outputJson) {
     console.log(JSON.stringify(status, null, 2));
   } else {
-    if (status.ipollowalk) {
-      const ipollowalk = status.ipollowalk as {
+    if (status.ipollowork) {
+      const ipollowork = status.ipollowork as {
         ok: boolean;
         url: string;
         error?: string;
       };
       console.log(
-        `iPolloWalk server: ${ipollowalk.ok ? "ok" : "error"} (${ipollowalk.url})`,
+        `iPolloWork server: ${ipollowork.ok ? "ok" : "error"} (${ipollowork.url})`,
       );
-      if (ipollowalk.error) console.log(`  ${ipollowalk.error}`);
+      if (ipollowork.error) console.log(`  ${ipollowork.error}`);
     }
     if (status.opencode) {
       const opencode = status.opencode as {
@@ -5845,18 +5845,18 @@ async function runStart(args: ParsedArgs) {
   const outputJson = readBool(args.flags, "json", false);
   const checkOnly = readBool(args.flags, "check", false);
   const checkEvents = readBool(args.flags, "check-events", false);
-  const verbose = readBool(args.flags, "verbose", false, "IPOLLOWALK_VERBOSE");
+  const verbose = readBool(args.flags, "verbose", false, "IPOLLOWORK_VERBOSE");
   const logFormat = readLogFormat(
     args.flags,
     "log-format",
     "pretty",
-    "IPOLLOWALK_LOG_FORMAT",
+    "IPOLLOWORK_LOG_FORMAT",
   );
   const detachRequested = readBool(
     args.flags,
     "detach",
     false,
-    "IPOLLOWALK_DETACH",
+    "IPOLLOWORK_DETACH",
   );
   const defaultTui =
     process.stdout.isTTY && !outputJson && !checkOnly && !checkEvents;
@@ -5869,11 +5869,11 @@ async function runStart(args: ParsedArgs) {
     !checkEvents &&
     logFormat === "pretty";
   const colorPreferred =
-    readBool(args.flags, "color", process.stdout.isTTY, "IPOLLOWALK_COLOR") &&
+    readBool(args.flags, "color", process.stdout.isTTY, "IPOLLOWORK_COLOR") &&
     !process.env.NO_COLOR;
   const runId =
     readFlag(args.flags, "run-id") ??
-    process.env.IPOLLOWALK_RUN_ID ??
+    process.env.IPOLLOWORK_RUN_ID ??
     randomUUID();
   const cliVersion = await resolveCliVersion();
   const compiledBinary = isCompiledBunBinary();
@@ -5882,14 +5882,14 @@ async function runStart(args: ParsedArgs) {
   const baseLoggerOptions = {
     format: logFormat,
     runId,
-    serviceName: "ipollowalk-orchestrator",
+    serviceName: "ipollowork-orchestrator",
     serviceVersion: cliVersion,
     onLog: (event: LogEvent) => {
       if (!tui) return;
       tui.pushLog({
         time: event.time,
         level: event.level,
-        component: event.component ?? "ipollowalk-orchestrator",
+        component: event.component ?? "ipollowork-orchestrator",
         message: event.message,
       });
     },
@@ -5902,7 +5902,7 @@ async function runStart(args: ParsedArgs) {
   let logVerbose = createVerboseLogger(
     verbose && !outputJson,
     logger,
-    "ipollowalk-orchestrator",
+    "ipollowork-orchestrator",
   );
   const switchToPlainOutput = (error: string) => {
     if (!useTui) return;
@@ -5919,52 +5919,52 @@ async function runStart(args: ParsedArgs) {
     logVerbose = createVerboseLogger(
       verbose && !outputJson,
       logger,
-      "ipollowalk-orchestrator",
+      "ipollowork-orchestrator",
     );
     logger.warn(
-      "TUI failed to start; falling back to plain output. Use `ipollowalk serve` for explicit non-TUI mode.",
+      "TUI failed to start; falling back to plain output. Use `ipollowork serve` for explicit non-TUI mode.",
       { error },
-      "ipollowalk-orchestrator",
+      "ipollowork-orchestrator",
     );
   };
   const sidecarSourceInput = readBinarySource(
     args.flags,
     "sidecar-source",
     "auto",
-    "IPOLLOWALK_SIDECAR_SOURCE",
+    "IPOLLOWORK_SIDECAR_SOURCE",
   );
   const opencodeSourceInput = readBinarySource(
     args.flags,
     "opencode-source",
     "auto",
-    "IPOLLOWALK_OPENCODE_SOURCE",
+    "IPOLLOWORK_OPENCODE_SOURCE",
   );
 
   const workspace =
     readFlag(args.flags, "workspace") ??
-    process.env.IPOLLOWALK_WORKSPACE ??
+    process.env.IPOLLOWORK_WORKSPACE ??
     process.cwd();
   const resolvedWorkspace = await ensureWorkspace(workspace);
   logger.info(
     "Run starting",
     { workspace: resolvedWorkspace, logFormat, runId },
-    "ipollowalk-orchestrator",
+    "ipollowork-orchestrator",
   );
 
   const sandboxRequested = readSandboxMode(
     args.flags,
     "sandbox",
     "none",
-    "IPOLLOWALK_SANDBOX",
+    "IPOLLOWORK_SANDBOX",
   );
   const sandboxMode = await resolveSandboxMode(sandboxRequested);
   const sandboxImage =
     readFlag(args.flags, "sandbox-image") ??
-    process.env.IPOLLOWALK_SANDBOX_IMAGE ??
+    process.env.IPOLLOWORK_SANDBOX_IMAGE ??
     "debian:bookworm-slim";
   const sandboxPersistOverride =
     readFlag(args.flags, "sandbox-persist-dir") ??
-    process.env.IPOLLOWALK_SANDBOX_PERSIST_DIR;
+    process.env.IPOLLOWORK_SANDBOX_PERSIST_DIR;
   const dataDir = resolveRouterDataDir(args.flags);
   const devMode = resolveInternalDevMode(args.flags);
   const opencodeStateLayout = resolveOpencodeStateLayout({
@@ -5984,7 +5984,7 @@ async function runStart(args: ParsedArgs) {
   }
 
   const sandboxMountValue =
-    readFlag(args.flags, "sandbox-mount") ?? process.env.IPOLLOWALK_SANDBOX_MOUNT;
+    readFlag(args.flags, "sandbox-mount") ?? process.env.IPOLLOWORK_SANDBOX_MOUNT;
   const sandboxMountSpecs = parseList(sandboxMountValue);
   const sandboxExtraMounts =
     sandboxMode !== "none" && sandboxMountSpecs.length
@@ -5992,14 +5992,14 @@ async function runStart(args: ParsedArgs) {
       : [];
 
   const explicitOpencodeBin =
-    readFlag(args.flags, "opencode-bin") ?? process.env.IPOLLOWALK_OPENCODE_BIN;
-  const explicitiPolloWalkServerBin =
-    readFlag(args.flags, "ipollowalk-server-bin") ??
-    process.env.IPOLLOWALK_SERVER_BIN;
+    readFlag(args.flags, "opencode-bin") ?? process.env.IPOLLOWORK_OPENCODE_BIN;
+  const explicitiPolloWorkServerBin =
+    readFlag(args.flags, "ipollowork-server-bin") ??
+    process.env.IPOLLOWORK_SERVER_BIN;
   assertManagedOpencodeAuth(args);
   const opencodeBindHost = resolveManagedOpencodeHost(
     readFlag(args.flags, "opencode-host") ??
-      process.env.IPOLLOWALK_OPENCODE_BIND_HOST,
+      process.env.IPOLLOWORK_OPENCODE_BIND_HOST,
   );
   const opencodePort =
     sandboxMode !== "none"
@@ -6009,13 +6009,13 @@ async function runStart(args: ParsedArgs) {
             args.flags,
             "opencode-port",
             undefined,
-            "IPOLLOWALK_OPENCODE_PORT",
+            "IPOLLOWORK_OPENCODE_PORT",
           ),
           "127.0.0.1",
         );
   const opencodeLogLevel = resolveOpencodeLogLevel(
     readFlag(args.flags, "opencode-log-level") ??
-      process.env.IPOLLOWALK_OPENCODE_LOG_LEVEL,
+      process.env.IPOLLOWORK_OPENCODE_LOG_LEVEL,
   );
   const opencodeHotReload = readOpencodeHotReload(
     args.flags,
@@ -6025,47 +6025,47 @@ async function runStart(args: ParsedArgs) {
       cooldownMs: DEFAULT_OPENCODE_HOT_RELOAD_COOLDOWN_MS,
     },
     {
-      enabled: "IPOLLOWALK_OPENCODE_HOT_RELOAD",
-      debounceMs: "IPOLLOWALK_OPENCODE_HOT_RELOAD_DEBOUNCE_MS",
-      cooldownMs: "IPOLLOWALK_OPENCODE_HOT_RELOAD_COOLDOWN_MS",
+      enabled: "IPOLLOWORK_OPENCODE_HOT_RELOAD",
+      debounceMs: "IPOLLOWORK_OPENCODE_HOT_RELOAD_DEBOUNCE_MS",
+      cooldownMs: "IPOLLOWORK_OPENCODE_HOT_RELOAD_COOLDOWN_MS",
     },
   );
   const opencodeCredentials = resolveManagedOpencodeCredentials(args);
   const opencodeUsername = opencodeCredentials.username;
   const opencodePassword = opencodeCredentials.password;
 
-  const remoteAccessEnabled = resolveiPolloWalkRemoteAccess(args);
-  const ipollowalkHost = remoteAccessEnabled ? "0.0.0.0" : "127.0.0.1";
-  const ipollowalkPort = await resolvePort(
-    readNumber(args.flags, "ipollowalk-port", undefined, "IPOLLOWALK_PORT"),
+  const remoteAccessEnabled = resolveiPolloWorkRemoteAccess(args);
+  const ipolloworkHost = remoteAccessEnabled ? "0.0.0.0" : "127.0.0.1";
+  const ipolloworkPort = await resolvePort(
+    readNumber(args.flags, "ipollowork-port", undefined, "IPOLLOWORK_PORT"),
     "127.0.0.1",
   );
-  const ipollowalkToken =
-    readFlag(args.flags, "ipollowalk-token") ??
-    process.env.IPOLLOWALK_TOKEN ??
+  const ipolloworkToken =
+    readFlag(args.flags, "ipollowork-token") ??
+    process.env.IPOLLOWORK_TOKEN ??
     randomUUID();
-  const ipollowalkHostToken =
-    readFlag(args.flags, "ipollowalk-host-token") ??
-    process.env.IPOLLOWALK_HOST_TOKEN ??
+  const ipolloworkHostToken =
+    readFlag(args.flags, "ipollowork-host-token") ??
+    process.env.IPOLLOWORK_HOST_TOKEN ??
     randomUUID();
   const approvalMode =
     (readFlag(args.flags, "approval") as ApprovalMode | undefined) ??
-    (process.env.IPOLLOWALK_APPROVAL_MODE as ApprovalMode | undefined) ??
+    (process.env.IPOLLOWORK_APPROVAL_MODE as ApprovalMode | undefined) ??
     "manual";
   const approvalTimeoutMs = readNumber(
     args.flags,
     "approval-timeout",
     DEFAULT_APPROVAL_TIMEOUT,
-    "IPOLLOWALK_APPROVAL_TIMEOUT_MS",
+    "IPOLLOWORK_APPROVAL_TIMEOUT_MS",
   ) as number;
   const readOnly = readBool(
     args.flags,
     "read-only",
     false,
-    "IPOLLOWALK_READONLY",
+    "IPOLLOWORK_READONLY",
   );
   const corsValue =
-    readFlag(args.flags, "cors") ?? process.env.IPOLLOWALK_CORS_ORIGINS ?? "*";
+    readFlag(args.flags, "cors") ?? process.env.IPOLLOWORK_CORS_ORIGINS ?? "*";
   const corsOrigins = parseList(corsValue);
   const connectHost = readFlag(args.flags, "connect-host");
 
@@ -6074,7 +6074,7 @@ async function runStart(args: ParsedArgs) {
     args.flags,
     "allow-external",
     false,
-    "IPOLLOWALK_ALLOW_EXTERNAL",
+    "IPOLLOWORK_ALLOW_EXTERNAL",
   );
   const sidecarTarget = resolveSandboxSidecarTarget(sandboxMode);
   const sidecar = resolveSidecarConfigForTarget(
@@ -6098,7 +6098,7 @@ async function runStart(args: ParsedArgs) {
     // custom *-bin paths are provided, treat the source as external so we don't
     // accidentally pick host (darwin) bundled binaries.
     if (sidecarSourceInput === "auto") {
-      sidecarSource = explicitiPolloWalkServerBin ? "external" : "downloaded";
+      sidecarSource = explicitiPolloWorkServerBin ? "external" : "downloaded";
     }
     if (opencodeSourceInput === "auto") {
       opencodeSource = explicitOpencodeBin ? "external" : "downloaded";
@@ -6160,8 +6160,8 @@ async function runStart(args: ParsedArgs) {
       }
     }
   }
-  let ipollowalkServerBinary = await resolveiPolloWalkServerBin({
-    explicit: explicitiPolloWalkServerBin,
+  let ipolloworkServerBinary = await resolveiPolloWorkServerBin({
+    explicit: explicitiPolloWorkServerBin,
     manifest,
     allowExternal,
     sidecar,
@@ -6170,31 +6170,31 @@ async function runStart(args: ParsedArgs) {
   if (sandboxMode !== "none") {
     // Ensure the binaries we stage into the container are actual files.
     await assertSandboxBinaryFile("opencode", opencodeBinary.bin);
-    await assertSandboxBinaryFile("ipollowalk-server", ipollowalkServerBinary.bin);
+    await assertSandboxBinaryFile("ipollowork-server", ipolloworkServerBinary.bin);
   }
   logVerbose(`opencode bin: ${opencodeBinary.bin} (${opencodeBinary.source})`);
   logVerbose(
-    `ipollowalk-server bin: ${ipollowalkServerBinary.bin} (${ipollowalkServerBinary.source})`,
+    `ipollowork-server bin: ${ipolloworkServerBinary.bin} (${ipolloworkServerBinary.source})`,
   );
 
-  const ipollowalkBaseUrl = `http://127.0.0.1:${ipollowalkPort}`;
-  const ipollowalkConnect = remoteAccessEnabled
-    ? resolveConnectUrl(ipollowalkPort, connectHost)
+  const ipolloworkBaseUrl = `http://127.0.0.1:${ipolloworkPort}`;
+  const ipolloworkConnect = remoteAccessEnabled
+    ? resolveConnectUrl(ipolloworkPort, connectHost)
     : {};
-  const ipollowalkConnectUrl = ipollowalkConnect.connectUrl ?? ipollowalkBaseUrl;
+  const ipolloworkConnectUrl = ipolloworkConnect.connectUrl ?? ipolloworkBaseUrl;
 
   const opencodeBaseUrl =
     sandboxMode !== "none"
-      ? `${ipollowalkBaseUrl}/opencode`
+      ? `${ipolloworkBaseUrl}/opencode`
       : `http://127.0.0.1:${opencodePort}`;
   const opencodeConnectUrl =
     sandboxMode !== "none"
-      ? `${ipollowalkConnectUrl.replace(/\/$/, "")}/opencode`
+      ? `${ipolloworkConnectUrl.replace(/\/$/, "")}/opencode`
       : opencodeBaseUrl;
 
   const attachCommand =
     sandboxMode !== "none"
-      ? `OpenCode is proxied via ${opencodeConnectUrl} (requires iPolloWalk token)`
+      ? `OpenCode is proxied via ${opencodeConnectUrl} (requires iPolloWork token)`
       : buildAttachCommand({
           url: opencodeConnectUrl,
           workspace: resolvedWorkspace,
@@ -6210,14 +6210,14 @@ async function runStart(args: ParsedArgs) {
   let sandboxStopCommand: string | null = null;
   let sandboxCleanup: (() => Promise<void>) | null = null;
   let opencodeChild: ChildProcess | null = null;
-  let ipollowalkChild: ChildProcess | null = null;
+  let ipolloworkChild: ChildProcess | null = null;
   let controlServer: ReturnType<typeof createHttpServer> | null = null;
   const controlPort = await resolvePort(undefined, "127.0.0.1");
   const controlToken = randomUUID();
   const controlBaseUrl = `http://127.0.0.1:${controlPort}`;
   let opencodeActualVersion: string | undefined;
-  let ipollowalkActualVersion: string | undefined;
-  let ipollowalkOwnerToken: string | undefined;
+  let ipolloworkActualVersion: string | undefined;
+  let ipolloworkOwnerToken: string | undefined;
   const startedAt = Date.now();
   const workerActivityHeartbeat = resolveWorkerActivityHeartbeatConfig();
   let workerActivityHeartbeatInterval: NodeJS.Timeout | null = null;
@@ -6237,11 +6237,11 @@ async function runStart(args: ParsedArgs) {
   const getRuntimeSnapshot = () => {
     const services = [
       buildRuntimeServiceSnapshot({
-        name: "ipollowalk-server",
+        name: "ipollowork-server",
         enabled: true,
-        running: Boolean(ipollowalkChild && isProcessAlive(ipollowalkChild.pid)),
-        binary: ipollowalkServerBinary,
-        actualVersion: ipollowalkActualVersion,
+        running: Boolean(ipolloworkChild && isProcessAlive(ipolloworkChild.pid)),
+        binary: ipolloworkServerBinary,
+        actualVersion: ipolloworkActualVersion,
       }),
       buildRuntimeServiceSnapshot({
         name: "opencode",
@@ -6317,25 +6317,25 @@ async function runStart(args: ParsedArgs) {
       }),
     );
   };
-  const restartiPolloWalkServer = async () => {
+  const restartiPolloWorkServer = async () => {
     if (sandboxMode !== "none") {
       throw new Error(
         "Runtime upgrade is not supported while sandbox mode is enabled",
       );
     }
-    if (ipollowalkChild) {
-      restartingServices.add("ipollowalk-server");
-      removeChildHandle("ipollowalk-server");
-      await stopChild(ipollowalkChild);
-      ipollowalkChild = null;
+    if (ipolloworkChild) {
+      restartingServices.add("ipollowork-server");
+      removeChildHandle("ipollowork-server");
+      await stopChild(ipolloworkChild);
+      ipolloworkChild = null;
     }
-    const child = await startiPolloWalkServer({
-      bin: ipollowalkServerBinary.bin,
-      host: ipollowalkHost,
-      port: ipollowalkPort,
+    const child = await startiPolloWorkServer({
+      bin: ipolloworkServerBinary.bin,
+      host: ipolloworkHost,
+      port: ipolloworkPort,
       workspace: resolvedWorkspace,
-      token: ipollowalkToken,
-      hostToken: ipollowalkHostToken,
+      token: ipolloworkToken,
+      hostToken: ipolloworkHostToken,
       approvalMode: approvalMode === "auto" ? "auto" : "manual",
       approvalTimeoutMs,
       readOnly,
@@ -6350,23 +6350,23 @@ async function runStart(args: ParsedArgs) {
       controlBaseUrl,
       controlToken,
     });
-    ipollowalkChild = child;
-    children.push({ name: "ipollowalk-server", child });
+    ipolloworkChild = child;
+    children.push({ name: "ipollowork-server", child });
     logger.info(
       "Process spawned",
       { pid: child.pid ?? 0, cause: "runtime-upgrade" },
-      "ipollowalk-server",
+      "ipollowork-server",
     );
     child.on("exit", (code, signal) =>
-      handleExit("ipollowalk-server", code, signal),
+      handleExit("ipollowork-server", code, signal),
     );
-    child.on("error", (error) => handleSpawnError("ipollowalk-server", error));
-    await waitForHealthy(ipollowalkBaseUrl);
-    ipollowalkActualVersion = await verifyiPolloWalkServer({
-      baseUrl: ipollowalkBaseUrl,
-      token: ipollowalkToken,
-      hostToken: ipollowalkHostToken,
-      expectedVersion: ipollowalkServerBinary.expectedVersion,
+    child.on("error", (error) => handleSpawnError("ipollowork-server", error));
+    await waitForHealthy(ipolloworkBaseUrl);
+    ipolloworkActualVersion = await verifyiPolloWorkServer({
+      baseUrl: ipolloworkBaseUrl,
+      token: ipolloworkToken,
+      hostToken: ipolloworkHostToken,
+      expectedVersion: ipolloworkServerBinary.expectedVersion,
       expectedWorkspace: resolvedWorkspace,
       expectedOpencodeBaseUrl: opencodeConnectUrl,
       expectedOpencodeDirectory: resolvedWorkspace,
@@ -6389,17 +6389,17 @@ async function runStart(args: ParsedArgs) {
         );
       }
       if (
-        services.includes("ipollowalk-server") &&
-        ipollowalkServerBinary.source === "external" &&
-        ipollowalkServerBinary.expectedVersion
+        services.includes("ipollowork-server") &&
+        ipolloworkServerBinary.source === "external" &&
+        ipolloworkServerBinary.expectedVersion
       ) {
         await installGlobalPackages([
-          `ipollowalk-server@${ipollowalkServerBinary.expectedVersion}`,
+          `ipollowork-server@${ipolloworkServerBinary.expectedVersion}`,
         ]);
       }
-      if (services.includes("ipollowalk-server")) {
-        ipollowalkServerBinary = await resolveiPolloWalkServerBin({
-          explicit: explicitiPolloWalkServerBin,
+      if (services.includes("ipollowork-server")) {
+        ipolloworkServerBinary = await resolveiPolloWorkServerBin({
+          explicit: explicitiPolloWorkServerBin,
           manifest,
           allowExternal,
           sidecar,
@@ -6419,10 +6419,10 @@ async function runStart(args: ParsedArgs) {
         await restartOpencode();
       }
       if (
-        services.includes("ipollowalk-server") ||
+        services.includes("ipollowork-server") ||
         services.includes("opencode")
       ) {
-        await restartiPolloWalkServer();
+        await restartiPolloWorkServer();
       }
       runtimeUpgradeState.status = "idle";
       runtimeUpgradeState.finishedAt = Date.now();
@@ -6434,7 +6434,7 @@ async function runStart(args: ParsedArgs) {
       logger.error(
         "Runtime upgrade failed",
         { error: runtimeUpgradeState.error, services },
-        "ipollowalk-orchestrator",
+        "ipollowork-orchestrator",
       );
     }
   };
@@ -6456,7 +6456,7 @@ async function runStart(args: ParsedArgs) {
     logger.info(
       "Shutting down",
       { children: children.map((handle) => handle.name) },
-      "ipollowalk-orchestrator",
+      "ipollowork-orchestrator",
     );
     if (sandboxContainerName && sandboxStop) {
       await sandboxStop(sandboxContainerName);
@@ -6510,9 +6510,9 @@ async function runStart(args: ParsedArgs) {
             `Stop: ${sandboxStopCommand} ${sandboxContainerName}`,
           ]
         : []),
-      `iPolloWalk URL: ${ipollowalkConnectUrl}`,
+      `iPolloWork URL: ${ipolloworkConnectUrl}`,
       "Credentials withheld from detached stdout.",
-      ...(ipollowalkOwnerToken ? ["iPolloWalk owner token issued."] : []),
+      ...(ipolloworkOwnerToken ? ["iPolloWork owner token issued."] : []),
       `OpenCode URL: ${opencodeConnectUrl}`,
       `Attach: ${redactSensitiveString(attachCommand)}`,
       "Use `--json` only when you explicitly need the raw tokens or passwords in command output.",
@@ -6537,8 +6537,8 @@ async function runStart(args: ParsedArgs) {
           .join(" ");
         if (
           text.includes("React is not defined") ||
-          text.includes("/$bunfs/root/ipollowalk-orchestrator") ||
-          text.includes("/$bunfs/root/ipollowalk")
+          text.includes("/$bunfs/root/ipollowork-orchestrator") ||
+          text.includes("/$bunfs/root/ipollowork")
         ) {
           switchToPlainOutput(text);
         }
@@ -6552,10 +6552,10 @@ async function runStart(args: ParsedArgs) {
         connect: {
           runId,
           workspace: resolvedWorkspace,
-          ipollowalkUrl: ipollowalkConnectUrl,
-          ipollowalkToken,
-          ownerToken: ipollowalkOwnerToken,
-          hostToken: ipollowalkHostToken,
+          ipolloworkUrl: ipolloworkConnectUrl,
+          ipolloworkToken,
+          ownerToken: ipolloworkOwnerToken,
+          hostToken: ipolloworkHostToken,
           opencodeUrl: opencodeConnectUrl,
           opencodePassword:
             sandboxMode !== "none"
@@ -6575,10 +6575,10 @@ async function runStart(args: ParsedArgs) {
             port: opencodePort,
           },
           {
-            name: "ipollowalk-server",
-            label: "ipollowalk-server",
+            name: "ipollowork-server",
+            label: "ipollowork-server",
             status: "starting",
-            port: ipollowalkPort,
+            port: ipolloworkPort,
           },
         ],
         onQuit: handleQuit,
@@ -6611,7 +6611,7 @@ async function runStart(args: ParsedArgs) {
       code !== null ? `code ${code}` : signal ? `signal ${signal}` : "unknown";
     const services =
       name === "sandbox"
-        ? ["opencode", "ipollowalk-server"]
+        ? ["opencode", "ipollowork-server"]
         : [name];
     for (const service of services) {
       tui?.updateService(service, { status: "stopped", message: reason });
@@ -6669,12 +6669,12 @@ async function runStart(args: ParsedArgs) {
         }
         const requested = Array.isArray(body?.services)
           ? body.services
-          : ["ipollowalk-server", "opencode"];
+          : ["ipollowork-server", "opencode"];
         const services = Array.from(
           new Set(
             requested.filter(
               (item): item is RuntimeServiceName =>
-                item === "ipollowalk-server" || item === "opencode",
+                item === "ipollowork-server" || item === "opencode",
             ),
           ),
         );
@@ -6715,7 +6715,7 @@ async function runStart(args: ParsedArgs) {
     });
 
     if (sandboxMode !== "none") {
-      const containerName = `ipollowalk-orchestrator-${runId.replace(/[^a-zA-Z0-9_.-]+/g, "-").slice(0, 24)}`;
+      const containerName = `ipollowork-orchestrator-${runId.replace(/[^a-zA-Z0-9_.-]+/g, "-").slice(0, 24)}`;
       sandboxContainerName = containerName;
 
       sandboxStop =
@@ -6738,10 +6738,10 @@ async function runStart(args: ParsedArgs) {
               extraMounts: sandboxExtraMounts,
               sidecars: {
                 opencode: opencodeBinary.bin,
-                ipollowalkServer: ipollowalkServerBinary.bin,
+                ipolloworkServer: ipolloworkServerBinary.bin,
               },
               ports: {
-                ipollowalk: ipollowalkPort,
+                ipollowork: ipolloworkPort,
               },
               opencode: {
                 corsOrigins: corsOrigins.length ? corsOrigins : ["*"],
@@ -6750,9 +6750,9 @@ async function runStart(args: ParsedArgs) {
                 hotReload: opencodeHotReload,
                 logLevel: opencodeLogLevel,
               },
-              ipollowalk: {
-                token: ipollowalkToken,
-                hostToken: ipollowalkHostToken,
+              ipollowork: {
+                token: ipolloworkToken,
+                hostToken: ipolloworkHostToken,
                 approvalMode: approvalMode === "auto" ? "auto" : "manual",
                 approvalTimeoutMs,
                 readOnly,
@@ -6776,10 +6776,10 @@ async function runStart(args: ParsedArgs) {
               extraMounts: sandboxExtraMounts,
               sidecars: {
                 opencode: opencodeBinary.bin,
-                ipollowalkServer: ipollowalkServerBinary.bin,
+                ipolloworkServer: ipolloworkServerBinary.bin,
               },
               ports: {
-                ipollowalk: ipollowalkPort,
+                ipollowork: ipolloworkPort,
               },
               opencode: {
                 corsOrigins: corsOrigins.length ? corsOrigins : ["*"],
@@ -6788,9 +6788,9 @@ async function runStart(args: ParsedArgs) {
                 hotReload: opencodeHotReload,
                 logLevel: opencodeLogLevel,
               },
-              ipollowalk: {
-                token: ipollowalkToken,
-                hostToken: ipollowalkHostToken,
+              ipollowork: {
+                token: ipolloworkToken,
+                hostToken: ipolloworkHostToken,
                 approvalMode: approvalMode === "auto" ? "auto" : "manual",
                 approvalTimeoutMs,
                 readOnly,
@@ -6810,9 +6810,9 @@ async function runStart(args: ParsedArgs) {
         status: "running",
         port: SANDBOX_INTERNAL_OPENCODE_PORT,
       });
-      tui?.updateService("ipollowalk-server", {
+      tui?.updateService("ipollowork-server", {
         status: "running",
-        port: ipollowalkPort,
+        port: ipolloworkPort,
       });
       if (!detachRequested) {
         children.push({ name: "sandbox", child: sandboxChild.child });
@@ -6834,45 +6834,45 @@ async function runStart(args: ParsedArgs) {
 
       logger.info(
         "Waiting for health",
-        { url: ipollowalkBaseUrl },
-        "ipollowalk-server",
+        { url: ipolloworkBaseUrl },
+        "ipollowork-server",
       );
-      await waitForHealthy(ipollowalkBaseUrl);
-      logger.info("Healthy", { url: ipollowalkBaseUrl }, "ipollowalk-server");
-      tui?.updateService("ipollowalk-server", { status: "healthy" });
+      await waitForHealthy(ipolloworkBaseUrl);
+      logger.info("Healthy", { url: ipolloworkBaseUrl }, "ipollowork-server");
+      tui?.updateService("ipollowork-server", { status: "healthy" });
 
       opencodeClient = createOpencodeClient({
-        baseUrl: `${ipollowalkBaseUrl.replace(/\/$/, "")}/opencode`,
-        headers: { Authorization: `Bearer ${ipollowalkToken}` },
+        baseUrl: `${ipolloworkBaseUrl.replace(/\/$/, "")}/opencode`,
+        headers: { Authorization: `Bearer ${ipolloworkToken}` },
       });
 
-      // In sandbox mode, the released ipollowalk-server binary may not have our
+      // In sandbox mode, the released ipollowork-server binary may not have our
       // latest proxy/auth changes yet.  Instead of using the OpenCode SDK client
       // (which relies on the proxy handling Bearer tokens), do a direct health
-      // check against the ipollowalk-server's own /opencode proxy path.  If the
+      // check against the ipollowork-server's own /opencode proxy path.  If the
       // server is healthy *and* is proxying to a healthy opencode, we're good.
       logger.info(
         "Waiting for health (proxy)",
-        { url: `${ipollowalkBaseUrl}/opencode` },
+        { url: `${ipolloworkBaseUrl}/opencode` },
         "opencode",
       );
       await waitForHealthyViaProxy(
-        `${ipollowalkBaseUrl.replace(/\/$/, "")}/opencode`,
-        ipollowalkToken,
+        `${ipolloworkBaseUrl.replace(/\/$/, "")}/opencode`,
+        ipolloworkToken,
       );
       logger.info(
         "Healthy (proxy)",
-        { url: `${ipollowalkBaseUrl}/opencode` },
+        { url: `${ipolloworkBaseUrl}/opencode` },
         "opencode",
       );
       tui?.updateService("opencode", { status: "healthy" });
 
       try {
-        ipollowalkActualVersion = await verifyiPolloWalkServer({
-          baseUrl: ipollowalkBaseUrl,
-          token: ipollowalkToken,
-          hostToken: ipollowalkHostToken,
-          expectedVersion: ipollowalkServerBinary.expectedVersion,
+        ipolloworkActualVersion = await verifyiPolloWorkServer({
+          baseUrl: ipolloworkBaseUrl,
+          token: ipolloworkToken,
+          hostToken: ipolloworkHostToken,
+          expectedVersion: ipolloworkServerBinary.expectedVersion,
           expectedWorkspace: "/workspace",
           expectedOpencodeBaseUrl: opencodeInternalBaseUrl,
           expectedOpencodeDirectory: "/workspace",
@@ -6887,17 +6887,17 @@ async function runStart(args: ParsedArgs) {
         logger.warn(
           "Sandbox server verification warning (non-fatal)",
           { error: String(verifyError) },
-          "ipollowalk-server",
+          "ipollowork-server",
         );
       }
-      ipollowalkOwnerToken = await issueiPolloWalkOwnerToken(
-        ipollowalkBaseUrl,
-        ipollowalkHostToken,
-        "iPolloWalk sandbox owner token",
+      ipolloworkOwnerToken = await issueiPolloWorkOwnerToken(
+        ipolloworkBaseUrl,
+        ipolloworkHostToken,
+        "iPolloWork sandbox owner token",
       );
-      tui?.setConnectInfo({ ownerToken: ipollowalkOwnerToken });
+      tui?.setConnectInfo({ ownerToken: ipolloworkOwnerToken });
       logVerbose(
-        `ipollowalk-server version: ${ipollowalkActualVersion ?? "unknown"}`,
+        `ipollowork-server version: ${ipolloworkActualVersion ?? "unknown"}`,
       );
     } else {
       const startedOpencodeChild = await startOpencode({
@@ -6949,13 +6949,13 @@ async function runStart(args: ParsedArgs) {
       logger.info("Healthy", { url: opencodeBaseUrl }, "opencode");
       tui?.updateService("opencode", { status: "healthy" });
 
-      const startediPolloWalkChild = await startiPolloWalkServer({
-        bin: ipollowalkServerBinary.bin,
-        host: ipollowalkHost,
-        port: ipollowalkPort,
+      const startediPolloWorkChild = await startiPolloWorkServer({
+        bin: ipolloworkServerBinary.bin,
+        host: ipolloworkHost,
+        port: ipolloworkPort,
         workspace: resolvedWorkspace,
-        token: ipollowalkToken,
-        hostToken: ipollowalkHostToken,
+        token: ipolloworkToken,
+        hostToken: ipolloworkHostToken,
         approvalMode: approvalMode === "auto" ? "auto" : "manual",
         approvalTimeoutMs,
         readOnly,
@@ -6970,53 +6970,53 @@ async function runStart(args: ParsedArgs) {
         controlBaseUrl,
         controlToken,
       });
-      ipollowalkChild = startediPolloWalkChild;
-      children.push({ name: "ipollowalk-server", child: startediPolloWalkChild });
-      tui?.updateService("ipollowalk-server", {
+      ipolloworkChild = startediPolloWorkChild;
+      children.push({ name: "ipollowork-server", child: startediPolloWorkChild });
+      tui?.updateService("ipollowork-server", {
         status: "running",
-        pid: startediPolloWalkChild.pid ?? undefined,
-        port: ipollowalkPort,
+        pid: startediPolloWorkChild.pid ?? undefined,
+        port: ipolloworkPort,
       });
       logger.info(
         "Process spawned",
-        { pid: startediPolloWalkChild.pid ?? 0 },
-        "ipollowalk-server",
+        { pid: startediPolloWorkChild.pid ?? 0 },
+        "ipollowork-server",
       );
-      startediPolloWalkChild.on("exit", (code, signal) =>
-        handleExit("ipollowalk-server", code, signal),
+      startediPolloWorkChild.on("exit", (code, signal) =>
+        handleExit("ipollowork-server", code, signal),
       );
-      startediPolloWalkChild.on("error", (error) =>
-        handleSpawnError("ipollowalk-server", error),
+      startediPolloWorkChild.on("error", (error) =>
+        handleSpawnError("ipollowork-server", error),
       );
 
       logger.info(
         "Waiting for health",
-        { url: ipollowalkBaseUrl },
-        "ipollowalk-server",
+        { url: ipolloworkBaseUrl },
+        "ipollowork-server",
       );
-      await waitForHealthy(ipollowalkBaseUrl);
-      logger.info("Healthy", { url: ipollowalkBaseUrl }, "ipollowalk-server");
-      tui?.updateService("ipollowalk-server", { status: "healthy" });
+      await waitForHealthy(ipolloworkBaseUrl);
+      logger.info("Healthy", { url: ipolloworkBaseUrl }, "ipollowork-server");
+      tui?.updateService("ipollowork-server", { status: "healthy" });
 
-      ipollowalkActualVersion = await verifyiPolloWalkServer({
-        baseUrl: ipollowalkBaseUrl,
-        token: ipollowalkToken,
-        hostToken: ipollowalkHostToken,
-        expectedVersion: ipollowalkServerBinary.expectedVersion,
+      ipolloworkActualVersion = await verifyiPolloWorkServer({
+        baseUrl: ipolloworkBaseUrl,
+        token: ipolloworkToken,
+        hostToken: ipolloworkHostToken,
+        expectedVersion: ipolloworkServerBinary.expectedVersion,
         expectedWorkspace: resolvedWorkspace,
         expectedOpencodeBaseUrl: opencodeConnectUrl,
         expectedOpencodeDirectory: resolvedWorkspace,
         expectedOpencodeUsername: opencodeUsername,
         expectedOpencodePassword: opencodePassword,
       });
-      ipollowalkOwnerToken = await issueiPolloWalkOwnerToken(
-        ipollowalkBaseUrl,
-        ipollowalkHostToken,
-        "iPolloWalk owner token",
+      ipolloworkOwnerToken = await issueiPolloWorkOwnerToken(
+        ipolloworkBaseUrl,
+        ipolloworkHostToken,
+        "iPolloWork owner token",
       );
-      tui?.setConnectInfo({ ownerToken: ipollowalkOwnerToken });
+      tui?.setConnectInfo({ ownerToken: ipolloworkOwnerToken });
       logVerbose(
-        `ipollowalk-server version: ${ipollowalkActualVersion ?? "unknown"}`,
+        `ipollowork-server version: ${ipolloworkActualVersion ?? "unknown"}`,
       );
 
     }
@@ -7029,7 +7029,7 @@ async function runStart(args: ParsedArgs) {
           intervalMs: workerActivityHeartbeat.intervalMs,
           activeWindowMs: workerActivityHeartbeat.activeWindowMs,
         },
-        "ipollowalk-orchestrator",
+        "ipollowork-orchestrator",
       );
       const runHeartbeat = () => {
         void postWorkerActivityHeartbeat({
@@ -7040,7 +7040,7 @@ async function runStart(args: ParsedArgs) {
           logger.warn(
             "Worker activity heartbeat failed",
             { error: error instanceof Error ? error.message : String(error) },
-            "ipollowalk-orchestrator",
+            "ipollowork-orchestrator",
           );
         });
       };
@@ -7069,16 +7069,16 @@ async function runStart(args: ParsedArgs) {
         hotReload: opencodeHotReload,
         version: opencodeActualVersion,
       },
-      ipollowalk: {
-        baseUrl: ipollowalkBaseUrl,
-        connectUrl: ipollowalkConnectUrl,
-        host: ipollowalkHost,
-        port: ipollowalkPort,
-        collaboratorToken: ipollowalkToken,
-        ownerToken: ipollowalkOwnerToken,
-        token: ipollowalkToken,
-        hostToken: ipollowalkHostToken,
-        version: ipollowalkActualVersion,
+      ipollowork: {
+        baseUrl: ipolloworkBaseUrl,
+        connectUrl: ipolloworkConnectUrl,
+        host: ipolloworkHost,
+        port: ipolloworkPort,
+        collaboratorToken: ipolloworkToken,
+        ownerToken: ipolloworkOwnerToken,
+        token: ipolloworkToken,
+        hostToken: ipolloworkHostToken,
+        version: ipolloworkActualVersion,
       },
       diagnostics: {
         cliVersion,
@@ -7098,11 +7098,11 @@ async function runStart(args: ParsedArgs) {
             expectedVersion: opencodeBinary.expectedVersion,
             actualVersion: opencodeActualVersion,
           } as BinaryDiagnostics,
-          ipollowalkServer: {
-            path: ipollowalkServerBinary.bin,
-            source: ipollowalkServerBinary.source,
-            expectedVersion: ipollowalkServerBinary.expectedVersion,
-            actualVersion: ipollowalkActualVersion,
+          ipolloworkServer: {
+            path: ipolloworkServerBinary.bin,
+            source: ipolloworkServerBinary.source,
+            expectedVersion: ipolloworkServerBinary.expectedVersion,
+            actualVersion: ipolloworkActualVersion,
           } as BinaryDiagnostics,
         },
       },
@@ -7116,9 +7116,9 @@ async function runStart(args: ParsedArgs) {
         {
           workspace: payload.workspace,
           opencode: payload.opencode,
-          ipollowalk: payload.ipollowalk,
+          ipollowork: payload.ipollowork,
         },
-        "ipollowalk-orchestrator",
+        "ipollowork-orchestrator",
       );
     } else if (logFormat === "json") {
       logger.info(
@@ -7126,12 +7126,12 @@ async function runStart(args: ParsedArgs) {
         {
           workspace: payload.workspace,
           opencode: payload.opencode,
-          ipollowalk: payload.ipollowalk,
+          ipollowork: payload.ipollowork,
         },
-        "ipollowalk-orchestrator",
+        "ipollowork-orchestrator",
       );
     } else {
-      console.log("iPolloWalk orchestrator running");
+      console.log("iPolloWork orchestrator running");
       console.log(`Run ID: ${runId}`);
       console.log(`Workspace: ${payload.workspace}`);
       console.log(`OpenCode: ${payload.opencode.baseUrl}`);
@@ -7139,17 +7139,17 @@ async function runStart(args: ParsedArgs) {
       if (payload.opencode.username && payload.opencode.password) {
         console.log("OpenCode auth: managed credentials configured (withheld from stdout)");
       }
-      console.log(`iPolloWalk server: ${payload.ipollowalk.baseUrl}`);
-      console.log(`iPolloWalk connect URL: ${payload.ipollowalk.connectUrl}`);
-      console.log("iPolloWalk collaborator token: issued (withheld from stdout)");
+      console.log(`iPolloWork server: ${payload.ipollowork.baseUrl}`);
+      console.log(`iPolloWork connect URL: ${payload.ipollowork.connectUrl}`);
+      console.log("iPolloWork collaborator token: issued (withheld from stdout)");
       console.log("  Routine remote access for shared workers.");
-      if (payload.ipollowalk.ownerToken) {
-        console.log("iPolloWalk owner token: issued (withheld from stdout)");
+      if (payload.ipollowork.ownerToken) {
+        console.log("iPolloWork owner token: issued (withheld from stdout)");
         console.log(
           "  Use this when the remote client must answer permission prompts.",
         );
       }
-      console.log("iPolloWalk host admin token: issued (withheld from stdout)");
+      console.log("iPolloWork host admin token: issued (withheld from stdout)");
       console.log(
         "  Internal host/admin token for approvals CLI and host-only APIs.",
       );
@@ -7167,23 +7167,23 @@ async function runStart(args: ParsedArgs) {
         if (sandboxMode !== "none") {
           // In sandbox mode the released server binary may not support the
           // Bearer-through-proxy auth that the OpenCode SDK client expects.
-          // Run a lighter set of checks: ipollowalk-server endpoints + proxy
+          // Run a lighter set of checks: ipollowork-server endpoints + proxy
           // health.  Full SDK checks (session create, SSE events) are deferred
           // until the modified server binary is released.
           await runSandboxChecks({
-            ipollowalkUrl: ipollowalkBaseUrl,
-            ipollowalkToken,
-            hostToken: ipollowalkHostToken,
+            ipolloworkUrl: ipolloworkBaseUrl,
+            ipolloworkToken,
+            hostToken: ipolloworkHostToken,
           });
         } else {
           await runChecks({
             opencodeClient,
-            ipollowalkUrl: ipollowalkBaseUrl,
-            ipollowalkToken,
+            ipolloworkUrl: ipolloworkBaseUrl,
+            ipolloworkToken,
             checkEvents,
           });
         }
-        logger.info("Checks ok", { checkEvents }, "ipollowalk-orchestrator");
+        logger.info("Checks ok", { checkEvents }, "ipollowork-orchestrator");
         if (!outputJson && logFormat === "pretty") {
           console.log("Checks: ok");
         }
@@ -7191,7 +7191,7 @@ async function runStart(args: ParsedArgs) {
         logger.error(
           "Checks failed",
           { error: String(error) },
-          "ipollowalk-orchestrator",
+          "ipollowork-orchestrator",
         );
         await shutdown();
         tui?.stop();
@@ -7211,7 +7211,7 @@ async function runStart(args: ParsedArgs) {
     logger.error(
       "Run failed",
       { error: error instanceof Error ? error.message : String(error) },
-      "ipollowalk-orchestrator",
+      "ipollowork-orchestrator",
     );
     process.exit(1);
   }

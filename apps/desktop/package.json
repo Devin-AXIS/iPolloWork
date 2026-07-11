@@ -1,11 +1,11 @@
 {
-  "name": "@ipollowalk/desktop",
+  "name": "@ipollowork/desktop",
   "private": true,
   "version": "0.17.20",
-  "description": "iPolloWalk desktop shell",
+  "description": "iPolloWork desktop shell",
   "author": {
-    "name": "iPolloWalk",
-    "email": "support@ipollowalklabs.com"
+    "name": "iPolloWork",
+    "email": "support@ipolloworklabs.com"
   },
   "main": "electron/main.mjs",
   "type": "module",
@@ -34,7 +34,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@ipollowalk/types": "workspace:*",
+    "@ipollowork/types": "workspace:*",
     "electron": "^35.0.0",
     "electron-builder": "^25.1.8",
     "electron-devtools-installer": "^4.0.0"

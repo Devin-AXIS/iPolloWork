@@ -1,6 +1,6 @@
 # landing-copy-prompt-analytics — The hero shows the agent-install prompt, and every copy is counted
 
-A visitor lands on ipollowalklabs.com. The old cryptic "Copy Prompt" navbar button is gone; the hero now offers both paths openly — Download for free for humans, and the exact install prompt to hand your AI agent, shown in full inside an iPolloWalk-style composer.
+A visitor lands on ipolloworklabs.com. The old cryptic "Copy Prompt" navbar button is gone; the hero now offers both paths openly — Download for free for humans, and the exact install prompt to hand your AI agent, shown in full inside an iPolloWork-style composer.
 
 1. The visitor clicks the prompt, the pill flashes Copied, and the card itself answers with the next move — paste it into Claude Code, Cursor, or ChatGPT — plus a three-step preview of what the agent will do, while a single anonymous analytics event records the copy.
 

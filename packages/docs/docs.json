@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "iPolloWalk Docs",
+  "name": "iPolloWork Docs",
   "favicon": "/logo/light.svg",
   "logo": {
     "light": "/logo/light.svg",
@@ -57,7 +57,7 @@
             ]
           },
           {
-            "group": "Help improve iPolloWalk",
+            "group": "Help improve iPolloWork",
             "pages": [
               "start-here/missing-docs",
               "start-here/missing-languages"
@@ -136,14 +136,14 @@
     "404": {
       "redirect": false,
       "title": "Missing Documentation?",
-      "description": "If you're technical and want to use a specific part of the app that is not documented well yet, [send us a quick email](mailto:team@ipollowalklabs.com?subject=missing%20documentation&body=hey%20my%20github%20is%20%7Busername%7D%2C%20I%27m%20interested%20in%20%7Bfeature%7D%20from%20ipollowalk%20but%20I%27m%20missing%20documentation%20on%20it%2C%20could%20you%20create%20it%3F%0A%0AThanks) and tell us what you're missing."
+      "description": "If you're technical and want to use a specific part of the app that is not documented well yet, [send us a quick email](mailto:team@ipolloworklabs.com?subject=missing%20documentation&body=hey%20my%20github%20is%20%7Busername%7D%2C%20I%27m%20interested%20in%20%7Bfeature%7D%20from%20ipollowork%20but%20I%27m%20missing%20documentation%20on%20it%2C%20could%20you%20create%20it%3F%0A%0AThanks) and tell us what you're missing."
     }
   },
   "navbar": {
     "primary": {
       "type": "button",
-      "label": "Download iPolloWalk",
-      "href": "https://ipollowalklabs.com/download"
+      "label": "Download iPolloWork",
+      "href": "https://ipolloworklabs.com/download"
     }
   }
 }

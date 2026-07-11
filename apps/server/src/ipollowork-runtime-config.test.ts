@@ -1,0 +1,130 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  keepiPolloWorkRuntimeConfigFileFresh,
+  ipolloworkRuntimeConfigFilePath,
+  writeiPolloWorkRuntimeConfigFile,
+} from "./ipollowork-runtime-config.js";
+import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import type { ServerConfig } from "./types.js";
+
+const roots: string[] = [];
+const cleanups: Array<() => void> = [];
+let previousDb: string | undefined;
+
+afterEach(async () => {
+  while (cleanups.length) cleanups.pop()?.();
+  while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
+  if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+  else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
+});
+
+async function setup() {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-runtime-config-file-"));
+  roots.push(root);
+  previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  const config: ServerConfig = {
+    host: "127.0.0.1",
+    port: 0,
+    token: "owt_test_token",
+    hostToken: "owt_host_token",
+    approval: { mode: "auto", timeoutMs: 1000 },
+    corsOrigins: ["*"],
+    workspaces: [
+      { id: "ws_1", name: "Workspace", path: root, preset: "starter", workspaceType: "local" },
+    ],
+    authorizedRoots: [root],
+    readOnly: false,
+    startedAt: Date.now(),
+    tokenSource: "cli",
+    hostTokenSource: "cli",
+    logFormat: "pretty",
+    logRequests: false,
+  };
+  return { root, config };
+}
+
+async function readConfigFile(config: ServerConfig): Promise<Record<string, unknown>> {
+  const raw = await readFile(ipolloworkRuntimeConfigFilePath(config), "utf8");
+  return JSON.parse(raw) as Record<string, unknown>;
+}
+
+describe("ipollowork runtime config file", () => {
+  test("writes runtime-DB MCPs and ipollowork defaults into the file", async () => {
+    const { config } = await setup();
+    await writeRuntimeOpencodeConfig(config, "ws_1", (current) => ({
+      ...current,
+      mcp: { posthog: { type: "remote", url: "https://mcp.posthog.com/mcp", enabled: true } },
+    }));
+
+    const path = await writeiPolloWorkRuntimeConfigFile(config, "ws_1");
+    expect(path).toBe(ipolloworkRuntimeConfigFilePath(config));
+
+    const parsed = await readConfigFile(config);
+    const mcp = parsed.mcp as Record<string, Record<string, unknown>>;
+    expect(mcp.posthog?.enabled).toBe(true);
+    expect(parsed.default_agent).toBe("ipollowork");
+    expect(Array.isArray(parsed.plugin)).toBe(true);
+  });
+
+  test("ipollowork prompt has a static search-first Memory Bank section, distinct from ## Memory", async () => {
+    const { config } = await setup();
+    await writeiPolloWorkRuntimeConfigFile(config, "ws_1");
+
+    const parsed = await readConfigFile(config);
+    const agent = parsed.agent as Record<string, { prompt?: string }>;
+    const prompt = agent.ipollowork?.prompt ?? "";
+
+    // The new Memory Bank section is present and distinct from the existing ## Memory section.
+    expect(prompt).toContain("## Memory Bank");
+    expect(prompt).toContain("## Memory\n");
+    // Search-first (B1): never name tools that do not exist.
+    expect(prompt).toContain("search_capabilities");
+    expect(prompt).toContain("execute_capability");
+    expect(prompt).not.toContain("memory_save");
+    expect(prompt).not.toContain("memory_search");
+    // No-secrets guidance is the only v0 plaintext-at-rest mitigation.
+    expect(prompt).toMatch(/secret|credential|API key|token|PII/i);
+  });
+
+  test("keepiPolloWorkRuntimeConfigFileFresh rewrites the file on runtime-DB writes", async () => {
+    const { config } = await setup();
+    await writeiPolloWorkRuntimeConfigFile(config, "ws_1");
+    cleanups.push(keepiPolloWorkRuntimeConfigFileFresh(config, "ws_1"));
+
+    await writeRuntimeOpencodeConfig(config, "ws_1", (current) => ({
+      ...current,
+      mcp: { stripe: { type: "remote", url: "https://mcp.stripe.com", enabled: false } },
+    }));
+
+    // The refresh is fire-and-forget; poll briefly for the rewrite.
+    let mcp: Record<string, Record<string, unknown>> = {};
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const parsed = await readConfigFile(config);
+      mcp = (parsed.mcp ?? {}) as Record<string, Record<string, unknown>>;
+      if (mcp.stripe) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(mcp.stripe?.enabled).toBe(false);
+  });
+
+  test("writes for other workspaces do not rewrite the primary file", async () => {
+    const { config } = await setup();
+    await writeiPolloWorkRuntimeConfigFile(config, "ws_1");
+    cleanups.push(keepiPolloWorkRuntimeConfigFileFresh(config, "ws_1"));
+
+    await writeRuntimeOpencodeConfig(config, "ws_other", (current) => ({
+      ...current,
+      mcp: { other: { type: "remote", url: "https://example.com/mcp", enabled: true } },
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const parsed = await readConfigFile(config);
+    const mcp = (parsed.mcp ?? {}) as Record<string, Record<string, unknown>>;
+    expect(mcp.other).toBeUndefined();
+  });
+});

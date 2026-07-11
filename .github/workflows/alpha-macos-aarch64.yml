@@ -1,6 +1,6 @@
 name: Alpha Channel (macOS arm64)
 
-# Every merge to `dev` publishes a fresh macOS arm64 build to the iPolloWalk
+# Every merge to `dev` publishes a fresh macOS arm64 build to the iPolloWork
 # alpha release channel.
 #
 # The alpha channel is macOS-only today. It lives as a rolling GitHub
@@ -39,7 +39,7 @@ jobs:
 
     env:
       ALPHA_RELEASE_TAG: alpha-macos-latest
-      ALPHA_RELEASE_NAME: iPolloWalk Alpha (macOS arm64)
+      ALPHA_RELEASE_NAME: iPolloWork Alpha (macOS arm64)
       # Apple signing + notarization are required so alpha bundles install
       # and launch without Gatekeeper friction. Alpha builds are served
       # from GitHub Releases like stable, just from a different tag.
@@ -156,7 +156,7 @@ jobs:
         shell: bash
         env:
           TARGET: aarch64-apple-darwin
-        run: pnpm --filter @ipollowalk/desktop build:electron
+        run: pnpm --filter @ipollowork/desktop build:electron
 
       - name: Package Electron alpha (macOS, signed + notarized)
         if: env.MACOS_NOTARIZE == 'true'
@@ -184,14 +184,14 @@ jobs:
           ALPHA_RUN_RELEASE_TAG: ${{ steps.alpha-version.outputs.release_tag }}
         run: |
           set -euo pipefail
-          body="Rolling alpha build for iPolloWalk (macOS arm64) from ${GITHUB_SHA}."
+          body="Rolling alpha build for iPolloWork (macOS arm64) from ${GITHUB_SHA}."
           if gh release view "$ALPHA_RUN_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Alpha prerelease $ALPHA_RUN_RELEASE_TAG already exists; reusing it."
             exit 0
           fi
           gh release create "$ALPHA_RUN_RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "iPolloWalk Alpha ${ALPHA_VERSION}" \
+            --title "iPolloWork Alpha ${ALPHA_VERSION}" \
             --notes "$body" \
             --target "$GITHUB_SHA" \
             --prerelease
@@ -232,10 +232,10 @@ jobs:
           const fs = require("node:fs");
           const manifestPath = "apps/desktop/dist-electron/latest-mac.yml";
           const releaseTag = process.env.ALPHA_RUN_RELEASE_TAG;
-          const baseUrl = `https://github.com/Devin-AXIS/iPolloWalk/releases/download/${releaseTag}`;
+          const baseUrl = `https://github.com/Devin-AXIS/iPolloWork/releases/download/${releaseTag}`;
           const rewritten = fs.readFileSync(manifestPath, "utf8")
-            .replace(/(url:\s*)(ipollowalk-[^\n]+)/g, `$1${baseUrl}/$2`)
-            .replace(/(path:\s*)(ipollowalk-[^\n]+)/g, `$1${baseUrl}/$2`);
+            .replace(/(url:\s*)(ipollowork-[^\n]+)/g, `$1${baseUrl}/$2`)
+            .replace(/(path:\s*)(ipollowork-[^\n]+)/g, `$1${baseUrl}/$2`);
           fs.writeFileSync(process.env.POINTER_MANIFEST, rewritten);
           NODE
 

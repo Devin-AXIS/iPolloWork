@@ -25,11 +25,11 @@ function normalizeScope(value: unknown): TokenScope | null {
 }
 
 function resolveTokenStorePath(config: ServerConfig): string {
-  const override = (process.env.IPOLLOWALK_TOKEN_STORE ?? "").trim();
+  const override = (process.env.IPOLLOWORK_TOKEN_STORE ?? "").trim();
   if (override) return resolve(override);
 
   const configPath = config.configPath?.trim();
-  const configDir = configPath ? dirname(configPath) : join(homedir(), ".config", "ipollowalk");
+  const configDir = configPath ? dirname(configPath) : join(homedir(), ".config", "ipollowork");
   return join(configDir, "tokens.json");
 }
 

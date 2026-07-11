@@ -57,7 +57,7 @@ const ollamaConfigFactory = (ctx: ExtensionConfigContext) => (
   />
 );
 
-registerExtensionConfig("ipollowalk.ollama.settings", ollamaConfigFactory);
+registerExtensionConfig("ipollowork.ollama.settings", ollamaConfigFactory);
 registerExtensionConfig("ollama", ollamaConfigFactory);
 
 type OllamaModel = {

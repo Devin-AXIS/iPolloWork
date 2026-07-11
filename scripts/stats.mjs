@@ -8,8 +8,8 @@ const POSTHOG_KEY = process.env.POSTHOG_KEY || process.env.POSTHOG_API_KEY
 const POSTHOG_HOST = process.env.POSTHOG_HOST || "https://us.i.posthog.com"
 const POSTHOG_LEGACY_EVENT = process.env.POSTHOG_LEGACY_EVENT || process.env.POSTHOG_EVENT || "download"
 const POSTHOG_V2_EVENT = process.env.POSTHOG_V2_EVENT || "release_asset_snapshot"
-const POSTHOG_DISTINCT_ID = process.env.POSTHOG_DISTINCT_ID || "ipollowalk-download"
-const GITHUB_REPO = process.env.GITHUB_REPO || "Devin-AXIS/iPolloWalk"
+const POSTHOG_DISTINCT_ID = process.env.POSTHOG_DISTINCT_ID || "ipollowork-download"
+const GITHUB_REPO = process.env.GITHUB_REPO || "Devin-AXIS/iPolloWork"
 const STATS_FILE = process.env.STATS_FILE || "STATS.md"
 const STATS_V2_FILE = process.env.STATS_V2_FILE || "STATS_V2.md"
 
@@ -87,7 +87,7 @@ async function fetchReleases() {
   const perPage = 100
   const headers = {
     Accept: "application/vnd.github+json",
-    "User-Agent": "ipollowalk-download-stats",
+    "User-Agent": "ipollowork-download-stats",
   }
   const token = process.env.GITHUB_TOKEN
 

@@ -61,10 +61,10 @@ function parseRuntimeOpencodeConfig(configJson: string): RuntimeOpencodeConfig {
 }
 
 function runtimeDbPath(config: ServerConfig): string {
-  const override = process.env.IPOLLOWALK_RUNTIME_DB?.trim();
+  const override = process.env.IPOLLOWORK_RUNTIME_DB?.trim();
   if (override) return resolve(override);
   const configPath = config.configPath?.trim();
-  const configDir = configPath ? dirname(configPath) : join(homedir(), ".config", "ipollowalk");
+  const configDir = configPath ? dirname(configPath) : join(homedir(), ".config", "ipollowork");
   return join(configDir, "runtime.sqlite");
 }
 

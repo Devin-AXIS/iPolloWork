@@ -1,5 +1,5 @@
 {
-  "name": "iPolloWalk Full Stack (Electron)",
+  "name": "iPolloWork Full Stack (Electron)",
   "dockerComposeFile": "docker-compose.yml",
   "service": "workspace",
   "workspaceFolder": "/workspace",

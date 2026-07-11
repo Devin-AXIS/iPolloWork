@@ -68,7 +68,7 @@ Local migration repair and clearer Soul controls
 Adds a desktop recovery path for broken local OpenCode migrations and makes Soul setup plus compact action buttons easier to steer.
 
 #### Main changes
-Added migration repair from onboarding and Settings so broken local startup can recover without leaving iPolloWalk.
+Added migration repair from onboarding and Settings so broken local startup can recover without leaving iPolloWork.
 
 Also released:
 
@@ -120,11 +120,11 @@ None.
 Migration recovery explains when it can help
 
 #### One-line summary
-Clarifies when repair is actually available in the app and resets the landing page back to broader iPolloWalk messaging.
+Clarifies when repair is actually available in the app and resets the landing page back to broader iPolloWork messaging.
 
 #### Main changes
 - Added disabled-state feedback and clearer reasons when migration recovery is unavailable in onboarding and Settings.
-- Reverted the homepage copy from a workers-heavy framing back to the broader iPolloWalk message.
+- Reverted the homepage copy from a workers-heavy framing back to the broader iPolloWork message.
 
 #### Lines of code changed since previous release
 168 lines changed since `v0.11.101` (100 insertions, 68 deletions).
@@ -437,7 +437,7 @@ Makes shared bundles inspectable in the browser, preserves unsent draft text acr
 1160 lines changed since `v0.11.107` (966 insertions, 194 deletions).
 
 #### Release importance
-Minor release: adds a meaningful sharing improvement and reliability fixes without materially reshaping how iPolloWalk works overall.
+Minor release: adds a meaningful sharing improvement and reliability fixes without materially reshaping how iPolloWork works overall.
 
 #### Major improvements
 True
@@ -479,7 +479,7 @@ None.
 Safer automation setup, grouped skills, and global MCP config
 
 #### One-line summary
-Keeps automations hidden until the scheduler is installed and lets iPolloWalk pick up domain-organized skills plus machine-level MCP servers.
+Keeps automations hidden until the scheduler is installed and lets iPolloWork pick up domain-organized skills plus machine-level MCP servers.
 
 #### Main changes
 - Hid Automations until the scheduler is installed.
@@ -532,7 +532,7 @@ None.
 Release packaging and deploy hardening only
 
 #### One-line summary
-Hardens updater metadata generation and share-service deploy behavior, with no visible iPolloWalk app or workflow changes.
+Hardens updater metadata generation and share-service deploy behavior, with no visible iPolloWork app or workflow changes.
 
 #### Main changes
 Mostly packaging only: the release now publishes deterministic updater metadata and skips unnecessary desktop builds during share-service deploys.
@@ -582,7 +582,7 @@ None.
 Version metadata sync only
 
 #### One-line summary
-Republishes synchronized package and desktop version metadata, with no intended iPolloWalk app, server, or workflow changes.
+Republishes synchronized package and desktop version metadata, with no intended iPolloWork app, server, or workflow changes.
 
 #### Main changes
 Packaging only: this release just keeps version numbers and shipped metadata aligned across app, desktop, server, router, and orchestrator packages.
@@ -732,13 +732,13 @@ None.
 `2026-02-22T06:00:46Z`
 
 #### Title
-iPolloWalk Cloud worker setup and reconnect flows
+iPolloWork Cloud worker setup and reconnect flows
 
 #### One-line summary
 Adds a guided web flow for launching cloud workers, then makes reconnects work with saved workers, usable tokens, and workspace-scoped connect links.
 
 #### Main changes
-Adds the first full iPolloWalk Cloud worker setup flow in the web app.
+Adds the first full iPolloWork Cloud worker setup flow in the web app.
 
 Also released:
 
@@ -750,7 +750,7 @@ Also released:
 6726 lines changed since `v0.11.113` (6593 insertions, 133 deletions).
 
 #### Release importance
-Major release: introduces iPolloWalk Cloud worker provisioning and connect flows that materially change how users can start and use remote workers.
+Major release: introduces iPolloWork Cloud worker provisioning and connect flows that materially change how users can start and use remote workers.
 
 #### Major improvements
 True
@@ -759,7 +759,7 @@ True
 4
 
 #### Major improvement details
-- Added the Den control plane with real Render-backed cloud workers inside iPolloWalk.
+- Added the Den control plane with real Render-backed cloud workers inside iPolloWork.
 - Shipped a new 3-step cloud worker setup experience in the web app.
 - Persisted user workers and removed manual worker ID recovery from the hosted flow.
 - Gated cloud workers behind Polar entitlements with a default hosted worker plan.
@@ -849,11 +849,11 @@ None.
 Cleaner cloud-worker connect with desktop deep links
 
 #### One-line summary
-Turns the hosted worker page into a simpler list-detail picker and adds one-click desktop handoff into iPolloWalk's remote connect flow.
+Turns the hosted worker page into a simpler list-detail picker and adds one-click desktop handoff into iPolloWork's remote connect flow.
 
 #### Main changes
 - Reworked hosted workers into a clearer list-detail connect view with status and action panels.
-- Added `ipollowalk://connect-remote` deep links so the desktop app can open remote-connect details directly.
+- Added `ipollowork://connect-remote` deep links so the desktop app can open remote-connect details directly.
 - Kept manual URL and token copy available when one-click open is unavailable.
 
 #### Lines of code changed since previous release
@@ -1169,7 +1169,7 @@ Hosted onboarding and share links become app handoffs
 Adds GitHub sign-in, Open in App worker handoff, and share links for workspace profiles and skill sets while smoothing long-session and desktop reliability.
 
 #### Main changes
-Hosted iPolloWalk now hands people straight from the web into the app for connect and import flows.
+Hosted iPolloWork now hands people straight from the web into the app for connect and import flows.
 
 Also released:
 
@@ -1181,7 +1181,7 @@ Also released:
 5651 lines changed since `v0.11.121` (4835 insertions, 816 deletions).
 
 #### Release importance
-Major release: substantially expands how users sign up, connect, share, and navigate iPolloWalk across hosted and desktop flows.
+Major release: substantially expands how users sign up, connect, share, and navigate iPolloWork across hosted and desktop flows.
 
 #### Major improvements
 True
@@ -1234,8 +1234,8 @@ Refreshes both the in-app share modal and public bundle pages, and adds a one-cl
 
 #### Main changes
 - Share Workspace becomes a cleaner split between live access details and public link publishing.
-- Public bundle pages now look and read like iPolloWalk, with clearer import flows outside the app.
-- Settings adds `Restart local server` so local recovery no longer means leaving iPolloWalk.
+- Public bundle pages now look and read like iPolloWork, with clearer import flows outside the app.
+- Settings adds `Restart local server` so local recovery no longer means leaving iPolloWork.
 
 #### Lines of code changed since previous release
 1480 lines changed since `v0.11.122` (1027 insertions, 453 deletions).
@@ -1251,7 +1251,7 @@ True
 
 #### Major improvement details
 - Added a local server restart action in Settings.
-- Redesigned the share modal and generated bundle page styling to match iPolloWalk’s product identity.
+- Redesigned the share modal and generated bundle page styling to match iPolloWork’s product identity.
 
 #### Major bugs resolved
 False

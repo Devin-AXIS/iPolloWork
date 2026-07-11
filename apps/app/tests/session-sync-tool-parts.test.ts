@@ -136,7 +136,7 @@ describe("tool part mapper", () => {
   });
 
   test("session sync defers empty in-progress write tools until input arrives", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipollowalkToken: "token" };
+    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const release = trackWorkspaceSessionSync(syncInput, "session-a");
 

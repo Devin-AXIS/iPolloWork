@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem in iPolloWalk
+description: Report a problem in iPolloWork
 title: "[Bug]: "
 labels:
   - bug
@@ -47,12 +47,12 @@ body:
   - type: textarea
     id: desktop_info
     attributes:
-      label: iPolloWalk version & Desktop info (optional)
+      label: iPolloWork version & Desktop info (optional)
       description: |
-        Include OS and iPolloWalk version if possible.
-        iPolloWalk version: Settings > General.
+        Include OS and iPolloWork version if possible.
+        iPolloWork version: Settings > General.
       placeholder: |
-        - iPolloWalk version: [e.g. 0.1.166]
+        - iPolloWork version: [e.g. 0.1.166]
         - OS: [e.g. macOS Tahoe 26.2]
     validations:
       required: false

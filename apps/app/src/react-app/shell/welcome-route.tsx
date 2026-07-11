@@ -22,14 +22,14 @@ import { AttributionStep, type AttributionSource } from "../domains/onboarding/a
 import { CreateWorkspaceModal } from "../domains/workspace/create-workspace-modal";
 import type { CreateWorkspaceOptions } from "../domains/workspace/types";
 import {
-  getiPolloWalkModelsActionUrl,
-  hideiPolloWalkModelsPromo,
-  markiPolloWalkModelsStartupPromoShown,
-} from "../domains/cloud/ipollowalk-models-promo";
+  getiPolloWorkModelsActionUrl,
+  hideiPolloWorkModelsPromo,
+  markiPolloWorkModelsStartupPromoShown,
+} from "../domains/cloud/ipollowork-models-promo";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
-import { resolveiPolloWalkConnection } from "./ipollowalk-connection";
+import { resolveiPolloWorkConnection } from "./ipollowork-connection";
 import { captureAnalyticsEvent } from "../../app/lib/analytics";
-import { buildiPolloWalkWorkspaceBaseUrl, createiPolloWalkServerClient } from "../../app/lib/ipollowalk-server";
+import { buildiPolloWorkWorkspaceBaseUrl, createiPolloWorkServerClient } from "../../app/lib/ipollowork-server";
 import { buildDenAuthUrl, clearDenSession, DEFAULT_DEN_BASE_URL, readDenSettings } from "../../app/lib/den";
 import {
   denSettingsChangedEvent,
@@ -37,7 +37,7 @@ import {
 } from "../../app/lib/den-session-events";
 import { writeActiveWorkspaceId, writeLastSessionFor, writeWorkspaceProjectDimension } from "./session-memory";
 import { workspaceSessionRoute } from "./workspace-routes";
-import { ensureDesktopLocaliPolloWalkConnection } from "./desktop-local-ipollowalk";
+import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { saveControlPlaneUrl } from "../domains/settings/cloud/control-plane-url";
 
 function folderNameFromPath(path: string) {
@@ -48,7 +48,7 @@ function folderNameFromPath(path: string) {
 
 function focusPromptSoon() {
   if (typeof window === "undefined") return;
-  const focus = () => window.dispatchEvent(new Event("ipollowalk:focusPrompt"));
+  const focus = () => window.dispatchEvent(new Event("ipollowork:focusPrompt"));
   [0, 80, 240, 600].forEach((delay) => window.setTimeout(focus, delay));
 }
 
@@ -186,14 +186,14 @@ export function WelcomeRoute() {
         let serverToken = "";
         try {
           const { normalizedBaseUrl, resolvedToken, resolvedHostToken } =
-            await resolveiPolloWalkConnection();
+            await resolveiPolloWorkConnection();
           if (normalizedBaseUrl && (resolvedToken || resolvedHostToken)) {
-            const ipollowalkClient = createiPolloWalkServerClient({
+            const ipolloworkClient = createiPolloWorkServerClient({
               baseUrl: normalizedBaseUrl,
               token: resolvedToken || undefined,
               hostToken: resolvedHostToken || undefined,
             });
-            list = await ipollowalkClient.createLocalWorkspace({
+            list = await ipolloworkClient.createLocalWorkspace({
               folderPath: folder,
               name: workspaceName,
               preset: "starter",
@@ -205,7 +205,7 @@ export function WelcomeRoute() {
           list = null;
         }
         if (!list) {
-          throw new Error("iPolloWalk server is unavailable. Start or reconnect the server before creating a workspace.");
+          throw new Error("iPolloWork server is unavailable. Start or reconnect the server before creating a workspace.");
         }
         const createdId =
           resolveWorkspaceListSelectedId(list) ||
@@ -220,7 +220,7 @@ export function WelcomeRoute() {
           writeActiveWorkspaceId(createdId);
         }
         if (targetWorkspace) {
-          await ensureDesktopLocaliPolloWalkConnection({
+          await ensureDesktopLocaliPolloWorkConnection({
             route: "session",
             workspace: targetWorkspace,
             allWorkspaces: list.workspaces,
@@ -230,9 +230,9 @@ export function WelcomeRoute() {
           try {
             const workspacePath = targetWorkspace?.path?.trim() || folder;
             const session = unwrap(await createClient(
-              `${(buildiPolloWalkWorkspaceBaseUrl(serverBaseUrl, targetWorkspaceId) ?? serverBaseUrl).replace(/\/+$/, "")}/opencode`,
+              `${(buildiPolloWorkWorkspaceBaseUrl(serverBaseUrl, targetWorkspaceId) ?? serverBaseUrl).replace(/\/+$/, "")}/opencode`,
               workspacePath || undefined,
-              { token: serverToken, mode: "ipollowalk" },
+              { token: serverToken, mode: "ipollowork" },
             ).session.create({ directory: workspacePath || undefined }));
             targetSessionId = session.id;
             captureAnalyticsEvent("task_created", { source: "onboarding", workspace_type: "local" });
@@ -268,20 +268,20 @@ export function WelcomeRoute() {
 
   const handleCreateRemote = useCallback(
     async (input: {
-      ipollowalkHostUrl?: string | null;
-      ipollowalkToken?: string | null;
+      ipolloworkHostUrl?: string | null;
+      ipolloworkToken?: string | null;
       directory?: string | null;
       displayName?: string | null;
     }) => {
-      const baseUrlValue = input.ipollowalkHostUrl?.trim() ?? "";
+      const baseUrlValue = input.ipolloworkHostUrl?.trim() ?? "";
       if (!baseUrlValue) return false;
       dispatch({ type: "remote:start" });
       try {
-        const remoteType: "ipollowalk" = "ipollowalk";
+        const remoteType: "ipollowork" = "ipollowork";
         const payload = {
           baseUrl: baseUrlValue,
-          ipollowalkHostUrl: baseUrlValue,
-          ipollowalkToken: input.ipollowalkToken?.trim() || null,
+          ipolloworkHostUrl: baseUrlValue,
+          ipolloworkToken: input.ipolloworkToken?.trim() || null,
           displayName: input.displayName?.trim() || null,
           directory: input.directory?.trim() || null,
           remoteType,
@@ -292,9 +292,9 @@ export function WelcomeRoute() {
         } else {
           try {
             const { normalizedBaseUrl, resolvedToken, resolvedHostToken } =
-              await resolveiPolloWalkConnection();
+              await resolveiPolloWorkConnection();
             if (normalizedBaseUrl && (resolvedToken || resolvedHostToken)) {
-              list = await createiPolloWalkServerClient({
+              list = await createiPolloWorkServerClient({
                 baseUrl: normalizedBaseUrl,
                 token: resolvedToken || undefined,
                 hostToken: resolvedHostToken || undefined,
@@ -305,7 +305,7 @@ export function WelcomeRoute() {
           }
         }
         if (!list) {
-          throw new Error("iPolloWalk server is unavailable. Start or reconnect the server before connecting a remote workspace.");
+          throw new Error("iPolloWork server is unavailable. Start or reconnect the server before connecting a remote workspace.");
         }
         const createdId =
           resolveWorkspaceListSelectedId(list) ||
@@ -420,19 +420,19 @@ export function WelcomeRoute() {
       />
       {state.providerStep ? (
         <ProviderSelectionStep
-          oniPolloWalkModels={() => {
-            // Land on the iPolloWalk Models value-prop page when already
+          oniPolloWorkModels={() => {
+            // Land on the iPolloWork Models value-prop page when already
             // signed in to Den; otherwise start sign-up. Previously this
             // always opened a bare sign-up page — payment before value.
-            platform.openLink(getiPolloWalkModelsActionUrl(denAuth.isSignedIn, "sign-up"));
+            platform.openLink(getiPolloWorkModelsActionUrl(denAuth.isSignedIn, "sign-up"));
             const route = state.pendingWorkspaceId
               ? workspaceSessionRoute(state.pendingWorkspaceId, state.pendingSessionId)
               : "/session";
             dispatch({ type: "attribution-step", route });
           }}
           onBringYourOwn={() => {
-            markiPolloWalkModelsStartupPromoShown();
-            hideiPolloWalkModelsPromo();
+            markiPolloWorkModelsStartupPromoShown();
+            hideiPolloWorkModelsPromo();
             const route = state.pendingWorkspaceId
               ? workspaceSessionRoute(state.pendingWorkspaceId, state.pendingSessionId)
               : "/session";

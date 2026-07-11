@@ -75,7 +75,7 @@ async function clickCommandItem(ctx, text) {
 
 function assertTopLevelDiagnosticsKeys(ctx, value, label) {
   ctx.assert(value && typeof value === "object" && !Array.isArray(value), `${label} is not an object`);
-  for (const key of ["capturedAt", "ipollowalkServer", "app", "opencodeEngine", "developerLogs"]) {
+  for (const key of ["capturedAt", "ipolloworkServer", "app", "opencodeEngine", "developerLogs"]) {
     ctx.assert(Object.prototype.hasOwnProperty.call(value, key), `${label} missing ${key}`);
   }
 }
@@ -129,7 +129,7 @@ async function waitForDiagnosticsDownload(downloadPath) {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     const entries = await readdir(downloadPath);
-    const filename = entries.find((entry) => /^ipollowalk-diagnostics-.*\.json$/.test(entry));
+    const filename = entries.find((entry) => /^ipollowork-diagnostics-.*\.json$/.test(entry));
     if (filename) return join(downloadPath, filename);
     await sleep(250);
   }
@@ -147,7 +147,7 @@ export default {
         await ctx.prove("Copy diagnostics is available from Cmd/Ctrl+K search", {
           voiceover: vo[0],
           action: async () => {
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
               timeoutMs: 60_000,
               label: "control API",
             });
@@ -188,7 +188,7 @@ export default {
         await ctx.prove("Export diagnostics saves the same kind of bundle as a JSON file", {
           voiceover: vo[2],
           action: async () => {
-            ctx.diagnosticsDownloadDir = await mkdtemp(join(tmpdir(), "ipollowalk-diagnostics-"));
+            ctx.diagnosticsDownloadDir = await mkdtemp(join(tmpdir(), "ipollowork-diagnostics-"));
             await allowDownloads(ctx, ctx.diagnosticsDownloadDir);
             await openPaletteWithQuery(ctx, "logs");
             await clickCommandItem(ctx, "Export diagnostics");
@@ -219,13 +219,13 @@ export default {
             ctx.assert(typeof bundleString === "string" && bundleString.includes('"tokenPresent"'), "Bundle does not record tokenPresent");
             const bundle = JSON.parse(bundleString);
             const secrets = await ctx.eval(`(async () => {
-              const invoke = window.__IPOLLOWALK_ELECTRON__?.invokeDesktop;
-              const serverInfo = invoke ? await invoke('ipollowalkServerInfo').catch(() => null) : null;
+              const invoke = window.__IPOLLOWORK_ELECTRON__?.invokeDesktop;
+              const serverInfo = invoke ? await invoke('ipolloworkServerInfo').catch(() => null) : null;
               const engineInfo = invoke ? await invoke('engineInfo').catch(() => null) : null;
               return {
                 serverRunning: Boolean(serverInfo?.running),
-                settingsToken: window.localStorage.getItem('ipollowalk.server.token') ?? '',
-                settingsHostToken: window.localStorage.getItem('ipollowalk.server.hostToken') ?? '',
+                settingsToken: window.localStorage.getItem('ipollowork.server.token') ?? '',
+                settingsHostToken: window.localStorage.getItem('ipollowork.server.hostToken') ?? '',
                 clientToken: typeof serverInfo?.clientToken === 'string' ? serverInfo.clientToken : '',
                 ownerToken: typeof serverInfo?.ownerToken === 'string' ? serverInfo.ownerToken : '',
                 hostToken: typeof serverInfo?.hostToken === 'string' ? serverInfo.hostToken : '',
@@ -247,7 +247,7 @@ export default {
               ctx.assert(secretValues.length > 0, "Expected at least one live server secret while the local server is running");
             }
             if (secretValues.length === 0) {
-              ctx.assert(bundle.ipollowalkServer?.settings?.tokenPresent === false, "tokenPresent should be false when no real token values are present");
+              ctx.assert(bundle.ipolloworkServer?.settings?.tokenPresent === false, "tokenPresent should be false when no real token values are present");
             }
             await waitForCommandItem(ctx, "Copy diagnostics");
           },

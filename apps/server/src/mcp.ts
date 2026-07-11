@@ -72,7 +72,7 @@ export async function listMcp(serverConfig: ServerConfig, workspaceId: string, w
     });
   }
 
-  // iPolloWalk-owned MCPs are stored by the server and injected at runtime.
+  // iPolloWork-owned MCPs are stored by the server and injected at runtime.
   for (const [name, entry] of Object.entries(runtimeMap)) {
     items.push({
       name,

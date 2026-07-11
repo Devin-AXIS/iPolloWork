@@ -2,46 +2,46 @@
 
 [English](../README.md) | 日本語 | [他の翻訳README](./README.md)
 
-# iPolloWalk
-> iPolloWalkは、Claude Cowork/Codex（デスクトップアプリ）のオープンソース代替です。
+# iPolloWork
+> iPolloWorkは、Claude Cowork/Codex（デスクトップアプリ）のオープンソース代替です。
 
 ## 基本理念
 
-- ローカルファースト、クラウド対応: iPolloWalkはワンクリックであなたのマシン上で動作します。メッセージを即座に送信できます。
+- ローカルファースト、クラウド対応: iPolloWorkはワンクリックであなたのマシン上で動作します。メッセージを即座に送信できます。
 - コンポーザブル: デスクトップアプリ、WhatsApp/Slack/Telegramコネクタ、またはサーバー。用途に合ったものを使えます。ロックインなし。
-- エジェクタブル: iPolloWalkはOpenCodeで動いているため、OpenCodeでできることはすべてiPolloWalkでも動作します（UIがなくても）。
+- エジェクタブル: iPolloWorkはOpenCodeで動いているため、OpenCodeでできることはすべてiPolloWorkでも動作します（UIがなくても）。
 - シェアリング・イズ・ケアリング: localhostでソロ作業を始め、必要に応じてリモート共有を明示的にオプトインできます。
 
 <p align="center">
-  <img src="../app-demo.gif" alt="iPolloWalk デモ" width="800" />
+  <img src="../app-demo.gif" alt="iPolloWork デモ" width="800" />
 </p>
 
-iPolloWalkは、エージェントワークフローを再現可能なプロダクト化されたプロセスとして簡単にリリースできるように設計されています。
+iPolloWorkは、エージェントワークフローを再現可能なプロダクト化されたプロセスとして簡単にリリースできるように設計されています。
 
 ## 代替UI
-- **iPolloWalk Orchestrator（CLIホスト）**: デスクトップUIなしでOpenCode + iPolloWalkサーバーを実行します。
-  - インストール: `npm install -g ipollowalk-orchestrator`
-  - 実行: `ipollowalk start --workspace /path/to/workspace --approval auto`
+- **iPolloWork Orchestrator（CLIホスト）**: デスクトップUIなしでOpenCode + iPolloWorkサーバーを実行します。
+  - インストール: `npm install -g ipollowork-orchestrator`
+  - 実行: `ipollowork start --workspace /path/to/workspace --approval auto`
   - ドキュメント: [apps/orchestrator/README.md](../apps/orchestrator/README.md)
 
 ## クイックスタート
 
-デスクトップアプリを[ipollowalklabs.com/download](https://ipollowalklabs.com/download)からダウンロードするか、最新の[GitHubリリース](https://github.com/Devin-AXIS/iPolloWalk/releases)を取得するか、以下の手順でソースからインストールしてください。
+デスクトップアプリを[ipolloworklabs.com/download](https://ipolloworklabs.com/download)からダウンロードするか、最新の[GitHubリリース](https://github.com/Devin-AXIS/iPolloWork/releases)を取得するか、以下の手順でソースからインストールしてください。
 
 - macOSおよびLinux向けのダウンロードが直接利用可能です。
-- Windowsへのアクセスは現在、[ipollowalklabs.com/pricing#windows-support](https://ipollowalklabs.com/pricing#windows-support)の有料サポートプランで提供されています。
-- ホステッドiPolloWalk Cloudワーカーは、チェックアウト後にWebアプリから起動し、デスクトップアプリから`Add a worker` -> `Connect remote`で接続します。
+- Windowsへのアクセスは現在、[ipolloworklabs.com/pricing#windows-support](https://ipolloworklabs.com/pricing#windows-support)の有料サポートプランで提供されています。
+- ホステッドiPolloWork Cloudワーカーは、チェックアウト後にWebアプリから起動し、デスクトップアプリから`Add a worker` -> `Connect remote`で接続します。
 
-## なぜiPolloWalkか
+## なぜiPolloWorkか
 
 現在のOpenCode向けCLIやGUIは開発者を中心に設計されています。つまり、ファイルの差分、ツール名、そしてCLIを公開しなければ拡張が難しい機能に焦点が当てられています。
 
-iPolloWalkは以下を目指して設計されています:
+iPolloWorkは以下を目指して設計されています:
 
 - **拡張可能**: スキルとOpenCodeプラグインはインストール可能なモジュールです。
 - **監査可能**: 何が、いつ、なぜ起きたかを表示します。
 - **権限管理**: 特権フローへのアクセスを制御します。
-- **ローカル/リモート**: iPolloWalkはローカルでもリモートサーバーへの接続でも動作します。
+- **ローカル/リモート**: iPolloWorkはローカルでもリモートサーバーへの接続でも動作します。
 
 ## 含まれる機能
 
@@ -95,7 +95,7 @@ pnpm install --frozen-lockfile
 
 which bun
 bun --version
-pnpm --filter @ipollowalk/desktop exec tauri --version
+pnpm --filter @ipollowork/desktop exec tauri --version
 ```
 
 ### インストール
@@ -104,7 +104,7 @@ pnpm --filter @ipollowalk/desktop exec tauri --version
 pnpm install
 ```
 
-iPolloWalkは現在 `apps/app`（UI）と `apps/desktop`（デスクトップシェル）に配置されています。
+iPolloWorkは現在 `apps/app`（UI）と `apps/desktop`（デスクトップシェル）に配置されています。
 
 ### 実行（デスクトップ）
 
@@ -112,7 +112,7 @@ iPolloWalkは現在 `apps/app`（UI）と `apps/desktop`（デスクトップシ
 pnpm dev
 ```
 
-`pnpm dev` は自動的に `IPOLLOWALK_DEV_MODE=1` を有効にするため、デスクトップ開発では個人のグローバル設定/認証/データの代わりに分離されたOpenCode状態を使用します。
+`pnpm dev` は自動的に `IPOLLOWORK_DEV_MODE=1` を有効にするため、デスクトップ開発では個人のグローバル設定/認証/データの代わりに分離されたOpenCode状態を使用します。
 
 ### 実行（Web UIのみ）
 
@@ -120,7 +120,7 @@ pnpm dev
 pnpm dev:ui
 ```
 
-リポジトリのすべての `dev` エントリポイントは同じ開発モード分離にオプトインするため、ローカルテストでは一貫してiPolloWalk管理のOpenCode状態を使用します。
+リポジトリのすべての `dev` エントリポイントは同じ開発モード分離にオプトインするため、ローカルテストでは一貫してiPolloWork管理のOpenCode状態を使用します。
 
 ### Archユーザー向け:
 
@@ -131,11 +131,11 @@ curl -fsSL https://opencode.ai/install | bash -s -- --version "$(node -e "const 
 
 ## アーキテクチャ（概要）
 
-- **ホストモード**では、iPolloWalkはローカルホストスタックを実行し、UIをそれに接続します。
-  - デフォルトランタイム: `ipollowalk`（`ipollowalk-orchestrator` からインストール）。`opencode` と `ipollowalk-server` をオーケストレーションします。
+- **ホストモード**では、iPolloWorkはローカルホストスタックを実行し、UIをそれに接続します。
+  - デフォルトランタイム: `ipollowork`（`ipollowork-orchestrator` からインストール）。`opencode` と `ipollowork-server` をオーケストレーションします。
   - フォールバックランタイム: `direct`。デスクトップアプリが直接 `opencode serve --hostname 127.0.0.1 --port <free-port>` を起動します。
 
-プロジェクトフォルダを選択すると、iPolloWalkはそのフォルダを使用してローカルでホストスタックを実行し、デスクトップUIを接続します。
+プロジェクトフォルダを選択すると、iPolloWorkはそのフォルダを使用してローカルでホストスタックを実行し、デスクトップUIを接続します。
 これにより、リモートサーバーなしで完全にマシン上でエージェントワークフローの実行、プロンプトの送信、進捗の確認が可能です。
 
 - UIは `@opencode-ai/sdk/v2/client` を使用して:
@@ -154,12 +154,12 @@ curl -fsSL https://opencode.ai/install | bash -s -- --version "$(node -e "const 
 
 ## OpenCodeプラグイン
 
-プラグインはOpenCodeを拡張する**ネイティブ**な方法です。iPolloWalkはスキルタブから `opencode.json` を読み書きして管理します。
+プラグインはOpenCodeを拡張する**ネイティブ**な方法です。iPolloWorkはスキルタブから `opencode.json` を読み書きして管理します。
 
 - **プロジェクトスコープ**: `<workspace>/opencode.json`
 - **グローバルスコープ**: `~/.config/opencode/opencode.json`（または `$XDG_CONFIG_HOME/opencode/opencode.json`）
 
-`opencode.json` を手動で編集することもできます。iPolloWalkはOpenCode CLIと同じ形式を使用します:
+`opencode.json` を手動で編集することもできます。iPolloWorkはOpenCode CLIと同じ形式を使用します:
 
 ```json
 {
@@ -185,19 +185,19 @@ pnpm test:e2e
 
 ### Linux / Wayland（Hyprland）
 
-iPolloWalkがWebKitGTKエラー（`Failed to create GBM buffer` など）で起動時にクラッシュする場合は、起動前にdmabufまたはコンポジティングを無効にしてください。以下のいずれかの環境変数フラグを試してください。
+iPolloWorkがWebKitGTKエラー（`Failed to create GBM buffer` など）で起動時にクラッシュする場合は、起動前にdmabufまたはコンポジティングを無効にしてください。以下のいずれかの環境変数フラグを試してください。
 
 ```bash
-WEBKIT_DISABLE_DMABUF_RENDERER=1 ipollowalk
+WEBKIT_DISABLE_DMABUF_RENDERER=1 ipollowork
 ```
 
 ```bash
-WEBKIT_DISABLE_COMPOSITING_MODE=1 ipollowalk
+WEBKIT_DISABLE_COMPOSITING_MODE=1 ipollowork
 ```
 
 ## セキュリティに関する注意
 
-- iPolloWalkはデフォルトでモデルの推論と機密ツールメタデータを非表示にします。
+- iPolloWorkはデフォルトでモデルの推論と機密ツールメタデータを非表示にします。
 - ホストモードはデフォルトで `127.0.0.1` にバインドします。
 
 ## コントリビューション
@@ -226,7 +226,7 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 ipollowalk
 
 ## チーム・企業向け
 
-組織でのiPolloWalk利用に興味がありますか？ぜひお聞かせください — [ben@ipollowalklabs.com](mailto:ben@ipollowalklabs.com) までユースケースについてご連絡ください。
+組織でのiPolloWork利用に興味がありますか？ぜひお聞かせください — [ben@ipolloworklabs.com](mailto:ben@ipolloworklabs.com) までユースケースについてご連絡ください。
 
 ## ライセンス
 

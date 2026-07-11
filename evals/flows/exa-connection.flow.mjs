@@ -9,10 +9,10 @@ import { denApiFetch, mcpAgentCall, mintMcpToken, openAdminConnections, signInAp
 
 const vo = await loadVoiceoverParagraphs("exa-connection");
 
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 const EXA_URL = "https://mcp.exa.ai/mcp";
-const EXA_API_KEY = process.env.IPOLLOWALK_EVAL_EXA_API_KEY?.trim() || "exa-eval-placeholder-key";
+const EXA_API_KEY = process.env.IPOLLOWORK_EVAL_EXA_API_KEY?.trim() || "exa-eval-placeholder-key";
 const HAS_REAL_EXA_API_KEY = EXA_API_KEY !== "exa-eval-placeholder-key";
 
 const state = {
@@ -61,7 +61,7 @@ export default {
   title: "Exa is a quick-add Cloud Connection with org API-key setup",
   kind: "user-facing",
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   spec: "evals/org-mcp-connections-ux.md",
   steps: [
     {
@@ -178,14 +178,14 @@ export default {
                 name: "execute_capability",
                 arguments: {
                   name: exaToolName,
-                  body: { query: "iPolloWalk AI agents", numResults: 1 },
+                  body: { query: "iPolloWork AI agents", numResults: 1 },
                 },
               }, ctx);
               const executeText = JSON.stringify(execute);
               ctx.assert(!executeText.includes("Invalid API key"), `Exa execution rejected the API key: ${executeText.slice(0, 500)}`);
               ctx.assert(execute.isError !== true, `Exa execution returned an error: ${executeText.slice(0, 500)}`);
             } else {
-              ctx.log("Skipping real Exa web_search_exa execution because real execution requires IPOLLOWALK_EVAL_EXA_API_KEY; placeholder keys only validate create and tool discovery.");
+              ctx.log("Skipping real Exa web_search_exa execution because real execution requires IPOLLOWORK_EVAL_EXA_API_KEY; placeholder keys only validate create and tool discovery.");
             }
 
             // The list polls/re-renders while the API checks above run, which

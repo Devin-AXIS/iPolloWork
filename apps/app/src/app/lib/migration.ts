@@ -11,12 +11,12 @@
 export const MIGRATION_SNAPSHOT_VERSION = 1;
 
 export const MIGRATION_KEY_PATTERNS: Array<RegExp> = [
-  /^ipollowalk\.react\.activeWorkspace$/,
-  /^ipollowalk\.react\.sessionByWorkspace$/,
-  /^ipollowalk\.server\.list$/,
-  /^ipollowalk\.server\.active$/,
-  /^ipollowalk\.server\.urlOverride$/,
-  /^ipollowalk\.server\.token$/,
+  /^ipollowork\.react\.activeWorkspace$/,
+  /^ipollowork\.react\.sessionByWorkspace$/,
+  /^ipollowork\.server\.list$/,
+  /^ipollowork\.server\.active$/,
+  /^ipollowork\.server\.urlOverride$/,
+  /^ipollowork\.server\.token$/,
 ];
 
 export type MigrationSnapshot = {
@@ -38,8 +38,8 @@ type ElectronMigrationBridge = {
 function electronMigrationBridge(): ElectronMigrationBridge | null {
   if (typeof window === "undefined") return null;
   const bridge = (window as unknown as {
-    __IPOLLOWALK_ELECTRON__?: { migration?: ElectronMigrationBridge };
-  }).__IPOLLOWALK_ELECTRON__;
+    __IPOLLOWORK_ELECTRON__?: { migration?: ElectronMigrationBridge };
+  }).__IPOLLOWORK_ELECTRON__;
   return bridge?.migration ?? null;
 }
 
@@ -87,7 +87,7 @@ export async function ingestMigrationSnapshotOnElectronBoot(): Promise<number> {
 }
 
 // Localstorage key that stores a "don't ask again until" epoch-ms.
-export const MIGRATION_DEFER_KEY = "ipollowalk.migration.deferredUntil";
+export const MIGRATION_DEFER_KEY = "ipollowork.migration.deferredUntil";
 export const MIGRATION_DEFAULT_DEFER_MS = 24 * 60 * 60 * 1000;
 
 export function isMigrationDeferred(now: number = Date.now()): boolean {

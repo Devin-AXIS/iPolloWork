@@ -47,21 +47,21 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const pty = require(["node", "pty"].join("-"));
-const NATIVE_DEEP_LINK_EVENT = "ipollowalk:deep-link-native";
-const TAURI_APP_IDENTIFIER = "com.differentai.ipollowalk";
-const DEV_APP_IDENTIFIER = "com.differentai.ipollowalk.dev";
-const DESKTOP_PROTOCOL_SCHEME = "ipollowalk";
-const isDevMode = process.env.IPOLLOWALK_DEV_MODE === "1";
+const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
+const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";
+const DEV_APP_IDENTIFIER = "com.differentai.ipollowork.dev";
+const DESKTOP_PROTOCOL_SCHEME = "ipollowork";
+const isDevMode = process.env.IPOLLOWORK_DEV_MODE === "1";
 const APP_NAME =
-  process.env.IPOLLOWALK_ELECTRON_APP_NAME?.trim() ||
-  (isDevMode ? "iPolloWalk - Dev" : "iPolloWalk");
+  process.env.IPOLLOWORK_ELECTRON_APP_NAME?.trim() ||
+  (isDevMode ? "iPolloWork - Dev" : "iPolloWork");
 let currentDisplayAppName = APP_NAME;
 const APP_IDENTIFIER =
-  process.env.IPOLLOWALK_ELECTRON_APP_IDENTIFIER?.trim() ||
+  process.env.IPOLLOWORK_ELECTRON_APP_IDENTIFIER?.trim() ||
   (isDevMode ? DEV_APP_IDENTIFIER : TAURI_APP_IDENTIFIER);
-const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/Devin-AXIS/iPolloWalk/releases/latest/download";
-const RELEASE_PAGE_URL = "https://github.com/Devin-AXIS/iPolloWalk/releases/latest";
-const DOCS_PAGE_URL = "https://ipollowalklabs.com/docs";
+const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
+const RELEASE_PAGE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest";
+const DOCS_PAGE_URL = "https://ipolloworklabs.com/docs";
 const applicationMenu = createApplicationMenu({
   appName: APP_NAME,
   docsUrl: DOCS_PAGE_URL,
@@ -113,14 +113,14 @@ function killTerminalsForWebContents(webContentsId) {
 // so in-place migration is a no-op for almost every file. Dev mode uses the
 // separate dev identifier so it can run beside the production app.
 //
-// Override via IPOLLOWALK_ELECTRON_USERDATA so dogfooders can isolate their
+// Override via IPOLLOWORK_ELECTRON_USERDATA so dogfooders can isolate their
 // Electron install from the real Tauri app.
 app.setName(APP_NAME);
 app.setAppUserModelId(APP_IDENTIFIER);
 if (app.isPackaged) {
   app.setAsDefaultProtocolClient(DESKTOP_PROTOCOL_SCHEME);
 }
-const userDataOverride = process.env.IPOLLOWALK_ELECTRON_USERDATA?.trim();
+const userDataOverride = process.env.IPOLLOWORK_ELECTRON_USERDATA?.trim();
 if (userDataOverride) {
   app.setPath("userData", userDataOverride);
 } else {
@@ -268,7 +268,7 @@ async function resolveArchitectureInfo() {
   const systemArch = resolveSystemArch();
   const version = app.getVersion();
   const targetArch = systemArch === "arm64" || systemArch === "x64" ? systemArch : appArch;
-  const assetName = `ipollowalk-${platformDownloadSlug()}-${downloadAssetArch(targetArch)}-${version}.${downloadAssetExtension()}`;
+  const assetName = `ipollowork-${platformDownloadSlug()}-${downloadAssetArch(targetArch)}-${version}.${downloadAssetExtension()}`;
   const latestDownloadUrl = await resolveCorrectArchitectureDownloadUrl(targetArch);
   const hasCorrectArchitectureDownload = Boolean(latestDownloadUrl);
   return {
@@ -307,7 +307,7 @@ function brandIconWindowsPath() {
 }
 
 function defaultAppWindowsIconPath() {
-  return path.join(app.getPath("userData"), "ipollowalk-stock.ico");
+  return path.join(app.getPath("userData"), "ipollowork-stock.ico");
 }
 
 let cachedWindowsProgramsPath = null;
@@ -518,7 +518,7 @@ async function focusMainWindowFromNotification() {
 
 /**
  * @param {unknown} input
- * @returns {import("@ipollowalk/types/desktop-ipc").DesktopNotificationResult}
+ * @returns {import("@ipollowork/types/desktop-ipc").DesktopNotificationResult}
  */
 function showDesktopNotification(input) {
   if (!ElectronNotification.isSupported()) {
@@ -772,7 +772,7 @@ if (process.platform === "darwin" && INITIAL_APP_ICON_IMAGE && !INITIAL_APP_ICON
 }
 
 // Expose Chrome DevTools Protocol so the opencode-chrome-devtools plugin can
-// drive the built-in browser panel.  Use IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT to
+// drive the built-in browser panel.  Use IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT to
 // pin a specific port; otherwise probe for a free one starting at 9223.
 // Must resolve before app.commandLine.appendSwitch (before `ready`).
 function probePort(port) {
@@ -793,7 +793,7 @@ async function findFreeCdpPort(candidates) {
 }
 
 const explicitCdpPort = Number.parseInt(
-  process.env.IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT?.trim() ?? "",
+  process.env.IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT?.trim() ?? "",
   10,
 );
 const remoteDebugPort = Number.isFinite(explicitCdpPort) && explicitCdpPort > 0
@@ -804,8 +804,8 @@ if (remoteDebugPort > 0) {
   app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 }
 // Make the resolved port available to the embedded server so it flows into
-// agent instructions via ensureiPolloWalkAgent → resolveAgentTemplate.
-process.env.IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT = String(remoteDebugPort);
+// agent instructions via ensureiPolloWorkAgent → resolveAgentTemplate.
+process.env.IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT = String(remoteDebugPort);
 
 // Apply extra Chromium flags from ELECTRON_EXTRA_LAUNCH_ARGS.
 // Used in headless/Daytona environments to pass e.g. --disable-gpu.
@@ -822,10 +822,10 @@ if (extraLaunchArgs) {
     }
   }
 }
-configureFakeMediaForTests(app, envFlagEnabled("IPOLLOWALK_ELECTRON_FAKE_MEDIA"));
-const DEFAULT_DEN_BASE_URL = "https://app.ipollowalklabs.com";
+configureFakeMediaForTests(app, envFlagEnabled("IPOLLOWORK_ELECTRON_FAKE_MEDIA"));
+const DEFAULT_DEN_BASE_URL = "https://app.ipolloworklabs.com";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:4096";
-const FORCE_DESKTOP_REQUIRE_SIGNIN = envFlagEnabled("IPOLLOWALK_FORCE_SIGNIN");
+const FORCE_DESKTOP_REQUIRE_SIGNIN = envFlagEnabled("IPOLLOWORK_FORCE_SIGNIN");
 const DEFAULT_DESKTOP_REQUIRE_SIGNIN = FORCE_DESKTOP_REQUIRE_SIGNIN;
 
 function envFlagEnabled(name) {
@@ -849,7 +849,7 @@ const IDLE_ENGINE_INFO = Object.freeze({
   lastStderr: null,
 });
 
-const IDLE_IPOLLOWALK_SERVER_INFO = Object.freeze({
+const IDLE_IPOLLOWORK_SERVER_INFO = Object.freeze({
   running: false,
   remoteAccessEnabled: false,
   host: null,
@@ -907,8 +907,8 @@ function forwardedDeepLinks(argv) {
     .map((entry) => entry.trim())
     .filter(
       (entry) =>
-        entry.startsWith("ipollowalk://") ||
-        entry.startsWith("ipollowalk-dev://") ||
+        entry.startsWith("ipollowork://") ||
+        entry.startsWith("ipollowork-dev://") ||
         entry.startsWith("https://") ||
         entry.startsWith("http://"),
     );
@@ -1040,7 +1040,7 @@ function showShutdownScreen() {
   <body>
     <main>
       <div class="spinner" aria-hidden="true"></div>
-      <div class="title">Stopping iPolloWalk services</div>
+      <div class="title">Stopping iPolloWork services</div>
       <div class="body">Closing local workers and background services...</div>
     </main>
   </body>
@@ -1061,15 +1061,15 @@ async function disposeRuntimeBeforeQuit() {
   }
 }
 
-function assertiPolloWalkServerReady(info) {
+function assertiPolloWorkServerReady(info) {
   if (!info?.running) {
-    throw new Error("iPolloWalk server did not stay running after startup.");
+    throw new Error("iPolloWork server did not stay running after startup.");
   }
   if (!info.baseUrl) {
-    throw new Error("iPolloWalk server did not report a base URL after startup.");
+    throw new Error("iPolloWork server did not report a base URL after startup.");
   }
   if (!info.ownerToken && !info.clientToken) {
-    throw new Error("iPolloWalk server did not report an access token after startup.");
+    throw new Error("iPolloWork server did not report an access token after startup.");
   }
   return info;
 }
@@ -1133,8 +1133,8 @@ async function bootRuntimeForSelectedWorkspace() {
     workspacePath: bootWorkspaceRoot,
     name: bootWorkspace.name ?? bootWorkspace.displayName ?? null,
   }).catch(() => undefined);
-  const ipollowalkServer = assertiPolloWalkServerReady(await runtimeManager.ipollowalkServerInfo());
-  return { ok: true, skipped: false, engine, ipollowalkServer, workspaceId: bootWorkspace.id ?? null };
+  const ipolloworkServer = assertiPolloWorkServerReady(await runtimeManager.ipolloworkServerInfo());
+  return { ok: true, skipped: false, engine, ipolloworkServer, workspaceId: bootWorkspace.id ?? null };
 }
 
 function ensureRuntimeBootstrap() {
@@ -1431,9 +1431,9 @@ function applyNativeTheme(mode) {
 // entry here; handlers receive the ipcMain event followed by the renderer
 // arguments. The @type below asserts this registry against the shared
 // DesktopCommandMap contract (packages/types/src/desktop-ipc.ts): a missing,
-// extra, or renamed command fails `pnpm --filter @ipollowalk/desktop
+// extra, or renamed command fails `pnpm --filter @ipollowork/desktop
 // typecheck:electron`.
-/** @type {import("@ipollowalk/types/desktop-ipc").DesktopCommandHandlers<import("electron").IpcMainInvokeEvent>} */
+/** @type {import("@ipollowork/types/desktop-ipc").DesktopCommandHandlers<import("electron").IpcMainInvokeEvent>} */
 const desktopCommandHandlers = {
   "workspaceBootstrap": async (event, ...args) => {
       return workspaceStore.readWorkspaceState();
@@ -1462,13 +1462,13 @@ const desktopCommandHandlers = {
   "workspaceAddAuthorizedRoot": async (event, ...args) => {
       return workspaceStore.addAuthorizedRoot(args[0] ?? {});
   },
-  "workspaceiPolloWalkRead": async (event, ...args) => {
-      return workspaceStore.readWorkspaceiPolloWalkConfig(String(args[0]?.workspacePath ?? "").trim());
+  "workspaceiPolloWorkRead": async (event, ...args) => {
+      return workspaceStore.readWorkspaceiPolloWorkConfig(String(args[0]?.workspacePath ?? "").trim());
   },
-  "workspaceiPolloWalkWrite": async (event, ...args) => {
-      return workspaceStore.writeWorkspaceiPolloWalkConfig(
+  "workspaceiPolloWorkWrite": async (event, ...args) => {
+      return workspaceStore.writeWorkspaceiPolloWorkConfig(
         String(args[0]?.workspacePath ?? "").trim(),
-        args[0]?.config ?? workspaceStore.defaultWorkspaceiPolloWalkConfig(""),
+        args[0]?.config ?? workspaceStore.defaultWorkspaceiPolloWorkConfig(""),
       );
   },
   "workspaceExportConfig": async (event, ...args) => {
@@ -1535,9 +1535,9 @@ const desktopCommandHandlers = {
   "appBuildInfo": async (event, ...args) => {
       return {
         version: app.getVersion(),
-        gitSha: process.env.IPOLLOWALK_GIT_SHA ?? null,
-        buildEpoch: process.env.IPOLLOWALK_BUILD_EPOCH ?? null,
-        ipollowalkDevMode: process.env.IPOLLOWALK_DEV_MODE === "1",
+        gitSha: process.env.IPOLLOWORK_GIT_SHA ?? null,
+        buildEpoch: process.env.IPOLLOWORK_BUILD_EPOCH ?? null,
+        ipolloworkDevMode: process.env.IPOLLOWORK_DEV_MODE === "1",
       };
   },
   "desktopNotificationShow": async (event, ...args) => {
@@ -1545,17 +1545,17 @@ const desktopCommandHandlers = {
   },
   "getUiControlBridgeInfo": async (event, ...args) => {
       try {
-        const raw = await readFile(path.join(app.getPath("userData"), "ipollowalk-ui-control.json"), "utf8");
+        const raw = await readFile(path.join(app.getPath("userData"), "ipollowork-ui-control.json"), "utf8");
         return JSON.parse(raw);
       } catch {
         return null;
       }
   },
-  "getiPolloWalkUiMcpCommand": async (event, ...args) => {
-      if (process.env.IPOLLOWALK_DEV_MODE === "1") {
-        return ["node", path.resolve(__dirname, "../../..", "packages/ipollowalk-ui-mcp/index.mjs")];
+  "getiPolloWorkUiMcpCommand": async (event, ...args) => {
+      if (process.env.IPOLLOWORK_DEV_MODE === "1") {
+        return ["node", path.resolve(__dirname, "../../..", "packages/ipollowork-ui-mcp/index.mjs")];
       }
-      return ["npx", "-y", "ipollowalk-ui-mcp"];
+      return ["npx", "-y", "ipollowork-ui-mcp"];
   },
   "getComputerUseMcpCommand": async (event, ...args) => {
       return getComputerUseMcpCommand();
@@ -1579,9 +1579,9 @@ const desktopCommandHandlers = {
       await openComputerUseSetupApp();
       return checkComputerUsePermissions();
   },
-  "getiPolloWalkUiMcpEnvironment": async (event, ...args) => {
+  "getiPolloWorkUiMcpEnvironment": async (event, ...args) => {
       return {
-        IPOLLOWALK_UI_CONTROL_DISCOVERY: path.join(app.getPath("userData"), "ipollowalk-ui-control.json"),
+        IPOLLOWORK_UI_CONTROL_DISCOVERY: path.join(app.getPath("userData"), "ipollowork-ui-control.json"),
       };
   },
   "getDesktopBootstrapConfig": async (event, ...args) => {
@@ -1596,7 +1596,7 @@ const desktopCommandHandlers = {
   "setDesktopBootstrapConfig": async (event, ...args) => {
       return workspaceStore.setDesktopBootstrapConfig(args[0] ?? {});
   },
-  "nukeiPolloWalkAndOpencodeConfigAndExit": async (event, ...args) => {
+  "nukeiPolloWorkAndOpencodeConfigAndExit": async (event, ...args) => {
       await rm(app.getPath("userData"), { recursive: true, force: true });
       app.exit(0);
       return undefined;
@@ -1610,17 +1610,17 @@ const desktopCommandHandlers = {
   "sandboxStop": async (event, ...args) => {
       return runtimeManager.sandboxStop(String(args[0] ?? "").trim());
   },
-  "sandboxCleanupiPolloWalkContainers": async (event, ...args) => {
-      return runtimeManager.sandboxCleanupiPolloWalkContainers();
+  "sandboxCleanupiPolloWorkContainers": async (event, ...args) => {
+      return runtimeManager.sandboxCleanupiPolloWorkContainers();
   },
   "sandboxDebugProbe": async (event, ...args) => {
       return runtimeManager.sandboxDebugProbe();
   },
-  "ipollowalkServerInfo": async (event, ...args) => {
-      return runtimeManager.ipollowalkServerInfo();
+  "ipolloworkServerInfo": async (event, ...args) => {
+      return runtimeManager.ipolloworkServerInfo();
   },
-  "ipollowalkServerRestart": async (event, ...args) => {
-      return runtimeManager.ipollowalkServerRestart(args[0] ?? {});
+  "ipolloworkServerRestart": async (event, ...args) => {
+      return runtimeManager.ipolloworkServerRestart(args[0] ?? {});
   },
   "pickDirectory": async (event, ...args) => {
       const options = args[0] ?? {};
@@ -1747,8 +1747,8 @@ const desktopCommandHandlers = {
         String(args[2] ?? ""),
       );
   },
-  "resetiPolloWalkState": async (event, ...args) => {
-      return workspaceStore.resetiPolloWalkState();
+  "resetiPolloWorkState": async (event, ...args) => {
+      return workspaceStore.resetiPolloWorkState();
   },
   "resetOpencodeCache": async (event, ...args) => {
       return { removed: [], missing: [], errors: [] };
@@ -2141,7 +2141,7 @@ async function createMainWindow() {
     browserPanel.routeBlockedMainWindowNavigation(url);
   });
 
-  const startUrl = process.env.IPOLLOWALK_ELECTRON_START_URL?.trim() || process.env.ELECTRON_START_URL?.trim();
+  const startUrl = process.env.IPOLLOWORK_ELECTRON_START_URL?.trim() || process.env.ELECTRON_START_URL?.trim();
   if (startUrl) {
     await mainWindow.loadURL(startUrl);
   } else {
@@ -2153,23 +2153,23 @@ async function createMainWindow() {
   return mainWindow;
 }
 
-ipcMain.handle("ipollowalk:desktop", handleDesktopInvoke);
-ipcMain.handle("ipollowalk:shell:openExternal", async (_event, url) => {
+ipcMain.handle("ipollowork:desktop", handleDesktopInvoke);
+ipcMain.handle("ipollowork:shell:openExternal", async (_event, url) => {
   if (typeof url !== "string" || url.trim().length === 0) {
     return { ok: false, error: "empty url" };
   }
   return openExternalUrl(url.trim());
 });
-ipcMain.handle("ipollowalk:shell:relaunch", async () => {
+ipcMain.handle("ipollowork:shell:relaunch", async () => {
   app.relaunch();
   app.exit(0);
 });
-ipcMain.handle("ipollowalk:system:architecture", async () => resolveArchitectureInfo());
-ipcMain.handle("ipollowalk:system:microphoneStatus", async () => {
+ipcMain.handle("ipollowork:system:architecture", async () => resolveArchitectureInfo());
+ipcMain.handle("ipollowork:system:microphoneStatus", async () => {
   if (process.platform !== "darwin") return { platform: process.platform, status: "not-mac" };
   return { platform: process.platform, status: systemPreferences.getMediaAccessStatus("microphone") };
 });
-ipcMain.handle("ipollowalk:system:askMicrophoneAccess", async () => {
+ipcMain.handle("ipollowork:system:askMicrophoneAccess", async () => {
   if (process.platform !== "darwin") return { platform: process.platform, granted: true, status: "not-mac" };
   const before = systemPreferences.getMediaAccessStatus("microphone");
   const granted = await systemPreferences.askForMediaAccess("microphone");
@@ -2178,7 +2178,7 @@ ipcMain.handle("ipollowalk:system:askMicrophoneAccess", async () => {
 });
 
 // ── Terminal IPC ────────────────────────────────────────────────────────
-ipcMain.handle("ipollowalk:terminal:create", async (event, options = {}) => {
+ipcMain.handle("ipollowork:terminal:create", async (event, options = {}) => {
   const cwd = await resolveTerminalCwd(options?.cwd);
   const cols = Number.isFinite(options?.cols) ? Math.max(20, Math.floor(options.cols)) : 80;
   const rows = Number.isFinite(options?.rows) ? Math.max(5, Math.floor(options.rows)) : 24;
@@ -2193,7 +2193,7 @@ ipcMain.handle("ipollowalk:terminal:create", async (event, options = {}) => {
       ...process.env,
       TERM: "xterm-256color",
       COLORTERM: "truecolor",
-      IPOLLOWALK_TERMINAL: "1",
+      IPOLLOWORK_TERMINAL: "1",
     },
   });
 
@@ -2201,33 +2201,33 @@ ipcMain.handle("ipollowalk:terminal:create", async (event, options = {}) => {
   event.sender.once("destroyed", () => killTerminalsForWebContents(event.sender.id));
   child.onData((data) => {
     if (event.sender.isDestroyed()) return;
-    event.sender.send("ipollowalk:terminal:data", { terminalId, data });
+    event.sender.send("ipollowork:terminal:data", { terminalId, data });
   });
   child.onExit(({ exitCode, signal }) => {
     terminalProcesses.delete(terminalId);
     if (event.sender.isDestroyed()) return;
-    event.sender.send("ipollowalk:terminal:exit", { terminalId, exitCode, signal });
+    event.sender.send("ipollowork:terminal:exit", { terminalId, exitCode, signal });
   });
 
   return { terminalId };
 });
-ipcMain.handle("ipollowalk:terminal:write", (event, terminalId, data) => {
+ipcMain.handle("ipollowork:terminal:write", (event, terminalId, data) => {
   const terminal = terminalForSender(event, terminalId);
   if (!terminal || typeof data !== "string") return;
   terminal.process.write(data);
 });
-ipcMain.handle("ipollowalk:terminal:resize", (event, terminalId, cols, rows) => {
+ipcMain.handle("ipollowork:terminal:resize", (event, terminalId, cols, rows) => {
   const terminal = terminalForSender(event, terminalId);
   if (!terminal || !Number.isFinite(cols) || !Number.isFinite(rows)) return;
   terminal.process.resize(Math.max(20, Math.floor(cols)), Math.max(5, Math.floor(rows)));
 });
-ipcMain.handle("ipollowalk:terminal:kill", (event, terminalId) => {
+ipcMain.handle("ipollowork:terminal:kill", (event, terminalId) => {
   const terminal = terminalForSender(event, terminalId);
   if (!terminal) return;
   killTerminal(String(terminalId));
 });
 
-ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) => {
+ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) => {
   const collectHyperframesFrames = (frame, matches = []) => {
     if (frame.url.startsWith("http://localhost:3002/") || frame.url.startsWith("http://127.0.0.1:3002/")) matches.push(frame);
     for (const child of frame.frames) collectHyperframesFrames(child, matches);
@@ -2238,7 +2238,7 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
   if (!studioFrame) return { ok: false, reason: "studio-frame-missing" };
   const result = await studioFrame.executeJavaScript(`(() => {
     const enabled = ${enabled ? "true" : "false"};
-    const wasEnabled = document.documentElement.dataset.ipollowalkSimpleMode === 'true';
+    const wasEnabled = document.documentElement.dataset.ipolloworkSimpleMode === 'true';
     const clearCanvasSelection = () => {
       const [path, query = ''] = location.hash.slice(1).split('?');
       const params = new URLSearchParams(query);
@@ -2289,32 +2289,32 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
         iframe?.contentWindow?.__player?.seek?.(0);
       }, 120);
     }
-    if (window.__ipollowalkSimpleVideoListener !== 7) {
-      window.__ipollowalkSimpleVideoListener = 7;
-      window.__ipollowalkVideoAdvancedExplicit = false;
+    if (window.__ipolloworkSimpleVideoListener !== 7) {
+      window.__ipolloworkSimpleVideoListener = 7;
+      window.__ipolloworkVideoAdvancedExplicit = false;
       window.addEventListener('message', (event) => {
         const inspector = document.querySelector('button[aria-label="Inspector"]');
-        if (event.data?.type === 'ipollowalk:hyperframes:direct-text-edit' || event.data?.type === 'ipollowalk:hyperframes:element-edit') {
-          window.__ipollowalkVideoAdvancedExplicit = false;
+        if (event.data?.type === 'ipollowork:hyperframes:direct-text-edit' || event.data?.type === 'ipollowork:hyperframes:element-edit') {
+          window.__ipolloworkVideoAdvancedExplicit = false;
           clearCanvasSelection();
-          if (document.documentElement.dataset.ipollowalkSimpleMode === 'true' && inspector?.getAttribute('aria-pressed') === 'true') {
+          if (document.documentElement.dataset.ipolloworkSimpleMode === 'true' && inspector?.getAttribute('aria-pressed') === 'true') {
             inspector.click();
           }
           return;
         }
-        if (event.data?.type === 'ipollowalk:hyperframes:native-selection-compact') {
-          window.__ipollowalkVideoAdvancedExplicit = false;
+        if (event.data?.type === 'ipollowork:hyperframes:native-selection-compact') {
+          window.__ipolloworkVideoAdvancedExplicit = false;
           applyCanvasSelection(event.data.target);
           if (inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
           return;
         }
-        if (event.data?.type === 'ipollowalk:hyperframes:open-advanced') {
+        if (event.data?.type === 'ipollowork:hyperframes:open-advanced') {
           const iframe = collectIframes(document).find((candidate) => candidate.contentWindow === event.source);
           const x = Number(event.data.x);
           const y = Number(event.data.y);
-          window.__ipollowalkVideoAdvancedExplicit = true;
+          window.__ipolloworkVideoAdvancedExplicit = true;
           const target = event.data.target || (Number.isFinite(x) && Number.isFinite(y)
-            ? iframe?.contentWindow?.__ipollowalkNativeTargetAtPoint?.(x, y)
+            ? iframe?.contentWindow?.__ipolloworkNativeTargetAtPoint?.(x, y)
             : null);
           if (!applyCanvasSelection(target)) {
             iframe?.contentWindow?.__HF_PICKER_API?.enable?.();
@@ -2329,12 +2329,12 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
       document.addEventListener('click', (event) => {
         const inspectorButton = event.target instanceof Element ? event.target.closest('button[aria-label="Inspector"]') : null;
         if (inspectorButton && inspectorButton.getAttribute('aria-pressed') === 'true') {
-          window.__ipollowalkVideoAdvancedExplicit = false;
+          window.__ipolloworkVideoAdvancedExplicit = false;
         }
       }, true);
       document.addEventListener('click', (event) => {
-        if (document.documentElement.dataset.ipollowalkSimpleMode !== 'true') return;
-        if (window.__ipollowalkVideoAdvancedExplicit) return;
+        if (document.documentElement.dataset.ipolloworkSimpleMode !== 'true') return;
+        if (window.__ipolloworkVideoAdvancedExplicit) return;
         for (const iframe of collectIframes(document)) {
           const rect = iframe.getBoundingClientRect();
           if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) continue;
@@ -2343,14 +2343,14 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
             const scaleY = Number(iframe.contentWindow?.innerHeight || rect.height) / Math.max(1, rect.height);
             const localX = (event.clientX - rect.left) * scaleX;
             const localY = (event.clientY - rect.top) * scaleY;
-            const toolbarClick = iframe.contentWindow?.__ipollowalkToolbarClickAtPoint?.(localX, localY);
+            const toolbarClick = iframe.contentWindow?.__ipolloworkToolbarClickAtPoint?.(localX, localY);
             if (toolbarClick) {
               event.preventDefault();
               event.stopImmediatePropagation();
               return;
             }
-            const directEdit = iframe.contentWindow?.__ipollowalkSelectAtPoint?.(localX, localY) ||
-              iframe.contentWindow?.__ipollowalkDirectTextAtPoint?.(localX, localY);
+            const directEdit = iframe.contentWindow?.__ipolloworkSelectAtPoint?.(localX, localY) ||
+              iframe.contentWindow?.__ipolloworkDirectTextAtPoint?.(localX, localY);
             if (directEdit) {
               clearCanvasSelection();
               const inspector = document.querySelector('button[aria-label="Inspector"]');
@@ -2359,7 +2359,7 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
               event.stopImmediatePropagation();
               return;
             }
-            const nativeTarget = iframe.contentWindow?.__ipollowalkNativeTargetAtPoint?.(localX, localY);
+            const nativeTarget = iframe.contentWindow?.__ipolloworkNativeTargetAtPoint?.(localX, localY);
             if (applyCanvasSelection(nativeTarget)) {
               const inspector = document.querySelector('button[aria-label="Inspector"]');
               if (inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
@@ -2377,45 +2377,45 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
         }
       }, true);
     }
-    document.documentElement.dataset.ipollowalkSimpleMode = enabled ? 'true' : 'false';
+    document.documentElement.dataset.ipolloworkSimpleMode = enabled ? 'true' : 'false';
     return { ok: true, sidebarToggled: Boolean(button), inspectorEnabled: inspector?.getAttribute('aria-pressed') === 'true' };
   })()`);
   if (enabled) {
     await Promise.all(frames.filter((frame) => frame !== studioFrame).map((frame) => frame.executeJavaScript(`(() => {
-      if (window.__ipollowalkSimpleVideoClickInstalled === 11) return;
-      window.__ipollowalkSimpleVideoClickInstalled = 11;
+      if (window.__ipolloworkSimpleVideoClickInstalled === 11) return;
+      window.__ipolloworkSimpleVideoClickInstalled = 11;
       for (const element of document.querySelectorAll('div')) {
         if (element.childElementCount === 0 && (element.textContent || '').trim()) {
-          element.setAttribute('data-ipollowalk-direct-text', 'true');
+          element.setAttribute('data-ipollowork-direct-text', 'true');
         }
         if (element.id && !element.hasAttribute('data-composition-id')) {
-          element.setAttribute('data-ipollowalk-direct-element', 'true');
+          element.setAttribute('data-ipollowork-direct-element', 'true');
         }
       }
-      const textSelector = 'h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote,[data-ipollowalk-direct-text]';
+      const textSelector = 'h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote,[data-ipollowork-direct-text]';
       let editing = null;
       let selected = null;
       let pendingPointer = null;
       let saveTimer = 0;
 
       const directEditStyle = document.createElement('style');
-      directEditStyle.dataset.ipollowalkDirectText = 'true';
+      directEditStyle.dataset.ipolloworkDirectText = 'true';
       directEditStyle.textContent = textSelector.split(',').map((selector) =>
         selector + ' { pointer-events: auto !important; }'
-      ).join('\\n') + '\\n[data-ipollowalk-direct-element] { pointer-events: auto !important; }';
+      ).join('\\n') + '\\n[data-ipollowork-direct-element] { pointer-events: auto !important; }';
       document.head.appendChild(directEditStyle);
 
       const toolbarStyle = document.createElement('style');
-      toolbarStyle.dataset.ipollowalkVideoToolbar = 'true';
-      toolbarStyle.textContent = '.ipollowalk-video-toolbar{position:fixed;z-index:2147483647;display:none;align-items:center;gap:4px;padding:5px;border:1px solid rgba(15,23,42,.12);border-radius:14px;background:rgba(255,255,255,.94);box-shadow:0 14px 40px rgba(15,23,42,.2);backdrop-filter:blur(18px);font:500 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;transform-origin:bottom center}.ipollowalk-video-toolbar button{appearance:none;border:0;background:transparent;color:inherit;height:28px;min-width:28px;padding:0 8px;border-radius:9px;font:inherit;cursor:pointer;display:grid;place-items:center}.ipollowalk-video-toolbar button:hover{background:#f1f5f9}.ipollowalk-video-toolbar .ow-tag{padding:0 7px;color:#64748b;font-size:10px;text-transform:uppercase}.ipollowalk-video-toolbar .ow-size{min-width:34px;background:#f8fafc}.ipollowalk-video-toolbar .ow-color{width:18px;height:18px;min-width:18px;padding:0;border:3px solid white;border-radius:999px;box-shadow:0 0 0 1px rgba(15,23,42,.16)}.ipollowalk-video-toolbar .ow-sep{width:1px;height:18px;background:#e2e8f0}.ipollowalk-video-colors{position:absolute;left:50%;bottom:38px;display:none;gap:6px;padding:7px;border:1px solid rgba(15,23,42,.1);border-radius:13px;background:rgba(255,255,255,.97);box-shadow:0 12px 32px rgba(15,23,42,.18);transform:translateX(-50%)}.ipollowalk-video-colors button{width:22px;height:22px;min-width:22px;padding:0;border-radius:999px;border:2px solid white;box-shadow:0 0 0 1px rgba(15,23,42,.13)}';
+      toolbarStyle.dataset.ipolloworkVideoToolbar = 'true';
+      toolbarStyle.textContent = '.ipollowork-video-toolbar{position:fixed;z-index:2147483647;display:none;align-items:center;gap:4px;padding:5px;border:1px solid rgba(15,23,42,.12);border-radius:14px;background:rgba(255,255,255,.94);box-shadow:0 14px 40px rgba(15,23,42,.2);backdrop-filter:blur(18px);font:500 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;transform-origin:bottom center}.ipollowork-video-toolbar button{appearance:none;border:0;background:transparent;color:inherit;height:28px;min-width:28px;padding:0 8px;border-radius:9px;font:inherit;cursor:pointer;display:grid;place-items:center}.ipollowork-video-toolbar button:hover{background:#f1f5f9}.ipollowork-video-toolbar .ow-tag{padding:0 7px;color:#64748b;font-size:10px;text-transform:uppercase}.ipollowork-video-toolbar .ow-size{min-width:34px;background:#f8fafc}.ipollowork-video-toolbar .ow-color{width:18px;height:18px;min-width:18px;padding:0;border:3px solid white;border-radius:999px;box-shadow:0 0 0 1px rgba(15,23,42,.16)}.ipollowork-video-toolbar .ow-sep{width:1px;height:18px;background:#e2e8f0}.ipollowork-video-colors{position:absolute;left:50%;bottom:38px;display:none;gap:6px;padding:7px;border:1px solid rgba(15,23,42,.1);border-radius:13px;background:rgba(255,255,255,.97);box-shadow:0 12px 32px rgba(15,23,42,.18);transform:translateX(-50%)}.ipollowork-video-colors button{width:22px;height:22px;min-width:22px;padding:0;border-radius:999px;border:2px solid white;box-shadow:0 0 0 1px rgba(15,23,42,.13)}';
       document.head.appendChild(toolbarStyle);
 
       const toolbar = document.createElement('div');
-      toolbar.className = 'ipollowalk-video-toolbar';
+      toolbar.className = 'ipollowork-video-toolbar';
       toolbar.setAttribute('role', 'toolbar');
       toolbar.setAttribute('aria-label', 'Video element quick editor');
-      toolbar.innerHTML = '<span class="ow-tag"></span><button type="button" data-action="text" title="Edit text">T</button><button type="button" data-action="smaller" title="Smaller">−</button><button type="button" class="ow-size" data-action="size" title="Font size">16</button><button type="button" data-action="larger" title="Larger">+</button><button type="button" class="ow-color" data-action="colors" title="Color"></button><span class="ow-sep"></span><button type="button" data-action="advanced" title="More properties">•••</button><div class="ipollowalk-video-colors"></div>';
-      const colors = toolbar.querySelector('.ipollowalk-video-colors');
+      toolbar.innerHTML = '<span class="ow-tag"></span><button type="button" data-action="text" title="Edit text">T</button><button type="button" data-action="smaller" title="Smaller">−</button><button type="button" class="ow-size" data-action="size" title="Font size">16</button><button type="button" data-action="larger" title="Larger">+</button><button type="button" class="ow-color" data-action="colors" title="Color"></button><span class="ow-sep"></span><button type="button" data-action="advanced" title="More properties">•••</button><div class="ipollowork-video-colors"></div>';
+      const colors = toolbar.querySelector('.ipollowork-video-colors');
       for (const color of ['#111827','#475569','#ffffff','#ef4444','#f59e0b','#22c55e','#3b82f6','#8b5cf6']) {
         const swatch = document.createElement('button');
         swatch.type = 'button';
@@ -2515,7 +2515,7 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
         toolbar.style.top = (placeAbove ? rect.top - 10 / scale : rect.bottom + 10 / scale) + 'px';
         toolbar.style.transform = 'translate(-50%, ' + (placeAbove ? '-100%' : '0') + ') scale(' + (1 / scale) + ')';
         toolbar.style.display = 'flex';
-        window.parent.postMessage({ type: 'ipollowalk:hyperframes:element-edit' }, '*');
+        window.parent.postMessage({ type: 'ipollowork:hyperframes:element-edit' }, '*');
       };
 
       const finishEditing = () => {
@@ -2584,7 +2584,7 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
           selection?.removeAllRanges();
           selection?.addRange(range);
         }
-        window.parent.postMessage({ type: 'ipollowalk:hyperframes:direct-text-edit' }, '*');
+        window.parent.postMessage({ type: 'ipollowork:hyperframes:direct-text-edit' }, '*');
         showToolbar(element);
         return true;
       };
@@ -2622,7 +2622,7 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
           finishEditing();
           toolbar.style.display = 'none';
           window.parent.postMessage({
-            type: 'ipollowalk:hyperframes:open-advanced',
+            type: 'ipollowork:hyperframes:open-advanced',
             x: rect.left + rect.width / 2,
             y: rect.top + rect.height / 2,
             target: { ...sourceTargetFor(selected), id: selected.id || undefined },
@@ -2655,7 +2655,7 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
           const element = editableAtPoint(event.clientX, event.clientY);
           const target = element ? sourceTargetFor(element) : null;
           window.setTimeout(() => window.parent.postMessage({
-            type: 'ipollowalk:hyperframes:native-selection-compact',
+            type: 'ipollowork:hyperframes:native-selection-compact',
             target: target ? { ...target, id: element.id || undefined } : null,
           }, '*'), 60);
           return;
@@ -2668,7 +2668,7 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
         const element = editableAtPoint(event.clientX, event.clientY);
         const target = element ? sourceTargetFor(element) : null;
         window.setTimeout(() => window.parent.postMessage({
-          type: 'ipollowalk:hyperframes:native-selection-compact',
+          type: 'ipollowork:hyperframes:native-selection-compact',
           target: target ? { ...target, id: element.id || undefined } : null,
         }, '*'), 60);
       }, true);
@@ -2685,17 +2685,17 @@ ipcMain.handle("ipollowalk:hyperframes:set-simple-mode", async (event, enabled) 
       document.addEventListener('focusout', (event) => {
         if (editing && event.target === editing) finishEditing();
       }, true);
-      window.__ipollowalkDirectTextAtPoint = (x, y) => {
+      window.__ipolloworkDirectTextAtPoint = (x, y) => {
         const element = textAtPoint(x, y);
         return element ? beginEditing(element, { clientX: x, clientY: y, stopImmediatePropagation() {} }) : false;
       };
-      window.__ipollowalkSelectAtPoint = (x, y) => selectTextAtPoint(x, y, { clientX: x, clientY: y, stopImmediatePropagation() {} });
-      window.__ipollowalkNativeTargetAtPoint = (x, y) => {
+      window.__ipolloworkSelectAtPoint = (x, y) => selectTextAtPoint(x, y, { clientX: x, clientY: y, stopImmediatePropagation() {} });
+      window.__ipolloworkNativeTargetAtPoint = (x, y) => {
         const element = editableAtPoint(x, y);
         const target = element ? sourceTargetFor(element) : null;
         return target ? { ...target, id: element.id || undefined } : null;
       };
-      window.__ipollowalkToolbarClickAtPoint = (x, y) => {
+      window.__ipolloworkToolbarClickAtPoint = (x, y) => {
         const target = document.elementFromPoint(x, y);
         if (!(target instanceof Element) || !toolbar.contains(target)) return false;
         target.closest('button')?.click();

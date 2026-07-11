@@ -57,12 +57,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Package Electron desktop (unpacked)
-        run: pnpm --filter @ipollowalk/desktop package:electron:dir
+        run: pnpm --filter @ipollowork/desktop package:electron:dir
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ipollowalk-electron-${{ matrix.artifact }}
+          name: ipollowork-electron-${{ matrix.artifact }}
           path: apps/desktop/dist-electron/**
 
   electron-macos-notarization-smoke:
@@ -113,5 +113,5 @@ jobs:
           APPLE_API_KEY_PATH: ${{ env.NOTARY_KEY_PATH }}
         run: |
           set -euo pipefail
-          pnpm --filter @ipollowalk/desktop run build:electron
+          pnpm --filter @ipollowork/desktop run build:electron
           pnpm --dir apps/desktop exec electron-builder --config electron-builder.yml --mac dmg zip --publish never

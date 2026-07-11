@@ -1,10 +1,10 @@
 import { useCallback, useState } from "react";
 
-import { ipollowalkServerRestart, type iPolloWalkServerInfo } from "../../../app/lib/desktop";
+import { ipolloworkServerRestart, type iPolloWorkServerInfo } from "../../../app/lib/desktop";
 import {
-  readiPolloWalkServerSettings,
-  writeiPolloWalkServerSettings,
-} from "../../../app/lib/ipollowalk-server";
+  readiPolloWorkServerSettings,
+  writeiPolloWorkServerSettings,
+} from "../../../app/lib/ipollowork-server";
 import { t } from "../../../i18n";
 
 export type RemoteAccessRestartPhase =
@@ -15,7 +15,7 @@ export type RemoteAccessRestartPhase =
 
 type UseRemoteAccessRestartOptions = {
   isEnabled: () => boolean;
-  onHostInfo: (info: iPolloWalkServerInfo) => void;
+  onHostInfo: (info: iPolloWorkServerInfo) => void;
   onSettingsChanged: () => void;
 };
 
@@ -27,17 +27,17 @@ export function useRemoteAccessRestart(options: UseRemoteAccessRestartOptions) {
     async (enabled: boolean) => {
       if (phase === "restarting" || phase === "reconnecting") return;
 
-      const previous = readiPolloWalkServerSettings();
+      const previous = readiPolloWorkServerSettings();
       const next = { ...previous, remoteAccessEnabled: enabled };
 
       setPhase("restarting");
       setError(null);
-      writeiPolloWalkServerSettings(next);
+      writeiPolloWorkServerSettings(next);
       options.onSettingsChanged();
 
       try {
-        const info = await ipollowalkServerRestart({ remoteAccessEnabled: enabled }) as iPolloWalkServerInfo;
-        writeiPolloWalkServerSettings({
+        const info = await ipolloworkServerRestart({ remoteAccessEnabled: enabled }) as iPolloWorkServerInfo;
+        writeiPolloWorkServerSettings({
           urlOverride: info.baseUrl?.trim() || undefined,
           token:
             info.ownerToken?.trim() ||
@@ -51,7 +51,7 @@ export function useRemoteAccessRestart(options: UseRemoteAccessRestartOptions) {
         options.onSettingsChanged();
         setPhase("idle");
       } catch (caught) {
-        writeiPolloWalkServerSettings(previous);
+        writeiPolloWorkServerSettings(previous);
         options.onSettingsChanged();
         setError(caught instanceof Error ? caught.message : t("app.error_remote_access"));
         setPhase("failed");

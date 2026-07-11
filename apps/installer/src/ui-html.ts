@@ -1,5 +1,5 @@
 import { installerConfigSourceLabel, type InstallerConfigResolution } from "./config"
-import { IPOLLOWALK_LOGO_SVG } from "./ipollowalk-logo"
+import { IPOLLOWORK_LOGO_SVG } from "./ipollowork-logo"
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
@@ -24,9 +24,9 @@ export function renderInstallerHtml(resolution: InstallerConfigResolution | null
   const config = resolution?.config ?? null
   const logo = config?.logoUrl
     ? `<img class="logo" src="${escapeHtml(config.logoUrl)}" alt="${escapeHtml(config.clientName)}" />`
-    : `<div class="logo">${IPOLLOWALK_LOGO_SVG}</div>`
+    : `<div class="logo">${IPOLLOWORK_LOGO_SVG}</div>`
   const sourceLabel = resolution ? installerConfigSourceLabel(resolution.source) : ""
-  const appName = config?.appName ?? "iPolloWalk"
+  const appName = config?.appName ?? "iPolloWork"
   const configuredContent = config
     ? `
   ${logo}
@@ -40,8 +40,8 @@ export function renderInstallerHtml(resolution: InstallerConfigResolution | null
   </div>
   <div class="status" id="status"></div>`
     : `
-  <div class="logo">${IPOLLOWALK_LOGO_SVG}</div>
-  <div class="title">Paste your iPolloWalk install link</div>
+  <div class="logo">${IPOLLOWORK_LOGO_SVG}</div>
+  <div class="title">Paste your iPolloWork install link</div>
   <div class="client">Your organization admin can copy this link from the Members page.</div>
   <form class="paste" id="paste-form">
     <input id="install-link" type="url" placeholder="https://.../install?token=..." autocomplete="off" required />
@@ -114,9 +114,9 @@ ${configuredContent}
   }
 
   function closeWindow() {
-    if (window.ipollowalkInstallerExit) {
+    if (window.ipolloworkInstallerExit) {
       // Native webview: the bound function terminates the window run loop.
-      window.ipollowalkInstallerExit();
+      window.ipolloworkInstallerExit();
       return;
     }
     api("/api/exit").catch(() => {});

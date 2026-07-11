@@ -8,31 +8,31 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const FLOW_ID = "desktop-upgrade-preserves-server-url";
 const vo = await loadVoiceoverParagraphs(FLOW_ID);
-const ORG_URL = "http://ipollowalk.example-manufacturing.internal:48765";
-const HOSTED_URL = "https://app.ipollowalklabs.com";
-const CANONICAL_BOOTSTRAP = "C:\\Users\\Administrator\\AppData\\Local\\ipollowalk\\desktop-bootstrap.json";
-const LEGACY_BOOTSTRAP = "C:\\Users\\Administrator\\.config\\ipollowalk\\desktop-bootstrap.json";
+const ORG_URL = "http://ipollowork.example-manufacturing.internal:48765";
+const HOSTED_URL = "https://app.ipolloworklabs.com";
+const CANONICAL_BOOTSTRAP = "C:\\Users\\Administrator\\AppData\\Local\\ipollowork\\desktop-bootstrap.json";
+const LEGACY_BOOTSTRAP = "C:\\Users\\Administrator\\.config\\ipollowork\\desktop-bootstrap.json";
 const DOWNLOAD_BUNDLE = "C:\\Users\\Administrator\\Downloads\\Example Manufacturing Upgrade";
-const INSTALLED_DESKTOP_DIR = "C:\\Users\\Administrator\\AppData\\Local\\Programs\\@ipollowalkdesktop";
-const BRANCH_LAUNCHER = "C:\\ow\\desktop-upgrade-url\\launch-ipollowalk.cmd";
-const FIREWALL_RULE = "iPolloWalk Upgrade URL Airgap Eval";
+const INSTALLED_DESKTOP_DIR = "C:\\Users\\Administrator\\AppData\\Local\\Programs\\@ipolloworkdesktop";
+const BRANCH_LAUNCHER = "C:\\ow\\desktop-upgrade-url\\launch-ipollowork.cmd";
+const FIREWALL_RULE = "iPolloWork Upgrade URL Airgap Eval";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function sandboxId(ctx) {
-  return (ctx.env.IPOLLOWALK_EVAL_DAYTONA_SANDBOX_ID || ctx.env.IPOLLOWALK_EVAL_DAYTONA_SANDBOX).trim();
+  return (ctx.env.IPOLLOWORK_EVAL_DAYTONA_SANDBOX_ID || ctx.env.IPOLLOWORK_EVAL_DAYTONA_SANDBOX).trim();
 }
 
 function windowsAppPath(ctx) {
-  return ctx.env.IPOLLOWALK_EVAL_WINDOWS_APP_PATH.trim();
+  return ctx.env.IPOLLOWORK_EVAL_WINDOWS_APP_PATH.trim();
 }
 
 function windowsInstallerPath(ctx) {
-  return ctx.env.IPOLLOWALK_EVAL_WINDOWS_INSTALLER_PATH.trim();
+  return ctx.env.IPOLLOWORK_EVAL_WINDOWS_INSTALLER_PATH.trim();
 }
 
 function standardInstallerPath(ctx) {
-  return ctx.env.IPOLLOWALK_EVAL_WINDOWS_STANDARD_INSTALLER_PATH.trim();
+  return ctx.env.IPOLLOWORK_EVAL_WINDOWS_STANDARD_INSTALLER_PATH.trim();
 }
 
 function computerUseScreenshot(name, options = {}) {
@@ -114,11 +114,11 @@ async function assertOrganizationBootstrap(ctx, label) {
   return config;
 }
 
-async function stopiPolloWalk(ctx) {
-  await windowsExec(ctx, "stop iPolloWalk", `
-Get-Process -Name iPolloWalk -ErrorAction SilentlyContinue | Stop-Process -Force
+async function stopiPolloWork(ctx) {
+  await windowsExec(ctx, "stop iPolloWork", `
+Get-Process -Name iPolloWork -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 800
-Write-Output 'iPolloWalk stopped'
+Write-Output 'iPolloWork stopped'
 `);
 }
 
@@ -131,7 +131,7 @@ async function launchViaRun(ctx, command) {
 }
 
 async function launchBranchApp(ctx) {
-  const launcher = `@echo off\r\nset "XDG_CONFIG_HOME="\r\nset "LOCALAPPDATA=C:\\Users\\Administrator\\AppData\\Local"\r\nset "IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT=9825"\r\nstart "" "${windowsAppPath(ctx)}"\r\n`;
+  const launcher = `@echo off\r\nset "XDG_CONFIG_HOME="\r\nset "LOCALAPPDATA=C:\\Users\\Administrator\\AppData\\Local"\r\nset "IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=9825"\r\nstart "" "${windowsAppPath(ctx)}"\r\n`;
   const launcherBase64 = Buffer.from(launcher, "utf8").toString("base64");
   await windowsExec(ctx, "write branch app launcher", `
 [IO.File]::WriteAllBytes('${BRANCH_LAUNCHER}', [Convert]::FromBase64String('${launcherBase64}'))
@@ -140,7 +140,7 @@ Write-Output 'branch app launcher ready'
   await launchViaRun(ctx, BRANCH_LAUNCHER);
   await sleep(1_000);
   await ctx.reconnect({ timeoutMs: 120_000 });
-  await ctx.waitFor("Boolean(window.__IPOLLOWALK_ELECTRON__)", {
+  await ctx.waitFor("Boolean(window.__IPOLLOWORK_ELECTRON__)", {
     timeoutMs: 60_000,
     label: "Windows Electron bridge",
   });
@@ -173,7 +173,7 @@ async function showAdvancedServer(ctx) {
 }
 
 async function showBootstrapDebug(ctx) {
-  await ctx.eval(`localStorage.setItem("ipollowalk.developerMode", "1")`);
+  await ctx.eval(`localStorage.setItem("ipollowork.developerMode", "1")`);
   await ctx.navigateHash("/settings/debug");
   await ctx.waitForText("Bootstrap config", { timeoutMs: 60_000 });
   await ctx.waitForText(ORG_URL, { timeoutMs: 60_000 });
@@ -192,8 +192,8 @@ async function prepareCanonicalState(ctx) {
 $canonical = '${CANONICAL_BOOTSTRAP}'
 $legacy = '${LEGACY_BOOTSTRAP}'
 $bundle = '${DOWNLOAD_BUNDLE}'
-Get-Process -Name msedge,ipollowalk-installer -ErrorAction SilentlyContinue | Stop-Process -Force
-Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -match '^iPolloWalk Setup' } | Stop-Process -Force
+Get-Process -Name msedge,ipollowork-installer -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -match '^iPolloWork Setup' } | Stop-Process -Force
 Remove-Item -LiteralPath 'C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Sessions' -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Edge' -Force | Out-Null
 New-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Edge' -Name HideFirstRunExperience -PropertyType DWord -Value 1 -Force | Out-Null
@@ -210,15 +210,15 @@ $organization = [ordered]@{
 }
 $hosted = [ordered]@{
   baseUrl = '${HOSTED_URL}'
-  apiBaseUrl = 'https://api.ipollowalklabs.com'
+  apiBaseUrl = 'https://api.ipolloworklabs.com'
   requireSignin = $true
-  brandAppName = 'iPolloWalk'
+  brandAppName = 'iPolloWork'
   writtenAt = '2026-07-10T12:00:00.000Z'
 }
 $utf8NoBom = New-Object Text.UTF8Encoding($false)
 [IO.File]::WriteAllText($canonical, ($organization | ConvertTo-Json), $utf8NoBom)
 [IO.File]::WriteAllText((Join-Path $bundle 'desktop-bootstrap.json'), ($hosted | ConvertTo-Json), $utf8NoBom)
-Copy-Item -LiteralPath '${standardInstaller}' -Destination (Join-Path $bundle 'ipollowalk-win-x64-0.17.20.exe') -Force
+Copy-Item -LiteralPath '${standardInstaller}' -Destination (Join-Path $bundle 'ipollowork-win-x64-0.17.20.exe') -Force
 Remove-NetFirewallRule -DisplayName '${FIREWALL_RULE}' -ErrorAction SilentlyContinue
 Write-Output 'canonical organization state ready'
 `);
@@ -250,17 +250,17 @@ export default {
   preserveTheme: true,
   requiredEnv: [
     "DAYTONA_API_KEY",
-    "IPOLLOWALK_EVAL_DAYTONA_SANDBOX",
-    "IPOLLOWALK_EVAL_WINDOWS_APP_PATH",
-    "IPOLLOWALK_EVAL_WINDOWS_INSTALLER_PATH",
-    "IPOLLOWALK_EVAL_WINDOWS_STANDARD_INSTALLER_PATH",
+    "IPOLLOWORK_EVAL_DAYTONA_SANDBOX",
+    "IPOLLOWORK_EVAL_WINDOWS_APP_PATH",
+    "IPOLLOWORK_EVAL_WINDOWS_INSTALLER_PATH",
+    "IPOLLOWORK_EVAL_WINDOWS_STANDARD_INSTALLER_PATH",
   ],
   steps: [
     {
       name: "Setup isolated Windows organization state",
       run: async (ctx) => {
         await daytonaComputerUseStart(sandboxId(ctx));
-        await stopiPolloWalk(ctx);
+        await stopiPolloWork(ctx);
         await prepareCanonicalState(ctx);
         await launchBranchApp(ctx);
       },
@@ -274,7 +274,7 @@ export default {
             await showAdvancedServer(ctx);
           },
           assert: async () => {
-            const runtime = await ctx.eval("window.__IPOLLOWALK_ELECTRON__?.system?.getArchitectureInfo?.()", { awaitPromise: true });
+            const runtime = await ctx.eval("window.__IPOLLOWORK_ELECTRON__?.system?.getArchitectureInfo?.()", { awaitPromise: true });
             ctx.assert(runtime?.platform === "windows", `Expected Windows Electron, got ${JSON.stringify(runtime)}`);
             await ctx.expectText("From bootstrap file");
             await ctx.expectText(ORG_URL);
@@ -293,7 +293,7 @@ export default {
         await ctx.prove("The Windows installer upgrades an existing organization-configured desktop", {
           voiceover: vo[1],
           action: async () => {
-            await stopiPolloWalk(ctx);
+            await stopiPolloWork(ctx);
             await windowsExec(ctx, "remove prior installed desktop binaries", `
 Remove-Item -LiteralPath '${INSTALLED_DESKTOP_DIR}' -Recurse -Force -ErrorAction SilentlyContinue
 Write-Output 'prior desktop binaries removed; bootstrap retained'
@@ -305,7 +305,7 @@ $env:USERPROFILE = 'C:\\Users\\Administrator'
 if ($LASTEXITCODE -ne 0) { throw "Organization installer dry run failed with exit code $LASTEXITCODE" }
 `);
             await launchViaRun(ctx, standardInstallerPath(ctx));
-            installerTitles = await waitForWindow(ctx, /iPolloWalk Setup/i, true, 30_000);
+            installerTitles = await waitForWindow(ctx, /iPolloWork Setup/i, true, 30_000);
             await sleep(500);
           },
           assert: async () => {
@@ -326,7 +326,7 @@ if ($LASTEXITCODE -ne 0) { throw "Organization installer dry run failed with exi
             let installedReady = false;
             while (Date.now() - startedAt < 180_000) {
               const installed = await windowsExec(ctx, "check installed desktop", `
-if (Test-Path -LiteralPath '${INSTALLED_DESKTOP_DIR}\\iPolloWalk.exe') { Write-Output 'installed' } else { Write-Output 'missing' }
+if (Test-Path -LiteralPath '${INSTALLED_DESKTOP_DIR}\\iPolloWork.exe') { Write-Output 'installed' } else { Write-Output 'missing' }
 `);
               if (installed.includes("installed")) {
                 installedReady = true;
@@ -336,7 +336,7 @@ if (Test-Path -LiteralPath '${INSTALLED_DESKTOP_DIR}\\iPolloWalk.exe') { Write-O
             }
             ctx.assert(installedReady, "The Windows installer did not restore the packaged desktop within 180 seconds.");
             await sleep(5_000);
-            await stopiPolloWalk(ctx);
+            await stopiPolloWork(ctx);
             await launchBranchApp(ctx);
             await showAdvancedServer(ctx);
           },
@@ -360,13 +360,13 @@ if (Test-Path -LiteralPath '${INSTALLED_DESKTOP_DIR}\\iPolloWalk.exe') { Write-O
           voiceover: vo[3],
           action: async () => {
             try {
-              await ctx.eval("window.__IPOLLOWALK_ELECTRON__.shell.relaunch()", { awaitPromise: true });
+              await ctx.eval("window.__IPOLLOWORK_ELECTRON__.shell.relaunch()", { awaitPromise: true });
             } catch (error) {
               ctx.log(`Expected relaunch disconnect: ${error instanceof Error ? error.message : String(error)}`);
             }
             await sleep(1_000);
             await ctx.reconnect({ timeoutMs: 120_000 });
-            await ctx.waitFor("Boolean(window.__IPOLLOWALK_ELECTRON__)", { timeoutMs: 60_000, label: "Electron bridge after restart" });
+            await ctx.waitFor("Boolean(window.__IPOLLOWORK_ELECTRON__)", { timeoutMs: 60_000, label: "Electron bridge after restart" });
             await showBootstrapDebug(ctx);
           },
           assert: async () => {
@@ -386,7 +386,7 @@ if (Test-Path -LiteralPath '${INSTALLED_DESKTOP_DIR}\\iPolloWalk.exe') { Write-O
         await ctx.prove("The legacy Windows bootstrap path outranks a newer hosted download bundle", {
           voiceover: vo[4],
           action: async () => {
-            await stopiPolloWalk(ctx);
+            await stopiPolloWork(ctx);
             await prepareLegacyUpgradeState(ctx);
             await launchBranchApp(ctx);
             await showAdvancedServer(ctx);
@@ -410,7 +410,7 @@ if (Test-Path -LiteralPath '${INSTALLED_DESKTOP_DIR}\\iPolloWalk.exe') { Write-O
         await ctx.prove("An offline Windows restart keeps the organization bootstrap without cloud replacement", {
           voiceover: vo[5],
           action: async () => {
-            await stopiPolloWalk(ctx);
+            await stopiPolloWork(ctx);
             const appPath = windowsAppPath(ctx).replaceAll("'", "''");
             await windowsExec(ctx, "block desktop outbound network", `
 Remove-NetFirewallRule -DisplayName '${FIREWALL_RULE}' -ErrorAction SilentlyContinue
@@ -427,7 +427,7 @@ Write-Output $rule.Enabled
 Write-Output $rule.Action
 `);
             ctx.assert(firewall.includes("True") && firewall.includes("Block"), `Expected active outbound block rule, got ${firewall}`);
-            ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "Windows Firewall blocks outbound traffic for the tested iPolloWalk executable", actual: firewall.trim() });
+            ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "Windows Firewall blocks outbound traffic for the tested iPolloWork executable", actual: firewall.trim() });
             await ctx.expectText("Bootstrap config");
             await ctx.expectText(ORG_URL);
             await assertOrganizationBootstrap(ctx, "during air-gapped restart");

@@ -7,8 +7,8 @@ const execFile = promisify(execFileCallback);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const PROBE_SCRIPT = `
-  const { iPolloWalkExtensionsPreview } = await import("./apps/server/src/opencode-plugins/ipollowalk-extensions-preview.ts");
-  const plugin = await iPolloWalkExtensionsPreview();
+  const { iPolloWorkExtensionsPreview } = await import("./apps/server/src/opencode-plugins/ipollowork-extensions-preview.ts");
+  const plugin = await iPolloWorkExtensionsPreview();
   const output = { system: [] };
   await plugin["experimental.chat.system.transform"](undefined, output);
   console.log(JSON.stringify({ tools: Object.keys(plugin.tool).sort(), system: output.system.join("\\n") }));
@@ -16,8 +16,8 @@ const PROBE_SCRIPT = `
 
 function envWithUiControl(value) {
   const env = { ...process.env };
-  if (value === null) delete env.IPOLLOWALK_UI_CONTROL_TOOLS;
-  else env.IPOLLOWALK_UI_CONTROL_TOOLS = value;
+  if (value === null) delete env.IPOLLOWORK_UI_CONTROL_TOOLS;
+  else env.IPOLLOWORK_UI_CONTROL_TOOLS = value;
   return env;
 }
 
@@ -45,7 +45,7 @@ function witness(ctx, condition, assertion, actual) {
 
 export default {
   id: "ui-control-tools-opt-in",
-  title: "Built-in iPolloWalk UI-control preview tools are opt-in",
+  title: "Built-in iPolloWork UI-control preview tools are opt-in",
   kind: "internal",
   requiresApp: false,
   steps: [
@@ -54,38 +54,38 @@ export default {
       run: async (ctx) => {
         let result = null;
         await ctx.prove("The built-in UI-control preview tools do not clutter default sessions", {
-          voiceover: "With the environment flag unset, the plugin still exposes extension discovery and cross-session memory, but the ipollowalk UI-control preview tools are gone from the tool list and the system prompt.",
+          voiceover: "With the environment flag unset, the plugin still exposes extension discovery and cross-session memory, but the ipollowork UI-control preview tools are gone from the tool list and the system prompt.",
           action: async () => {
             result = await probeUiControlTools(null);
-            ctx.output("IPOLLOWALK_UI_CONTROL_TOOLS unset", pretty(result));
+            ctx.output("IPOLLOWORK_UI_CONTROL_TOOLS unset", pretty(result));
           },
           assert: async () => {
             witness(ctx, Array.isArray(result?.tools), "The probe printed a tools array", result ? pretty(result.tools) : "null");
-            witness(ctx, !result.tools.includes("ipollowalk_ui_snapshot"), "ipollowalk_ui_snapshot is not registered by default", result.tools.join(", "));
-            witness(ctx, !result.tools.includes("ipollowalk_ui_list_actions"), "ipollowalk_ui_list_actions is not registered by default", result.tools.join(", "));
-            witness(ctx, !result.tools.includes("ipollowalk_ui_execute_action"), "ipollowalk_ui_execute_action is not registered by default", result.tools.join(", "));
-            witness(ctx, result.tools.includes("ipollowalk_session_search"), "ipollowalk_session_search remains registered", result.tools.join(", "));
-            witness(ctx, !result.system.includes("ipollowalk_ui_"), "The default system prompt lacks ipollowalk_ui_ steering", result.system);
+            witness(ctx, !result.tools.includes("ipollowork_ui_snapshot"), "ipollowork_ui_snapshot is not registered by default", result.tools.join(", "));
+            witness(ctx, !result.tools.includes("ipollowork_ui_list_actions"), "ipollowork_ui_list_actions is not registered by default", result.tools.join(", "));
+            witness(ctx, !result.tools.includes("ipollowork_ui_execute_action"), "ipollowork_ui_execute_action is not registered by default", result.tools.join(", "));
+            witness(ctx, result.tools.includes("ipollowork_session_search"), "ipollowork_session_search remains registered", result.tools.join(", "));
+            witness(ctx, !result.system.includes("ipollowork_ui_"), "The default system prompt lacks ipollowork_ui_ steering", result.system);
           },
         });
       },
     },
     {
-      name: "Setting IPOLLOWALK_UI_CONTROL_TOOLS=1 restores the surface",
+      name: "Setting IPOLLOWORK_UI_CONTROL_TOOLS=1 restores the surface",
       run: async (ctx) => {
         let result = null;
         await ctx.prove("The preview UI-control surface returns when explicitly opted in", {
-          voiceover: "When internal tooling sets IPOLLOWALK_UI_CONTROL_TOOLS to one, the same plugin initialization registers all three ipollowalk UI-control tools and restores the steering that tells agents how to use them.",
+          voiceover: "When internal tooling sets IPOLLOWORK_UI_CONTROL_TOOLS to one, the same plugin initialization registers all three ipollowork UI-control tools and restores the steering that tells agents how to use them.",
           action: async () => {
             result = await probeUiControlTools("1");
-            ctx.output("IPOLLOWALK_UI_CONTROL_TOOLS=1", pretty(result));
+            ctx.output("IPOLLOWORK_UI_CONTROL_TOOLS=1", pretty(result));
           },
           assert: async () => {
             witness(ctx, Array.isArray(result?.tools), "The opt-in probe printed a tools array", result ? pretty(result.tools) : "null");
-            witness(ctx, result.tools.includes("ipollowalk_ui_snapshot"), "ipollowalk_ui_snapshot is registered when opted in", result.tools.join(", "));
-            witness(ctx, result.tools.includes("ipollowalk_ui_list_actions"), "ipollowalk_ui_list_actions is registered when opted in", result.tools.join(", "));
-            witness(ctx, result.tools.includes("ipollowalk_ui_execute_action"), "ipollowalk_ui_execute_action is registered when opted in", result.tools.join(", "));
-            witness(ctx, result.system.includes("ipollowalk_ui_execute_action"), "The opt-in system prompt includes UI-control steering", result.system);
+            witness(ctx, result.tools.includes("ipollowork_ui_snapshot"), "ipollowork_ui_snapshot is registered when opted in", result.tools.join(", "));
+            witness(ctx, result.tools.includes("ipollowork_ui_list_actions"), "ipollowork_ui_list_actions is registered when opted in", result.tools.join(", "));
+            witness(ctx, result.tools.includes("ipollowork_ui_execute_action"), "ipollowork_ui_execute_action is registered when opted in", result.tools.join(", "));
+            witness(ctx, result.system.includes("ipollowork_ui_execute_action"), "The opt-in system prompt includes UI-control steering", result.system);
           },
         });
       },

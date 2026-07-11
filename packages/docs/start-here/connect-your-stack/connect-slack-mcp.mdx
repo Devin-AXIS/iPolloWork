@@ -3,7 +3,7 @@ title: "Connect Slack MCP"
 description: "Connect Slack's MCP server with a pre-registered Slack OAuth app"
 ---
 
-Slack's official MCP server does not support automatic OAuth client registration. To connect it in iPolloWalk, ask a Slack admin to create or approve a Slack app for MCP, then add the app's OAuth client credentials in iPolloWalk.
+Slack's official MCP server does not support automatic OAuth client registration. To connect it in iPolloWork, ask a Slack admin to create or approve a Slack app for MCP, then add the app's OAuth client credentials in iPolloWork.
 
 You do not need the old Slack bot tokens (`xoxb-...` or `xapp-...`) for this flow.
 
@@ -20,12 +20,12 @@ Keep the client secret out of chats and source control. Treat it like any other 
 
 ## Create or approve the Slack app
 
-In Slack, an admin should create or approve an app for iPolloWalk's MCP access.
+In Slack, an admin should create or approve an app for iPolloWork's MCP access.
 
 1. Open [Slack API apps](https://api.slack.com/apps) and create a new app, or open the existing internal app you want to use.
 2. Go to `OAuth & Permissions`.
 3. Add this redirect URL: `http://127.0.0.1:19876/mcp/oauth/callback`.
-4. Add the `User Token Scopes` for the Slack MCP tools your team wants iPolloWalk to use.
+4. Add the `User Token Scopes` for the Slack MCP tools your team wants iPolloWork to use.
 5. Save the app and install or approve it for the workspace.
 6. Go to `Basic Information` > `App Credentials` and copy the `Client ID` and `Client Secret`.
 
@@ -62,10 +62,10 @@ Use this table to pick scopes by capability:
 
 ## Open Extensions
 
-In iPolloWalk, open your workspace and go to `Settings` > `Extensions`. Click `Add Custom App`.
+In iPolloWork, open your workspace and go to `Settings` > `Extensions`. Click `Add Custom App`.
 
 <Frame>
-  ![iPolloWalk Extensions page with Add Custom App button](/images/slack-mcp-extensions-page.png)
+  ![iPolloWork Extensions page with Add Custom App button](/images/slack-mcp-extensions-page.png)
 </Frame>
 
 ## Add the Slack MCP server
@@ -85,7 +85,7 @@ In the Add Custom App dialog:
   ![Add Custom App dialog with Advanced OAuth fields for Slack MCP](/images/slack-mcp-advanced-oauth.png)
 </Frame>
 
-iPolloWalk writes the MCP entry with the OAuth client credentials, similar to this:
+iPolloWork writes the MCP entry with the OAuth client credentials, similar to this:
 
 ```json
 {
@@ -103,13 +103,13 @@ iPolloWalk writes the MCP entry with the OAuth client credentials, similar to th
 }
 ```
 
-If you entered scopes, iPolloWalk also saves them as `oauth.scope`. This is the scope list Slack sees during OAuth consent.
+If you entered scopes, iPolloWork also saves them as `oauth.scope`. This is the scope list Slack sees during OAuth consent.
 
 ## Sign in to Slack
 
-After the MCP app is added, reload the engine if iPolloWalk asks you to. Then start Slack MCP sign-in from the Slack app card or the MCP auth prompt.
+After the MCP app is added, reload the engine if iPolloWork asks you to. Then start Slack MCP sign-in from the Slack app card or the MCP auth prompt.
 
-Slack opens in your browser and shows the scopes you configured. Approve the Slack app for the workspace you want iPolloWalk to use, then return to iPolloWalk when authorization finishes.
+Slack opens in your browser and shows the scopes you configured. Approve the Slack app for the workspace you want iPolloWork to use, then return to iPolloWork when authorization finishes.
 
 ## Troubleshooting
 
@@ -117,6 +117,6 @@ If you see an error like `Incompatible auth server: does not support dynamic cli
 
 If Slack says the redirect URL is invalid, add `http://127.0.0.1:19876/mcp/oauth/callback` to the Slack app's `OAuth & Permissions` redirect URLs.
 
-If Slack says a scope is invalid or unavailable, remove that scope from both the Slack app and iPolloWalk's `OAuth scopes` field, then retry. Slack workspace policies and plan settings can limit which scopes an app may request.
+If Slack says a scope is invalid or unavailable, remove that scope from both the Slack app and iPolloWork's `OAuth scopes` field, then retry. Slack workspace policies and plan settings can limit which scopes an app may request.
 
-If your Slack workspace blocks app installation, ask a Slack admin to approve the app first. iPolloWalk cannot bypass Slack workspace approval policies.
+If your Slack workspace blocks app installation, ask a Slack admin to approve the app first. iPolloWork cannot bypass Slack workspace approval policies.

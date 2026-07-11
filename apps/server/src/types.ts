@@ -1,8 +1,8 @@
-import type { WorkspaceWire } from "@ipollowalk/types/workspace";
+import type { WorkspaceWire } from "@ipollowork/types/workspace";
 
 export type WorkspaceType = "local" | "remote";
 
-export type RemoteType = "opencode" | "ipollowalk";
+export type RemoteType = "opencode" | "ipollowork";
 
 export type ApprovalMode = "manual" | "auto";
 
@@ -24,10 +24,10 @@ export interface WorkspaceConfig {
   baseUrl?: string;
   directory?: string;
   displayName?: string;
-  ipollowalkHostUrl?: string;
-  ipollowalkToken?: string;
-  ipollowalkWorkspaceId?: string;
-  ipollowalkWorkspaceName?: string;
+  ipolloworkHostUrl?: string;
+  ipolloworkToken?: string;
+  ipolloworkWorkspaceId?: string;
+  ipolloworkWorkspaceName?: string;
   sandboxBackend?: string;
   sandboxRunId?: string;
   sandboxContainerName?: string;
@@ -45,10 +45,10 @@ export interface WorkspaceInfo {
   baseUrl?: string;
   directory?: string;
   displayName?: string;
-  ipollowalkHostUrl?: string;
-  ipollowalkToken?: string;
-  ipollowalkWorkspaceId?: string;
-  ipollowalkWorkspaceName?: string;
+  ipolloworkHostUrl?: string;
+  ipolloworkToken?: string;
+  ipolloworkWorkspaceId?: string;
+  ipolloworkWorkspaceName?: string;
   sandboxBackend?: string;
   sandboxRunId?: string;
   sandboxContainerName?: string;
@@ -107,7 +107,7 @@ export interface Capabilities {
   schemaVersion: number;
   serverVersion: string;
   opencodeVersion: string;
-  skills: { read: boolean; write: boolean; source: "ipollowalk" | "opencode" };
+  skills: { read: boolean; write: boolean; source: "ipollowork" | "opencode" };
   hub: {
     skills: {
       read: boolean;

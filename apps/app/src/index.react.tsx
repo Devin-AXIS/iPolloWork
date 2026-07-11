@@ -6,7 +6,7 @@ import { BrowserRouter, HashRouter } from "react-router-dom";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { initializeDenBootstrapConfig } from "./app/lib/den";
-import { getiPolloWalkDeployment } from "./app/lib/ipollowalk-deployment";
+import { getiPolloWorkDeployment } from "./app/lib/ipollowork-deployment";
 import { bootstrapTheme } from "./app/theme";
 import { isDesktopRuntime, isDesktopWorkspaceRecoveryDisabled } from "./app/utils";
 import { resetFirstRunClientState } from "./react-app/shell/session-memory";
@@ -21,7 +21,7 @@ import { AppRoot } from "./react-app/shell/app-root";
 import { startDeepLinkBridge } from "./react-app/shell/startup-deep-links";
 import "./app/index.css";
 
-// IPOLLOWALK_DESKTOP_DISABLE_WORKSPACE_RECOVERY resets backend workspace state
+// IPOLLOWORK_DESKTOP_DISABLE_WORKSPACE_RECOVERY resets backend workspace state
 // but not the renderer's localStorage; wipe the renderer's first-run memory
 // here (before any provider/component reads it) so the flag actually produces a
 // fresh first run — loader, auto session, provider step — on every launch.
@@ -40,7 +40,7 @@ if (!root) {
   throw new Error("Root element not found");
 }
 
-root.dataset.ipollowalkDeployment = getiPolloWalkDeployment();
+root.dataset.ipolloworkDeployment = getiPolloWorkDeployment();
 
 const platform = createDefaultPlatform();
 const queryClient = getReactQueryClient();

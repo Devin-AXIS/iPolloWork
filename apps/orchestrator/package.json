@@ -1,19 +1,19 @@
 {
-  "name": "ipollowalk-orchestrator",
+  "name": "ipollowork-orchestrator",
   "version": "0.17.20",
-  "description": "iPolloWalk host orchestrator for opencode + iPolloWalk server",
+  "description": "iPolloWork host orchestrator for opencode + iPolloWork server",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "IPOLLOWALK_DEV_MODE=1 bun src/cli.ts",
+    "dev": "IPOLLOWORK_DEV_MODE=1 bun src/cli.ts",
     "build": "tsc -p tsconfig.json",
-    "build:bin": "node scripts/clean-dist.mjs && bun ./script/build.ts --outdir dist/bin --filename ipollowalk",
-    "build:bin:all": "node scripts/clean-dist.mjs && bun ./script/build.ts --outdir dist/bin --filename ipollowalk --target bun-darwin-arm64 --target bun-darwin-x64 --target bun-linux-x64 --target bun-linux-arm64 --target bun-windows-x64 --target bun-windows-arm64",
-    "build:bin:bundled": "node scripts/clean-dist.mjs && node ../desktop/scripts/prepare-sidecar.mjs --outdir dist && bun ./script/build.ts --outdir dist --filename ipollowalk && bun scripts/build-bin.ts",
+    "build:bin": "node scripts/clean-dist.mjs && bun ./script/build.ts --outdir dist/bin --filename ipollowork",
+    "build:bin:all": "node scripts/clean-dist.mjs && bun ./script/build.ts --outdir dist/bin --filename ipollowork --target bun-darwin-arm64 --target bun-darwin-x64 --target bun-linux-x64 --target bun-linux-arm64 --target bun-windows-x64 --target bun-windows-arm64",
+    "build:bin:bundled": "node scripts/clean-dist.mjs && node ../desktop/scripts/prepare-sidecar.mjs --outdir dist && bun ./script/build.ts --outdir dist --filename ipollowork && bun scripts/build-bin.ts",
     "build:sidecars": "node scripts/build-sidecars.mjs",
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "test:files": "pnpm build && node scripts/files-session.mjs",
-    "prepublishOnly": "node -e \"console.error('ipollowalk-orchestrator is published via apps/orchestrator/scripts/publish-npm.mjs (meta + platform packages)'); process.exit(1);\""
+    "prepublishOnly": "node -e \"console.error('ipollowork-orchestrator is published via apps/orchestrator/scripts/publish-npm.mjs (meta + platform packages)'); process.exit(1);\""
   },
   "files": [
     "dist",
@@ -24,15 +24,15 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Devin-AXIS/iPolloWalk.git",
+    "url": "git+https://github.com/Devin-AXIS/iPolloWork.git",
     "directory": "apps/orchestrator"
   },
-  "homepage": "https://github.com/Devin-AXIS/iPolloWalk/tree/dev/apps/orchestrator",
+  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/dev/apps/orchestrator",
   "bugs": {
-    "url": "https://github.com/Devin-AXIS/iPolloWalk/issues"
+    "url": "https://github.com/Devin-AXIS/iPolloWork/issues"
   },
   "keywords": [
-    "ipollowalk",
+    "ipollowork",
     "opencode",
     "orchestrator",
     "cli",
@@ -46,7 +46,7 @@
     "@opencode-ai/sdk": "^1.17.11",
     "@opentui/core": "0.1.77",
     "@opentui/solid": "0.1.77",
-    "ipollowalk-server": "0.17.20",
+    "ipollowork-server": "0.17.20",
     "solid-js": "1.9.9"
   },
   "devDependencies": {

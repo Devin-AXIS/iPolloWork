@@ -7,7 +7,7 @@
  * Consumer: apps/app/src/app/lib/desktop.ts — the `desktopBridge` Proxy and
  * its named exports derive per-command signatures from `DesktopCommandMap`.
  *
- * Every command sent over the `ipollowalk:desktop` channel has exactly one
+ * Every command sent over the `ipollowork:desktop` channel has exactly one
  * entry here: `args` is the tuple the renderer passes, `result` what the
  * main process resolves. Results marked `unknown` are not yet modeled —
  * tighten them instead of widening call sites.
@@ -60,7 +60,7 @@ export type DesktopNotificationResult =
   | { ok: true }
   | { ok: false; reason: string };
 
-export type iPolloWalkServerInfo = {
+export type iPolloWorkServerInfo = {
   running: boolean;
   remoteAccessEnabled: boolean;
   host: string | null;
@@ -119,7 +119,7 @@ export type OpencodeCommandDraft = {
   subtask?: boolean;
 };
 
-export type WorkspaceiPolloWalkConfig = {
+export type WorkspaceiPolloWorkConfig = {
   version: number;
   workspace?: {
     name?: string | null;
@@ -137,7 +137,7 @@ export type AppBuildInfo = {
   version: string;
   gitSha?: string | null;
   buildEpoch?: string | null;
-  ipollowalkDevMode?: boolean;
+  ipolloworkDevMode?: boolean;
   os?: string | null;
   arch?: string | null;
 };
@@ -178,7 +178,7 @@ export type DesktopBootstrapConfig = {
 };
 
 export type OrchestratorDetachedHost = {
-  ipollowalkUrl: string;
+  ipolloworkUrl: string;
   token: string;
   ownerToken?: string | null;
   hostToken: string;
@@ -213,7 +213,7 @@ export type SandboxDoctorResult = {
   } | null;
 };
 
-export type iPolloWalkDockerCleanupResult = {
+export type iPolloWorkDockerCleanupResult = {
   candidates: string[];
   removed: string[];
   errors: string[];
@@ -311,15 +311,15 @@ export type WorkspaceCreateInput = {
 
 export type WorkspaceCreateRemoteInput = {
   baseUrl: string;
-  remoteType?: "ipollowalk" | "opencode" | null;
+  remoteType?: "ipollowork" | "opencode" | null;
   directory?: string | null;
   displayName?: string | null;
-  ipollowalkHostUrl?: string | null;
-  ipollowalkToken?: string | null;
-  ipollowalkClientToken?: string | null;
-  ipollowalkHostToken?: string | null;
-  ipollowalkWorkspaceId?: string | null;
-  ipollowalkWorkspaceName?: string | null;
+  ipolloworkHostUrl?: string | null;
+  ipolloworkToken?: string | null;
+  ipolloworkClientToken?: string | null;
+  ipolloworkHostToken?: string | null;
+  ipolloworkWorkspaceId?: string | null;
+  ipolloworkWorkspaceName?: string | null;
   sandboxBackend?: string | null;
   sandboxRunId?: string | null;
   sandboxContainerName?: string | null;
@@ -367,12 +367,12 @@ export type DesktopCommandMap = {
     args: [input: { workspacePath: string; folderPath?: string; authorizedRoot?: string }];
     result: unknown;
   };
-  workspaceiPolloWalkRead: {
+  workspaceiPolloWorkRead: {
     args: [input: { workspacePath: string }];
-    result: WorkspaceiPolloWalkConfig;
+    result: WorkspaceiPolloWorkConfig;
   };
-  workspaceiPolloWalkWrite: {
-    args: [input: { workspacePath: string; config: WorkspaceiPolloWalkConfig }];
+  workspaceiPolloWorkWrite: {
+    args: [input: { workspacePath: string; config: WorkspaceiPolloWorkConfig }];
     result: unknown;
   };
   workspaceExportConfig: {
@@ -423,9 +423,9 @@ export type DesktopCommandMap = {
     result: DesktopNotificationResult;
   };
   getUiControlBridgeInfo: { args: []; result: UiControlBridgeInfo | null };
-  getiPolloWalkUiMcpCommand: { args: []; result: string[] };
+  getiPolloWorkUiMcpCommand: { args: []; result: string[] };
   getComputerUseMcpCommand: { args: []; result: string[] };
-  getiPolloWalkUiMcpEnvironment: { args: []; result: Record<string, string> };
+  getiPolloWorkUiMcpEnvironment: { args: []; result: Record<string, string> };
 
   // Computer use
   checkComputerUsePermissions: { args: []; result: ComputerUsePermissions };
@@ -441,19 +441,19 @@ export type DesktopCommandMap = {
     args: [config: Partial<DesktopBootstrapConfig>];
     result: DesktopBootstrapConfig;
   };
-  nukeiPolloWalkAndOpencodeConfigAndExit: { args: []; result: unknown };
+  nukeiPolloWorkAndOpencodeConfigAndExit: { args: []; result: unknown };
 
   // Sandbox
   sandboxDoctor: { args: []; result: SandboxDoctorResult };
   sandboxStop: { args: [runId: string]; result: unknown };
-  sandboxCleanupiPolloWalkContainers: { args: []; result: iPolloWalkDockerCleanupResult };
+  sandboxCleanupiPolloWorkContainers: { args: []; result: iPolloWorkDockerCleanupResult };
   sandboxDebugProbe: { args: []; result: SandboxDebugProbeResult };
 
-  // iPolloWalk server sidecar
-  ipollowalkServerInfo: { args: []; result: iPolloWalkServerInfo };
-  ipollowalkServerRestart: {
+  // iPolloWork server sidecar
+  ipolloworkServerInfo: { args: []; result: iPolloWorkServerInfo };
+  ipolloworkServerRestart: {
     args: [options?: Record<string, unknown>];
-    result: iPolloWalkServerInfo;
+    result: iPolloWorkServerInfo;
   };
 
   // Dialogs
@@ -507,7 +507,7 @@ export type DesktopCommandMap = {
    * the renderer's localStorage cleanup is mode-scoped. Follow-up: decide
    * whether "onboarding" should preserve desktop workspace state.
    */
-  resetiPolloWalkState: { args: [mode?: "onboarding" | "all"]; result: unknown };
+  resetiPolloWorkState: { args: [mode?: "onboarding" | "all"]; result: unknown };
   resetOpencodeCache: { args: []; result: CacheResetResult };
   opencodeMcpAuth: { args: [action: string, name: string]; result: ExecResult };
   setWindowDecorations: { args: [decorated: boolean]; result: unknown };

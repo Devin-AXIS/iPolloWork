@@ -54,7 +54,7 @@ final class BackgroundActivationSession: @unchecked Sendable {
                 CFRunLoopRun()
             }
         }
-        thread.name = "iPolloWalkBackgroundActivationSession"
+        thread.name = "iPolloWorkBackgroundActivationSession"
         self.thread = thread
         thread.start()
         ready.wait()

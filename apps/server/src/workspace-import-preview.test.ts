@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 async function makeWorkspace(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-"));
+  const dir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-"));
   tempDirs.push(dir);
   await mkdir(join(dir, ".opencode"), { recursive: true });
   return dir;
@@ -108,7 +108,7 @@ async function requestWorkspaceImportWithPreview(
 async function silenceExpectedServerError<T>(run: () => Promise<T>): Promise<T> {
   const originalError = console.error;
   console.error = (...args: unknown[]) => {
-    if (args[0] === "[ipollowalk-server] Unhandled error:") return;
+    if (args[0] === "[ipollowork-server] Unhandled error:") return;
     originalError(...args);
   };
   try {
@@ -121,7 +121,7 @@ async function silenceExpectedServerError<T>(run: () => Promise<T>): Promise<T> 
 async function waitForPendingApproval(baseUrl: string): Promise<string> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const response = await fetch(`${baseUrl}/approvals`, {
-      headers: { "X-iPolloWalk-Host-Token": "host-token" },
+      headers: { "X-iPolloWork-Host-Token": "host-token" },
     });
     expect(response.status).toBe(200);
     const body = await response.json() as { items: Array<{ id: string }> };
@@ -150,7 +150,7 @@ describe("workspace import preview", () => {
       opencode: {
         plugin: ["old-plugin", "new-plugin"],
       },
-      ipollowalk: {
+      ipollowork: {
         blueprint: {
           materialized: {
             sessions: { items: [{ templateId: "old", sessionId: "ses_123" }] },
@@ -181,7 +181,7 @@ describe("workspace import preview", () => {
     });
     expect(preview.changes.map((change) => [change.kind, change.action, change.path])).toEqual([
       ["opencode", "update", "opencode.jsonc"],
-      ["ipollowalk", "create", ".opencode/ipollowalk.json"],
+      ["ipollowork", "create", ".opencode/ipollowork.json"],
       ["skill", "update", ".opencode/skills/demo/SKILL.md"],
       ["skill", "create", ".opencode/skills/new-skill/SKILL.md"],
       ["command", "update", ".opencode/commands/old.md"],
@@ -305,12 +305,12 @@ describe("workspace import preview", () => {
 
   test("preview route returns public changes and no-op import does not audit", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
     await writeFile(join(workspace, "opencode.jsonc"), '{ "plugin": ["demo"] }\n', "utf8");
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const server = await startServer(makeServerConfig(workspace, dataDir)) as {
       port: number;
       stop: (force?: boolean) => void;
@@ -346,21 +346,21 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });
 
   test("no-op import validates preview fingerprint shape", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
     await writeFile(join(workspace, "opencode.jsonc"), '{ "plugin": ["demo"] }\n', "utf8");
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const server = await startServer(makeServerConfig(workspace, dataDir)) as {
       port: number;
       stop: (force?: boolean) => void;
@@ -385,20 +385,20 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });
 
   test("changed import requires a reviewed preview fingerprint", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const server = await startServer(makeServerConfig(workspace, dataDir)) as {
       port: number;
       stop: (force?: boolean) => void;
@@ -428,20 +428,20 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });
 
   test("import route writes changed items and records audit", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const server = await startServer(makeServerConfig(workspace, dataDir)) as {
       port: number;
       stop: (force?: boolean) => void;
@@ -474,16 +474,16 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });
 
   test("replace import route removes extra skills, commands, and portable files", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
 
     const keepSkill = {
@@ -510,8 +510,8 @@ describe("workspace import preview", () => {
     await writeFile(join(workspace, ".opencode", "tools", "shared.ts"), "shared tool\n", "utf8");
     await writeFile(join(workspace, ".opencode", "tools", "remove-me.ts"), "legacy tool\n", "utf8");
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const server = await startServer(makeServerConfig(workspace, dataDir)) as {
       port: number;
       stop: (force?: boolean) => void;
@@ -545,16 +545,16 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });
 
   test("replace import route honors empty sections", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
 
     await mkdir(join(workspace, ".opencode", "skills", "old-skill"), { recursive: true });
@@ -564,8 +564,8 @@ describe("workspace import preview", () => {
     await writeFile(join(workspace, ".opencode", "commands", "old-command.md"), "old command\n", "utf8");
     await writeFile(join(workspace, ".opencode", "agents", "old.md"), "old agent\n", "utf8");
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const server = await startServer(makeServerConfig(workspace, dataDir)) as {
       port: number;
       stop: (force?: boolean) => void;
@@ -594,21 +594,21 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });
 
   test("import route rejects a stale reviewed preview", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
     await writeFile(join(workspace, "opencode.jsonc"), '{ "plugin": ["old"] }\n', "utf8");
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const server = await startServer(makeServerConfig(workspace, dataDir)) as {
       port: number;
       stop: (force?: boolean) => void;
@@ -648,21 +648,21 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });
 
   test("import route revalidates the preview after approval", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
     await writeFile(join(workspace, "opencode.jsonc"), '{ "plugin": ["old"] }\n', "utf8");
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const serverConfig = makeServerConfig(workspace, dataDir);
     serverConfig.approval = { mode: "manual", timeoutMs: 5000 };
     const server = await startServer(serverConfig) as {
@@ -689,7 +689,7 @@ describe("workspace import preview", () => {
       const approvalResponse = await fetch(`${baseUrl}/approvals/${approvalId}`, {
         method: "POST",
         headers: {
-          "X-iPolloWalk-Host-Token": "host-token",
+          "X-iPolloWork-Host-Token": "host-token",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ reply: "allow" }),
@@ -709,20 +709,20 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });
 
   test("import route validates preview fingerprint shape", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const server = await startServer(makeServerConfig(workspace, dataDir)) as {
       port: number;
       stop: (force?: boolean) => void;
@@ -746,24 +746,24 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });
 
   test("replace import keeps existing items when an incoming write fails", async () => {
     const workspace = await makeWorkspace();
-    const dataDir = await mkdtemp(join(tmpdir(), "ipollowalk-import-preview-data-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "ipollowork-import-preview-data-"));
     tempDirs.push(dataDir);
 
     await mkdir(join(workspace, ".opencode", "skills", "old"), { recursive: true });
     await writeFile(join(workspace, ".opencode", "skills", "old", "SKILL.md"), "old skill\n", "utf8");
     await writeFile(join(workspace, ".opencode", "skills", "new"), "blocks new skill directory\n", "utf8");
 
-    const originalDataDir = process.env.IPOLLOWALK_DATA_DIR;
-    process.env.IPOLLOWALK_DATA_DIR = dataDir;
+    const originalDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    process.env.IPOLLOWORK_DATA_DIR = dataDir;
     const server = await startServer(makeServerConfig(workspace, dataDir)) as {
       port: number;
       stop: (force?: boolean) => void;
@@ -796,9 +796,9 @@ describe("workspace import preview", () => {
     } finally {
       server.stop(true);
       if (originalDataDir === undefined) {
-        delete process.env.IPOLLOWALK_DATA_DIR;
+        delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
-        process.env.IPOLLOWALK_DATA_DIR = originalDataDir;
+        process.env.IPOLLOWORK_DATA_DIR = originalDataDir;
       }
     }
   });

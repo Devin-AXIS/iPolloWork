@@ -37,7 +37,7 @@ const connectStateResponseSchema = z.object({
 
 const gatedCallSchema = z.object({
   ok: z.literal(false),
-  error: z.literal("use_ipollowalk_cloud"),
+  error: z.literal("use_ipollowork_cloud"),
   message: z.string(),
 }).passthrough();
 
@@ -62,10 +62,10 @@ const googleWorkspaceStatusActionSchema = z.object({
 type ActionItem = z.infer<typeof actionSchema>;
 
 const previousEnv = {
-  runtimeDb: process.env.IPOLLOWALK_RUNTIME_DB,
+  runtimeDb: process.env.IPOLLOWORK_RUNTIME_DB,
   googleClientSecret: process.env.GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET,
-  legacyGoogleClientSecret: process.env.IPOLLOWALK_GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET,
-  tokenBrokerUrl: process.env.IPOLLOWALK_GOOGLE_WORKSPACE_TOKEN_BROKER_URL,
+  legacyGoogleClientSecret: process.env.IPOLLOWORK_GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET,
+  tokenBrokerUrl: process.env.IPOLLOWORK_GOOGLE_WORKSPACE_TOKEN_BROKER_URL,
   legacyTokenBrokerUrl: process.env.GOOGLE_WORKSPACE_TOKEN_BROKER_URL,
 };
 
@@ -79,8 +79,8 @@ function restoreEnv(key: string, value: string | undefined) {
 
 function clearLegacyGoogleWorkspaceEnv() {
   delete process.env.GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET;
-  delete process.env.IPOLLOWALK_GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET;
-  delete process.env.IPOLLOWALK_GOOGLE_WORKSPACE_TOKEN_BROKER_URL;
+  delete process.env.IPOLLOWORK_GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET;
+  delete process.env.IPOLLOWORK_GOOGLE_WORKSPACE_TOKEN_BROKER_URL;
   delete process.env.GOOGLE_WORKSPACE_TOKEN_BROKER_URL;
 }
 
@@ -105,9 +105,9 @@ function serverConfig(root: string): ServerConfig {
 }
 
 async function boot() {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-connect-gating-"));
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-connect-gating-"));
   dirs.push(root);
-  process.env.IPOLLOWALK_RUNTIME_DB = join(root, "runtime.sqlite");
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
   const config = serverConfig(root);
   const server = await startServer(config);
   stops.push(() => server.stop());
@@ -123,7 +123,7 @@ function clientJsonHeaders() {
 }
 
 function hostJsonHeaders() {
-  return { "x-ipollowalk-host-token": HOST_TOKEN, "content-type": "application/json" };
+  return { "x-ipollowork-host-token": HOST_TOKEN, "content-type": "application/json" };
 }
 
 async function readSchema<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
@@ -203,10 +203,10 @@ afterEach(async () => {
     const dir = dirs.pop();
     if (dir) await rm(dir, { recursive: true, force: true });
   }
-  restoreEnv("IPOLLOWALK_RUNTIME_DB", previousEnv.runtimeDb);
+  restoreEnv("IPOLLOWORK_RUNTIME_DB", previousEnv.runtimeDb);
   restoreEnv("GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET", previousEnv.googleClientSecret);
-  restoreEnv("IPOLLOWALK_GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET", previousEnv.legacyGoogleClientSecret);
-  restoreEnv("IPOLLOWALK_GOOGLE_WORKSPACE_TOKEN_BROKER_URL", previousEnv.tokenBrokerUrl);
+  restoreEnv("IPOLLOWORK_GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET", previousEnv.legacyGoogleClientSecret);
+  restoreEnv("IPOLLOWORK_GOOGLE_WORKSPACE_TOKEN_BROKER_URL", previousEnv.tokenBrokerUrl);
   restoreEnv("GOOGLE_WORKSPACE_TOKEN_BROKER_URL", previousEnv.legacyTokenBrokerUrl);
 });
 
@@ -287,7 +287,7 @@ describe("Connect-aware legacy extension gating", () => {
       ...current,
       mcp: {
         ...current.mcp,
-        "ipollowalk-cloud": { type: "remote", url: "https://cloud.example/mcp" },
+        "ipollowork-cloud": { type: "remote", url: "https://cloud.example/mcp" },
       },
     }));
 

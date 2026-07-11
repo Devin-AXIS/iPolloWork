@@ -64,9 +64,9 @@ const readBool = (value: string | undefined) => {
 const silent = process.argv.includes("--silent");
 
 const autoBuildEnabled =
-  process.env.IPOLLOWALK_DEV_HEADLESS_WEB_AUTOBUILD == null
+  process.env.IPOLLOWORK_DEV_HEADLESS_WEB_AUTOBUILD == null
     ? true
-    : readBool(process.env.IPOLLOWALK_DEV_HEADLESS_WEB_AUTOBUILD);
+    : readBool(process.env.IPOLLOWORK_DEV_HEADLESS_WEB_AUTOBUILD);
 
 const runCommand = (command: string, args: string[]) =>
   new Promise<void>((resolve, reject) => {
@@ -116,50 +116,50 @@ const shutdown = (
 
 await ensureTmp();
 
-const remoteAccessEnabled = readBool(process.env.IPOLLOWALK_REMOTE_ACCESS);
+const remoteAccessEnabled = readBool(process.env.IPOLLOWORK_REMOTE_ACCESS);
 const host = remoteAccessEnabled ? "0.0.0.0" : "127.0.0.1";
 const viteHost = process.env.VITE_HOST ?? process.env.HOST ?? host;
-const publicHost = process.env.IPOLLOWALK_PUBLIC_HOST ?? null;
+const publicHost = process.env.IPOLLOWORK_PUBLIC_HOST ?? null;
 const clientHost = publicHost ?? (host === "0.0.0.0" ? "127.0.0.1" : host);
-const workspace = process.env.IPOLLOWALK_WORKSPACE ?? cwd;
-const ipollowalkPort = await resolvePort(process.env.IPOLLOWALK_PORT, "127.0.0.1");
-const webPort = await resolvePort(process.env.IPOLLOWALK_WEB_PORT, "127.0.0.1");
-const ipollowalkToken = process.env.IPOLLOWALK_TOKEN ?? randomUUID();
-const ipollowalkHostToken = process.env.IPOLLOWALK_HOST_TOKEN ?? randomUUID();
-const ipollowalkServerBin = path.join(
+const workspace = process.env.IPOLLOWORK_WORKSPACE ?? cwd;
+const ipolloworkPort = await resolvePort(process.env.IPOLLOWORK_PORT, "127.0.0.1");
+const webPort = await resolvePort(process.env.IPOLLOWORK_WEB_PORT, "127.0.0.1");
+const ipolloworkToken = process.env.IPOLLOWORK_TOKEN ?? randomUUID();
+const ipolloworkHostToken = process.env.IPOLLOWORK_HOST_TOKEN ?? randomUUID();
+const ipolloworkServerBin = path.join(
   cwd,
-  "apps/server/dist/bin/ipollowalk-server",
+  "apps/server/dist/bin/ipollowork-server",
 );
 
-const ensureiPolloWalkServer = async () => {
+const ensureiPolloWorkServer = async () => {
   try {
-    await access(ipollowalkServerBin);
+    await access(ipolloworkServerBin);
   } catch {
     if (!autoBuildEnabled) {
       logLine(
-        `[dev:headless-web] Missing iPolloWalk server binary at ${ipollowalkServerBin}`,
+        `[dev:headless-web] Missing iPolloWork server binary at ${ipolloworkServerBin}`,
       );
       logLine(
-        "[dev:headless-web] Auto-build disabled (IPOLLOWALK_DEV_HEADLESS_WEB_AUTOBUILD=0)",
+        "[dev:headless-web] Auto-build disabled (IPOLLOWORK_DEV_HEADLESS_WEB_AUTOBUILD=0)",
       );
       logLine(
-        "[dev:headless-web] Run: pnpm --filter ipollowalk-server build:bin",
+        "[dev:headless-web] Run: pnpm --filter ipollowork-server build:bin",
       );
       logLine(
-        "[dev:headless-web] Or unset/enable IPOLLOWALK_DEV_HEADLESS_WEB_AUTOBUILD to auto-build.",
+        "[dev:headless-web] Or unset/enable IPOLLOWORK_DEV_HEADLESS_WEB_AUTOBUILD to auto-build.",
       );
       process.exit(1);
     }
 
     logLine(
-      `[dev:headless-web] Missing iPolloWalk server binary at ${ipollowalkServerBin}`,
+      `[dev:headless-web] Missing iPolloWork server binary at ${ipolloworkServerBin}`,
     );
     logLine(
-      "[dev:headless-web] Auto-building: pnpm --filter ipollowalk-server build:bin",
+      "[dev:headless-web] Auto-building: pnpm --filter ipollowork-server build:bin",
     );
     try {
-      await runCommand("pnpm", ["--filter", "ipollowalk-server", "build:bin"]);
-      await access(ipollowalkServerBin);
+      await runCommand("pnpm", ["--filter", "ipollowork-server", "build:bin"]);
+      await access(ipolloworkServerBin);
     } catch (error) {
       logLine(
         `[dev:headless-web] Auto-build failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -169,38 +169,38 @@ const ensureiPolloWalkServer = async () => {
   }
 };
 
-const ipollowalkUrl = `http://${clientHost}:${ipollowalkPort}`;
+const ipolloworkUrl = `http://${clientHost}:${ipolloworkPort}`;
 const webUrl = `http://${clientHost}:${webPort}`;
 const viteEnv = {
   ...process.env,
   HOST: viteHost,
   PORT: String(webPort),
-  VITE_IPOLLOWALK_URL: process.env.VITE_IPOLLOWALK_URL ?? ipollowalkUrl,
-  VITE_IPOLLOWALK_PORT: process.env.VITE_IPOLLOWALK_PORT ?? String(ipollowalkPort),
-  VITE_IPOLLOWALK_TOKEN: process.env.VITE_IPOLLOWALK_TOKEN ?? ipollowalkToken,
+  VITE_IPOLLOWORK_URL: process.env.VITE_IPOLLOWORK_URL ?? ipolloworkUrl,
+  VITE_IPOLLOWORK_PORT: process.env.VITE_IPOLLOWORK_PORT ?? String(ipolloworkPort),
+  VITE_IPOLLOWORK_TOKEN: process.env.VITE_IPOLLOWORK_TOKEN ?? ipolloworkToken,
 };
 const headlessEnv = {
   ...process.env,
-  IPOLLOWALK_WORKSPACE: workspace,
-  IPOLLOWALK_HOST: host,
-  IPOLLOWALK_REMOTE_ACCESS: remoteAccessEnabled ? "1" : "0",
-  IPOLLOWALK_PORT: String(ipollowalkPort),
-  IPOLLOWALK_TOKEN: ipollowalkToken,
-  IPOLLOWALK_HOST_TOKEN: ipollowalkHostToken,
-  IPOLLOWALK_SERVER_BIN: ipollowalkServerBin,
-  IPOLLOWALK_SIDECAR_SOURCE: process.env.IPOLLOWALK_SIDECAR_SOURCE ?? "external",
+  IPOLLOWORK_WORKSPACE: workspace,
+  IPOLLOWORK_HOST: host,
+  IPOLLOWORK_REMOTE_ACCESS: remoteAccessEnabled ? "1" : "0",
+  IPOLLOWORK_PORT: String(ipolloworkPort),
+  IPOLLOWORK_TOKEN: ipolloworkToken,
+  IPOLLOWORK_HOST_TOKEN: ipolloworkHostToken,
+  IPOLLOWORK_SERVER_BIN: ipolloworkServerBin,
+  IPOLLOWORK_SIDECAR_SOURCE: process.env.IPOLLOWORK_SIDECAR_SOURCE ?? "external",
 };
 
-await ensureiPolloWalkServer();
+await ensureiPolloWorkServer();
 
 logLine("[dev:headless-web] Starting services");
 logLine(`[dev:headless-web] Workspace: ${workspace}`);
-logLine(`[dev:headless-web] iPolloWalk server: ${ipollowalkUrl}`);
+logLine(`[dev:headless-web] iPolloWork server: ${ipolloworkUrl}`);
 logLine(`[dev:headless-web] Web host: ${viteHost}`);
 logLine(`[dev:headless-web] Web port: ${webPort}`);
 logLine(`[dev:headless-web] Web URL: ${webUrl}`);
-logLine("[dev:headless-web] IPOLLOWALK_TOKEN: [REDACTED]");
-logLine("[dev:headless-web] IPOLLOWALK_HOST_TOKEN: [REDACTED]");
+logLine("[dev:headless-web] IPOLLOWORK_TOKEN: [REDACTED]");
+logLine("[dev:headless-web] IPOLLOWORK_HOST_TOKEN: [REDACTED]");
 logLine(
   `[dev:headless-web] Web logs: ${path.relative(cwd, path.join(tmpDir, "dev-web.log"))}`,
 );
@@ -212,7 +212,7 @@ const webProcess = spawnLogged(
   "pnpm",
   [
     "--filter",
-    "@ipollowalk/app",
+    "@ipollowork/app",
     "exec",
     "vite",
     "--host",
@@ -229,7 +229,7 @@ const headlessProcess = spawnLogged(
   "pnpm",
   [
     "--filter",
-    "ipollowalk-orchestrator",
+    "ipollowork-orchestrator",
     "dev",
     "--",
     "start",
@@ -239,8 +239,8 @@ const headlessProcess = spawnLogged(
     "auto",
     "--allow-external",
     ...(remoteAccessEnabled ? ["--remote-access"] : []),
-    "--ipollowalk-port",
-    String(ipollowalkPort),
+    "--ipollowork-port",
+    String(ipolloworkPort),
   ],
   path.join(tmpDir, "dev-headless.log"),
   headlessEnv,

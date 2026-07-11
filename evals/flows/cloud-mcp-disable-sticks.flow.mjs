@@ -1,6 +1,6 @@
 /**
- * Regression proof: disabling the auto-configured iPolloWalk Cloud Control MCP
- * ("ipollowalk-cloud") sticks.
+ * Regression proof: disabling the auto-configured iPolloWork Cloud Control MCP
+ * ("ipollowork-cloud") sticks.
  *
  * Previously the background reconciler (syncCloudControlMcp) rewrote the
  * entry with `enabled: true` on every sync tick — settings mount, sign-in,
@@ -10,12 +10,12 @@
  * it was written. Users could not turn the MCP off.
  *
  * The fix persists the user's intent (localStorage
- * `ipollowalk.den.mcp.cloudControlUserState`), makes the reconciler respect it
+ * `ipollowork.den.mcp.cloudControlUserState`), makes the reconciler respect it
  * (plus an enabled:false guard), and fixes the marker margin. This flow
  * drives the real app:
- *   1. Sign in to iPolloWalk Cloud via desktop handoff.
+ *   1. Sign in to iPolloWork Cloud via desktop handoff.
  *   2. Reveal hidden extensions and wait for the reconciler to auto-configure
- *      ipollowalk-cloud.
+ *      ipollowork-cloud.
  *   3. Disable it via the Settings toggle.
  *   4. Remount settings (the exact trigger that used to resurrect it) and
  *      reveal hidden again, then assert it is still Paused and the intent
@@ -23,12 +23,12 @@
  *   5. Re-enable it and assert the intent record clears.
  *
  * Required env:
- * - IPOLLOWALK_EVAL_DEN_API_URL  Den API base
- * - IPOLLOWALK_EVAL_DEN_TOKEN    Bearer session token for a seeded user
+ * - IPOLLOWORK_EVAL_DEN_API_URL  Den API base
+ * - IPOLLOWORK_EVAL_DEN_TOKEN    Bearer session token for a seeded user
  */
 
-const CLOUD_TITLE = "iPolloWalk Cloud Control";
-const USER_STATE_KEY = "ipollowalk.den.mcp.cloudControlUserState";
+const CLOUD_TITLE = "iPolloWork Cloud Control";
+const USER_STATE_KEY = "ipollowork.den.mcp.cloudControlUserState";
 const CLICK_ANY = "button, [role=button], a, div, article, li, label";
 
 const revealHidden = async (ctx) => {
@@ -86,47 +86,47 @@ const scrollCloudRowExpr = `(() => {
 
 export default {
   id: "cloud-mcp-disable-sticks",
-  title: "Disabling the iPolloWalk Cloud Control MCP sticks across sync",
+  title: "Disabling the iPolloWork Cloud Control MCP sticks across sync",
   spec: "evals/cloud-mcp-agent-flows.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN"],
   steps: [
     {
       name: "App booted",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000 });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000 });
       },
     },
     {
-      name: "Sign in to iPolloWalk Cloud via desktop handoff",
+      name: "Sign in to iPolloWork Cloud via desktop handoff",
       run: async (ctx) => {
         const signedIn = await ctx.eval(
-          "Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())",
+          "Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())",
         );
         if (signedIn) {
           ctx.log("Already signed in; reusing session.");
           return;
         }
-        const apiBase = ctx.env.IPOLLOWALK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
+        const apiBase = ctx.env.IPOLLOWORK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
         const response = await fetch(`${apiBase}/v1/auth/desktop-handoff`, {
           method: "POST",
           headers: {
-            authorization: `Bearer ${ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN.trim()}`,
+            authorization: `Bearer ${ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN.trim()}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({ desktopScheme: "ipollowalk" }),
+          body: JSON.stringify({ desktopScheme: "ipollowork" }),
         });
         const body = await response.text();
         ctx.assert(response.ok, `Handoff create failed: ${response.status} ${body.slice(0, 200)}`);
         const payload = JSON.parse(body);
-        ctx.assert(typeof payload.ipollowalkUrl === "string" && payload.ipollowalkUrl.length > 0, "No ipollowalkUrl in handoff response.");
+        ctx.assert(typeof payload.ipolloworkUrl === "string" && payload.ipolloworkUrl.length > 0, "No ipolloworkUrl in handoff response.");
 
         await ctx.navigateHash("/settings/cloud-account");
         await ctx.expectHashIncludes("/settings/cloud-account");
         await ctx.clickText("Paste sign-in code", { timeoutMs: 30_000 });
-        await ctx.fill("#den-signin-link", payload.ipollowalkUrl);
+        await ctx.fill("#den-signin-link", payload.ipolloworkUrl);
         await ctx.clickText("Finish sign-in");
         await ctx.waitFor(
-          "Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())",
+          "Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())",
           { timeoutMs: 45_000, label: "persisted den auth token" },
         );
         // Post-sign-in org onboarding may appear; drive through it best-effort.
@@ -140,14 +140,14 @@ export default {
       run: async (ctx) => {
         // Start from a clean slate for idempotent re-runs: clear any prior
         // user-intent record so the reconciler is allowed to configure it.
-        await ctx.eval(`(() => { localStorage.removeItem(${JSON.stringify(USER_STATE_KEY)}); localStorage.removeItem("ipollowalk.den.mcp.sync"); return true; })()`);
+        await ctx.eval(`(() => { localStorage.removeItem(${JSON.stringify(USER_STATE_KEY)}); localStorage.removeItem("ipollowork.den.mcp.sync"); return true; })()`);
         await ctx.navigateHash("/settings/extensions/mcp");
         await ctx.waitFor("window.location.hash.includes('/settings/extensions/mcp')", { timeoutMs: 30_000 });
         await ctx.waitForText("Add Custom App", { timeoutMs: 30_000 });
         await revealHidden(ctx);
         await ctx.waitFor(cloudRowExpr(CONFIGURED_STATUSES), {
           timeoutMs: 90_000,
-          label: "ipollowalk-cloud configured row",
+          label: "ipollowork-cloud configured row",
         });
         // Idempotent re-runs: a previous run may have left the entry Paused.
         // Restore the enabled baseline before proving the disable behavior.
@@ -163,17 +163,17 @@ export default {
             label: "entry no longer Paused",
           });
         }
-        await ctx.prove("Signing in auto-configures the ipollowalk-cloud MCP", {
+        await ctx.prove("Signing in auto-configures the ipollowork-cloud MCP", {
           assert: async () => {
             await ctx.waitFor(cloudRowExpr(CONFIGURED_STATUSES.filter((status) => status !== "Paused")), {
               timeoutMs: 90_000,
-              label: "ipollowalk-cloud configured row (enabled)",
+              label: "ipollowork-cloud configured row (enabled)",
             });
             await ctx.eval(scrollCloudRowExpr);
           },
           screenshot: {
             name: "cloud-mcp-configured",
-            claim: "iPolloWalk Cloud Control appears as a configured MCP after cloud sign-in.",
+            claim: "iPolloWork Cloud Control appears as a configured MCP after cloud sign-in.",
             requireText: [CLOUD_TITLE],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/mcp",
@@ -188,13 +188,13 @@ export default {
           action: async () => {
             await ctx.waitFor(expandAndClickDetailExpr(CONFIGURED_STATUSES, "Disable"), {
               timeoutMs: 30_000,
-              label: "expand ipollowalk-cloud row and click Disable",
+              label: "expand ipollowork-cloud row and click Disable",
             });
           },
           assert: async () => {
             await ctx.waitFor(cloudRowExpr(["Paused"]), {
               timeoutMs: 30_000,
-              label: "ipollowalk-cloud row shows Paused",
+              label: "ipollowork-cloud row shows Paused",
             });
             const intent = await ctx.eval(`localStorage.getItem(${JSON.stringify(USER_STATE_KEY)})`);
             ctx.assert(intent === "disabled", `Expected persisted intent "disabled", got ${JSON.stringify(intent)}`);
@@ -202,7 +202,7 @@ export default {
           },
           screenshot: {
             name: "cloud-mcp-disabled",
-            claim: "iPolloWalk Cloud Control is Paused after the user disables it.",
+            claim: "iPolloWork Cloud Control is Paused after the user disables it.",
             requireText: [CLOUD_TITLE, "Paused"],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/mcp",
@@ -230,7 +230,7 @@ export default {
           assert: async () => {
             await ctx.waitFor(cloudRowExpr(["Paused"]), {
               timeoutMs: 30_000,
-              label: "ipollowalk-cloud row still Paused after remount",
+              label: "ipollowork-cloud row still Paused after remount",
             });
             const intent = await ctx.eval(`localStorage.getItem(${JSON.stringify(USER_STATE_KEY)})`);
             ctx.assert(intent === "disabled", `Persisted intent lost after sync tick: ${JSON.stringify(intent)}`);
@@ -249,7 +249,7 @@ export default {
           },
           screenshot: {
             name: "cloud-mcp-still-disabled",
-            claim: "iPolloWalk Cloud Control stays Paused after the settings remount sync tick.",
+            claim: "iPolloWork Cloud Control stays Paused after the settings remount sync tick.",
             requireText: [CLOUD_TITLE, "Paused"],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/mcp",
@@ -264,7 +264,7 @@ export default {
           action: async () => {
             await ctx.waitFor(expandAndClickDetailExpr(["Paused"], "Enable"), {
               timeoutMs: 30_000,
-              label: "expand paused ipollowalk-cloud row and click Enable",
+              label: "expand paused ipollowork-cloud row and click Enable",
             });
           },
           assert: async () => {
@@ -274,7 +274,7 @@ export default {
             );
             await ctx.waitFor(cloudRowExpr(CONFIGURED_STATUSES.filter((status) => status !== "Paused")), {
               timeoutMs: 60_000,
-              label: "ipollowalk-cloud row no longer Paused",
+              label: "ipollowork-cloud row no longer Paused",
             });
             // Bring the row into the viewport so the frame is visually
             // distinct from the previous capture (defeats the dedup guard).
@@ -282,7 +282,7 @@ export default {
           },
           screenshot: {
             name: "cloud-mcp-reenabled",
-            claim: "iPolloWalk Cloud Control leaves Paused after re-enable and the intent record is cleared.",
+            claim: "iPolloWork Cloud Control leaves Paused after re-enable and the intent record is cleared.",
             requireText: [CLOUD_TITLE],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/mcp",

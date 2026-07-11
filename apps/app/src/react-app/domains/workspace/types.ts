@@ -3,10 +3,10 @@ import type { WorkspacePreset } from "../../../app/types";
 export type CreateWorkspaceScreen = "chooser" | "local" | "remote";
 
 export type RemoteWorkspaceInput = {
-  ipollowalkHostUrl?: string | null;
-  ipollowalkToken?: string | null;
-  ipollowalkClientToken?: string | null;
-  ipollowalkHostToken?: string | null;
+  ipolloworkHostUrl?: string | null;
+  ipolloworkToken?: string | null;
+  ipolloworkClientToken?: string | null;
+  ipolloworkHostToken?: string | null;
   directory?: string | null;
   displayName?: string | null;
   closeModal?: boolean;
@@ -68,14 +68,14 @@ export type CreateRemoteWorkspaceModalProps = {
   open: boolean;
   onClose: () => void;
   onConfirm: (input: {
-    ipollowalkHostUrl?: string | null;
-    ipollowalkToken?: string | null;
+    ipolloworkHostUrl?: string | null;
+    ipolloworkToken?: string | null;
     directory?: string | null;
     displayName?: string | null;
   }) => void;
   initialValues?: {
-    ipollowalkHostUrl?: string | null;
-    ipollowalkToken?: string | null;
+    ipolloworkHostUrl?: string | null;
+    ipolloworkToken?: string | null;
     directory?: string | null;
     displayName?: string | null;
   };

@@ -88,7 +88,7 @@ describe("openExternalUrl", () => {
     let spawnCalled = false;
 
     const result = await openExternalUrl("https://example.com", {
-      env: { IPOLLOWALK_SIMULATE_OPEN_EXTERNAL_FAILURE: "1" },
+      env: { IPOLLOWORK_SIMULATE_OPEN_EXTERNAL_FAILURE: "1" },
       openExternal: async () => {
         opened = true;
       },

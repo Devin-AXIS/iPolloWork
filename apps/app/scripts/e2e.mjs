@@ -60,7 +60,7 @@ try {
   let sessionId;
 
   await step("session.create", async () => {
-    const session = await client.session.create({ title: "iPolloWalk e2e" });
+    const session = await client.session.create({ title: "iPolloWork e2e" });
     sessionId = session.id;
     assert.ok(sessionId);
     return { id: session.id, title: session.title };
@@ -83,7 +83,7 @@ try {
     await client.session.prompt({
       sessionID: sessionId,
       noReply: true,
-      parts: [{ type: "text", text: "iPolloWalk e2e context injection" }],
+      parts: [{ type: "text", text: "iPolloWork e2e context injection" }],
     });
     const msgs = await client.session.messages({ sessionID: sessionId, limit: 50 });
     assert.ok(Array.isArray(msgs));
@@ -115,7 +115,7 @@ try {
     })();
 
     // Trigger events.
-    await client.session.update({ sessionID: sessionId, title: "iPolloWalk e2e (updated)" });
+    await client.session.update({ sessionID: sessionId, title: "iPolloWork e2e (updated)" });
 
     await new Promise((r) => setTimeout(r, 1200));
 

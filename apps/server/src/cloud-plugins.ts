@@ -487,10 +487,10 @@ function readCloudImports(config: Record<string, unknown>): WorkspaceCloudImport
 }
 
 function runtimeDbPath(config: ServerConfig): string {
-  const override = process.env.IPOLLOWALK_RUNTIME_DB?.trim();
+  const override = process.env.IPOLLOWORK_RUNTIME_DB?.trim();
   if (override) return resolve(override);
   const configPath = config.configPath?.trim();
-  const configDir = configPath ? dirname(configPath) : resolve(homedir(), ".config", "ipollowalk");
+  const configDir = configPath ? dirname(configPath) : resolve(homedir(), ".config", "ipollowork");
   return resolve(configDir, "runtime.sqlite");
 }
 

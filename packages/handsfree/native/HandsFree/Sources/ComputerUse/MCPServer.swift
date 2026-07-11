@@ -27,7 +27,7 @@ actor MCPServer {
                 respond(id: id, result: [
                     "protocolVersion": "2025-03-26",
                     "capabilities": ["tools": [:]],
-                    "serverInfo": ["name": "ipollowalk-computer-use", "version": "0.1.0"],
+                    "serverInfo": ["name": "ipollowork-computer-use", "version": "0.1.0"],
                 ])
             case "notifications/initialized":
                 break

@@ -28,7 +28,7 @@ import {
   removeMcpFromConfig,
   validateMcpServerName,
 } from "../../../app/mcp";
-import { buildiPolloWalkWorkspaceBaseUrl } from "../../../app/lib/ipollowalk-server";
+import { buildiPolloWorkWorkspaceBaseUrl } from "../../../app/lib/ipollowork-server";
 import type {
   Client,
   McpServerEntry,
@@ -38,7 +38,7 @@ import type {
 } from "../../../app/types";
 import { isDesktopRuntime, normalizeDirectoryPath, safeStringify } from "../../../app/utils";
 
-import type { iPolloWalkServerStore } from "./ipollowalk-server-store";
+import type { iPolloWorkServerStore } from "./ipollowork-server-store";
 import { attemptSilentMcpReauth } from "./mcp-silent-reauth";
 import {
   CLOUD_MCP_SERVER_NAME,
@@ -84,7 +84,7 @@ export function createConnectionsStore(options: {
   selectedWorkspaceId: () => string;
   selectedWorkspaceRoot: () => string;
   workspaceType: () => "local" | "remote";
-  ipollowalkServer: iPolloWalkServerStore;
+  ipolloworkServer: iPolloWorkServerStore;
   runtimeWorkspaceId: () => string | null;
   ensureRuntimeWorkspaceId?: () => Promise<string | null | undefined>;
   setProjectDir?: (value: string) => void;
@@ -151,13 +151,13 @@ export function createConnectionsStore(options: {
     return `${workspaceType}:${workspaceId}:${root}:${runtimeWorkspaceId}`;
   };
 
-  const getiPolloWalkSnapshot = () => options.ipollowalkServer.getSnapshot();
+  const getiPolloWorkSnapshot = () => options.ipolloworkServer.getSnapshot();
 
-  const resolveiPolloWalkWorkspaceId = async () => {
+  const resolveiPolloWorkWorkspaceId = async () => {
     const current = options.runtimeWorkspaceId()?.trim();
     if (current) return current;
-    const ipollowalkSnapshot = getiPolloWalkSnapshot();
-    if (ipollowalkSnapshot.ipollowalkServerStatus !== "connected" || !ipollowalkSnapshot.ipollowalkServerClient) {
+    const ipolloworkSnapshot = getiPolloWorkSnapshot();
+    if (ipolloworkSnapshot.ipolloworkServerStatus !== "connected" || !ipolloworkSnapshot.ipolloworkServerClient) {
       return null;
     }
     const ensured = (await options.ensureRuntimeWorkspaceId?.())?.trim();
@@ -165,39 +165,39 @@ export function createConnectionsStore(options: {
     return options.workspaceType() === "local" ? options.selectedWorkspaceId().trim() || null : null;
   };
 
-  const resolveConfigiPolloWalkTarget = async (mode: "read" | "write") => {
-    const ipollowalkSnapshot = getiPolloWalkSnapshot();
-    const ipollowalkClient = ipollowalkSnapshot.ipollowalkServerClient;
-    const ipollowalkWorkspaceId = await resolveiPolloWalkWorkspaceId();
-    const hasiPolloWalkTarget =
-      ipollowalkSnapshot.ipollowalkServerStatus === "connected" &&
-      Boolean(ipollowalkClient && ipollowalkWorkspaceId);
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.config?.[mode] !== false;
+  const resolveConfigiPolloWorkTarget = async (mode: "read" | "write") => {
+    const ipolloworkSnapshot = getiPolloWorkSnapshot();
+    const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
+    const ipolloworkWorkspaceId = await resolveiPolloWorkWorkspaceId();
+    const hasiPolloWorkTarget =
+      ipolloworkSnapshot.ipolloworkServerStatus === "connected" &&
+      Boolean(ipolloworkClient && ipolloworkWorkspaceId);
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.config?.[mode] !== false;
     return {
-      ipollowalkClient,
-      ipollowalkWorkspaceId,
-      hasiPolloWalkTarget,
-      canUseiPolloWalkServer,
+      ipolloworkClient,
+      ipolloworkWorkspaceId,
+      hasiPolloWorkTarget,
+      canUseiPolloWorkServer,
     };
   };
 
-  const resolveMcpiPolloWalkTarget = async (mode: "read" | "write") => {
-    const ipollowalkSnapshot = getiPolloWalkSnapshot();
-    const ipollowalkClient = ipollowalkSnapshot.ipollowalkServerClient;
-    const ipollowalkWorkspaceId = await resolveiPolloWalkWorkspaceId();
-    const hasiPolloWalkTarget =
-      ipollowalkSnapshot.ipollowalkServerStatus === "connected" &&
-      Boolean(ipollowalkClient && ipollowalkWorkspaceId);
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.mcp?.[mode] !== false;
+  const resolveMcpiPolloWorkTarget = async (mode: "read" | "write") => {
+    const ipolloworkSnapshot = getiPolloWorkSnapshot();
+    const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
+    const ipolloworkWorkspaceId = await resolveiPolloWorkWorkspaceId();
+    const hasiPolloWorkTarget =
+      ipolloworkSnapshot.ipolloworkServerStatus === "connected" &&
+      Boolean(ipolloworkClient && ipolloworkWorkspaceId);
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.mcp?.[mode] !== false;
     return {
-      ipollowalkClient,
-      ipollowalkWorkspaceId,
-      hasiPolloWalkTarget,
-      canUseiPolloWalkServer,
+      ipolloworkClient,
+      ipolloworkWorkspaceId,
+      hasiPolloWorkTarget,
+      canUseiPolloWorkServer,
     };
   };
 
@@ -210,14 +210,14 @@ export function createConnectionsStore(options: {
 
   const readMcpConfigFile = async (scope: "project" | "global"): Promise<OpencodeConfigFile | null> => {
     const projectDir = options.projectDir().trim();
-    const { ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget, canUseiPolloWalkServer } =
-      await resolveConfigiPolloWalkTarget("read");
+    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+      await resolveConfigiPolloWorkTarget("read");
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      return ipollowalkClient.readOpencodeConfigFile(ipollowalkWorkspaceId, scope);
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      return ipolloworkClient.readOpencodeConfigFile(ipolloworkWorkspaceId, scope);
     }
 
-    if (hasiPolloWalkTarget) {
+    if (hasiPolloWorkTarget) {
       return null;
     }
 
@@ -234,25 +234,25 @@ export function createConnectionsStore(options: {
       return activeClient;
     }
 
-    const ipollowalkSnapshot = getiPolloWalkSnapshot();
-    const ipollowalkBaseUrl = ipollowalkSnapshot.ipollowalkServerBaseUrl.trim();
-    const token = ipollowalkSnapshot.ipollowalkServerAuth.token?.trim();
-    if (!ipollowalkBaseUrl || !token) {
+    const ipolloworkSnapshot = getiPolloWorkSnapshot();
+    const ipolloworkBaseUrl = ipolloworkSnapshot.ipolloworkServerBaseUrl.trim();
+    const token = ipolloworkSnapshot.ipolloworkServerAuth.token?.trim();
+    if (!ipolloworkBaseUrl || !token) {
       return null;
     }
 
     const mountedBaseUrl =
-      buildiPolloWalkWorkspaceBaseUrl(ipollowalkBaseUrl, await resolveiPolloWalkWorkspaceId()) ?? ipollowalkBaseUrl;
+      buildiPolloWorkWorkspaceBaseUrl(ipolloworkBaseUrl, await resolveiPolloWorkWorkspaceId()) ?? ipolloworkBaseUrl;
     activeClient = createClient(`${mountedBaseUrl.replace(/\/+$/, "")}/opencode`, undefined, {
       token,
-      mode: "ipollowalk",
+      mode: "ipollowork",
     });
     options.setClient(activeClient);
     return activeClient;
   };
 
-  const resolveWritableiPolloWalkTarget = async () => {
-    return resolveMcpiPolloWalkTarget("write");
+  const resolveWritableiPolloWorkTarget = async () => {
+    return resolveMcpiPolloWorkTarget("write");
   };
 
   const resolveProjectDir = async (activeClient: Client | null, currentProjectDir: string) => {
@@ -274,29 +274,29 @@ export function createConnectionsStore(options: {
     return resolvedProjectDir;
   };
 
-  const listMcpFromiPolloWalkServer = async (projectDir: string) => {
-    const ipollowalkSnapshot = getiPolloWalkSnapshot();
-    const { ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget, canUseiPolloWalkServer } =
-      await resolveMcpiPolloWalkTarget("read");
-    const canTryiPolloWalkServer = canUseiPolloWalkServer;
+  const listMcpFromiPolloWorkServer = async (projectDir: string) => {
+    const ipolloworkSnapshot = getiPolloWorkSnapshot();
+    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+      await resolveMcpiPolloWorkTarget("read");
+    const canTryiPolloWorkServer = canUseiPolloWorkServer;
 
     recordPerfLog(options.developerMode(), "mcp.refresh", "server-path-check", {
       workspaceType: options.workspaceType(),
       projectDir: projectDir || null,
-      ipollowalkStatus: ipollowalkSnapshot.ipollowalkServerStatus,
-      hasiPolloWalkClient: Boolean(ipollowalkClient),
-      ipollowalkWorkspaceId: ipollowalkWorkspaceId ?? null,
-      canReadMcp: ipollowalkSnapshot.ipollowalkServerCapabilities?.mcp?.read ?? null,
-      canTryiPolloWalkServer,
+      ipolloworkStatus: ipolloworkSnapshot.ipolloworkServerStatus,
+      hasiPolloWorkClient: Boolean(ipolloworkClient),
+      ipolloworkWorkspaceId: ipolloworkWorkspaceId ?? null,
+      canReadMcp: ipolloworkSnapshot.ipolloworkServerCapabilities?.mcp?.read ?? null,
+      canTryiPolloWorkServer,
     });
 
-    if (hasiPolloWalkTarget && !canTryiPolloWalkServer) {
-      throw new Error("iPolloWalk server cannot read MCP config for this workspace.");
+    if (hasiPolloWorkTarget && !canTryiPolloWorkServer) {
+      throw new Error("iPolloWork server cannot read MCP config for this workspace.");
     }
 
-    if (!canTryiPolloWalkServer || !ipollowalkClient || !ipollowalkWorkspaceId) return null;
+    if (!canTryiPolloWorkServer || !ipolloworkClient || !ipolloworkWorkspaceId) return null;
 
-    const response = await ipollowalkClient.listMcp(ipollowalkWorkspaceId);
+    const response = await ipolloworkClient.listMcp(ipolloworkWorkspaceId);
     const next = response.items.map((entry) => ({
       name: entry.name,
       config: entry.config as McpServerEntry["config"],
@@ -325,9 +325,9 @@ export function createConnectionsStore(options: {
     return { next, nextStatuses, engineSync };
   };
 
-  const resolveDesktopCommand = async (commandName: "getComputerUseMcpCommand" | "getiPolloWalkUiMcpCommand", fallbackOnError = true) => {
+  const resolveDesktopCommand = async (commandName: "getComputerUseMcpCommand" | "getiPolloWorkUiMcpCommand", fallbackOnError = true) => {
     try {
-      const command = await window.__IPOLLOWALK_ELECTRON__?.invokeDesktop?.(commandName);
+      const command = await window.__IPOLLOWORK_ELECTRON__?.invokeDesktop?.(commandName);
       if (Array.isArray(command) && command.every((part) => typeof part === "string") && command.length > 0) {
         return command;
       }
@@ -335,7 +335,7 @@ export function createConnectionsStore(options: {
       if (!fallbackOnError) {
         throw error instanceof Error
           ? error
-          : new Error("Computer Use helper app is unavailable. Restart iPolloWalk or reinstall the app.");
+          : new Error("Computer Use helper app is unavailable. Restart iPolloWork or reinstall the app.");
       }
       // Fall through to the published package command in the manifest/catalog.
     }
@@ -344,21 +344,21 @@ export function createConnectionsStore(options: {
 
   const resolveLocalMcpCommand = async (entry: McpDirectoryInfo) => {
     const mcpResource = extensionResource(entry.extensionManifest, "mcp");
-    if (mcpResource?.localCommandRef === "ipollowalk.computerUseMcp") {
+    if (mcpResource?.localCommandRef === "ipollowork.computerUseMcp") {
       const command = await resolveDesktopCommand("getComputerUseMcpCommand", false);
       return command ?? entry.command;
     }
-    if (mcpResource?.localCommandRef === "ipollowalk.uiMcp" || entry.serverName === "ipollowalk-ui") {
-      const command = await resolveDesktopCommand("getiPolloWalkUiMcpCommand");
+    if (mcpResource?.localCommandRef === "ipollowork.uiMcp" || entry.serverName === "ipollowork-ui") {
+      const command = await resolveDesktopCommand("getiPolloWorkUiMcpCommand");
       return command ?? entry.command;
     }
     return entry.command;
   };
 
   const resolveLocalMcpEnvironment = async (entry: McpDirectoryInfo) => {
-    if (entry.serverName !== "ipollowalk-ui") return undefined;
+    if (entry.serverName !== "ipollowork-ui") return undefined;
     try {
-      const environment = await window.__IPOLLOWALK_ELECTRON__?.invokeDesktop?.("getiPolloWalkUiMcpEnvironment");
+      const environment = await window.__IPOLLOWORK_ELECTRON__?.invokeDesktop?.("getiPolloWorkUiMcpEnvironment");
       if (environment && typeof environment === "object" && !Array.isArray(environment)) {
         return Object.fromEntries(
           Object.entries(environment).filter((entry): entry is [string, string] =>
@@ -367,7 +367,7 @@ export function createConnectionsStore(options: {
         );
       }
     } catch {
-      // Discovery fallback in ipollowalk-ui-mcp still handles normal launches.
+      // Discovery fallback in ipollowork-ui-mcp still handles normal launches.
     }
     return undefined;
   };
@@ -411,7 +411,7 @@ export function createConnectionsStore(options: {
 
     try {
       setStateField("mcpStatus", null);
-      const serverResult = await listMcpFromiPolloWalkServer(projectDir);
+      const serverResult = await listMcpFromiPolloWorkServer(projectDir);
       if (serverResult) {
         // Surface engine registration failures instead of leaving users
         // staring at an MCP that silently shows as disconnected.
@@ -434,8 +434,8 @@ export function createConnectionsStore(options: {
       recordPerfLog(options.developerMode(), "mcp.refresh", "server-path-error", {
         message: error instanceof Error ? error.message : String(error),
       });
-      const serverTarget = await resolveMcpiPolloWalkTarget("read").catch(() => null);
-      if (isRemoteWorkspace || serverTarget?.hasiPolloWalkTarget) {
+      const serverTarget = await resolveMcpiPolloWorkTarget("read").catch(() => null);
+      if (isRemoteWorkspace || serverTarget?.hasiPolloWorkTarget) {
         mutateState((current) => ({
           ...current,
           mcpServers: [],
@@ -449,7 +449,7 @@ export function createConnectionsStore(options: {
     if (isRemoteWorkspace) {
       mutateState((current) => ({
         ...current,
-        mcpStatus: "iPolloWalk server unavailable. MCP config is read-only.",
+        mcpStatus: "iPolloWork server unavailable. MCP config is read-only.",
         mcpServers: [],
         mcpStatuses: {},
       }));
@@ -499,10 +499,10 @@ export function createConnectionsStore(options: {
         ...globalServers.filter((entry) => !projectNames.has(entry.name)),
         ...projectServers,
       ];
-      // Runtime-DB MCPs (source "config.remote") only exist on the iPolloWalk
+      // Runtime-DB MCPs (source "config.remote") only exist on the iPolloWork
       // server. Keep the last-known entries instead of silently dropping them
       // while the server is briefly unreachable (startup race) — otherwise
-      // enabled MCPs like ipollowalk-ui render as "off".
+      // enabled MCPs like ipollowork-ui render as "off".
       const fileNames = new Set(fileServers.map((entry) => entry.name));
       const runtimeServers = state.mcpServers.filter(
         (entry) => entry.source === "config.remote" && !fileNames.has(entry.name),
@@ -558,10 +558,10 @@ export function createConnectionsStore(options: {
 
   async function connectMcp(entry: McpDirectoryInfo): Promise<boolean> {
     const startedAt = perfNow();
-    const ipollowalkSnapshot = getiPolloWalkSnapshot();
+    const ipolloworkSnapshot = getiPolloWorkSnapshot();
     const isRemoteWorkspace =
       options.workspaceType() === "remote" ||
-      (!isDesktopRuntime() && ipollowalkSnapshot.ipollowalkServerStatus === "connected");
+      (!isDesktopRuntime() && ipolloworkSnapshot.ipolloworkServerStatus === "connected");
     const projectDir = options.projectDir().trim();
     const entryType = entry.type ?? "remote";
 
@@ -572,26 +572,26 @@ export function createConnectionsStore(options: {
       projectDir: projectDir || null,
     });
 
-    const { ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget, canUseiPolloWalkServer } =
-      await resolveWritableiPolloWalkTarget();
+    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+      await resolveWritableiPolloWorkTarget();
 
-    if (isRemoteWorkspace && !canUseiPolloWalkServer) {
-      setStateField("mcpStatus", "iPolloWalk server unavailable. MCP config is read-only.");
+    if (isRemoteWorkspace && !canUseiPolloWorkServer) {
+      setStateField("mcpStatus", "iPolloWork server unavailable. MCP config is read-only.");
       finishPerf(options.developerMode(), "mcp.connect", "blocked", startedAt, {
-        reason: "ipollowalk-server-unavailable",
+        reason: "ipollowork-server-unavailable",
       });
       return false;
     }
 
-    if (hasiPolloWalkTarget && !canUseiPolloWalkServer) {
-      setStateField("mcpStatus", "iPolloWalk server MCP config is read-only.");
+    if (hasiPolloWorkTarget && !canUseiPolloWorkServer) {
+      setStateField("mcpStatus", "iPolloWork server MCP config is read-only.");
       finishPerf(options.developerMode(), "mcp.connect", "blocked", startedAt, {
-        reason: "ipollowalk-server-read-only",
+        reason: "ipollowork-server-read-only",
       });
       return false;
     }
 
-    if (!canUseiPolloWalkServer && !isDesktopRuntime()) {
+    if (!canUseiPolloWorkServer && !isDesktopRuntime()) {
       setStateField("mcpStatus", t("mcp.desktop_required"));
       finishPerf(options.developerMode(), "mcp.connect", "blocked", startedAt, {
         reason: "desktop-required",
@@ -599,7 +599,7 @@ export function createConnectionsStore(options: {
       return false;
     }
 
-    if (!isRemoteWorkspace && !projectDir && !canUseiPolloWalkServer) {
+    if (!isRemoteWorkspace && !projectDir && !canUseiPolloWorkServer) {
       setStateField("mcpStatus", t("mcp.pick_workspace_first"));
       finishPerf(options.developerMode(), "mcp.connect", "blocked", startedAt, {
         reason: "missing-workspace",
@@ -607,8 +607,8 @@ export function createConnectionsStore(options: {
       return false;
     }
 
-    const activeClient = canUseiPolloWalkServer ? options.client() ?? await ensureActiveClient().catch(() => null) : await ensureActiveClient();
-    if (!activeClient && !canUseiPolloWalkServer) {
+    const activeClient = canUseiPolloWorkServer ? options.client() ?? await ensureActiveClient().catch(() => null) : await ensureActiveClient();
+    if (!activeClient && !canUseiPolloWorkServer) {
       setStateField("mcpStatus", t("mcp.connect_server_first"));
       finishPerf(options.developerMode(), "mcp.connect", "blocked", startedAt, {
         reason: "no-active-client",
@@ -617,7 +617,7 @@ export function createConnectionsStore(options: {
     }
 
     const resolvedProjectDir = activeClient ? await resolveProjectDir(activeClient, projectDir) : projectDir;
-    if (!resolvedProjectDir && !canUseiPolloWalkServer) {
+    if (!resolvedProjectDir && !canUseiPolloWorkServer) {
       setStateField("mcpStatus", t("mcp.pick_workspace_first"));
       finishPerf(options.developerMode(), "mcp.connect", "blocked", startedAt, {
         reason: "missing-workspace-after-discovery",
@@ -634,9 +634,9 @@ export function createConnectionsStore(options: {
       // Resolve dynamic URLs for built-in MCPs
       let resolvedUrl = entry.url;
       let resolvedHeaders: Record<string, string> | undefined;
-      if (!resolvedUrl && entry.serverName === "ipollowalk-ui") {
+      if (!resolvedUrl && entry.serverName === "ipollowork-ui") {
         try {
-          const bridgeInfo = await window.__IPOLLOWALK_ELECTRON__?.invokeDesktop?.("getUiControlBridgeInfo");
+          const bridgeInfo = await window.__IPOLLOWORK_ELECTRON__?.invokeDesktop?.("getUiControlBridgeInfo");
           if (bridgeInfo?.baseUrl) {
             resolvedUrl = `${bridgeInfo.baseUrl}/mcp`;
             if (bridgeInfo.token) {
@@ -650,15 +650,15 @@ export function createConnectionsStore(options: {
 
       // Signed-in cloud users connect the Den MCPs with a first-party token —
       // no browser OAuth round-trip. Signed-out users fall back to OAuth.
-      // Use the signed-in member's first-party token for iPolloWalk Cloud.
+      // Use the signed-in member's first-party token for iPolloWork Cloud.
       // Allowlisted platform-admin tools are discovered through this same
       // search_capabilities / execute_capability connection.
-      if (entry.serverName === "ipollowalk-cloud") {
+      if (entry.serverName === "ipollowork-cloud") {
         try {
           const minted = await mintCloudControlMcpToken();
           if (minted) {
             // Never trust `minted.resource` verbatim: older den-api builds
-            // mint the bare web-app origin (https://app.ipollowalklabs.com/mcp)
+            // mint the bare web-app origin (https://app.ipolloworklabs.com/mcp)
             // where MCP 404s. Heal it to the canonical /mcp origin, then
             // route the desktop app to the minimal, harness-facing
             // /mcp/agent surface (search_capabilities + execute_capability
@@ -680,7 +680,7 @@ export function createConnectionsStore(options: {
 
       if (entryType === "remote") {
         if (!resolvedUrl) {
-          throw new Error("Missing MCP URL. Is the iPolloWalk desktop app running?");
+          throw new Error("Missing MCP URL. Is the iPolloWork desktop app running?");
         }
         mcpEntryConfig["url"] = resolvedUrl;
         if (resolvedHeaders) {
@@ -709,8 +709,8 @@ export function createConnectionsStore(options: {
         }
       }
 
-      if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-        await ipollowalkClient.addMcp(ipollowalkWorkspaceId, {
+      if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+        await ipolloworkClient.addMcp(ipolloworkWorkspaceId, {
           name: slug,
           config: mcpEntryConfig,
         });
@@ -754,12 +754,12 @@ export function createConnectionsStore(options: {
         }
       }
 
-      if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-        // The iPolloWalk server is the source of truth for workspace-scoped MCP
+      if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+        // The iPolloWork server is the source of truth for workspace-scoped MCP
         // config in the React port. Avoid also calling the OpenCode SDK's MCP
         // hot-add endpoint here: when the SDK client is rooted at the aggregate
         // `/opencode` route it can resolve to an internal `local_*` workspace
-        // id that the iPolloWalk server does not expose, producing a confusing
+        // id that the iPolloWork server does not expose, producing a confusing
         // `workspace_not_found` after the config write already succeeded.
         setStateField("mcpStatuses", filterConfiguredStatuses(snapshot.mcpStatuses, snapshot.mcpServers));
       } else {
@@ -857,15 +857,15 @@ export function createConnectionsStore(options: {
   // persisted marker that survives settings-route store remounts: each
   // re-mint writes a new token to config, which marks an engine reload as
   // required. Until that reload happens the status stays needs_auth, so
-  // retrying on every sync tick produced an endless "MCP 'ipollowalk-cloud'
+  // retrying on every sync tick produced an endless "MCP 'ipollowork-cloud'
   // was updated. Reload to connect." nag. One attempt per unhealthy episode;
   // reset when the entry reports connected again.
   let cloudMcpUnhealthyRemintAttempted = false;
 
   /**
    * Background reconciliation for the Den cloud MCP: when the desktop is
-   * signed in to iPolloWalk Cloud with an active org, keep the
-   * `ipollowalk-cloud` MCP entry configured with a fresh first-party token.
+   * signed in to iPolloWork Cloud with an active org, keep the
+   * `ipollowork-cloud` MCP entry configured with a fresh first-party token.
    * Quiet by design — a failed mint never opens the OAuth modal.
    *
    * `force` bypasses the freshness marker: used by the user-facing Refresh
@@ -877,9 +877,9 @@ export function createConnectionsStore(options: {
     const settings = readDenSettings();
     const orgId = settings.activeOrgId?.trim() ?? "";
     if (!orgId || !settings.authToken?.trim()) return "skipped";
-    const workspaceId = await resolveiPolloWalkWorkspaceId();
+    const workspaceId = await resolveiPolloWorkWorkspaceId();
     if (!workspaceId) return "skipped";
-    const serverBaseUrl = getiPolloWalkSnapshot().ipollowalkServerClient?.baseUrl.trim() ?? "";
+    const serverBaseUrl = getiPolloWorkSnapshot().ipolloworkServerClient?.baseUrl.trim() ?? "";
     if (!serverBaseUrl) return "skipped";
 
     const entry = MCP_QUICK_CONNECT.find((candidate) => candidate.serverName === CLOUD_MCP_SERVER_NAME);
@@ -927,7 +927,7 @@ export function createConnectionsStore(options: {
     const shouldRemintForHealth = entryUnhealthy && !attempted;
 
     // Builds before #2116's follow-up wrote the MCP URL against the bare
-    // web-app origin (https://app.ipollowalklabs.com/mcp), which 404s.
+    // web-app origin (https://app.ipolloworklabs.com/mcp), which 404s.
     // Reconfigure those entries even when the marker is still fresh.
     const hasLegacyUrl =
       configuredEntry?.config.type === "remote" && isLegacyWebAppMcpUrl(configuredEntry.config.url);
@@ -996,38 +996,38 @@ export function createConnectionsStore(options: {
   }
 
   async function logoutMcpAuth(name: string) {
-    const ipollowalkSnapshot = getiPolloWalkSnapshot();
+    const ipolloworkSnapshot = getiPolloWorkSnapshot();
     const isRemoteWorkspace =
       options.workspaceType() === "remote" ||
-      (!isDesktopRuntime() && ipollowalkSnapshot.ipollowalkServerStatus === "connected");
+      (!isDesktopRuntime() && ipolloworkSnapshot.ipolloworkServerStatus === "connected");
     const projectDir = options.projectDir().trim();
 
-    const { ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget, canUseiPolloWalkServer } =
-      await resolveWritableiPolloWalkTarget();
+    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+      await resolveWritableiPolloWorkTarget();
 
-    if (isRemoteWorkspace && !canUseiPolloWalkServer) {
-      setStateField("mcpStatus", "iPolloWalk server unavailable. MCP auth is read-only.");
+    if (isRemoteWorkspace && !canUseiPolloWorkServer) {
+      setStateField("mcpStatus", "iPolloWork server unavailable. MCP auth is read-only.");
       return;
     }
 
-    if (hasiPolloWalkTarget && !canUseiPolloWalkServer) {
-      setStateField("mcpStatus", "iPolloWalk server MCP auth is read-only.");
+    if (hasiPolloWorkTarget && !canUseiPolloWorkServer) {
+      setStateField("mcpStatus", "iPolloWork server MCP auth is read-only.");
       return;
     }
 
-    if (!canUseiPolloWalkServer && !isDesktopRuntime()) {
+    if (!canUseiPolloWorkServer && !isDesktopRuntime()) {
       setStateField("mcpStatus", t("mcp.desktop_required"));
       return;
     }
 
-    const activeClient = canUseiPolloWalkServer ? options.client() : await ensureActiveClient();
-    if (!activeClient && !canUseiPolloWalkServer) {
+    const activeClient = canUseiPolloWorkServer ? options.client() : await ensureActiveClient();
+    if (!activeClient && !canUseiPolloWorkServer) {
       setStateField("mcpStatus", t("mcp.connect_server_first"));
       return;
     }
 
     const resolvedProjectDir = activeClient ? await resolveProjectDir(activeClient, projectDir) : projectDir;
-    if (!resolvedProjectDir && !canUseiPolloWalkServer) {
+    if (!resolvedProjectDir && !canUseiPolloWorkServer) {
       setStateField("mcpStatus", t("mcp.pick_workspace_first"));
       return;
     }
@@ -1036,8 +1036,8 @@ export function createConnectionsStore(options: {
     setStateField("mcpStatus", null);
 
     try {
-      if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-        await ipollowalkClient.logoutMcpAuth(ipollowalkWorkspaceId, safeName);
+      if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+        await ipolloworkClient.logoutMcpAuth(ipolloworkWorkspaceId, safeName);
       } else {
         if (!activeClient || !resolvedProjectDir) {
           throw new Error(t("mcp.connect_server_first"));
@@ -1073,14 +1073,14 @@ export function createConnectionsStore(options: {
     try {
       setStateField("mcpStatus", null);
 
-      const { ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget, canUseiPolloWalkServer } =
-        await resolveWritableiPolloWalkTarget();
+      const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+        await resolveWritableiPolloWorkTarget();
 
-      if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-        await ipollowalkClient.removeMcp(ipollowalkWorkspaceId, name);
+      if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+        await ipolloworkClient.removeMcp(ipolloworkWorkspaceId, name);
       } else {
-        if (hasiPolloWalkTarget) {
-          setStateField("mcpStatus", "iPolloWalk server MCP config is read-only.");
+        if (hasiPolloWorkTarget) {
+          setStateField("mcpStatus", "iPolloWork server MCP config is read-only.");
           return;
         }
         const projectDir = options.projectDir().trim();
@@ -1152,15 +1152,15 @@ export function createConnectionsStore(options: {
   // from the existing reload-required popup; no extra banner here.
   async function setMcpEnabled(name: string, enabled: boolean) {
     try {
-      const { ipollowalkClient, ipollowalkWorkspaceId, canUseiPolloWalkServer } =
-        await resolveWritableiPolloWalkTarget();
+      const { ipolloworkClient, ipolloworkWorkspaceId, canUseiPolloWorkServer } =
+        await resolveWritableiPolloWorkTarget();
 
-      if (!canUseiPolloWalkServer || !ipollowalkClient || !ipollowalkWorkspaceId) {
+      if (!canUseiPolloWorkServer || !ipolloworkClient || !ipolloworkWorkspaceId) {
         setStateField("mcpStatus", t("mcp.toggle_requires_server"));
         return;
       }
 
-      await ipollowalkClient.setMcpEnabled(ipollowalkWorkspaceId, name, enabled);
+      await ipolloworkClient.setMcpEnabled(ipolloworkWorkspaceId, name, enabled);
       if (name === CLOUD_MCP_SERVER_NAME) {
         if (enabled) {
           clearCloudMcpUserState();
@@ -1205,7 +1205,7 @@ export function createConnectionsStore(options: {
       return;
     }
 
-    if (!isDesktopRuntime() && getiPolloWalkSnapshot().ipollowalkServerStatus !== "connected") {
+    if (!isDesktopRuntime() && getiPolloWorkSnapshot().ipolloworkServerStatus !== "connected") {
       return;
     }
 

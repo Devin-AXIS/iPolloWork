@@ -1,4 +1,4 @@
-export const DESIGN_MESSAGE_CHANNEL = "ipollowalk-design-html-v1";
+export const DESIGN_MESSAGE_CHANNEL = "ipollowork-design-html-v1";
 
 export const DESIGN_STYLE_FIELDS = [
   "color",
@@ -51,13 +51,13 @@ export function isLocalHtmlPath(path: string) {
 }
 
 export function designSelectionStorageKey(workspaceId: string) {
-  return `ipollowalk:design-html:selected:v1:${workspaceId}`;
+  return `ipollowork:design-html:selected:v1:${workspaceId}`;
 }
 
 export function buildDesignPreviewDocument(source: string, editing: boolean) {
   if (!editing) return source;
 
-  const runtime = `<script id="ipollowalk-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)});<\/script>`;
+  const runtime = `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)});<\/script>`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
   if (bodyEnd >= 0) {
     return `${source.slice(0, bodyEnd)}${runtime}${source.slice(bodyEnd)}`;
@@ -66,13 +66,13 @@ export function buildDesignPreviewDocument(source: string, editing: boolean) {
 }
 
 function designRuntime(channel: string, styleFields: readonly string[]) {
-  const runtimeId = "ipollowalk-design-runtime";
-  const styleId = "ipollowalk-design-runtime-style";
-  const selectedAttribute = "data-ipollowalk-design-selected";
-  const editingAttribute = "data-ipollowalk-design-editing";
-  const idAttribute = "data-ipollowalk-design-id";
-  const overlayId = "ipollowalk-design-transform-overlay";
-  const textNodeAttribute = "data-ipollowalk-design-text-node";
+  const runtimeId = "ipollowork-design-runtime";
+  const styleId = "ipollowork-design-runtime-style";
+  const selectedAttribute = "data-ipollowork-design-selected";
+  const editingAttribute = "data-ipollowork-design-editing";
+  const idAttribute = "data-ipollowork-design-id";
+  const overlayId = "ipollowork-design-transform-overlay";
+  const textNodeAttribute = "data-ipollowork-design-text-node";
   const editableSelector = "h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote,img,div,section,article,header,footer,nav,main";
   const textEditableSelector = "h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote";
   const textColorSelector = "h1,h2,h3,h4,h5,h6,p,span,label,li,blockquote";

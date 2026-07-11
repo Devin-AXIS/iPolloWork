@@ -18,7 +18,7 @@ async function main() {
   const client = await connectCdp(target.webSocketDebuggerUrl);
 
   try {
-    await waitFor(client, "Boolean(window.__ipollowalkControl)", 15000);
+    await waitFor(client, "Boolean(window.__ipolloworkControl)", 15000);
     const preflight = await runPreflight(client);
     if (mode === "preflight") {
       console.log(JSON.stringify(preflight, null, 2));
@@ -59,9 +59,9 @@ function parseArgs(values) {
 
 async function runPreflight(client) {
   const userAgent = await evaluate(client, "navigator.userAgent");
-  const controlReady = await evaluate(client, "Boolean(window.__ipollowalkControl)");
+  const controlReady = await evaluate(client, "Boolean(window.__ipolloworkControl)");
   const actions = controlReady
-    ? await evaluate(client, "window.__ipollowalkControl.listActions().map((action) => action.id)")
+    ? await evaluate(client, "window.__ipolloworkControl.listActions().map((action) => action.id)")
     : [];
   const media = await evaluate(client, `(${mediaPreflight.toString()})()`, true);
 
@@ -75,7 +75,7 @@ async function runPreflight(client) {
   };
 
   if (!result.electron) throw new Error("Target is not Electron.");
-  if (!controlReady) throw new Error("iPolloWalk control API is not available.");
+  if (!controlReady) throw new Error("iPolloWork control API is not available.");
   if (requireAudioPermission && !media.audio.ok) {
     throw new Error(`Audio getUserMedia failed: ${media.audio.name} ${media.audio.message}`);
   }
@@ -100,13 +100,13 @@ async function mediaPreflight() {
 }
 
 async function ensureVoicePanel(client) {
-  await evaluate(client, "window.__ipollowalkControl.setEnabled(true)");
-  await evaluate(client, "window.localStorage.setItem('ipollowalk.extension.enabled.ipollowalk-voice', '1'); window.dispatchEvent(new CustomEvent('ipollowalk:extension-state-changed', { detail: { id: 'ipollowalk-voice', enabled: true } }))");
-  let actions = await evaluate(client, "window.__ipollowalkControl.listActions().map((action) => action.id)");
+  await evaluate(client, "window.__ipolloworkControl.setEnabled(true)");
+  await evaluate(client, "window.localStorage.setItem('ipollowork.extension.enabled.ipollowork-voice', '1'); window.dispatchEvent(new CustomEvent('ipollowork:extension-state-changed', { detail: { id: 'ipollowork-voice', enabled: true } }))");
+  let actions = await evaluate(client, "window.__ipolloworkControl.listActions().map((action) => action.id)");
   if (actions.includes("voice.inject_audio")) return;
   if (actions.includes("voice.panel.open")) {
     await executeControl(client, "voice.panel.open");
-    await waitFor(client, "window.__ipollowalkControl.listActions().some((action) => action.id === 'voice.inject_audio')", 8000);
+    await waitFor(client, "window.__ipolloworkControl.listActions().some((action) => action.id === 'voice.inject_audio')", 8000);
     return;
   }
   throw new Error(`Voice panel actions are not registered. Open a session and enable Voice Mode first. Voice actions: ${actions.filter((id) => id.startsWith("voice.")).join(", ")}`);
@@ -129,14 +129,14 @@ async function collectProof(client, expectedRoute) {
 async function readProof(client) {
   return evaluate(client, `({
     href: location.href,
-    narration: window.__ipollowalkControl?.snapshot?.().narration ?? "",
-    route: window.__ipollowalkControl?.snapshot?.().route ?? "",
+    narration: window.__ipolloworkControl?.snapshot?.().narration ?? "",
+    route: window.__ipolloworkControl?.snapshot?.().route ?? "",
     bodyText: document.body.innerText.slice(-2400),
   })`);
 }
 
 async function executeControl(client, actionId, actionArgs = undefined) {
-  const expression = `window.__ipollowalkControl.execute(${JSON.stringify(actionId)}, ${JSON.stringify(actionArgs)})`;
+  const expression = `window.__ipolloworkControl.execute(${JSON.stringify(actionId)}, ${JSON.stringify(actionArgs)})`;
   const result = await evaluate(client, expression, true);
   if (!result?.ok) throw new Error(`Control action failed: ${actionId}: ${result?.error ?? "unknown error"}`);
   return result;
@@ -145,7 +145,7 @@ async function executeControl(client, actionId, actionArgs = undefined) {
 async function synthesizePcm16Base64(input) {
   const ffmpeg = await requireCommand("ffmpeg", "ffmpeg is required for generated voice audio. On Daytona/Linux install it with: apt-get update && apt-get install -y ffmpeg espeak-ng");
   const tts = await findTtsCommand();
-  const dir = await mkdtemp(join(tmpdir(), "ipollowalk-voice-cdp-"));
+  const dir = await mkdtemp(join(tmpdir(), "ipollowork-voice-cdp-"));
   const source = join(dir, "speech.wav");
   const pcm = join(dir, "speech.pcm");
 
@@ -194,7 +194,7 @@ async function pickTarget(baseUrl) {
   if (!response.ok) throw new Error(`Could not list CDP targets: ${response.status}`);
   const targets = await response.json();
   const pages = targets.filter((target) => target.type === "page" && target.webSocketDebuggerUrl);
-  const target = pages.find((page) => page.title === "iPolloWalk") ??
+  const target = pages.find((page) => page.title === "iPolloWork") ??
     pages.find((page) => page.url.includes("localhost") || page.url.includes("127.0.0.1") || page.url.includes("[::1]")) ??
     pages[0];
   if (!target) throw new Error("No CDP page target found.");

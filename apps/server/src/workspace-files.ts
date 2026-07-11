@@ -13,8 +13,8 @@ export function opencodeConfigPath(workspaceRoot: string): string {
   return jsoncPath;
 }
 
-export function ipollowalkConfigPath(workspaceRoot: string): string {
-  return join(workspaceRoot, ".opencode", "ipollowalk.json");
+export function ipolloworkConfigPath(workspaceRoot: string): string {
+  return join(workspaceRoot, ".opencode", "ipollowork.json");
 }
 
 export function projectSkillsDir(workspaceRoot: string): string {

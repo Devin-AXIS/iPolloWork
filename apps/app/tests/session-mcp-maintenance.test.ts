@@ -15,7 +15,7 @@ import {
 const NOW = Date.parse("2026-07-09T12:00:00.000Z");
 const WORKSPACE_ID = "workspace_1";
 const SETTINGS: DenSettings = {
-  baseUrl: "https://app.ipollowalk.test",
+  baseUrl: "https://app.ipollowork.test",
   authToken: "session-token",
   activeOrgId: "organization_1",
 };
@@ -24,7 +24,7 @@ const MINTED: DenMcpToken = {
   expiresAt: new Date(NOW + 7 * 24 * 60 * 60 * 1000).toISOString(),
   organizationId: "organization_1",
   scopes: ["mcp:read", "mcp:write"],
-  resource: "https://api.ipollowalk.test/mcp",
+  resource: "https://api.ipollowork.test/mcp",
 };
 
 function installStorageStub() {
@@ -46,7 +46,7 @@ describe("session MCP maintenance", () => {
   test("mints and hot-updates the Cloud MCP without opening Settings", async () => {
     const writes: Array<{ workspaceId: string; payload: { name: string; config: Record<string, unknown> } }> = [];
     const client = {
-      baseUrl: "https://worker.ipollowalk.test",
+      baseUrl: "https://worker.ipollowork.test",
       listMcp: async () => ({ items: [] }),
       addMcp: async (workspaceId: string, payload: { name: string; config: Record<string, unknown> }) => {
         writes.push({ workspaceId, payload });
@@ -65,11 +65,11 @@ describe("session MCP maintenance", () => {
     expect(writes).toEqual([{
       workspaceId: WORKSPACE_ID,
       payload: {
-        name: "ipollowalk-cloud",
+        name: "ipollowork-cloud",
         config: {
           type: "remote",
           enabled: true,
-          url: "https://api.ipollowalk.test/mcp/agent",
+          url: "https://api.ipollowork.test/mcp/agent",
           headers: { Authorization: "Bearer mcp-token" },
           oauth: false,
         },
@@ -93,11 +93,11 @@ describe("session MCP maintenance", () => {
     let mintCount = 0;
     let writeCount = 0;
     const client = {
-      baseUrl: "https://worker.ipollowalk.test",
+      baseUrl: "https://worker.ipollowork.test",
       listMcp: async () => ({
         items: [{
-          name: "ipollowalk-cloud",
-          config: { type: "remote", enabled: true, url: "https://api.ipollowalk.test/mcp/agent" },
+          name: "ipollowork-cloud",
+          config: { type: "remote", enabled: true, url: "https://api.ipollowork.test/mcp/agent" },
         }],
       }),
       addMcp: async () => {
@@ -134,11 +134,11 @@ describe("session MCP maintenance", () => {
     let mintCount = 0;
     const writes: string[] = [];
     const client = {
-      baseUrl: "https://worker.ipollowalk.test",
+      baseUrl: "https://worker.ipollowork.test",
       listMcp: async () => ({
         items: [{
-          name: "ipollowalk-cloud",
-          config: { type: "remote", enabled: true, url: "https://api.ipollowalk.test/mcp/agent" },
+          name: "ipollowork-cloud",
+          config: { type: "remote", enabled: true, url: "https://api.ipollowork.test/mcp/agent" },
         }],
       }),
       addMcp: async (workspaceId: string) => {
@@ -184,8 +184,8 @@ describe("session MCP maintenance", () => {
       baseUrl,
       listMcp: async () => ({
         items: [{
-          name: "ipollowalk-cloud",
-          config: { type: "remote", enabled: true, url: "https://api.ipollowalk.test/mcp/agent" },
+          name: "ipollowork-cloud",
+          config: { type: "remote", enabled: true, url: "https://api.ipollowork.test/mcp/agent" },
         }],
       }),
       addMcp: async () => {
@@ -193,8 +193,8 @@ describe("session MCP maintenance", () => {
         return { items: [] };
       },
     });
-    const workerA = makeClient("https://worker-a.ipollowalk.test");
-    const workerB = makeClient("https://worker-b.ipollowalk.test");
+    const workerA = makeClient("https://worker-a.ipollowork.test");
+    const workerB = makeClient("https://worker-b.ipollowork.test");
     const mintToken = async () => {
       mintCount += 1;
       return MINTED;
@@ -220,7 +220,7 @@ describe("session MCP maintenance", () => {
 
     await expect(syncCloudControlMcpInBackground({
       client: {
-        baseUrl: "https://worker.ipollowalk.test",
+        baseUrl: "https://worker.ipollowork.test",
         listMcp: async () => {
           listed = true;
           return { items: [] };
@@ -235,8 +235,8 @@ describe("session MCP maintenance", () => {
   });
 
   test("deduplicates the same target without blocking another workspace", async () => {
-    const firstClient = { baseUrl: "https://worker.ipollowalk.test", token: "worker-token" };
-    const recreatedClient = { baseUrl: "https://worker.ipollowalk.test/", token: "worker-token" };
+    const firstClient = { baseUrl: "https://worker.ipollowork.test", token: "worker-token" };
+    const recreatedClient = { baseUrl: "https://worker.ipollowork.test/", token: "worker-token" };
     const targetA = getSessionMcpMaintenanceTargetKey({
       client: firstClient,
       cloudSignedIn: true,

@@ -37,8 +37,8 @@ const status: InstallStatus = {
   error: null,
 }
 
-const HOSTED_DESKTOP_WEB_URL = "https://app.ipollowalklabs.com"
-const HOSTED_DESKTOP_API_URL = "https://api.ipollowalklabs.com"
+const HOSTED_DESKTOP_WEB_URL = "https://app.ipolloworklabs.com"
+const HOSTED_DESKTOP_API_URL = "https://api.ipolloworklabs.com"
 
 type BootstrapCandidate = {
   config: Record<string, unknown>
@@ -219,13 +219,13 @@ async function installExe(exePath: string): Promise<string> {
   // silent install (shortcuts, uninstaller, updater layout all included).
   await run(exePath, ["/S"])
   const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local")
-  return path.join(localAppData, "Programs", "iPolloWalk", "iPolloWalk.exe")
+  return path.join(localAppData, "Programs", "iPolloWork", "iPolloWork.exe")
 }
 
 function installAppImage(appImagePath: string): string {
-  const appDir = path.join(os.homedir(), ".local", "share", "ipollowalk")
+  const appDir = path.join(os.homedir(), ".local", "share", "ipollowork")
   mkdirSync(appDir, { recursive: true })
-  const target = path.join(appDir, "iPolloWalk.AppImage")
+  const target = path.join(appDir, "iPolloWork.AppImage")
   rmSync(target, { force: true })
   writeFileSync(target, readFileSync(appImagePath))
   chmodSync(target, 0o755)
@@ -235,8 +235,8 @@ function installAppImage(appImagePath: string): string {
     const applicationsDir = path.join(os.homedir(), ".local", "share", "applications")
     mkdirSync(applicationsDir, { recursive: true })
     writeFileSync(
-      path.join(applicationsDir, "ipollowalk.desktop"),
-      ["[Desktop Entry]", "Type=Application", "Name=iPolloWalk", `Exec=${target}`, "Terminal=false", "Categories=Utility;"].join("\n") + "\n",
+      path.join(applicationsDir, "ipollowork.desktop"),
+      ["[Desktop Entry]", "Type=Application", "Name=iPolloWork", `Exec=${target}`, "Terminal=false", "Categories=Utility;"].join("\n") + "\n",
       "utf8",
     )
   } catch {
@@ -266,7 +266,7 @@ export async function runInstall(config: InstallerConfig, opts: InstallOptions =
     update({ step: "check-version", message: "Checking your deployment for the supported app version..." }, opts.onStatus)
     const version = await fetchLatestSupportedVersion(config.apiUrl)
     const asset = releaseAssetFor(version)
-    update({ version, message: `Deployment supports iPolloWalk ${version}.` }, opts.onStatus)
+    update({ version, message: `Deployment supports iPolloWork ${version}.` }, opts.onStatus)
 
     if (opts.dryRun) {
       const head = await fetch(asset.url, { method: "HEAD", redirect: "follow" })
@@ -278,14 +278,14 @@ export async function runInstall(config: InstallerConfig, opts: InstallOptions =
       return installStatus()
     }
 
-    update({ step: "download", message: `Downloading iPolloWalk ${version}...` }, opts.onStatus)
-    const workDir = path.join(os.tmpdir(), `ipollowalk-installer-${process.pid}-${Math.random().toString(36).slice(2)}`)
+    update({ step: "download", message: `Downloading iPolloWork ${version}...` }, opts.onStatus)
+    const workDir = path.join(os.tmpdir(), `ipollowork-installer-${process.pid}-${Math.random().toString(36).slice(2)}`)
     mkdirSync(workDir, { recursive: true })
     try {
       const artifactPath = path.join(workDir, asset.fileName)
       await downloadAsset(asset, artifactPath, opts)
 
-      update({ step: "install", message: "Installing iPolloWalk..." }, opts.onStatus)
+      update({ step: "install", message: "Installing iPolloWork..." }, opts.onStatus)
       const installedPath =
         asset.type === "dmg"
           ? installDmg(artifactPath, workDir)
@@ -294,7 +294,7 @@ export async function runInstall(config: InstallerConfig, opts: InstallOptions =
             : installAppImage(artifactPath)
 
       update(
-        { state: "done", step: null, installedPath, message: `iPolloWalk ${version} installed successfully.` },
+        { state: "done", step: null, installedPath, message: `iPolloWork ${version} installed successfully.` },
         opts.onStatus,
       )
     } finally {

@@ -1,4 +1,4 @@
-# Daytona VNC/Computer Use image with iPolloWalk preinstalled.
+# Daytona VNC/Computer Use image with iPolloWork preinstalled.
 #
 # Use this for Electron/noVNC tests instead of the generic devcontainer image.
 # The base image already contains the desktop stack Daytona expects:
@@ -15,9 +15,9 @@ RUN /usr/local/share/nvm/current/bin/npm install -g pnpm@10.27.0 bun
 
 WORKDIR /workspace
 
-RUN git clone --depth 1 --branch dev https://github.com/Devin-AXIS/iPolloWalk.git . \
-  && mkdir -p /workspace/.ipollowalk-daytona \
-  && sha256sum /workspace/pnpm-lock.yaml | cut -d ' ' -f 1 > /workspace/.ipollowalk-daytona/pnpm-lock.sha256 \
+RUN git clone --depth 1 --branch dev https://github.com/Devin-AXIS/iPolloWork.git . \
+  && mkdir -p /workspace/.ipollowork-daytona \
+  && sha256sum /workspace/pnpm-lock.yaml | cut -d ' ' -f 1 > /workspace/.ipollowork-daytona/pnpm-lock.sha256 \
   && /usr/local/share/nvm/current/bin/npm cache clean --force \
   && git gc --prune=now \
   && rm -rf /root/.cache /root/.npm \

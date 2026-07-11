@@ -32,12 +32,12 @@ function auth(token: string) {
 }
 
 async function createWorkspaceRoot() {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-runtime-patch-reload-"));
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-runtime-patch-reload-"));
   roots.push(root);
   return root;
 }
 
-async function startiPolloWalkServer(workspaceRoot: string) {
+async function startiPolloWorkServer(workspaceRoot: string) {
   const config: ServerConfig = {
     host: "127.0.0.1",
     port: 0,
@@ -86,7 +86,7 @@ async function sleep(ms: number): Promise<void> {
 describe("workspace config patch reload events", () => {
   test("identical runtime provider patches do not emit another config reload event", async () => {
     const root = await createWorkspaceRoot();
-    const { base, token } = await startiPolloWalkServer(root);
+    const { base, token } = await startiPolloWorkServer(root);
     const payload = {
       opencode: {
         provider: {

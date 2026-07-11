@@ -1,7 +1,7 @@
 import { createOpencodeClient, type Message, type Part, type Session, type Todo } from "@opencode-ai/sdk/v2/client";
 
 import { desktopFetch } from "./desktop";
-import { createiPolloWalkServerClient, iPolloWalkServerError } from "./ipollowalk-server";
+import { createiPolloWorkServerClient, iPolloWorkServerError } from "./ipollowork-server";
 import { isDesktopRuntime } from "./runtime-env";
 
 type FieldsResult<T> =
@@ -58,7 +58,7 @@ export type OpencodeAuth = {
   username?: string;
   password?: string;
   token?: string;
-  mode?: "basic" | "ipollowalk";
+  mode?: "basic" | "ipollowork";
 };
 
 const DEFAULT_OPENCODE_REQUEST_TIMEOUT_MS = 10_000;
@@ -136,7 +136,7 @@ async function postSessionRequest<T>(
   return { error, request, response };
 }
 
-function resolveiPolloWalkWorkspaceMount(baseUrl: string): { baseUrl: string; workspaceId: string } | null {
+function resolveiPolloWorkWorkspaceMount(baseUrl: string): { baseUrl: string; workspaceId: string } | null {
   try {
     const url = new URL(baseUrl);
     const match = url.pathname
@@ -172,7 +172,7 @@ function createSyntheticResult<T>(
   return { error: input.error, request, response };
 }
 
-async function wrapiPolloWalkRead<T>(
+async function wrapiPolloWorkRead<T>(
   url: string,
   read: () => Promise<T>,
   options?: { throwOnError?: boolean },
@@ -184,17 +184,17 @@ async function wrapiPolloWalkRead<T>(
     return createSyntheticResult(url, "GET", {
       ok: false,
       error,
-      status: error instanceof iPolloWalkServerError ? error.status : 500,
+      status: error instanceof iPolloWorkServerError ? error.status : 500,
     });
   }
 }
 
 function shouldFallbackToLegacySessionRead(error: unknown): boolean {
-  if (!(error instanceof iPolloWalkServerError)) return false;
+  if (!(error instanceof iPolloWorkServerError)) return false;
   return error.status === 404 || error.status === 405 || error.status === 501;
 }
 
-async function wrapiPolloWalkReadWithFallback<T>(
+async function wrapiPolloWorkReadWithFallback<T>(
   url: string,
   read: () => Promise<T>,
   fallback: () => Promise<FieldsResult<T>>,
@@ -208,7 +208,7 @@ async function wrapiPolloWalkReadWithFallback<T>(
       return createSyntheticResult(url, "GET", {
         ok: false,
         error,
-        status: error instanceof iPolloWalkServerError ? error.status : 500,
+        status: error instanceof iPolloWorkServerError ? error.status : 500,
       });
     }
     return fallback();
@@ -265,7 +265,7 @@ const encodeBasicAuth = (auth?: OpencodeAuth) => {
 };
 
 const resolveAuthHeader = (auth?: OpencodeAuth) => {
-  if (auth?.mode === "ipollowalk" && auth.token) {
+  if (auth?.mode === "ipollowork" && auth.token) {
     return `Bearer ${auth.token}`;
   }
   const encoded = encodeBasicAuth(auth);
@@ -278,7 +278,7 @@ const resolveAuthHeader = (auth?: OpencodeAuth) => {
  * `fetch_read_body` IPC call blocks until the entire body is delivered, so
  * pointing it at an infinite stream freezes the webview's main thread for
  * minutes. For these endpoints we always use the webview's native fetch —
- * CORS is already wide open on the ipollowalk/opencode stack, so there's no
+ * CORS is already wide open on the ipollowork/opencode stack, so there's no
  * reason to route them through the plugin.
  */
 const STREAM_URL_RE = /\/(event|stream)(\b|\/|$|\?)/;
@@ -371,13 +371,13 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
   });
 
   const session = client.session as typeof client.session;
-  const ipollowalkMount = auth?.mode === "ipollowalk" ? resolveiPolloWalkWorkspaceMount(baseUrl) : null;
-  const ipollowalkSessionClient =
-    ipollowalkMount && auth?.token
-      ? createiPolloWalkServerClient({ baseUrl: ipollowalkMount.baseUrl, token: auth.token })
+  const ipolloworkMount = auth?.mode === "ipollowork" ? resolveiPolloWorkWorkspaceMount(baseUrl) : null;
+  const ipolloworkSessionClient =
+    ipolloworkMount && auth?.token
+      ? createiPolloWorkServerClient({ baseUrl: ipolloworkMount.baseUrl, token: auth.token })
       : null;
   // TODO(2026-04-12): remove the old-server compatibility path here once all
-  // iPolloWalk servers expose the workspace-scoped session read APIs.
+  // iPolloWork servers expose the workspace-scoped session read APIs.
   const sessionOverrides = session as any as {
     list: (parameters?: SessionListParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<Session[]>>;
     get: (parameters: SessionLookupParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<Session>>;
@@ -389,7 +389,7 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
 
   const listOriginal = sessionOverrides.list.bind(session);
   sessionOverrides.list = (parameters?: SessionListParameters, options?: { throwOnError?: boolean }) => {
-    if (!ipollowalkMount || !ipollowalkSessionClient) {
+    if (!ipolloworkMount || !ipolloworkSessionClient) {
       return listOriginal(parameters, options);
     }
     const query = new URLSearchParams();
@@ -397,10 +397,10 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
     if (typeof parameters?.start === "number") query.set("start", String(parameters.start));
     if (parameters?.search?.trim()) query.set("search", parameters.search.trim());
     if (typeof parameters?.limit === "number") query.set("limit", String(parameters.limit));
-    const url = `${ipollowalkMount.baseUrl}/workspace/${encodeURIComponent(ipollowalkMount.workspaceId)}/sessions${query.size ? `?${query.toString()}` : ""}`;
-    return wrapiPolloWalkReadWithFallback(
+    const url = `${ipolloworkMount.baseUrl}/workspace/${encodeURIComponent(ipolloworkMount.workspaceId)}/sessions${query.size ? `?${query.toString()}` : ""}`;
+    return wrapiPolloWorkReadWithFallback(
       url,
-      async () => (await ipollowalkSessionClient.listSessions(ipollowalkMount.workspaceId, parameters)).items,
+      async () => (await ipolloworkSessionClient.listSessions(ipolloworkMount.workspaceId, parameters)).items,
       () => listOriginal(parameters, options),
       options,
     );
@@ -408,13 +408,13 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
 
   const getOriginal = sessionOverrides.get.bind(session);
   sessionOverrides.get = (parameters: SessionLookupParameters, options?: { throwOnError?: boolean }) => {
-    if (!ipollowalkMount || !ipollowalkSessionClient) {
+    if (!ipolloworkMount || !ipolloworkSessionClient) {
       return getOriginal(parameters, options);
     }
-    const url = `${ipollowalkMount.baseUrl}/workspace/${encodeURIComponent(ipollowalkMount.workspaceId)}/sessions/${encodeURIComponent(parameters.sessionID)}`;
-    return wrapiPolloWalkReadWithFallback(
+    const url = `${ipolloworkMount.baseUrl}/workspace/${encodeURIComponent(ipolloworkMount.workspaceId)}/sessions/${encodeURIComponent(parameters.sessionID)}`;
+    return wrapiPolloWorkReadWithFallback(
       url,
-      async () => (await ipollowalkSessionClient.getSession(ipollowalkMount.workspaceId, parameters.sessionID)).item,
+      async () => (await ipolloworkSessionClient.getSession(ipolloworkMount.workspaceId, parameters.sessionID)).item,
       () => getOriginal(parameters, options),
       options,
     );
@@ -422,16 +422,16 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
 
   const messagesOriginal = sessionOverrides.messages.bind(session);
   sessionOverrides.messages = (parameters: SessionMessagesParameters, options?: { throwOnError?: boolean }) => {
-    if (!ipollowalkMount || !ipollowalkSessionClient) {
+    if (!ipolloworkMount || !ipolloworkSessionClient) {
       return messagesOriginal(parameters, options);
     }
     const query = new URLSearchParams();
     if (typeof parameters.limit === "number") query.set("limit", String(parameters.limit));
-    const url = `${ipollowalkMount.baseUrl}/workspace/${encodeURIComponent(ipollowalkMount.workspaceId)}/sessions/${encodeURIComponent(parameters.sessionID)}/messages${query.size ? `?${query.toString()}` : ""}`;
-    return wrapiPolloWalkReadWithFallback(
+    const url = `${ipolloworkMount.baseUrl}/workspace/${encodeURIComponent(ipolloworkMount.workspaceId)}/sessions/${encodeURIComponent(parameters.sessionID)}/messages${query.size ? `?${query.toString()}` : ""}`;
+    return wrapiPolloWorkReadWithFallback(
       url,
       async () =>
-        (await ipollowalkSessionClient.getSessionMessages(ipollowalkMount.workspaceId, parameters.sessionID, {
+        (await ipolloworkSessionClient.getSessionMessages(ipolloworkMount.workspaceId, parameters.sessionID, {
           limit: parameters.limit,
         })).items,
       () => messagesOriginal(parameters, options),
@@ -441,13 +441,13 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
 
   const todoOriginal = sessionOverrides.todo.bind(session);
   sessionOverrides.todo = (parameters: SessionLookupParameters, options?: { throwOnError?: boolean }) => {
-    if (!ipollowalkMount || !ipollowalkSessionClient) {
+    if (!ipolloworkMount || !ipolloworkSessionClient) {
       return todoOriginal(parameters, options);
     }
-    const url = `${ipollowalkMount.baseUrl}/workspace/${encodeURIComponent(ipollowalkMount.workspaceId)}/sessions/${encodeURIComponent(parameters.sessionID)}/snapshot`;
-    return wrapiPolloWalkReadWithFallback(
+    const url = `${ipolloworkMount.baseUrl}/workspace/${encodeURIComponent(ipolloworkMount.workspaceId)}/sessions/${encodeURIComponent(parameters.sessionID)}/snapshot`;
+    return wrapiPolloWorkReadWithFallback(
       url,
-      async () => (await ipollowalkSessionClient.getSessionSnapshot(ipollowalkMount.workspaceId, parameters.sessionID)).item.todos,
+      async () => (await ipolloworkSessionClient.getSessionSnapshot(ipolloworkMount.workspaceId, parameters.sessionID)).item.todos,
       () => todoOriginal(parameters, options),
       options,
     );
@@ -455,7 +455,7 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
 
   const promptAsyncOriginal = sessionOverrides.promptAsync.bind(session);
   sessionOverrides.promptAsync = (parameters: PromptAsyncParameters, options?: { throwOnError?: boolean }) => {
-    if (!ipollowalkMount && !("reasoning_effort" in parameters)) {
+    if (!ipolloworkMount && !("reasoning_effort" in parameters)) {
       return promptAsyncOriginal(parameters, options);
     }
     const { sessionID, directory: requestDirectory, ...body } = parameters;
@@ -468,7 +468,7 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
 
   const commandOriginal = sessionOverrides.command.bind(session);
   sessionOverrides.command = (parameters: CommandParameters, options?: { throwOnError?: boolean }) => {
-    if (!ipollowalkMount && !("reasoning_effort" in parameters)) {
+    if (!ipolloworkMount && !("reasoning_effort" in parameters)) {
       return commandOriginal(parameters, options);
     }
     const { sessionID, directory: requestDirectory, ...body } = parameters;

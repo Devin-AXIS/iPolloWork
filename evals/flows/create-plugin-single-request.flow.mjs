@@ -8,10 +8,10 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("create-plugin-single-request");
 
-const DEN_API_URL = (process.env.IPOLLOWALK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
-const DEN_WEB_URL = (process.env.IPOLLOWALK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const DEN_API_URL = (process.env.IPOLLOWORK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
+const DEN_WEB_URL = (process.env.IPOLLOWORK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 
 const state = {
   pluginId: "",
@@ -174,8 +174,8 @@ const MARKETPLACE_SELECTED_EXPR = `(() => {
 
 async function installFetchLogger(ctx) {
   await ctx.eval(`(() => {
-    const original = window.__ipollowalkOriginalFetch ?? window.fetch.bind(window);
-    window.__ipollowalkOriginalFetch = original;
+    const original = window.__ipolloworkOriginalFetch ?? window.fetch.bind(window);
+    window.__ipolloworkOriginalFetch = original;
     window.fetch = async (...args) => {
       const at = Date.now();
       const input = args[0];
@@ -209,7 +209,7 @@ export default {
   title: "Create plugin: one save request preserves sharing and publish side effects",
   kind: "user-facing",
   spec: "evals/voiceovers/create-plugin-single-request.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "Frame 1",

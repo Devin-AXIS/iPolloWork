@@ -98,7 +98,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
   // Dev log sink: append browser console + error events to a file that an
   // operator (or an AI driver) can tail. Unauth on purpose because this is
   // scoped to the dev host and needs to work before clients finish wiring
-  // tokens; it is also a no-op when IPOLLOWALK_DEV_LOG_FILE is unset.
+  // tokens; it is also a no-op when IPOLLOWORK_DEV_LOG_FILE is unset.
   addRoute(routes, "POST", "/dev/log", "none", async (ctx) => {
     const target = resolveDevLogPath();
     if (!target) {
@@ -170,7 +170,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     return jsResponse(TOY_UI_JS);
   });
 
-  addRoute(routes, "GET", "/ui/assets/ipollowalk-mark.svg", "none", async () => {
+  addRoute(routes, "GET", "/ui/assets/ipollowork-mark.svg", "none", async () => {
     if (!resolveToyUiEnabled()) {
       throw new ApiError(404, "ui_disabled", "Toy UI is disabled");
     }
@@ -481,7 +481,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
           400,
           error.code,
           error.code === "reserved_env_key"
-            ? "Environment variable name is reserved for iPolloWalk internals"
+            ? "Environment variable name is reserved for iPolloWork internals"
             : "Invalid environment variable name",
         );
       }

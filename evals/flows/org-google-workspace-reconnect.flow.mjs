@@ -4,11 +4,11 @@ import { denApiFetch, denWebUrl, openYourConnections, signInApi, signInViaBrowse
 
 const vo = await loadVoiceoverParagraphs("org-google-workspace-reconnect");
 
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MEMBER_EMAIL = process.env.IPOLLOWALK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
-const MEMBER_PASSWORD = process.env.IPOLLOWALK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MEMBER_EMAIL = process.env.IPOLLOWORK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
+const MEMBER_PASSWORD = process.env.IPOLLOWORK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
 const MOCK_SERVER_URL = (process.env.MOCK_OAUTH_MCP_URL ?? "http://127.0.0.1:3978").trim().replace(/\/+$/, "");
 const GOOGLE_CLIENT_ID = "google-client-id";
 const GOOGLE_CLIENT_SECRET = "google-client-secret";
@@ -44,7 +44,7 @@ function isRecord(value) {
 function orgHeaders(session) {
   if (!session) throw new Error("Missing session for org-scoped API call.");
   if (!state.orgId) throw new Error("Missing pinned organization id for org-scoped API call.");
-  return { authorization: `Bearer ${session}`, "x-ipollowalk-legacy-org-id": state.orgId };
+  return { authorization: `Bearer ${session}`, "x-ipollowork-legacy-org-id": state.orgId };
 }
 
 function parseScopes(authorizeUrl) {
@@ -96,7 +96,7 @@ async function ensureVerifiedUser(ctx, email, name, password) {
     body: JSON.stringify({ email, name, password }),
   });
   ctx.assert(signUp.response.ok, `Sign-up failed for ${email}: ${signUp.response.status}`);
-  ctx.assert(MARK_VERIFIED_CMD.length > 0, "Set IPOLLOWALK_EVAL_MARK_VERIFIED_CMD to verify eval accounts.");
+  ctx.assert(MARK_VERIFIED_CMD.length > 0, "Set IPOLLOWORK_EVAL_MARK_VERIFIED_CMD to verify eval accounts.");
   execSync(MARK_VERIFIED_CMD.replaceAll("{email}", email), { stdio: "ignore" });
   token = await signInApi(email, password);
   ctx.assert(Boolean(token), `Sign-in still failing for ${email} after sign-up.`);
@@ -194,11 +194,11 @@ async function waitForMemberStatus(ctx, expectedScopes) {
 
 async function approveMockConsent(ctx) {
   const clicked = await ctx.eval(`(() => {
-    const button = [...document.querySelectorAll('button')].find((entry) => (entry.textContent ?? '').trim() === 'Approve iPolloWalk');
+    const button = [...document.querySelectorAll('button')].find((entry) => (entry.textContent ?? '').trim() === 'Approve iPolloWork');
     button?.click();
     return Boolean(button);
   })()`);
-  ctx.assert(clicked, "Mock OAuth consent page did not show an Approve iPolloWalk button.");
+  ctx.assert(clicked, "Mock OAuth consent page did not show an Approve iPolloWork button.");
   await ctx.waitForText("Connected", { timeoutMs: 30_000 });
 }
 
@@ -269,7 +269,7 @@ export default {
   title: "Org Google Workspace prompts members to reconnect after selected scopes drift",
   kind: "user-facing",
   spec: "evals/voiceovers/org-google-workspace-reconnect.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "Setup: admin saves identity-only Google Workspace and member connects before optional scopes exist",
@@ -354,14 +354,14 @@ export default {
           voiceover: vo[2],
           action: async () => {
             await ctx.eval(`(() => {
-              window.__ipollowalkEvalLastOpen = null;
-              window.open = (url) => { window.__ipollowalkEvalLastOpen = String(url); return null; };
+              window.__ipolloworkEvalLastOpen = null;
+              window.open = (url) => { window.__ipolloworkEvalLastOpen = String(url); return null; };
               return true;
             })()`);
             const clicked = await ctx.eval(clickGoogleWorkspaceRowButtonScript("Reconnect"));
             ctx.assert(clicked, "Could not click the Google Workspace Reconnect button.");
-            await ctx.waitFor("typeof window.__ipollowalkEvalLastOpen === 'string'", { timeoutMs: 30_000, label: "Reconnect authorize URL opened" });
-            state.reconnectAuthorizeUrl = await ctx.eval("window.__ipollowalkEvalLastOpen");
+            await ctx.waitFor("typeof window.__ipolloworkEvalLastOpen === 'string'", { timeoutMs: 30_000, label: "Reconnect authorize URL opened" });
+            state.reconnectAuthorizeUrl = await ctx.eval("window.__ipolloworkEvalLastOpen");
             state.reconnectAuthorizeScopes = parseScopes(state.reconnectAuthorizeUrl);
             assertExactStringSet(ctx, state.reconnectAuthorizeScopes, RECONNECT_SCOPES, "Reconnect authorize URL scopes");
             await ctx.eval(`(() => { window.location.href = ${JSON.stringify(consentAuthorizeUrl(state.reconnectAuthorizeUrl))}; return true; })()`);
@@ -377,7 +377,7 @@ export default {
           screenshot: {
             name: "org-google-workspace-reconnect-consent-scopes",
             claim: "The reconnect consent page shows the newly requested Gmail read and Calendar event scopes before approval.",
-            requireText: ["Mock MCP OAuth", "Requested scopes", "https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/calendar.events", "Approve iPolloWalk"],
+            requireText: ["Mock MCP OAuth", "Requested scopes", "https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/calendar.events", "Approve iPolloWork"],
             rejectText: ["Connection failed"],
           },
         });

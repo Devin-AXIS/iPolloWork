@@ -1,6 +1,6 @@
 # create-plugin-single-request — Create plugin saves in one stroke
 
-Cast is Alex (org admin) in iPolloWalk Cloud (den-web). The demo follows the
+Cast is Alex (org admin) in iPolloWork Cloud (den-web). The demo follows the
 happy path for creating a team plugin with one skill, organization sharing, and
 the pre-selected marketplace.
 

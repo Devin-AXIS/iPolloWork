@@ -2,16 +2,16 @@
 import { useCallback, useEffect, useMemo, useReducer } from "react";
 
 import {
-  buildiPolloWalkWorkspaceBaseUrl,
-  createiPolloWalkServerClient,
-  parseiPolloWalkWorkspaceIdFromUrl,
-} from "../../../app/lib/ipollowalk-server";
+  buildiPolloWorkWorkspaceBaseUrl,
+  createiPolloWorkServerClient,
+  parseiPolloWorkWorkspaceIdFromUrl,
+} from "../../../app/lib/ipollowork-server";
 import type {
   EngineInfo,
-  iPolloWalkServerInfo,
+  iPolloWorkServerInfo,
   WorkspaceInfo,
 } from "../../../app/lib/desktop";
-import type { iPolloWalkServerSettings } from "../../../app/lib/ipollowalk-server";
+import type { iPolloWorkServerSettings } from "../../../app/lib/ipollowork-server";
 import { t } from "../../../i18n";
 import { isDesktopRuntime, normalizeDirectoryPath } from "../../../app/utils";
 
@@ -19,8 +19,8 @@ export type ShareWorkspaceState = ReturnType<typeof useShareWorkspaceState>;
 
 type UseShareWorkspaceStateOptions = {
   workspaces: WorkspaceInfo[];
-  ipollowalkServerHostInfo: iPolloWalkServerInfo | null;
-  ipollowalkServerSettings: iPolloWalkServerSettings;
+  ipolloworkServerHostInfo: iPolloWorkServerInfo | null;
+  ipolloworkServerSettings: iPolloWorkServerSettings;
   engineInfo: EngineInfo | null;
   exportWorkspaceBusy: boolean;
   openLink: (url: string) => void;
@@ -29,17 +29,17 @@ type UseShareWorkspaceStateOptions = {
 
 type ShareWorkspaceLocalState = {
   shareWorkspaceId: string | null;
-  shareLocaliPolloWalkWorkspaceId: string | null;
+  shareLocaliPolloWorkWorkspaceId: string | null;
 };
 
 type ShareWorkspaceLocalAction =
   | { type: "open"; workspaceId: string }
   | { type: "close" }
-  | { type: "localiPolloWalkWorkspace"; workspaceId: string | null };
+  | { type: "localiPolloWorkWorkspace"; workspaceId: string | null };
 
 const initialShareWorkspaceLocalState: ShareWorkspaceLocalState = {
   shareWorkspaceId: null,
-  shareLocaliPolloWalkWorkspaceId: null,
+  shareLocaliPolloWorkWorkspaceId: null,
 };
 
 function shareWorkspaceLocalReducer(
@@ -51,13 +51,13 @@ function shareWorkspaceLocalReducer(
       return { ...state, shareWorkspaceId: action.workspaceId };
     case "close":
       return { ...state, shareWorkspaceId: null };
-    case "localiPolloWalkWorkspace":
-      return { ...state, shareLocaliPolloWalkWorkspaceId: action.workspaceId };
+    case "localiPolloWorkWorkspace":
+      return { ...state, shareLocaliPolloWorkWorkspaceId: action.workspaceId };
   }
 }
 
 export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
-  const [{ shareWorkspaceId, shareLocaliPolloWalkWorkspaceId }, dispatchShareWorkspace] = useReducer(
+  const [{ shareWorkspaceId, shareLocaliPolloWorkWorkspaceId }, dispatchShareWorkspace] = useReducer(
     shareWorkspaceLocalReducer,
     initialShareWorkspaceLocalState,
   );
@@ -84,11 +84,11 @@ export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
     const workspace = shareWorkspace;
     if (!workspace) return "";
     if (workspace.workspaceType === "remote") {
-      if (workspace.remoteType === "ipollowalk") {
-        const hostUrl = workspace.ipollowalkHostUrl?.trim() || workspace.baseUrl?.trim() || "";
-        const mounted = buildiPolloWalkWorkspaceBaseUrl(
+      if (workspace.remoteType === "ipollowork") {
+        const hostUrl = workspace.ipolloworkHostUrl?.trim() || workspace.baseUrl?.trim() || "";
+        const mounted = buildiPolloWorkWorkspaceBaseUrl(
           hostUrl,
-          workspace.ipollowalkWorkspaceId,
+          workspace.ipolloworkWorkspaceId,
         );
         return mounted || hostUrl;
       }
@@ -103,10 +103,10 @@ export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
 
   useEffect(() => {
     const workspace = shareWorkspace;
-    const baseUrl = options.ipollowalkServerHostInfo?.baseUrl?.trim() ?? "";
+    const baseUrl = options.ipolloworkServerHostInfo?.baseUrl?.trim() ?? "";
     const token =
-      options.ipollowalkServerHostInfo?.ownerToken?.trim() ||
-      options.ipollowalkServerHostInfo?.clientToken?.trim() ||
+      options.ipolloworkServerHostInfo?.ownerToken?.trim() ||
+      options.ipolloworkServerHostInfo?.clientToken?.trim() ||
       "";
     const workspacePath = workspace?.workspaceType === "local" ? (workspace.path?.trim() ?? "") : "";
 
@@ -117,16 +117,16 @@ export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
       !baseUrl ||
       !token
     ) {
-      dispatchShareWorkspace({ type: "localiPolloWalkWorkspace", workspaceId: null });
+      dispatchShareWorkspace({ type: "localiPolloWorkWorkspace", workspaceId: null });
       return;
     }
 
     let cancelled = false;
-    dispatchShareWorkspace({ type: "localiPolloWalkWorkspace", workspaceId: null });
+    dispatchShareWorkspace({ type: "localiPolloWorkWorkspace", workspaceId: null });
 
     void (async () => {
       try {
-        const client = createiPolloWalkServerClient({ baseUrl, token });
+        const client = createiPolloWorkServerClient({ baseUrl, token });
         const response = await client.listWorkspaces();
         if (cancelled) return;
         const items = Array.isArray(response.items) ? response.items : [];
@@ -134,10 +134,10 @@ export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
         const match = items.find(
           (entry) => normalizeDirectoryPath(entry.path) === targetPath,
         );
-        dispatchShareWorkspace({ type: "localiPolloWalkWorkspace", workspaceId: match?.id ?? null });
+        dispatchShareWorkspace({ type: "localiPolloWorkWorkspace", workspaceId: match?.id ?? null });
       } catch {
         if (!cancelled) {
-          dispatchShareWorkspace({ type: "localiPolloWalkWorkspace", workspaceId: null });
+          dispatchShareWorkspace({ type: "localiPolloWorkWorkspace", workspaceId: null });
         }
       }
     })();
@@ -145,7 +145,7 @@ export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
     return () => {
       cancelled = true;
     };
-  }, [options.ipollowalkServerHostInfo, shareWorkspace]);
+  }, [options.ipolloworkServerHostInfo, shareWorkspace]);
 
   const shareFields = useMemo(() => {
     const workspace = shareWorkspace;
@@ -160,22 +160,22 @@ export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
     }
 
     if (workspace.workspaceType !== "remote") {
-      if (options.ipollowalkServerHostInfo?.remoteAccessEnabled !== true) {
+      if (options.ipolloworkServerHostInfo?.remoteAccessEnabled !== true) {
         return [];
       }
       const hostUrl =
-        options.ipollowalkServerHostInfo?.connectUrl?.trim() ||
-        options.ipollowalkServerHostInfo?.lanUrl?.trim() ||
-        options.ipollowalkServerHostInfo?.mdnsUrl?.trim() ||
-        options.ipollowalkServerHostInfo?.baseUrl?.trim() ||
+        options.ipolloworkServerHostInfo?.connectUrl?.trim() ||
+        options.ipolloworkServerHostInfo?.lanUrl?.trim() ||
+        options.ipolloworkServerHostInfo?.mdnsUrl?.trim() ||
+        options.ipolloworkServerHostInfo?.baseUrl?.trim() ||
         "";
-      const mountedUrl = shareLocaliPolloWalkWorkspaceId
-        ? buildiPolloWalkWorkspaceBaseUrl(hostUrl, shareLocaliPolloWalkWorkspaceId)
+      const mountedUrl = shareLocaliPolloWorkWorkspaceId
+        ? buildiPolloWorkWorkspaceBaseUrl(hostUrl, shareLocaliPolloWorkWorkspaceId)
         : null;
       const url = mountedUrl || hostUrl;
-      const collaboratorToken = options.ipollowalkServerHostInfo?.clientToken?.trim() || "";
+      const collaboratorToken = options.ipolloworkServerHostInfo?.clientToken?.trim() || "";
       const ownerToken =
-        collaboratorToken || options.ipollowalkServerHostInfo?.ownerToken?.trim() || "";
+        collaboratorToken || options.ipolloworkServerHostInfo?.ownerToken?.trim() || "";
       return [
         {
           label: t("session.share_worker_url"),
@@ -210,14 +210,14 @@ export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
       ];
     }
 
-    if (workspace.remoteType === "ipollowalk") {
-      const hostUrl = workspace.ipollowalkHostUrl?.trim() || workspace.baseUrl?.trim() || "";
+    if (workspace.remoteType === "ipollowork") {
+      const hostUrl = workspace.ipolloworkHostUrl?.trim() || workspace.baseUrl?.trim() || "";
       const url =
-        buildiPolloWalkWorkspaceBaseUrl(hostUrl, workspace.ipollowalkWorkspaceId) ||
+        buildiPolloWorkWorkspaceBaseUrl(hostUrl, workspace.ipolloworkWorkspaceId) ||
         hostUrl;
       const token =
-        workspace.ipollowalkToken?.trim() ||
-        options.ipollowalkServerSettings.token?.trim() ||
+        workspace.ipolloworkToken?.trim() ||
+        options.ipolloworkServerSettings.token?.trim() ||
         "";
       return [
         {
@@ -248,9 +248,9 @@ export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
       },
     ];
   }, [
-    options.ipollowalkServerHostInfo,
-    options.ipollowalkServerSettings,
-    shareLocaliPolloWalkWorkspaceId,
+    options.ipolloworkServerHostInfo,
+    options.ipolloworkServerSettings,
+    shareLocaliPolloWorkWorkspaceId,
     shareWorkspace,
   ]);
 
@@ -266,29 +266,29 @@ export function useShareWorkspaceState(options: UseShareWorkspaceStateOptions) {
   const shareServiceDisabledReason = useMemo(() => {
     const workspace = shareWorkspace;
     if (!workspace) return t("session.share_select_workspace");
-    if (workspace.workspaceType === "remote" && workspace.remoteType !== "ipollowalk") {
-      return t("session.share_ipollowalk_workers_only");
+    if (workspace.workspaceType === "remote" && workspace.remoteType !== "ipollowork") {
+      return t("session.share_ipollowork_workers_only");
     }
     if (workspace.workspaceType !== "remote") {
-      const baseUrl = options.ipollowalkServerHostInfo?.baseUrl?.trim() ?? "";
+      const baseUrl = options.ipolloworkServerHostInfo?.baseUrl?.trim() ?? "";
       const token =
-        options.ipollowalkServerHostInfo?.ownerToken?.trim() ||
-        options.ipollowalkServerHostInfo?.clientToken?.trim() ||
+        options.ipolloworkServerHostInfo?.ownerToken?.trim() ||
+        options.ipolloworkServerHostInfo?.clientToken?.trim() ||
         "";
       if (!baseUrl || !token) {
         return t("session.share_local_host_not_ready");
       }
     } else {
-      const hostUrl = workspace.ipollowalkHostUrl?.trim() || workspace.baseUrl?.trim() || "";
+      const hostUrl = workspace.ipolloworkHostUrl?.trim() || workspace.baseUrl?.trim() || "";
       const token =
-        workspace.ipollowalkToken?.trim() ||
-        options.ipollowalkServerSettings.token?.trim() ||
+        workspace.ipolloworkToken?.trim() ||
+        options.ipolloworkServerSettings.token?.trim() ||
         "";
       if (!hostUrl) return t("session.share_missing_host_url");
       if (!token) return t("session.share_missing_token");
     }
     return null;
-  }, [options.ipollowalkServerHostInfo, options.ipollowalkServerSettings, shareWorkspace]);
+  }, [options.ipolloworkServerHostInfo, options.ipolloworkServerSettings, shareWorkspace]);
 
   const exportDisabledReason = useMemo(() => {
     const workspace = shareWorkspace;

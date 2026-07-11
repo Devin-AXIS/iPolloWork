@@ -6,17 +6,17 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 // The runner fails this flow if the narration drifts from that script.
 const vo = await loadVoiceoverParagraphs("org-capability-flags");
 
-const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_API_URL);
-const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_WEB_URL);
-const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_WEB_CDP_ADMIN);
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
-const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
-const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
+const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_API_URL);
+const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_WEB_URL);
+const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_WEB_CDP_ADMIN);
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
+const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
 // alex is the ORG admin: his /v1/org payload is the proof that an org can read
 // its own capabilities. He takes part through his API session only — the whole
 // visible demo happens in the platform admin's browser.
-const ORG_ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ORG_ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const ORG_ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ORG_ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 
 const ORG_FILTER_INPUT = 'input[placeholder="Org name, slug, or id"]';
 
@@ -33,13 +33,13 @@ export default {
   title: "Platform admins flip per-org capability flags from /admin; every org starts dark and reports its own state through /v1/org",
   kind: "user-facing",
   requiredEnv: [
-    "IPOLLOWALK_EVAL_DEN_API_URL",
-    "IPOLLOWALK_EVAL_DEN_TOKEN",
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
-    "IPOLLOWALK_EVAL_WEB_CDP_ADMIN",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD",
-    "IPOLLOWALK_EVAL_MARK_VERIFIED_CMD",
+    "IPOLLOWORK_EVAL_DEN_API_URL",
+    "IPOLLOWORK_EVAL_DEN_TOKEN",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_WEB_CDP_ADMIN",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD",
+    "IPOLLOWORK_EVAL_MARK_VERIFIED_CMD",
   ],
   steps: [
     {
@@ -290,7 +290,7 @@ async function denApiFetch(pathname, options = {}) {
 function markEmailVerified(ctx, email) {
   ctx.assert(
     MARK_VERIFIED_CMD.length > 0,
-    "Platform-admin provisioning requires a verified email; set IPOLLOWALK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
+    "Platform-admin provisioning requires a verified email; set IPOLLOWORK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
   );
   execSync(MARK_VERIFIED_CMD.replaceAll("{email}", email), { stdio: "ignore" });
 }

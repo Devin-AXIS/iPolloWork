@@ -1,14 +1,14 @@
 # Reload events flow
 
 End-to-end checks for the reload-required toast. These protect the contract that
-iPolloWalk only asks the user to reload when reload-relevant files change while the
+iPolloWork only asks the user to reload when reload-relevant files change while the
 app is already running.
 
 ## Why
 
-iPolloWalk bootstraps workspace files such as `opencode.jsonc`, `.opencode/agents`,
+iPolloWork bootstraps workspace files such as `opencode.jsonc`, `.opencode/agents`,
 and legacy command frontmatter. Those internal startup writes should refresh the
-iPolloWalk/OpenCode baseline silently. The user-facing **Reload required** toast is
+iPolloWork/OpenCode baseline silently. The user-facing **Reload required** toast is
 reserved for real runtime edits to OpenCode config, MCP, skills, agents,
 commands, or plugins.
 
@@ -38,12 +38,12 @@ document.body.innerText.includes("Reload required"); // expected false
 
 Steps:
 1. Create a temporary local workspace with no `.opencode` directory.
-2. Add it through the iPolloWalk workspace picker.
+2. Add it through the iPolloWork workspace picker.
 3. Wait until the session route is ready.
 4. Wait 6 seconds for reload-event polling to run.
 
 Pass criteria:
-- iPolloWalk creates the default project `opencode.jsonc` and `.opencode/agents/ipollowalk.md`.
+- iPolloWork creates the default project `opencode.jsonc` and `.opencode/agents/ipollowork.md`.
 - No **Reload required** toast appears for those internally-created files.
 - A subsequent new task in that workspace also does not show a reload toast.
 
@@ -76,7 +76,7 @@ Pass criteria:
 
 Steps:
 1. Use a workspace whose active project config lives at `.opencode/opencode.jsonc`.
-2. Start iPolloWalk and wait until the session route is ready.
+2. Start iPolloWork and wait until the session route is ready.
 3. Modify `.opencode/opencode.jsonc` while the app is running.
 4. Wait up to 6 seconds.
 
@@ -90,7 +90,7 @@ Pass criteria:
 - Workspace resolution rewrites `opencode.jsonc` on every app open or new task.
 - Raw filesystem notifications show a reload toast even when file content did
   not change.
-- Startup-created iPolloWalk agent/config files leak into the user-facing reload
+- Startup-created iPolloWork agent/config files leak into the user-facing reload
   event stream.
 - `.opencode/opencode.jsonc` changes are missed because only root-level config
   files are watched.

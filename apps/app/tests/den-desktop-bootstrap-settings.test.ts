@@ -49,7 +49,7 @@ describe("desktop Den bootstrap settings", () => {
       value: {
         localStorage: memoryStorage(),
         dispatchEvent: () => true,
-        __IPOLLOWALK_ELECTRON__: {
+        __IPOLLOWORK_ELECTRON__: {
           invokeDesktop: async (command: string, payload?: { baseUrl: string; requireSignin: boolean }) => {
             if (command === "getDesktopBootstrapConfig") return bootstrapConfig;
             if (command === "setDesktopBootstrapConfig" && payload) {
@@ -75,8 +75,8 @@ describe("desktop Den bootstrap settings", () => {
   });
 
   test("reads the desktop base URL from bootstrap instead of stale localStorage", async () => {
-    window.localStorage.setItem("ipollowalk.den.baseUrl", "https://stale.example.com");
-    window.localStorage.setItem("ipollowalk.den.apiBaseUrl", "https://api.example.com");
+    window.localStorage.setItem("ipollowork.den.baseUrl", "https://stale.example.com");
+    window.localStorage.setItem("ipollowork.den.apiBaseUrl", "https://api.example.com");
 
     await initializeDenBootstrapConfig();
 
@@ -87,8 +87,8 @@ describe("desktop Den bootstrap settings", () => {
 
   test("saves base URL changes to bootstrap and clears legacy endpoint storage", async () => {
     await initializeDenBootstrapConfig();
-    window.localStorage.setItem("ipollowalk.den.baseUrl", "https://stale.example.com");
-    window.localStorage.setItem("ipollowalk.den.apiBaseUrl", "https://api.example.com");
+    window.localStorage.setItem("ipollowork.den.baseUrl", "https://stale.example.com");
+    window.localStorage.setItem("ipollowork.den.apiBaseUrl", "https://api.example.com");
 
     await setDenBootstrapConfig({
       baseUrl: "https://saved.example.com",
@@ -103,8 +103,8 @@ describe("desktop Den bootstrap settings", () => {
     });
 
     expect(bootstrapConfig.baseUrl).toBe("https://saved.example.com");
-    expect(window.localStorage.getItem("ipollowalk.den.baseUrl")).toBeNull();
-    expect(window.localStorage.getItem("ipollowalk.den.apiBaseUrl")).toBeNull();
+    expect(window.localStorage.getItem("ipollowork.den.baseUrl")).toBeNull();
+    expect(window.localStorage.getItem("ipollowork.den.apiBaseUrl")).toBeNull();
     expect(readDenSettings().baseUrl).toBe("https://saved.example.com");
   });
 

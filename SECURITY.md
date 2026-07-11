@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-iPolloWalk is under active development and we prioritize fixes on the latest release and
+iPolloWork is under active development and we prioritize fixes on the latest release and
 the current `dev` branch.
 
 ## Reporting a vulnerability
@@ -11,7 +11,7 @@ Please do not open public GitHub issues for security vulnerabilities.
 
 Instead, report vulnerabilities privately to:
 
-- Subject: `[iPolloWalk security] <short summary>`
+- Subject: `[iPolloWork security] <short summary>`
 
 Please include:
 

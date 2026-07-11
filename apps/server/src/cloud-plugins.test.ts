@@ -29,14 +29,14 @@ function serverConfig(root: string): ServerConfig {
 }
 
 async function withWorkspace(fn: (input: { root: string; config: ServerConfig }) => Promise<void>) {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-cloud-plugin-"));
-  const previousDb = process.env.IPOLLOWALK_RUNTIME_DB;
-  process.env.IPOLLOWALK_RUNTIME_DB = join(root, "runtime.sqlite");
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-cloud-plugin-"));
+  const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
   try {
     await fn({ root, config: serverConfig(root) });
   } finally {
-    if (previousDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-    else process.env.IPOLLOWALK_RUNTIME_DB = previousDb;
+    if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+    else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     await rm(root, { recursive: true, force: true });
   }
 }

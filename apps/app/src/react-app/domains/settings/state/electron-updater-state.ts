@@ -18,7 +18,7 @@ export type SettingsUpdateStatus = {
   message?: string;
 } | null;
 
-type ElectronUpdaterBridge = NonNullable<Window["__IPOLLOWALK_ELECTRON__"]>["updater"] & {
+type ElectronUpdaterBridge = NonNullable<Window["__IPOLLOWORK_ELECTRON__"]>["updater"] & {
   onDownloadProgress?: (callback: (data: { transferred: number; total: number; percent: number; bytesPerSecond: number }) => void) => (() => void);
 };
 type UseElectronUpdaterStateOptions = {
@@ -56,7 +56,7 @@ function electronUpdaterEnvReducer(
 
 function electronUpdaterBridge(): ElectronUpdaterBridge | null {
   if (typeof window === "undefined") return null;
-  return window.__IPOLLOWALK_ELECTRON__?.updater ?? null;
+  return window.__IPOLLOWORK_ELECTRON__?.updater ?? null;
 }
 
 function describeError(error: unknown) {

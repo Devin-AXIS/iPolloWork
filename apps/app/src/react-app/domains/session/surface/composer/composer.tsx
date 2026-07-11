@@ -5,12 +5,12 @@ import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, FileText, List
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { IPOLLOWALK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
+import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
 import { formatBytes, isMacPlatform } from "@/app/utils";
 import { t } from "@/i18n";
-import { isiPolloWalkExtensionEnabled, isiPolloWalkExtensionHidden, IPOLLOWALK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
+import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
 import { useDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { ModelBehaviorSelect } from "@/components/model-behavior-select";
@@ -41,8 +41,8 @@ function isComposerExtensionAvailable(entry: McpDirectoryInfo) {
   const hasSessionSurface = entry.extensionManifest?.contributions?.some((contribution) =>
     contribution.type === "session-side-panel" || contribution.type === "session-rail-item"
   ) === true;
-  if (hasSessionSurface) return isiPolloWalkExtensionEnabled(entry);
-  return !entry.defaultEnabled || isiPolloWalkExtensionEnabled(entry);
+  if (hasSessionSurface) return isiPolloWorkExtensionEnabled(entry);
+  return !entry.defaultEnabled || isiPolloWorkExtensionEnabled(entry);
 }
 
 type ComposerProps = {
@@ -103,15 +103,15 @@ type ComposerProps = {
   topAccessory?: ReactNode;
 };
 
-const FLUSH_PROMPT_EVENT = "ipollowalk:flushPromptDraft";
-const FOCUS_PROMPT_EVENT = "ipollowalk:focusPrompt";
+const FLUSH_PROMPT_EVENT = "ipollowork:flushPromptDraft";
+const FOCUS_PROMPT_EVENT = "ipollowork:focusPrompt";
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const IMAGE_COMPRESS_MAX_PX = 2048;
 const IMAGE_COMPRESS_QUALITY = 0.82;
 const IMAGE_COMPRESS_TARGET_BYTES = 1_500_000;
 const FILE_URL_RE = /^file:\/\//i;
 const HTTP_URL_RE = /^https?:\/\//i;
-const DEFAULT_AGENT_NAME = "ipollowalk";
+const DEFAULT_AGENT_NAME = "ipollowork";
 
 function isNonDefaultAgent(agent: Agent) {
   return agent.name !== DEFAULT_AGENT_NAME;
@@ -492,10 +492,10 @@ export function ReactSessionComposer(props: ComposerProps) {
 
   useEffect(() => {
     const refresh = () => setExtensionStateVersion((value) => value + 1);
-    window.addEventListener(IPOLLOWALK_EXTENSION_STATE_CHANGED, refresh);
+    window.addEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
     window.addEventListener("storage", refresh);
     return () => {
-      window.removeEventListener(IPOLLOWALK_EXTENSION_STATE_CHANGED, refresh);
+      window.removeEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
       window.removeEventListener("storage", refresh);
     };
   }, []);
@@ -725,9 +725,9 @@ export function ReactSessionComposer(props: ComposerProps) {
   const activePlugin = toolMenuSection.startsWith("plugin:")
     ? pluginSections.find((entry) => entry.section === toolMenuSection)?.plugin ?? null
     : null;
-  const composerExtensions = IPOLLOWALK_EXTENSION_CATALOG.filter((entry) =>
+  const composerExtensions = IPOLLOWORK_EXTENSION_CATALOG.filter((entry) =>
     !builtInExtensionsDisabled &&
-    !isiPolloWalkExtensionHidden(entry) && isComposerExtensionAvailable(entry)
+    !isiPolloWorkExtensionHidden(entry) && isComposerExtensionAvailable(entry)
   );
   const canSend = props.draft.trim().length > 0 || props.attachments.length > 0;
 

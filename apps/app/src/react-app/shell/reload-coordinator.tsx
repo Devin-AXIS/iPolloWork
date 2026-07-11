@@ -146,7 +146,7 @@ type ReloadCoordinatorContextValue = {
   registerWorkspaceReloadControls: (controls: WorkspaceReloadControls | null) => () => void;
 };
 
-export const orgOnboardingVisibilityEvent = "ipollowalk-org-onboarding-visibility";
+export const orgOnboardingVisibilityEvent = "ipollowork-org-onboarding-visibility";
 
 const ReloadCoordinatorContext = createContext<ReloadCoordinatorContextValue | null>(null);
 
@@ -230,9 +230,9 @@ export function ReloadCoordinatorProvider({ children }: { children: ReactNode })
       systemState.markReloadRequired(detail?.reason ?? "config", detail?.trigger);
     };
 
-    window.addEventListener("ipollowalk-reload-required", handler);
+    window.addEventListener("ipollowork-reload-required", handler);
 
-    return () => window.removeEventListener("ipollowalk-reload-required", handler);
+    return () => window.removeEventListener("ipollowork-reload-required", handler);
   }, [systemState.markReloadRequired]);
 
   // Track what is pending so the post-reload receipt can describe it.

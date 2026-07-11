@@ -1,24 +1,24 @@
 ---
 title: "Microsoft Entra SAML SSO"
-description: "Connect Microsoft Entra ID to iPolloWalk Cloud with SAML"
+description: "Connect Microsoft Entra ID to iPolloWork Cloud with SAML"
 ---
 
-Use this guide when an organization wants members to sign in to iPolloWalk with
+Use this guide when an organization wants members to sign in to iPolloWork with
 Microsoft Entra ID.
 
 ## Before you start
 
 You need:
 
-- An iPolloWalk organization with the Enterprise SSO entitlement.
-- Owner or admin access in that iPolloWalk organization.
+- An iPolloWork organization with the Enterprise SSO entitlement.
+- Owner or admin access in that iPolloWork organization.
 - Admin access to a Microsoft Entra enterprise application.
-- The final iPolloWalk auth origin, for example `https://app.ipollowalklabs.com`.
+- The final iPolloWork auth origin, for example `https://app.ipolloworklabs.com`.
 
 ## 1. Create the Entra enterprise app
 
 In the Microsoft Azure portal, open **Microsoft Entra ID** and create a new
-enterprise application for iPolloWalk. Choose **SAML** as the single sign-on
+enterprise application for iPolloWork. Choose **SAML** as the single sign-on
 method.
 
 ## 2. Configure Basic SAML Configuration
@@ -29,16 +29,16 @@ Set:
 
 | Entra field | Value |
 | --- | --- |
-| Identifier (Entity ID) | The iPolloWalk auth origin, for example `https://app.ipollowalklabs.com` |
-| Reply URL (Assertion Consumer Service URL) | The ACS URL iPolloWalk shows after saving SAML, for example `https://app.ipollowalklabs.com/api/auth/sso/saml2/sp/acs/ipollowalk-sso-<org-id>` |
-| Sign on URL | The org-specific iPolloWalk **Sign-in URL** shown after saving SAML, for example `https://app.ipollowalklabs.com/sso/<org-slug>` |
+| Identifier (Entity ID) | The iPolloWork auth origin, for example `https://app.ipolloworklabs.com` |
+| Reply URL (Assertion Consumer Service URL) | The ACS URL iPolloWork shows after saving SAML, for example `https://app.ipolloworklabs.com/api/auth/sso/saml2/sp/acs/ipollowork-sso-<org-id>` |
+| Sign on URL | The org-specific iPolloWork **Sign-in URL** shown after saving SAML, for example `https://app.ipolloworklabs.com/sso/<org-slug>` |
 | Relay State | Leave blank |
 
-The Entity ID must be the iPolloWalk auth origin. Do not use the Entra tenant
+The Entity ID must be the iPolloWork auth origin. Do not use the Entra tenant
 identifier, `https://sts.windows.net/<tenant-id>/`, as the Entity ID.
 
-iPolloWalk SAML connections are organization-scoped. If a user belongs to
-multiple iPolloWalk organizations, the Entra app, ACS URL, and Sign-in URL select
+iPolloWork SAML connections are organization-scoped. If a user belongs to
+multiple iPolloWork organizations, the Entra app, ACS URL, and Sign-in URL select
 which organization they are entering.
 
 ## 3. Configure SAML signing
@@ -50,29 +50,29 @@ Set:
 - **Signing Option**: `Sign SAML assertion`
 - **Signing Algorithm**: `SHA-256`
 
-iPolloWalk requires signed SAML assertions. If Entra signs only the response, the
+iPolloWork requires signed SAML assertions. If Entra signs only the response, the
 callback fails with `saml_error` and `Invalid SAML response`.
 
 After any certificate change, copy the active certificate again. Entra can
 create or activate a new signing certificate while you are editing SAML
-settings, and iPolloWalk must store the certificate that is currently active.
+settings, and iPolloWork must store the certificate that is currently active.
 
-## 4. Copy Entra values into iPolloWalk
+## 4. Copy Entra values into iPolloWork
 
-In iPolloWalk, open the organization dashboard, then **SSO**. Choose **SAML** and
+In iPolloWork, open the organization dashboard, then **SSO**. Choose **SAML** and
 enter:
 
-| iPolloWalk field | Entra value |
+| iPolloWork field | Entra value |
 | --- | --- |
 | IdP Issuer URL | **Microsoft Entra Identifier**, for example `https://sts.windows.net/<tenant-id>/` |
 | Domain | The Entra-managed email domain, for example `example.onmicrosoft.com` |
 | SAML Entry Point | **Login URL**, for example `https://login.microsoftonline.com/<tenant-id>/saml2` |
-| Audience URL | Leave blank so iPolloWalk uses the auth origin, unless support gives you a different audience |
+| Audience URL | Leave blank so iPolloWork uses the auth origin, unless support gives you a different audience |
 | IdP Certificate | The active **Certificate (Base64)** from Entra |
 
-Save the SSO connection. iPolloWalk then shows the generated ACS URL. Copy that
+Save the SSO connection. iPolloWork then shows the generated ACS URL. Copy that
 ACS URL back into Entra's **Reply URL** if it was not available before the first
-save. Copy the iPolloWalk **Sign-in URL** into Entra's **Sign on URL** so the
+save. Copy the iPolloWork **Sign-in URL** into Entra's **Sign on URL** so the
 Entra tile can launch the same organization-scoped flow.
 
 ## 5. Assign test users
@@ -87,8 +87,8 @@ original external email address.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `AADSTS700016: Application with identifier 'https://app.ipollowalklabs.com' was not found` | Entra's Entity ID does not match iPolloWalk's SAML issuer | Set **Identifier (Entity ID)** to the iPolloWalk auth origin |
-| `/?error=saml_error&error_description=Invalid%20SAML%20response` | Entra is signing with a different certificate than the one saved in iPolloWalk, or assertions are not signed | Confirm **Signing Option** is `Sign SAML assertion`, then paste Entra's active **Certificate (Base64)** into iPolloWalk and save |
-| `/?error=unsolicited_response&error_description=IdP-initiated+SSO+not+allowed` | The deployment is running an older iPolloWalk version that rejects IdP-initiated SAML | Upgrade iPolloWalk, or launch from the org-specific iPolloWalk **Sign-in URL** |
+| `AADSTS700016: Application with identifier 'https://app.ipolloworklabs.com' was not found` | Entra's Entity ID does not match iPolloWork's SAML issuer | Set **Identifier (Entity ID)** to the iPolloWork auth origin |
+| `/?error=saml_error&error_description=Invalid%20SAML%20response` | Entra is signing with a different certificate than the one saved in iPolloWork, or assertions are not signed | Confirm **Signing Option** is `Sign SAML assertion`, then paste Entra's active **Certificate (Base64)** into iPolloWork and save |
+| `/?error=unsolicited_response&error_description=IdP-initiated+SSO+not+allowed` | The deployment is running an older iPolloWork version that rejects IdP-initiated SAML | Upgrade iPolloWork, or launch from the org-specific iPolloWork **Sign-in URL** |
 | User reaches Microsoft but cannot continue | The user is not assigned to the enterprise application | Add the user under **Users and groups** |
-| Reply URL mismatch | Entra's Reply URL does not match the iPolloWalk ACS URL exactly | Copy the ACS URL from iPolloWalk and paste it into Entra |
+| Reply URL mismatch | Entra's Reply URL does not match the iPolloWork ACS URL exactly | Copy the ACS URL from iPolloWork and paste it into Entra |

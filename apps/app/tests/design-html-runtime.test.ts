@@ -24,20 +24,20 @@ describe("Design HTML runtime", () => {
     const source = "<!doctype html><html><body><h1>Hello</h1></body></html>";
     const preview = buildDesignPreviewDocument(source, true);
 
-    expect(preview).toContain('id="ipollowalk-design-runtime"');
+    expect(preview).toContain('id="ipollowork-design-runtime"');
     expect(preview).toContain(DESIGN_MESSAGE_CHANNEL);
-    expect(preview.indexOf("ipollowalk-design-runtime")).toBeLessThan(preview.toLowerCase().lastIndexOf("</body>"));
+    expect(preview.indexOf("ipollowork-design-runtime")).toBeLessThan(preview.toLowerCase().lastIndexOf("</body>"));
     expect(preview).toContain("h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote");
     expect(preview).toContain('addEventListener("dblclick"');
     expect(preview).toContain('setAttribute("contenteditable", "true")');
     expect(preview).toContain("getBoundingClientRect");
-    expect(preview).toContain('data-ipollowalk-design-editing');
+    expect(preview).toContain('data-ipollowork-design-editing');
     expect(preview).toContain('data.scope === "range"');
     expect(preview).toContain("textRange.extractContents()");
     expect(preview).toContain("rangeText");
     expect(preview).toContain("colorField");
     expect(preview).toContain("backgroundColor");
-    expect(preview).toContain("ipollowalk-design-transform-overlay");
+    expect(preview).toContain("ipollowork-design-transform-overlay");
     expect(preview).toContain('data-handle="se"');
     expect(preview).toContain('prepareTransform(selected, handle === "move" ? "move" : "resize"');
     expect(preview).toContain('selected.style.width = `${width}px`');

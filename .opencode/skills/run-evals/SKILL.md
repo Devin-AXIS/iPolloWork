@@ -1,11 +1,11 @@
 ---
 name: run-evals
-description: do e2e tests, run e2e, validate feature, prove it works, PR proof, frame proof, pnpm evals. Launches iPolloWalk on Daytona or local Electron and runs the coded eval flows via CDP. Launch + run mechanics; the proof loop itself is the fraimz skill.
+description: do e2e tests, run e2e, validate feature, prove it works, PR proof, frame proof, pnpm evals. Launches iPolloWork on Daytona or local Electron and runs the coded eval flows via CDP. Launch + run mechanics; the proof loop itself is the fraimz skill.
 ---
 
 # Skill: Run Evals
 
-Launch a real iPolloWalk app and run coded eval flows against it. This skill owns
+Launch a real iPolloWork app and run coded eval flows against it. This skill owns
 **launch + run**; the prove/repair/verdict loop and evidence standard live in
 the **`fraimz` skill** — load that too for anything that ends in a verdict.
 
@@ -25,17 +25,17 @@ daytona organization use "<org-name>"
 bash .devcontainer/test-on-daytona.sh <branch-or-commit> --artifacts-volume
 ```
 
-The helper creates a fresh VNC-capable sandbox from the `ipollowalk-eval-vnc`
+The helper creates a fresh VNC-capable sandbox from the `ipollowork-eval-vnc`
 snapshot, mounts the secrets + pnpm-store volumes, starts XFCE/noVNC, Vite, and
 Electron with Daytona-safe flags, waits for CDP, then prints the CDP and noVNC
 URLs. `--artifacts-volume` mounts `/daytona-artifacts` served on port 8090 for
 published frame proof. Refresh the snapshot when dependencies change:
-`bash .devcontainer/create-daytona-ipollowalk-snapshot.sh`.
+`bash .devcontainer/create-daytona-ipollowork-snapshot.sh`.
 
 Verify the endpoint before running flows:
 
 ```
-browser_list({ browser_url: "<CDP_URL>" })   # must show an "iPolloWalk" target
+browser_list({ browser_url: "<CDP_URL>" })   # must show an "iPolloWork" target
 ```
 
 If it fails, inspect `/tmp/electron.log` — the real success marker is
@@ -74,8 +74,8 @@ When Daytona is down or quota-limited:
 
 ```bash
 pnpm install
-pnpm --filter @ipollowalk/app typecheck
-IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT=9826 pnpm dev   # then:
+pnpm --filter @ipollowork/app typecheck
+IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=9826 pnpm dev   # then:
 pnpm evals --flow <flow-id> --cdp-url http://127.0.0.1:9826
 ```
 

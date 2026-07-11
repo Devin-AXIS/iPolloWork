@@ -2,12 +2,12 @@ export default {
   id: "signin-browser-open-fallback",
   title: "Cloud sign-in surfaces browser open failure with copy-link fallback",
   kind: "user-facing",
-  requiredEnv: ["IPOLLOWALK_SIMULATE_OPEN_EXTERNAL_FAILURE"],
+  requiredEnv: ["IPOLLOWORK_SIMULATE_OPEN_EXTERNAL_FAILURE"],
   steps: [
     {
       name: "App booted",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 30_000 });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30_000 });
       },
     },
     {
@@ -16,7 +16,7 @@ export default {
         // Navigate within the current workspace: the bare /settings/cloud-account
         // route redirect crashes the renderer on dev (pre-existing hooks-order
         // bug unrelated to this change).
-        const route = await ctx.eval("window.__ipollowalkControl.snapshot().route");
+        const route = await ctx.eval("window.__ipolloworkControl.snapshot().route");
         const workspace = typeof route === "string" ? /^\/workspace\/[^/]+/.exec(route) : null;
         await ctx.navigateHash(`${workspace ? workspace[0] : ""}/settings/cloud-account`);
         await ctx.expectHashIncludes("/settings/cloud-account");
@@ -44,7 +44,7 @@ export default {
         await ctx.screenshot("browser-open-fallback", {
           claim: "When the system browser cannot be opened, Cloud sign-in shows a copy-link fallback and keeps paste-code auth reachable.",
           voiceover:
-            "I click Sign in, but this machine refuses to open a browser. Instead of pretending everything worked, iPolloWalk tells me right away and offers to copy the sign-in link — and the paste-code box is already open for when I come back.",
+            "I click Sign in, but this machine refuses to open a browser. Instead of pretending everything worked, iPolloWork tells me right away and offers to copy the sign-in link — and the paste-code box is already open for when I come back.",
           requireText: [
             "We couldn't open your browser automatically.",
             "Copy sign-in link",
@@ -80,7 +80,7 @@ export default {
         }
 
         await ctx.screenshot("signin-link-copied", {
-          claim: "The fallback copy action gives the user a usable iPolloWalk Cloud sign-in link.",
+          claim: "The fallback copy action gives the user a usable iPolloWork Cloud sign-in link.",
           voiceover:
             "One click copies the real sign-in link, so I can open it in any browser I like, sign in there, and paste the code back here to finish.",
           requireText: [

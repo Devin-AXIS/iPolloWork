@@ -27,7 +27,7 @@ function runFocusedTest(name) {
 
 export default {
   id: FLOW_ID,
-  title: "Platform admins use Den admin tools through the existing iPolloWalk Cloud connection",
+  title: "Platform admins use Den admin tools through the existing iPolloWork Cloud connection",
   kind: "internal",
   requiresApp: false,
   steps: [
@@ -76,15 +76,15 @@ export default {
     {
       name: "The desktop keeps Cloud and removes the separate admin connector",
       run: async (ctx) => {
-        await ctx.prove("The desktop catalog contains ipollowalk-cloud but no ipollowalk-admin entry", {
+        await ctx.prove("The desktop catalog contains ipollowork-cloud but no ipollowork-admin entry", {
           voiceover: vo[3],
           assert: async () => {
             const constants = await readFile(join(ROOT, "apps/app/src/app/constants.ts"), "utf8");
             const store = await readFile(join(ROOT, "apps/app/src/react-app/domains/connections/store.ts"), "utf8");
-            witness(ctx, constants.includes('serverName: "ipollowalk-cloud"'), "iPolloWalk Cloud remains in the desktop catalog");
-            witness(ctx, !constants.includes('serverName: "ipollowalk-admin"'), "The separate iPolloWalk Admin catalog entry is absent");
-            witness(ctx, !store.includes('entry.serverName === "ipollowalk-admin"'), "Desktop token injection no longer special-cases a local admin connection");
-            ctx.output("Desktop connection catalog", "ipollowalk-cloud: present\nipollowalk-admin: absent\nadmin token special-case: absent");
+            witness(ctx, constants.includes('serverName: "ipollowork-cloud"'), "iPolloWork Cloud remains in the desktop catalog");
+            witness(ctx, !constants.includes('serverName: "ipollowork-admin"'), "The separate iPolloWork Admin catalog entry is absent");
+            witness(ctx, !store.includes('entry.serverName === "ipollowork-admin"'), "Desktop token injection no longer special-cases a local admin connection");
+            ctx.output("Desktop connection catalog", "ipollowork-cloud: present\nipollowork-admin: absent\nadmin token special-case: absent");
           },
         });
       },

@@ -45,7 +45,7 @@ const kindLabel: Record<ExtensionKind, string> = {
   plugin: "Plugin",
   skill: "Skill",
   "ui-control": "UI Control",
-  extension: "iPolloWalk Extension",
+  extension: "iPolloWork Extension",
 };
 
 const kindStyle: Record<ExtensionKind, string> = {

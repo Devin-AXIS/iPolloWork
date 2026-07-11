@@ -12,7 +12,7 @@ import {
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import { desktopFetch } from "../../app/lib/desktop";
-import { isWebDeployment } from "../../app/lib/ipollowalk-deployment";
+import { isWebDeployment } from "../../app/lib/ipollowork-deployment";
 import { isDesktopRuntime } from "../../app/utils";
 import { initialServerState, serverReducer } from "./server-provider-state";
 
@@ -43,7 +43,7 @@ const ServerContext = createContext<ServerContextValue | undefined>(undefined);
 function readStoredList(): string[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem("ipollowalk.server.list");
+    const raw = window.localStorage.getItem("ipollowork.server.list");
     const parsed = raw ? (JSON.parse(raw) as unknown) : [];
     return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
   } catch {
@@ -54,17 +54,17 @@ function readStoredList(): string[] {
 function readStoredActive(): string {
   if (typeof window === "undefined") return "";
   try {
-    const stored = window.localStorage.getItem("ipollowalk.server.active");
+    const stored = window.localStorage.getItem("ipollowork.server.active");
     return typeof stored === "string" ? stored : "";
   } catch {
     return "";
   }
 }
 
-function readiPolloWalkToken(): string {
+function readiPolloWorkToken(): string {
   if (typeof window === "undefined") return "";
   try {
-    return (window.localStorage.getItem("ipollowalk.server.token") ?? "").trim();
+    return (window.localStorage.getItem("ipollowork.server.token") ?? "").trim();
   } catch {
     return "";
   }
@@ -72,7 +72,7 @@ function readiPolloWalkToken(): string {
 
 async function checkHealth(url: string): Promise<boolean> {
   if (!url) return false;
-  const token = readiPolloWalkToken();
+  const token = readiPolloWorkToken();
   const headers =
     token && url.includes("/opencode") ? { Authorization: `Bearer ${token}` } : undefined;
   const client = createOpencodeClient({
@@ -102,14 +102,14 @@ export function ServerProvider({ children, defaultUrl }: ServerProviderProps) {
 
     const fallback = normalizeServerUrl(defaultUrl) ?? "";
 
-    // Hosted web deployments served by iPolloWalk must reuse the OpenCode proxy
+    // Hosted web deployments served by iPolloWork must reuse the OpenCode proxy
     // rather than any persisted localhost target.
     const forceProxy =
       !isDesktopRuntime() &&
       isWebDeployment() &&
       (import.meta.env.PROD ||
-        (typeof import.meta.env?.VITE_IPOLLOWALK_URL === "string" &&
-          import.meta.env.VITE_IPOLLOWALK_URL.trim().length > 0));
+        (typeof import.meta.env?.VITE_IPOLLOWORK_URL === "string" &&
+          import.meta.env.VITE_IPOLLOWORK_URL.trim().length > 0));
 
     if (forceProxy && fallback) {
       dispatchServer({ type: "ready", list: [fallback], active: fallback });
@@ -131,8 +131,8 @@ export function ServerProvider({ children, defaultUrl }: ServerProviderProps) {
     if (!readyRef.current) return;
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem("ipollowalk.server.list", JSON.stringify(list));
-      window.localStorage.setItem("ipollowalk.server.active", active);
+      window.localStorage.setItem("ipollowork.server.list", JSON.stringify(list));
+      window.localStorage.setItem("ipollowork.server.active", active);
     } catch {
       // ignore
     }
@@ -141,7 +141,7 @@ export function ServerProvider({ children, defaultUrl }: ServerProviderProps) {
   useEffect(() => {
     if (!active) return;
     if (isDesktopRuntime() && !active.includes("/opencode")) {
-      // Desktop React routes now talk to iPolloWalk server workspace-mounted
+      // Desktop React routes now talk to iPolloWork server workspace-mounted
       // `/opencode` URLs directly. Ignore old persisted raw OpenCode daemon
       // URLs here; their ephemeral ports go stale across restarts and otherwise
       // produce noisy `/global/health` connection-refused polling forever.

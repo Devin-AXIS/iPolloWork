@@ -13,12 +13,12 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "../../../design-system/text-input";
-import type { iPolloWalkClaudePluginPreview } from "../../../../app/lib/ipollowalk-server";
+import type { iPolloWorkClaudePluginPreview } from "../../../../app/lib/ipollowork-server";
 
 export type ClaudePluginImportModalProps = {
   open: boolean;
   onClose: () => void;
-  onPreview: (url: string) => Promise<iPolloWalkClaudePluginPreview>;
+  onPreview: (url: string) => Promise<iPolloWorkClaudePluginPreview>;
   onInstall: (url: string) => Promise<{ ok: boolean; message: string }>;
   /** Called after a successful install so the host view can refresh. */
   onInstalled?: () => void;
@@ -26,7 +26,7 @@ export type ClaudePluginImportModalProps = {
 
 type ModalState = {
   url: string;
-  preview: iPolloWalkClaudePluginPreview | null;
+  preview: iPolloWorkClaudePluginPreview | null;
   /** URL the current preview was generated from; install always targets this. */
   previewedUrl: string | null;
   previewing: boolean;
@@ -46,7 +46,7 @@ const initialState: ModalState = {
 type ModalAction =
   | Partial<ModalState>
   | "reset"
-  | { kind: "preview-success"; url: string; preview: iPolloWalkClaudePluginPreview };
+  | { kind: "preview-success"; url: string; preview: iPolloWorkClaudePluginPreview };
 
 function reducer(state: ModalState, action: ModalAction): ModalState {
   if (action === "reset") return initialState;

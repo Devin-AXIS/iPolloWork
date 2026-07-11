@@ -64,7 +64,7 @@ async function ghReleaseAssets(tag) {
       "view",
       tag,
       "--repo",
-      "Devin-AXIS/iPolloWalk",
+      "Devin-AXIS/iPolloWork",
       "--json",
       "assets",
     ],
@@ -85,7 +85,7 @@ async function ghDownload(tag, assetName, targetDir) {
       "download",
       tag,
       "--repo",
-      "Devin-AXIS/iPolloWalk",
+      "Devin-AXIS/iPolloWork",
       "--pattern",
       assetName,
       "--dir",
@@ -117,7 +117,7 @@ async function main() {
     process.exit(args.help ? 0 : 2);
   }
 
-  const workDir = join(tmpdir(), `ipollowalk-migrate-validate-${args.tag}`);
+  const workDir = join(tmpdir(), `ipollowork-migrate-validate-${args.tag}`);
   await rm(workDir, { recursive: true, force: true });
   await mkdir(workDir, { recursive: true });
 
@@ -161,9 +161,9 @@ async function main() {
     stdio: "inherit",
   });
   if (unzipResult.status !== 0) die("unzip failed");
-  const appPath = join(unzipDir, "iPolloWalk.app");
+  const appPath = join(unzipDir, "iPolloWork.app");
   if (!existsSync(appPath)) {
-    console.log(`[validate] ✗ iPolloWalk.app not found inside zip (got: ${unzipDir})`);
+    console.log(`[validate] ✗ iPolloWork.app not found inside zip (got: ${unzipDir})`);
     die("zip layout unexpected");
   }
   const sig = codesignVerify(appPath);
@@ -181,7 +181,7 @@ async function main() {
   const steps = [
     "Install a fresh Tauri v0.11.x build on a test machine (or VM).",
     `Launch it, "Check for updates" → migrates to ${args.tag}.`,
-    "Restart, see the 'iPolloWalk is moving' modal, click 'Install now'.",
+    "Restart, see the 'iPolloWork is moving' modal, click 'Install now'.",
     "Confirm Electron app launches automatically after ~30s.",
     "Confirm sidebar shows every workspace that was visible in Tauri.",
     "Open one workspace; confirm last session is preselected.",

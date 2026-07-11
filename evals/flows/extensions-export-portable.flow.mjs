@@ -1,6 +1,6 @@
 /**
  * Portable extensions export: a user's installed skill and an
- * iPolloWalk-managed runtime MCP (which lives in the runtime DB, not in
+ * iPolloWork-managed runtime MCP (which lives in the runtime DB, not in
  * workspace files) can be exported as one portable bundle — with secret
  * header values redacted — so the agent can package them into a
  * marketplace plugin.
@@ -11,11 +11,11 @@
  *      header (the same programmatic path the app's connect flows use);
  *      it is visible in Settings > Extensions as a runtime-managed entry.
  *   3. The new export surface (POST /workspace/:id/extensions/export —
- *      exactly what the bundled ipollowalk_extensions_export agent tool
+ *      exactly what the bundled ipollowork_extensions_export agent tool
  *      calls) returns both components; the SKILL.md content round-trips,
  *      the secret never appears, and headers.Authorization is <redacted>.
  *   4. (Agent frame, requires a usable model) The user asks the agent to
- *      export both by name with the ipollowalk_extensions_export tool; the
+ *      export both by name with the ipollowork_extensions_export tool; the
  *      agent replies with the redacted header value in the transcript.
  *
  * REST calls use the app's own port/token from localStorage (pattern from
@@ -36,17 +36,17 @@ const SECRET = "Bearer eval-export-secret-12345";
 // result (the exported MCP url and the redactedKeys entries) — neither is
 // present in this prompt, so a match proves the tool actually ran.
 const AGENT_MESSAGE = [
-  `Call the ipollowalk_extensions_export tool with skills ["${SKILL_NAME}"] and mcps ["${MCP_NAME}"].`,
+  `Call the ipollowork_extensions_export tool with skills ["${SKILL_NAME}"] and mcps ["${MCP_NAME}"].`,
   'From the tool result, take the exported MCP config "url" and the "redactedKeys" list.',
   "Reply with exactly one line: EXPORT-RESULT <url> <redactedKeys entries joined with commas>.",
   "Write the values verbatim without quotes or angle brackets. Do not run any other tools.",
 ].join(" ");
 const AGENT_REPLY_RE = "EXPORT-RESULT\\s+https:\\/\\/mcp\\.example\\.com\\/eval-export\\s+headers\\.Authorization";
 
-// In-page iPolloWalk server access using the app's own connection details.
+// In-page iPolloWork server access using the app's own connection details.
 const serverCallExpr = (pathTemplate, init) => `(async () => {
-  const port = localStorage.getItem("ipollowalk.server.port");
-  const token = localStorage.getItem("ipollowalk.server.token");
+  const port = localStorage.getItem("ipollowork.server.port");
+  const token = localStorage.getItem("ipollowork.server.token");
   if (!port || !token) return { ok: false, error: "no server port/token in localStorage" };
   const base = "http://127.0.0.1:" + port;
   const headers = { Authorization: "Bearer " + token, "Content-Type": "application/json" };
@@ -54,7 +54,7 @@ const serverCallExpr = (pathTemplate, init) => `(async () => {
   if (!wsResponse.ok) return { ok: false, error: "workspaces " + wsResponse.status };
   const wsPayload = await wsResponse.json();
   const workspaces = Array.isArray(wsPayload) ? wsPayload : wsPayload.items ?? [];
-  const active = localStorage.getItem("ipollowalk.react.activeWorkspace");
+  const active = localStorage.getItem("ipollowork.react.activeWorkspace");
   const fromHash = (window.location.hash.match(/workspace\\/(ws_[a-z0-9]+)/) ?? [])[1];
   const workspace = workspaces.find((entry) => entry.id === (fromHash || active)) ?? workspaces[0];
   if (!workspace) return { ok: false, error: "no workspace" };
@@ -96,8 +96,8 @@ export default {
   title: "Skill + runtime MCP export as a portable, secret-redacted bundle",
   spec: "apps/server/src/extensions-export.ts",
   precondition: async (ctx) => {
-    await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "control API" });
-    const route = await ctx.eval("window.__ipollowalkControl.snapshot().route");
+    await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "control API" });
+    const route = await ctx.eval("window.__ipolloworkControl.snapshot().route");
     return typeof route === "string" && (route.startsWith("/welcome") || route.startsWith("/signin"))
       ? "Profile is not onboarded (welcome/signin); flow requires a workspace."
       : null;
@@ -108,11 +108,11 @@ export default {
       run: async (ctx) => {
         await ctx.prove("App boots to a usable surface", {
           action: async () => {
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "control API" });
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "control API" });
             await ctx.waitFor("document.body.innerText.trim().length > 40", { label: "rendered body text" });
           },
           assert: async () => {
-            const route = await ctx.eval("window.__ipollowalkControl.snapshot().route");
+            const route = await ctx.eval("window.__ipolloworkControl.snapshot().route");
             ctx.assert(typeof route === "string" && route.length > 0, "No route reported by control snapshot.");
           },
           screenshot: { name: "booted", rejectText: ["Something went wrong"] },
@@ -154,7 +154,7 @@ export default {
         await ctx.prove("Runtime-managed MCP appears in Settings > Extensions", {
           action: async () => {
             // Same programmatic path the app's own connect flows use
-            // (POST /workspace/:id/mcp); stored in the iPolloWalk runtime DB,
+            // (POST /workspace/:id/mcp); stored in the iPolloWork runtime DB,
             // not in workspace files. enabled:false keeps it Paused so the
             // engine does not try to reach the placeholder URL.
             await serverCall(ctx, "/workspace/:id/mcp", {
@@ -228,20 +228,20 @@ export default {
       },
     },
     {
-      name: "Agent exports both via the ipollowalk_extensions_export tool",
+      name: "Agent exports both via the ipollowork_extensions_export tool",
       run: async (ctx) => {
-        await ctx.prove("Agent calls ipollowalk_extensions_export and reports the redacted header", {
+        await ctx.prove("Agent calls ipollowork_extensions_export and reports the redacted header", {
           action: async () => {
             // Leave settings; session actions register on the session surface.
             await ctx.navigateHash("/");
             await ctx.waitFor(
-              "window.__ipollowalkControl.listActions().some((a) => a.id === 'session.create_task' && !a.disabled)",
+              "window.__ipolloworkControl.listActions().some((a) => a.id === 'session.create_task' && !a.disabled)",
               { timeoutMs: 45_000, label: "session.create_task available" },
             );
             await ctx.control("session.create_task");
             await ctx.waitFor(
               `(() => {
-                const route = window.__ipollowalkControl.snapshot().route || "";
+                const route = window.__ipolloworkControl.snapshot().route || "";
                 return /ses_[A-Za-z0-9]+/.test(route);
               })()`,
               { timeoutMs: 30_000, label: "active session id in route" },
@@ -264,7 +264,7 @@ export default {
           assert: async () => {
             // The url + redacted key are only in the tool result, not the
             // prompt — the model cannot produce this line without actually
-            // calling ipollowalk_extensions_export.
+            // calling ipollowork_extensions_export.
             await ctx.waitFor(
               `Boolean(document.body.innerText.match(new RegExp(${JSON.stringify(AGENT_REPLY_RE)})))`,
               { timeoutMs: 180_000, label: "agent EXPORT-RESULT reply" },

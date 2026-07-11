@@ -5,10 +5,10 @@
 // consumed by the preload bridge.
 import { BrowserWindow, Menu, shell } from "electron";
 
-const NATIVE_MENU_OPEN_SETTINGS_EVENT = "ipollowalk:native-menu:open-settings";
-const NATIVE_MENU_TOGGLE_SIDEBAR_EVENT = "ipollowalk:native-menu:toggle-sidebar";
-const NATIVE_MENU_CHECK_UPDATES_EVENT = "ipollowalk:native-menu:check-updates";
-const NATIVE_MENU_ZOOM_EVENT = "ipollowalk:native-menu:zoom";
+const NATIVE_MENU_OPEN_SETTINGS_EVENT = "ipollowork:native-menu:open-settings";
+const NATIVE_MENU_TOGGLE_SIDEBAR_EVENT = "ipollowork:native-menu:toggle-sidebar";
+const NATIVE_MENU_CHECK_UPDATES_EVENT = "ipollowork:native-menu:check-updates";
+const NATIVE_MENU_ZOOM_EVENT = "ipollowork:native-menu:zoom";
 
 export function createApplicationMenu({ appName, docsUrl, getWindow }) {
   let applicationMenuVisible = process.platform === "darwin";

@@ -3,9 +3,9 @@ import { useCallback, useMemo, useState } from "react";
 import type {
   ReloadReason,
   ReloadTrigger,
-  ResetiPolloWalkMode,
+  ResetiPolloWorkMode,
 } from "../../app/types";
-import { relaunchDesktopApp, resetiPolloWalkState } from "../../app/lib/desktop";
+import { relaunchDesktopApp, resetiPolloWorkState } from "../../app/lib/desktop";
 import {
   addOpencodeCacheHint,
   isDesktopRuntime,
@@ -24,7 +24,7 @@ export type ReloadState = {
 
 export type ResetState = {
   resetModalOpen: boolean;
-  resetModalMode: ResetiPolloWalkMode;
+  resetModalMode: ResetiPolloWorkMode;
   resetModalText: string;
   resetModalBusy: boolean;
 };
@@ -37,14 +37,14 @@ export type SystemStateControls = {
   reloadWorkspaceEngine: () => Promise<void>;
   canReloadWorkspaceEngine: boolean;
   reset: ResetState;
-  openResetModal: (mode: ResetiPolloWalkMode) => void;
+  openResetModal: (mode: ResetiPolloWorkMode) => void;
   closeResetModal: () => void;
   setResetModalText: (value: string) => void;
   confirmReset: () => Promise<void>;
   setError: (message: string | null) => void;
 };
 
-function cleariPolloWalkLocalStorage(mode: ResetiPolloWalkMode) {
+function cleariPolloWorkLocalStorage(mode: ResetiPolloWorkMode) {
   if (typeof window === "undefined") return;
   try {
     if (mode === "all") {
@@ -53,9 +53,9 @@ function cleariPolloWalkLocalStorage(mode: ResetiPolloWalkMode) {
     }
     const keys = Object.keys(window.localStorage);
     for (const key of keys) {
-      if (/ipollowalk/.test(key)) window.localStorage.removeItem(key);
+      if (/ipollowork/.test(key)) window.localStorage.removeItem(key);
     }
-    window.localStorage.removeItem("ipollowalk_mode_pref");
+    window.localStorage.removeItem("ipollowork_mode_pref");
   } catch {
     // ignore
   }
@@ -83,7 +83,7 @@ export function useSystemState(
 
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetModalMode, setResetModalMode] =
-    useState<ResetiPolloWalkMode>("onboarding");
+    useState<ResetiPolloWorkMode>("onboarding");
   const [resetModalText, setResetModalText] = useState("");
   const [resetModalBusy, setResetModalBusy] = useState(false);
 
@@ -172,7 +172,7 @@ export function useSystemState(
   }, [clearReloadRequired, options, reloadBusy]);
 
   const openResetModal = useCallback(
-    (mode: ResetiPolloWalkMode) => {
+    (mode: ResetiPolloWorkMode) => {
       if (options.hasActiveRuns()) {
         options.setError(t("system.stop_active_runs_before_reset"));
         return;
@@ -203,9 +203,9 @@ export function useSystemState(
 
     try {
       if (isDesktopRuntime()) {
-        await resetiPolloWalkState(resetModalMode);
+        await resetiPolloWorkState(resetModalMode);
       }
-      cleariPolloWalkLocalStorage(resetModalMode);
+      cleariPolloWorkLocalStorage(resetModalMode);
       if (isDesktopRuntime()) {
         await relaunchDesktopApp();
       } else {

@@ -20,7 +20,7 @@ async function openInstallPage(ctx) {
   state.installPageUrl = minted.body?.installPageUrl ?? null;
   ctx.assert(typeof state.installPageUrl === "string", "Install-link response was missing installPageUrl.");
   await ctx.eval(`location.replace(${JSON.stringify(state.installPageUrl)})`).catch(() => undefined);
-  await ctx.waitFor(`document.body.innerText.includes('Download iPolloWalk for ${ORG_NAME}')`, {
+  await ctx.waitFor(`document.body.innerText.includes('Download iPolloWork for ${ORG_NAME}')`, {
     timeoutMs: 45_000,
     label: "organization install page",
   });
@@ -30,7 +30,7 @@ export default {
   id: "install-download-feedback",
   title: "Installer downloads stay clear while the bundle is prepared",
   kind: "user-facing",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "setup",
@@ -52,7 +52,7 @@ export default {
             })()`);
             ctx.assert(geometry && Math.abs(geometry.cardCenter - geometry.viewportCenter) < 4, `Install card was not centered: ${JSON.stringify(geometry)}`);
           },
-          screenshot: { name: "frame-1-centered-install-card", sandboxCapture: true, textTargetUrlIncludes: "/install?token=", requireText: [`Download iPolloWalk for ${ORG_NAME}`] },
+          screenshot: { name: "frame-1-centered-install-card", sandboxCapture: true, textTargetUrlIncludes: "/install?token=", requireText: [`Download iPolloWork for ${ORG_NAME}`] },
         });
       },
     },

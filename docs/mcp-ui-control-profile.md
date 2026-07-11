@@ -1,29 +1,29 @@
-# Control iPolloWalk from any MCP client
+# Control iPolloWork from any MCP client
 
-iPolloWalk exposes its UI as an MCP server so any MCP-capable app can read what's on screen and run actions — no DOM scraping, no coordinates, no accessibility hacks.
+iPolloWork exposes its UI as an MCP server so any MCP-capable app can read what's on screen and run actions — no DOM scraping, no coordinates, no accessibility hacks.
 
 ## Why this exists
 
 Apps like HandsFree let people control their computers hands-free using AI. But generic computer-use flows (screenshot → click coordinate) are slow, fragile, and need a vision model for every step.
 
-iPolloWalk takes a different approach: the app itself tells you what actions are available, what the current state is, and lets you execute actions by name. The MCP server wraps that surface so any MCP client gets a first-class, semantic control experience out of the box.
+iPolloWork takes a different approach: the app itself tells you what actions are available, what the current state is, and lets you execute actions by name. The MCP server wraps that surface so any MCP client gets a first-class, semantic control experience out of the box.
 
 This means:
 
-- **HandsFree** can drive iPolloWalk sessions, composer, navigation, and transcript without guessing pixels.
-- **OpenCode** can automate iPolloWalk as part of a larger coding workflow.
-- **Claude Desktop, Codex, Cursor**, or any MCP-compatible tool can add iPolloWalk control with a single config line.
+- **HandsFree** can drive iPolloWork sessions, composer, navigation, and transcript without guessing pixels.
+- **OpenCode** can automate iPolloWork as part of a larger coding workflow.
+- **Claude Desktop, Codex, Cursor**, or any MCP-compatible tool can add iPolloWork control with a single config line.
 - Your own app can do the same.
 
-> Want to control iPolloWalk Cloud workers and server APIs instead of the desktop UI? Check out the **iPolloWalk Cloud MCP** (separate package, coming soon).
+> Want to control iPolloWork Cloud workers and server APIs instead of the desktop UI? Check out the **iPolloWork Cloud MCP** (separate package, coming soon).
 
 ## Quick start with HandsFree
 
-HandsFree auto-discovers the iPolloWalk MCP server when both apps are running on the same machine. No config needed.
+HandsFree auto-discovers the iPolloWork MCP server when both apps are running on the same machine. No config needed.
 
-1. Launch **iPolloWalk** (desktop app).
+1. Launch **iPolloWork** (desktop app).
 2. Launch **HandsFree**.
-3. Open the HandsFree connector panel — you should see **iPolloWalk** with a green "Connected" status and an action count.
+3. Open the HandsFree connector panel — you should see **iPolloWork** with a green "Connected" status and an action count.
 
 That's it. HandsFree can now list your sessions, read transcripts, type into the composer, send prompts, and navigate the app — all through MCP.
 
@@ -32,11 +32,11 @@ That's it. HandsFree can now list your sessions, read transcripts, type into the
 - `ui_snapshot` — see the current route, status, and available actions.
 - `ui_list_actions` — get every action the app currently exposes (session controls, composer, navigation, etc.).
 - `ui_execute_action` — run an action by ID, e.g. `session.create_task`, `composer.set_text`, `composer.send`.
-- `ui_status` — check if iPolloWalk is running and the bridge is reachable.
+- `ui_status` — check if iPolloWork is running and the bridge is reachable.
 
 ### Cross-session memory
 
-iPolloWalk's cross-session memory currently comes from saved session history exposed through the UI control surface. It is not a separate long-term memory database.
+iPolloWork's cross-session memory currently comes from saved session history exposed through the UI control surface. It is not a separate long-term memory database.
 
 For requests like `What did I say in the customer migration session?` or `Remind me what we decided in session ses_abc123`, an MCP client can:
 
@@ -45,25 +45,25 @@ For requests like `What did I say in the customer migration session?` or `Remind
 3. Run `session.read_transcript` to read recent messages from that session.
 4. Answer from the returned transcript, and say when the returned messages are insufficient.
 
-This may navigate iPolloWalk away from the user's current session while the lookup runs. If multiple sessions match, ask which one to inspect.
+This may navigate iPolloWork away from the user's current session while the lookup runs. If multiple sessions match, ask which one to inspect.
 
-### iPolloWalk agents
+### iPolloWork agents
 
-Inside iPolloWalk, the supported way to grant an agent this UI-control surface is **Settings -> Extensions -> Show hidden**, then connect the hidden **iPolloWalk UI Control** MCP. The built-in preview tools injected by the extensions-preview plugin (`ipollowalk_ui_*`) are disabled by default to keep sessions uncluttered; set `IPOLLOWALK_UI_CONTROL_TOOLS=1` only for internal tooling that still needs that preview surface.
+Inside iPolloWork, the supported way to grant an agent this UI-control surface is **Settings -> Extensions -> Show hidden**, then connect the hidden **iPolloWork UI Control** MCP. The built-in preview tools injected by the extensions-preview plugin (`ipollowork_ui_*`) are disabled by default to keep sessions uncluttered; set `IPOLLOWORK_UI_CONTROL_TOOLS=1` only for internal tooling that still needs that preview surface.
 
 ## Install
 
 ```bash
-npm install -g ipollowalk-ui-mcp
+npm install -g ipollowork-ui-mcp
 ```
 
 Or run without installing:
 
 ```bash
-npx ipollowalk-ui-mcp
+npx ipollowork-ui-mcp
 ```
 
-> The package is [`ipollowalk-ui-mcp` on npm](https://www.npmjs.com/package/ipollowalk-ui-mcp).
+> The package is [`ipollowork-ui-mcp` on npm](https://www.npmjs.com/package/ipollowork-ui-mcp).
 
 ## Add to OpenCode
 
@@ -72,9 +72,9 @@ Add the MCP server to your workspace or global `opencode.json`:
 ```json
 {
   "mcp": {
-    "ipollowalk-ui": {
+    "ipollowork-ui": {
       "type": "local",
-      "command": ["npx", "-y", "ipollowalk-ui-mcp"],
+      "command": ["npx", "-y", "ipollowork-ui-mcp"],
       "enabled": true
     }
   }
@@ -84,7 +84,7 @@ Add the MCP server to your workspace or global `opencode.json`:
 Then use the tools in any session:
 
 ```
-> Use ui_snapshot to see what's on screen in iPolloWalk, then list the available sessions.
+> Use ui_snapshot to see what's on screen in iPolloWork, then list the available sessions.
 ```
 
 ## Add to Claude Desktop or Codex
@@ -94,9 +94,9 @@ Both use the same MCP config shape. Add to your `claude_desktop_config.json` or 
 ```json
 {
   "mcpServers": {
-    "ipollowalk-ui": {
+    "ipollowork-ui": {
       "command": "npx",
-      "args": ["-y", "ipollowalk-ui-mcp"]
+      "args": ["-y", "ipollowork-ui-mcp"]
     }
   }
 }
@@ -106,7 +106,7 @@ Restart the app. The four tools (`ui_status`, `ui_snapshot`, `ui_list_actions`, 
 
 ## Add to your own MCP client
 
-If you're building an app that speaks MCP, you can connect to the iPolloWalk UI server the same way:
+If you're building an app that speaks MCP, you can connect to the iPolloWork UI server the same way:
 
 ```js
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -114,12 +114,12 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const transport = new StdioClientTransport({
   command: "npx",
-  args: ["-y", "ipollowalk-ui-mcp"],
+  args: ["-y", "ipollowork-ui-mcp"],
 });
 const client = new Client({ name: "my-app", version: "1.0.0" });
 await client.connect(transport);
 
-// Check if iPolloWalk is running
+// Check if iPolloWork is running
 const status = await client.callTool({ name: "ui_status", arguments: {} });
 console.log(status);
 
@@ -138,21 +138,21 @@ await client.callTool({
 
 ### `ui_status`
 
-Check if iPolloWalk is running and reachable. Returns connection status and app info.
+Check if iPolloWork is running and reachable. Returns connection status and app info.
 
 **No arguments.**
 
 Example response:
 
 ```
-Connected to iPolloWalk
+Connected to iPolloWork
 Bridge: http://127.0.0.1:52431
 Version: 1
 ```
 
 ### `ui_snapshot`
 
-Get the current iPolloWalk UI state: active route, narration, visible actions, and status. Call this before acting to understand what the user sees.
+Get the current iPolloWork UI state: active route, narration, visible actions, and status. Call this before acting to understand what the user sees.
 
 **No arguments.**
 
@@ -181,7 +181,7 @@ Returns the full list with labels, descriptions, and argument info.
 
 ### `ui_execute_action`
 
-Execute an iPolloWalk UI action by its id.
+Execute an iPolloWork UI action by its id.
 
 | Argument | Type | Description |
 |----------|------|-------------|
@@ -208,7 +208,7 @@ Example — send the composer prompt:
 
 ## Available actions
 
-The exact list depends on the current iPolloWalk route and state. Common actions include:
+The exact list depends on the current iPolloWork route and state. Common actions include:
 
 | Action | Description |
 |--------|-------------|
@@ -232,24 +232,24 @@ The exact list depends on the current iPolloWalk route and state. Common actions
 
 ## Requirements
 
-- **iPolloWalk desktop** must be running. The MCP server connects to iPolloWalk's local bridge which starts automatically when the desktop app launches.
-- **macOS** is the primary supported platform. The bridge uses Electron IPC and writes a discovery file to `~/Library/Application Support/com.differentai.ipollowalk/`.
+- **iPolloWork desktop** must be running. The MCP server connects to iPolloWork's local bridge which starts automatically when the desktop app launches.
+- **macOS** is the primary supported platform. The bridge uses Electron IPC and writes a discovery file to `~/Library/Application Support/com.differentai.ipollowork/`.
 - The MCP server runs as a **stdio** process — your MCP client spawns it and communicates over stdin/stdout.
 
 ## How it works under the hood
 
 ```
 ┌─────────────┐     MCP stdio      ┌──────────────────┐     HTTP localhost     ┌──────────────┐
-│  MCP client  │ ←────────────────→ │  ipollowalk-ui-mcp │ ←───────────────────→ │  iPolloWalk app │
+│  MCP client  │ ←────────────────→ │  ipollowork-ui-mcp │ ←───────────────────→ │  iPolloWork app │
 │  (HandsFree, │                    │  (Node.js)       │                       │  (Electron)   │
 │   OpenCode,  │                    │                  │                       │               │
 │   Codex)     │                    └──────────────────┘                       └──────────────┘
 └─────────────┘
 ```
 
-1. iPolloWalk desktop starts a private localhost HTTP bridge on a random port, protected by a bearer token.
-2. It writes a discovery file with the port and token so `ipollowalk-ui-mcp` can find it.
-3. `ipollowalk-ui-mcp` reads the discovery file, proxies MCP tool calls to the bridge, and returns structured results.
-4. The bridge calls `window.__ipollowalkControl` inside the Electron renderer to snapshot state and execute actions.
+1. iPolloWork desktop starts a private localhost HTTP bridge on a random port, protected by a bearer token.
+2. It writes a discovery file with the port and token so `ipollowork-ui-mcp` can find it.
+3. `ipollowork-ui-mcp` reads the discovery file, proxies MCP tool calls to the bridge, and returns structured results.
+4. The bridge calls `window.__ipolloworkControl` inside the Electron renderer to snapshot state and execute actions.
 
-The bridge and discovery file are implementation details — you never need to touch them directly. Just point your MCP client at `ipollowalk-ui-mcp`.
+The bridge and discovery file are implementation details — you never need to touch them directly. Just point your MCP client at `ipollowork-ui-mcp`.

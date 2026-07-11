@@ -2,14 +2,14 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("connections-beta-desktop");
 
-const DEN_API_URL = (process.env.IPOLLOWALK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
-const DEN_WEB_URL = (process.env.IPOLLOWALK_EVAL_DEN_WEB_URL ?? DEN_API_URL).trim().replace(/\/+$/, "");
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const DEN_API_URL = (process.env.IPOLLOWORK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
+const DEN_WEB_URL = (process.env.IPOLLOWORK_EVAL_DEN_WEB_URL ?? DEN_API_URL).trim().replace(/\/+$/, "");
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 const RUN_TAG = Date.now();
 const CONNECTION_NAME = `beta-proof-desktop-${RUN_TAG}`;
 const CONNECTION_URL = "https://beta-proof.example.com/mcp";
-const WORKSPACE_PATH = "/tmp/ipollowalk-connections-beta-desktop";
+const WORKSPACE_PATH = "/tmp/ipollowork-connections-beta-desktop";
 
 const state = {
   adminSession: null,
@@ -96,15 +96,15 @@ async function closeStaleDialogs(ctx) {
 }
 
 async function signDesktopIntoCloud(ctx) {
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 120_000 });
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 120_000 });
 
-  const alreadySignedIn = await ctx.eval("Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())");
+  const alreadySignedIn = await ctx.eval("Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())");
   if (!alreadySignedIn) {
     // Point the app at the local Den control plane the designed way:
     // desktop-bootstrap.json (via the desktop bridge). Everything derives
     // from it — including getDenMcpUrl(), which the cloud MCP auto-config
     // uses; localStorage overrides alone are not enough.
-    await ctx.waitFor("Boolean(window.__IPOLLOWALK_ELECTRON__?.invokeDesktop)", { timeoutMs: 30_000, label: "desktop bridge" });
+    await ctx.waitFor("Boolean(window.__IPOLLOWORK_ELECTRON__?.invokeDesktop)", { timeoutMs: 30_000, label: "desktop bridge" });
     const bootstrap = {
       baseUrl: DEN_API_URL,
       apiBaseUrl: DEN_API_URL,
@@ -112,33 +112,33 @@ async function signDesktopIntoCloud(ctx) {
       handoff: null,
     };
     const written = await ctx.eval(`(async () => {
-      const bridge = window.__IPOLLOWALK_ELECTRON__?.invokeDesktop;
+      const bridge = window.__IPOLLOWORK_ELECTRON__?.invokeDesktop;
       if (!bridge) return { ok: false };
       await bridge("setDesktopBootstrapConfig", ${JSON.stringify(bootstrap)});
       return { ok: true };
     })()`, { awaitPromise: true });
     ctx.assert(written?.ok, "Failed to write desktop bootstrap config.");
     await ctx.eval(`(() => {
-      localStorage.setItem('ipollowalk.den.baseUrl', ${JSON.stringify(DEN_API_URL)});
-      localStorage.setItem('ipollowalk.den.apiBaseUrl', ${JSON.stringify(DEN_API_URL)});
+      localStorage.setItem('ipollowork.den.baseUrl', ${JSON.stringify(DEN_API_URL)});
+      localStorage.setItem('ipollowork.den.apiBaseUrl', ${JSON.stringify(DEN_API_URL)});
       return true;
     })()`);
     await ctx.eval("location.reload()");
-    await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "control API after bootstrap reload" });
+    await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "control API after bootstrap reload" });
     const handoff = await denApiFetch("/v1/auth/desktop-handoff", {
       method: "POST",
       headers: { authorization: `Bearer ${state.adminSession}` },
-      body: JSON.stringify({ desktopScheme: "ipollowalk" }),
+      body: JSON.stringify({ desktopScheme: "ipollowork" }),
     });
     ctx.assert(handoff.response.ok, `Handoff create failed: ${handoff.response.status}`);
     await ctx.control("auth.exchange-grant", { grant: handoff.body.grant, baseUrl: DEN_API_URL });
   }
   await ctx.waitFor(
-    "Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())",
+    "Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())",
     { timeoutMs: 45_000, label: "persisted den auth token" },
   );
   await ctx.waitFor(
-    "Boolean((localStorage.getItem('ipollowalk.den.activeOrgId') ?? '').trim())",
+    "Boolean((localStorage.getItem('ipollowork.den.activeOrgId') ?? '').trim())",
     { timeoutMs: 60_000, label: "active org resolved" },
   );
 }
@@ -160,9 +160,9 @@ async function ensureWorkspace(ctx) {
     }
     await ctx.waitFor("window.location.hash.includes('/workspace/')", { timeoutMs: 60_000, label: "workspace open" });
   }
-  // Dismiss the iPolloWalk Models upsell if it appears.
+  // Dismiss the iPolloWork Models upsell if it appears.
   await ctx.eval(`(() => {
-    const btn = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Continue without iPolloWalk Models');
+    const btn = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Continue without iPolloWork Models');
     btn?.click();
     return true;
   })()`);
@@ -227,7 +227,7 @@ export default {
   title: "Desktop Marketplace: alpha org connections are labeled and last",
   kind: "user-facing",
   spec: "evals/voiceovers/connections-beta-desktop.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL"],
   steps: [
     {
       name: "Frame 1",
@@ -243,8 +243,8 @@ export default {
           },
           assert: async () => {
             const auth = await ctx.eval(`(() => ({
-              token: (localStorage.getItem('ipollowalk.den.authToken') ?? '').trim(),
-              activeOrgId: (localStorage.getItem('ipollowalk.den.activeOrgId') ?? '').trim(),
+              token: (localStorage.getItem('ipollowork.den.authToken') ?? '').trim(),
+              activeOrgId: (localStorage.getItem('ipollowork.den.activeOrgId') ?? '').trim(),
             }))()`);
             ctx.assert(Boolean(auth.token), "Desktop Den auth token was not persisted.");
             ctx.assert(Boolean(auth.activeOrgId), "Desktop active org was not resolved.");

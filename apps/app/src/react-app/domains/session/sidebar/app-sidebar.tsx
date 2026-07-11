@@ -25,7 +25,7 @@ import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { WorkspaceInfo } from "../../../../app/lib/desktop";
-import { IPolloWalkDenHelpLink } from "../../workspace/ipollowalk-den-help-link";
+import { IPolloWorkDenHelpLink } from "../../workspace/ipollowork-den-help-link";
 import type {
   WorkspaceConnectionState,
   WorkspaceSessionGroup,
@@ -513,7 +513,7 @@ function RemoteConnectionIssueCard(props: {
             >
               {props.message}
             </div>
-            <IPolloWalkDenHelpLink />
+            <IPolloWorkDenHelpLink />
             <div className="mt-2 flex flex-wrap gap-1.5">
               {props.canRecover ? (
                 <Button
@@ -731,7 +731,7 @@ export function AppSidebar(props: AppSidebarProps) {
 
   const brandLogoUrl = useBrandLogoUrl();
   const brandAppName = useBrandAppName();
-  const hasManagedBrand = brandLogoUrl || brandAppName !== "iPolloWalk";
+  const hasManagedBrand = brandLogoUrl || brandAppName !== "iPolloWork";
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -1216,8 +1216,8 @@ function WorkspaceSidebarGroup({
   );
 }
 
-const SESSION_DRAG_TYPE = "application/x-ipollowalk-session-id";
-const UNGROUPED_GROUP_ID = "__ipollowalk_ungrouped";
+const SESSION_DRAG_TYPE = "application/x-ipollowork-session-id";
+const UNGROUPED_GROUP_ID = "__ipollowork_ungrouped";
 
 function SessionGroupSeparator({ label, count, expanded, onToggle, onRemove, onTitlePointerDown }: {
   label: string;

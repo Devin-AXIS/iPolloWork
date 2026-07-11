@@ -100,11 +100,11 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
             : emptyWorkspaceDisplay,
         selectedWorkspaceRoot: () => stateRef.current.selectedWorkspaceRoot,
         runtimeWorkspaceId: () => stateRef.current.selectedWorkspaceEndpoint?.workspaceId ?? null,
-        ipollowalkServer: {
+        ipolloworkServer: {
           getSnapshot: () => ({
-            ipollowalkServerStatus: stateRef.current.selectedWorkspaceEndpoint ? "connected" : "disconnected",
-            ipollowalkServerClient: stateRef.current.selectedWorkspaceEndpoint?.client ?? null,
-            ipollowalkServerCapabilities: stateRef.current.selectedWorkspaceEndpoint
+            ipolloworkServerStatus: stateRef.current.selectedWorkspaceEndpoint ? "connected" : "disconnected",
+            ipolloworkServerClient: stateRef.current.selectedWorkspaceEndpoint?.client ?? null,
+            ipolloworkServerCapabilities: stateRef.current.selectedWorkspaceEndpoint
               ? {
                   config: { read: true, write: true },
                 }

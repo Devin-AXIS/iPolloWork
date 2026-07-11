@@ -23,18 +23,18 @@ import { createClient, unwrap } from "@/app/lib/opencode";
 import { abortSessionSafe, forkSession, listCommands, revertSession, setSessionArchived, shellInSession } from "@/app/lib/opencode-session";
 import { useSessionManagementStore as sessionManagementStore } from "@/react-app/domains/session/sidebar/session-management-store";
 import {
-  buildiPolloWalkWorkspaceBaseUrl,
-  createiPolloWalkServerClient,
-  readiPolloWalkServerSettings,
-  type iPolloWalkServerClient,
-  type iPolloWalkWorkspaceInfo,
-} from "@/app/lib/ipollowalk-server";
+  buildiPolloWorkWorkspaceBaseUrl,
+  createiPolloWorkServerClient,
+  readiPolloWorkServerSettings,
+  type iPolloWorkServerClient,
+  type iPolloWorkWorkspaceInfo,
+} from "@/app/lib/ipollowork-server";
 import {
   resolveWorkspaceEndpoint,
   workspaceServerId,
   type ResolvedWorkspaceEndpoint,
 } from "@/app/lib/workspace-endpoint";
-import { buildiPolloWalkEnvRuntimeKey } from "@/app/lib/ipollowalk-env-runtime";
+import { buildiPolloWorkEnvRuntimeKey } from "@/app/lib/ipollowork-env-runtime";
 import {
   revealDesktopItemInDir,
   pickDirectory,
@@ -44,7 +44,7 @@ import {
   workspaceForget,
   workspaceSetRuntimeActive,
   workspaceSetSelected,
-  type iPolloWalkServerInfo,
+  type iPolloWorkServerInfo,
   type WorkspaceInfo,
   type WorkspaceList,
 } from "@/app/lib/desktop";
@@ -98,7 +98,7 @@ import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-co
 import { useRestrictionNotice } from "@/react-app/domains/cloud/restriction-notice-provider";
 import { ReactSessionRuntime } from "@/react-app/domains/session/sync/runtime-sync";
 import { useSessionActivityStore } from "@/react-app/domains/session/status/session-activity-store";
-import { buildiPolloWalkEnvSystemContext } from "@/react-app/domains/session/sync/env-context";
+import { buildiPolloWorkEnvSystemContext } from "@/react-app/domains/session/sync/env-context";
 import {
   applySessionRevert,
 } from "@/react-app/domains/session/sync/session-sync";
@@ -118,16 +118,16 @@ import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-acc
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
-import { IPolloWalkModelsStartupDialog } from "@/react-app/domains/cloud/ipollowalk-models-startup-dialog";
+import { IPolloWorkModelsStartupDialog } from "@/react-app/domains/cloud/ipollowork-models-startup-dialog";
 import {
-  IPOLLOWALK_MODEL_PREVIEWS,
-  getiPolloWalkModelsActionUrl,
-  hideiPolloWalkModelsPromo,
-  markiPolloWalkModelsStartupPromoShown,
-} from "@/react-app/domains/cloud/ipollowalk-models-promo";
+  IPOLLOWORK_MODEL_PREVIEWS,
+  getiPolloWorkModelsActionUrl,
+  hideiPolloWorkModelsPromo,
+  markiPolloWorkModelsStartupPromoShown,
+} from "@/react-app/domains/cloud/ipollowork-models-promo";
 import { FirstRunLoader } from "@/react-app/domains/onboarding/first-run-loader";
 import { ProviderSelectionStep } from "@/react-app/domains/onboarding/provider-selection-step";
-import { useiPolloWalkModelsStartupPromo } from "@/react-app/domains/cloud/use-ipollowalk-models-startup-promo";
+import { useiPolloWorkModelsStartupPromo } from "@/react-app/domains/cloud/use-ipollowork-models-startup-promo";
 import {
   diagnoseRemoteWorkspaceTaskLoadFailure,
   getRemoteWorkspaceConnectionKey,
@@ -156,15 +156,15 @@ import {
   recordInspectorEvent,
 } from "../../app/lib/app-inspector";
 import { saveSessionDraft } from "@/react-app/domains/session/sync/draft-store";
-import { useControlAction, type iPolloWalkControlAction } from "./control/control-provider";
+import { useControlAction, type iPolloWorkControlAction } from "./control/control-provider";
 import { useReactRenderWatchdog } from "./react-render-watchdog";
 
 import { readDenSettings } from "@/app/lib/den";
 import { denSessionUpdatedEvent } from "@/app/lib/den-session-events";
 
 import { filterProviderList } from "@/app/utils/providers";
-import { ensureDesktopLocaliPolloWalkConnection } from "./desktop-local-ipollowalk";
-import { resolveiPolloWalkConnection } from "./ipollowalk-connection";
+import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
+import { resolveiPolloWorkConnection } from "./ipollowork-connection";
 import { useReloadCoordinator } from "./reload-coordinator";
 import { useShellConfig } from "./shell-config";
 import { useShellShortcuts } from "./use-shell-shortcuts";
@@ -217,7 +217,7 @@ function describeTaskCreateError(error: unknown) {
     lower.includes("internal_error") ||
     lower.includes("unexpected server error")
   ) {
-    return "OpenCode is unavailable for this workspace. Retry once it restarts, or restart iPolloWalk if the problem continues.";
+    return "OpenCode is unavailable for this workspace. Retry once it restarts, or restart iPolloWork if the problem continues.";
   }
   return message;
 }
@@ -228,7 +228,7 @@ function taskCreateUnavailableToastId(workspaceId: string) {
 
 function focusPromptSoon() {
   if (typeof window === "undefined") return;
-  const focus = () => window.dispatchEvent(new Event("ipollowalk:focusPrompt"));
+  const focus = () => window.dispatchEvent(new Event("ipollowork:focusPrompt"));
   [0, 80, 240, 600].forEach((delay) => window.setTimeout(focus, delay));
 }
 
@@ -338,8 +338,8 @@ export function SessionRoute() {
   const reloadCoordinator = useReloadCoordinator();
   const checkDesktopRestriction = useCheckDesktopRestriction();
   const restrictionNotice = useRestrictionNotice();
-  const [ipollowalkServerHostInfoState, setiPolloWalkServerHostInfoState] = useState<iPolloWalkServerInfo | null>(null);
-  const [ipollowalkServerSettingsVersion, setiPolloWalkServerSettingsVersion] = useState(0);
+  const [ipolloworkServerHostInfoState, setiPolloWorkServerHostInfoState] = useState<iPolloWorkServerInfo | null>(null);
+  const [ipolloworkServerSettingsVersion, setiPolloWorkServerSettingsVersion] = useState(0);
   const {
     navigateToWorkspaceSession,
     routeWorkspaceId,
@@ -387,8 +387,8 @@ export function SessionRoute() {
     handleRemoteWorkspaceConnectionSaved,
     runRemoteWorkspaceConnectionCheck,
   } = useWorkspaceRouteState({
-    onServerSettingsChanged: () => setiPolloWalkServerSettingsVersion((value) => value + 1),
-    onHostInfo: setiPolloWalkServerHostInfoState,
+    onServerSettingsChanged: () => setiPolloWorkServerSettingsVersion((value) => value + 1),
+    onHostInfo: setiPolloWorkServerHostInfoState,
   });
   useSessionMcpMaintenance({
     cloudSignedIn: denAuth.isSignedIn,
@@ -424,7 +424,7 @@ export function SessionRoute() {
   const [renameWorkspaceBusy, setRenameWorkspaceBusy] = useState(false);
   const [developerMode, setDeveloperMode] = useState(() => {
     if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("ipollowalk.developerMode") === "1";
+    return window.localStorage.getItem("ipollowork.developerMode") === "1";
   });
   const [paletteAccessibleTargets, setPaletteAccessibleTargets] = useState<OpenTarget[]>([]);
   const [providers, setProviders] = useState<ProviderListItem[]>([]);
@@ -454,9 +454,9 @@ export function SessionRoute() {
   // options for whichever model is currently selected so the composer's
   // behavior pill actually shows its options (bug: was empty before).
 
-  const ipollowalkServerSettings = useMemo(
-    () => readiPolloWalkServerSettings(),
-    [ipollowalkServerSettingsVersion],
+  const ipolloworkServerSettings = useMemo(
+    () => readiPolloWorkServerSettings(),
+    [ipolloworkServerSettingsVersion],
   );
 
   const activeReloadBlockingSessions = useMemo(
@@ -487,9 +487,9 @@ export function SessionRoute() {
   );
 
   const remoteAccessRestart = useRemoteAccessRestart({
-    isEnabled: () => ipollowalkServerSettings.remoteAccessEnabled === true,
-    onHostInfo: setiPolloWalkServerHostInfoState,
-    onSettingsChanged: () => setiPolloWalkServerSettingsVersion((value) => value + 1),
+    isEnabled: () => ipolloworkServerSettings.remoteAccessEnabled === true,
+    onHostInfo: setiPolloWorkServerHostInfoState,
+    onSettingsChanged: () => setiPolloWorkServerSettingsVersion((value) => value + 1),
   });
 
   const { engineReloadVersion, routeEngineInfo, reloadWorkspaceEngineFromUi } = useEngineReload({
@@ -503,12 +503,12 @@ export function SessionRoute() {
   });
 
   const environmentRuntimeKey = useMemo(
-    () => buildiPolloWalkEnvRuntimeKey({
+    () => buildiPolloWorkEnvRuntimeKey({
       baseUrl: client?.baseUrl ?? null,
-      pid: ipollowalkServerHostInfoState?.pid ?? null,
-      port: ipollowalkServerHostInfoState?.port ?? null,
+      pid: ipolloworkServerHostInfoState?.pid ?? null,
+      port: ipolloworkServerHostInfoState?.port ?? null,
     }),
-    [client?.baseUrl, ipollowalkServerHostInfoState?.pid, ipollowalkServerHostInfoState?.port],
+    [client?.baseUrl, ipolloworkServerHostInfoState?.pid, ipolloworkServerHostInfoState?.port],
   );
 
   const handleApplyEnvironmentChanges = useCallback(async () => {
@@ -529,8 +529,8 @@ export function SessionRoute() {
 
   const shareWorkspaceState = useShareWorkspaceState({
     workspaces,
-    ipollowalkServerHostInfo: ipollowalkServerHostInfoState,
-    ipollowalkServerSettings,
+    ipolloworkServerHostInfo: ipolloworkServerHostInfoState,
+    ipolloworkServerSettings,
     engineInfo: routeEngineInfo,
     exportWorkspaceBusy: false,
     openLink: (url) => platform.openLink(url),
@@ -649,11 +649,11 @@ export function SessionRoute() {
     opencodeClient && selectedWorkspaceId && !loading && !selectedWorkspaceError && !selectedModelUnavailable,
   );
 
-  const iPolloWalkModelsPromo = useiPolloWalkModelsStartupPromo({
+  const iPolloWorkModelsPromo = useiPolloWorkModelsStartupPromo({
     clientReady: Boolean(opencodeClient),
     workspaceId: selectedWorkspaceId,
     providerConnectedIds,
-    // First-run users get the iPolloWalk Models pitch from the provider
+    // First-run users get the iPolloWork Models pitch from the provider
     // selection step on their first send, not a startup popup. Completing
     // the step marks the promo as shown, so it never auto-pops for them.
     suppressed: providerStepOpen || !local.prefs.providerStepCompleted,
@@ -820,7 +820,7 @@ export function SessionRoute() {
     }
 
     // Note: do NOT include `client`, `workspaceId`, `sessionId`,
-    // `opencodeBaseUrl`, or `ipollowalkToken` here. SessionPage forwards those
+    // `opencodeBaseUrl`, or `ipolloworkToken` here. SessionPage forwards those
     // explicitly to SessionSurface from the per-workspace endpoint resolved
     // by `resolveWorkspaceEndpoint`. If we leak them in here, the spread of
     // `surfaceProps` in SessionPage overrides those correct values with the
@@ -914,7 +914,7 @@ export function SessionRoute() {
         }
 
         const parts = await draftToParts(draft, selectedWorkspaceRoot);
-        const envSystemContext = await buildiPolloWalkEnvSystemContext(client, {
+        const envSystemContext = await buildiPolloWorkEnvSystemContext(client, {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
         });
@@ -1049,16 +1049,16 @@ export function SessionRoute() {
     surfacePropsRef.current = surfaceProps;
   });
 
-  const completeProviderStep = useCallback((action: "ipollowalk-models" | "byok" | "skip") => {
+  const completeProviderStep = useCallback((action: "ipollowork-models" | "byok" | "skip") => {
     setProviderStepOpen(false);
     local.setPrefs((prev) => ({ ...prev, providerStepCompleted: true }));
-    // The step IS the iPolloWalk Models pitch — never auto-pop the startup
+    // The step IS the iPolloWork Models pitch — never auto-pop the startup
     // promo on top of it afterwards.
-    markiPolloWalkModelsStartupPromoShown();
-    if (action === "ipollowalk-models") {
-      platform.openLink(getiPolloWalkModelsActionUrl(denAuth.isSignedIn, "sign-up"));
+    markiPolloWorkModelsStartupPromoShown();
+    if (action === "ipollowork-models") {
+      platform.openLink(getiPolloWorkModelsActionUrl(denAuth.isSignedIn, "sign-up"));
     } else if (action === "byok") {
-      hideiPolloWalkModelsPromo();
+      hideiPolloWorkModelsPromo();
       void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
     }
     // ponytail: the held draft is resent immediately on the free model for
@@ -1115,7 +1115,7 @@ export function SessionRoute() {
     setRenameWorkspaceBusy(true);
     try {
       if (!client) {
-        toast.error("iPolloWalk server is unavailable. Reconnect the server before renaming workspaces.");
+        toast.error("iPolloWork server is unavailable. Reconnect the server before renaming workspaces.");
         return;
       }
       await client.updateWorkspaceDisplayName(renameWorkspaceId, trimmed);
@@ -1164,7 +1164,7 @@ export function SessionRoute() {
         downloadWorkspaceJson(workspaceExportFilename(workspace), payload);
         return;
       }
-      throw new Error("iPolloWalk server is unavailable. Reconnect the server before exporting workspace config.");
+      throw new Error("iPolloWork server is unavailable. Reconnect the server before exporting workspace config.");
     },
     [endpointForWorkspace, workspaces],
   );
@@ -1214,7 +1214,7 @@ export function SessionRoute() {
     const workspaceClient = createClient(
       endpoint.opencodeBaseUrl,
       workspace.path?.trim() || undefined,
-      { token: endpoint.token, mode: "ipollowalk" },
+      { token: endpoint.token, mode: "ipollowork" },
     );
     try {
       setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
@@ -1413,7 +1413,7 @@ export function SessionRoute() {
     selectedWorkspaceRoot,
     selectedSessionId,
     canCreateTask,
-    ipollowalkClient: client,
+    ipolloworkClient: client,
     opencodeClient,
     navigateToSession: navigateToSessionForControl,
     navigateToSessionRoot: navigateToSessionRootForControl,
@@ -1422,7 +1422,7 @@ export function SessionRoute() {
     refreshRouteState,
   });
 
-  const commandPaletteControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const commandPaletteControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "command_palette.open",
     label: "Open the command palette",
     description: "Open the in-app command palette so the next choice is visible.",
@@ -1431,7 +1431,7 @@ export function SessionRoute() {
   }), []);
   useControlAction(commandPaletteControlAction);
 
-  const addProviderControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const addProviderControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "settings.provider.add",
     label: "Add a model provider",
     description: "Open the provider connection modal, optionally pre-filtered to a specific provider.",
@@ -1585,7 +1585,7 @@ export function SessionRoute() {
       setCommandPaletteOpen(false);
       setDeveloperMode((current) => {
         const next = !current;
-        try { window.localStorage.setItem("ipollowalk.developerMode", next ? "1" : "0"); } catch {}
+        try { window.localStorage.setItem("ipollowork.developerMode", next ? "1" : "0"); } catch {}
         return next;
       });
     },
@@ -1596,9 +1596,9 @@ export function SessionRoute() {
     canReloadWorkspace: reloadCoordinator.canReloadWorkspaceEngine,
     clientConnected: canCreateTask,
     developerMode,
-    hostInfo: ipollowalkServerHostInfoState,
-    ipollowalkServerStatus: client ? "connected" : "disconnected",
-    ipollowalkServerUrl: baseUrl,
+    hostInfo: ipolloworkServerHostInfoState,
+    ipolloworkServerStatus: client ? "connected" : "disconnected",
+    ipolloworkServerUrl: baseUrl,
     runtimeWorkspaceId: selectedWorkspaceEndpoint?.workspaceId ?? null,
   }), [
     activeReloadBlockingSessions.length,
@@ -1606,7 +1606,7 @@ export function SessionRoute() {
     canCreateTask,
     client,
     developerMode,
-    ipollowalkServerHostInfoState,
+    ipolloworkServerHostInfoState,
     reloadCoordinator.canReloadWorkspaceEngine,
     selectedWorkspaceEndpoint?.workspaceId,
   ]);
@@ -1638,7 +1638,7 @@ export function SessionRoute() {
       try {
         const json = await buildCommandDiagnosticsBundle();
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        downloadTextAsFile(`ipollowalk-diagnostics-${timestamp}.json`, json, "application/json");
+        downloadTextAsFile(`ipollowork-diagnostics-${timestamp}.json`, json, "application/json");
         toast.success(t("session.diagnostics_exported"));
       } catch (error) {
         toast.error(t("session.diagnostics_failed"), { description: describeRouteError(error) });
@@ -1755,7 +1755,7 @@ export function SessionRoute() {
           .catch(() => null);
       }
       if (!list) {
-        throw new Error("iPolloWalk server is unavailable. Start or reconnect the server before creating a workspace.");
+        throw new Error("iPolloWork server is unavailable. Start or reconnect the server before creating a workspace.");
       }
       const createdId = resolveWorkspaceListSelectedId(list) || list.workspaces[list.workspaces.length - 1]?.id || "";
       let targetWorkspaceId = createdId;
@@ -1764,21 +1764,21 @@ export function SessionRoute() {
         await workspaceSetSelected(createdId).catch(() => undefined);
         await workspaceSetRuntimeActive(createdId).catch(() => undefined);
       }
-      // First workspace on a fresh install: the iPolloWalk server was started
+      // First workspace on a fresh install: the iPolloWork server was started
       // engine-less (it only spawns OpenCode at boot when a workspace already
       // exists), so sessions would hang forever. This boots the engine when
       // it isn't running, same as the old /welcome flow did.
       let sessionBaseUrl = baseUrl;
       let sessionToken = token;
       if (targetWorkspace && isDesktopRuntime()) {
-        await ensureDesktopLocaliPolloWalkConnection({
+        await ensureDesktopLocaliPolloWorkConnection({
           route: "session",
           workspace: targetWorkspace,
           allWorkspaces: list.workspaces,
         }).catch(() => undefined);
         // The engine boot can restart the server with fresh tokens; re-resolve
         // so the first-session creation below doesn't use stale credentials.
-        const fresh = await resolveiPolloWalkConnection().catch(() => null);
+        const fresh = await resolveiPolloWorkConnection().catch(() => null);
         if (fresh?.normalizedBaseUrl && fresh.resolvedToken) {
           sessionBaseUrl = fresh.normalizedBaseUrl;
           sessionToken = fresh.resolvedToken;
@@ -1787,7 +1787,7 @@ export function SessionRoute() {
       setCreateWorkspaceOpen(false);
       // Mark onboarding complete so the /welcome redirect never fires again.
       // Completing the classic flow also counts as the provider step so the
-      // iPolloWalk Models startup promo is not suppressed forever (its
+      // iPolloWork Models startup promo is not suppressed forever (its
       // `suppressed` input keys off providerStepCompleted).
       local.setPrefs((prev) => ({ ...prev, hasCompletedOnboarding: true, providerStepCompleted: true }));
       await refreshRouteState();
@@ -1797,9 +1797,9 @@ export function SessionRoute() {
         // failure here must not surface as a failed workspace creation.
         const session = createdOnServer && sessionBaseUrl && sessionToken
           ? await createClient(
-              `${(buildiPolloWalkWorkspaceBaseUrl(sessionBaseUrl, targetWorkspaceId) ?? sessionBaseUrl).replace(/\/+$/, "")}/opencode`,
+              `${(buildiPolloWorkWorkspaceBaseUrl(sessionBaseUrl, targetWorkspaceId) ?? sessionBaseUrl).replace(/\/+$/, "")}/opencode`,
               workspacePath || undefined,
-              { token: sessionToken, mode: "ipollowalk" },
+              { token: sessionToken, mode: "ipollowork" },
             ).session.create({ directory: workspacePath || undefined })
               .then((result) => unwrap(result))
               .catch(() => null)
@@ -1835,7 +1835,7 @@ export function SessionRoute() {
     }
   }, [baseUrl, client, local, navigateToWorkspaceSession, refreshRouteState, rememberPendingCreatedSession, token]);
 
-  const createWorkspaceControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const createWorkspaceControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "workspace.create",
     label: "Create a local workspace",
     description: "Create a workspace at the given folder path without showing the file picker dialog, optionally labeling its project for analytics.",
@@ -1857,21 +1857,21 @@ export function SessionRoute() {
   useControlAction(createWorkspaceControlAction);
 
   const handleCreateRemoteWorkspace = useCallback(async (input: {
-    ipollowalkHostUrl?: string | null;
-    ipollowalkToken?: string | null;
+    ipolloworkHostUrl?: string | null;
+    ipolloworkToken?: string | null;
     directory?: string | null;
     displayName?: string | null;
   }) => {
-    const baseUrlValue = input.ipollowalkHostUrl?.trim() ?? "";
+    const baseUrlValue = input.ipolloworkHostUrl?.trim() ?? "";
     if (!baseUrlValue) return false;
     setCreateWorkspaceRemoteBusy(true);
     setCreateWorkspaceRemoteError(null);
     try {
-      const remoteType: "ipollowalk" = "ipollowalk";
+      const remoteType: "ipollowork" = "ipollowork";
       const payload = {
         baseUrl: baseUrlValue,
-        ipollowalkHostUrl: baseUrlValue,
-        ipollowalkToken: input.ipollowalkToken?.trim() || null,
+        ipolloworkHostUrl: baseUrlValue,
+        ipolloworkToken: input.ipolloworkToken?.trim() || null,
         displayName: input.displayName?.trim() || null,
         directory: input.directory?.trim() || null,
         remoteType,
@@ -1883,7 +1883,7 @@ export function SessionRoute() {
         list = await client.createRemoteWorkspace(payload).catch(() => null);
       }
       if (!list) {
-        throw new Error("iPolloWalk server is unavailable. Start or reconnect the server before connecting a remote workspace.");
+        throw new Error("iPolloWork server is unavailable. Start or reconnect the server before connecting a remote workspace.");
       }
       const createdId = resolveWorkspaceListSelectedId(list) || list.workspaces[list.workspaces.length - 1]?.id || "";
       if (createdId) {
@@ -1893,7 +1893,7 @@ export function SessionRoute() {
       setCreateWorkspaceOpen(false);
       // Mark onboarding complete so the /welcome redirect never fires again.
       // Completing the classic flow also counts as the provider step so the
-      // iPolloWalk Models startup promo is not suppressed forever (its
+      // iPolloWork Models startup promo is not suppressed forever (its
       // `suppressed` input keys off providerStepCompleted).
       local.setPrefs((prev) => ({ ...prev, hasCompletedOnboarding: true, providerStepCompleted: true }));
       await refreshRouteState();
@@ -1922,7 +1922,7 @@ export function SessionRoute() {
         sessionId={selectedSessionId}
         activeSessionIds={activeSelectedWorkspaceSessionIds}
         opencodeBaseUrl={opencodeBaseUrl}
-        ipollowalkToken={selectedWorkspaceServerToken}
+        ipolloworkToken={selectedWorkspaceServerToken}
         onSessionUpdated={handleRuntimeSessionUpdated}
       />
     ) : null}
@@ -1941,10 +1941,10 @@ export function SessionRoute() {
       opencodeBaseUrl={opencodeBaseUrl}
       workspaces={workspaces}
       clientConnected={canCreateTask}
-      ipollowalkServerStatus={client ? "connected" : "disconnected"}
-      ipollowalkServerClient={selectedWorkspaceEndpoint?.client ?? client}
+      ipolloworkServerStatus={client ? "connected" : "disconnected"}
+      ipolloworkServerClient={selectedWorkspaceEndpoint?.client ?? client}
       environmentClient={client}
-      ipollowalkServerToken={selectedWorkspaceServerToken}
+      ipolloworkServerToken={selectedWorkspaceServerToken}
       developerMode={developerMode}
       headerStatus={canCreateTask ? t("status.connected") : t("session.loading_detail")}
       busyHint={effectiveLoading ? t("session.loading_detail") : null}
@@ -2004,7 +2004,7 @@ export function SessionRoute() {
           workspaceId={selectedWorkspaceId}
           onClose={() => {
             try {
-              window.dispatchEvent(new CustomEvent("ipollowalk-close-right-pane"));
+              window.dispatchEvent(new CustomEvent("ipollowork-close-right-pane"));
             } catch {
               // ignore
             }
@@ -2043,7 +2043,7 @@ export function SessionRoute() {
             void workspaceSetSelected(workspaceId).catch(() => undefined);
             void workspaceSetRuntimeActive(workspaceId).catch(() => undefined);
           }
-          // Tell the iPolloWalk server this workspace is now active so it can
+          // Tell the iPolloWork server this workspace is now active so it can
           // emit a config reload event that the OpenCode engine picks up.
           // Without this, the permissions from opencode.jsonc are never
           // applied on the workspace the user is already on at launch. See
@@ -2089,7 +2089,7 @@ export function SessionRoute() {
             const workspaceClient = createClient(
               endpoint.opencodeBaseUrl,
               workspace.path?.trim() || undefined,
-              { token: endpoint.token, mode: "ipollowalk" },
+              { token: endpoint.token, mode: "ipollowork" },
             );
             try {
               const session = unwrap(
@@ -2143,7 +2143,7 @@ export function SessionRoute() {
               remoteAccess:
                 isDesktopRuntime() && shareWorkspaceState.shareWorkspace?.workspaceType === "local"
                   ? {
-                      enabled: ipollowalkServerSettings.remoteAccessEnabled === true,
+                      enabled: ipolloworkServerSettings.remoteAccessEnabled === true,
                       busy: remoteAccessRestart.busy,
                       error: remoteAccessRestart.error,
                       status: remoteAccessRestart.status,
@@ -2202,17 +2202,17 @@ export function SessionRoute() {
       notFoundMessage={routeNotFoundMessage}
       onAccessibleTargetsChange={setPaletteAccessibleTargets}
     />
-    <IPolloWalkModelsStartupDialog
-      open={iPolloWalkModelsPromo.open}
+    <IPolloWorkModelsStartupDialog
+      open={iPolloWorkModelsPromo.open}
       isSignedIn={denAuth.isSignedIn}
-      models={IPOLLOWALK_MODEL_PREVIEWS}
-      onSubscribe={iPolloWalkModelsPromo.subscribe}
-      onContinueWithout={iPolloWalkModelsPromo.continueWithout}
+      models={IPOLLOWORK_MODEL_PREVIEWS}
+      onSubscribe={iPolloWorkModelsPromo.subscribe}
+      onContinueWithout={iPolloWorkModelsPromo.continueWithout}
     />
     {firstRunLoaderActive ? <FirstRunLoader /> : null}
     {providerStepOpen ? (
       <ProviderSelectionStep
-        oniPolloWalkModels={() => completeProviderStep("ipollowalk-models")}
+        oniPolloWorkModels={() => completeProviderStep("ipollowork-models")}
         onBringYourOwn={() => completeProviderStep("byok")}
         onSkip={() => completeProviderStep("skip")}
       />
@@ -2274,14 +2274,14 @@ export function SessionRoute() {
       accessibleTargets={paletteAccessibleTargets}
       onOpenAccessibleTarget={(target) => {
         try {
-          window.dispatchEvent(new CustomEvent("ipollowalk-open-accessible-target", { detail: target }));
+          window.dispatchEvent(new CustomEvent("ipollowork-open-accessible-target", { detail: target }));
         } catch {
           // ignore event dispatch failures
         }
       }}
       onHideAccessibleTarget={(target) => {
         try {
-          window.dispatchEvent(new CustomEvent("ipollowalk-hide-accessible-target", { detail: target }));
+          window.dispatchEvent(new CustomEvent("ipollowork-hide-accessible-target", { detail: target }));
         } catch {
           // ignore event dispatch failures
         }

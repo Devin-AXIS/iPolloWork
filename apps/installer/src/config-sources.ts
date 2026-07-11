@@ -1,4 +1,4 @@
-import { installConfigSchema, installConfigUrlFor, INSTALL_SIDECAR_FILENAME, parseInstallerFilenameTag, type InstallConfig } from "@ipollowalk/install-config"
+import { installConfigSchema, installConfigUrlFor, INSTALL_SIDECAR_FILENAME, parseInstallerFilenameTag, type InstallConfig } from "@ipollowork/install-config"
 import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
@@ -28,14 +28,14 @@ const INSTALL_LINK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{8,}$/
 
 export class InstallerConfigMissingError extends Error {
   constructor() {
-    super("Installer is not configured. Paste an iPolloWalk install link, or run with --install-link <url>.")
+    super("Installer is not configured. Paste an iPolloWork install link, or run with --install-link <url>.")
     this.name = "InstallerConfigMissingError"
   }
 }
 
 function warn(options: ConfigSourceOptions | undefined, message: string) {
   const logger = options?.warn ?? console.warn
-  logger(`[ipollowalk-installer] ${message}`)
+  logger(`[ipollowork-installer] ${message}`)
 }
 
 function normalizeUrl(value: string, label: string): string {
@@ -62,7 +62,7 @@ function toInstallerConfig(config: InstallConfig): InstallerConfig {
 function parseConfigPayload(payload: unknown, label: string, options?: ConfigSourceOptions): InstallerConfig | null {
   const parsed = installConfigSchema.safeParse(payload)
   if (!parsed.success) {
-    warn(options, `${label} did not contain a valid iPolloWalk install config.`)
+    warn(options, `${label} did not contain a valid iPolloWork install config.`)
     return null
   }
   return toInstallerConfig(parsed.data)
@@ -86,18 +86,18 @@ function parseRequireSignin(value: string | undefined, fallback: boolean) {
 }
 
 export function envOverrides(env: NodeJS.ProcessEnv = process.env): InstallerConfig | null {
-  const appName = env.IPOLLOWALK_INSTALLER_APP_NAME?.trim() || "iPolloWalk"
-  const clientName = env.IPOLLOWALK_INSTALLER_CLIENT_NAME?.trim() ?? ""
-  const webUrl = env.IPOLLOWALK_INSTALLER_WEB_URL?.trim() ?? ""
-  const apiUrl = env.IPOLLOWALK_INSTALLER_API_URL?.trim() ?? ""
-  const logoUrl = env.IPOLLOWALK_INSTALLER_LOGO_URL?.trim() ?? ""
-  const hasEnvOverride = Boolean(clientName || webUrl || apiUrl || logoUrl || env.IPOLLOWALK_INSTALLER_REQUIRE_SIGNIN !== undefined)
+  const appName = env.IPOLLOWORK_INSTALLER_APP_NAME?.trim() || "iPolloWork"
+  const clientName = env.IPOLLOWORK_INSTALLER_CLIENT_NAME?.trim() ?? ""
+  const webUrl = env.IPOLLOWORK_INSTALLER_WEB_URL?.trim() ?? ""
+  const apiUrl = env.IPOLLOWORK_INSTALLER_API_URL?.trim() ?? ""
+  const logoUrl = env.IPOLLOWORK_INSTALLER_LOGO_URL?.trim() ?? ""
+  const hasEnvOverride = Boolean(clientName || webUrl || apiUrl || logoUrl || env.IPOLLOWORK_INSTALLER_REQUIRE_SIGNIN !== undefined)
 
   if (!hasEnvOverride) {
     return null
   }
   if (!clientName || !webUrl || !apiUrl) {
-    throw new Error("IPOLLOWALK_INSTALLER_CLIENT_NAME, IPOLLOWALK_INSTALLER_WEB_URL, and IPOLLOWALK_INSTALLER_API_URL are required when using installer env overrides")
+    throw new Error("IPOLLOWORK_INSTALLER_CLIENT_NAME, IPOLLOWORK_INSTALLER_WEB_URL, and IPOLLOWORK_INSTALLER_API_URL are required when using installer env overrides")
   }
 
   return {
@@ -106,7 +106,7 @@ export function envOverrides(env: NodeJS.ProcessEnv = process.env): InstallerCon
     webUrl: normalizeUrl(webUrl, "web URL"),
     apiUrl: normalizeUrl(apiUrl, "API URL"),
     logoUrl: logoUrl ? normalizeUrl(logoUrl, "logo URL") : null,
-    requireSignin: parseRequireSignin(env.IPOLLOWALK_INSTALLER_REQUIRE_SIGNIN, BUILD_REQUIRE_SIGNIN),
+    requireSignin: parseRequireSignin(env.IPOLLOWORK_INSTALLER_REQUIRE_SIGNIN, BUILD_REQUIRE_SIGNIN),
   }
 }
 
@@ -274,7 +274,7 @@ export async function installLinkConfig(input: string, options: ConfigSourceOpti
 }
 
 export function buildConstantsConfig(): InstallerConfig | null {
-  const appName = BUILD_APP_NAME.trim() || "iPolloWalk"
+  const appName = BUILD_APP_NAME.trim() || "iPolloWork"
   const clientName = BUILD_CLIENT_NAME.trim()
   const webUrl = BUILD_WEB_URL.trim()
   const apiUrl = BUILD_API_URL.trim()

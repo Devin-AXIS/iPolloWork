@@ -13,7 +13,7 @@ async function writeSkill(dir: string, name: string) {
 }
 
 beforeEach(async () => {
-  workspace = await mkdtemp(join(tmpdir(), "ipollowalk-skills-"));
+  workspace = await mkdtemp(join(tmpdir(), "ipollowork-skills-"));
   await mkdir(join(workspace, ".git"), { recursive: true });
 });
 

@@ -6,20 +6,20 @@ import { calculate, classifyAsset, parseCountCell, parseLastDataRow } from "./st
 test("classifyAsset buckets manual installer assets", () => {
   const release = { tag_name: "v0.11.135" }
 
-  assert.equal(classifyAsset(release, { name: "ipollowalk-desktop-darwin-aarch64.dmg" }), "manual_install")
-  assert.equal(classifyAsset(release, { name: "ipollowalk-desktop-windows-x64.msi" }), "manual_install")
-  assert.equal(classifyAsset(release, { name: "ipollowalk-desktop-linux-amd64.deb" }), "manual_install")
+  assert.equal(classifyAsset(release, { name: "ipollowork-desktop-darwin-aarch64.dmg" }), "manual_install")
+  assert.equal(classifyAsset(release, { name: "ipollowork-desktop-windows-x64.msi" }), "manual_install")
+  assert.equal(classifyAsset(release, { name: "ipollowork-desktop-linux-amd64.deb" }), "manual_install")
 })
 
 test("classifyAsset buckets updater and non-desktop assets separately", () => {
   const desktopRelease = { tag_name: "v0.11.135" }
-  const sidecarRelease = { tag_name: "ipollowalk-orchestrator-v0.11.135" }
+  const sidecarRelease = { tag_name: "ipollowork-orchestrator-v0.11.135" }
 
   assert.equal(classifyAsset(desktopRelease, { name: "latest.json" }), "updater")
-  assert.equal(classifyAsset(desktopRelease, { name: "ipollowalk-desktop-darwin-aarch64.app.tar.gz" }), "updater")
-  assert.equal(classifyAsset(desktopRelease, { name: "ipollowalk-desktop-darwin-aarch64.app.tar.gz.sig" }), "updater")
-  assert.equal(classifyAsset(desktopRelease, { name: "ipollowalk-desktop-linux-aarch64.rpm.sig" }), "other")
-  assert.equal(classifyAsset(sidecarRelease, { name: "ipollowalk-server-darwin-arm64" }), "other")
+  assert.equal(classifyAsset(desktopRelease, { name: "ipollowork-desktop-darwin-aarch64.app.tar.gz" }), "updater")
+  assert.equal(classifyAsset(desktopRelease, { name: "ipollowork-desktop-darwin-aarch64.app.tar.gz.sig" }), "updater")
+  assert.equal(classifyAsset(desktopRelease, { name: "ipollowork-desktop-linux-aarch64.rpm.sig" }), "other")
+  assert.equal(classifyAsset(sidecarRelease, { name: "ipollowork-server-darwin-arm64" }), "other")
 })
 
 test("calculate aggregates legacy total and v2 buckets", () => {
@@ -27,15 +27,15 @@ test("calculate aggregates legacy total and v2 buckets", () => {
     {
       tag_name: "v0.11.135",
       assets: [
-        { name: "ipollowalk-desktop-darwin-aarch64.dmg", download_count: 10 },
-        { name: "ipollowalk-desktop-darwin-aarch64.app.tar.gz", download_count: 4 },
+        { name: "ipollowork-desktop-darwin-aarch64.dmg", download_count: 10 },
+        { name: "ipollowork-desktop-darwin-aarch64.app.tar.gz", download_count: 4 },
         { name: "latest.json", download_count: 6 },
-        { name: "ipollowalk-desktop-linux-aarch64.rpm.sig", download_count: 3 },
+        { name: "ipollowork-desktop-linux-aarch64.rpm.sig", download_count: 3 },
       ],
     },
     {
-      tag_name: "ipollowalk-orchestrator-v0.11.135",
-      assets: [{ name: "ipollowalk-server-darwin-arm64", download_count: 8 }],
+      tag_name: "ipollowork-orchestrator-v0.11.135",
+      assets: [{ name: "ipollowork-server-darwin-arm64", download_count: 8 }],
     },
   ]
 

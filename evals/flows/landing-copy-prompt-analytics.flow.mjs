@@ -13,11 +13,11 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function routeUrl(ctx, path) {
-  return new URL(path, ctx.env.IPOLLOWALK_EVAL_LANDING_URL).toString();
+  return new URL(path, ctx.env.IPOLLOWORK_EVAL_LANDING_URL).toString();
 }
 
 function mockUrl(ctx, path) {
-  return new URL(path, ctx.env.IPOLLOWALK_EVAL_POSTHOG_MOCK_URL).toString();
+  return new URL(path, ctx.env.IPOLLOWORK_EVAL_POSTHOG_MOCK_URL).toString();
 }
 
 function recordAssertion(ctx, assertion, passed, actual) {
@@ -54,7 +54,7 @@ async function grantClipboardPermissions(ctx) {
     return;
   }
 
-  const origin = new URL(ctx.env.IPOLLOWALK_EVAL_LANDING_URL).origin;
+  const origin = new URL(ctx.env.IPOLLOWORK_EVAL_LANDING_URL).origin;
   await ctx.client.send("Browser.grantPermissions", {
     origin,
     permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
@@ -126,10 +126,10 @@ export default {
   title: "Landing hero prompt analytics fire end-to-end",
   kind: "user-facing",
   spec: "evals/README.md",
-  // The landing website has no theme system or __ipollowalkControl API; skip the
+  // The landing website has no theme system or __ipolloworkControl API; skip the
   // desktop-app light-mode bootstrap instead of waiting for it to time out.
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_LANDING_URL", "IPOLLOWALK_EVAL_POSTHOG_MOCK_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_LANDING_URL", "IPOLLOWORK_EVAL_POSTHOG_MOCK_URL"],
   steps: [
     {
       name: "Hero prompt copy captures the analytics event",
@@ -145,7 +145,7 @@ export default {
             await fetch(routeUrl(ctx, "/")).catch(() => {});
             await ctx.eval(`location.href = ${JSON.stringify(routeUrl(ctx, "/"))}; true`);
             await ctx.waitFor(
-              `Boolean(document.querySelector(${JSON.stringify(COPY_BUTTON_SELECTOR)})) && document.body.innerText.includes("Install iPolloWalk on my computer")`,
+              `Boolean(document.querySelector(${JSON.stringify(COPY_BUTTON_SELECTOR)})) && document.body.innerText.includes("Install iPolloWork on my computer")`,
               { timeoutMs: 30_000, label: "hero prompt copy button" },
             );
             // Let any post-compile dev-client refresh settle before arming.
@@ -238,9 +238,9 @@ export default {
               const headerButtons = Array.from(header ? header.querySelectorAll("button") : []);
               const headerLinks = Array.from(header ? header.querySelectorAll("a") : []);
               return {
-                heroPromptVisible: bodyText.includes("Install iPolloWalk on my computer") && bodyText.includes("start.md?v=hero"),
-                headerVisible: bodyText.includes("Paste this prompt — it installs iPolloWalk for you"),
-                executionPreviewVisible: bodyText.includes("now paste it into Claude Code") && bodyText.includes("Installs iPolloWalk") && bodyText.includes("Opens ready to run"),
+                heroPromptVisible: bodyText.includes("Install iPolloWork on my computer") && bodyText.includes("start.md?v=hero"),
+                headerVisible: bodyText.includes("Paste this prompt — it installs iPolloWork for you"),
+                executionPreviewVisible: bodyText.includes("now paste it into Claude Code") && bodyText.includes("Installs iPolloWork") && bodyText.includes("Opens ready to run"),
                 copyPromptNavButtons: headerButtons.filter((button) => button.innerText.includes("Copy Prompt")).length,
                 downloadLinkVisible: headerLinks.some((link) => link.textContent.includes("Download") && link.href.endsWith("/download")),
               };
@@ -289,14 +289,14 @@ export default {
             guideFetch = {
               status: response.status,
               firstLines: body.split("\n").slice(0, 3).join("\n"),
-              startsWithGuide: body.startsWith("# iPolloWalk Start"),
+              startsWithGuide: body.startsWith("# iPolloWork Start"),
             };
             const agentEvents = await waitForMockEvents(ctx, POSTHOG_SERVER_EVENT, 1);
             agentEvent = agentEvents[0] || null;
 
             await ctx.eval(`location.href = ${JSON.stringify(routeUrl(ctx, `/start.md?v=${PROMPT_VARIANT}`))}; true`);
             await ctx.waitFor(
-              `document.body.innerText.includes(${JSON.stringify("iPolloWalk Start")})`,
+              `document.body.innerText.includes(${JSON.stringify("iPolloWork Start")})`,
               { timeoutMs: 30_000, label: "start.md guide in browser" },
             );
             browserEvents = await waitForMockEvents(ctx, POSTHOG_SERVER_EVENT, 2);
@@ -309,7 +309,7 @@ export default {
             });
             recordAssertion(
               ctx,
-              "Agent fetch returns HTTP 200 and the iPolloWalk start guide markdown",
+              "Agent fetch returns HTTP 200 and the iPolloWork start guide markdown",
               guideFetch?.status === 200 && guideFetch.startsWithGuide === true,
               guideFetch,
             );
@@ -340,7 +340,7 @@ export default {
           },
           screenshot: {
             name: "start-md-guide",
-            requireText: ["iPolloWalk Start"],
+            requireText: ["iPolloWork Start"],
           },
         });
       },

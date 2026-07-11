@@ -1,8 +1,8 @@
 # demo-electron-fresh-folders — launch two isolated demos with fresh data
 
-1. I run `pnpm demo:electron`, and two iPolloWalk demo windows launch together.
+1. I run `pnpm demo:electron`, and two iPolloWork demo windows launch together.
 
-2. Each window uses its own newly created temporary folder, completely separate from the production iPolloWalk data directory.
+2. Each window uses its own newly created temporary folder, completely separate from the production iPolloWork data directory.
 
 3. The terminal prints both folder paths, making their isolation easy to verify.
 

@@ -16,7 +16,7 @@ let subcommand = args.count >= 2 ? args[1] : ""
 
 switch subcommand {
 case "mcp":
-    if ProcessInfo.processInfo.environment["IPOLLOWALK_COMPUTER_USE_CURSOR_OVERLAY"] == "0" {
+    if ProcessInfo.processInfo.environment["IPOLLOWORK_COMPUTER_USE_CURSOR_OVERLAY"] == "0" {
         let server = MCPServer()
         await server.run()
     } else {

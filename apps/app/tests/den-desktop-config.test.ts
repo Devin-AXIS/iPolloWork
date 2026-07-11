@@ -29,6 +29,6 @@ describe("Den desktop config client", () => {
 
     await createDenClient({ baseUrl: "https://den.test", token: "tok_test" }).getDesktopConfig("org_test");
 
-    expect(headers[0]?.get("x-ipollowalk-legacy-org-id")).toBe("org_test");
+    expect(headers[0]?.get("x-ipollowork-legacy-org-id")).toBe("org_test");
   });
 });

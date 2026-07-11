@@ -9,7 +9,7 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
   stats:
-    if: github.repository == 'Devin-AXIS/iPolloWalk'
+    if: github.repository == 'Devin-AXIS/iPolloWork'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
@@ -30,8 +30,8 @@ jobs:
           POSTHOG_HOST: https://us.i.posthog.com
           POSTHOG_LEGACY_EVENT: download
           POSTHOG_V2_EVENT: release_asset_snapshot
-          POSTHOG_DISTINCT_ID: ipollowalk-download
-          GITHUB_REPO: Devin-AXIS/iPolloWalk
+          POSTHOG_DISTINCT_ID: ipollowork-download
+          GITHUB_REPO: Devin-AXIS/iPolloWork
         run: node scripts/stats.mjs
 
       - name: Commit stats

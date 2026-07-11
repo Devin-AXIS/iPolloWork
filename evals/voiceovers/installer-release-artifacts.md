@@ -6,7 +6,7 @@ serve org-stamped downloads straight from those published artifacts — no
 local artifact directory, no per-org builds. The Mac stamped zip keeps the
 signed, notarized .app byte-identical, so Gatekeeper stays quiet.
 
-1. Every iPolloWalk release now ships one more thing: the generic installer — a single signed binary per platform, published right next to the app, ready to be stamped for any org.
+1. Every iPolloWork release now ships one more thing: the generic installer — a single signed binary per platform, published right next to the app, ready to be stamped for any org.
 
 2. A production-shaped server with no local files configured serves the Mac download anyway — it pulls the published release asset, stamps Acme's config into it on the fly, and caches it for next time.
 

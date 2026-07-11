@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  defaultWorkspaceiPolloWalkConfig,
+  defaultWorkspaceiPolloWorkConfig,
   ensureWorkspaceFiles,
   ensureLocalWorkspaceFiles,
 } from "./workspace-init.js";
-import { ipollowalkExtensionsPreviewPluginPath, ipollowalkPluginPath } from "./ipollowalk-extensions-plugin-path.js";
+import { ipolloworkExtensionsPreviewPluginPath, ipolloworkPluginPath } from "./ipollowork-extensions-plugin-path.js";
 
 async function withWorkspace(fn: (root: string) => Promise<void>) {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-workspace-init-"));
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-workspace-init-"));
   try {
     await fn(root);
   } finally {
@@ -20,13 +20,13 @@ async function withWorkspace(fn: (root: string) => Promise<void>) {
 }
 
 describe("ensureWorkspaceFiles", () => {
-  test("does not write an ipollowalk.json file (config is DB-backed now)", async () => {
+  test("does not write an ipollowork.json file (config is DB-backed now)", async () => {
     await withWorkspace(async (root) => {
       const result = await ensureWorkspaceFiles(root, "starter");
-      // ipollowalk config no longer lands on disk; it is seeded into the runtime
+      // ipollowork config no longer lands on disk; it is seeded into the runtime
       // DB by the workspace-creation route.
       await expect(
-        readFile(join(root, ".opencode", "ipollowalk.json"), "utf8"),
+        readFile(join(root, ".opencode", "ipollowork.json"), "utf8"),
       ).rejects.toThrow();
       await expect(readFile(join(root, "opencode.jsonc"), "utf8")).rejects.toThrow();
       expect(result.reloadReasons).toEqual([]);
@@ -36,9 +36,9 @@ describe("ensureWorkspaceFiles", () => {
     });
   });
 
-  test("defaultWorkspaceiPolloWalkConfig carries authorizedRoots + workspace metadata", async () => {
+  test("defaultWorkspaceiPolloWorkConfig carries authorizedRoots + workspace metadata", async () => {
     await withWorkspace(async (root) => {
-      const config = defaultWorkspaceiPolloWalkConfig(root, "starter");
+      const config = defaultWorkspaceiPolloWorkConfig(root, "starter");
       expect(config.authorizedRoots).toEqual([root]);
       expect(config.workspace?.preset).toBe("starter");
       expect(config.version).toBe(1);
@@ -46,23 +46,23 @@ describe("ensureWorkspaceFiles", () => {
   });
 
   test("uses shipped extension preview plugin", async () => {
-    const pluginPath = ipollowalkExtensionsPreviewPluginPath();
+    const pluginPath = ipolloworkExtensionsPreviewPluginPath();
     const plugin = await readFile(pluginPath, "utf8");
-    expect(pluginPath).toContain(join("opencode-plugins", "ipollowalk-extensions-preview.ts"));
-    expect(plugin).toContain("ipollowalk_extension_call");
+    expect(pluginPath).toContain(join("opencode-plugins", "ipollowork-extensions-preview.ts"));
+    expect(plugin).toContain("ipollowork_extension_call");
   });
 
   test("uses external resources plugin path in packaged Electron", () => {
     const previousResourcesPath = process.resourcesPath;
-    const resourcesPath = join("/Applications", "iPolloWalk.app", "Contents", "Resources");
+    const resourcesPath = join("/Applications", "iPolloWork.app", "Contents", "Resources");
     process.resourcesPath = resourcesPath;
     try {
-      const pluginPath = ipollowalkPluginPath(
-        "ipollowalk-extensions-preview",
+      const pluginPath = ipolloworkPluginPath(
+        "ipollowork-extensions-preview",
         join(resourcesPath, "app.asar", "server", "dist"),
       );
 
-      expect(pluginPath).toBe(join(resourcesPath, "opencode-plugins", "ipollowalk-extensions-preview.js"));
+      expect(pluginPath).toBe(join(resourcesPath, "opencode-plugins", "ipollowork-extensions-preview.js"));
       expect(pluginPath).not.toContain("app.asar");
     } finally {
       if (previousResourcesPath) {
@@ -76,18 +76,18 @@ describe("ensureWorkspaceFiles", () => {
   test("does not create workspace extension preview plugin", async () => {
     await withWorkspace(async (root) => {
       await ensureWorkspaceFiles(root, "starter");
-      await expect(stat(join(root, ".opencode", "plugins", "ipollowalk-extensions-preview.ts"))).rejects.toThrow();
+      await expect(stat(join(root, ".opencode", "plugins", "ipollowork-extensions-preview.ts"))).rejects.toThrow();
     });
   });
 
-  test("does not rewrite existing iPolloWalk agents", async () => {
+  test("does not rewrite existing iPolloWork agents", async () => {
     await withWorkspace(async (root) => {
       await mkdir(join(root, ".opencode", "agents"), { recursive: true });
-      await writeFile(join(root, ".opencode", "agents", "ipollowalk.md"), "---\ndescription: Old\n---\n\nOld instructions\n", "utf8");
+      await writeFile(join(root, ".opencode", "agents", "ipollowork.md"), "---\ndescription: Old\n---\n\nOld instructions\n", "utf8");
       const result = await ensureWorkspaceFiles(root, "starter");
-      const agent = await readFile(join(root, ".opencode", "agents", "ipollowalk.md"), "utf8");
+      const agent = await readFile(join(root, ".opencode", "agents", "ipollowork.md"), "utf8");
       expect(agent).toContain("Old instructions");
-      expect(agent).not.toContain("iPolloWalk Artifacts");
+      expect(agent).not.toContain("iPolloWork Artifacts");
       expect(result.reloadReasons).toEqual([]);
     });
   });
@@ -130,7 +130,7 @@ describe("ensureWorkspaceFiles", () => {
   test("does not repair or inject into desktop-created schema-only opencode config", async () => {
     await withWorkspace(async (root) => {
       await mkdir(join(root, ".opencode"), { recursive: true });
-      await writeFile(join(root, ".opencode", "ipollowalk.json"), "{}\n", "utf8");
+      await writeFile(join(root, ".opencode", "ipollowork.json"), "{}\n", "utf8");
       const configPath = join(root, "opencode.jsonc");
       await writeFile(configPath, `{
   "$schema": "https://opencode.ai/config.json"
@@ -156,10 +156,10 @@ describe("ensureLocalWorkspaceFiles", () => {
         { path: root, preset: "starter", workspaceType: "local" },
         { path: "", preset: "remote", workspaceType: "remote" },
       ]);
-      // No ipollowalk.json file is written; provisioning does not crash on the
+      // No ipollowork.json file is written; provisioning does not crash on the
       // remote (empty-path) entry.
       await expect(
-        readFile(join(root, ".opencode", "ipollowalk.json"), "utf8"),
+        readFile(join(root, ".opencode", "ipollowork.json"), "utf8"),
       ).rejects.toThrow();
     });
   });

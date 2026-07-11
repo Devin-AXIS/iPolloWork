@@ -8,9 +8,9 @@ export default function OrganizationInvitePreview(props: OrganizationInviteEmail
 }
 
 OrganizationInvitePreview.PreviewProps = {
-  inviteLink: "https://app.ipollowalklabs.com/join-org?invite=invitation_preview",
+  inviteLink: "https://app.ipolloworklabs.com/join-org?invite=invitation_preview",
   invitedByName: "Ada Lovelace",
   invitedByEmail: "ada@example.com",
-  organizationName: "iPolloWalk Preview",
+  organizationName: "iPolloWork Preview",
   role: "admin",
 } satisfies OrganizationInviteEmailProps

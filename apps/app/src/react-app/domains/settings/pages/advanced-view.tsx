@@ -4,7 +4,7 @@ import { useEffect, useReducer, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 
 import type { OpencodeConnectStatus } from "@/app/types";
-import type { iPolloWalkRuntimeConfigStatus, iPolloWalkServerStatus } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkRuntimeConfigStatus, iPolloWorkServerStatus } from "@/app/lib/ipollowork-server";
 import { t } from "@/i18n";
 import { LayoutStack } from "../settings-layout";
 import type { useDenSession } from "../cloud/use-den-session";
@@ -35,14 +35,14 @@ export type AdvancedViewProps = {
   busy: boolean;
   clientConnected: boolean;
   opencodeConnectStatus: OpencodeConnectStatus | null;
-  ipollowalkServerStatus: iPolloWalkServerStatus;
+  ipolloworkServerStatus: iPolloWorkServerStatus;
   developerMode: boolean;
   toggleDeveloperMode: () => void;
   opencodeDevModeEnabled: boolean;
   openDebugDeepLink: (rawUrl: string) => Promise<{ ok: boolean; message: string }>;
   canMigrateRuntimeConfig: boolean;
   migrateRuntimeConfig: () => Promise<{ migrated: boolean; keys: string[] }>;
-  getRuntimeConfigStatus: () => Promise<iPolloWalkRuntimeConfigStatus>;
+  getRuntimeConfigStatus: () => Promise<iPolloWorkRuntimeConfigStatus>;
   organizationServer: AdvancedOrganizationServerSession;
   cloudMcpUrl: string | null;
 };
@@ -54,7 +54,7 @@ export function AdvancedView(props: AdvancedViewProps) {
     advancedLocalReducer,
     initialAdvancedLocalState,
   );
-  const [configStatus, setConfigStatus] = useState<iPolloWalkRuntimeConfigStatus | null>(null);
+  const [configStatus, setConfigStatus] = useState<iPolloWorkRuntimeConfigStatus | null>(null);
   const [configStatusBusy, setConfigStatusBusy] = useState(false);
   const [configStatusError, setConfigStatusError] = useState<string | null>(null);
   const {
@@ -80,8 +80,8 @@ export function AdvancedView(props: AdvancedViewProps) {
     return props.clientConnected ? "ready" : "neutral";
   })();
 
-  const ipollowalkStatusLabel = (() => {
-    switch (props.ipollowalkServerStatus) {
+  const ipolloworkStatusLabel = (() => {
+    switch (props.ipolloworkServerStatus) {
       case "connected":
         return t("config.status_connected");
       case "limited":
@@ -91,8 +91,8 @@ export function AdvancedView(props: AdvancedViewProps) {
     }
   })();
 
-  const ipollowalkTone: AdvancedStatusTone = (() => {
-    switch (props.ipollowalkServerStatus) {
+  const ipolloworkTone: AdvancedStatusTone = (() => {
+    switch (props.ipolloworkServerStatus) {
       case "connected":
         return "ready";
       case "limited":
@@ -106,12 +106,12 @@ export function AdvancedView(props: AdvancedViewProps) {
     ? ["Chat and task creation can use the OpenCode engine for this workspace."]
     : [
         "Chat and task creation may fail until OpenCode restarts.",
-        "iPolloWalk server config sources below can still be inspected.",
+        "iPolloWork server config sources below can still be inspected.",
       ];
 
-  const ipollowalkDetailLines = props.ipollowalkServerStatus === "connected"
+  const ipolloworkDetailLines = props.ipolloworkServerStatus === "connected"
     ? ["Runtime DB, workspace config, and migration diagnostics are available."]
-    : ["Runtime config diagnostics need the iPolloWalk server connection."];
+    : ["Runtime config diagnostics need the iPolloWork server connection."];
 
   const submitDebugDeepLink = async () => {
     const rawUrl = debugDeepLinkInput.trim();
@@ -196,9 +196,9 @@ export function AdvancedView(props: AdvancedViewProps) {
         clientStatusLabel={clientStatusLabel}
         clientTone={clientTone}
         clientDetailLines={clientDetailLines}
-        ipollowalkStatusLabel={ipollowalkStatusLabel}
-        ipollowalkTone={ipollowalkTone}
-        ipollowalkDetailLines={ipollowalkDetailLines}
+        ipolloworkStatusLabel={ipolloworkStatusLabel}
+        ipolloworkTone={ipolloworkTone}
+        ipolloworkDetailLines={ipolloworkDetailLines}
       />
 
       <AdvancedRuntimeMigrationSection

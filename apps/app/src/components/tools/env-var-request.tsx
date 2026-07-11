@@ -86,7 +86,7 @@ export function EnvVarRequestTool({ part }: EnvVarRequestToolProps) {
               ) : null}
             </div>
             <p className="text-xs leading-5 text-dls-secondary">
-              {description || "Paste the token here. iPolloWalk stores it locally and does not send the secret back into chat."}
+              {description || "Paste the token here. iPolloWork stores it locally and does not send the secret back into chat."}
             </p>
           </div>
 

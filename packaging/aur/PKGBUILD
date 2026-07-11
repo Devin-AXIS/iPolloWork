@@ -1,18 +1,18 @@
-pkgname=ipollowalk
+pkgname=ipollowork
 pkgver=0.17.20
 pkgrel=1 # pkgrel should change when PKGBUILD does. Standard is to change back to 1 next time. Any interger is valid.
 pkgdesc="An Open source alternative to Claude Cowork"
 arch=('x86_64' 'aarch64')
-url="https://github.com/Devin-AXIS/iPolloWalk"
+url="https://github.com/Devin-AXIS/iPolloWork"
 license=('MIT')
 depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'libdrm' 'libxkbcommon' 'mesa' 'dbus' 'hicolor-icon-theme')
 options=(!strip)
 
 # Architecture-specific sources and checksums
-source_x86_64=("${pkgname}-${pkgver}-x64.tar.gz::${url}/releases/download/v${pkgver}/ipollowalk-linux-x64-${pkgver}.tar.gz")
+source_x86_64=("${pkgname}-${pkgver}-x64.tar.gz::${url}/releases/download/v${pkgver}/ipollowork-linux-x64-${pkgver}.tar.gz")
 sha256sums_x86_64=('409ae7dbe2b71ada857fff32abf25f9f1e688e254b485f390cdc46e3e0c791d3')
 
-source_aarch64=("${pkgname}-${pkgver}-arm64.tar.gz::${url}/releases/download/v${pkgver}/ipollowalk-linux-arm64-${pkgver}.tar.gz")
+source_aarch64=("${pkgname}-${pkgver}-arm64.tar.gz::${url}/releases/download/v${pkgver}/ipollowork-linux-arm64-${pkgver}.tar.gz")
 sha256sums_aarch64=('e5c78f1503b9f8333fa76de135237ec39314729f70c7d5bf171c5ed1503798eb')
 
 package() {
@@ -21,10 +21,10 @@ package() {
   local bundle_dir
   case "${CARCH}" in
     x86_64)
-      bundle_dir="ipollowalk-linux-x64-${pkgver}"
+      bundle_dir="ipollowork-linux-x64-${pkgver}"
       ;;
     aarch64)
-      bundle_dir="ipollowalk-linux-arm64-${pkgver}"
+      bundle_dir="ipollowork-linux-arm64-${pkgver}"
       ;;
     *)
       echo "Unsupported architecture: ${CARCH}" >&2
@@ -32,28 +32,28 @@ package() {
       ;;
   esac
 
-  install -d "${pkgdir}/opt/ipollowalk"
-  cp -a "${bundle_dir}/." "${pkgdir}/opt/ipollowalk/"
+  install -d "${pkgdir}/opt/ipollowork"
+  cp -a "${bundle_dir}/." "${pkgdir}/opt/ipollowork/"
 
   install -d "${pkgdir}/usr/bin"
-  ln -s /opt/ipollowalk/@ipollowalkdesktop "${pkgdir}/usr/bin/ipollowalk"
+  ln -s /opt/ipollowork/@ipolloworkdesktop "${pkgdir}/usr/bin/ipollowork"
 
-  install -Dm644 "${pkgdir}/opt/ipollowalk/resources/app-dist/ipollowalk-logo-square.svg" \
-    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/ipollowalk.svg"
+  install -Dm644 "${pkgdir}/opt/ipollowork/resources/app-dist/ipollowork-logo-square.svg" \
+    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/ipollowork.svg"
 
   install -d "${pkgdir}/usr/share/applications"
-  cat > "${pkgdir}/usr/share/applications/ipollowalk.desktop" <<'EOF'
+  cat > "${pkgdir}/usr/share/applications/ipollowork.desktop" <<'EOF'
 [Desktop Entry]
-Name=iPolloWalk
+Name=iPolloWork
 Comment=Run agents, skills, and MCP workflows
-Exec=ipollowalk %U
+Exec=ipollowork %U
 Terminal=false
 Type=Application
-Icon=ipollowalk
-StartupWMClass=iPolloWalk
+Icon=ipollowork
+StartupWMClass=iPolloWork
 Categories=Development;Utility;
-MimeType=x-scheme-handler/ipollowalk;
+MimeType=x-scheme-handler/ipollowork;
 EOF
 
-  chmod 4755 "${pkgdir}/opt/ipollowalk/chrome-sandbox"
+  chmod 4755 "${pkgdir}/opt/ipollowork/chrome-sandbox"
 }

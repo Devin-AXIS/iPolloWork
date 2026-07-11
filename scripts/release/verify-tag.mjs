@@ -39,8 +39,8 @@ const check = (label, actual) => {
 
 check("app", appVersion);
 check("desktop", desktopVersion);
-check("ipollowalk-orchestrator", orchestratorVersion);
-check("ipollowalk-server", serverVersion);
+check("ipollowork-orchestrator", orchestratorVersion);
+check("ipollowork-server", serverVersion);
 
 if (mismatches.length) {
   console.error(`Release tag ${tag} does not match package versions:`);
@@ -50,4 +50,4 @@ if (mismatches.length) {
   process.exit(1);
 }
 
-console.log(`Release tag ${tag} matches app/desktop/ipollowalk-orchestrator versions.`);
+console.log(`Release tag ${tag} matches app/desktop/ipollowork-orchestrator versions.`);

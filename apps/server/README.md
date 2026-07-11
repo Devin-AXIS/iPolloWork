@@ -1,20 +1,20 @@
-# iPolloWalk Server
+# iPolloWork Server
 
-Filesystem-backed API for iPolloWalk remote clients. This package provides the iPolloWalk server layer described in `apps/app/pr/ipollowalk-server.md` and is intentionally independent from the desktop app.
+Filesystem-backed API for iPolloWork remote clients. This package provides the iPolloWork server layer described in `apps/app/pr/ipollowork-server.md` and is intentionally independent from the desktop app.
 
 ## Quick start
 
 ```bash
-npm install -g ipollowalk-server
-ipollowalk-server --workspace /path/to/workspace --approval auto
+npm install -g ipollowork-server
+ipollowork-server --workspace /path/to/workspace --approval auto
 ```
 
-`ipollowalk-server` ships as a compiled binary, so Bun is not required at runtime.
+`ipollowork-server` ships as a compiled binary, so Bun is not required at runtime.
 
 Or from source:
 
 ```bash
-pnpm --filter ipollowalk-server dev -- \
+pnpm --filter ipollowork-server dev -- \
   --workspace /path/to/workspace \
   --approval auto
 ```
@@ -25,7 +25,7 @@ Add `--verbose` to print resolved config details on startup. Use `--version` to 
 
 ## Config file
 
-Defaults to `~/.config/ipollowalk/server.json` (override with `IPOLLOWALK_SERVER_CONFIG` or `--config`).
+Defaults to `~/.config/ipollowork/server.json` (override with `IPOLLOWORK_SERVER_CONFIG` or `--config`).
 
 ```json
 {
@@ -47,33 +47,33 @@ Defaults to `~/.config/ipollowalk/server.json` (override with `IPOLLOWALK_SERVER
 
 ## Environment variables
 
-- `IPOLLOWALK_SERVER_CONFIG` path to config JSON
-- `IPOLLOWALK_HOST` / `IPOLLOWALK_PORT`
-- `IPOLLOWALK_TOKEN` client bearer token
-- `IPOLLOWALK_HOST_TOKEN` host approval token
-- `IPOLLOWALK_APPROVAL_MODE` (`manual` | `auto`)
-- `IPOLLOWALK_APPROVAL_TIMEOUT_MS`
-- `IPOLLOWALK_WORKSPACES` (JSON array or comma-separated list of paths)
-- `IPOLLOWALK_CORS_ORIGINS` (comma-separated list or `*`)
-- `IPOLLOWALK_OPENCODE_BASE_URL`
-- `IPOLLOWALK_OPENCODE_DIRECTORY`
-- `IPOLLOWALK_OPENCODE_USERNAME`
-- `IPOLLOWALK_OPENCODE_PASSWORD`
+- `IPOLLOWORK_SERVER_CONFIG` path to config JSON
+- `IPOLLOWORK_HOST` / `IPOLLOWORK_PORT`
+- `IPOLLOWORK_TOKEN` client bearer token
+- `IPOLLOWORK_HOST_TOKEN` host approval token
+- `IPOLLOWORK_APPROVAL_MODE` (`manual` | `auto`)
+- `IPOLLOWORK_APPROVAL_TIMEOUT_MS`
+- `IPOLLOWORK_WORKSPACES` (JSON array or comma-separated list of paths)
+- `IPOLLOWORK_CORS_ORIGINS` (comma-separated list or `*`)
+- `IPOLLOWORK_OPENCODE_BASE_URL`
+- `IPOLLOWORK_OPENCODE_DIRECTORY`
+- `IPOLLOWORK_OPENCODE_USERNAME`
+- `IPOLLOWORK_OPENCODE_PASSWORD`
 
 Token management (scoped tokens):
 
-- `IPOLLOWALK_TOKEN_STORE` path to token store JSON (default: alongside `server.json`)
+- `IPOLLOWORK_TOKEN_STORE` path to token store JSON (default: alongside `server.json`)
 
 File injection / artifacts:
 
-- `IPOLLOWALK_INBOX_ENABLED` (`1` | `0`)
-- `IPOLLOWALK_INBOX_MAX_BYTES` (default: 50MB, capped)
-- `IPOLLOWALK_OUTBOX_ENABLED` (`1` | `0`)
+- `IPOLLOWORK_INBOX_ENABLED` (`1` | `0`)
+- `IPOLLOWORK_INBOX_MAX_BYTES` (default: 50MB, capped)
+- `IPOLLOWORK_OUTBOX_ENABLED` (`1` | `0`)
 
 Sandbox advertisement (for capability discovery):
 
-- `IPOLLOWALK_SANDBOX_ENABLED` (`1` | `0`)
-- `IPOLLOWALK_SANDBOX_BACKEND` (`docker` | `container` | `none`)
+- `IPOLLOWORK_SANDBOX_ENABLED` (`1` | `0`)
+- `IPOLLOWORK_SANDBOX_BACKEND` (`docker` | `container` | `none`)
 
 ## Endpoints
 
@@ -110,7 +110,7 @@ Token management (host/owner auth):
 
 Inbox/outbox:
 
-- `POST /workspace/:id/inbox` (multipart upload into `.opencode/ipollowalk/inbox/`)
+- `POST /workspace/:id/inbox` (multipart upload into `.opencode/ipollowork/inbox/`)
 - `GET /workspace/:id/artifacts`
 - `GET /workspace/:id/artifacts/:artifactId`
 - `POST /workspace/:id/files/sessions`
@@ -139,7 +139,7 @@ All writes are gated by host approval.
 
 Host APIs accept either:
 
-- `X-iPolloWalk-Host-Token: <token>` (legacy host token), or
+- `X-iPolloWork-Host-Token: <token>` (legacy host token), or
 - `Authorization: Bearer <token>` where the token scope is `owner`.
 
 Approvals endpoints:
@@ -147,4 +147,4 @@ Approvals endpoints:
 - `GET /approvals`
 - `POST /approvals/:id` with `{ "reply": "allow" | "deny" }`
 
-Set `IPOLLOWALK_APPROVAL_MODE=auto` to auto-approve during local development.
+Set `IPOLLOWORK_APPROVAL_MODE=auto` to auto-approve during local development.

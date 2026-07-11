@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { UIMessage } from "ai";
 
-import type { iPolloWalkSessionSnapshot } from "../src/app/lib/ipollowalk-server";
+import type { iPolloWorkSessionSnapshot } from "../src/app/lib/ipollowork-server";
 import {
   deriveRenderedSessionMessages,
   resolveRenderedSessionSnapshot,
@@ -16,7 +16,7 @@ import { describeOpencodeSessionError } from "../src/react-app/domains/session/s
 function snapshotWithMessages(
   messages: Array<{ id: string; role: "user" | "assistant"; text: string; created?: number }>,
   sessionId = "ses_test",
-): iPolloWalkSessionSnapshot {
+): iPolloWorkSessionSnapshot {
   return {
     session: {
       id: sessionId,
@@ -45,7 +45,7 @@ function snapshotWithMessages(
     })),
     todos: [],
     status: { type: "idle" },
-  } as unknown as iPolloWalkSessionSnapshot;
+  } as unknown as iPolloWorkSessionSnapshot;
 }
 
 function uiMessage(id: string, role: "user" | "assistant", text: string, created?: number): UIMessage {
@@ -57,7 +57,7 @@ function uiMessage(id: string, role: "user" | "assistant", text: string, created
   };
 }
 
-function snapshotWithText(text: string, sessionId = "ses_test"): iPolloWalkSessionSnapshot {
+function snapshotWithText(text: string, sessionId = "ses_test"): iPolloWorkSessionSnapshot {
   return snapshotWithMessages([{ id: "msg_user", role: "user", text }], sessionId);
 }
 

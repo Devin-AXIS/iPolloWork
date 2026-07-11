@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { iPolloWalkServerClient } from "../src/app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import type { WorkspaceInfo } from "../src/app/lib/desktop";
 import { getWorkspaceTaskLoadErrorDisplay } from "../src/app/utils";
 import {
@@ -18,14 +18,14 @@ function workspace(overrides: Partial<WorkspaceInfo> = {}): WorkspaceInfo {
     path: "",
     preset: "remote",
     workspaceType: "remote",
-    remoteType: "ipollowalk",
-    ipollowalkHostUrl: "https://worker.example.com/w/ws_remote",
-    ipollowalkToken: "ow-token",
+    remoteType: "ipollowork",
+    ipolloworkHostUrl: "https://worker.example.com/w/ws_remote",
+    ipolloworkToken: "ow-token",
     ...overrides,
   };
 }
 
-function client(overrides: Partial<iPolloWalkServerClient> = {}): iPolloWalkServerClient {
+function client(overrides: Partial<iPolloWorkServerClient> = {}): iPolloWorkServerClient {
   return {
     baseUrl: "https://worker.example.com/w/ws_remote",
     token: "ow-token",
@@ -52,7 +52,7 @@ function client(overrides: Partial<iPolloWalkServerClient> = {}): iPolloWalkServ
       tokenSource: { client: "file", host: "file" },
     }),
     capabilities: async () => ({
-      skills: { read: true, write: true, source: "ipollowalk" },
+      skills: { read: true, write: true, source: "ipollowork" },
       plugins: { read: true, write: true },
       mcp: { read: true, write: true },
       commands: { read: true, write: true },
@@ -71,7 +71,7 @@ function client(overrides: Partial<iPolloWalkServerClient> = {}): iPolloWalkServ
       activeId: "ws_remote",
     }),
     ...overrides,
-  } as iPolloWalkServerClient;
+  } as iPolloWorkServerClient;
 }
 
 function serverError(status: number, code: string, message: string) {
@@ -79,11 +79,11 @@ function serverError(status: number, code: string, message: string) {
 }
 
 describe("resolveRemoteWorkspaceConnectionTarget", () => {
-  test("builds a host-scoped iPolloWalk target from saved worker credentials", () => {
+  test("builds a host-scoped iPolloWork target from saved worker credentials", () => {
     const target = resolveRemoteWorkspaceConnectionTarget(
       workspace({
-        ipollowalkHostUrl: "https://worker.example.com",
-        ipollowalkWorkspaceId: "ws_remote",
+        ipolloworkHostUrl: "https://worker.example.com",
+        ipolloworkWorkspaceId: "ws_remote",
       }),
     );
 
@@ -106,7 +106,7 @@ describe("resolveRemoteWorkspaceConnectionTarget", () => {
   test("fails fast when a remote worker has no endpoint", () => {
     const target = resolveRemoteWorkspaceConnectionTarget(
       workspace({
-        ipollowalkHostUrl: "",
+        ipolloworkHostUrl: "",
         baseUrl: "",
       }),
     );
@@ -120,7 +120,7 @@ describe("resolveRemoteWorkspaceConnectionTarget", () => {
   test("fails fast when a remote worker endpoint is invalid", () => {
     const target = resolveRemoteWorkspaceConnectionTarget(
       workspace({
-        ipollowalkHostUrl: "not a url",
+        ipolloworkHostUrl: "not a url",
       }),
     );
 
@@ -130,12 +130,12 @@ describe("resolveRemoteWorkspaceConnectionTarget", () => {
     expect(target.state.message).toContain("URL is invalid");
   });
 
-  test("does not run iPolloWalk probes against non-iPolloWalk remote workspaces", () => {
+  test("does not run iPolloWork probes against non-iPolloWork remote workspaces", () => {
     const target = resolveRemoteWorkspaceConnectionTarget(
       workspace({
         remoteType: "opencode",
-        ipollowalkHostUrl: "",
-        ipollowalkToken: "",
+        ipolloworkHostUrl: "",
+        ipolloworkToken: "",
         baseUrl: "https://opencode.example.com",
       }),
     );
@@ -143,22 +143,22 @@ describe("resolveRemoteWorkspaceConnectionTarget", () => {
     expect(target.ok).toBe(false);
     if (target.ok) return;
     expect(target.state.status).toBe("error");
-    expect(target.state.message).toContain("iPolloWalk remote workers");
+    expect(target.state.message).toContain("iPolloWork remote workers");
   });
 
-  test("does not run iPolloWalk probes against stale iPolloWalk fields on non-iPolloWalk remotes", () => {
+  test("does not run iPolloWork probes against stale iPolloWork fields on non-iPolloWork remotes", () => {
     const target = resolveRemoteWorkspaceConnectionTarget(
       workspace({
         remoteType: "opencode",
-        ipollowalkHostUrl: "https://worker.example.com/w/ws_remote",
-        ipollowalkToken: "owt_secret",
+        ipolloworkHostUrl: "https://worker.example.com/w/ws_remote",
+        ipolloworkToken: "owt_secret",
         baseUrl: "https://opencode.example.com",
       }),
     );
 
     expect(target.ok).toBe(false);
     if (target.ok) return;
-    expect(target.state.message).toContain("iPolloWalk remote workers");
+    expect(target.state.message).toContain("iPolloWork remote workers");
   });
 });
 
@@ -178,15 +178,15 @@ describe("testRemoteWorkspaceConnection", () => {
   });
 
   test("reports a missing token after proving the worker endpoint is reachable", async () => {
-    const result = await testRemoteWorkspaceConnection(workspace({ ipollowalkToken: "" }), {
+    const result = await testRemoteWorkspaceConnection(workspace({ ipolloworkToken: "" }), {
       createClient: () => client(),
     });
 
     expect(result.ok).toBe(false);
     expect(result.state.status).toBe("error");
     expect(result.state.message).toContain("Token is missing");
-    expect(result.state.message).toContain("Upgrade the iPolloWalk host");
-    expect(result.state.message).toContain("team@ipollowalklabs.com");
+    expect(result.state.message).toContain("Upgrade the iPolloWork host");
+    expect(result.state.message).toContain("team@ipolloworklabs.com");
   });
 
   test("reports unhealthy health responses as endpoint failures", async () => {
@@ -200,15 +200,15 @@ describe("testRemoteWorkspaceConnection", () => {
     expect(result.ok).toBe(false);
     expect(result.state.status).toBe("error");
     expect(result.state.message).toContain("unhealthy response");
-    expect(result.state.message).toContain("Upgrade the iPolloWalk host");
-    expect(result.state.message).toContain("team@ipollowalklabs.com");
+    expect(result.state.message).toContain("Upgrade the iPolloWork host");
+    expect(result.state.message).toContain("team@ipolloworklabs.com");
   });
 
-  test("uses fallback iPolloWalk tokens saved on older workspace records", async () => {
+  test("uses fallback iPolloWork tokens saved on older workspace records", async () => {
     const result = await testRemoteWorkspaceConnection(
       workspace({
-        ipollowalkToken: "",
-        ipollowalkClientToken: "legacy-client-token",
+        ipolloworkToken: "",
+        ipolloworkClientToken: "legacy-client-token",
       }),
       {
         createClient: (target) => {
@@ -234,8 +234,8 @@ describe("testRemoteWorkspaceConnection", () => {
     expect(result.ok).toBe(false);
     expect(result.state.status).toBe("error");
     expect(result.state.message).toContain("Token was rejected by worker.example.com");
-    expect(result.state.message).toContain("Upgrade the iPolloWalk host");
-    expect(result.state.message).toContain("team@ipollowalklabs.com");
+    expect(result.state.message).toContain("Upgrade the iPolloWork host");
+    expect(result.state.message).toContain("team@ipolloworklabs.com");
   });
 
   test("reports a missing workspace separately from a dead worker", async () => {
@@ -251,15 +251,15 @@ describe("testRemoteWorkspaceConnection", () => {
     expect(result.ok).toBe(false);
     expect(result.state.status).toBe("error");
     expect(result.state.message).toContain("Workspace ws_remote was not found");
-    expect(result.state.message).toContain("Upgrade the iPolloWalk host");
-    expect(result.state.message).toContain("team@ipollowalklabs.com");
+    expect(result.state.message).toContain("Upgrade the iPolloWork host");
+    expect(result.state.message).toContain("team@ipolloworklabs.com");
   });
 
   test("uses workspace list when the saved remote target is not workspace-scoped", async () => {
     const result = await testRemoteWorkspaceConnection(
       workspace({
-        ipollowalkHostUrl: "https://worker.example.com",
-        ipollowalkWorkspaceId: "",
+        ipolloworkHostUrl: "https://worker.example.com",
+        ipolloworkWorkspaceId: "",
         baseUrl: "",
       }),
       {
@@ -282,8 +282,8 @@ describe("testRemoteWorkspaceConnection", () => {
   test("reports rejected credentials from the workspace list fallback", async () => {
     const result = await testRemoteWorkspaceConnection(
       workspace({
-        ipollowalkHostUrl: "https://worker.example.com",
-        ipollowalkWorkspaceId: "",
+        ipolloworkHostUrl: "https://worker.example.com",
+        ipolloworkWorkspaceId: "",
         baseUrl: "",
       }),
       {
@@ -299,8 +299,8 @@ describe("testRemoteWorkspaceConnection", () => {
     expect(result.ok).toBe(false);
     expect(result.state.status).toBe("error");
     expect(result.state.message).toContain("Token was rejected by worker.example.com");
-    expect(result.state.message).toContain("Upgrade the iPolloWalk host");
-    expect(result.state.message).toContain("team@ipollowalklabs.com");
+    expect(result.state.message).toContain("Upgrade the iPolloWork host");
+    expect(result.state.message).toContain("team@ipolloworklabs.com");
   });
 
   test("reports unauthorized workspace status separately from bad credentials", async () => {
@@ -316,8 +316,8 @@ describe("testRemoteWorkspaceConnection", () => {
     expect(result.ok).toBe(false);
     expect(result.state.status).toBe("error");
     expect(result.state.message).toContain("is not authorized");
-    expect(result.state.message).toContain("Upgrade the iPolloWalk host");
-    expect(result.state.message).toContain("team@ipollowalklabs.com");
+    expect(result.state.message).toContain("Upgrade the iPolloWork host");
+    expect(result.state.message).toContain("team@ipolloworklabs.com");
   });
 
   test("reports endpoint reachability failures from the health probe", async () => {
@@ -333,8 +333,8 @@ describe("testRemoteWorkspaceConnection", () => {
     expect(result.ok).toBe(false);
     expect(result.state.status).toBe("error");
     expect(result.state.message).toContain("Cannot reach worker.example.com");
-    expect(result.state.message).toContain("Upgrade the iPolloWalk host");
-    expect(result.state.message).toContain("team@ipollowalklabs.com");
+    expect(result.state.message).toContain("Upgrade the iPolloWork host");
+    expect(result.state.message).toContain("team@ipolloworklabs.com");
   });
 
   test("redacts token-like values from diagnostic error messages", async () => {
@@ -370,8 +370,8 @@ describe("remote diagnostic identity", () => {
   });
 
   test("changes when connection credentials change", () => {
-    const before = getRemoteWorkspaceConnectionKey(workspace({ ipollowalkToken: "old-token" }));
-    const after = getRemoteWorkspaceConnectionKey(workspace({ ipollowalkToken: "new-token" }));
+    const before = getRemoteWorkspaceConnectionKey(workspace({ ipolloworkToken: "old-token" }));
+    const after = getRemoteWorkspaceConnectionKey(workspace({ ipolloworkToken: "new-token" }));
 
     expect(before).not.toBe(after);
   });

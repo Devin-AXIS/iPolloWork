@@ -26,14 +26,14 @@ import { ProviderIcon } from "../../../design-system/provider-icon";
 import { useDenAuth } from "../../cloud/den-auth-provider";
 import { usePlatform } from "../../../kernel/platform";
 import {
-  getiPolloWalkModelsActionUrl,
-  hasiPolloWalkModelsProvider,
-  hideiPolloWalkModelsPromo,
-  isiPolloWalkModelsPromoHidden,
-  IPOLLOWALK_MODELS_PROVIDER_ID,
-  IPOLLOWALK_MODELS_PROVIDER_NAME,
-  iPolloWalkModelsPromoChangedEvent,
-} from "../../cloud/ipollowalk-models-promo";
+  getiPolloWorkModelsActionUrl,
+  hasiPolloWorkModelsProvider,
+  hideiPolloWorkModelsPromo,
+  isiPolloWorkModelsPromoHidden,
+  IPOLLOWORK_MODELS_PROVIDER_ID,
+  IPOLLOWORK_MODELS_PROVIDER_NAME,
+  iPolloWorkModelsPromoChangedEvent,
+} from "../../cloud/ipollowork-models-promo";
 
 export type ModelPickerModalProps = {
   open: boolean;
@@ -64,7 +64,7 @@ type ProviderGroup = {
 export function ModelPickerModal(props: ModelPickerModalProps) {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
-  const [promoHidden, setPromoHidden] = useState(isiPolloWalkModelsPromoHidden);
+  const [promoHidden, setPromoHidden] = useState(isiPolloWorkModelsPromoHidden);
   const denAuth = useDenAuth();
   const navigate = useNavigate();
   const platform = usePlatform();
@@ -82,9 +82,9 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
   }, [props.open]);
 
   useEffect(() => {
-    const handlePromoChanged = () => setPromoHidden(isiPolloWalkModelsPromoHidden());
-    window.addEventListener(iPolloWalkModelsPromoChangedEvent, handlePromoChanged);
-    return () => window.removeEventListener(iPolloWalkModelsPromoChangedEvent, handlePromoChanged);
+    const handlePromoChanged = () => setPromoHidden(isiPolloWorkModelsPromoHidden());
+    window.addEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
+    return () => window.removeEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
   }, []);
 
   // Focus search
@@ -169,23 +169,23 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
     });
   }, []);
 
-  const showiPolloWalkModelsPromo = useMemo(
-    () => !promoHidden && !hasiPolloWalkModelsProvider(props.options.map((option) => option.providerID)),
+  const showiPolloWorkModelsPromo = useMemo(
+    () => !promoHidden && !hasiPolloWorkModelsProvider(props.options.map((option) => option.providerID)),
     [promoHidden, props.options],
   );
 
-  const openiPolloWalkModels = useCallback(() => {
+  const openiPolloWorkModels = useCallback(() => {
     props.onClose();
     if (!denAuth.isSignedIn) {
       navigate("/settings/cloud-account");
     }
     window.setTimeout(() => {
-      platform.openLink(getiPolloWalkModelsActionUrl(denAuth.isSignedIn));
+      platform.openLink(getiPolloWorkModelsActionUrl(denAuth.isSignedIn));
     }, 0);
   }, [denAuth.isSignedIn, navigate, platform, props.onClose]);
 
-  const hideiPolloWalkModels = useCallback(() => {
-    hideiPolloWalkModelsPromo();
+  const hideiPolloWorkModels = useCallback(() => {
+    hideiPolloWorkModelsPromo();
     setPromoHidden(true);
   }, []);
 
@@ -233,18 +233,18 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
             />
           </div>
 
-          {showiPolloWalkModelsPromo ? (
+          {showiPolloWorkModelsPromo ? (
             <div className="mb-3 flex shrink-0 items-center overflow-hidden rounded-2xl border border-blue-6/60 bg-blue-2/60 shadow-[0_12px_30px_-20px_rgba(var(--dls-accent-rgb),0.45)]">
               <button
                 type="button"
                 className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-blue-3/70"
-                onClick={openiPolloWalkModels}
+                onClick={openiPolloWorkModels}
               >
-                <ProviderIcon providerId={IPOLLOWALK_MODELS_PROVIDER_ID} providerName={IPOLLOWALK_MODELS_PROVIDER_NAME} size={18} className="shrink-0 text-blue-11" />
+                <ProviderIcon providerId={IPOLLOWORK_MODELS_PROVIDER_ID} providerName={IPOLLOWORK_MODELS_PROVIDER_NAME} size={18} className="shrink-0 text-blue-11" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 text-[13px] font-medium text-dls-text">
                     <Sparkles className="size-3.5 text-blue-11" />
-                    <span>{IPOLLOWALK_MODELS_PROVIDER_NAME}</span>
+                    <span>{IPOLLOWORK_MODELS_PROVIDER_NAME}</span>
                   </div>
                   <div className="truncate text-[11px] text-dls-secondary">
                     {denAuth.isSignedIn ? "Subscribe to use hosted frontier models in this workspace." : "Sign in to unlock hosted frontier models for your team."}
@@ -258,8 +258,8 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
               <button
                 type="button"
                 className="flex size-9 shrink-0 items-center justify-center border-l border-blue-6/60 text-blue-11 transition-colors hover:bg-blue-3/70"
-                onClick={hideiPolloWalkModels}
-                aria-label="Hide iPolloWalk Models"
+                onClick={hideiPolloWorkModels}
+                aria-label="Hide iPolloWork Models"
               >
                 <X className="size-3.5" />
               </button>

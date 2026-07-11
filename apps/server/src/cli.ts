@@ -7,7 +7,7 @@ import { createManagedOpencodeServer, type ManagedOpencodeServer } from "./manag
 import { createServerLogger, startServer, syncAllWorkspacesRuntimeMcpToEngine } from "./server.js";
 import { ensureLocalWorkspaceFiles } from "./workspace-init.js";
 import { findManagedEngineWorkspace } from "./workspaces.js";
-import { keepiPolloWalkRuntimeConfigFileFresh, writeiPolloWalkRuntimeConfigFile } from "./ipollowalk-runtime-config.js";
+import { keepiPolloWorkRuntimeConfigFileFresh, writeiPolloWorkRuntimeConfigFile } from "./ipollowork-runtime-config.js";
 import pkg from "../package.json" with { type: "json" };
 
 const args = parseCliArgs(process.argv.slice(2));
@@ -31,25 +31,25 @@ if (!config.readOnly) {
   await ensureLocalWorkspaceFiles(config.workspaces);
 }
 
-if (!config.opencodeBaseUrl && process.env.IPOLLOWALK_MANAGE_OPENCODE === "1") {
+if (!config.opencodeBaseUrl && process.env.IPOLLOWORK_MANAGE_OPENCODE === "1") {
   const workspace = findManagedEngineWorkspace(config.workspaces);
   if (workspace) {
     // Server-managed config file: the engine re-reads it from disk on every
-    // instance rebuild, and keepiPolloWalkRuntimeConfigFileFresh rewrites it
+    // instance rebuild, and keepiPolloWorkRuntimeConfigFileFresh rewrites it
     // on every runtime-DB write — so disposes always pick up current state.
-    const runtimeConfigPath = await writeiPolloWalkRuntimeConfigFile(config, workspace.id);
-    keepiPolloWalkRuntimeConfigFileFresh(config, workspace.id);
-    const managedOpencodeCwd = process.env.IPOLLOWALK_MANAGED_OPENCODE_CWD?.trim() || workspace.path;
+    const runtimeConfigPath = await writeiPolloWorkRuntimeConfigFile(config, workspace.id);
+    keepiPolloWorkRuntimeConfigFileFresh(config, workspace.id);
+    const managedOpencodeCwd = process.env.IPOLLOWORK_MANAGED_OPENCODE_CWD?.trim() || workspace.path;
     await mkdir(managedOpencodeCwd, { recursive: true });
     managedOpencode = await createManagedOpencodeServer({
-      bin: process.env.IPOLLOWALK_OPENCODE_BIN,
+      bin: process.env.IPOLLOWORK_OPENCODE_BIN,
       cwd: managedOpencodeCwd,
       excludedPorts: [config.port],
       env: {
-        ...(process.env.IPOLLOWALK_DEV_MODE ? { IPOLLOWALK_DEV_MODE: process.env.IPOLLOWALK_DEV_MODE } : {}),
-        ...(process.env.IPOLLOWALK_UI_CONTROL_DISCOVERY ? { IPOLLOWALK_UI_CONTROL_DISCOVERY: process.env.IPOLLOWALK_UI_CONTROL_DISCOVERY } : {}),
-        IPOLLOWALK_SERVER_URL: serverUrl,
-        IPOLLOWALK_SERVER_TOKEN: config.token,
+        ...(process.env.IPOLLOWORK_DEV_MODE ? { IPOLLOWORK_DEV_MODE: process.env.IPOLLOWORK_DEV_MODE } : {}),
+        ...(process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY ? { IPOLLOWORK_UI_CONTROL_DISCOVERY: process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY } : {}),
+        IPOLLOWORK_SERVER_URL: serverUrl,
+        IPOLLOWORK_SERVER_TOKEN: config.token,
         OPENCODE_CONFIG: runtimeConfigPath,
       },
     });
@@ -76,7 +76,7 @@ if (managedOpencode) {
 }
 
 const url = `http://${config.host}:${server.port}`;
-logger.log("info", `iPolloWalk server listening on ${url}`);
+logger.log("info", `iPolloWork server listening on ${url}`);
 
 if (config.tokenSource === "generated") {
   logger.log("info", `Client token: ${config.token}`);

@@ -1,15 +1,15 @@
 import type { WorkspaceConnectionState } from "../../../app/types";
 import type { WorkspaceInfo } from "../../../app/lib/desktop";
 import {
-  createiPolloWalkServerClient,
-  normalizeiPolloWalkServerUrl,
-  parseiPolloWalkWorkspaceIdFromUrl,
-  type iPolloWalkServerClient,
-} from "../../../app/lib/ipollowalk-server";
+  createiPolloWorkServerClient,
+  normalizeiPolloWorkServerUrl,
+  parseiPolloWorkWorkspaceIdFromUrl,
+  type iPolloWorkServerClient,
+} from "../../../app/lib/ipollowork-server";
 import { redactTokenLikeText } from "../../../app/utils";
 
 export type RemoteWorkspaceConnectionTarget = {
-  kind: "ipollowalk";
+  kind: "ipollowork";
   baseUrl: string;
   endpointLabel: string;
   token: string;
@@ -29,9 +29,9 @@ export type RemoteWorkspaceConnectionResult = {
 type TestOptions = {
   now?: () => number;
   createClient?: (target: RemoteWorkspaceConnectionTarget) => Pick<
-    iPolloWalkServerClient,
+    iPolloWorkServerClient,
     "health" | "capabilities" | "status" | "listWorkspaces"
-  > | Promise<Pick<iPolloWalkServerClient, "health" | "capabilities" | "status" | "listWorkspaces">>;
+  > | Promise<Pick<iPolloWorkServerClient, "health" | "capabilities" | "status" | "listWorkspaces">>;
 };
 
 function trim(value: string | null | undefined) {
@@ -59,7 +59,7 @@ function endpointLabel(baseUrl: string) {
   }
 }
 
-function stripiPolloWalkWorkspaceMount(baseUrl: string) {
+function stripiPolloWorkWorkspaceMount(baseUrl: string) {
   try {
     const url = new URL(baseUrl);
     const segments = url.pathname.split("/").filter(Boolean);
@@ -104,7 +104,7 @@ function rejectedTokenMessage(target: RemoteWorkspaceConnectionTarget) {
 }
 
 function remoteSupportMessage(message: string) {
-  return `${message} Upgrade the iPolloWalk host and try again. If this continues, contact team@ipollowalklabs.com.`;
+  return `${message} Upgrade the iPolloWork host and try again. If this continues, contact team@ipolloworklabs.com.`;
 }
 
 export function redactRemoteDiagnosticText(value: string): string {
@@ -117,11 +117,11 @@ export function getRemoteWorkspaceConnectionKey(workspace: WorkspaceInfo): strin
     workspace.workspaceType,
     workspace.remoteType ?? "",
     trim(workspace.baseUrl),
-    trim(workspace.ipollowalkHostUrl),
-    trim(workspace.ipollowalkWorkspaceId),
-    trim(workspace.ipollowalkToken),
-    trim(workspace.ipollowalkClientToken),
-    trim(workspace.ipollowalkHostToken),
+    trim(workspace.ipolloworkHostUrl),
+    trim(workspace.ipolloworkWorkspaceId),
+    trim(workspace.ipolloworkToken),
+    trim(workspace.ipolloworkClientToken),
+    trim(workspace.ipolloworkHostToken),
   ].join("\u001f");
 }
 
@@ -129,20 +129,20 @@ function displayWorkspaceName(workspace: unknown) {
   if (!workspace || typeof workspace !== "object") return "";
   const value = workspace as {
     displayName?: string | null;
-    ipollowalkWorkspaceName?: string | null;
+    ipolloworkWorkspaceName?: string | null;
     name?: string | null;
     id?: string | null;
   };
   return (
     trim(value.displayName) ||
-    trim(value.ipollowalkWorkspaceName) ||
+    trim(value.ipolloworkWorkspaceName) ||
     trim(value.name) ||
     trim(value.id)
   );
 }
 
 function defaultCreateClient(target: RemoteWorkspaceConnectionTarget) {
-  return createiPolloWalkServerClient({
+  return createiPolloWorkServerClient({
     baseUrl: target.baseUrl,
     token: target.token || undefined,
   });
@@ -160,18 +160,18 @@ export function resolveRemoteWorkspaceConnectionTarget(workspace: WorkspaceInfo)
     };
   }
 
-  if (workspace.remoteType && workspace.remoteType !== "ipollowalk") {
+  if (workspace.remoteType && workspace.remoteType !== "ipollowork") {
     return {
       ok: false,
       state: {
         status: "error",
-        message: "Connection diagnostics are only available for iPolloWalk remote workers.",
+        message: "Connection diagnostics are only available for iPolloWork remote workers.",
         checkedAt: Date.now(),
       },
     };
   }
 
-  const rawHostUrl = trim(workspace.ipollowalkHostUrl) || trim(workspace.baseUrl);
+  const rawHostUrl = trim(workspace.ipolloworkHostUrl) || trim(workspace.baseUrl);
   if (!rawHostUrl) {
     return {
       ok: false,
@@ -183,7 +183,7 @@ export function resolveRemoteWorkspaceConnectionTarget(workspace: WorkspaceInfo)
     };
   }
 
-  const normalizedHostUrl = normalizeiPolloWalkServerUrl(rawHostUrl);
+  const normalizedHostUrl = normalizeiPolloWorkServerUrl(rawHostUrl);
   if (!normalizedHostUrl || !isValidHttpEndpoint(normalizedHostUrl)) {
     return {
       ok: false,
@@ -196,20 +196,20 @@ export function resolveRemoteWorkspaceConnectionTarget(workspace: WorkspaceInfo)
   }
 
   const workspaceId =
-    trim(workspace.ipollowalkWorkspaceId) ||
-    parseiPolloWalkWorkspaceIdFromUrl(normalizedHostUrl) ||
-    parseiPolloWalkWorkspaceIdFromUrl(trim(workspace.baseUrl)) ||
+    trim(workspace.ipolloworkWorkspaceId) ||
+    parseiPolloWorkWorkspaceIdFromUrl(normalizedHostUrl) ||
+    parseiPolloWorkWorkspaceIdFromUrl(trim(workspace.baseUrl)) ||
     null;
-  const hostBaseUrl = stripiPolloWalkWorkspaceMount(normalizedHostUrl);
+  const hostBaseUrl = stripiPolloWorkWorkspaceMount(normalizedHostUrl);
   const token =
-    trim(workspace.ipollowalkToken) ||
-    trim(workspace.ipollowalkClientToken) ||
-    trim(workspace.ipollowalkHostToken);
+    trim(workspace.ipolloworkToken) ||
+    trim(workspace.ipolloworkClientToken) ||
+    trim(workspace.ipolloworkHostToken);
 
   return {
     ok: true,
     target: {
-      kind: "ipollowalk",
+      kind: "ipollowork",
       baseUrl: hostBaseUrl,
       endpointLabel: endpointLabel(hostBaseUrl),
       token,
@@ -254,7 +254,7 @@ export async function testRemoteWorkspaceConnection(
 
   if (!target.token) {
     return fail(
-      remoteSupportMessage(`Token is missing for ${target.endpointLabel}. Edit connection and paste a valid iPolloWalk token.`),
+      remoteSupportMessage(`Token is missing for ${target.endpointLabel}. Edit connection and paste a valid iPolloWork token.`),
       checkedAt,
     );
   }

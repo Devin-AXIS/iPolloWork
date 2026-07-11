@@ -20,23 +20,23 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 // The runner fails this flow if the narration drifts from that script.
 const vo = await loadVoiceoverParagraphs("org-install-link");
 
-const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_API_URL);
-const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_DEN_WEB_URL);
-const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_WEB_CDP_ADMIN);
-const INVITEE_CDP_URL = cleanBaseUrl(process.env.IPOLLOWALK_EVAL_WEB_CDP_INVITEE);
-const INSTALLER_BIN = process.env.IPOLLOWALK_EVAL_INSTALLER_BIN?.trim() ?? "";
-const ARTIFACTS_DIR = process.env.IPOLLOWALK_EVAL_ARTIFACTS_DIR?.trim() ?? "";
-const BOOTSTRAP_PATH = process.env.IPOLLOWALK_EVAL_BOOTSTRAP_PATH?.trim() ?? "";
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
-const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
-const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const DEN_API_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_API_URL);
+const DEN_WEB_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_DEN_WEB_URL);
+const ADMIN_CDP_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_WEB_CDP_ADMIN);
+const INVITEE_CDP_URL = cleanBaseUrl(process.env.IPOLLOWORK_EVAL_WEB_CDP_INVITEE);
+const INSTALLER_BIN = process.env.IPOLLOWORK_EVAL_INSTALLER_BIN?.trim() ?? "";
+const ARTIFACTS_DIR = process.env.IPOLLOWORK_EVAL_ARTIFACTS_DIR?.trim() ?? "";
+const BOOTSTRAP_PATH = process.env.IPOLLOWORK_EVAL_BOOTSTRAP_PATH?.trim() ?? "";
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const PLATFORM_ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL?.trim() || "";
+const PLATFORM_ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD?.trim() || "";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 const RUN_TAG = Date.now().toString(36);
-const MEMBER_EMAIL = process.env.IPOLLOWALK_EVAL_MEMBER_EMAIL?.trim() || `riley.install+${RUN_TAG}@acme.test`;
-const MEMBER_PASSWORD = process.env.IPOLLOWALK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const INSTALL_SIDECAR_FILENAME = "ipollowalk-installer.json";
-const MAC_ARTIFACT_FILENAME = "ipollowalk-installer-mac-arm64.zip";
+const MEMBER_EMAIL = process.env.IPOLLOWORK_EVAL_MEMBER_EMAIL?.trim() || `riley.install+${RUN_TAG}@acme.test`;
+const MEMBER_PASSWORD = process.env.IPOLLOWORK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const INSTALL_SIDECAR_FILENAME = "ipollowork-installer.json";
+const MAC_ARTIFACT_FILENAME = "ipollowork-installer-mac-arm64.zip";
 
 const state = {
   desktopClient: null,
@@ -59,17 +59,17 @@ export default {
   title: "Organization install links stamp Acme into the download, installer, and first desktop sign-in",
   kind: "user-facing",
   requiredEnv: [
-    "IPOLLOWALK_EVAL_DEN_API_URL",
-    "IPOLLOWALK_EVAL_DEN_TOKEN",
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
-    "IPOLLOWALK_EVAL_WEB_CDP_ADMIN",
-    "IPOLLOWALK_EVAL_WEB_CDP_INVITEE",
-    "IPOLLOWALK_EVAL_INSTALLER_BIN",
-    "IPOLLOWALK_EVAL_ARTIFACTS_DIR",
-    "IPOLLOWALK_EVAL_BOOTSTRAP_PATH",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_EMAIL",
-    "IPOLLOWALK_EVAL_PLATFORM_ADMIN_PASSWORD",
-    "IPOLLOWALK_EVAL_MARK_VERIFIED_CMD",
+    "IPOLLOWORK_EVAL_DEN_API_URL",
+    "IPOLLOWORK_EVAL_DEN_TOKEN",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_WEB_CDP_ADMIN",
+    "IPOLLOWORK_EVAL_WEB_CDP_INVITEE",
+    "IPOLLOWORK_EVAL_INSTALLER_BIN",
+    "IPOLLOWORK_EVAL_ARTIFACTS_DIR",
+    "IPOLLOWORK_EVAL_BOOTSTRAP_PATH",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_EMAIL",
+    "IPOLLOWORK_EVAL_PLATFORM_ADMIN_PASSWORD",
+    "IPOLLOWORK_EVAL_MARK_VERIFIED_CMD",
   ],
   steps: [
     {
@@ -79,7 +79,7 @@ export default {
         await withClient(ctx, ADMIN_CDP_URL, async () => {
           await ctx.prove("Alex copies an Acme install link and the token resolves to Acme's required sign-in config", {
             voiceover: vo[0],
-            // "Alex wants the whole team on iPolloWalk, so from the team page he copies Acme'"
+            // "Alex wants the whole team on iPolloWork, so from the team page he copies Acme'"
             action: async () => {
               await ensureAdminToken(ctx);
               await ensureOrgId(ctx);
@@ -188,27 +188,27 @@ export default {
               state.frame3InstallerRun = runHeadlessInstallerWithSidecar();
               // Show the real installer UI (manual mode: served over local
               // HTTP, no native window) in the invitee's browser.
-              state.frame3Ui = await startInstallerUi("ipollowalk-install-link-ui-", {
+              state.frame3Ui = await startInstallerUi("ipollowork-install-link-ui-", {
                 sidecarJson: requireStateValue(state.sidecarJson, "installer sidecar JSON"),
               });
               await navigateToAbsolute(ctx, state.frame3Ui.url);
-              await ctx.waitForText("This sets up iPolloWalk for Acme Robotics", { timeoutMs: 20_000 });
+              await ctx.waitForText("This sets up iPolloWork for Acme Robotics", { timeoutMs: 20_000 });
             },
             assert: async () => {
               const run = requireInstallerRun(state.frame3InstallerRun, "frame 3 installer run");
               ctx.assert(run.status === 0, `Installer dry-run exited ${run.status}: ${run.stderr || run.stdout}`);
-              ctx.assert(run.stdout.includes("iPolloWalk Installer — Acme Robotics"), "Installer stdout did not name Acme Robotics.");
+              ctx.assert(run.stdout.includes("iPolloWork Installer — Acme Robotics"), "Installer stdout did not name Acme Robotics.");
               ctx.assert(run.stdout.includes("Configured via install link"), "Installer stdout did not say it was configured via install link.");
               ctx.assert(run.stdout.includes("Dry run ok"), "Installer stdout did not report Dry run ok.");
               ctx.output("headless-installer-dry-run", run.combined);
 
-              await ctx.expectText("This sets up iPolloWalk for Acme Robotics");
+              await ctx.expectText("This sets up iPolloWork for Acme Robotics");
               await ctx.expectText("Configured via install link");
               await ctx.expectText("Install");
             },
             screenshot: {
               name: "installer-announces-acme",
-              requireText: ["This sets up iPolloWalk for Acme Robotics", "Configured via install link", "Install"],
+              requireText: ["This sets up iPolloWork for Acme Robotics", "Configured via install link", "Install"],
             },
           });
         });
@@ -230,7 +230,7 @@ export default {
             await resetDesktopDenSession(ctx);
             await ctx.eval("(() => { location.hash = '#/signin'; location.reload(); return true; })()");
             await ensureDesktopReady(ctx);
-            await ctx.waitForText("Sign in with iPolloWalk Cloud", { timeoutMs: 45_000 });
+            await ctx.waitForText("Sign in with iPolloWork Cloud", { timeoutMs: 45_000 });
             // Let the gate's fade-in transition finish so the frame shows the
             // fully rendered sign-in surface, not a mid-animation ghost.
             await ctx.eval("new Promise((resolve) => setTimeout(() => resolve(true), 1200))", { awaitPromise: true });
@@ -245,15 +245,15 @@ export default {
             );
             ctx.output("desktop-bootstrap-after-installer", bootstrap.raw);
 
-            await ctx.expectText("Welcome to iPolloWalk");
-            await ctx.expectText("Sign in with iPolloWalk Cloud");
+            await ctx.expectText("Welcome to iPolloWork");
+            await ctx.expectText("Sign in with iPolloWork Cloud");
             const hash = await ctx.eval("location.hash");
             ctx.assert(typeof hash === "string" && hash.includes("/signin"), `Expected /signin route, got ${hash}.`);
             await ctx.expectNoText("Pick a folder");
           },
           screenshot: {
             name: "desktop-forced-acme-signin",
-            requireText: ["Welcome to iPolloWalk", "Sign in with iPolloWalk Cloud"],
+            requireText: ["Welcome to iPolloWork", "Sign in with iPolloWork Cloud"],
             rejectText: ["Pick a folder"],
           },
         });
@@ -264,21 +264,21 @@ export default {
       run: async (ctx) => {
         await ctx.prove("Riley signs in with one copied handoff link and lands in Acme on the desktop", {
           voiceover: vo[4],
-          // "One click on Sign in with iPolloWalk Cloud, a browser flash, and they're stand"
+          // "One click on Sign in with iPolloWork Cloud, a browser flash, and they're stand"
           action: async () => {
             await ensureMemberAccount(ctx);
             await withClient(ctx, INVITEE_CDP_URL, async () => {
               await signInToDenWeb(ctx, MEMBER_EMAIL, MEMBER_PASSWORD);
-              await navigateToAbsolute(ctx, `${DEN_WEB_URL}/?desktopAuth=1&desktopScheme=ipollowalk`);
-              await ctx.waitForText("Open iPolloWalk", { timeoutMs: 45_000 });
+              await navigateToAbsolute(ctx, `${DEN_WEB_URL}/?desktopAuth=1&desktopScheme=ipollowork`);
+              await ctx.waitForText("Open iPolloWork", { timeoutMs: 45_000 });
               await ctx.waitForText("Copy sign-in link", { timeoutMs: 45_000 });
               // Stub the clipboard only after the navigation settles — a new
               // document would wipe a stub installed any earlier.
               await stubClipboardCapture(ctx);
               await ctx.clickText("Copy sign-in link", { selector: "button", timeoutMs: 20_000 });
               state.copiedDesktopUrl = await ctx.waitFor(
-                "typeof window.__capturedSignin === 'string' && window.__capturedSignin.startsWith('ipollowalk://den-auth') && window.__capturedSignin",
-                { timeoutMs: 30_000, label: "captured iPolloWalk sign-in link" },
+                "typeof window.__capturedSignin === 'string' && window.__capturedSignin.startsWith('ipollowork://den-auth') && window.__capturedSignin",
+                { timeoutMs: 30_000, label: "captured iPolloWork sign-in link" },
               );
             });
 
@@ -289,24 +289,24 @@ export default {
             await deliverDeepLinkToDesktop(ctx, requireStateValue(state.copiedDesktopUrl, "copied desktop sign-in URL"));
             ctx.output(
               "desktop-deep-link-delivery",
-              "Dev Electron does not register the OS ipollowalk:// handler in evals, so this flow dispatches ipollowalk:deep-link with the copied ipollowalk://den-auth URL — the same renderer event DenAuthProvider consumes.",
+              "Dev Electron does not register the OS ipollowork:// handler in evals, so this flow dispatches ipollowork:deep-link with the copied ipollowork://den-auth URL — the same renderer event DenAuthProvider consumes.",
             );
           },
           assert: async () => {
             useDesktopClient(ctx);
-            await ctx.waitFor("Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())", {
+            await ctx.waitFor("Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())", {
               timeoutMs: 60_000,
               label: "persisted Den auth token",
             });
-            await ctx.waitFor("(localStorage.getItem('ipollowalk.den.activeOrgName') ?? '').includes('Acme Robotics')", {
+            await ctx.waitFor("(localStorage.getItem('ipollowork.den.activeOrgName') ?? '').includes('Acme Robotics')", {
               timeoutMs: 60_000,
               label: "Acme active org",
             });
-            await ctx.waitFor("!document.body.innerText.includes('Sign in with iPolloWalk Cloud')", {
+            await ctx.waitFor("!document.body.innerText.includes('Sign in with iPolloWork Cloud')", {
               timeoutMs: 45_000,
               label: "forced sign-in gate gone",
             });
-            await ctx.expectNoText("Sign in with iPolloWalk Cloud");
+            await ctx.expectNoText("Sign in with iPolloWork Cloud");
             await completeDesktopSignedInJourney(ctx);
             await ctx.expectText("Acme Robotics", { timeoutMs: 45_000 });
             await ctx.expectText(MEMBER_EMAIL, { timeoutMs: 45_000 });
@@ -314,7 +314,7 @@ export default {
           screenshot: {
             name: "desktop-signed-into-acme-from-install-link",
             requireText: ["Acme Robotics", "Sign out"],
-            rejectText: ["Sign in with iPolloWalk Cloud", "Something went wrong"],
+            rejectText: ["Sign in with iPolloWork Cloud", "Something went wrong"],
           },
         });
       },
@@ -331,16 +331,16 @@ export default {
               state.frame6InstallerRuns = runBareInstallerFallback();
               // A completely bare installer (no sidecar, no filename tag, no
               // build constants): its UI must ask for the install link.
-              state.frame6Ui = await startInstallerUi("ipollowalk-install-link-bare-ui-");
+              state.frame6Ui = await startInstallerUi("ipollowork-install-link-bare-ui-");
               await navigateToAbsolute(ctx, state.frame6Ui.url);
-              await ctx.waitForText("Paste your iPolloWalk install link", { timeoutMs: 20_000 });
+              await ctx.waitForText("Paste your iPolloWork install link", { timeoutMs: 20_000 });
             },
             assert: async () => {
               const runs = requireFrame6Runs(state.frame6InstallerRuns);
               ctx.assert(runs.missing.status === 2, `Bare installer without link exited ${runs.missing.status}, expected 2.`);
               ctx.assert(
-                runs.missing.combined.includes("Paste an iPolloWalk install link"),
-                "Bare installer did not ask for an iPolloWalk install link.",
+                runs.missing.combined.includes("Paste an iPolloWork install link"),
+                "Bare installer did not ask for an iPolloWork install link.",
               );
               ctx.assert(runs.withLink.status === 0, `Bare installer with --install-link exited ${runs.withLink.status}.`);
               ctx.assert(runs.withLink.stdout.includes("Configured via install link"), "--install-link stdout did not report install-link config.");
@@ -362,14 +362,14 @@ export default {
               );
               // Drive the real paste fallback: enter the install link into
               // the installer's own UI and watch it become Acme's installer.
-              await ctx.expectText("Paste your iPolloWalk install link");
+              await ctx.expectText("Paste your iPolloWork install link");
               await ctx.fill("#install-link", requireStateValue(state.installLink, "install link"));
               await clickExactText(ctx, "Continue", "button");
-              await ctx.waitForText("This sets up iPolloWalk for Acme Robotics", { timeoutMs: 20_000 });
+              await ctx.waitForText("This sets up iPolloWork for Acme Robotics", { timeoutMs: 20_000 });
             },
             screenshot: {
               name: "bare-installer-install-link-fallback",
-              requireText: ["This sets up iPolloWalk for Acme Robotics", "Configured via install link"],
+              requireText: ["This sets up iPolloWork for Acme Robotics", "Configured via install link"],
             },
           });
         });
@@ -494,8 +494,8 @@ async function ensureAdminToken(ctx) {
     state.adminToken = signedIn.body.token;
     return state.adminToken;
   }
-  const token = process.env.IPOLLOWALK_EVAL_DEN_TOKEN?.trim() ?? "";
-  ctx.assert(token.length > 0, `Admin sign-in failed and IPOLLOWALK_EVAL_DEN_TOKEN is missing: ${signedIn.response.status}`);
+  const token = process.env.IPOLLOWORK_EVAL_DEN_TOKEN?.trim() ?? "";
+  ctx.assert(token.length > 0, `Admin sign-in failed and IPOLLOWORK_EVAL_DEN_TOKEN is missing: ${signedIn.response.status}`);
   state.adminToken = token;
   return token;
 }
@@ -640,7 +640,7 @@ async function ensureMemberAccount(ctx) {
 function markEmailVerified(ctx, email) {
   ctx.assert(
     MARK_VERIFIED_CMD.length > 0,
-    "Invitation acceptance requires a verified email; set IPOLLOWALK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
+    "Invitation acceptance requires a verified email; set IPOLLOWORK_EVAL_MARK_VERIFIED_CMD (shell template with {email}).",
   );
   execSync(MARK_VERIFIED_CMD.replaceAll("{email}", email), { stdio: "ignore" });
 }
@@ -758,16 +758,16 @@ async function stubClipboardCapture(ctx) {
 }
 
 async function ensureDesktopReady(ctx) {
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "desktop control API" });
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "desktop control API" });
 }
 
-async function deliverDeepLinkToDesktop(ctx, ipollowalkUrl) {
+async function deliverDeepLinkToDesktop(ctx, ipolloworkUrl) {
   await ctx.eval(`(() => {
-    const url = ${JSON.stringify(ipollowalkUrl)};
-    window.__IPOLLOWALK__ = window.__IPOLLOWALK__ || {};
-    const pending = window.__IPOLLOWALK__.deepLinks || [];
-    window.__IPOLLOWALK__.deepLinks = [...pending, url];
-    window.dispatchEvent(new CustomEvent("ipollowalk:deep-link", { detail: { urls: [url] } }));
+    const url = ${JSON.stringify(ipolloworkUrl)};
+    window.__IPOLLOWORK__ = window.__IPOLLOWORK__ || {};
+    const pending = window.__IPOLLOWORK__.deepLinks || [];
+    window.__IPOLLOWORK__.deepLinks = [...pending, url];
+    window.dispatchEvent(new CustomEvent("ipollowork:deep-link", { detail: { urls: [url] } }));
     return true;
   })()`);
 }
@@ -775,14 +775,14 @@ async function deliverDeepLinkToDesktop(ctx, ipollowalkUrl) {
 async function resetDesktopDenSession(ctx) {
   await ctx.eval(`(() => {
     for (const key of [
-      'ipollowalk.den.authToken',
-      'ipollowalk.den.activeOrgId',
-      'ipollowalk.den.activeOrgSlug',
-      'ipollowalk.den.activeOrgName',
+      'ipollowork.den.authToken',
+      'ipollowork.den.activeOrgId',
+      'ipollowork.den.activeOrgSlug',
+      'ipollowork.den.activeOrgName',
     ]) {
       localStorage.removeItem(key);
     }
-    window.dispatchEvent(new CustomEvent('ipollowalk-den-session-updated', { detail: { status: 'signed_out' } }));
+    window.dispatchEvent(new CustomEvent('ipollowork-den-session-updated', { detail: { status: 'signed_out' } }));
     return true;
   })()`);
 }
@@ -794,7 +794,7 @@ async function completeDesktopSignedInJourney(ctx) {
       || document.body.innerText.includes("No resources have been configured for this organization yet.")
       || location.hash.includes('/session')
       || location.hash.includes('/workspace/')
-      || document.body.innerText.includes("iPolloWalk Cloud")`,
+      || document.body.innerText.includes("iPolloWork Cloud")`,
     { timeoutMs: 60_000, label: "post-sign-in desktop surface" },
   );
 
@@ -817,7 +817,7 @@ async function completeDesktopSignedInJourney(ctx) {
   }
 
   await ctx.navigateHash("/settings/cloud-account");
-  await ctx.waitForText("iPolloWalk Cloud", { timeoutMs: 45_000 });
+  await ctx.waitForText("iPolloWork Cloud", { timeoutMs: 45_000 });
   await ctx.waitForText("Sign out", { timeoutMs: 45_000 });
 }
 
@@ -835,7 +835,7 @@ async function fetchAndVerifyStampedMacInstaller(ctx) {
   const bytes = Buffer.from(await response.arrayBuffer());
   ctx.assert(response.ok, `Stamped macOS installer download failed: ${response.status} ${bytes.toString("utf8", 0, Math.min(bytes.length, 300))}`);
 
-  const tempDir = makeTempDir("ipollowalk-install-link-download-");
+  const tempDir = makeTempDir("ipollowork-install-link-download-");
   const stampedZipPath = path.join(tempDir, "stamped.zip");
   const stampedDir = path.join(tempDir, "stamped");
   const sourceDir = path.join(tempDir, "source");
@@ -901,7 +901,7 @@ async function startInstallerUi(tempPrefix, { sidecarJson = null } = {}) {
   }
   const child = spawn(installerPath, [], {
     cwd: tempDir,
-    env: sanitizedInstallerEnv({ IPOLLOWALK_INSTALLER_UI: "manual" }),
+    env: sanitizedInstallerEnv({ IPOLLOWORK_INSTALLER_UI: "manual" }),
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
@@ -925,22 +925,22 @@ async function startInstallerUi(tempPrefix, { sidecarJson = null } = {}) {
 
 function runHeadlessInstallerWithSidecar() {
   const sidecarJson = requireStateValue(state.sidecarJson, "installer sidecar JSON");
-  const tempDir = makeTempDir("ipollowalk-install-link-sidecar-");
+  const tempDir = makeTempDir("ipollowork-install-link-sidecar-");
   const installerPath = copyInstallerTo(tempDir);
   writeFileSync(path.join(tempDir, INSTALL_SIDECAR_FILENAME), sidecarJson, "utf8");
-  return runInstaller(installerPath, ["--headless", "--dry-run"], sanitizedInstallerEnv({ IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH: BOOTSTRAP_PATH }), tempDir);
+  return runInstaller(installerPath, ["--headless", "--dry-run"], sanitizedInstallerEnv({ IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH: BOOTSTRAP_PATH }), tempDir);
 }
 
 function runBareInstallerFallback() {
   const installLink = requireStateValue(state.installLink, "install link");
-  const tempDir = makeTempDir("ipollowalk-install-link-bare-");
+  const tempDir = makeTempDir("ipollowork-install-link-bare-");
   const installerPath = copyInstallerTo(tempDir);
   const missing = runInstaller(installerPath, ["--headless", "--dry-run"], sanitizedInstallerEnv(), tempDir);
   const secondBootstrapPath = path.join(tempDir, "second-desktop-bootstrap.json");
   const withLink = runInstaller(
     installerPath,
     ["--headless", "--dry-run", "--install-link", installLink],
-    sanitizedInstallerEnv({ IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH: secondBootstrapPath }),
+    sanitizedInstallerEnv({ IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH: secondBootstrapPath }),
     tempDir,
   );
   return { missing, withLink, secondBootstrapPath };
@@ -964,7 +964,7 @@ function runInstaller(installerPath, args, env, cwd) {
 function sanitizedInstallerEnv(overrides = {}) {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
-    if (key.startsWith("IPOLLOWALK_INSTALLER_") || key === "IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH") {
+    if (key.startsWith("IPOLLOWORK_INSTALLER_") || key === "IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH") {
       delete env[key];
     }
   }
@@ -972,7 +972,7 @@ function sanitizedInstallerEnv(overrides = {}) {
 }
 
 function copyInstallerTo(directory) {
-  const installerPath = path.join(directory, "ipollowalk-installer");
+  const installerPath = path.join(directory, "ipollowork-installer");
   copyFileSync(INSTALLER_BIN, installerPath);
   chmodSync(installerPath, 0o755);
   return installerPath;
@@ -1029,7 +1029,7 @@ function findExtractedFile(rootDir, basename, ctx) {
 }
 
 function chooseInstallerRecord(records) {
-  const exact = records.find((record) => path.basename(record.relativePath) === "ipollowalk-installer");
+  const exact = records.find((record) => path.basename(record.relativePath) === "ipollowork-installer");
   if (exact) return exact;
   const likely = records.find((record) => path.basename(record.relativePath).toLowerCase().includes("installer"));
   return likely ?? records[0];

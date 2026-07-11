@@ -3,7 +3,7 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, Code2, ImagePlus, Link2, Loader2, Minus, MousePointer2, Move, Palette, Paintbrush, Plus, Save, SlidersHorizontal, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
-import type { iPolloWalkServerClient } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +31,7 @@ import {
 
 type DesignPanelProps = {
   sessionId: string;
-  client: iPolloWalkServerClient | null;
+  client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   targets: OpenTarget[];
   isRemoteWorkspace?: boolean;
@@ -430,7 +430,7 @@ export function DesignPanel({
             <Code2 className="mx-auto mb-3 size-8 text-muted-foreground" />
             <p className="text-sm font-medium">No local HTML artifacts yet</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Ask iPolloWalk to create an HTML file in this task, then open Design to edit it visually.
+              Ask iPolloWork to create an HTML file in this task, then open Design to edit it visually.
             </p>
           </div>
         </div>

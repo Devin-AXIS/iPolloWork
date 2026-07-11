@@ -14,11 +14,11 @@ type Served = {
 const HOST_TOKEN = "owt_env_host_token";
 const stops: Array<() => void | Promise<void>> = [];
 const dirs: string[] = [];
-const priorEnvStore = process.env.IPOLLOWALK_ENV_STORE;
-const priorTokenStore = process.env.IPOLLOWALK_TOKEN_STORE;
+const priorEnvStore = process.env.IPOLLOWORK_ENV_STORE;
+const priorTokenStore = process.env.IPOLLOWORK_TOKEN_STORE;
 const priorOpenAiApiKey = process.env.OPENAI_API_KEY;
-const prioriPolloWalkApiKey = process.env.IPOLLOWALK_API_KEY;
-const prioriPolloWalkInferenceBaseUrl = process.env.IPOLLOWALK_INFERENCE_BASE_URL;
+const prioriPolloWorkApiKey = process.env.IPOLLOWORK_API_KEY;
+const prioriPolloWorkInferenceBaseUrl = process.env.IPOLLOWORK_INFERENCE_BASE_URL;
 const nativeFetch = globalThis.fetch;
 
 function baseConfig(): ServerConfig {
@@ -50,16 +50,16 @@ async function boot() {
 }
 
 function hostAuth() {
-  return { "x-ipollowalk-host-token": HOST_TOKEN, "content-type": "application/json" };
+  return { "x-ipollowork-host-token": HOST_TOKEN, "content-type": "application/json" };
 }
 
 beforeEach(() => {
-  const dir = mkdtempSync(join(tmpdir(), "ipollowalk-env-routes-"));
+  const dir = mkdtempSync(join(tmpdir(), "ipollowork-env-routes-"));
   dirs.push(dir);
   // Redirect the shared env.json path into a throwaway dir so the test never
-  // touches the developer's real ~/.config/ipollowalk/env.json.
-  process.env.IPOLLOWALK_ENV_STORE = join(dir, "env.json");
-  process.env.IPOLLOWALK_TOKEN_STORE = join(dir, "tokens.json");
+  // touches the developer's real ~/.config/ipollowork/env.json.
+  process.env.IPOLLOWORK_ENV_STORE = join(dir, "env.json");
+  process.env.IPOLLOWORK_TOKEN_STORE = join(dir, "tokens.json");
 });
 
 afterEach(async () => {
@@ -70,29 +70,29 @@ afterEach(async () => {
     rmSync(dirs.pop()!, { recursive: true, force: true });
   }
   if (priorEnvStore === undefined) {
-    delete process.env.IPOLLOWALK_ENV_STORE;
+    delete process.env.IPOLLOWORK_ENV_STORE;
   } else {
-    process.env.IPOLLOWALK_ENV_STORE = priorEnvStore;
+    process.env.IPOLLOWORK_ENV_STORE = priorEnvStore;
   }
   if (priorTokenStore === undefined) {
-    delete process.env.IPOLLOWALK_TOKEN_STORE;
+    delete process.env.IPOLLOWORK_TOKEN_STORE;
   } else {
-    process.env.IPOLLOWALK_TOKEN_STORE = priorTokenStore;
+    process.env.IPOLLOWORK_TOKEN_STORE = priorTokenStore;
   }
   if (priorOpenAiApiKey === undefined) {
     delete process.env.OPENAI_API_KEY;
   } else {
     process.env.OPENAI_API_KEY = priorOpenAiApiKey;
   }
-  if (prioriPolloWalkApiKey === undefined) {
-    delete process.env.IPOLLOWALK_API_KEY;
+  if (prioriPolloWorkApiKey === undefined) {
+    delete process.env.IPOLLOWORK_API_KEY;
   } else {
-    process.env.IPOLLOWALK_API_KEY = prioriPolloWalkApiKey;
+    process.env.IPOLLOWORK_API_KEY = prioriPolloWorkApiKey;
   }
-  if (prioriPolloWalkInferenceBaseUrl === undefined) {
-    delete process.env.IPOLLOWALK_INFERENCE_BASE_URL;
+  if (prioriPolloWorkInferenceBaseUrl === undefined) {
+    delete process.env.IPOLLOWORK_INFERENCE_BASE_URL;
   } else {
-    process.env.IPOLLOWALK_INFERENCE_BASE_URL = prioriPolloWalkInferenceBaseUrl;
+    process.env.IPOLLOWORK_INFERENCE_BASE_URL = prioriPolloWorkInferenceBaseUrl;
   }
   globalThis.fetch = nativeFetch;
 });
@@ -235,7 +235,7 @@ describe("env routes", () => {
   });
 
   test("invalid env store returns 409 instead of overwriting on PUT", async () => {
-    writeFileSync(process.env.IPOLLOWALK_ENV_STORE!, "{ this is not json");
+    writeFileSync(process.env.IPOLLOWORK_ENV_STORE!, "{ this is not json");
     const { base } = await boot();
 
     const put = await fetch(`${base}/env`, {
@@ -289,13 +289,13 @@ describe("env routes", () => {
     const put = await fetch(`${base}/env`, {
       method: "PUT",
       headers: hostAuth(),
-      body: JSON.stringify({ key: "IPOLLOWALK_TOKEN", value: "x" }),
+      body: JSON.stringify({ key: "IPOLLOWORK_TOKEN", value: "x" }),
     });
     expect(put.status).toBe(400);
     const body = (await put.json()) as { code: string; message: string };
     expect(body.code).toBe("reserved_env_key");
-    expect(body.message).toBe("Environment variable name is reserved for iPolloWalk internals");
-    expect(body.message).not.toContain("IPOLLOWALK_TOKEN");
+    expect(body.message).toBe("Environment variable name is reserved for iPolloWork internals");
+    expect(body.message).not.toContain("IPOLLOWORK_TOKEN");
   });
 
   test("PUT with no entries returns 400", async () => {
@@ -367,7 +367,7 @@ describe("env routes", () => {
     });
   });
 
-  test("voice realtime session prefers iPolloWalk Models broker when configured", async () => {
+  test("voice realtime session prefers iPolloWork Models broker when configured", async () => {
     process.env.OPENAI_API_KEY = "sk-should-not-be-used";
     const { base } = await boot();
 
@@ -376,8 +376,8 @@ describe("env routes", () => {
       headers: hostAuth(),
       body: JSON.stringify({
         entries: [
-          { key: "IPOLLOWALK_API_KEY", value: "ow_inf_test" },
-          { key: "IPOLLOWALK_INFERENCE_BASE_URL", value: "https://inference.example.test" },
+          { key: "IPOLLOWORK_API_KEY", value: "ow_inf_test" },
+          { key: "IPOLLOWORK_INFERENCE_BASE_URL", value: "https://inference.example.test" },
         ],
       }),
     });
@@ -393,8 +393,8 @@ describe("env routes", () => {
           expiresAt: 456,
           model: "gpt-realtime-2",
           transcriptionModel: "gpt-4o-transcribe",
-          tools: ["ipollowalk_snapshot"],
-          source: "ipollowalk-models",
+          tools: ["ipollowork_snapshot"],
+          source: "ipollowork-models",
         }), {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -424,7 +424,7 @@ describe("env routes", () => {
       ok: true,
       clientSecret: "managed-rt-secret",
       expiresAt: 456,
-      source: "ipollowalk-models",
+      source: "ipollowork-models",
     });
   });
 
@@ -437,8 +437,8 @@ describe("env routes", () => {
       headers: hostAuth(),
       body: JSON.stringify({
         entries: [
-          { key: "IPOLLOWALK_API_KEY", value: "ow_inf_test" },
-          { key: "IPOLLOWALK_INFERENCE_BASE_URL", value: "https://inference.example.test" },
+          { key: "IPOLLOWORK_API_KEY", value: "ow_inf_test" },
+          { key: "IPOLLOWORK_INFERENCE_BASE_URL", value: "https://inference.example.test" },
         ],
       }),
     });
@@ -482,7 +482,7 @@ describe("env routes", () => {
   test("voice realtime session shows clear error when broker 503 and no local key", async () => {
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_REALTIME_API_KEY;
-    delete process.env.IPOLLOWALK_OPENAI_REALTIME_API_KEY;
+    delete process.env.IPOLLOWORK_OPENAI_REALTIME_API_KEY;
     const { base } = await boot();
 
     await fetch(`${base}/env`, {
@@ -490,8 +490,8 @@ describe("env routes", () => {
       headers: hostAuth(),
       body: JSON.stringify({
         entries: [
-          { key: "IPOLLOWALK_API_KEY", value: "ow_inf_test" },
-          { key: "IPOLLOWALK_INFERENCE_BASE_URL", value: "https://inference.example.test" },
+          { key: "IPOLLOWORK_API_KEY", value: "ow_inf_test" },
+          { key: "IPOLLOWORK_INFERENCE_BASE_URL", value: "https://inference.example.test" },
         ],
       }),
     });
@@ -521,7 +521,7 @@ describe("env routes", () => {
 
     expect(response.status).toBe(503);
     const body = (await response.json()) as { code: string; message: string };
-    expect(body.code).toBe("ipollowalk_models_voice_unavailable");
+    expect(body.code).toBe("ipollowork_models_voice_unavailable");
     expect(body.message).toContain("not fully configured");
   });
 
@@ -534,8 +534,8 @@ describe("env routes", () => {
       headers: hostAuth(),
       body: JSON.stringify({
         entries: [
-          { key: "IPOLLOWALK_API_KEY", value: "ow_inf_test" },
-          { key: "IPOLLOWALK_INFERENCE_BASE_URL", value: "https://inference.example.test" },
+          { key: "IPOLLOWORK_API_KEY", value: "ow_inf_test" },
+          { key: "IPOLLOWORK_INFERENCE_BASE_URL", value: "https://inference.example.test" },
         ],
       }),
     });
@@ -568,7 +568,7 @@ describe("env routes", () => {
 
     expect(response.status).toBe(429);
     const body = (await response.json()) as { code: string };
-    expect(body.code).toBe("ipollowalk_models_voice_failed");
+    expect(body.code).toBe("ipollowork_models_voice_failed");
   });
 
   test("values persist across server restart", async () => {

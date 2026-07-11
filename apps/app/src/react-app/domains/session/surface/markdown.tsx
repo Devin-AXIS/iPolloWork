@@ -83,7 +83,7 @@ const baseMarkedOptions = {
   silent: true,
   renderer: {
     html({ text }) {
-      return text.includes('data-ipollowalk-shiki="true"') ? text : "";
+      return text.includes('data-ipollowork-shiki="true"') ? text : "";
     },
     paragraph({ tokens }) {
       return `<p class="my-3 leading-relaxed">${this.parser.parseInline(tokens)}</p>`;
@@ -187,7 +187,7 @@ const highlightedMarkdownParser = new Marked<string, string>({
         ],
       });
     },
-    container: `<div data-ipollowalk-shiki="true" class="my-4 overflow-x-auto rounded-[18px] border border-dls-border/70 bg-gray-1/80 p-4 text-xs leading-6">%s</div>`,
+    container: `<div data-ipollowork-shiki="true" class="my-4 overflow-x-auto rounded-[18px] border border-dls-border/70 bg-gray-1/80 p-4 text-xs leading-6">%s</div>`,
   }),
 );
 

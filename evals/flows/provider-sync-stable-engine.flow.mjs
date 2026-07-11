@@ -10,11 +10,11 @@ const RELOAD_TEXT = "Reloading OpenCode config";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function denRequest(ctx, path, init = {}) {
-  const apiBase = ctx.env.IPOLLOWALK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
+  const apiBase = ctx.env.IPOLLOWORK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
-      authorization: `Bearer ${ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN.trim()}`,
+      authorization: `Bearer ${ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN.trim()}`,
       "content-type": "application/json",
       ...(init.headers ?? {}),
     },
@@ -78,8 +78,8 @@ async function chooseAcmeIfPickerVisible(ctx) {
 
 const workspaceConfigStateExpr = (workspaceId) => `(async () => {
   try {
-    const port = localStorage.getItem("ipollowalk.server.port");
-    const token = localStorage.getItem("ipollowalk.server.token");
+    const port = localStorage.getItem("ipollowork.server.port");
+    const token = localStorage.getItem("ipollowork.server.token");
     const workspaceId = ${JSON.stringify(workspaceId)};
     if (!port || !token || !workspaceId) {
       return JSON.stringify({ providers: [], runtimeProviders: [], error: "missing server port/token/workspace" });
@@ -92,7 +92,7 @@ const workspaceConfigStateExpr = (workspaceId) => `(async () => {
     }
     const config = await response.json();
     return JSON.stringify({
-      providers: Object.keys(config.ipollowalk?.cloudImports?.providers ?? {}),
+      providers: Object.keys(config.ipollowork?.cloudImports?.providers ?? {}),
       runtimeProviders: Object.keys(config.opencode?.provider ?? {}),
     });
   } catch (error) {
@@ -150,7 +150,7 @@ export default {
   id: "provider-sync-stable-engine",
   title: "Org cloud providers import once and the engine connection stays stable",
   kind: "user-facing",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN"],
   steps: [
     {
       name: "Frame 1",
@@ -159,7 +159,7 @@ export default {
           voiceover: vo[0],
           // "Alex starts on a clean workspace, signed out of the cloud — the composer is "
           action: async () => {
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
               timeoutMs: 60_000,
               label: "control API",
             });
@@ -184,17 +184,17 @@ export default {
       run: async (ctx) => {
         await ctx.prove("Desktop handoff sign-in lands on the org picker and Alex picks Acme Robotics", {
           voiceover: vo[1],
-          // "He signs in to iPolloWalk Cloud with a pasted sign-in code and lands on the or"
+          // "He signs in to iPolloWork Cloud with a pasted sign-in code and lands on the or"
           action: async () => {
             const payload = await denRequest(ctx, "/v1/auth/desktop-handoff", {
               method: "POST",
-              body: JSON.stringify({ desktopScheme: "ipollowalk" }),
+              body: JSON.stringify({ desktopScheme: "ipollowork" }),
             });
             ctx.assert(
-              typeof payload?.ipollowalkUrl === "string" && payload.ipollowalkUrl.length > 0,
-              "No ipollowalkUrl in handoff response.",
+              typeof payload?.ipolloworkUrl === "string" && payload.ipolloworkUrl.length > 0,
+              "No ipolloworkUrl in handoff response.",
             );
-            ctx.handoffUrl = payload.ipollowalkUrl;
+            ctx.handoffUrl = payload.ipolloworkUrl;
 
             await ctx.navigateHash("/settings/cloud-account");
             await ctx.waitFor(
@@ -213,7 +213,7 @@ export default {
               await ctx.fill("#den-signin-link", ctx.handoffUrl);
               await ctx.clickText("Finish sign-in", { timeoutMs: 30_000 });
               await ctx.waitFor(
-                "Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())",
+                "Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())",
                 { timeoutMs: 60_000, label: "persisted den auth token" },
               );
             }

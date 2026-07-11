@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          asset="ipollowalk-installer-mac-arm64.zip"
+          asset="ipollowork-installer-mac-arm64.zip"
           url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$asset"
 
           curl --fail --location --retry 5 --silent --show-error \
@@ -71,9 +71,9 @@ jobs:
           unzip -t "$RUNNER_TEMP/$asset"
           unzip -q "$RUNNER_TEMP/$asset" -d "$RUNNER_TEMP/installer"
 
-          app="$RUNNER_TEMP/installer/iPolloWalk Installer.app"
+          app="$RUNNER_TEMP/installer/iPolloWork Installer.app"
           test -d "$app"
-          test ! -e "$RUNNER_TEMP/installer/ipollowalk-installer.json"
+          test ! -e "$RUNNER_TEMP/installer/ipollowork-installer.json"
           codesign --verify --deep --strict --verbose=2 "$app"
           spctl --assess --type execute --verbose=2 "$app"
           xcrun stapler validate "$app"

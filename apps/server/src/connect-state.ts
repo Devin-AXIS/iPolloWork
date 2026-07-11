@@ -11,7 +11,7 @@ import type { ServerConfig } from "./types.js";
 import { ensureDir } from "./utils.js";
 
 const CONNECT_STATE_FILE = "connect-state.json";
-const IPOLLOWALK_CLOUD_MCP_NAME = "ipollowalk-cloud";
+const IPOLLOWORK_CLOUD_MCP_NAME = "ipollowork-cloud";
 
 type PersistedConnectState = {
   connectEnabled: boolean;
@@ -46,7 +46,7 @@ function normalizeConnectState(value: unknown): PersistedConnectState {
 
 export function googleWorkspaceConnectGuidance(cloudMcpPresent: boolean): string {
   return cloudMcpPresent
-    ? "Google Workspace is available through the iPolloWalk Cloud connection: call search_capabilities to find the capability, then execute_capability to run it. Do not tell the user to reconfigure extensions; the relevant settings surface is Settings > Connect."
+    ? "Google Workspace is available through the iPolloWork Cloud connection: call search_capabilities to find the capability, then execute_capability to run it. Do not tell the user to reconfigure extensions; the relevant settings surface is Settings > Connect."
     : "Google Workspace is not connected on this device. Direct the user to Settings > Connect to connect their account. Do not direct them to Settings > Extensions.";
 }
 
@@ -73,7 +73,7 @@ export async function getConnectSnapshot(config: ServerConfig): Promise<ConnectS
 
   for (const workspace of config.workspaces) {
     const runtimeConfig = await readRuntimeOpencodeConfig(config, workspace.id);
-    if (Object.hasOwn(runtimeMcpMap(runtimeConfig), IPOLLOWALK_CLOUD_MCP_NAME)) {
+    if (Object.hasOwn(runtimeMcpMap(runtimeConfig), IPOLLOWORK_CLOUD_MCP_NAME)) {
       cloudMcpPresent = true;
       break;
     }

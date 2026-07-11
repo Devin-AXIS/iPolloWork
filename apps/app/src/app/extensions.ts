@@ -2,22 +2,22 @@
 // types.ts re-exports it for the rest of the app.
 export type ReloadReason = "plugins" | "skills" | "mcp" | "config" | "agents" | "commands";
 
-export type iPolloWalkExtensionSourceFormat =
-  | "ipollowalk-builtin"
-  | "ipollowalk-extension-manifest"
+export type iPolloWorkExtensionSourceFormat =
+  | "ipollowork-builtin"
+  | "ipollowork-extension-manifest"
   | "claude-plugin"
   | "opencode-plugin"
   | "mcp-directory"
   | "manual";
 
-export type iPolloWalkExtensionSource = {
-  format: iPolloWalkExtensionSourceFormat;
+export type iPolloWorkExtensionSource = {
+  format: iPolloWorkExtensionSourceFormat;
   trusted: boolean;
   origin?: "builtin" | "den" | "workspace" | "local";
   reference?: string;
 };
 
-export type iPolloWalkExtensionResourceType =
+export type iPolloWorkExtensionResourceType =
   | "skill"
   | "agent"
   | "command"
@@ -32,8 +32,8 @@ export type iPolloWalkExtensionResourceType =
   | "local-service"
   | "native-binary";
 
-export type iPolloWalkExtensionResource = {
-  type: iPolloWalkExtensionResourceType;
+export type iPolloWorkExtensionResource = {
+  type: iPolloWorkExtensionResourceType;
   id: string;
   label?: string;
   description?: string;
@@ -43,11 +43,11 @@ export type iPolloWalkExtensionResource = {
   packageName?: string;
   providerId?: string;
   mcpServerName?: string;
-  localCommandRef?: "ipollowalk.computerUseMcp" | "ipollowalk.uiMcp";
+  localCommandRef?: "ipollowork.computerUseMcp" | "ipollowork.uiMcp";
   required?: boolean;
 };
 
-export type iPolloWalkExtensionContributionType =
+export type iPolloWorkExtensionContributionType =
   | "settings-panel"
   | "setup-instructions"
   | "composer-prompt"
@@ -58,8 +58,8 @@ export type iPolloWalkExtensionContributionType =
   | "native-capability"
   | "test-action";
 
-export type iPolloWalkExtensionContribution = {
-  type: iPolloWalkExtensionContributionType;
+export type iPolloWorkExtensionContribution = {
+  type: iPolloWorkExtensionContributionType;
   ref?: string;
   label?: string;
   description?: string;
@@ -67,7 +67,7 @@ export type iPolloWalkExtensionContribution = {
   location?: "settings-detail" | "composer" | "session-right-pane" | "session-rail" | "server" | "native";
 };
 
-export type iPolloWalkExtensionSetup = {
+export type iPolloWorkExtensionSetup = {
   instructions?: string;
   primaryCta?: string;
   secondaryCta?: string;
@@ -75,7 +75,7 @@ export type iPolloWalkExtensionSetup = {
   testActionRef?: string;
 };
 
-export type iPolloWalkExtensionLifecycle = {
+export type iPolloWorkExtensionLifecycle = {
   reload?: ReloadReason[];
   detection?: string[];
 };
@@ -106,13 +106,13 @@ export type EnablementResult = {
   met: boolean;
 };
 
-export type iPolloWalkExtensionManifest = {
+export type iPolloWorkExtensionManifest = {
   schemaVersion: 1;
   id: string;
   name: string;
   description: string;
   preview?: boolean;
-  source: iPolloWalkExtensionSource;
+  source: iPolloWorkExtensionSource;
   icon?: {
     src?: string;
     simpleIconSlug?: string;
@@ -120,10 +120,10 @@ export type iPolloWalkExtensionManifest = {
   composer?: {
     prompt: string;
   };
-  setup?: iPolloWalkExtensionSetup;
-  resources: iPolloWalkExtensionResource[];
-  contributions?: iPolloWalkExtensionContribution[];
-  lifecycle?: iPolloWalkExtensionLifecycle;
+  setup?: iPolloWorkExtensionSetup;
+  resources: iPolloWorkExtensionResource[];
+  contributions?: iPolloWorkExtensionContribution[];
+  lifecycle?: iPolloWorkExtensionLifecycle;
   /** Declarative conditions that must ALL be true for the extension to be "active". */
   enablement?: EnablementCondition[];
   defaultEnabled?: boolean;
@@ -132,34 +132,34 @@ export type iPolloWalkExtensionManifest = {
 };
 
 export function extensionContribution(
-  manifest: iPolloWalkExtensionManifest | undefined,
-  type: iPolloWalkExtensionContributionType,
-): iPolloWalkExtensionContribution | undefined {
+  manifest: iPolloWorkExtensionManifest | undefined,
+  type: iPolloWorkExtensionContributionType,
+): iPolloWorkExtensionContribution | undefined {
   return manifest?.contributions?.find((contribution) => contribution.type === type);
 }
 
 export function extensionResource(
-  manifest: iPolloWalkExtensionManifest | undefined,
-  type: iPolloWalkExtensionResourceType,
-): iPolloWalkExtensionResource | undefined {
+  manifest: iPolloWorkExtensionManifest | undefined,
+  type: iPolloWorkExtensionResourceType,
+): iPolloWorkExtensionResource | undefined {
   return manifest?.resources.find((resource) => resource.type === type);
 }
 
-export function isTrustedBuiltInExtension(manifest: iPolloWalkExtensionManifest | undefined): boolean {
+export function isTrustedBuiltInExtension(manifest: iPolloWorkExtensionManifest | undefined): boolean {
   return manifest?.source.origin === "builtin" && manifest.source.trusted;
 }
 
-export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifest[] = [
+export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifest[] = [
   {
     schemaVersion: 1,
-    id: "ipollowalk-browser",
-    name: "iPolloWalk Browser",
-    description: "Automate the built-in browser panel that stays visible inside iPolloWalk.",
-    source: { format: "ipollowalk-builtin", origin: "builtin", trusted: true },
-    icon: { src: "/ipollowalk-mark.svg" },
-    composer: { prompt: "Use the iPolloWalk Browser extension to " },
+    id: "ipollowork-browser",
+    name: "iPolloWork Browser",
+    description: "Automate the built-in browser panel that stays visible inside iPolloWork.",
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
+    icon: { src: "/ipollowork-mark.svg" },
+    composer: { prompt: "Use the iPolloWork Browser extension to " },
     setup: {
-      instructions: "iPolloWalk Browser is ready by default in desktop workspaces.",
+      instructions: "iPolloWork Browser is ready by default in desktop workspaces.",
     },
     resources: [
       {
@@ -170,12 +170,12 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
       },
     ],
     contributions: [
-      { type: "settings-panel", ref: "ipollowalk.browser.settings", location: "settings-detail" },
-      { type: "session-side-panel", ref: "ipollowalk.browser.panel", location: "session-right-pane" },
-      { type: "composer-prompt", prompt: "Use the iPolloWalk Browser extension to ", location: "composer" },
+      { type: "settings-panel", ref: "ipollowork.browser.settings", location: "settings-detail" },
+      { type: "session-side-panel", ref: "ipollowork.browser.panel", location: "session-right-pane" },
+      { type: "composer-prompt", prompt: "Use the iPolloWork Browser extension to ", location: "composer" },
     ],
     enablement: [
-      { type: "toggle-enabled", ref: "ipollowalk-browser", label: "Enabled" },
+      { type: "toggle-enabled", ref: "ipollowork-browser", label: "Enabled" },
     ],
     lifecycle: { reload: ["plugins", "agents"], detection: ["plugin:opencode-chrome-devtools"] },
     defaultEnabled: true,
@@ -186,14 +186,14 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
     name: "Computer Use",
     description: "Mac only: control Mac apps through semantic accessibility refs, screenshots, background-safe clicks, keyboard input, and strict mode.",
     preview: true,
-    source: { format: "ipollowalk-builtin", origin: "builtin", trusted: true },
-    icon: { src: "/ipollowalk-mark.svg" },
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
+    icon: { src: "/ipollowork-mark.svg" },
     composer: { prompt: "Use Computer Use to " },
     setup: {
       instructions: "Computer Use is Mac only. It runs as a local MCP server backed by the macOS accessibility runtime. Grant Accessibility and Screen Recording permissions when macOS asks, then connect the MCP server in this workspace.",
       primaryCta: "Connect Computer Use MCP",
       secondaryCta: "Check macOS permissions",
-      testActionRef: "ipollowalk.computerUse.healthCheck",
+      testActionRef: "ipollowork.computerUse.healthCheck",
     },
     resources: [
       {
@@ -201,22 +201,22 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
         id: "computer-use-mcp",
         label: "Computer Use MCP",
         mcpServerName: "computer-use",
-        command: ["npx", "-y", "@ipollowalk/handsfree", "mcp"],
-        localCommandRef: "ipollowalk.computerUseMcp",
+        command: ["npx", "-y", "@ipollowork/handsfree", "mcp"],
+        localCommandRef: "ipollowork.computerUseMcp",
         required: true,
       },
       {
         type: "native-binary",
         id: "computer-use-native",
         label: "macOS accessibility runtime",
-        packageName: "@ipollowalk/handsfree",
+        packageName: "@ipollowork/handsfree",
         required: true,
       },
     ],
     contributions: [
-      { type: "setup-instructions", ref: "ipollowalk.computerUse.setup", location: "settings-detail" },
-      { type: "native-capability", ref: "ipollowalk.computerUse.axPermissions", label: "Accessibility and Screen Recording" },
-      { type: "test-action", ref: "ipollowalk.computerUse.healthCheck", label: "Verify Computer Use MCP" },
+      { type: "setup-instructions", ref: "ipollowork.computerUse.setup", location: "settings-detail" },
+      { type: "native-capability", ref: "ipollowork.computerUse.axPermissions", label: "Accessibility and Screen Recording" },
+      { type: "test-action", ref: "ipollowork.computerUse.healthCheck", label: "Verify Computer Use MCP" },
       { type: "composer-prompt", prompt: "Use Computer Use to ", location: "composer" },
     ],
     enablement: [
@@ -232,15 +232,15 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
     id: "openai-image-gen",
     name: "OpenAI Image Gen",
     description: "Generate image artifacts with gpt-image-2.",
-    source: { format: "ipollowalk-builtin", origin: "builtin", trusted: true },
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
     icon: { src: "/ext-openai.svg" },
     composer: { prompt: "Use the OpenAI Image Gen extension to " },
     setup: {
-      instructions: "Add an OpenAI API key, then agents can generate image artifacts through iPolloWalk extension actions.",
+      instructions: "Add an OpenAI API key, then agents can generate image artifacts through iPolloWork extension actions.",
       primaryCta: "Enable image generation",
       secondaryCta: "Generate test image",
       requiredEnv: ["OPENAI_API_KEY"],
-      testActionRef: "ipollowalk.imageGen.testGenerate",
+      testActionRef: "ipollowork.imageGen.testGenerate",
     },
     resources: [
       { type: "secret", id: "openai-api-key", envKey: "OPENAI_API_KEY", required: true },
@@ -248,8 +248,8 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
       { type: "tool", id: "openai-image-generate", label: "Image generation", required: true },
     ],
     contributions: [
-      { type: "settings-panel", ref: "ipollowalk.imageGen.settings", location: "settings-detail" },
-      { type: "test-action", ref: "ipollowalk.imageGen.testGenerate", label: "Generate test image" },
+      { type: "settings-panel", ref: "ipollowork.imageGen.settings", location: "settings-detail" },
+      { type: "test-action", ref: "ipollowork.imageGen.testGenerate", label: "Generate test image" },
       { type: "composer-prompt", prompt: "Use the OpenAI Image Gen extension to ", location: "composer" },
     ],
     enablement: [
@@ -259,36 +259,36 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
   },
   {
     schemaVersion: 1,
-    id: "ipollowalk-voice",
+    id: "ipollowork-voice",
     name: "Voice Mode",
-    description: "Talk to iPolloWalk through a Realtime voice panel that drives the same semantic UI controls as iPolloWalk UI MCP.",
+    description: "Talk to iPolloWork through a Realtime voice panel that drives the same semantic UI controls as iPolloWork UI MCP.",
     preview: true,
-    source: { format: "ipollowalk-builtin", origin: "builtin", trusted: true },
-    icon: { src: "/ipollowalk-mark.svg" },
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
+    icon: { src: "/ipollowork-mark.svg" },
     composer: { prompt: "Use Voice Mode to " },
     setup: {
-      instructions: "Voice Mode uses OpenAI Realtime. Save an OpenAI API key in iPolloWalk env vars, then open the session rail panel and speak or send a typed voice command.",
+      instructions: "Voice Mode uses OpenAI Realtime. Save an OpenAI API key in iPolloWork env vars, then open the session rail panel and speak or send a typed voice command.",
       primaryCta: "Save OpenAI key",
       secondaryCta: "Test Realtime",
       requiredEnv: ["OPENAI_REALTIME_API_KEY", "OPENAI_API_KEY"],
-      testActionRef: "ipollowalk.voice.testRealtime",
+      testActionRef: "ipollowork.voice.testRealtime",
     },
     resources: [
       { type: "secret", id: "openai-realtime-api-key", envKey: "OPENAI_REALTIME_API_KEY", required: false },
       { type: "secret", id: "openai-api-key", envKey: "OPENAI_API_KEY", required: true },
-      { type: "local-service", id: "ipollowalk-voice-realtime-session", label: "Realtime client-secret minting", required: true },
+      { type: "local-service", id: "ipollowork-voice-realtime-session", label: "Realtime client-secret minting", required: true },
     ],
     contributions: [
-      { type: "settings-panel", ref: "ipollowalk.voice.settings", location: "settings-detail" },
-      { type: "session-side-panel", ref: "ipollowalk.voice.panel", location: "session-right-pane" },
-      { type: "session-rail-item", ref: "ipollowalk.voice.rail", label: "Voice Mode", location: "session-rail" },
+      { type: "settings-panel", ref: "ipollowork.voice.settings", location: "settings-detail" },
+      { type: "session-side-panel", ref: "ipollowork.voice.panel", location: "session-right-pane" },
+      { type: "session-rail-item", ref: "ipollowork.voice.rail", label: "Voice Mode", location: "session-rail" },
       { type: "server-route", ref: "POST /voice/realtime/session", location: "server" },
-      { type: "control-actions", ref: "ipollowalk.voice.controlActions" },
-      { type: "test-action", ref: "ipollowalk.voice.testRealtime", label: "Test Realtime" },
+      { type: "control-actions", ref: "ipollowork.voice.controlActions" },
+      { type: "test-action", ref: "ipollowork.voice.testRealtime", label: "Test Realtime" },
       { type: "composer-prompt", prompt: "Use Voice Mode to ", location: "composer" },
     ],
     enablement: [
-      { type: "toggle-enabled", ref: "ipollowalk-voice", label: "Enabled" },
+      { type: "toggle-enabled", ref: "ipollowork-voice", label: "Enabled" },
       { type: "env-set", ref: "OPENAI_API_KEY", label: "OpenAI API key" },
     ],
     lifecycle: { reload: ["config"], detection: ["env:OPENAI_REALTIME_API_KEY", "env:OPENAI_API_KEY"] },
@@ -297,16 +297,16 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
     schemaVersion: 1,
     id: "google-workspace",
     name: "Google Workspace",
-    description: "Let iPolloWalk help with meetings, selected Drive files, and Gmail drafts.",
+    description: "Let iPolloWork help with meetings, selected Drive files, and Gmail drafts.",
     preview: true,
-    source: { format: "ipollowalk-builtin", origin: "builtin", trusted: true },
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
     icon: { simpleIconSlug: "google" },
     composer: { prompt: "Use Google Workspace to " },
     setup: {
-      instructions: "Connect your Google account to use Calendar, Drive, and Gmail drafts in iPolloWalk.",
+      instructions: "Connect your Google account to use Calendar, Drive, and Gmail drafts in iPolloWork.",
       primaryCta: "Connect Google Workspace",
       secondaryCta: "Test connection",
-      testActionRef: "ipollowalk.googleWorkspace.testConnection",
+      testActionRef: "ipollowork.googleWorkspace.testConnection",
     },
     resources: [
       { type: "provider", id: "google-oauth", label: "Google account", providerId: "google-workspace", required: true },
@@ -320,8 +320,8 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
       { type: "tool", id: "google-chat", label: "Google Chat (opt-in)", required: false },
     ],
     contributions: [
-      { type: "settings-panel", ref: "ipollowalk.googleWorkspace.settings", location: "settings-detail" },
-      { type: "test-action", ref: "ipollowalk.googleWorkspace.testConnection", label: "Test Google Workspace" },
+      { type: "settings-panel", ref: "ipollowork.googleWorkspace.settings", location: "settings-detail" },
+      { type: "test-action", ref: "ipollowork.googleWorkspace.testConnection", label: "Test Google Workspace" },
       { type: "composer-prompt", prompt: "Use Google Workspace to ", location: "composer" },
     ],
     lifecycle: { reload: ["config"], detection: ["provider:google-workspace"] },
@@ -331,7 +331,7 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
     id: "ollama",
     name: "Ollama",
     description: "Local model provider at http://localhost:11434.",
-    source: { format: "ipollowalk-builtin", origin: "builtin", trusted: true },
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
     icon: { src: "/ext-ollama.svg" },
     composer: { prompt: "Use the Ollama extension to " },
     setup: {
@@ -344,8 +344,8 @@ export const BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS: iPolloWalkExtensionManifes
       { type: "provider", id: "ollama", providerId: "ollama", packageName: "@ai-sdk/openai-compatible", required: true },
     ],
     contributions: [
-      { type: "settings-panel", ref: "ipollowalk.ollama.settings", location: "settings-detail" },
-      { type: "test-action", ref: "ipollowalk.ollama.listModels", label: "Check local models" },
+      { type: "settings-panel", ref: "ipollowork.ollama.settings", location: "settings-detail" },
+      { type: "test-action", ref: "ipollowork.ollama.listModels", label: "Check local models" },
       { type: "composer-prompt", prompt: "Use the Ollama extension to ", location: "composer" },
     ],
     enablement: [

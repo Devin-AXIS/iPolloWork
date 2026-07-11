@@ -1,24 +1,24 @@
 **Design QA**
 
-- Source visual truth: `/tmp/ipollowalk-open-design-review/03-ipollowalk-current-layout.png` (existing iPolloWalk shell) and `/tmp/ipollowalk-open-design-review/01-open-design-home.png` (Open Design direct-manipulation reference).
-- Implementation screenshot: `/Users/devin/Documents/opw/_worktrees/ipollowalk-design-html-editor/evals/results/2026-07-11T08-20-04-389Z/design-html-editor-06-advanced-properties-modern.png`.
-- Saved-state screenshot: `/Users/devin/Documents/opw/_worktrees/ipollowalk-design-html-editor/evals/results/2026-07-11T08-20-04-389Z/design-html-editor-07-saved-and-reopened.png`.
+- Source visual truth: `/tmp/ipollowork-open-design-review/03-ipollowork-current-layout.png` (existing iPolloWork shell) and `/tmp/ipollowork-open-design-review/01-open-design-home.png` (Open Design direct-manipulation reference).
+- Implementation screenshot: `/Users/devin/Documents/opw/_worktrees/ipollowork-design-html-editor/evals/results/2026-07-11T08-20-04-389Z/design-html-editor-06-advanced-properties-modern.png`.
+- Saved-state screenshot: `/Users/devin/Documents/opw/_worktrees/ipollowork-design-html-editor/evals/results/2026-07-11T08-20-04-389Z/design-html-editor-07-saved-and-reopened.png`.
 - Viewport: 2048 x 1280 Electron desktop capture.
 - State: local HTML selected, visual edit enabled, heading selected, compact toolbar and modern properties panel visible; saved state also checked after close and reopen.
 
 **Findings**
 
 - No actionable P0, P1, or P2 differences remain.
-- Typography: the new panel reuses iPolloWalk's existing font stack, sizes, weights, and muted-label hierarchy. Preview typography comes from the edited HTML rather than being restyled by iPolloWalk, which is intentional.
-- Spacing and layout: the right rail, task header, transcript, composer, and footer retain the existing iPolloWalk rhythm. Design uses the same panel border, toolbar height, compact controls, radii, and inspector density as the surrounding product.
+- Typography: the new panel reuses iPolloWork's existing font stack, sizes, weights, and muted-label hierarchy. Preview typography comes from the edited HTML rather than being restyled by iPolloWork, which is intentional.
+- Spacing and layout: the right rail, task header, transcript, composer, and footer retain the existing iPolloWork rhythm. Design uses the same panel border, toolbar height, compact controls, radii, and inspector density as the surrounding product.
 - Colors and tokens: shell controls use existing semantic background, border, foreground, muted, primary, and destructive tokens. The purple preview colors belong to the sample HTML and are isolated inside the preview.
-- Image quality and assets: no target imagery was replaced or approximated. Existing iPolloWalk icons remain from the product's icon library; the HTML preview renders its own authored content.
+- Image quality and assets: no target imagery was replaced or approximated. Existing iPolloWork icons remain from the product's icon library; the HTML preview renders its own authored content.
 - Copy and content: `Design`, `Local HTML only`, `Edit page`, and the empty-state guidance clearly establish the local-file boundary and editing mode.
 - Accessibility and behavior: interactive controls have accessible labels, the selected element receives a visible outline, save/undo disabled states are visible, and the inspector remains scrollable. The iframe is sandboxed and does not receive same-origin access. Uploaded images are resized and compressed before embedding so save/reopen remains reliable.
 
 **Full-view comparison evidence**
 
-The combined comparison shows that the implementation preserves the existing iPolloWalk shell and adds a dedicated Design panel in the established right-side surface. It borrows Open Design's direct-selection idea without copying its full product chrome or replacing iPolloWalk's browser/task layout.
+The combined comparison shows that the implementation preserves the existing iPolloWork shell and adds a dedicated Design panel in the established right-side surface. It borrows Open Design's direct-selection idea without copying its full product chrome or replacing iPolloWork's browser/task layout.
 
 **Focused region comparison evidence**
 
@@ -44,9 +44,9 @@ The Electron flow completed without an app error state or failed Design request.
 
 **Implementation Checklist**
 
-- [x] Preserve the iPolloWalk shell and right rail.
+- [x] Preserve the iPolloWork shell and right rail.
 - [x] Keep Browser separate from Design.
-- [x] Use existing iPolloWalk controls and design tokens.
+- [x] Use existing iPolloWork controls and design tokens.
 - [x] Provide visible selection, direct text editing, quick font size/color, image replacement, modern properties, undo, save, and saved-state feedback.
 - [x] Keep the preview sandboxed and local-workspace-only.
 

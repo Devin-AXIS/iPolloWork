@@ -7,7 +7,7 @@ const vo = await loadVoiceoverParagraphs(FLOW_ID);
 const execFileAsync = promisify(execFile);
 
 const DEMO_EMAIL = "alex@acme.test";
-const DEMO_PASSWORD = "iPolloWalkDemo123!";
+const DEMO_PASSWORD = "iPolloWorkDemo123!";
 const SIGN_IN_ROUTE = "/";
 const MEMBERS_ROUTE = "/dashboard/members";
 const COPY_INSTALL_LINK_SELECTOR = '[data-testid="copy-install-link"]';
@@ -18,11 +18,11 @@ const state = {
 };
 
 function routeUrl(ctx, path) {
-  return new URL(path, ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL).toString();
+  return new URL(path, ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL).toString();
 }
 
 function mysqlContainer(ctx) {
-  return ctx.env.IPOLLOWALK_EVAL_DEN_MYSQL_CONTAINER || "ipollowalk-web-local-mysql";
+  return ctx.env.IPOLLOWORK_EVAL_DEN_MYSQL_CONTAINER || "ipollowork-web-local-mysql";
 }
 
 function recordAssertion(ctx, assertion, passed, actual) {
@@ -42,7 +42,7 @@ async function runMysql(ctx, sql) {
     "mysql",
     "-uroot",
     "-ppassword",
-    "ipollowalk_den",
+    "ipollowork_den",
     "-e",
     sql,
   ]);
@@ -76,7 +76,7 @@ async function grantClipboardPermissions(ctx) {
     return;
   }
 
-  const origin = new URL(ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL).origin;
+  const origin = new URL(ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL).origin;
   await ctx.client.send("Browser.grantPermissions", {
     origin,
     permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
@@ -91,7 +91,7 @@ async function denyClipboardPermissions(ctx) {
     return;
   }
 
-  const origin = new URL(ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL).origin;
+  const origin = new URL(ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL).origin;
   const permissions = [
     { name: "clipboard-write", allowWithoutSanitization: false },
     { name: "clipboard-read" },
@@ -256,7 +256,7 @@ export default {
   kind: "user-facing",
   spec: "evals/README.md",
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_WEB_URL", "IPOLLOWALK_EVAL_DEN_MYSQL_CONTAINER"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_WEB_URL", "IPOLLOWORK_EVAL_DEN_MYSQL_CONTAINER"],
   steps: [
     {
       name: "Signing in and staging a stale session",

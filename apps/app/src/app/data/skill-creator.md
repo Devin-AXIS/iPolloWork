@@ -11,11 +11,11 @@ This skill is a template + checklist for creating skills in a workspace.
 
 A skill is a folder under `.opencode/skills/<skill-name>/` or `.claude/skills/<skill-name>/` anchored by `SKILL.md`.
 
-## iPolloWalk behavior
+## iPolloWork behavior
 
-- In iPolloWalk, prefer creating the skill at `.opencode/skills/<skill-name>/SKILL.md`.
+- In iPolloWork, prefer creating the skill at `.opencode/skills/<skill-name>/SKILL.md`.
 - Use a file mutation tool (`write`, `edit`, or `apply_patch`) on the real skill path instead of pasting the whole skill into chat.
-- Writing the skill file lets iPolloWalk show the reload banner above the conversation so the user can activate the new skill immediately.
+- Writing the skill file lets iPolloWork show the reload banner above the conversation so the user can activate the new skill immediately.
 
 ## Design goals
 
@@ -75,4 +75,4 @@ description: |
 3. Include “Setup” steps if the skill needs local tooling.
 4. Add examples: at least 2 realistic user prompts.
 5. Keep it safe: avoid destructive defaults; ask for confirmation.
-6. In iPolloWalk, finish by writing the final `SKILL.md` file to `.opencode/skills/<skill-name>/SKILL.md` so the reload banner can appear.
+6. In iPolloWork, finish by writing the final `SKILL.md` file to `.opencode/skills/<skill-name>/SKILL.md` so the reload banner can appear.

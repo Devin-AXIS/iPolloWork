@@ -31,21 +31,21 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 const vo = await loadVoiceoverParagraphs("windows-brand-icon-real-taskbar");
 
 function sandboxId(ctx) {
-  return (ctx.env.IPOLLOWALK_EVAL_DAYTONA_SANDBOX_ID || ctx.env.IPOLLOWALK_EVAL_DAYTONA_SANDBOX).trim();
+  return (ctx.env.IPOLLOWORK_EVAL_DAYTONA_SANDBOX_ID || ctx.env.IPOLLOWORK_EVAL_DAYTONA_SANDBOX).trim();
 }
 
 function testIconUrl(ctx) {
-  return ctx.env.IPOLLOWALK_EVAL_BRAND_ICON_URL.trim();
+  return ctx.env.IPOLLOWORK_EVAL_BRAND_ICON_URL.trim();
 }
 
 async function getBrandIconState(ctx) {
-  return ctx.eval("window.__IPOLLOWALK_ELECTRON__?.brandIcon?.getState?.()", { awaitPromise: true });
+  return ctx.eval("window.__IPOLLOWORK_ELECTRON__?.brandIcon?.getState?.()", { awaitPromise: true });
 }
 
 async function closeAdminPanel(ctx) {
   await ctx.eval(`(async () => {
-    await window.__IPOLLOWALK_ELECTRON__?.browser?.closeAllTabs?.();
-    await window.__IPOLLOWALK_ELECTRON__?.browser?.hide?.();
+    await window.__IPOLLOWORK_ELECTRON__?.browser?.closeAllTabs?.();
+    await window.__IPOLLOWORK_ELECTRON__?.browser?.hide?.();
     return true;
   })()`, { awaitPromise: true });
   await ensureWorkspaceReady(ctx);
@@ -78,7 +78,7 @@ async function windowsExec(ctx, label, command) {
 
 async function assertWindowsBrandShortcut(ctx, expected) {
   const result = await windowsExec(ctx, "check organization shortcut", `
-$path = 'C:\\Users\\Administrator\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\iPolloWalk.lnk'
+$path = 'C:\\Users\\Administrator\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\iPolloWork.lnk'
 if (Test-Path -LiteralPath $path) { Write-Output 'present' } else { Write-Output 'absent' }
 `);
   const actual = result.stdout.match(/(?:^|\r?\n)(present|absent)(?:\r?\n|$)/)?.[1] ?? result.stdout.trim();
@@ -118,21 +118,21 @@ async function showAltTabSwitcher(ctx) {
   await sleep(1_200);
 }
 
-async function assertiPolloWalkWindow(ctx) {
+async function assertiPolloWorkWindow(ctx) {
   const result = await daytonaComputerUseWindows(sandboxId(ctx));
   const windows = Array.isArray(result?.windows) ? result.windows : [];
-  const ipollowalk = windows.find((entry) => /ipollowalk/i.test(entry?.title ?? ""));
-  ctx.assert(Boolean(ipollowalk), `Daytona Computer Use did not find an iPolloWalk window: ${JSON.stringify(windows)}`);
+  const ipollowork = windows.find((entry) => /ipollowork/i.test(entry?.title ?? ""));
+  ctx.assert(Boolean(ipollowork), `Daytona Computer Use did not find an iPolloWork window: ${JSON.stringify(windows)}`);
   ctx.recordEvidence({
     type: "assertion",
     status: "passed",
-    assertion: "Daytona Computer Use sees the real iPolloWalk window in the interactive Windows session",
-    actual: ipollowalk?.title,
+    assertion: "Daytona Computer Use sees the real iPolloWork window in the interactive Windows session",
+    actual: ipollowork?.title,
   });
 }
 
 async function assertWindowsRuntime(ctx) {
-  const info = await ctx.eval("window.__IPOLLOWALK_ELECTRON__?.system?.getArchitectureInfo?.()", { awaitPromise: true });
+  const info = await ctx.eval("window.__IPOLLOWORK_ELECTRON__?.system?.getArchitectureInfo?.()", { awaitPromise: true });
   ctx.assert(info?.platform === "windows", `Expected a Windows Electron build, got ${JSON.stringify(info)}`);
   ctx.recordEvidence({
     type: "assertion",
@@ -158,11 +158,11 @@ export default {
   preserveTheme: true,
   requiredEnv: [
     "DAYTONA_API_KEY",
-    "IPOLLOWALK_EVAL_BRAND_ICON_URL",
-    "IPOLLOWALK_EVAL_DAYTONA_SANDBOX",
-    "IPOLLOWALK_EVAL_DEN_API_URL",
-    "IPOLLOWALK_EVAL_DEN_TOKEN",
-    "IPOLLOWALK_EVAL_DEN_WEB_URL",
+    "IPOLLOWORK_EVAL_BRAND_ICON_URL",
+    "IPOLLOWORK_EVAL_DAYTONA_SANDBOX",
+    "IPOLLOWORK_EVAL_DEN_API_URL",
+    "IPOLLOWORK_EVAL_DEN_TOKEN",
+    "IPOLLOWORK_EVAL_DEN_WEB_URL",
   ],
   steps: [
     {
@@ -170,9 +170,9 @@ export default {
       run: async (ctx) => {
         await daytonaComputerUseStart(sandboxId(ctx));
         await ensureRendererMounted(ctx);
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 30_000,
-          label: "window.__ipollowalkControl",
+          label: "window.__ipolloworkControl",
         });
         await assertWindowsRuntime(ctx);
         await assertSignedIntoDen(ctx);
@@ -197,10 +197,10 @@ export default {
     {
       name: "Frame 1",
       run: async (ctx) => {
-        await ctx.prove("The stock iPolloWalk icon is visible in the real Windows taskbar", {
+        await ctx.prove("The stock iPolloWork icon is visible in the real Windows taskbar", {
           voiceover: vo[0],
           action: async () => {
-            await assertiPolloWalkWindow(ctx);
+            await assertiPolloWorkWindow(ctx);
           },
           assert: async () => {
             const state = await getBrandIconState(ctx);
@@ -266,7 +266,7 @@ export default {
             );
             ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "Windows setIcon and setAppDetails both completed for the Den-served icon", actual: JSON.stringify(state) });
             await assertWindowsBrandShortcut(ctx, "present");
-            await assertiPolloWalkWindow(ctx);
+            await assertiPolloWorkWindow(ctx);
           },
           screenshot: computerUseScreenshot("company-icon-taskbar-and-alt-tab", { requireText: ["Search sessions"] }),
         });
@@ -282,7 +282,7 @@ export default {
             // Wait for the Alt-Tab harness to release Alt before relaunching.
             await sleep(8_000);
             const hasEvalRelaunch = await ctx.eval(
-              "window.__ipollowalkControl.listActions().some((action) => action.id === 'eval.app.relaunch' && !action.disabled)",
+              "window.__ipolloworkControl.listActions().some((action) => action.id === 'eval.app.relaunch' && !action.disabled)",
             );
             try {
               if (hasEvalRelaunch) {
@@ -290,7 +290,7 @@ export default {
               } else {
                 // Release packages intentionally omit the dev-only control
                 // action. Exercise the production relaunch bridge instead.
-                await ctx.eval("window.__IPOLLOWALK_ELECTRON__.shell.relaunch()", { awaitPromise: true });
+                await ctx.eval("window.__IPOLLOWORK_ELECTRON__.shell.relaunch()", { awaitPromise: true });
               }
             } catch (error) {
               ctx.log(`Relaunch ended during the expected process shutdown: ${error instanceof Error ? error.message : String(error)}`);
@@ -308,7 +308,7 @@ export default {
           assert: async () => {
             ctx.assert(bootState?.applied === true && bootState?.reason === null, `Expected cached icon at boot, got ${JSON.stringify(bootState)}`);
             ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "The first relaunched BrowserWindow applied the cached Windows taskbar identity", actual: JSON.stringify(bootState) });
-            await assertiPolloWalkWindow(ctx);
+            await assertiPolloWorkWindow(ctx);
           },
           screenshot: computerUseScreenshot("company-icon-first-window-after-relaunch", { requireText: ["Search sessions"] }),
         });
@@ -342,7 +342,7 @@ export default {
             );
             ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "Windows taskbar identity returned to the executable's stock icon", actual: JSON.stringify(state) });
             await assertWindowsBrandShortcut(ctx, "present");
-            await assertiPolloWalkWindow(ctx);
+            await assertiPolloWorkWindow(ctx);
           },
           screenshot: computerUseScreenshot("stock-icon-restored", { requireText: ["Search sessions"] }),
         });

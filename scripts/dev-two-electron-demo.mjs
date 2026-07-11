@@ -10,14 +10,14 @@ const desktopRoot = path.join(repoRoot, "apps", "desktop");
 const desktopScriptsRoot = path.join(desktopRoot, "scripts");
 const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 export function resolveDemoRoot(env = process.env) {
-  return env.IPOLLOWALK_ELECTRON_DEMO_ROOT?.trim() || path.join(os.tmpdir(), "ipollowalk-two-electron-demo");
+  return env.IPOLLOWORK_ELECTRON_DEMO_ROOT?.trim() || path.join(os.tmpdir(), "ipollowork-two-electron-demo");
 }
 
 const demoRoot = resolveDemoRoot();
 const appProfiles = {
   admin: {
-    appIdentifier: "com.differentai.ipollowalk.demo.admin",
-    appName: "iPolloWalk Demo A",
+    appIdentifier: "com.differentai.ipollowork.demo.admin",
+    appName: "iPolloWork Demo A",
     bootstrapName: "admin-bootstrap.json",
     cdpFlag: "--admin-cdp",
     cdpPort: "9923",
@@ -27,8 +27,8 @@ const appProfiles = {
     requireSignin: false,
   },
   consumer: {
-    appIdentifier: "com.differentai.ipollowalk.demo.consumer",
-    appName: "iPolloWalk Demo B",
+    appIdentifier: "com.differentai.ipollowork.demo.consumer",
+    appName: "iPolloWork Demo B",
     bootstrapName: "consumer-bootstrap.json",
     cdpFlag: "--consumer-cdp",
     cdpPort: "9924",
@@ -43,7 +43,7 @@ function profilePaths(runRoot, profile) {
   const root = path.join(runRoot, profile.label);
   return {
     bootstrapPath: path.join(root, profile.bootstrapName),
-    dataDir: path.join(root, "ipollowalk-data"),
+    dataDir: path.join(root, "ipollowork-data"),
     root,
     userDataDir: path.join(root, "electron-userdata"),
   };
@@ -261,15 +261,15 @@ export async function resetDemoData(root = demoRoot) {
 
 export function demoEnv(profile, paths, port, cdpPort) {
   return {
-    IPOLLOWALK_DATA_DIR: paths.dataDir,
-    IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH: paths.bootstrapPath,
-    IPOLLOWALK_DESKTOP_DISABLE_WORKSPACE_RECOVERY: "1",
-    VITE_DISABLE_IPOLLOWALK_MODELS: "1",
-    IPOLLOWALK_ELECTRON_APP_IDENTIFIER: profile.appIdentifier,
-    IPOLLOWALK_ELECTRON_APP_NAME: profile.appName,
-    IPOLLOWALK_ELECTRON_REMOTE_DEBUG_PORT: cdpPort,
-    IPOLLOWALK_ELECTRON_SKIP_SHARED_PREPARE: "1",
-    IPOLLOWALK_ELECTRON_USERDATA: paths.userDataDir,
+    IPOLLOWORK_DATA_DIR: paths.dataDir,
+    IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH: paths.bootstrapPath,
+    IPOLLOWORK_DESKTOP_DISABLE_WORKSPACE_RECOVERY: "1",
+    VITE_DISABLE_IPOLLOWORK_MODELS: "1",
+    IPOLLOWORK_ELECTRON_APP_IDENTIFIER: profile.appIdentifier,
+    IPOLLOWORK_ELECTRON_APP_NAME: profile.appName,
+    IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT: cdpPort,
+    IPOLLOWORK_ELECTRON_SKIP_SHARED_PREPARE: "1",
+    IPOLLOWORK_ELECTRON_USERDATA: paths.userDataDir,
     PORT: port,
   };
 }
@@ -326,14 +326,14 @@ async function main() {
   console.log(`Demo B CDP:    http://127.0.0.1:${consumerCdp}`);
   console.log(`Demo A folder: ${demoRun.admin.root}`);
   console.log(`  Electron:    ${demoRun.admin.userDataDir}`);
-  console.log(`  iPolloWalk:    ${demoRun.admin.dataDir}`);
+  console.log(`  iPolloWork:    ${demoRun.admin.dataDir}`);
   console.log(`Demo B folder: ${demoRun.consumer.root}`);
   console.log(`  Electron:    ${demoRun.consumer.userDataDir}`);
-  console.log(`  iPolloWalk:    ${demoRun.consumer.dataDir}`);
+  console.log(`  iPolloWork:    ${demoRun.consumer.dataDir}`);
   const denStartup =
     adminPort === appProfiles.admin.port && consumerPort === appProfiles.consumer.port
       ? "pnpm demo:den"
-      : `IPOLLOWALK_EXTRA_APP_PORTS=${adminPort},${consumerPort} pnpm dev:den`;
+      : `IPOLLOWORK_EXTRA_APP_PORTS=${adminPort},${consumerPort} pnpm dev:den`;
   console.log(`Den startup:   ${denStartup}`);
   console.log("Press Ctrl-C to stop both instances.\n");
 }

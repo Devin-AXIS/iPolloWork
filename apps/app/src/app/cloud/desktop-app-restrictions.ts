@@ -1,4 +1,4 @@
-import type { DesktopPolicyKey } from "@ipollowalk/types/den/desktop-policies";
+import type { DesktopPolicyKey } from "@ipollowork/types/den/desktop-policies";
 import type { DenDesktopConfig } from "../lib/den";
 import type { ModelRef } from "../types";
 

@@ -9,23 +9,23 @@ import type { ServerConfig } from "./types.js";
 
 const stops: Array<() => void | Promise<void>> = [];
 const roots: string[] = [];
-const previousRuntimeDb = process.env.IPOLLOWALK_RUNTIME_DB;
+const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 
 afterEach(async () => {
   while (stops.length) await stops.pop()?.();
   while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
-  if (previousRuntimeDb === undefined) delete process.env.IPOLLOWALK_RUNTIME_DB;
-  else process.env.IPOLLOWALK_RUNTIME_DB = previousRuntimeDb;
+  if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+  else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
 });
 
 async function createWorkspaceRoot() {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-session-groups-"));
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-session-groups-"));
   roots.push(root);
-  process.env.IPOLLOWALK_RUNTIME_DB = join(root, "runtime.sqlite");
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
   return root;
 }
 
-async function startiPolloWalkServer(workspaceRoot: string) {
+async function startiPolloWorkServer(workspaceRoot: string) {
   const config: ServerConfig = {
     host: "127.0.0.1",
     port: 0,
@@ -59,7 +59,7 @@ async function json(response: Response) {
 describe("session group API", () => {
   test("persists groups, assignments, and update events in the runtime db", async () => {
     const root = await createWorkspaceRoot();
-    const { base, token } = await startiPolloWalkServer(root);
+    const { base, token } = await startiPolloWorkServer(root);
 
     const empty = await json(await fetch(`${base}/workspace/ws_1/session-groups`, { headers: auth(token) }));
     expect(empty).toMatchObject({ state: { groups: [], assignments: {} } });
@@ -111,7 +111,7 @@ describe("session group API", () => {
 
   test("serializes concurrent read-modify-write group updates", async () => {
     const root = await createWorkspaceRoot();
-    const { base, token } = await startiPolloWalkServer(root);
+    const { base, token } = await startiPolloWorkServer(root);
 
     const responses = await Promise.all([
       fetch(`${base}/workspace/ws_1/session-groups`, {

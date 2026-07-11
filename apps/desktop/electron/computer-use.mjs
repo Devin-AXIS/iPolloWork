@@ -11,12 +11,12 @@ import { app, shell } from "electron";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const COMPUTER_USE_HELPER_APP_NAME = "iPolloWalk Computer Use.app";
+const COMPUTER_USE_HELPER_APP_NAME = "iPolloWork Computer Use.app";
 const COMPUTER_USE_HELPER_EXECUTABLE = "ComputerUse";
 
 function computerUseHelperExecutablePath() {
   const appPath = computerUseHelperAppPath();
-  const explicitBinary = process.env.IPOLLOWALK_COMPUTER_USE_BINARY?.trim();
+  const explicitBinary = process.env.IPOLLOWORK_COMPUTER_USE_BINARY?.trim();
   const candidates = [
     explicitBinary,
     appPath ? path.join(appPath, "Contents", "MacOS", COMPUTER_USE_HELPER_EXECUTABLE) : null,
@@ -26,7 +26,7 @@ function computerUseHelperExecutablePath() {
 }
 
 function computerUseHelperAppPath() {
-  const explicitApp = process.env.IPOLLOWALK_COMPUTER_USE_APP?.trim();
+  const explicitApp = process.env.IPOLLOWORK_COMPUTER_USE_APP?.trim();
   const candidates = [
     explicitApp,
     process.resourcesPath ? path.join(process.resourcesPath, "helpers", COMPUTER_USE_HELPER_APP_NAME) : null,
@@ -41,13 +41,13 @@ function getComputerUseMcpCommand() {
   if (helperExecutable) return [helperExecutable, "mcp"];
 
   if (app.isPackaged) {
-    throw new Error("iPolloWalk Computer Use is missing from this iPolloWalk build.");
+    throw new Error("iPolloWork Computer Use is missing from this iPolloWork build.");
   }
 
-  if (process.env.IPOLLOWALK_DEV_MODE === "1") {
-    return ["node", path.resolve(__dirname, "../../..", "packages/handsfree/bin/ipollowalk-handsfree-computer-use.mjs"), "mcp"];
+  if (process.env.IPOLLOWORK_DEV_MODE === "1") {
+    return ["node", path.resolve(__dirname, "../../..", "packages/handsfree/bin/ipollowork-handsfree-computer-use.mjs"), "mcp"];
   }
-  return ["npx", "-y", "@ipollowalk/handsfree", "mcp"];
+  return ["npx", "-y", "@ipollowork/handsfree", "mcp"];
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ function getComputerUseMcpCommand() {
 
 function resolveComputerUseExecutable() {
   // 1. Explicit env override.
-  const explicit = process.env.IPOLLOWALK_COMPUTER_USE_BINARY?.trim();
+  const explicit = process.env.IPOLLOWORK_COMPUTER_USE_BINARY?.trim();
   if (explicit && existsSync(explicit)) return explicit;
 
   // 2. .app bundle (packaged builds + pnpm dev).

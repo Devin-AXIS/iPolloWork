@@ -31,7 +31,7 @@ function installRuntime({ focused }: { focused: boolean }) {
   Object.defineProperty(globalThis, "window", {
     value: {
       localStorage: localStorageStub,
-      __IPOLLOWALK_ELECTRON__: {
+      __IPOLLOWORK_ELECTRON__: {
         invokeDesktop: async (command: string, ...args: unknown[]) => {
           calls.push({ command, args });
           return { ok: true };

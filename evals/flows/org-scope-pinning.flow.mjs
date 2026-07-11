@@ -6,11 +6,11 @@
  * tab, the desktop app, a stale session) made POST /v1/mcp-connections either
  * fail with organization_not_found or silently write into the wrong org.
  *
- * Fix under test: den-web pins Connections requests with x-ipollowalk-org-id,
+ * Fix under test: den-web pins Connections requests with x-ipollowork-org-id,
  * and den-api gives that explicit scope precedence over the session value.
  *
  * Requires a multi-org Den deployment (DEN_ORG_MODE=multi_org); gate with
- * IPOLLOWALK_EVAL_DEN_MULTI_ORG so single-org CI setups skip instead of fail.
+ * IPOLLOWORK_EVAL_DEN_MULTI_ORG so single-org CI setups skip instead of fail.
  */
 
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
@@ -18,17 +18,17 @@ import { denApiFetch, openAdminConnections as openConnections, signInApi as sign
 
 const vo = await loadVoiceoverParagraphs("org-scope-pinning");
 
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 const MOCK_SERVER_URL = (process.env.MOCK_DCRLESS_MCP_URL ?? "http://127.0.0.1:3979").trim().replace(/\/+$/, "");
 const MOCK_CLIENT_ID = process.env.MOCK_CLIENT_ID || "mock-preregistered-client";
 const MOCK_CLIENT_SECRET = process.env.MOCK_CLIENT_SECRET || "mock-preregistered-secret";
 const DRIFT_ORG_NAME = "Drift Probe Org";
-const ORG_SCOPE_HEADER = "x-ipollowalk-org-id";
+const ORG_SCOPE_HEADER = "x-ipollowork-org-id";
 const CONNECTION_NAME = `pin-probe-${Date.now()}`;
 
 function denWebUrl() {
-  return (process.env.IPOLLOWALK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
+  return (process.env.IPOLLOWORK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
 }
 
 const state = {
@@ -92,7 +92,7 @@ export default {
   title: "Connections requests stay pinned to the org on screen when the session's active org drifts",
   kind: "user-facing",
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL", "IPOLLOWALK_EVAL_DEN_MULTI_ORG"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL", "IPOLLOWORK_EVAL_DEN_MULTI_ORG"],
   spec: "evals/org-mcp-connections-ux.md",
   steps: [
     {

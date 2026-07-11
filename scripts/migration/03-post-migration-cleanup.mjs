@@ -112,7 +112,7 @@ async function main() {
       scripts.electron = undefined;
       scripts["dev:react-session"] = undefined;
       scripts["dev:electron:react-session"] =
-        "VITE_IPOLLOWALK_REACT_SESSION=1 node ./scripts/electron-dev.mjs";
+        "VITE_IPOLLOWORK_REACT_SESSION=1 node ./scripts/electron-dev.mjs";
       // Remove Tauri-specific script entries.
       scripts["build:debug:react-session"] = undefined;
       scripts["dev:windows"] = undefined;

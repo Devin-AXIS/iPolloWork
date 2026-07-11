@@ -21,7 +21,7 @@ const orchestratorPkg = JSON.parse(
 const orchestratorVersion = String(orchestratorPkg.version ?? "").trim();
 if (!orchestratorVersion) {
   throw new Error(
-    "ipollowalk-orchestrator version missing in apps/orchestrator/package.json",
+    "ipollowork-orchestrator version missing in apps/orchestrator/package.json",
   );
 }
 
@@ -38,7 +38,7 @@ const serverPkg = JSON.parse(
 const serverVersion = String(serverPkg.version ?? "").trim();
 if (!serverVersion) {
   throw new Error(
-    "ipollowalk-server version missing in apps/server/package.json",
+    "ipollowork-server version missing in apps/server/package.json",
   );
 }
 
@@ -49,7 +49,7 @@ const run = (command, args, cwd) => {
   }
 };
 
-run("pnpm", ["--filter", "ipollowalk-server", "build:bin:all"], repoRoot);
+run("pnpm", ["--filter", "ipollowork-server", "build:bin:all"], repoRoot);
 
 const targets = [
   { id: "darwin-arm64", bun: "bun-darwin-arm64" },
@@ -70,19 +70,19 @@ const serverDir = resolve(repoRoot, "apps", "server", "dist", "bin");
 mkdirSync(outdir, { recursive: true });
 
 const entries = {
-  "ipollowalk-server": { version: serverVersion, targets: {} },
+  "ipollowork-server": { version: serverVersion, targets: {} },
 };
 
 for (const target of targets) {
   const ext = target.id.startsWith("windows") ? ".exe" : "";
-  const serverSrc = join(serverDir, `ipollowalk-server-${target.bun}${ext}`);
+  const serverSrc = join(serverDir, `ipollowork-server-${target.bun}${ext}`);
   if (!existsSync(serverSrc)) {
-    throw new Error(`Missing ipollowalk-server binary at ${serverSrc}`);
+    throw new Error(`Missing ipollowork-server binary at ${serverSrc}`);
   }
-  const serverDest = join(outdir, `ipollowalk-server-${target.id}${ext}`);
+  const serverDest = join(outdir, `ipollowork-server-${target.id}${ext}`);
   copyFileSync(serverSrc, serverDest);
 
-  entries["ipollowalk-server"].targets[target.id] = {
+  entries["ipollowork-server"].targets[target.id] = {
     asset: basename(serverDest),
     sha256: sha256File(serverDest),
     size: statSync(serverDest).size,
@@ -96,7 +96,7 @@ const manifest = {
 };
 
 writeFileSync(
-  join(outdir, "ipollowalk-orchestrator-sidecars.json"),
+  join(outdir, "ipollowork-orchestrator-sidecars.json"),
   `${JSON.stringify(manifest, null, 2)}\n`,
   "utf8",
 );

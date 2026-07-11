@@ -74,10 +74,10 @@ async function closeStaleDialogs(ctx) {
   }
 }
 
-async function dismissiPolloWalkModelsDialog(ctx) {
+async function dismissiPolloWorkModelsDialog(ctx) {
   const clicked = await ctx.eval(`(() => {
     const button = [...document.querySelectorAll('button')]
-      .find((candidate) => (candidate.textContent ?? '').trim() === 'Continue without iPolloWalk Models');
+      .find((candidate) => (candidate.textContent ?? '').trim() === 'Continue without iPolloWork Models');
     button?.click();
     return Boolean(button);
   })()`);
@@ -96,7 +96,7 @@ async function clickExactButtonIfPresent(ctx, label) {
 }
 
 async function ensureDeveloperMode(ctx) {
-  const current = await ctx.eval("window.localStorage.getItem('ipollowalk.developerMode')");
+  const current = await ctx.eval("window.localStorage.getItem('ipollowork.developerMode')");
   if (state.originalDeveloperMode === null) state.originalDeveloperMode = current;
   if (current === "1") return;
 
@@ -110,7 +110,7 @@ async function ensureDeveloperMode(ctx) {
     switchButton.click();
     return true;
   })()`);
-  await ctx.waitFor("window.localStorage.getItem('ipollowalk.developerMode') === '1'", {
+  await ctx.waitFor("window.localStorage.getItem('ipollowork.developerMode') === '1'", {
     timeoutMs: 10_000,
     label: "developer mode enabled",
   });
@@ -140,7 +140,7 @@ async function restoreDeveloperMode(ctx) {
     switchButton.click();
     return true;
   })()`);
-  await ctx.waitFor("window.localStorage.getItem('ipollowalk.developerMode') !== '1'", {
+  await ctx.waitFor("window.localStorage.getItem('ipollowork.developerMode') !== '1'", {
     timeoutMs: 10_000,
     label: "developer mode restored",
   });
@@ -151,7 +151,7 @@ async function openCloudAccount(ctx) {
   await ctx.waitFor(
     `(() => {
       const text = document.body?.innerText ?? '';
-      return text.includes('iPolloWalk Cloud') && (
+      return text.includes('iPolloWork Cloud') && (
         text.includes('Sign in') ||
         text.includes('Sign out') ||
         text.includes('Connected') ||
@@ -169,8 +169,8 @@ async function returnToApp(ctx) {
   if (inSettings) {
     await ctx.clickText("Back to app", { selector: "button", timeoutMs: 10_000 });
   }
-  await dismissiPolloWalkModelsDialog(ctx);
-  await ctx.waitFor("(() => { const text = document.body?.innerText ?? ''; return text.includes('Add workspace') || text.includes('Welcome to iPolloWalk'); })()", {
+  await dismissiPolloWorkModelsDialog(ctx);
+  await ctx.waitFor("(() => { const text = document.body?.innerText ?? ''; return text.includes('Add workspace') || text.includes('Welcome to iPolloWork'); })()", {
     timeoutMs: 30_000,
     label: "workspace shell or welcome screen",
   });
@@ -179,11 +179,11 @@ async function returnToApp(ctx) {
 async function ensureWorkspaceShellForRemote(ctx) {
   await rememberPreviousWorkspace(ctx);
   await returnToApp(ctx);
-  const onWelcome = await ctx.eval("location.hash.includes('/welcome') || (document.body?.innerText ?? '').includes('Welcome to iPolloWalk')");
+  const onWelcome = await ctx.eval("location.hash.includes('/welcome') || (document.body?.innerText ?? '').includes('Welcome to iPolloWork')");
   if (onWelcome) {
     state.startedFromWelcome = true;
     if (state.originalPreferences === null) {
-      state.originalPreferences = await ctx.eval("localStorage.getItem('ipollowalk.preferences')");
+      state.originalPreferences = await ctx.eval("localStorage.getItem('ipollowork.preferences')");
     }
     await createStarterWorkspaceFromWelcome(ctx);
   }
@@ -196,7 +196,7 @@ async function ensureWorkspaceShellForRemote(ctx) {
 async function openConnectRemoteDialog(ctx) {
   await ensureWorkspaceShellForRemote(ctx);
   await closeStaleDialogs(ctx);
-  await dismissiPolloWalkModelsDialog(ctx);
+  await dismissiPolloWorkModelsDialog(ctx);
   await ctx.clickText("Add workspace", { selector: "button", timeoutMs: 30_000 });
   await ctx.waitForText("Create Workspace", { timeoutMs: 30_000 });
   await ctx.clickText("Connect custom remote", { selector: "button", timeoutMs: 30_000 });
@@ -208,7 +208,7 @@ async function openConnectRemoteDialog(ctx) {
 }
 
 async function createStarterWorkspaceFromWelcome(ctx) {
-  const starterDir = await mkdtemp(join(tmpdir(), "ipollowalk-fraimz-starter-"));
+  const starterDir = await mkdtemp(join(tmpdir(), "ipollowork-fraimz-starter-"));
   state.starterWorkspaceDir = starterDir;
 
   await ctx.waitFor(`Boolean(document.querySelector(${JSON.stringify(WELCOME_FOLDER_INPUT)}))`, {
@@ -237,17 +237,17 @@ async function createStarterWorkspaceFromWelcome(ctx) {
   for (let attempt = 0; attempt < 12; attempt += 1) {
     const ready = await ctx.eval("(document.body?.innerText ?? '').includes('Add workspace')");
     if (ready) return;
-    await dismissiPolloWalkModelsDialog(ctx);
+    await dismissiPolloWorkModelsDialog(ctx);
     await clickExactButtonIfPresent(ctx, "Skip and use the free model");
     await clickExactButtonIfPresent(ctx, "Skip");
     await sleep(500);
   }
 }
 
-async function startSelfSignediPolloWalkServer() {
+async function startSelfSignediPolloWorkServer() {
   if (state.selfSignedServerUrl) return state.selfSignedServerUrl;
 
-  const dir = await mkdtemp(join(tmpdir(), "ipollowalk-self-signed-"));
+  const dir = await mkdtemp(join(tmpdir(), "ipollowork-self-signed-"));
   const keyPath = join(dir, "key.pem");
   const certPath = join(dir, "cert.pem");
   await execFileAsync("openssl", [
@@ -270,7 +270,7 @@ async function startSelfSignediPolloWalkServer() {
 
   const key = await readFile(keyPath);
   const cert = await readFile(certPath);
-  const server = createHttpsServer({ key, cert }, ipollowalkDiscoveryHandler("ws_self_signed", "Self-signed remote", "/srv/self-signed"));
+  const server = createHttpsServer({ key, cert }, ipolloworkDiscoveryHandler("ws_self_signed", "Self-signed remote", "/srv/self-signed"));
   await listen(server);
   state.selfSignedServer = server;
   state.selfSignedServerDir = dir;
@@ -278,7 +278,7 @@ async function startSelfSignediPolloWalkServer() {
   return state.selfSignedServerUrl;
 }
 
-async function stopSelfSignediPolloWalkServer() {
+async function stopSelfSignediPolloWorkServer() {
   const server = state.selfSignedServer;
   state.selfSignedServer = null;
   state.selfSignedServerUrl = null;
@@ -289,24 +289,24 @@ async function stopSelfSignediPolloWalkServer() {
   }
 }
 
-async function startHttpiPolloWalkServer() {
+async function startHttpiPolloWorkServer() {
   if (state.httpServerUrl) return state.httpServerUrl;
 
-  const server = createHttpServer(ipollowalkDiscoveryHandler(HTTP_REMOTE_WORKSPACE_ID, HTTP_REMOTE_WORKSPACE_NAME, "/srv/fraimz-remote"));
+  const server = createHttpServer(ipolloworkDiscoveryHandler(HTTP_REMOTE_WORKSPACE_ID, HTTP_REMOTE_WORKSPACE_NAME, "/srv/fraimz-remote"));
   await listen(server);
   state.httpServer = server;
   state.httpServerUrl = `http://127.0.0.1:${server.address().port}`;
   return state.httpServerUrl;
 }
 
-async function stopHttpiPolloWalkServer() {
+async function stopHttpiPolloWorkServer() {
   const server = state.httpServer;
   state.httpServer = null;
   state.httpServerUrl = null;
   if (server) await closeServer(server);
 }
 
-function ipollowalkDiscoveryHandler(id, name, path) {
+function ipolloworkDiscoveryHandler(id, name, path) {
   return (request, response) => {
     if (request.url?.startsWith("/workspaces")) {
       response.writeHead(200, { "content-type": "application/json" });
@@ -334,30 +334,30 @@ async function closeServer(server) {
 }
 
 async function desktopWorkspaceList(ctx) {
-  await ctx.waitFor("Boolean(window.__IPOLLOWALK_ELECTRON__?.invokeDesktop)", {
+  await ctx.waitFor("Boolean(window.__IPOLLOWORK_ELECTRON__?.invokeDesktop)", {
     timeoutMs: 30_000,
     label: "desktop bridge",
   });
-  return ctx.eval("window.__IPOLLOWALK_ELECTRON__.invokeDesktop('workspaceBootstrap')", { awaitPromise: true });
+  return ctx.eval("window.__IPOLLOWORK_ELECTRON__.invokeDesktop('workspaceBootstrap')", { awaitPromise: true });
 }
 
 async function forgetDesktopWorkspace(ctx, workspaceId) {
-  await ctx.eval(`window.__IPOLLOWALK_ELECTRON__.invokeDesktop('workspaceForget', ${JSON.stringify(workspaceId)})`, {
+  await ctx.eval(`window.__IPOLLOWORK_ELECTRON__.invokeDesktop('workspaceForget', ${JSON.stringify(workspaceId)})`, {
     awaitPromise: true,
   });
 }
 
-async function deleteiPolloWalkServerWorkspace(ctx, workspaceId) {
+async function deleteiPolloWorkServerWorkspace(ctx, workspaceId) {
   if (!workspaceId) return;
   await ctx.eval(`(async () => {
-    const baseUrl = localStorage.getItem('ipollowalk.server.urlOverride') || localStorage.getItem('ipollowalk.server.active');
-    if (!baseUrl || !window.__IPOLLOWALK_ELECTRON__?.invokeDesktop) return null;
-    const token = localStorage.getItem('ipollowalk.server.token') || '';
-    const hostToken = localStorage.getItem('ipollowalk.server.hostToken') || '';
+    const baseUrl = localStorage.getItem('ipollowork.server.urlOverride') || localStorage.getItem('ipollowork.server.active');
+    if (!baseUrl || !window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return null;
+    const token = localStorage.getItem('ipollowork.server.token') || '';
+    const hostToken = localStorage.getItem('ipollowork.server.hostToken') || '';
     const headers = {};
     if (token) headers.authorization = 'Bearer ' + token;
-    if (hostToken) headers['x-ipollowalk-host-token'] = hostToken;
-    return window.__IPOLLOWALK_ELECTRON__.invokeDesktop('__fetch', baseUrl.replace(/\/+$/, '') + '/workspaces/' + encodeURIComponent(${JSON.stringify(workspaceId)}), {
+    if (hostToken) headers['x-ipollowork-host-token'] = hostToken;
+    return window.__IPOLLOWORK_ELECTRON__.invokeDesktop('__fetch', baseUrl.replace(/\/+$/, '') + '/workspaces/' + encodeURIComponent(${JSON.stringify(workspaceId)}), {
       method: 'DELETE',
       headers,
       timeoutMs: 8_000,
@@ -365,21 +365,21 @@ async function deleteiPolloWalkServerWorkspace(ctx, workspaceId) {
   })()`, { awaitPromise: true }).catch(() => null);
 }
 
-async function restartiPolloWalkServer(ctx) {
-  await ctx.eval("window.__IPOLLOWALK_ELECTRON__.invokeDesktop('ipollowalkServerRestart', {})", { awaitPromise: true }).catch(() => null);
+async function restartiPolloWorkServer(ctx) {
+  await ctx.eval("window.__IPOLLOWORK_ELECTRON__.invokeDesktop('ipolloworkServerRestart', {})", { awaitPromise: true }).catch(() => null);
 }
 
 function isEvalStarterWorkspace(workspace) {
   const workspacePath = String(workspace?.path ?? "");
-  return workspacePath.includes("/ipollowalk-fraimz-starter-") || workspacePath.includes("\\ipollowalk-fraimz-starter-");
+  return workspacePath.includes("/ipollowork-fraimz-starter-") || workspacePath.includes("\\ipollowork-fraimz-starter-");
 }
 
 function isEvalStarterPath(value) {
-  return String(value ?? "").includes("ipollowalk-fraimz-starter-");
+  return String(value ?? "").includes("ipollowork-fraimz-starter-");
 }
 
 function desktopUserDataDir() {
-  const appId = "com.differentai.ipollowalk.dev";
+  const appId = "com.differentai.ipollowork.dev";
   if (process.platform === "darwin") return join(homedir(), "Library", "Application Support", appId);
   if (process.platform === "win32") return join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), appId);
   return join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), appId);
@@ -399,7 +399,7 @@ async function writeJson(path, value) {
 
 async function pruneEvalStarterRecoveryStores() {
   const userDataDir = desktopUserDataDir();
-  const workspaceStatePath = join(userDataDir, "ipollowalk-workspaces.json");
+  const workspaceStatePath = join(userDataDir, "ipollowork-workspaces.json");
   const workspaceState = await readJson(workspaceStatePath, null);
   if (workspaceState && Array.isArray(workspaceState.workspaces)) {
     const workspaces = workspaceState.workspaces.filter((workspace) => !isEvalStarterPath(workspace?.path));
@@ -417,7 +417,7 @@ async function pruneEvalStarterRecoveryStores() {
     }
   }
 
-  const tokenStorePath = join(userDataDir, "ipollowalk-server-tokens.json");
+  const tokenStorePath = join(userDataDir, "ipollowork-server-tokens.json");
   const tokenStore = await readJson(tokenStorePath, null);
   if (tokenStore?.workspaces && typeof tokenStore.workspaces === "object") {
     const workspaces = Object.fromEntries(Object.entries(tokenStore.workspaces).filter(([workspacePath]) => !isEvalStarterPath(workspacePath)));
@@ -426,7 +426,7 @@ async function pruneEvalStarterRecoveryStores() {
     }
   }
 
-  const serverStatePath = join(userDataDir, "ipollowalk-server-state.json");
+  const serverStatePath = join(userDataDir, "ipollowork-server-state.json");
   const serverState = await readJson(serverStatePath, null);
   if (serverState?.workspacePorts && typeof serverState.workspacePorts === "object") {
     const workspacePorts = Object.fromEntries(Object.entries(serverState.workspacePorts).filter(([workspacePath]) => !isEvalStarterPath(workspacePath)));
@@ -436,8 +436,8 @@ async function pruneEvalStarterRecoveryStores() {
   }
 
   for (const serverConfigPath of [
-    join(userDataDir, "ipollowalk-dev-data", "xdg", "config", "ipollowalk", "server.json"),
-    join(userDataDir, "ipollowalk-dev-data", "home", ".config", "ipollowalk", "server.json"),
+    join(userDataDir, "ipollowork-dev-data", "xdg", "config", "ipollowork", "server.json"),
+    join(userDataDir, "ipollowork-dev-data", "home", ".config", "ipollowork", "server.json"),
   ]) {
     const serverConfig = await readJson(serverConfigPath, null);
     if (!serverConfig) continue;
@@ -462,7 +462,7 @@ async function cleanupEvalStarterWorkspaces(ctx) {
     });
     if (leftovers.length === 0) return removed;
     for (const workspace of leftovers) {
-      await deleteiPolloWalkServerWorkspace(ctx, workspace.id);
+      await deleteiPolloWorkServerWorkspace(ctx, workspace.id);
       await forgetDesktopWorkspace(ctx, workspace.id);
       if (workspace.path) await rm(workspace.path, { recursive: true, force: true });
       removed += 1;
@@ -493,7 +493,7 @@ async function rememberPreviousWorkspace(ctx) {
 
 async function cleanupCreatedWorkspace(ctx) {
   const list = await desktopWorkspaceList(ctx).catch(() => null);
-  const created = (list?.workspaces ?? []).find((workspace) => workspace?.ipollowalkWorkspaceId === HTTP_REMOTE_WORKSPACE_ID)
+  const created = (list?.workspaces ?? []).find((workspace) => workspace?.ipolloworkWorkspaceId === HTTP_REMOTE_WORKSPACE_ID)
     ?? (state.createdWorkspaceId ? { id: state.createdWorkspaceId } : null);
   if (created?.id) {
     await forgetDesktopWorkspace(ctx, created.id);
@@ -502,7 +502,7 @@ async function cleanupCreatedWorkspace(ctx) {
     return workspace?.id === state.starterWorkspaceId || workspace?.path === state.starterWorkspaceDir;
   }) ?? (state.starterWorkspaceId ? { id: state.starterWorkspaceId } : null);
   if (starter?.id && starter.id !== state.previousWorkspaceId && starter.id !== created?.id) {
-    await deleteiPolloWalkServerWorkspace(ctx, starter.id);
+    await deleteiPolloWorkServerWorkspace(ctx, starter.id);
     await forgetDesktopWorkspace(ctx, starter.id);
   }
   if (state.starterWorkspaceDir) {
@@ -511,13 +511,13 @@ async function cleanupCreatedWorkspace(ctx) {
   await pruneEvalStarterRecoveryStores();
   await cleanupEvalStarterWorkspaces(ctx);
   if (state.startedFromWelcome && !state.previousWorkspaceId) {
-    await restartiPolloWalkServer(ctx);
+    await restartiPolloWorkServer(ctx);
   }
   if (state.previousWorkspaceId) {
-    await ctx.eval(`window.__IPOLLOWALK_ELECTRON__.invokeDesktop('workspaceSetSelected', ${JSON.stringify(state.previousWorkspaceId)})`, {
+    await ctx.eval(`window.__IPOLLOWORK_ELECTRON__.invokeDesktop('workspaceSetSelected', ${JSON.stringify(state.previousWorkspaceId)})`, {
       awaitPromise: true,
     });
-    await ctx.eval(`window.__IPOLLOWALK_ELECTRON__.invokeDesktop('workspaceSetRuntimeActive', ${JSON.stringify(state.previousWorkspaceId)})`, {
+    await ctx.eval(`window.__IPOLLOWORK_ELECTRON__.invokeDesktop('workspaceSetRuntimeActive', ${JSON.stringify(state.previousWorkspaceId)})`, {
       awaitPromise: true,
     });
   }
@@ -532,21 +532,21 @@ async function restoreFreshWelcome(ctx) {
   await ctx.eval(`(() => {
     const original = ${JSON.stringify(state.originalPreferences)};
     if (original === null) {
-      localStorage.setItem('ipollowalk.preferences', JSON.stringify({ hasCompletedOnboarding: false }));
+      localStorage.setItem('ipollowork.preferences', JSON.stringify({ hasCompletedOnboarding: false }));
     } else {
       try {
         const prefs = JSON.parse(original);
         prefs.hasCompletedOnboarding = false;
-        localStorage.setItem('ipollowalk.preferences', JSON.stringify(prefs));
+        localStorage.setItem('ipollowork.preferences', JSON.stringify(prefs));
       } catch {
-        localStorage.setItem('ipollowalk.preferences', JSON.stringify({ hasCompletedOnboarding: false }));
+        localStorage.setItem('ipollowork.preferences', JSON.stringify({ hasCompletedOnboarding: false }));
       }
     }
-    localStorage.removeItem('ipollowalk.react.activeWorkspace');
+    localStorage.removeItem('ipollowork.react.activeWorkspace');
     return true;
   })()`);
   await ctx.eval("(() => { window.location.hash = '/welcome'; window.location.reload(); return true; })()");
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
     timeoutMs: 60_000,
     label: "control API after welcome restore reload",
   });
@@ -554,20 +554,20 @@ async function restoreFreshWelcome(ctx) {
     timeoutMs: 30_000,
     label: "welcome route restored",
   });
-  await ctx.waitFor("(document.body?.innerText ?? '').includes('Welcome to iPolloWalk')", {
+  await ctx.waitFor("(document.body?.innerText ?? '').includes('Welcome to iPolloWork')", {
     timeoutMs: 30_000,
     label: "welcome screen restored",
   });
   await ctx.eval("new Promise((resolve) => setTimeout(resolve, 800))", { awaitPromise: true });
   const removedLateStarter = await cleanupEvalStarterWorkspaces(ctx);
   if (removedLateStarter > 0) {
-    await ctx.eval("(() => { localStorage.removeItem('ipollowalk.react.activeWorkspace'); window.location.hash = '/welcome'; window.location.reload(); return true; })()");
-    await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+    await ctx.eval("(() => { localStorage.removeItem('ipollowork.react.activeWorkspace'); window.location.hash = '/welcome'; window.location.reload(); return true; })()");
+    await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
       timeoutMs: 60_000,
       label: "control API after late starter cleanup reload",
     });
   }
-  await ctx.waitFor("location.hash.includes('/welcome') && (document.body?.innerText ?? '').includes('Welcome to iPolloWalk')", {
+  await ctx.waitFor("location.hash.includes('/welcome') && (document.body?.innerText ?? '').includes('Welcome to iPolloWork')", {
     timeoutMs: 30_000,
     label: "welcome screen remained restored",
   });
@@ -595,7 +595,7 @@ async function nodeFetchFailure(url) {
 async function visibleRemoteError(ctx) {
   return ctx.eval(`(() => {
     const lines = (document.body?.innerText ?? '').split(/\\n+/).map((line) => line.trim()).filter(Boolean);
-    return lines.find((line) => /certificate|ERR_CERT|fetch failed|iPolloWalk server is unavailable/i.test(line)) ?? '';
+    return lines.find((line) => /certificate|ERR_CERT|fetch failed|iPolloWork server is unavailable/i.test(line)) ?? '';
   })()`);
 }
 
@@ -608,28 +608,28 @@ export default {
     {
       name: "Cloud account opens without a generic fetch failure",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 60_000,
-          label: "window.__ipollowalkControl",
+          label: "window.__ipolloworkControl",
         });
         await cleanupCreatedWorkspace(ctx);
         await closeStaleDialogs(ctx);
 
         await ctx.prove("The Cloud account settings surface opens cleanly", {
-          claim: "Settings → Account renders the iPolloWalk Cloud account controls and does not show a generic fetch failure.",
+          claim: "Settings → Account renders the iPolloWork Cloud account controls and does not show a generic fetch failure.",
           voiceover: vo[0],
           action: async () => {
             await ensureDeveloperMode(ctx);
             await openCloudAccount(ctx);
           },
           assert: async () => {
-            await ctx.expectText("iPolloWalk Cloud");
+            await ctx.expectText("iPolloWork Cloud");
             await ctx.expectText("Cloud control plane URL");
             await ctx.expectNoText("fetch failed");
           },
           screenshot: {
             name: "cloud-account-ready",
-            requireText: ["iPolloWalk Cloud", "Cloud control plane URL"],
+            requireText: ["iPolloWork Cloud", "Cloud control plane URL"],
             rejectText: ["fetch failed", "Something went wrong"],
             hashIncludes: "/settings/cloud-account",
           },
@@ -639,7 +639,7 @@ export default {
     {
       name: "Remote worker certificate failure is descriptive",
       run: async (ctx) => {
-        const serverUrl = await startSelfSignediPolloWalkServer();
+        const serverUrl = await startSelfSignediPolloWorkServer();
 
         await ctx.prove("Connecting a worker with an untrusted certificate shows the certificate cause", {
           claim: "The Connect remote dialog keeps the user in context and shows a certificate-specific HTTPS failure instead of collapsing to a bare fetch failure.",
@@ -657,7 +657,7 @@ export default {
             const errorText = await visibleRemoteError(ctx);
             ctx.assert(/certificate|ERR_CERT/i.test(errorText), `Expected a certificate-specific error, got: ${errorText}`);
             ctx.assert(!/TypeError:\s*fetch failed$/i.test(errorText), `Remote error was still a bare fetch failure: ${errorText}`);
-            ctx.assert(!errorText.includes("iPolloWalk server is unavailable"), `Remote error was swallowed into a generic availability message: ${errorText}`);
+            ctx.assert(!errorText.includes("iPolloWork server is unavailable"), `Remote error was swallowed into a generic availability message: ${errorText}`);
             ctx.output("self-signed-fetch-differential.json", JSON.stringify({
               selfSignedServer: serverUrl,
               visibleDesktopError: errorText,
@@ -667,7 +667,7 @@ export default {
           screenshot: {
             name: "remote-certificate-error",
             requireText: ["Remote server details", "ERR_CERT_AUTHORITY_INVALID"],
-            rejectText: ["iPolloWalk server is unavailable", "TypeError: fetch failed"],
+            rejectText: ["iPolloWork server is unavailable", "TypeError: fetch failed"],
           },
         });
       },
@@ -675,7 +675,7 @@ export default {
     {
       name: "Healthy remote worker connects through desktop IPC",
       run: async (ctx) => {
-        const serverUrl = await startHttpiPolloWalkServer();
+        const serverUrl = await startHttpiPolloWorkServer();
 
         await ctx.prove("A valid remote worker is discovered, created, selected, and listed", {
           claim: "Connecting a healthy remote worker through the same desktop path closes the dialog and adds Fraimz remote worker to the workspace list.",
@@ -703,22 +703,22 @@ export default {
             await ctx.expectText(HTTP_REMOTE_WORKSPACE_NAME);
             await ctx.expectNoText("Remote server details");
             const list = await desktopWorkspaceList(ctx);
-            const workspace = (list?.workspaces ?? []).find((entry) => entry?.ipollowalkWorkspaceId === HTTP_REMOTE_WORKSPACE_ID);
+            const workspace = (list?.workspaces ?? []).find((entry) => entry?.ipolloworkWorkspaceId === HTTP_REMOTE_WORKSPACE_ID);
             ctx.assert(Boolean(workspace), `Electron workspace store did not include ${HTTP_REMOTE_WORKSPACE_ID}.`);
-            ctx.assert(workspace.remoteType === "ipollowalk", `Expected remoteType ipollowalk, got ${workspace.remoteType}.`);
+            ctx.assert(workspace.remoteType === "ipollowork", `Expected remoteType ipollowork, got ${workspace.remoteType}.`);
             state.createdWorkspaceId = workspace.id;
             ctx.output("desktop-workspace-store-created.json", JSON.stringify({
               createdWorkspaceId: workspace.id,
               remoteType: workspace.remoteType,
-              ipollowalkWorkspaceId: workspace.ipollowalkWorkspaceId,
-              ipollowalkWorkspaceName: workspace.ipollowalkWorkspaceName,
+              ipolloworkWorkspaceId: workspace.ipolloworkWorkspaceId,
+              ipolloworkWorkspaceName: workspace.ipolloworkWorkspaceName,
               selectedId: list.selectedId ?? null,
             }, null, 2));
           },
           screenshot: {
             name: "remote-worker-connected",
             requireText: [HTTP_REMOTE_WORKSPACE_NAME],
-            rejectText: ["Remote server details", "iPolloWalk server is unavailable", "fetch failed"],
+            rejectText: ["Remote server details", "iPolloWork server is unavailable", "fetch failed"],
           },
         });
       },
@@ -731,8 +731,8 @@ export default {
           voiceover: vo[3],
           action: async () => {
             await cleanupCreatedWorkspace(ctx);
-            await stopHttpiPolloWalkServer();
-            await stopSelfSignediPolloWalkServer();
+            await stopHttpiPolloWorkServer();
+            await stopSelfSignediPolloWorkServer();
             await restoreDeveloperMode(ctx);
             if (state.startedFromWelcome && !state.previousWorkspaceId) {
               await restoreFreshWelcome(ctx);
@@ -742,7 +742,7 @@ export default {
                 timeoutMs: 30_000,
                 label: "restored cloud-account route",
               });
-              await ctx.waitFor("(document.body?.innerText ?? '').includes('iPolloWalk Cloud')", {
+              await ctx.waitFor("(document.body?.innerText ?? '').includes('iPolloWork Cloud')", {
                 timeoutMs: 30_000,
                 label: "cloud account content after cleanup",
               });
@@ -752,9 +752,9 @@ export default {
           },
           assert: async () => {
             if (state.startedFromWelcome && !state.previousWorkspaceId) {
-              await ctx.expectText("Welcome to iPolloWalk");
+              await ctx.expectText("Welcome to iPolloWork");
             } else {
-              await ctx.expectText("iPolloWalk Cloud");
+              await ctx.expectText("iPolloWork Cloud");
             }
             await ctx.expectNoText(HTTP_REMOTE_WORKSPACE_NAME);
             await ctx.expectNoText("Remote server details");
@@ -762,7 +762,7 @@ export default {
           },
           screenshot: {
             name: state.startedFromWelcome && !state.previousWorkspaceId ? "welcome-recovered" : "cloud-account-recovered",
-            requireText: state.startedFromWelcome && !state.previousWorkspaceId ? ["Welcome to iPolloWalk"] : ["iPolloWalk Cloud"],
+            requireText: state.startedFromWelcome && !state.previousWorkspaceId ? ["Welcome to iPolloWork"] : ["iPolloWork Cloud"],
             rejectText: [HTTP_REMOTE_WORKSPACE_NAME, "Remote server details", "fetch failed", "Something went wrong"],
             hashIncludes: state.startedFromWelcome && !state.previousWorkspaceId ? "/welcome" : "/settings/cloud-account",
           },

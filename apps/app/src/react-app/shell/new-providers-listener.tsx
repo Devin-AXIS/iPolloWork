@@ -11,12 +11,12 @@ import { useNotificationStore } from "@/react-app/kernel/notification-store";
 import { notifyEvent } from "./notifications";
 import { orgOnboardingVisibilityEvent } from "./reload-coordinator";
 
-const SEEN_KEY = "ipollowalk.seenProviderIds";
-const PENDING_MODEL_PICKER_KEY = "ipollowalk.pendingModelPickerProviderIds";
+const SEEN_KEY = "ipollowork.seenProviderIds";
+const PENDING_MODEL_PICKER_KEY = "ipollowork.pendingModelPickerProviderIds";
 const NEW_PROVIDERS_DEDUPE_KEY = "new-providers";
 
 /** Custom event to request the model picker to open. */
-export const openModelPickerEvent = "ipollowalk-open-model-picker";
+export const openModelPickerEvent = "ipollowork-open-model-picker";
 export const pendingModelPickerProviderIdsKey = PENDING_MODEL_PICKER_KEY;
 
 function readSeenProviderIds(): Set<string> {

@@ -17,7 +17,7 @@ async function defaultOpenExternal(url) {
 
 export async function openExternalUrl(url, deps = {}) {
   const env = deps.env ?? process.env;
-  if (env.IPOLLOWALK_SIMULATE_OPEN_EXTERNAL_FAILURE === "1") {
+  if (env.IPOLLOWORK_SIMULATE_OPEN_EXTERNAL_FAILURE === "1") {
     const message = "simulated failure";
     // why: enables evals to prove the failure UX without breaking a real machine.
     console.error("[shell] openExternal failed:", message);

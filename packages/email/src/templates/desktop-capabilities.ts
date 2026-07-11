@@ -1,4 +1,4 @@
-export const DEFAULT_IPOLLOWALK_DOWNLOAD_URL = "https://ipollowalklabs.com/download"
+export const DEFAULT_IPOLLOWORK_DOWNLOAD_URL = "https://ipolloworklabs.com/download"
 
 export type DesktopCapability = {
   title: string

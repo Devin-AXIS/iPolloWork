@@ -4,9 +4,9 @@ import {
   derivePendingCloudPluginChanges,
   readPendingCloudSyncChanges,
 } from "../src/app/cloud/desktop-cloud-sync";
-import type { iPolloWalkDesktopCloudSyncChange } from "../src/app/lib/ipollowalk-server";
+import type { iPolloWorkDesktopCloudSyncChange } from "../src/app/lib/ipollowork-server";
 
-function change(input: Partial<iPolloWalkDesktopCloudSyncChange> & Pick<iPolloWalkDesktopCloudSyncChange, "id" | "kind" | "resourceKind">): iPolloWalkDesktopCloudSyncChange {
+function change(input: Partial<iPolloWorkDesktopCloudSyncChange> & Pick<iPolloWorkDesktopCloudSyncChange, "id" | "kind" | "resourceKind">): iPolloWorkDesktopCloudSyncChange {
   return {
     marketplaceId: undefined,
     pluginId: undefined,

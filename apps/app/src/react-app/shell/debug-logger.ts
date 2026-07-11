@@ -1,6 +1,6 @@
 /**
  * Dev observability client. Forwards browser console logs, uncaught errors,
- * promise rejections, and fetch activity to the ipollowalk-server `/dev/log`
+ * promise rejections, and fetch activity to the ipollowork-server `/dev/log`
  * sink so an operator can tail a single file and see everything the React
  * shell is doing — especially right before a hang.
  *
@@ -50,7 +50,7 @@ const sessionKey = `react-${Date.now().toString(36)}-${Math.random().toString(36
 
 // Cached availability of the server-side /dev/log sink, keyed by base URL.
 // Prevents the debug-logger from spamming 404s into the console when the
-// pnpm dev process was started WITHOUT IPOLLOWALK_DEV_LOG_FILE set. The
+// pnpm dev process was started WITHOUT IPOLLOWORK_DEV_LOG_FILE set. The
 // sink returns 404 in that case and the browser logs every failed POST.
 // We probe once per base URL and disable posting for the remainder of the
 // session when the probe fails.
@@ -91,7 +91,7 @@ async function sinkIsAvailable(base: string): Promise<boolean> {
 function readFallbackServerUrl(): string {
   if (typeof window === "undefined") return "";
   try {
-    return window.localStorage.getItem("ipollowalk.server.urlOverride") ?? "";
+    return window.localStorage.getItem("ipollowork.server.urlOverride") ?? "";
   } catch {
     return "";
   }
@@ -141,11 +141,11 @@ async function flushQueue() {
   if (!base) return;
 
   // Skip the POST entirely when we know the sink is disabled, otherwise
-  // every dev session without IPOLLOWALK_DEV_LOG_FILE set spams 404s.
+  // every dev session without IPOLLOWORK_DEV_LOG_FILE set spams 404s.
   const available = await sinkIsAvailable(base);
   if (!available) {
     // Drop the queued entries; they're still retained in
-    // window.__ipollowalk.events() for any operator who needs them.
+    // window.__ipollowork.events() for any operator who needs them.
     queue = [];
     return;
   }
@@ -162,7 +162,7 @@ async function flushQueue() {
   } catch {
     // Keep this silent; we don't want the logger to itself create a log
     // storm when the server is unreachable. Events are still retained in
-    // window.__ipollowalk.events().
+    // window.__ipollowork.events().
   }
 }
 
@@ -183,15 +183,15 @@ export function recordDebugLog(entry: DevLogEntry) {
 
 function isEnabled(): boolean {
   if (typeof window === "undefined") return false;
-  // Always on in dev; explicit opt-out via `localStorage.ipollowalk.debug.disableLogger = "1"`.
+  // Always on in dev; explicit opt-out via `localStorage.ipollowork.debug.disableLogger = "1"`.
   try {
-    if (window.localStorage.getItem("ipollowalk.debug.disableLogger") === "1") return false;
+    if (window.localStorage.getItem("ipollowork.debug.disableLogger") === "1") return false;
   } catch {
     // ignore
   }
   const env = (import.meta as unknown as { env?: Record<string, unknown> }).env ?? {};
   if (env.PROD === true) {
-    return window.localStorage.getItem("ipollowalk.debug.enableLoggerInProd") === "1";
+    return window.localStorage.getItem("ipollowork.debug.enableLoggerInProd") === "1";
   }
   return true;
 }

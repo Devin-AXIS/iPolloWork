@@ -1,5 +1,5 @@
 {
-  "name": "@ipollowalk/ui-demo",
+  "name": "@ipollowork/ui-demo",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@ipollowalk/ui": "workspace:*",
+    "@ipollowork/ui": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

@@ -65,7 +65,7 @@ Jordan's own credential.
 
 **6. Regression: the escape hatch is intact**
 Same screen, one frame down: the static Quick Connect grid (Notion, Linear,
-Stripe, Sentry, Context7) and local entries (iPolloWalk Browser, UI Control)
+Stripe, Sentry, Context7) and local entries (iPolloWork Browser, UI Control)
 render exactly as before.
 *Assert:* static card names present; a pre-seeded direct MCP entry in
 `opencode.jsonc` is still listed and untouched (byte-identical config).
@@ -93,7 +93,7 @@ has:
 2. Dedup-with-degradation-guard for static suggestions. Frame 6 asserts the
    static grid — with the mock connection there's no name collision, so the
    rule is exercised by a unit test rather than this demo.
-3. Callback arrival page copy ("Connected — return to iPolloWalk"). The
+3. Callback arrival page copy ("Connected — return to iPolloWork"). The
    auto-approving IdP blows past it too fast to screenshot reliably; assert
    its HTML via HTTP instead.
 

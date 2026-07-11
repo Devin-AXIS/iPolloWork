@@ -4,10 +4,10 @@
  * their spot when switching between shells during the port.
  */
 
-const ACTIVE_WORKSPACE_KEY = "ipollowalk.react.activeWorkspace";
-const SESSION_BY_WORKSPACE_KEY = "ipollowalk.react.sessionByWorkspace";
-const WORKSPACE_ORDER_KEY = "ipollowalk.react.workspaceOrder";
-const WORKSPACE_PROJECT_DIMENSION_KEY = "ipollowalk.react.workspaceProjectDimension";
+const ACTIVE_WORKSPACE_KEY = "ipollowork.react.activeWorkspace";
+const SESSION_BY_WORKSPACE_KEY = "ipollowork.react.sessionByWorkspace";
+const WORKSPACE_ORDER_KEY = "ipollowork.react.workspaceOrder";
+const WORKSPACE_PROJECT_DIMENSION_KEY = "ipollowork.react.workspaceProjectDimension";
 
 function safeGet(key: string): string | null {
   if (typeof window === "undefined") return null;
@@ -159,14 +159,14 @@ export function writeWorkspaceProjectDimension(
 // workspace-memory keys so a "reset onboarding" (Settings → Recovery) or a
 // recovery-disabled dev launch produces a genuinely fresh first run — the
 // first-run loader arms, the first session auto-creates, and the provider step
-// (not the iPolloWalk Models startup promo) shows on the first send.
+// (not the iPolloWork Models startup promo) shows on the first send.
 const ONBOARDING_FLAG_KEYS = [
-  "ipollowalk.acknowledgedProviders",
-  "ipollowalk.orgOnboardingSeen",
-  "ipollowalk.reloadAfterOrgOnboarding",
-  "ipollowalk.seenProviderIds",
+  "ipollowork.acknowledgedProviders",
+  "ipollowork.orgOnboardingSeen",
+  "ipollowork.reloadAfterOrgOnboarding",
+  "ipollowork.seenProviderIds",
 ];
-const PREFERENCES_KEY = "ipollowalk.preferences";
+const PREFERENCES_KEY = "ipollowork.preferences";
 
 /**
  * Clear every renderer signal that marks this profile as "already onboarded".

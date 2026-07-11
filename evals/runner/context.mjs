@@ -256,7 +256,7 @@ export class EvalContext {
    * (for a flow that is itself testing theme/dark-mode behavior).
    */
   async ensureLightMode() {
-    await this.waitFor("Boolean(window.__ipollowalkControl)", {
+    await this.waitFor("Boolean(window.__ipolloworkControl)", {
       timeoutMs: 30_000,
       label: "control API before theme check",
     });
@@ -265,11 +265,11 @@ export class EvalContext {
       return;
     }
     await this.eval(`(() => {
-      localStorage.setItem('ipollowalk.react.settings.theme-mode', 'light');
+      localStorage.setItem('ipollowork.react.settings.theme-mode', 'light');
       return true;
     })()`);
     await this.eval("location.reload()");
-    await this.waitFor("Boolean(window.__ipollowalkControl)", {
+    await this.waitFor("Boolean(window.__ipolloworkControl)", {
       timeoutMs: 30_000,
       label: "control API after forcing light mode",
     });
@@ -383,11 +383,11 @@ export class EvalContext {
   }
 
   /**
-   * Execute a registered window.__ipollowalkControl action.
+   * Execute a registered window.__ipolloworkControl action.
    */
   async control(actionId, args) {
     const result = await this.eval(
-      `window.__ipollowalkControl.execute(${JSON.stringify(actionId)}, ${JSON.stringify(args ?? null)})`,
+      `window.__ipolloworkControl.execute(${JSON.stringify(actionId)}, ${JSON.stringify(args ?? null)})`,
       { awaitPromise: true },
     );
     if (!result?.ok) {
@@ -476,9 +476,9 @@ export class EvalContext {
     this.screenshotIndex += 1;
     const fileName = `${this.flowId}-${String(this.screenshotIndex).padStart(2, "0")}-${slug(name)}.png`;
     const sandbox = options.sandboxCapture === "computer-use"
-      ? (this.env.IPOLLOWALK_EVAL_DAYTONA_SANDBOX_ID || this.env.IPOLLOWALK_EVAL_DAYTONA_SANDBOX)?.trim()
+      ? (this.env.IPOLLOWORK_EVAL_DAYTONA_SANDBOX_ID || this.env.IPOLLOWORK_EVAL_DAYTONA_SANDBOX)?.trim()
       : options.sandboxCapture
-        ? this.env.IPOLLOWALK_EVAL_DAYTONA_SANDBOX?.trim()
+        ? this.env.IPOLLOWORK_EVAL_DAYTONA_SANDBOX?.trim()
         : null;
     const targetSelector = !sandbox && (options.targetId || options.targetUrlIncludes);
     const textTargetSelector = options.textTargetId || options.textTargetUrlIncludes;

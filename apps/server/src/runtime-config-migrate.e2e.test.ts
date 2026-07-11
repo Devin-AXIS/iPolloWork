@@ -16,8 +16,8 @@ const CLIENT_TOKEN = "owt_runtime_migrate_client";
 const HOST_TOKEN = "owt_runtime_migrate_host";
 const stops: Array<() => void | Promise<void>> = [];
 const roots: string[] = [];
-const priorDataDir = process.env.IPOLLOWALK_DATA_DIR;
-const priorTokenStore = process.env.IPOLLOWALK_TOKEN_STORE;
+const priorDataDir = process.env.IPOLLOWORK_DATA_DIR;
+const priorTokenStore = process.env.IPOLLOWORK_TOKEN_STORE;
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -34,7 +34,7 @@ async function createTempRoot(prefix: string) {
   return root;
 }
 
-async function startiPolloWalkServer(workspaceRoot: string) {
+async function startiPolloWorkServer(workspaceRoot: string) {
   const config: ServerConfig = {
     host: "127.0.0.1",
     port: 0,
@@ -58,9 +58,9 @@ async function startiPolloWalkServer(workspaceRoot: string) {
 }
 
 beforeEach(async () => {
-  const envRoot = await createTempRoot("ipollowalk-runtime-migrate-env-");
-  process.env.IPOLLOWALK_DATA_DIR = join(envRoot, "data");
-  process.env.IPOLLOWALK_TOKEN_STORE = join(envRoot, "tokens.json");
+  const envRoot = await createTempRoot("ipollowork-runtime-migrate-env-");
+  process.env.IPOLLOWORK_DATA_DIR = join(envRoot, "data");
+  process.env.IPOLLOWORK_TOKEN_STORE = join(envRoot, "tokens.json");
 });
 
 afterEach(async () => {
@@ -71,20 +71,20 @@ afterEach(async () => {
     await rm(roots.pop()!, { recursive: true, force: true });
   }
   if (priorDataDir === undefined) {
-    delete process.env.IPOLLOWALK_DATA_DIR;
+    delete process.env.IPOLLOWORK_DATA_DIR;
   } else {
-    process.env.IPOLLOWALK_DATA_DIR = priorDataDir;
+    process.env.IPOLLOWORK_DATA_DIR = priorDataDir;
   }
   if (priorTokenStore === undefined) {
-    delete process.env.IPOLLOWALK_TOKEN_STORE;
+    delete process.env.IPOLLOWORK_TOKEN_STORE;
   } else {
-    process.env.IPOLLOWALK_TOKEN_STORE = priorTokenStore;
+    process.env.IPOLLOWORK_TOKEN_STORE = priorTokenStore;
   }
 });
 
 describe("runtime-config migrate route", () => {
   test("lifts MCP entries from project opencode.jsonc into the runtime store", async () => {
-    const workspaceRoot = await createTempRoot("ipollowalk-runtime-migrate-");
+    const workspaceRoot = await createTempRoot("ipollowork-runtime-migrate-");
     await writeFile(
       join(workspaceRoot, "opencode.jsonc"),
       JSON.stringify({
@@ -96,7 +96,7 @@ describe("runtime-config migrate route", () => {
       "utf8",
     );
 
-    const { base, config } = await startiPolloWalkServer(workspaceRoot);
+    const { base, config } = await startiPolloWorkServer(workspaceRoot);
 
     const response = await fetch(`${base}/workspace/ws_1/runtime-config/migrate`, {
       method: "POST",

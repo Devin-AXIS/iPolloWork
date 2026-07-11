@@ -30,7 +30,7 @@ export type RecoveryViewProps = {
   onRepairOpencodeCache: () => void | Promise<void>;
   dockerCleanupBusy: boolean;
   dockerCleanupResult: string | null;
-  onCleanupiPolloWalkDockerContainers: () => void | Promise<void>;
+  onCleanupiPolloWorkDockerContainers: () => void | Promise<void>;
 };
 
 export function RecoveryView(props: RecoveryViewProps) {
@@ -140,7 +140,7 @@ export function RecoveryView(props: RecoveryViewProps) {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => void props.onCleanupiPolloWalkDockerContainers()}
+                  onClick={() => void props.onCleanupiPolloWorkDockerContainers()}
                   // TODO: Restore the conditional disabled state once this action is wired into the React settings route.
                   // disabled={props.dockerCleanupBusy || props.anyActiveRuns || !isDesktopRuntime()}
                   disabled

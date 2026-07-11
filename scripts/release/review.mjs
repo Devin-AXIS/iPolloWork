@@ -28,8 +28,8 @@ const versions = {
   server: serverPkg.version ?? null,
   orchestrator: orchestratorPkg.version ?? null,
   opencode: pinnedOpencodeVersion || null,
-  orchestratoriPolloWalkServerRange:
-    orchestratorPkg.dependencies?.["ipollowalk-server"] ?? null,
+  orchestratoriPolloWorkServerRange:
+    orchestratorPkg.dependencies?.["ipollowork-server"] ?? null,
 };
 
 const checks = [];
@@ -49,14 +49,14 @@ addCheck(
   `${versions.app ?? "?"} vs ${versions.desktop ?? "?"}`,
 );
 addCheck(
-  "App/ipollowalk-orchestrator versions match",
+  "App/ipollowork-orchestrator versions match",
   versions.app &&
     versions.orchestrator &&
     versions.app === versions.orchestrator,
   `${versions.app ?? "?"} vs ${versions.orchestrator ?? "?"}`,
 );
 addCheck(
-  "App/ipollowalk-server versions match",
+  "App/ipollowork-server versions match",
   versions.app && versions.server && versions.app === versions.server,
   `${versions.app ?? "?"} vs ${versions.server ?? "?"}`,
 );
@@ -72,19 +72,19 @@ if (versions.opencode) {
   );
 }
 
-const ipollowalkServerRange = versions.orchestratoriPolloWalkServerRange ?? "";
-const ipollowalkServerPinned = /^\d+\.\d+\.\d+/.test(ipollowalkServerRange);
-if (!ipollowalkServerRange) {
-  addWarning("ipollowalk-orchestrator is missing an ipollowalk-server dependency.");
-} else if (!ipollowalkServerPinned) {
+const ipolloworkServerRange = versions.orchestratoriPolloWorkServerRange ?? "";
+const ipolloworkServerPinned = /^\d+\.\d+\.\d+/.test(ipolloworkServerRange);
+if (!ipolloworkServerRange) {
+  addWarning("ipollowork-orchestrator is missing an ipollowork-server dependency.");
+} else if (!ipolloworkServerPinned) {
   addWarning(
-    `ipollowalk-orchestrator ipollowalk-server dependency is not pinned (${ipollowalkServerRange}).`,
+    `ipollowork-orchestrator ipollowork-server dependency is not pinned (${ipolloworkServerRange}).`,
   );
 } else {
   addCheck(
-    "iPolloWalk-server dependency matches server version",
-    versions.server && ipollowalkServerRange === versions.server,
-    `${ipollowalkServerRange} vs ${versions.server ?? "?"}`,
+    "iPolloWork-server dependency matches server version",
+    versions.server && ipolloworkServerRange === versions.server,
+    `${ipolloworkServerRange} vs ${versions.server ?? "?"}`,
   );
 }
 
@@ -94,26 +94,26 @@ const sidecarManifestPath = resolve(
   "orchestrator",
   "dist",
   "sidecars",
-  "ipollowalk-orchestrator-sidecars.json",
+  "ipollowork-orchestrator-sidecars.json",
 );
 if (existsSync(sidecarManifestPath)) {
   const manifest = readJson(sidecarManifestPath);
   addCheck(
-    "Sidecar manifest version matches ipollowalk-orchestrator",
+    "Sidecar manifest version matches ipollowork-orchestrator",
     versions.orchestrator && manifest.version === versions.orchestrator,
     `${manifest.version ?? "?"} vs ${versions.orchestrator ?? "?"}`,
   );
-  const serverEntry = manifest.entries?.["ipollowalk-server"]?.version;
+  const serverEntry = manifest.entries?.["ipollowork-server"]?.version;
   if (serverEntry) {
     addCheck(
-      "Sidecar manifest ipollowalk-server version matches",
+      "Sidecar manifest ipollowork-server version matches",
       versions.server && serverEntry === versions.server,
       `${serverEntry ?? "?"} vs ${versions.server ?? "?"}`,
     );
   }
 } else {
   addWarning(
-    "Sidecar manifest missing (run pnpm --filter ipollowalk-orchestrator build:sidecars).",
+    "Sidecar manifest missing (run pnpm --filter ipollowork-orchestrator build:sidecars).",
   );
 }
 

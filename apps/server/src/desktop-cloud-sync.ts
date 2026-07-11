@@ -237,8 +237,8 @@ function readImportedPlugins(value: unknown): Record<string, CloudImportedPlugin
   return plugins;
 }
 
-export function readWorkspaceCloudImports(ipollowalk: Record<string, unknown>): WorkspaceCloudImports {
-  const cloudImports = isRecord(ipollowalk.cloudImports) ? ipollowalk.cloudImports : {};
+export function readWorkspaceCloudImports(ipollowork: Record<string, unknown>): WorkspaceCloudImports {
+  const cloudImports = isRecord(ipollowork.cloudImports) ? ipollowork.cloudImports : {};
   return {
     providers: readImportedProviders(cloudImports.providers),
     marketplaces: readImportedMarketplaces(cloudImports.marketplaces),
@@ -296,8 +296,8 @@ function readDesktopCloudSyncEntry(contextKey: string, value: unknown): DesktopC
   };
 }
 
-export function readDesktopCloudSyncState(ipollowalk: Record<string, unknown>): DesktopCloudSyncState {
-  const raw = isRecord(ipollowalk.desktopCloudSync) ? ipollowalk.desktopCloudSync : {};
+export function readDesktopCloudSyncState(ipollowork: Record<string, unknown>): DesktopCloudSyncState {
+  const raw = isRecord(ipollowork.desktopCloudSync) ? ipollowork.desktopCloudSync : {};
   const rawEntries = isRecord(raw.entries) ? raw.entries : {};
   const entries: Record<string, DesktopCloudSyncEntry> = {};
   for (const [key, entry] of Object.entries(rawEntries)) {
@@ -458,14 +458,14 @@ function diffInstalledCloudResources(
 
 export function syncDesktopCloudResources(input: {
   now?: number;
-  ipollowalk: Record<string, unknown>;
+  ipollowork: Record<string, unknown>;
   snapshot: ResourceSnapshot;
 }) {
   const now = input.now ?? Date.now();
-  const state = readDesktopCloudSyncState(input.ipollowalk);
+  const state = readDesktopCloudSyncState(input.ipollowork);
   const key = contextKey(input.snapshot);
   const previousEntry = state.entries[key] ?? null;
-  const changes = diffInstalledCloudResources(readWorkspaceCloudImports(input.ipollowalk), input.snapshot, now);
+  const changes = diffInstalledCloudResources(readWorkspaceCloudImports(input.ipollowork), input.snapshot, now);
   const entry: DesktopCloudSyncEntry = {
     contextKey: key,
     fetchedAt: now,
@@ -486,8 +486,8 @@ export function syncDesktopCloudResources(input: {
 
   return {
     changes,
-    ipollowalk: {
-      ...input.ipollowalk,
+    ipollowork: {
+      ...input.ipollowork,
       desktopCloudSync: nextState,
     },
     state: nextState,

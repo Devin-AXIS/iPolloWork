@@ -10,7 +10,7 @@ const CERT_ONE = "-----BEGIN CERTIFICATE-----\none\n-----END CERTIFICATE-----";
 const CERT_TWO = "-----BEGIN CERTIFICATE-----\ntwo\n-----END CERTIFICATE-----";
 
 test("writes system CA bundle when certificates are available", async () => {
-  const userDataDir = await mkdtemp(path.join(tmpdir(), "ipollowalk-runtime-ca-"));
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "ipollowork-runtime-ca-"));
   const bundlePath = path.join(userDataDir, "system-ca-bundle.pem");
 
   const env = await resolveSystemCaEnv({
@@ -30,7 +30,7 @@ test("writes system CA bundle when certificates are available", async () => {
 });
 
 test("sets NODE_EXTRA_CA_CERTS for a child env merge", async () => {
-  const userDataDir = await mkdtemp(path.join(tmpdir(), "ipollowalk-runtime-ca-"));
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "ipollowork-runtime-ca-"));
   const caEnv = await resolveSystemCaEnv({
     tlsModule: { getCACertificates: () => [CERT_ONE] },
     userDataDir,
@@ -57,7 +57,7 @@ test("keeps NODE_EXTRA_CA_CERTS from user env file over generated bundle", () =>
 });
 
 test("respects user-set NODE_EXTRA_CA_CERTS", async () => {
-  const userDataDir = await mkdtemp(path.join(tmpdir(), "ipollowalk-runtime-ca-"));
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "ipollowork-runtime-ca-"));
   let called = false;
   let logged = false;
 
@@ -81,7 +81,7 @@ test("respects user-set NODE_EXTRA_CA_CERTS", async () => {
 });
 
 test("no-ops when tls.getCACertificates is unavailable", async () => {
-  const userDataDir = await mkdtemp(path.join(tmpdir(), "ipollowalk-runtime-ca-"));
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "ipollowork-runtime-ca-"));
 
   const env = await resolveSystemCaEnv({
     tlsModule: {},

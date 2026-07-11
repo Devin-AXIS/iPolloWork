@@ -2,10 +2,10 @@
  * Shared wire contract for workspace records.
  *
  * Producers:
- * - ipollowalk-server (apps/server): `GET /workspaces` and friends — emits plain
+ * - ipollowork-server (apps/server): `GET /workspaces` and friends — emits plain
  *   optionals (never null) plus the `opencode*` engine credential fields.
  * - desktop Electron IPC bridge (apps/desktop main.mjs): emits explicit nulls
- *   and the desktop-managed `ipollowalkClientToken`/`ipollowalkHostToken`.
+ *   and the desktop-managed `ipolloworkClientToken`/`ipolloworkHostToken`.
  *
  * Consumers (apps/app) must treat every optional field as possibly absent,
  * undefined, or null. Producer-side types assert assignability against this
@@ -14,7 +14,7 @@
  */
 export type WorkspaceKind = "local" | "remote";
 
-export type WorkspaceRemoteKind = "opencode" | "ipollowalk";
+export type WorkspaceRemoteKind = "opencode" | "ipollowork";
 
 export type WorkspaceWire = {
   id: string;
@@ -26,22 +26,22 @@ export type WorkspaceWire = {
   baseUrl?: string | null;
   directory?: string | null;
   displayName?: string | null;
-  ipollowalkHostUrl?: string | null;
-  ipollowalkToken?: string | null;
+  ipolloworkHostUrl?: string | null;
+  ipolloworkToken?: string | null;
   /** Desktop IPC only: tokens for desktop-managed remote workspaces. */
-  ipollowalkClientToken?: string | null;
-  ipollowalkHostToken?: string | null;
-  ipollowalkWorkspaceId?: string | null;
-  ipollowalkWorkspaceName?: string | null;
+  ipolloworkClientToken?: string | null;
+  ipolloworkHostToken?: string | null;
+  ipolloworkWorkspaceId?: string | null;
+  ipolloworkWorkspaceName?: string | null;
   /**
    * Vocabulary differs per producer today ("docker" | "microsandbox" on the
-   * desktop, "none" | "docker" | "container" in ipollowalk-server), so the wire
+   * desktop, "none" | "docker" | "container" in ipollowork-server), so the wire
    * stays a plain string until the backends converge.
    */
   sandboxBackend?: string | null;
   sandboxRunId?: string | null;
   sandboxContainerName?: string | null;
-  /** ipollowalk-server only: credentials for the proxied opencode engine. */
+  /** ipollowork-server only: credentials for the proxied opencode engine. */
   opencodeUsername?: string | null;
   opencodePassword?: string | null;
   opencode?: {

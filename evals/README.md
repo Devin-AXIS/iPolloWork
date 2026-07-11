@@ -1,6 +1,6 @@
-# iPolloWalk UI evals
+# iPolloWork UI evals
 
-Human-readable scenarios and coded flows that verify end-to-end iPolloWalk UI
+Human-readable scenarios and coded flows that verify end-to-end iPolloWork UI
 behavior against a live app.
 
 Each eval should have:
@@ -10,7 +10,7 @@ Each eval should have:
   repeated regression coverage.
 
 They are not unit tests. They intentionally exercise the running stack
-(OpenCode + iPolloWalk server + React UI) so regressions in wiring — not just
+(OpenCode + iPolloWork server + React UI) so regressions in wiring — not just
 types — get caught.
 
 ## Coded flows (programmatic runner)
@@ -84,8 +84,8 @@ is `voiceover-first-dx` — this workflow demoing itself.
 The runner probes `http://127.0.0.1:9825` (Daytona) then `:9823` (local
 `pnpm dev`) by default. Flows that need cloud credentials declare
 `requiredEnv` and are skipped (not failed) when the env is missing — e.g.
-`cloud-signin-handoff` needs `IPOLLOWALK_EVAL_DEN_API_URL` and
-`IPOLLOWALK_EVAL_DEN_TOKEN`. Reports land in `evals/results/<run-id>/`
+`cloud-signin-handoff` needs `IPOLLOWORK_EVAL_DEN_API_URL` and
+`IPOLLOWORK_EVAL_DEN_TOKEN`. Reports land in `evals/results/<run-id>/`
 (gitignored). Open `evals/results/<run-id>/index.html` for the frame proof.
 A non-zero exit code means at least one flow failed.
 
@@ -99,8 +99,8 @@ pnpm evals --stack-down          # stop what --stack den started
 
 `--stack den` is idempotent: each layer (MySQL, schema, den-api, seed, app)
 is skipped when already up. It signs in as the seeded demo owner
-(`alex@acme.test`) and exports `IPOLLOWALK_EVAL_DEN_API_URL` /
-`IPOLLOWALK_EVAL_DEN_TOKEN`, so the env-gated cloud flows run with zero manual
+(`alex@acme.test`) and exports `IPOLLOWORK_EVAL_DEN_API_URL` /
+`IPOLLOWORK_EVAL_DEN_TOKEN`, so the env-gated cloud flows run with zero manual
 setup. Requires Docker. The MySQL volume survives `--stack-down`, so
 subsequent runs skip schema push and seeding.
 
@@ -250,7 +250,7 @@ Before reporting a flow as passed:
   (browser handoff + paste-code), expired grants, sign-out cleanup, and org
   switching.
 - [`cloud-mcp-agent-flows.md`](./cloud-mcp-agent-flows.md) — agent-driven org
-  management through the ipollowalk-cloud MCP: org identity, invitations, team
+  management through the ipollowork-cloud MCP: org identity, invitations, team
   assignment, and skill sharing via plugins + marketplaces, with server-side
   ground-truth assertions.
 - [`cloud-provider-sync-flows.md`](./cloud-provider-sync-flows.md) — org LLM
@@ -261,7 +261,7 @@ Before reporting a flow as passed:
   invitations, role updates, member removal, and domain restrictions.
 - [`daytona-server-failure-recovery-flows.md`](./daytona-server-failure-recovery-flows.md)
   — Den API/Web/proxy/MySQL outage and recovery behavior.
-- [`default-ipollowalk-marketplace-onboarding-flow.md`](./default-ipollowalk-marketplace-onboarding-flow.md)
+- [`default-ipollowork-marketplace-onboarding-flow.md`](./default-ipollowork-marketplace-onboarding-flow.md)
   — default Marketplace provisioning funnel from sign-in to chat handoff.
 - [`den-marketplace-guided-onboarding-flow.md`](./den-marketplace-guided-onboarding-flow.md)
   — guided browser + desktop marketplace onboarding with pass criteria.

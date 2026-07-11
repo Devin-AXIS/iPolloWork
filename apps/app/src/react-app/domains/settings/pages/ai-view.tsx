@@ -41,11 +41,11 @@ export type AiSettingsViewProps = {
   canDisconnectProvider: (source?: ConnectedProvider["source"]) => boolean;
   /** Set of local provider IDs that were imported from cloud. */
   cloudProviderIds?: Set<string>;
-  showiPolloWalkModelsSubscribe?: boolean;
-  /** Subtle fallback row when iPolloWalk Models is not connected and the banner was dismissed. */
-  showiPolloWalkModelsConnect?: boolean;
-  onSubscribeiPolloWalkModels?: () => void | Promise<void>;
-  onDismissiPolloWalkModels?: () => void | Promise<void>;
+  showiPolloWorkModelsSubscribe?: boolean;
+  /** Subtle fallback row when iPolloWork Models is not connected and the banner was dismissed. */
+  showiPolloWorkModelsConnect?: boolean;
+  onSubscribeiPolloWorkModels?: () => void | Promise<void>;
+  onDismissiPolloWorkModels?: () => void | Promise<void>;
   cloudProvidersView?: ReactNode;
 };
 
@@ -95,42 +95,42 @@ export function AiSettingsView(props: AiSettingsViewProps) {
           </LayoutSectionItemHeader>
         </LayoutSectionItem>
 
-        {props.showiPolloWalkModelsSubscribe ? (
+        {props.showiPolloWorkModelsSubscribe ? (
           <LayoutSectionItem className="relative overflow-hidden rounded-2xl border border-blue-6 bg-blue-2/30 px-4 py-4">
             <button
               type="button"
               className="absolute right-3 top-3 flex size-7 items-center justify-center rounded-full text-blue-11 transition-colors hover:bg-blue-3/70"
-              onClick={() => void props.onDismissiPolloWalkModels?.()}
-              aria-label="Dismiss iPolloWalk Models banner"
+              onClick={() => void props.onDismissiPolloWorkModels?.()}
+              aria-label="Dismiss iPolloWork Models banner"
             >
               <X className="size-3.5" />
             </button>
             <div className="flex flex-col gap-4 pr-8 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex min-w-0 gap-3">
-                <ProviderIcon providerId="ipollowalk" size={22} className="mt-0.5 shrink-0 text-blue-11" />
+                <ProviderIcon providerId="ipollowork" size={22} className="mt-0.5 shrink-0 text-blue-11" />
                 <div className="min-w-0 space-y-2">
                   <div>
-                    <div className="text-sm font-medium text-dls-text">iPolloWalk Models</div>
+                    <div className="text-sm font-medium text-dls-text">iPolloWork Models</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      Hosted frontier models for iPolloWalk tasks without managing provider API keys.
+                      Hosted frontier models for iPolloWork tasks without managing provider API keys.
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 text-[11px] text-blue-11">
                     <span className="inline-flex items-center gap-1 rounded-full border border-blue-6 bg-blue-3 px-2 py-0.5">
-                      <CheckCircle2 className="size-3" /> Managed by iPolloWalk Cloud
+                      <CheckCircle2 className="size-3" /> Managed by iPolloWork Cloud
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full border border-blue-6 bg-blue-3 px-2 py-0.5">
                       <KeyRound className="size-3" /> No API key setup
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Pricing is handled through iPolloWalk Cloud. You can continue using OpenCode Zen or your own providers.
+                    Pricing is handled through iPolloWork Cloud. You can continue using OpenCode Zen or your own providers.
                   </p>
                 </div>
               </div>
               <Button
                 className="shrink-0"
-                onClick={() => void props.onSubscribeiPolloWalkModels?.()}
+                onClick={() => void props.onSubscribeiPolloWorkModels?.()}
                 disabled={props.busy || props.providerAuthBusy}
               >
                 Subscribe
@@ -189,13 +189,13 @@ export function AiSettingsView(props: AiSettingsViewProps) {
           </div>
         ) : null}
 
-        {props.showiPolloWalkModelsConnect ? (
+        {props.showiPolloWorkModelsConnect ? (
           <LayoutSectionItem className="flex-row flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-dls-border px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
-              <ProviderIcon providerId="ipollowalk" size={20} className="text-muted-foreground" />
+              <ProviderIcon providerId="ipollowork" size={20} className="text-muted-foreground" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium text-dls-text">iPolloWalk Models</span>
+                  <span className="truncate text-sm font-medium text-dls-text">iPolloWork Models</span>
                   <span className="shrink-0 rounded-full border border-dls-border bg-dls-sidebar/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                     Not connected
                   </span>
@@ -207,7 +207,7 @@ export function AiSettingsView(props: AiSettingsViewProps) {
             </div>
             <Button
               variant="outline"
-              onClick={() => void props.onSubscribeiPolloWalkModels?.()}
+              onClick={() => void props.onSubscribeiPolloWorkModels?.()}
               disabled={props.busy || props.providerAuthBusy}
             >
               Connect

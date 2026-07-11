@@ -1,19 +1,19 @@
 ---
 name: daytona-windows-cert
-description: "test on Windows, enterprise CA, corporate certificate, GPO cert, TLS fetch failed, Windows sandbox, daytona windows, self-hosted cert. Use when validating iPolloWalk Windows enterprise TLS/OS-trust fixes in a Daytona Windows sandbox."
+description: "test on Windows, enterprise CA, corporate certificate, GPO cert, TLS fetch failed, Windows sandbox, daytona windows, self-hosted cert. Use when validating iPolloWork Windows enterprise TLS/OS-trust fixes in a Daytona Windows sandbox."
 ---
 
 # Skill: Daytona Windows Enterprise Certificate Test
 
-Run the verified Windows repro for iPolloWalk enterprise TLS behavior: install a
+Run the verified Windows repro for iPolloWork enterprise TLS behavior: install a
 fake corporate CA into the Windows machine store, serve healthy and broken HTTPS
 control planes, install a Windows build, and prove the desktop app and spawned
 runtimes use the operating system trust path.
 
 Use this as the Windows companion to `daytona-electron-test`. Use `fraimz` when
 the result needs frame-by-frame proof, screenshots, or PR evidence. Reuse the
-repo support assets instead of copying their logic: `scripts/support/setup-ipollowalk-tls-repro.ps1`,
-`scripts/support/ipollowalk-doctor.ps1`, and `docs/support/enterprise-network-doctor.md`.
+repo support assets instead of copying their logic: `scripts/support/setup-ipollowork-tls-repro.ps1`,
+`scripts/support/ipollowork-doctor.ps1`, and `docs/support/enterprise-network-doctor.md`.
 
 ## When to use
 
@@ -21,7 +21,7 @@ repo support assets instead of copying their logic: `scripts/support/setup-ipoll
 - User is validating an enterprise CA, corporate certificate, GPO cert, or
   self-hosted cert path on Windows.
 - User reports `TLS fetch failed`, `fetch failed`, or a certificate-specific
-  failure when connecting iPolloWalk to a self-hosted control plane.
+  failure when connecting iPolloWork to a self-hosted control plane.
 - User needs to prove the Windows app uses OS trust and spawned runtimes receive
   the OS trust bundle via `NODE_EXTRA_CA_CERTS`.
 
@@ -35,9 +35,9 @@ brew link --overwrite daytona
 daytona version
 ```
 
-- `gh` must be authenticated to `Devin-AXIS/iPolloWalk` and able to create/delete
+- `gh` must be authenticated to `Devin-AXIS/iPolloWork` and able to create/delete
   temporary public prereleases.
-- Have a Windows iPolloWalk build or installer ready. Keep secrets and customer
+- Have a Windows iPolloWork build or installer ready. Keep secrets and customer
   materials out of the temporary release asset.
 
 ## 1. Create the Windows sandbox
@@ -91,7 +91,7 @@ Do not inspect app UI state, userData, or installed app settings through SYSTEM
 profile paths.
 
 Human GUI access is: Daytona Dashboard -> sandbox -> ⋮ menu -> **VNC** ->
-Connect. Use `exec` for setup and logs; use VNC to drive the installed iPolloWalk
+Connect. Use `exec` for setup and logs; use VNC to drive the installed iPolloWork
 app and observe the user-visible result.
 
 ## 3. Get the app build in
@@ -105,27 +105,27 @@ the app build plus the support scripts from this repo so the VM reuses the
 checked-in harness:
 
 ```bash
-TAG="ipollowalk-win-cert-repro-$(date +%Y%m%d%H%M%S)"
+TAG="ipollowork-win-cert-repro-$(date +%Y%m%d%H%M%S)"
 ZIP="/tmp/${TAG}.zip"
-# Put your Windows app build under /tmp/ipollowalk-win-cert-upload/ipollowalk/app
-# and include scripts/support/setup-ipollowalk-tls-repro.ps1 plus
-# scripts/support/ipollowalk-doctor.ps1 under ipollowalk/scripts/support/.
+# Put your Windows app build under /tmp/ipollowork-win-cert-upload/ipollowork/app
+# and include scripts/support/setup-ipollowork-tls-repro.ps1 plus
+# scripts/support/ipollowork-doctor.ps1 under ipollowork/scripts/support/.
 # Include .opencode/skills/daytona-windows-cert/scripts/ca-probe.js as
-# ipollowalk/ca-probe.js.
-ditto -c -k --keepParent /tmp/ipollowalk-win-cert-upload/ipollowalk "$ZIP"
-gh release create "$TAG" "$ZIP" --repo Devin-AXIS/iPolloWalk --prerelease
+# ipollowork/ca-probe.js.
+ditto -c -k --keepParent /tmp/ipollowork-win-cert-upload/ipollowork "$ZIP"
+gh release create "$TAG" "$ZIP" --repo Devin-AXIS/iPolloWork --prerelease
 ```
 
 The release command shape from the verified session was:
 
 ```bash
-gh release create <tag> <zip> --repo Devin-AXIS/iPolloWalk --prerelease
+gh release create <tag> <zip> --repo Devin-AXIS/iPolloWork --prerelease
 ```
 
 Download and extract inside Windows:
 
 ```bash
-DOWNLOAD_URL="https://github.com/Devin-AXIS/iPolloWalk/releases/download/${TAG}/$(basename "$ZIP")"
+DOWNLOAD_URL="https://github.com/Devin-AXIS/iPolloWork/releases/download/${TAG}/$(basename "$ZIP")"
 daytona exec "$SANDBOX_ID" -- cmd /c 'mkdir C:\ow 2>NUL'
 daytona exec "$SANDBOX_ID" -- cmd /c "curl.exe -L -o C:\ow\app.zip $DOWNLOAD_URL"
 daytona exec "$SANDBOX_ID" -- cmd /c 'tar -xf C:\ow\app.zip -C C:\ow'
@@ -142,19 +142,19 @@ If the zip only contains the app, fetch the support scripts from the same branch
 instead of rewriting them:
 
 ```bash
-daytona exec "$SANDBOX_ID" -- cmd /c 'mkdir C:\ow\ipollowalk\scripts\support 2>NUL'
-daytona exec "$SANDBOX_ID" -- cmd /c 'curl.exe -L -o C:\ow\ipollowalk\scripts\support\setup-ipollowalk-tls-repro.ps1 https://raw.githubusercontent.com/Devin-AXIS/iPolloWalk/dev/scripts/support/setup-ipollowalk-tls-repro.ps1'
-daytona exec "$SANDBOX_ID" -- cmd /c 'curl.exe -L -o C:\ow\ipollowalk\scripts\support\ipollowalk-doctor.ps1 https://raw.githubusercontent.com/Devin-AXIS/iPolloWalk/dev/scripts/support/ipollowalk-doctor.ps1'
+daytona exec "$SANDBOX_ID" -- cmd /c 'mkdir C:\ow\ipollowork\scripts\support 2>NUL'
+daytona exec "$SANDBOX_ID" -- cmd /c 'curl.exe -L -o C:\ow\ipollowork\scripts\support\setup-ipollowork-tls-repro.ps1 https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/dev/scripts/support/setup-ipollowork-tls-repro.ps1'
+daytona exec "$SANDBOX_ID" -- cmd /c 'curl.exe -L -o C:\ow\ipollowork\scripts\support\ipollowork-doctor.ps1 https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/dev/scripts/support/ipollowork-doctor.ps1'
 ```
 
 ## 4. Stand up the enterprise-TLS repro
 
-`scripts/support/setup-ipollowalk-tls-repro.ps1` creates a fake corporate root and
+`scripts/support/setup-ipollowork-tls-repro.ps1` creates a fake corporate root and
 intermediate, trusts the root in `Cert:\LocalMachine\Root`, maps
-`poc.ipollowalk.test` to localhost, and serves:
+`poc.ipollowork.test` to localhost, and serves:
 
-- `https://poc.ipollowalk.test:8443` — healthy chain.
-- `https://poc.ipollowalk.test:9443` — broken chain with the intermediate removed.
+- `https://poc.ipollowork.test:8443` — healthy chain.
+- `https://poc.ipollowork.test:9443` — broken chain with the intermediate removed.
 
 Do not run the listeners only inside a one-off `daytona exec`; the PowerShell
 listeners die when that exec session closes. Persist them with a scheduled task
@@ -165,17 +165,17 @@ ENCODED=$(python3 - <<'PY'
 import base64
 script = r'''
 $ErrorActionPreference = "Stop"
-$repo = "C:\ow\ipollowalk"
-$cmdPath = "C:\ow\start-ipollowalk-tls-repro.cmd"
+$repo = "C:\ow\ipollowork"
+$cmdPath = "C:\ow\start-ipollowork-tls-repro.cmd"
 $cmd = @"
 @echo off
 cd /d "$repo"
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\support\setup-ipollowalk-tls-repro.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\support\setup-ipollowork-tls-repro.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "while (`$true) { Start-Sleep -Seconds 3600 }"
 "@
 Set-Content -LiteralPath $cmdPath -Value $cmd -Encoding ASCII
-schtasks /create /f /sc onstart /ru SYSTEM /tn iPolloWalkTlsRepro /tr $cmdPath
-schtasks /run /tn iPolloWalkTlsRepro
+schtasks /create /f /sc onstart /ru SYSTEM /tn iPolloWorkTlsRepro /tr $cmdPath
+schtasks /run /tn iPolloWorkTlsRepro
 '''
 print(base64.b64encode(script.encode("utf-16le")).decode())
 PY
@@ -192,7 +192,7 @@ daytona exec "$SANDBOX_ID" -- cmd /c 'netstat -ano | findstr :8443'
 Optional diagnostic output from the checked-in doctor script:
 
 ```bash
-daytona exec "$SANDBOX_ID" -- powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\ow\ipollowalk\scripts\support\ipollowalk-doctor.ps1' -WebUrl https://poc.ipollowalk.test:8443 -ApiUrl https://poc.ipollowalk.test:9443 -ExpectedIssuerMatch "iPolloWalk TLS Repro"
+daytona exec "$SANDBOX_ID" -- powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\ow\ipollowork\scripts\support\ipollowork-doctor.ps1' -WebUrl https://poc.ipollowork.test:8443 -ApiUrl https://poc.ipollowork.test:9443 -ExpectedIssuerMatch "iPolloWork TLS Repro"
 ```
 
 ## 5. Verify the fix
@@ -203,14 +203,14 @@ Copy `.opencode/skills/daytona-windows-cert/scripts/ca-probe.js` into the VM as
 `C:\ow\ca-probe.js`. Its contents are intentionally small and reusable:
 
 ```bash
-daytona exec "$SANDBOX_ID" -- cmd /c 'copy C:\ow\ipollowalk\ca-probe.js C:\ow\ca-probe.js'
+daytona exec "$SANDBOX_ID" -- cmd /c 'copy C:\ow\ipollowork\ca-probe.js C:\ow\ca-probe.js'
 ```
 
 ```js
 const { X509Certificate } = require("node:crypto");
 const tls = require("node:tls");
 
-const needle = (process.env.IPOLLOWALK_TLS_REPRO_CA_MATCH || "iPolloWalk TLS Repro").toLowerCase();
+const needle = (process.env.IPOLLOWORK_TLS_REPRO_CA_MATCH || "iPolloWork TLS Repro").toLowerCase();
 
 function countMatchingSubjects(certificates) {
   let count = 0;
@@ -246,7 +246,7 @@ Run Electron in node mode. Adjust the executable path for your unpacked build or
 installed app:
 
 ```bash
-daytona exec "$SANDBOX_ID" -- cmd /c 'set ELECTRON_RUN_AS_NODE=1 && "C:\ow\ipollowalk\app\iPolloWalk.exe" C:\ow\ca-probe.js'
+daytona exec "$SANDBOX_ID" -- cmd /c 'set ELECTRON_RUN_AS_NODE=1 && "C:\ow\ipollowork\app\iPolloWork.exe" C:\ow\ca-probe.js'
 ```
 
 The verified result was:
@@ -261,13 +261,13 @@ the bundled Mozilla roots do not.
 
 ### Verify the installed app via VNC
 
-Drive the installed iPolloWalk Windows app through VNC, not `daytona exec`.
+Drive the installed iPolloWork Windows app through VNC, not `daytona exec`.
 
 1. Open Daytona Dashboard -> sandbox -> ⋮ menu -> **VNC** -> Connect.
-2. Launch or install iPolloWalk as the interactive user.
-3. Point the self-hosted/control-plane URL at `https://poc.ipollowalk.test:8443`.
+2. Launch or install iPolloWork as the interactive user.
+3. Point the self-hosted/control-plane URL at `https://poc.ipollowork.test:8443`.
    The request should succeed.
-4. Repeat against `https://poc.ipollowalk.test:9443`. The request should fail with
+4. Repeat against `https://poc.ipollowork.test:9443`. The request should fail with
    a named certificate/chain error, not a vague `fetch failed` banner.
 
 Use `daytona-electron-test` for normal Electron driving patterns and `fraimz` for
@@ -278,15 +278,15 @@ captured proof if this is PR evidence.
 The real Windows userData folder is:
 
 ```text
-C:\Users\<User>\AppData\Roaming\com.differentai.ipollowalk
+C:\Users\<User>\AppData\Roaming\com.differentai.ipollowork
 ```
 
-It is **not** `C:\Users\<User>\AppData\Roaming\iPolloWalk`. Because `exec` runs as
+It is **not** `C:\Users\<User>\AppData\Roaming\iPolloWork`. Because `exec` runs as
 SYSTEM, inspect the interactive user path explicitly:
 
 ```bash
-daytona exec "$SANDBOX_ID" -- cmd /c 'dir "C:\Users\Administrator\AppData\Roaming\com.differentai.ipollowalk\system-ca-bundle.pem"'
-daytona exec "$SANDBOX_ID" -- cmd /c 'findstr /c:"iPolloWalk TLS Repro" "C:\Users\Administrator\AppData\Roaming\com.differentai.ipollowalk\system-ca-bundle.pem"'
+daytona exec "$SANDBOX_ID" -- cmd /c 'dir "C:\Users\Administrator\AppData\Roaming\com.differentai.ipollowork\system-ca-bundle.pem"'
+daytona exec "$SANDBOX_ID" -- cmd /c 'findstr /c:"iPolloWork TLS Repro" "C:\Users\Administrator\AppData\Roaming\com.differentai.ipollowork\system-ca-bundle.pem"'
 ```
 
 Known gotcha: `system-ca-bundle.pem` is written once at first launch and then
@@ -300,7 +300,7 @@ usually does not bite customers.
   payload:
 
 ```bash
-daytona exec "$SANDBOX_ID" -- cmd /c 'dir "C:\Users\Administrator\AppData\Roaming\com.differentai.ipollowalk"'
+daytona exec "$SANDBOX_ID" -- cmd /c 'dir "C:\Users\Administrator\AppData\Roaming\com.differentai.ipollowork"'
 ```
 
 - Pipes and `|` inside `daytona exec ... -- powershell -Command '...'` can be
@@ -310,7 +310,7 @@ daytona exec "$SANDBOX_ID" -- cmd /c 'dir "C:\Users\Administrator\AppData\Roamin
 ```bash
 ENCODED=$(python3 - <<'PY'
 import base64
-command = r'Get-ChildItem Cert:\LocalMachine\Root | Where-Object Subject -like "*iPolloWalk TLS Repro*"'
+command = r'Get-ChildItem Cert:\LocalMachine\Root | Where-Object Subject -like "*iPolloWork TLS Repro*"'
 print(base64.b64encode(command.encode("utf-16le")).decode())
 PY
 )
@@ -337,9 +337,9 @@ Stop the scheduled repro, remove the certificates/hosts/bindings through the
 checked-in setup script, delete the sandbox, and delete the temporary prerelease:
 
 ```bash
-daytona exec "$SANDBOX_ID" -- cmd /c 'schtasks /end /tn iPolloWalkTlsRepro'
-# Core repro cleanup shape: setup-ipollowalk-tls-repro.ps1 -Cleanup
-daytona exec "$SANDBOX_ID" -- powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\ow\ipollowalk\scripts\support\setup-ipollowalk-tls-repro.ps1' -Cleanup
+daytona exec "$SANDBOX_ID" -- cmd /c 'schtasks /end /tn iPolloWorkTlsRepro'
+# Core repro cleanup shape: setup-ipollowork-tls-repro.ps1 -Cleanup
+daytona exec "$SANDBOX_ID" -- powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\ow\ipollowork\scripts\support\setup-ipollowork-tls-repro.ps1' -Cleanup
 daytona sandbox delete <ID>
 gh release delete <tag> --yes
 ```

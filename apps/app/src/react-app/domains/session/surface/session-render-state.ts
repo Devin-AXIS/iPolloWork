@@ -1,14 +1,14 @@
 import type { UIMessage } from "ai";
 
-import type { iPolloWalkSessionSnapshot } from "../../../../app/lib/ipollowalk-server";
+import type { iPolloWorkSessionSnapshot } from "../../../../app/lib/ipollowork-server";
 import { mergeSnapshotAndLiveMessages } from "../sync/message-merge";
 import { applyRevertCursor } from "../sync/transcript-reconcile";
 import { snapshotToUIMessages } from "../sync/usechat-adapter";
 
 export function resolveRenderedSessionSnapshot(input: {
   sessionId: string;
-  currentSnapshot: iPolloWalkSessionSnapshot | null | undefined;
-  cachedRendered: { sessionId: string; snapshot: iPolloWalkSessionSnapshot } | null | undefined;
+  currentSnapshot: iPolloWorkSessionSnapshot | null | undefined;
+  cachedRendered: { sessionId: string; snapshot: iPolloWorkSessionSnapshot } | null | undefined;
 }) {
   if (input.currentSnapshot?.session.id === input.sessionId) {
     return input.currentSnapshot;
@@ -24,7 +24,7 @@ export function resolveRenderedSessionSnapshot(input: {
 
 export function deriveRenderedSessionMessages(input: {
   transcriptState: UIMessage[] | null | undefined;
-  snapshot: iPolloWalkSessionSnapshot | null | undefined;
+  snapshot: iPolloWorkSessionSnapshot | null | undefined;
 }) {
   const revertMessageId = (input.snapshot?.session as any)?.revert?.messageID ?? null;
   const liveMessages = input.transcriptState ?? [];

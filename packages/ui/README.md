@@ -1,8 +1,8 @@
-# @ipollowalk/ui
+# @ipollowork/ui
 
-Shared UI primitives for iPolloWalk apps.
+Shared UI primitives for iPolloWork apps.
 
-This package ships one entrypoint: `@ipollowalk/ui/react`, used by `apps/app`
+This package ships one entrypoint: `@ipollowork/ui/react`, used by `apps/app`
 and `ee/apps/den-web`. (A Solid flavor existed during the Solid-to-React
 migration and was removed once the last Solid consumer disappeared.)
 
@@ -10,7 +10,7 @@ Exports resolve to `src/` directly, so consumers need no build step.
 
 ## Paper components
 
-The first shared components live under the `paper` namespace and wrap Paper Design shaders with iPolloWalk-specific defaults and deterministic seed support.
+The first shared components live under the `paper` namespace and wrap Paper Design shaders with iPolloWork-specific defaults and deterministic seed support.
 
 Current components:
 
@@ -21,7 +21,7 @@ Both accept a `seed` prop. Pass a TypeID-like string such as `om_01kmhbscaze02vp
 
 Explicit props still work and override the seeded values, so the merge order is:
 
-1. iPolloWalk defaults
+1. iPolloWork defaults
 2. Seed-derived values from `seed`
 3. Explicit props passed by the caller
 

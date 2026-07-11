@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { app, WebContentsView, clipboard, session, shell } from "electron";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BROWSER_SESSION_PARTITION = "persist:ipollowalk-browser";
+const BROWSER_SESSION_PARTITION = "persist:ipollowork-browser";
 const BROWSER_DEFAULT_URL = "about:blank";
 // URL a user-initiated new tab (the "+" button / opening the browser panel)
 // lands on. The agent's programmatic path keeps BROWSER_DEFAULT_URL.
@@ -115,8 +115,8 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
   }
 
   function browserTargetMarkerUrl(tabId) {
-    const marker = `ipollowalk-browser-tab:${tabId}`;
-    const html = `<!doctype html><title>${marker}</title><meta name="ipollowalk-browser-tab" content="${tabId}"><body>${marker}</body>`;
+    const marker = `ipollowork-browser-tab:${tabId}`;
+    const html = `<!doctype html><title>${marker}</title><meta name="ipollowork-browser-tab" content="${tabId}"><body>${marker}</body>`;
     return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
   }
 
@@ -129,7 +129,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
   }
 
   async function resolveBrowserCdpTargetId(tabId) {
-    const marker = encodeURIComponent(`ipollowalk-browser-tab:${tabId}`);
+    const marker = encodeURIComponent(`ipollowork-browser-tab:${tabId}`);
     const deadline = Date.now() + BROWSER_TARGET_RESOLVE_TIMEOUT_MS;
     while (Date.now() < deadline) {
       const targets = await listCdpTargets().catch(() => []);
@@ -379,7 +379,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     if (!ready) {
       console.warn("[menu-overlay] renderer did not signal readiness before show");
     }
-    view.webContents.send("ipollowalk:menu-overlay:show", {
+    view.webContents.send("ipollowork:menu-overlay:show", {
       id: request.id,
       source: request.source,
       items: request.items,
@@ -413,7 +413,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     const raw = String(input ?? "").trim();
     const envMatch = raw.match(/^env:([A-Za-z0-9_]+)$/i);
     if (!envMatch) return raw;
-    const key = `IPOLLOWALK_BROWSER_PROXY_${envMatch[1].toUpperCase()}`;
+    const key = `IPOLLOWORK_BROWSER_PROXY_${envMatch[1].toUpperCase()}`;
     const value = String(process.env[key] ?? "").trim();
     if (!value) throw new Error(`No proxy configured: set the ${key} environment variable to a proxy URL.`);
     return value;
@@ -496,9 +496,9 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
       // data: loads are internal plumbing (CDP target-marker pages), not
       // user-visible navigations — don't surface the panel for them.
       if (target === "about:blank" || target.startsWith("data:")) return;
-      // Intercept ipollowalk:// deep links (e.g. den-auth handoff grants) so
+      // Intercept ipollowork:// deep links (e.g. den-auth handoff grants) so
       // in-app browser auth works without the system protocol handler.
-      if (target.startsWith("ipollowalk://") || target.startsWith("ipollowalk-dev://")) {
+      if (target.startsWith("ipollowork://") || target.startsWith("ipollowork-dev://")) {
         if (typeof onDeepLink === "function") {
           onDeepLink([target]);
         }
@@ -525,7 +525,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
           // The tab may be mid-close; the panel-opened event below still fires.
         }
       }
-      sendToRenderer("ipollowalk:browser:panel-opened");
+      sendToRenderer("ipollowork:browser:panel-opened");
     });
     view.webContents.on("did-navigate", () => sendBrowserState());
     view.webContents.on("did-navigate-in-page", () => sendBrowserState());
@@ -645,7 +645,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
         attachActiveBrowserView();
       } else {
         hideBrowserView();
-        sendToRenderer("ipollowalk:browser:panel-closed");
+        sendToRenderer("ipollowork:browser:panel-closed");
       }
     }
     try { tab.view.webContents.close(); } catch { /* already destroyed */ }
@@ -667,7 +667,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     for (const tab of tabsToClose) {
       try { tab.view.webContents.close(); } catch { /* already destroyed */ }
     }
-    sendToRenderer("ipollowalk:browser:panel-closed");
+    sendToRenderer("ipollowork:browser:panel-closed");
     sendBrowserState();
     return closedTabIds;
   }
@@ -690,7 +690,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
   }
 
   function sendBrowserState() {
-    sendToRenderer("ipollowalk:browser:state", browserStatePayload());
+    sendToRenderer("ipollowork:browser:state", browserStatePayload());
   }
 
   /**
@@ -743,58 +743,58 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
   }
 
   function registerIpc(ipcMain) {
-    ipcMain.handle("ipollowalk:browser:show", (_event, bounds) => attachBrowserView(bounds));
-    ipcMain.handle("ipollowalk:browser:hide", () => hideBrowserView());
-    ipcMain.handle("ipollowalk:browser:openUrl", (_event, url, provider) => openBrowserUrlForAutomation(url, provider));
-    ipcMain.handle("ipollowalk:browser:navigate", (_event, url) => {
+    ipcMain.handle("ipollowork:browser:show", (_event, bounds) => attachBrowserView(bounds));
+    ipcMain.handle("ipollowork:browser:hide", () => hideBrowserView());
+    ipcMain.handle("ipollowork:browser:openUrl", (_event, url, provider) => openBrowserUrlForAutomation(url, provider));
+    ipcMain.handle("ipollowork:browser:navigate", (_event, url) => {
       const view = getActiveBrowserView() ?? createBrowserTab("about:blank", { select: true }).view;
       view.webContents.loadURL(normalizeBrowserUrl(url));
     });
-    ipcMain.handle("ipollowalk:browser:back", () => {
+    ipcMain.handle("ipollowork:browser:back", () => {
       const webContents = getActiveWebContents();
       if (webContents?.canGoBack()) webContents.goBack();
     });
-    ipcMain.handle("ipollowalk:browser:forward", () => {
+    ipcMain.handle("ipollowork:browser:forward", () => {
       const webContents = getActiveWebContents();
       if (webContents?.canGoForward()) webContents.goForward();
     });
-    ipcMain.handle("ipollowalk:browser:reload", () => getActiveWebContents()?.reload());
-    ipcMain.handle("ipollowalk:browser:bounds", (_event, bounds) => {
+    ipcMain.handle("ipollowork:browser:reload", () => getActiveWebContents()?.reload());
+    ipcMain.handle("ipollowork:browser:bounds", (_event, bounds) => {
       lastBrowserBounds = bounds;
       const view = getActiveBrowserView();
       if (view && browserViewVisible && bounds.width > 0 && bounds.height > 0) {
         view.setBounds(scaleRendererBounds(bounds));
       }
     });
-    ipcMain.handle("ipollowalk:browser:state", () => browserStatePayload());
-    ipcMain.handle("ipollowalk:browser:createTab", (_event, url) => {
+    ipcMain.handle("ipollowork:browser:state", () => browserStatePayload());
+    ipcMain.handle("ipollowork:browser:createTab", (_event, url) => {
       const target = typeof url === "string" && url.trim() ? url : BROWSER_NEW_TAB_URL;
       const tab = createBrowserTab(target, { select: true });
       return { tabId: tab.tabId };
     });
-    ipcMain.handle("ipollowalk:browser:closeTab", (_event, tabId) => closeBrowserTab(tabId == null ? undefined : String(tabId)));
-    ipcMain.handle("ipollowalk:browser:closeAllTabs", () => closeAllBrowserTabs());
-    ipcMain.handle("ipollowalk:browser:selectTab", (_event, tabId) => selectBrowserTab(String(tabId ?? "")).tabId);
-    ipcMain.handle("ipollowalk:browser:reorderTabs", (_event, tabIds) => reorderBrowserTabs(tabIds));
-    ipcMain.handle("ipollowalk:browser:listTabs", () => listBrowserTabs());
-    ipcMain.handle("ipollowalk:browser:setProxy", (_event, proxy) => setBrowserProxy(proxy));
-    ipcMain.handle("ipollowalk:browser:getProxy", () => browserProxyState());
-    ipcMain.handle("ipollowalk:browser:tabContextMenu", (_event, tabId, point) => showBrowserTabContextMenu(tabId, point));
-    ipcMain.handle("ipollowalk:browser:destroy", () => destroyBrowserView());
-    ipcMain.on("ipollowalk:menu-overlay:ready", (event) => {
+    ipcMain.handle("ipollowork:browser:closeTab", (_event, tabId) => closeBrowserTab(tabId == null ? undefined : String(tabId)));
+    ipcMain.handle("ipollowork:browser:closeAllTabs", () => closeAllBrowserTabs());
+    ipcMain.handle("ipollowork:browser:selectTab", (_event, tabId) => selectBrowserTab(String(tabId ?? "")).tabId);
+    ipcMain.handle("ipollowork:browser:reorderTabs", (_event, tabIds) => reorderBrowserTabs(tabIds));
+    ipcMain.handle("ipollowork:browser:listTabs", () => listBrowserTabs());
+    ipcMain.handle("ipollowork:browser:setProxy", (_event, proxy) => setBrowserProxy(proxy));
+    ipcMain.handle("ipollowork:browser:getProxy", () => browserProxyState());
+    ipcMain.handle("ipollowork:browser:tabContextMenu", (_event, tabId, point) => showBrowserTabContextMenu(tabId, point));
+    ipcMain.handle("ipollowork:browser:destroy", () => destroyBrowserView());
+    ipcMain.on("ipollowork:menu-overlay:ready", (event) => {
       if (event.sender !== menuOverlayView?.webContents) return;
       markMenuOverlayReady(menuOverlayView);
     });
-    ipcMain.on("ipollowalk:menu-overlay:choose", (event, payload) => {
+    ipcMain.on("ipollowork:menu-overlay:choose", (event, payload) => {
       if (event.sender !== menuOverlayView?.webContents) return;
       handleMenuOverlayChoice(payload);
     });
-    ipcMain.on("ipollowalk:menu-overlay:close", (event, payload) => {
+    ipcMain.on("ipollowork:menu-overlay:close", (event, payload) => {
       if (event.sender !== menuOverlayView?.webContents) return;
       if (payload?.requestId && payload.requestId !== menuOverlayRequest?.id) return;
       hideMenuOverlay();
     });
-    ipcMain.on("ipollowalk:menu-overlay:dismiss", (event) => {
+    ipcMain.on("ipollowork:menu-overlay:dismiss", (event) => {
       if (event.sender === menuOverlayView?.webContents) return;
       hideMenuOverlay();
     });

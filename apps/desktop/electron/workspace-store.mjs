@@ -1,5 +1,5 @@
 // Desktop workspace persistence and bootstrap configuration. This module owns
-// on-disk workspace state, per-workspace ipollowalk.json files, remote workspace
+// on-disk workspace state, per-workspace ipollowork.json files, remote workspace
 // normalization/discovery, and the workspace-facing command operations.
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -7,7 +7,7 @@ import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 
 import os from "node:os";
 import path from "node:path";
 
-import { ipollowalkWorkspaceDisplayName, selectiPolloWalkWorkspaceForConnection } from "./remote-workspace.mjs";
+import { ipolloworkWorkspaceDisplayName, selectiPolloWorkWorkspaceForConnection } from "./remote-workspace.mjs";
 import { exportWorkspaceConfig, importWorkspaceConfig } from "./workspace-archive.mjs";
 
 const EMPTY_WORKSPACE_LIST = Object.freeze({
@@ -101,7 +101,7 @@ async function readJsonFile(targetPath, fallback) {
   }
 }
 
-// The bootstrap CLI (packages/ipollowalk-bootstrap) and this app must agree on
+// The bootstrap CLI (packages/ipollowork-bootstrap) and this app must agree on
 // where desktop-bootstrap.json lives: %LOCALAPPDATA% on Windows, XDG_CONFIG_HOME
 // (falling back to ~/.config) elsewhere. Resolved once at module load so a
 // mid-session process.env mutation (runtime.mjs buildChildEnv ->
@@ -113,17 +113,17 @@ const DEFAULT_DESKTOP_BOOTSTRAP_PATH = (() => {
     process.env.XDG_CONFIG_HOME?.trim() ||
     (process.platform === "win32" ? process.env.LOCALAPPDATA?.trim() : "") ||
     path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Local") : ".config");
-  return path.join(configHome, "ipollowalk", "desktop-bootstrap.json");
+  return path.join(configHome, "ipollowork", "desktop-bootstrap.json");
 })();
 
 // Older builds resolved the default as ~/.config on every OS, ignoring
 // LOCALAPPDATA and XDG_CONFIG_HOME. Keep reading that file when the canonical one
 // is missing so existing installs keep their deployment config.
-const LEGACY_DESKTOP_BOOTSTRAP_PATH = path.join(os.homedir(), ".config", "ipollowalk", "desktop-bootstrap.json");
+const LEGACY_DESKTOP_BOOTSTRAP_PATH = path.join(os.homedir(), ".config", "ipollowork", "desktop-bootstrap.json");
 const DESKTOP_BOOTSTRAP_FILENAME = "desktop-bootstrap.json";
-const STANDARD_DESKTOP_INSTALLER_PATTERN = /^ipollowalk-(?:mac-(?:arm64|x64)-.+\.dmg|win-x64-.+\.exe)$/i;
-const HOSTED_DESKTOP_WEB_URL = "https://app.ipollowalklabs.com";
-const HOSTED_DESKTOP_API_URL = "https://api.ipollowalklabs.com";
+const STANDARD_DESKTOP_INSTALLER_PATTERN = /^ipollowork-(?:mac-(?:arm64|x64)-.+\.dmg|win-x64-.+\.exe)$/i;
+const HOSTED_DESKTOP_WEB_URL = "https://app.ipolloworklabs.com";
+const HOSTED_DESKTOP_API_URL = "https://api.ipolloworklabs.com";
 
 function bootstrapUrlOrigin(value) {
   if (typeof value !== "string" || !value.trim()) return "";
@@ -141,20 +141,20 @@ function isHostedDesktopBootstrapConfig(config) {
 
 export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSignin, forceRequireSignin }) {
   function desktopBootstrapPath() {
-    if (process.env.IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH?.trim()) {
-      return process.env.IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH.trim();
+    if (process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH?.trim()) {
+      return process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH.trim();
     }
     // Dev mode swaps process.env.HOME to the sandboxed dev-data home midway
     // through startup (runtime.mjs buildChildEnv -> Object.assign(process.env)),
     // which changes what os.homedir() returns. Resolve the dev-data home
     // deterministically so early and late IPC reads target the same file.
-    if (process.env.IPOLLOWALK_DEV_MODE === "1") {
+    if (process.env.IPOLLOWORK_DEV_MODE === "1") {
       return path.join(
         app.getPath("userData"),
-        "ipollowalk-dev-data",
+        "ipollowork-dev-data",
         "home",
         ".config",
-        "ipollowalk",
+        "ipollowork",
         "desktop-bootstrap.json",
       );
     }
@@ -170,22 +170,22 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
   }
 
   function workspaceStatePath() {
-    return path.join(app.getPath("userData"), "ipollowalk-workspaces.json");
+    return path.join(app.getPath("userData"), "ipollowork-workspaces.json");
   }
 
-  function ipollowalkServerTokenStorePath() {
-    return path.join(app.getPath("userData"), "ipollowalk-server-tokens.json");
+  function ipolloworkServerTokenStorePath() {
+    return path.join(app.getPath("userData"), "ipollowork-server-tokens.json");
   }
 
-  function ipollowalkServerConfigPath() {
-    if (process.env.IPOLLOWALK_SERVER_CONFIG?.trim()) return path.resolve(process.env.IPOLLOWALK_SERVER_CONFIG.trim());
-    if (process.platform === "win32") return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "ipollowalk", "server.json");
-    return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "ipollowalk", "server.json");
+  function ipolloworkServerConfigPath() {
+    if (process.env.IPOLLOWORK_SERVER_CONFIG?.trim()) return path.resolve(process.env.IPOLLOWORK_SERVER_CONFIG.trim());
+    if (process.platform === "win32") return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "ipollowork", "server.json");
+    return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "ipollowork", "server.json");
   }
 
-  // Earlier Electron alpha builds copied Tauri's ipollowalk-workspaces.json into
+  // Earlier Electron alpha builds copied Tauri's ipollowork-workspaces.json into
   // an Electron-only workspace-state.json. Keep importing that file when the
-  // shared canonical file is missing, but write ipollowalk-workspaces.json going
+  // shared canonical file is missing, but write ipollowork-workspaces.json going
   // forward so Tauri rollback and Electron both read the same desktop state.
   function legacyElectronWorkspaceStatePath() {
     return path.join(app.getPath("userData"), "workspace-state.json");
@@ -200,7 +200,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       await mkdir(path.dirname(current), { recursive: true });
       const raw = await readFile(legacy, "utf8");
       await writeFile(current, raw, "utf8");
-      console.info("[migration] copied workspace-state.json to ipollowalk-workspaces.json");
+      console.info("[migration] copied workspace-state.json to ipollowork-workspaces.json");
       return true;
     } catch (error) {
       console.warn("[migration] legacy Electron workspace-state copy failed", error);
@@ -346,7 +346,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
 
   function bundleSearchRoots() {
     const roots = [];
-    const override = process.env.IPOLLOWALK_BOOTSTRAP_BUNDLE_DIR?.trim();
+    const override = process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR?.trim();
     if (override) roots.push(path.resolve(override));
     for (const name of ["downloads", "desktop"]) {
       try {
@@ -459,7 +459,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       legacyExists: legacyPath ? existsSync(legacyPath) : false,
       home: os.homedir(),
       envHome: process.env.HOME ?? null,
-      envOverride: process.env.IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH ?? null,
+      envOverride: process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH ?? null,
       exists: existsSync(configPath),
       raw: null,
       parsed: null,
@@ -499,7 +499,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     return undefined;
   }
 
-  function defaultWorkspaceiPolloWalkConfig(workspacePath, preset = null) {
+  function defaultWorkspaceiPolloWorkConfig(workspacePath, preset = null) {
     return {
       version: 1,
       workspace: workspacePath
@@ -548,7 +548,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
   }
 
   async function recoverWorkspacesFromTokenStore() {
-    const store = await readJsonFile(ipollowalkServerTokenStorePath(), null);
+    const store = await readJsonFile(ipolloworkServerTokenStorePath(), null);
     if (!isRecord(store) || !isRecord(store.workspaces)) return [];
 
     const candidates = [];
@@ -581,7 +581,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
   }
 
   async function recoverWorkspacesFromServerConfig() {
-    const config = await readJsonFile(ipollowalkServerConfigPath(), null);
+    const config = await readJsonFile(ipolloworkServerConfigPath(), null);
     if (!isRecord(config) || !Array.isArray(config.workspaces)) return [];
 
     const seen = new Set();
@@ -597,13 +597,13 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
 
       const baseUrl = typeof entry.baseUrl === "string" ? entry.baseUrl.trim() : "";
       const directory = typeof entry.directory === "string" && entry.directory.trim() ? entry.directory.trim() : null;
-      const remoteType = entry.remoteType === "opencode" ? "opencode" : "ipollowalk";
-      const ipollowalkWorkspaceId = typeof entry.ipollowalkWorkspaceId === "string" ? entry.ipollowalkWorkspaceId.trim() : "";
+      const remoteType = entry.remoteType === "opencode" ? "opencode" : "ipollowork";
+      const ipolloworkWorkspaceId = typeof entry.ipolloworkWorkspaceId === "string" ? entry.ipolloworkWorkspaceId.trim() : "";
       const id = typeof entry.id === "string" && entry.id.trim()
         ? entry.id.trim()
         : workspaceType === "remote"
-          ? remoteType === "ipollowalk"
-            ? ipollowalkRemoteWorkspaceId(baseUrl, ipollowalkWorkspaceId)
+          ? remoteType === "ipollowork"
+            ? ipolloworkRemoteWorkspaceId(baseUrl, ipolloworkWorkspaceId)
             : remoteWorkspaceId(baseUrl, directory)
           : localWorkspaceId(normalizedPath);
       const key = workspaceType === "remote" ? id : normalizeWorkspacePathKey(normalizedPath);
@@ -634,23 +634,23 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
   function firstRunDefaultWorkspaceDir() {
     // Dev mode sandboxes HOME under userData (see desktopBootstrapPath);
     // mirror that so the dev default workspace never touches the real home.
-    if (process.env.IPOLLOWALK_DEV_MODE === "1") {
-      return path.join(app.getPath("userData"), "ipollowalk-dev-data", "home", "iPolloWalk");
+    if (process.env.IPOLLOWORK_DEV_MODE === "1") {
+      return path.join(app.getPath("userData"), "ipollowork-dev-data", "home", "iPolloWork");
     }
-    return path.join(os.homedir(), "iPolloWalk");
+    return path.join(os.homedir(), "iPolloWork");
   }
 
-  // True first run: create the default "iPolloWalk" workspace under the user's
+  // True first run: create the default "iPolloWork" workspace under the user's
   // home directory so the renderer lands directly in a ready workspace — no
   // folder picker, no empty state. Cross-platform (os.homedir + path.join).
   async function createDefaultFirstRunWorkspace() {
     const folderPath = await normalizeLocalWorkspacePath(firstRunDefaultWorkspaceDir());
     await mkdir(path.join(folderPath, ".opencode"), { recursive: true });
-    await writeWorkspaceiPolloWalkConfig(folderPath, defaultWorkspaceiPolloWalkConfig(folderPath, "starter"));
+    await writeWorkspaceiPolloWorkConfig(folderPath, defaultWorkspaceiPolloWorkConfig(folderPath, "starter"));
     return normalizeWorkspaceEntry({
       id: localWorkspaceId(folderPath),
-      name: "iPolloWalk",
-      displayName: "iPolloWalk",
+      name: "iPolloWork",
+      displayName: "iPolloWork",
       path: folderPath,
       preset: "starter",
       workspaceType: "local",
@@ -672,7 +672,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     return stableWorkspaceId(key);
   }
 
-  function parseiPolloWalkWorkspaceIdFromUrl(input) {
+  function parseiPolloWorkWorkspaceIdFromUrl(input) {
     const raw = String(input ?? "").trim();
     if (!raw) return null;
     try {
@@ -695,7 +695,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     }
   }
 
-  function stripiPolloWalkWorkspaceMount(input) {
+  function stripiPolloWorkWorkspaceMount(input) {
     const raw = String(input ?? "").trim();
     if (!raw) return null;
     try {
@@ -714,13 +714,13 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     }
   }
 
-  function ipollowalkRemoteWorkspaceId(hostUrl, workspaceId) {
-    const remoteWorkspaceId = String(workspaceId ?? "").trim() || parseiPolloWalkWorkspaceIdFromUrl(hostUrl);
+  function ipolloworkRemoteWorkspaceId(hostUrl, workspaceId) {
+    const remoteWorkspaceId = String(workspaceId ?? "").trim() || parseiPolloWorkWorkspaceIdFromUrl(hostUrl);
     if (remoteWorkspaceId) return `rem_${remoteWorkspaceId}`;
-    return `rem_${createHash("sha256").update(`ipollowalk::${hostUrl}`).digest("hex").slice(0, 12)}`;
+    return `rem_${createHash("sha256").update(`ipollowork::${hostUrl}`).digest("hex").slice(0, 12)}`;
   }
 
-  async function fetchiPolloWalkWorkspaceList(hostUrl, token, hostToken) {
+  async function fetchiPolloWorkWorkspaceList(hostUrl, token, hostToken) {
     const url = `${String(hostUrl ?? "").replace(/\/+$/, "")}/workspaces`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8_000);
@@ -728,7 +728,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     const bearerToken = String(token ?? "").trim();
     const hostAuthToken = String(hostToken ?? "").trim();
     if (bearerToken) headers.set("Authorization", `Bearer ${bearerToken}`);
-    if (hostAuthToken) headers.set("X-iPolloWalk-Host-Token", hostAuthToken);
+    if (hostAuthToken) headers.set("X-iPolloWork-Host-Token", hostAuthToken);
 
     try {
       const electron = await import("electron").catch(() => null);
@@ -740,7 +740,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
         cache: "no-store",
       });
       if (!response.ok) {
-        throw new Error(`iPolloWalk workspace discovery failed (${response.status} ${response.statusText || "HTTP error"})`);
+        throw new Error(`iPolloWork workspace discovery failed (${response.status} ${response.statusText || "HTTP error"})`);
       }
       return await response.json();
     } finally {
@@ -748,9 +748,9 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     }
   }
 
-  async function discoveriPolloWalkWorkspace({ hostUrl, token, hostToken, directory }) {
-    const list = await fetchiPolloWalkWorkspaceList(hostUrl, token, hostToken);
-    return selectiPolloWalkWorkspaceForConnection(list, directory);
+  async function discoveriPolloWorkWorkspace({ hostUrl, token, hostToken, directory }) {
+    const list = await fetchiPolloWorkWorkspaceList(hostUrl, token, hostToken);
+    return selectiPolloWorkWorkspaceForConnection(list, directory);
   }
 
   function normalizeWorkspaceEntry(input) {
@@ -764,32 +764,32 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       baseUrl: input.baseUrl ?? null,
       directory: input.directory ?? null,
       displayName: input.displayName ?? null,
-      ipollowalkHostUrl: input.ipollowalkHostUrl ?? null,
-      ipollowalkToken: input.ipollowalkToken ?? null,
-      ipollowalkClientToken: input.ipollowalkClientToken ?? null,
-      ipollowalkHostToken: input.ipollowalkHostToken ?? null,
-      ipollowalkWorkspaceId: input.ipollowalkWorkspaceId ?? null,
-      ipollowalkWorkspaceName: input.ipollowalkWorkspaceName ?? null,
+      ipolloworkHostUrl: input.ipolloworkHostUrl ?? null,
+      ipolloworkToken: input.ipolloworkToken ?? null,
+      ipolloworkClientToken: input.ipolloworkClientToken ?? null,
+      ipolloworkHostToken: input.ipolloworkHostToken ?? null,
+      ipolloworkWorkspaceId: input.ipolloworkWorkspaceId ?? null,
+      ipolloworkWorkspaceName: input.ipolloworkWorkspaceName ?? null,
       sandboxBackend: input.sandboxBackend ?? null,
       sandboxRunId: input.sandboxRunId ?? null,
       sandboxContainerName: input.sandboxContainerName ?? null,
     };
   }
 
-  async function readWorkspaceiPolloWalkConfig(workspacePath) {
-    const ipollowalkPath = path.join(workspacePath, ".opencode", "ipollowalk.json");
-    if (!(await pathExists(ipollowalkPath))) {
-      return defaultWorkspaceiPolloWalkConfig(workspacePath);
+  async function readWorkspaceiPolloWorkConfig(workspacePath) {
+    const ipolloworkPath = path.join(workspacePath, ".opencode", "ipollowork.json");
+    if (!(await pathExists(ipolloworkPath))) {
+      return defaultWorkspaceiPolloWorkConfig(workspacePath);
     }
-    const raw = await readFile(ipollowalkPath, "utf8");
+    const raw = await readFile(ipolloworkPath, "utf8");
     return JSON.parse(raw);
   }
 
-  async function writeWorkspaceiPolloWalkConfig(workspacePath, config) {
-    const ipollowalkPath = path.join(workspacePath, ".opencode", "ipollowalk.json");
-    await mkdir(path.dirname(ipollowalkPath), { recursive: true });
-    await writeFile(ipollowalkPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-    return execResult(true, `Wrote ${ipollowalkPath}`);
+  async function writeWorkspaceiPolloWorkConfig(workspacePath, config) {
+    const ipolloworkPath = path.join(workspacePath, ".opencode", "ipollowork.json");
+    await mkdir(path.dirname(ipolloworkPath), { recursive: true });
+    await writeFile(ipolloworkPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    return execResult(true, `Wrote ${ipolloworkPath}`);
   }
 
   async function writeWorkspaceState(nextState) {
@@ -831,11 +831,11 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     let activeId = typeof state?.activeId === "string" ? state.activeId : null;
     let workspaces = Array.isArray(state?.workspaces) ? state.workspaces : [];
     let changed = false;
-    if (workspaces.length === 0 && process.env.IPOLLOWALK_DESKTOP_DISABLE_WORKSPACE_RECOVERY !== "1") {
+    if (workspaces.length === 0 && process.env.IPOLLOWORK_DESKTOP_DISABLE_WORKSPACE_RECOVERY !== "1") {
       const recoveredWorkspaces = await recoverWorkspacesFromKnownState();
       if (recoveredWorkspaces.length > 0) {
         const selectedWorkspace = recoveredWorkspaces[0];
-        console.info("[migration] recovered desktop workspaces from persisted iPolloWalk state", {
+        console.info("[migration] recovered desktop workspaces from persisted iPolloWork state", {
           count: recoveredWorkspaces.length,
           selectedWorkspaceId: selectedWorkspace.id,
         });
@@ -854,7 +854,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     if (
       workspaces.length === 0 &&
       !stateFileExists &&
-      (app.isPackaged || process.env.IPOLLOWALK_DEV_MODE === "1")
+      (app.isPackaged || process.env.IPOLLOWORK_DEV_MODE === "1")
     ) {
       try {
         const defaultWorkspace = await createDefaultFirstRunWorkspace();
@@ -871,29 +871,29 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     const idMap = new Map();
     const migratedWorkspaces = workspaces.map((entry) => {
       const workspace = entry && typeof entry === "object" ? entry : normalizeWorkspaceEntry(entry ?? {});
-      if (workspace.workspaceType !== "remote" || workspace.remoteType !== "ipollowalk") return workspace;
+      if (workspace.workspaceType !== "remote" || workspace.remoteType !== "ipollowork") return workspace;
 
-      const remoteWorkspaceId = String(workspace.ipollowalkWorkspaceId ?? "").trim()
-        || parseiPolloWalkWorkspaceIdFromUrl(workspace.ipollowalkHostUrl)
-        || parseiPolloWalkWorkspaceIdFromUrl(workspace.baseUrl);
+      const remoteWorkspaceId = String(workspace.ipolloworkWorkspaceId ?? "").trim()
+        || parseiPolloWorkWorkspaceIdFromUrl(workspace.ipolloworkHostUrl)
+        || parseiPolloWorkWorkspaceIdFromUrl(workspace.baseUrl);
       if (!remoteWorkspaceId) return workspace;
 
-      const hostUrl = stripiPolloWalkWorkspaceMount(workspace.ipollowalkHostUrl) || stripiPolloWalkWorkspaceMount(workspace.baseUrl);
-      const nextId = ipollowalkRemoteWorkspaceId(hostUrl ?? workspace.baseUrl, remoteWorkspaceId);
+      const hostUrl = stripiPolloWorkWorkspaceMount(workspace.ipolloworkHostUrl) || stripiPolloWorkWorkspaceMount(workspace.baseUrl);
+      const nextId = ipolloworkRemoteWorkspaceId(hostUrl ?? workspace.baseUrl, remoteWorkspaceId);
       idMap.set(workspace.id, nextId);
       const nextWorkspace = {
         ...workspace,
         id: nextId,
         baseUrl: hostUrl,
-        ipollowalkWorkspaceId: remoteWorkspaceId,
-        ipollowalkHostUrl: hostUrl,
+        ipolloworkWorkspaceId: remoteWorkspaceId,
+        ipolloworkHostUrl: hostUrl,
       };
-      if (workspace.id !== nextWorkspace.id || workspace.baseUrl !== nextWorkspace.baseUrl || workspace.ipollowalkWorkspaceId !== nextWorkspace.ipollowalkWorkspaceId || workspace.ipollowalkHostUrl !== nextWorkspace.ipollowalkHostUrl) {
+      if (workspace.id !== nextWorkspace.id || workspace.baseUrl !== nextWorkspace.baseUrl || workspace.ipolloworkWorkspaceId !== nextWorkspace.ipolloworkWorkspaceId || workspace.ipolloworkHostUrl !== nextWorkspace.ipolloworkHostUrl) {
         changed = true;
       }
       return nextWorkspace;
     });
-    // Older desktop state can contain multiple iPolloWalk remote entries that
+    // Older desktop state can contain multiple iPolloWork remote entries that
     // normalize to the same rem_<workspaceId> after stripping worker mounts.
     // Collapse them here so React never receives duplicate workspace keys.
     const workspaceIndexById = new Map();
@@ -982,7 +982,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       workspaceType: "local",
     });
     await mkdir(path.join(folderPath, ".opencode"), { recursive: true });
-    await writeWorkspaceiPolloWalkConfig(folderPath, defaultWorkspaceiPolloWalkConfig(folderPath, preset));
+    await writeWorkspaceiPolloWorkConfig(folderPath, defaultWorkspaceiPolloWorkConfig(folderPath, preset));
 
     return mutateWorkspaceState((state) => {
       const key = workspacePathKey(workspace);
@@ -1003,57 +1003,57 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
       throw new Error("baseUrl must start with http:// or https://");
     }
-    const remoteType = input.remoteType === "opencode" ? "opencode" : "ipollowalk";
+    const remoteType = input.remoteType === "opencode" ? "opencode" : "ipollowork";
     const directory = typeof input.directory === "string" && input.directory.trim() ? input.directory.trim() : null;
-    const rawiPolloWalkHostUrl = typeof input.ipollowalkHostUrl === "string" && input.ipollowalkHostUrl.trim()
-      ? input.ipollowalkHostUrl.trim()
+    const rawiPolloWorkHostUrl = typeof input.ipolloworkHostUrl === "string" && input.ipolloworkHostUrl.trim()
+      ? input.ipolloworkHostUrl.trim()
       : null;
-    const ipollowalkHostUrl = remoteType === "ipollowalk"
-      ? stripiPolloWalkWorkspaceMount(rawiPolloWalkHostUrl ?? baseUrl)
-      : rawiPolloWalkHostUrl;
-    const ipollowalkWorkspaceId = typeof input.ipollowalkWorkspaceId === "string" && input.ipollowalkWorkspaceId.trim()
-      ? input.ipollowalkWorkspaceId.trim()
-      : remoteType === "ipollowalk"
-        ? parseiPolloWalkWorkspaceIdFromUrl(rawiPolloWalkHostUrl) || parseiPolloWalkWorkspaceIdFromUrl(baseUrl)
+    const ipolloworkHostUrl = remoteType === "ipollowork"
+      ? stripiPolloWorkWorkspaceMount(rawiPolloWorkHostUrl ?? baseUrl)
+      : rawiPolloWorkHostUrl;
+    const ipolloworkWorkspaceId = typeof input.ipolloworkWorkspaceId === "string" && input.ipolloworkWorkspaceId.trim()
+      ? input.ipolloworkWorkspaceId.trim()
+      : remoteType === "ipollowork"
+        ? parseiPolloWorkWorkspaceIdFromUrl(rawiPolloWorkHostUrl) || parseiPolloWorkWorkspaceIdFromUrl(baseUrl)
         : null;
-    let resolvediPolloWalkWorkspaceId = ipollowalkWorkspaceId;
-    let resolvediPolloWalkWorkspaceName = input.ipollowalkWorkspaceName ?? null;
-    if (remoteType === "ipollowalk" && !resolvediPolloWalkWorkspaceId) {
-      const discovered = await discoveriPolloWalkWorkspace({
-        hostUrl: ipollowalkHostUrl ?? baseUrl,
-        token: input.ipollowalkToken,
-        hostToken: input.ipollowalkHostToken,
+    let resolvediPolloWorkWorkspaceId = ipolloworkWorkspaceId;
+    let resolvediPolloWorkWorkspaceName = input.ipolloworkWorkspaceName ?? null;
+    if (remoteType === "ipollowork" && !resolvediPolloWorkWorkspaceId) {
+      const discovered = await discoveriPolloWorkWorkspace({
+        hostUrl: ipolloworkHostUrl ?? baseUrl,
+        token: input.ipolloworkToken,
+        hostToken: input.ipolloworkHostToken,
         directory,
       });
       if (!discovered?.id) {
         throw new Error(
           directory
-            ? `iPolloWalk server has no workspace matching ${directory}.`
-            : "iPolloWalk server returned no workspaces.",
+            ? `iPolloWork server has no workspace matching ${directory}.`
+            : "iPolloWork server returned no workspaces.",
         );
       }
-      resolvediPolloWalkWorkspaceId = String(discovered.id).trim();
-      resolvediPolloWalkWorkspaceName = ipollowalkWorkspaceDisplayName(discovered);
+      resolvediPolloWorkWorkspaceId = String(discovered.id).trim();
+      resolvediPolloWorkWorkspaceName = ipolloworkWorkspaceDisplayName(discovered);
     }
-    const id = remoteType === "ipollowalk"
-      ? ipollowalkRemoteWorkspaceId(ipollowalkHostUrl ?? baseUrl, resolvediPolloWalkWorkspaceId)
+    const id = remoteType === "ipollowork"
+      ? ipolloworkRemoteWorkspaceId(ipolloworkHostUrl ?? baseUrl, resolvediPolloWorkWorkspaceId)
       : remoteWorkspaceId(baseUrl, directory);
     const workspace = normalizeWorkspaceEntry({
       id,
-      name: String(input.displayName ?? resolvediPolloWalkWorkspaceName ?? "Remote workspace"),
+      name: String(input.displayName ?? resolvediPolloWorkWorkspaceName ?? "Remote workspace"),
       displayName: input.displayName ?? null,
       path: directory ?? "",
       preset: "remote",
       workspaceType: "remote",
       remoteType,
-      baseUrl: remoteType === "ipollowalk" ? (ipollowalkHostUrl ?? baseUrl) : baseUrl,
+      baseUrl: remoteType === "ipollowork" ? (ipolloworkHostUrl ?? baseUrl) : baseUrl,
       directory,
-      ipollowalkHostUrl,
-      ipollowalkToken: input.ipollowalkToken ?? null,
-      ipollowalkClientToken: input.ipollowalkClientToken ?? null,
-      ipollowalkHostToken: input.ipollowalkHostToken ?? null,
-      ipollowalkWorkspaceId: resolvediPolloWalkWorkspaceId,
-      ipollowalkWorkspaceName: resolvediPolloWalkWorkspaceName,
+      ipolloworkHostUrl,
+      ipolloworkToken: input.ipolloworkToken ?? null,
+      ipolloworkClientToken: input.ipolloworkClientToken ?? null,
+      ipolloworkHostToken: input.ipolloworkHostToken ?? null,
+      ipolloworkWorkspaceId: resolvediPolloWorkWorkspaceId,
+      ipolloworkWorkspaceName: resolvediPolloWorkWorkspaceName,
       sandboxBackend: input.sandboxBackend ?? null,
       sandboxRunId: input.sandboxRunId ?? null,
       sandboxContainerName: input.sandboxContainerName ?? null,
@@ -1076,50 +1076,50 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       if (!existing) return state;
 
       let nextWorkspace = { ...existing, ...patch };
-      const nextRemoteType = nextWorkspace.remoteType === "opencode" ? "opencode" : "ipollowalk";
-      if (nextRemoteType === "ipollowalk") {
-        const rawHostUrl = typeof nextWorkspace.ipollowalkHostUrl === "string" && nextWorkspace.ipollowalkHostUrl.trim()
-          ? nextWorkspace.ipollowalkHostUrl.trim()
+      const nextRemoteType = nextWorkspace.remoteType === "opencode" ? "opencode" : "ipollowork";
+      if (nextRemoteType === "ipollowork") {
+        const rawHostUrl = typeof nextWorkspace.ipolloworkHostUrl === "string" && nextWorkspace.ipolloworkHostUrl.trim()
+          ? nextWorkspace.ipolloworkHostUrl.trim()
           : null;
         const nextBaseUrl = String(nextWorkspace.baseUrl ?? "").trim();
-        const hostUrl = stripiPolloWalkWorkspaceMount(rawHostUrl ?? nextBaseUrl);
+        const hostUrl = stripiPolloWorkWorkspaceMount(rawHostUrl ?? nextBaseUrl);
         const directory = typeof nextWorkspace.directory === "string" && nextWorkspace.directory.trim()
           ? nextWorkspace.directory.trim()
           : null;
-        const parsedWorkspaceId = parseiPolloWalkWorkspaceIdFromUrl(rawHostUrl) || parseiPolloWalkWorkspaceIdFromUrl(nextBaseUrl);
+        const parsedWorkspaceId = parseiPolloWorkWorkspaceIdFromUrl(rawHostUrl) || parseiPolloWorkWorkspaceIdFromUrl(nextBaseUrl);
         let remoteWorkspaceId = parsedWorkspaceId || (
-          typeof nextWorkspace.ipollowalkWorkspaceId === "string" && nextWorkspace.ipollowalkWorkspaceId.trim()
-            ? nextWorkspace.ipollowalkWorkspaceId.trim()
+          typeof nextWorkspace.ipolloworkWorkspaceId === "string" && nextWorkspace.ipolloworkWorkspaceId.trim()
+            ? nextWorkspace.ipolloworkWorkspaceId.trim()
             : null
         );
-        let remoteWorkspaceName = nextWorkspace.ipollowalkWorkspaceName ?? null;
+        let remoteWorkspaceName = nextWorkspace.ipolloworkWorkspaceName ?? null;
         if (!remoteWorkspaceId) {
-          const discovered = await discoveriPolloWalkWorkspace({
+          const discovered = await discoveriPolloWorkWorkspace({
             hostUrl: hostUrl ?? nextBaseUrl,
-            token: nextWorkspace.ipollowalkToken,
-            hostToken: nextWorkspace.ipollowalkHostToken,
+            token: nextWorkspace.ipolloworkToken,
+            hostToken: nextWorkspace.ipolloworkHostToken,
             directory,
           });
           if (!discovered?.id) {
             throw new Error(
               directory
-                ? `iPolloWalk server has no workspace matching ${directory}.`
-                : "iPolloWalk server returned no workspaces.",
+                ? `iPolloWork server has no workspace matching ${directory}.`
+                : "iPolloWork server returned no workspaces.",
             );
           }
           remoteWorkspaceId = String(discovered.id).trim();
-          remoteWorkspaceName = ipollowalkWorkspaceDisplayName(discovered);
+          remoteWorkspaceName = ipolloworkWorkspaceDisplayName(discovered);
         }
-        const nextId = ipollowalkRemoteWorkspaceId(hostUrl ?? nextBaseUrl, remoteWorkspaceId);
+        const nextId = ipolloworkRemoteWorkspaceId(hostUrl ?? nextBaseUrl, remoteWorkspaceId);
         nextWorkspace = normalizeWorkspaceEntry({
           ...nextWorkspace,
           id: nextId,
           baseUrl: hostUrl ?? nextBaseUrl,
-          ipollowalkHostUrl: hostUrl,
+          ipolloworkHostUrl: hostUrl,
           directory,
-          remoteType: "ipollowalk",
-          ipollowalkWorkspaceId: remoteWorkspaceId,
-          ipollowalkWorkspaceName: remoteWorkspaceName,
+          remoteType: "ipollowork",
+          ipolloworkWorkspaceId: remoteWorkspaceId,
+          ipolloworkWorkspaceName: remoteWorkspaceName,
         });
         if (nextId !== workspaceId) {
           if (state.selectedId === workspaceId) state.selectedId = nextId;
@@ -1163,14 +1163,14 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     if (!workspacePath || !authorizedRoot) {
       throw new Error("workspacePath and folderPath are required");
     }
-    const config = await readWorkspaceiPolloWalkConfig(workspacePath);
+    const config = await readWorkspaceiPolloWorkConfig(workspacePath);
     if (!Array.isArray(config.authorizedRoots)) {
       config.authorizedRoots = [];
     }
     if (!config.authorizedRoots.includes(authorizedRoot)) {
       config.authorizedRoots.push(authorizedRoot);
     }
-    return writeWorkspaceiPolloWalkConfig(workspacePath, config);
+    return writeWorkspaceiPolloWorkConfig(workspacePath, config);
   }
 
   async function exportConfig(input = {}) {
@@ -1216,7 +1216,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     });
   }
 
-  async function resetiPolloWalkState() {
+  async function resetiPolloWorkState() {
     await rm(workspaceStatePath(), { force: true });
     await clearDesktopBootstrapFiles();
     return undefined;
@@ -1228,7 +1228,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     createWorkspace,
     clearDesktopBootstrapConfig,
     debugDesktopBootstrapConfig,
-    defaultWorkspaceiPolloWalkConfig,
+    defaultWorkspaceiPolloWorkConfig,
     exportConfig,
     forgetWorkspace,
     getDesktopBootstrapConfig,
@@ -1236,15 +1236,15 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     importBundledDesktopBootstrapConfigIfPreferred,
     listLocalWorkspacePaths,
     migrateLegacyElectronWorkspaceStateIfNeeded,
-    readWorkspaceiPolloWalkConfig,
+    readWorkspaceiPolloWorkConfig,
     readWorkspaceState,
-    resetiPolloWalkState,
+    resetiPolloWorkState,
     setDesktopBootstrapConfig,
     setRuntimeActiveWorkspace,
     setSelectedWorkspace,
     updateRemoteWorkspace,
     updateWorkspaceDisplayName,
-    writeWorkspaceiPolloWalkConfig,
+    writeWorkspaceiPolloWorkConfig,
     writeWorkspaceState,
   };
 }

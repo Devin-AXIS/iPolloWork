@@ -34,8 +34,8 @@ function normalizeMessage(value: unknown): BlueprintSessionMessage | null {
   return { role, text };
 }
 
-export function normalizeBlueprintSessionTemplates(ipollowalk: Record<string, unknown> | null | undefined): BlueprintSessionTemplate[] {
-  const blueprint = readRecord(ipollowalk?.blueprint);
+export function normalizeBlueprintSessionTemplates(ipollowork: Record<string, unknown> | null | undefined): BlueprintSessionTemplate[] {
+  const blueprint = readRecord(ipollowork?.blueprint);
   const sessions = Array.isArray(blueprint?.sessions) ? blueprint?.sessions : [];
   return sessions
     .map((value, index) => {
@@ -57,8 +57,8 @@ export function normalizeBlueprintSessionTemplates(ipollowalk: Record<string, un
     .filter((item): item is BlueprintSessionTemplate => Boolean(item));
 }
 
-export function readMaterializedBlueprintSessions(ipollowalk: Record<string, unknown> | null | undefined): MaterializedBlueprintSession[] {
-  const blueprint = readRecord(ipollowalk?.blueprint);
+export function readMaterializedBlueprintSessions(ipollowork: Record<string, unknown> | null | undefined): MaterializedBlueprintSession[] {
+  const blueprint = readRecord(ipollowork?.blueprint);
   const materialized = readRecord(blueprint?.materialized);
   const sessions = readRecord(materialized?.sessions);
   const items = Array.isArray(sessions?.items) ? sessions.items : [];
@@ -74,8 +74,8 @@ export function readMaterializedBlueprintSessions(ipollowalk: Record<string, unk
     .filter((item): item is MaterializedBlueprintSession => Boolean(item));
 }
 
-export function sanitizeiPolloWalkTemplateConfig(ipollowalk: Record<string, unknown> | null | undefined): Record<string, unknown> {
-  const next = cloneRecord(ipollowalk ?? {});
+export function sanitizeiPolloWorkTemplateConfig(ipollowork: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const next = cloneRecord(ipollowork ?? {});
   const blueprint = readRecord(next.blueprint);
   if (!blueprint) return next;
 
@@ -94,11 +94,11 @@ export function sanitizeiPolloWalkTemplateConfig(ipollowalk: Record<string, unkn
 }
 
 export function applyMaterializedBlueprintSessions(
-  ipollowalk: Record<string, unknown> | null | undefined,
+  ipollowork: Record<string, unknown> | null | undefined,
   items: MaterializedBlueprintSession[],
   hydratedAt: number,
 ): Record<string, unknown> {
-  const next = sanitizeiPolloWalkTemplateConfig(ipollowalk);
+  const next = sanitizeiPolloWorkTemplateConfig(ipollowork);
   const blueprint = readRecord(next.blueprint) ?? {};
   const materialized = readRecord(blueprint.materialized) ?? {};
   materialized.sessions = {

@@ -8,24 +8,24 @@
  *   MCP item, not in a special section.
  * - Jordan clicks through the desktop UI, the OS browser completes a real OAuth
  *   round trip, and the item moves to My Extensions as Connected.
- * - A real chat turn executes the external MCP tool through iPolloWalk Cloud
+ * - A real chat turn executes the external MCP tool through iPolloWork Cloud
  *   Control; the mock server log is the external witness.
  */
 
 import { execSync } from "node:child_process";
 
-const DEN_API_URL = (process.env.IPOLLOWALK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
-const DEN_WEB_URL = (process.env.IPOLLOWALK_EVAL_DEN_WEB_URL ?? DEN_API_URL.replace("127.0.0.1", "localhost")).trim().replace(/\/+$/, "");
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MEMBER_EMAIL = process.env.IPOLLOWALK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
-const MEMBER_PASSWORD = process.env.IPOLLOWALK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const DEN_API_URL = (process.env.IPOLLOWORK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
+const DEN_WEB_URL = (process.env.IPOLLOWORK_EVAL_DEN_WEB_URL ?? DEN_API_URL.replace("127.0.0.1", "localhost")).trim().replace(/\/+$/, "");
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MEMBER_EMAIL = process.env.IPOLLOWORK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
+const MEMBER_PASSWORD = process.env.IPOLLOWORK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
 const MOCK_SERVER_URL = (process.env.MOCK_OAUTH_MCP_URL ?? "http://127.0.0.1:3978").trim().replace(/\/+$/, "");
 const RUN_TAG = Date.now();
 const CONNECTION_NAME = `Team Knowledge Base ${RUN_TAG}`;
 const ECHO_TEXT = `org mcp desktop proof ${RUN_TAG}`;
-const WORKSPACE_PATH = `/tmp/ipollowalk-desktop-org-mcp-demo-${RUN_TAG}`;
+const WORKSPACE_PATH = `/tmp/ipollowork-desktop-org-mcp-demo-${RUN_TAG}`;
 
 const state = {
   adminSession: null,
@@ -86,7 +86,7 @@ async function ensureMember(ctx) {
     body: JSON.stringify({ email: MEMBER_EMAIL, name: "Jordan Demo", password: MEMBER_PASSWORD }),
   });
   ctx.assert(signUp.response.ok, `Member sign-up failed: ${signUp.response.status}`);
-  ctx.assert(MARK_VERIFIED_CMD.length > 0, "Set IPOLLOWALK_EVAL_MARK_VERIFIED_CMD to verify the member's email.");
+  ctx.assert(MARK_VERIFIED_CMD.length > 0, "Set IPOLLOWORK_EVAL_MARK_VERIFIED_CMD to verify the member's email.");
   execSync(MARK_VERIFIED_CMD.replaceAll("{email}", MEMBER_EMAIL), { stdio: "ignore" });
 
   state.memberSession = await signIn(MEMBER_EMAIL, MEMBER_PASSWORD);
@@ -116,7 +116,7 @@ async function ensureWorkspace(ctx) {
       const hasFolderInput = Boolean(document.querySelector('input[placeholder="/workspace/my-project"]'));
       const hasWorkspaceRoute = window.location.hash.includes('/workspace/') && !text.includes('Choose your organization') && !hasFolderInput;
       const hasOnboardingStep = text.includes('Choose your organization') || text.includes('Continue to workspace') || text.includes('Loading available resources');
-      const hasCreateAction = !hasOnboardingStep && window.__ipollowalkControl?.listActions?.().find((a) => a.id === 'workspace.create')?.disabled === false;
+      const hasCreateAction = !hasOnboardingStep && window.__ipolloworkControl?.listActions?.().find((a) => a.id === 'workspace.create')?.disabled === false;
       return { hasFolderInput, hasWorkspaceRoute, hasCreateAction };
     })()`);
     if (state.hasWorkspaceRoute || state.hasCreateAction) break;
@@ -142,13 +142,13 @@ async function ensureWorkspace(ctx) {
       const hasFolderInput = Boolean(document.querySelector('input[placeholder="/workspace/my-project"]'));
       const hasWorkspaceRoute = window.location.hash.includes('/workspace/') && !text.includes('Choose your organization') && !hasFolderInput;
       const hasOnboardingStep = text.includes('Choose your organization') || text.includes('Continue to workspace') || text.includes('Loading available resources');
-      const hasCreateAction = !hasOnboardingStep && window.__ipollowalkControl?.listActions?.().find((a) => a.id === 'workspace.create')?.disabled === false;
+      const hasCreateAction = !hasOnboardingStep && window.__ipolloworkControl?.listActions?.().find((a) => a.id === 'workspace.create')?.disabled === false;
       return hasWorkspaceRoute || hasCreateAction;
     })()`,
     { timeoutMs: 10_000, label: "workspace route or create action" },
   );
   await ctx.eval(`(() => {
-    const btn = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Continue without iPolloWalk Models');
+    const btn = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === 'Continue without iPolloWork Models');
     btn?.click();
     return true;
   })()`, { awaitPromise: true });
@@ -170,19 +170,19 @@ async function readRuntimeCloudControlMcp(ctx) {
     const parts = window.location.hash.split('/');
     const workspaceIndex = parts.indexOf('workspace');
     const workspaceId = ${JSON.stringify(pinnedWorkspaceId)} || (workspaceIndex >= 0 ? parts[workspaceIndex + 1] : '');
-    const port = localStorage.getItem('ipollowalk.server.port');
-    const token = localStorage.getItem('ipollowalk.server.token');
-    const hostToken = localStorage.getItem('ipollowalk.server.hostToken');
+    const port = localStorage.getItem('ipollowork.server.port');
+    const token = localStorage.getItem('ipollowork.server.token');
+    const hostToken = localStorage.getItem('ipollowork.server.hostToken');
     if (!workspaceId || !port || !token) return { ok: false, reason: 'missing workspace/server auth', workspaceId, port: Boolean(port), token: Boolean(token) };
     const headers = { Authorization: 'Bearer ' + token };
-    if (hostToken) headers['X-iPolloWalk-Host-Token'] = hostToken;
+    if (hostToken) headers['X-iPolloWork-Host-Token'] = hostToken;
     const response = await fetch('http://127.0.0.1:' + port + '/workspace/' + workspaceId + '/mcp', { headers });
     const text = await response.text();
     let payload = null;
     try { payload = JSON.parse(text); } catch {}
     if (!response.ok) return { ok: false, reason: 'mcp endpoint failed', status: response.status, text };
     const items = payload?.items ?? [];
-    const entry = items.find((item) => item.name === 'ipollowalk-cloud');
+    const entry = items.find((item) => item.name === 'ipollowork-cloud');
     const engineSync = payload?.engineSync?.status ?? null;
     return {
       ok: Boolean(entry?.config?.url?.includes('/mcp/agent') && entry?.config?.headers?.Authorization && entry?.config?.oauth === false && engineSync === 'ok'),
@@ -207,33 +207,33 @@ async function waitForRuntimeCloudControlMcp(ctx) {
     }
     await sleep(1_000);
   }
-  ctx.assert(false, `Runtime iPolloWalk Cloud Control MCP config never became ready: ${JSON.stringify(last)}`);
+  ctx.assert(false, `Runtime iPolloWork Cloud Control MCP config never became ready: ${JSON.stringify(last)}`);
 }
 
 async function createFreshEvalWorkspace(ctx) {
   await ensureWorkspace(ctx);
   await ctx.waitFor(
-    "Boolean(localStorage.getItem('ipollowalk.server.port') && localStorage.getItem('ipollowalk.server.token') && localStorage.getItem('ipollowalk.server.hostToken'))",
-    { timeoutMs: 30_000, label: "iPolloWalk server auth for workspace setup" },
+    "Boolean(localStorage.getItem('ipollowork.server.port') && localStorage.getItem('ipollowork.server.token') && localStorage.getItem('ipollowork.server.hostToken'))",
+    { timeoutMs: 30_000, label: "iPolloWork server auth for workspace setup" },
   );
   let created = null;
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     created = await ctx.eval(`(async () => {
       try {
-        const port = localStorage.getItem('ipollowalk.server.port');
-        const token = localStorage.getItem('ipollowalk.server.token');
-        const hostToken = localStorage.getItem('ipollowalk.server.hostToken');
+        const port = localStorage.getItem('ipollowork.server.port');
+        const token = localStorage.getItem('ipollowork.server.token');
+        const hostToken = localStorage.getItem('ipollowork.server.hostToken');
         const base = 'http://127.0.0.1:' + port;
         const headers = {
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + token,
-          'X-iPolloWalk-Host-Token': hostToken,
+          'X-iPolloWork-Host-Token': hostToken,
         };
         const response = await fetch(base + '/workspaces/local', {
           method: 'POST',
           headers,
-          body: JSON.stringify({ folderPath: ${JSON.stringify(WORKSPACE_PATH)}, name: 'ipollowalk-desktop-org-mcp-demo', preset: 'starter' }),
+          body: JSON.stringify({ folderPath: ${JSON.stringify(WORKSPACE_PATH)}, name: 'ipollowork-desktop-org-mcp-demo', preset: 'starter' }),
         });
         const text = await response.text();
         let payload = null;
@@ -243,7 +243,7 @@ async function createFreshEvalWorkspace(ctx) {
         if (!workspaceId) return { ok: false, status: response.status, text: 'workspace id missing' };
         const activate = await fetch(base + '/workspaces/' + workspaceId + '/activate?persist=true', { method: 'POST', headers });
         if (!activate.ok) return { ok: false, status: activate.status, text: await activate.text() };
-        localStorage.setItem('ipollowalk.react.activeWorkspace', workspaceId);
+        localStorage.setItem('ipollowork.react.activeWorkspace', workspaceId);
         return { ok: true, workspaceId };
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -309,7 +309,7 @@ export default {
   title: "Desktop app: org MCP connections appear in Marketplace, connect through browser OAuth, and work in chat",
   kind: "user-facing",
   spec: "evals/desktop-org-mcp-demo.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL"],
   steps: [
     {
       name: "Setup: publish a per-member org MCP connection for Jordan",
@@ -360,35 +360,35 @@ export default {
     {
       name: "Desktop app boots and signs in as Jordan",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 120_000 });
-        await ctx.waitFor("Boolean(window.__IPOLLOWALK_ELECTRON__?.invokeDesktop)", { timeoutMs: 30_000, label: "desktop bridge" });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 120_000 });
+        await ctx.waitFor("Boolean(window.__IPOLLOWORK_ELECTRON__?.invokeDesktop)", { timeoutMs: 30_000, label: "desktop bridge" });
         const bootstrap = { baseUrl: DEN_API_URL, apiBaseUrl: DEN_API_URL, requireSignin: false, handoff: null };
         const written = await ctx.eval(`(async () => {
-          const bridge = window.__IPOLLOWALK_ELECTRON__?.invokeDesktop;
+          const bridge = window.__IPOLLOWORK_ELECTRON__?.invokeDesktop;
           if (!bridge) return { ok: false };
           await bridge("setDesktopBootstrapConfig", ${JSON.stringify(bootstrap)});
           return { ok: true };
         })()`, { awaitPromise: true });
         ctx.assert(written?.ok, "Failed to write desktop bootstrap config.");
         await ctx.eval(`(() => {
-          localStorage.setItem('ipollowalk.den.baseUrl', ${JSON.stringify(DEN_API_URL)});
-          localStorage.setItem('ipollowalk.den.apiBaseUrl', ${JSON.stringify(DEN_API_URL)});
-          const prefs = JSON.parse(localStorage.getItem('ipollowalk.preferences') || '{}');
-          localStorage.setItem('ipollowalk.preferences', JSON.stringify({ ...prefs, selectedAgent: 'ipollowalk' }));
+          localStorage.setItem('ipollowork.den.baseUrl', ${JSON.stringify(DEN_API_URL)});
+          localStorage.setItem('ipollowork.den.apiBaseUrl', ${JSON.stringify(DEN_API_URL)});
+          const prefs = JSON.parse(localStorage.getItem('ipollowork.preferences') || '{}');
+          localStorage.setItem('ipollowork.preferences', JSON.stringify({ ...prefs, selectedAgent: 'ipollowork' }));
           return true;
         })()`);
         await ctx.eval("location.reload()");
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "control API after bootstrap reload" });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "control API after bootstrap reload" });
 
         const handoff = await denApiFetch("/v1/auth/desktop-handoff", {
           method: "POST",
           headers: { authorization: `Bearer ${state.memberSession}` },
-          body: JSON.stringify({ desktopScheme: "ipollowalk" }),
+          body: JSON.stringify({ desktopScheme: "ipollowork" }),
         });
         ctx.assert(handoff.response.ok, `Handoff create failed: ${handoff.response.status}`);
         await ctx.control("auth.exchange-grant", { grant: handoff.body.grant, baseUrl: DEN_API_URL });
-        await ctx.waitFor("Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())", { timeoutMs: 45_000, label: "persisted den auth token" });
-        await ctx.waitFor("Boolean((localStorage.getItem('ipollowalk.den.activeOrgId') ?? '').trim())", { timeoutMs: 60_000, label: "active org resolved" });
+        await ctx.waitFor("Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())", { timeoutMs: 45_000, label: "persisted den auth token" });
+        await ctx.waitFor("Boolean((localStorage.getItem('ipollowork.den.activeOrgId') ?? '').trim())", { timeoutMs: 60_000, label: "active org resolved" });
         await createFreshEvalWorkspace(ctx);
       },
     },
@@ -427,7 +427,7 @@ export default {
       name: "Jordan connects through real browser OAuth",
       run: async (ctx) => {
         await ctx.clickText(CONNECTION_NAME, { timeoutMs: 20_000 });
-        await ctx.expectText("iPolloWalk stores this sign-in", { timeoutMs: 15_000 });
+        await ctx.expectText("iPolloWork stores this sign-in", { timeoutMs: 15_000 });
         state.clickedAt = new Date().toISOString();
         const clicked = await ctx.eval(`(() => {
           const dialog = document.querySelector('[role="dialog"]');
@@ -474,24 +474,24 @@ export default {
       },
     },
     {
-      name: "iPolloWalk Cloud Control is ready",
+      name: "iPolloWork Cloud Control is ready",
       run: async (ctx) => {
         await openMcpSettings(ctx);
         await revealHidden(ctx);
-        await ctx.expectText("iPolloWalk Cloud Control", { timeoutMs: 30_000 });
+        await ctx.expectText("iPolloWork Cloud Control", { timeoutMs: 30_000 });
 
         const alreadyConnected = await ctx.eval(`(() => {
-          const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWalk Cloud Control'));
+          const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWork Cloud Control'));
           return Boolean(card?.textContent.includes('Connected'));
         })()`);
         if (!alreadyConnected) {
           const opened = await ctx.eval(`(() => {
-            const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWalk Cloud Control'));
+            const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWork Cloud Control'));
             card?.scrollIntoView({ block: 'center' });
             card?.click();
             return Boolean(card);
           })()`);
-          ctx.assert(opened, "Could not open the iPolloWalk Cloud Control card.");
+          ctx.assert(opened, "Could not open the iPolloWork Cloud Control card.");
           await ctx.expectText("Manage your org", { timeoutMs: 15_000 });
           const clicked = await ctx.eval(`(() => {
             const dialog = document.querySelector('[role="dialog"]');
@@ -499,15 +499,15 @@ export default {
             button?.click();
             return Boolean(button);
           })()`);
-          ctx.assert(clicked, "Could not click Connect for iPolloWalk Cloud Control.");
+          ctx.assert(clicked, "Could not click Connect for iPolloWork Cloud Control.");
         }
 
         await ctx.waitFor(
           `(() => {
-            const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWalk Cloud Control'));
+            const card = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('iPolloWork Cloud Control'));
             return Boolean(card?.textContent.includes('Connected'));
           })()`,
-          { timeoutMs: 60_000, label: "iPolloWalk Cloud Control connected card" },
+          { timeoutMs: 60_000, label: "iPolloWork Cloud Control connected card" },
         );
         await ctx.expectText("Ready", { timeoutMs: 30_000 });
         await ctx.clickText("Refresh", { timeoutMs: 15_000 }).catch(() => {});
@@ -523,19 +523,19 @@ export default {
         state.chatStartedAt = new Date().toISOString();
 
         await ctx.prove("Jordan's agent can immediately execute the newly connected org MCP tool", {
-          voiceover: "The connection is not just a settings card. In a real desktop chat, the agent discovers the organization's MCP capability through iPolloWalk Cloud Control and executes it with Jordan's own connected account.",
+          voiceover: "The connection is not just a settings card. In a real desktop chat, the agent discovers the organization's MCP capability through iPolloWork Cloud Control and executes it with Jordan's own connected account.",
           action: async () => {
             await ctx.waitFor(
-              "window.__ipollowalkControl?.listActions?.().find((a) => a.id === 'session.create_task')?.disabled === false",
+              "window.__ipolloworkControl?.listActions?.().find((a) => a.id === 'session.create_task')?.disabled === false",
               { timeoutMs: 30_000, label: "session.create_task enabled" },
             );
             await ctx.control("session.create_task");
             await ctx.waitFor("window.location.hash.includes('/session/ses_')", { timeoutMs: 30_000, label: "fresh task session" });
             await ctx.waitFor("Boolean(document.querySelector('[contenteditable=\"true\"][data-lexical-editor=\"true\"]'))", { timeoutMs: 30_000, label: "composer" });
-            const prompt = `Use the iPolloWalk Cloud Control connection: call search_capabilities with query "echo", then call execute_capability with the exact match name and body {"text":"${ECHO_TEXT}"}. Reply with the exact text the tool returned.`;
+            const prompt = `Use the iPolloWork Cloud Control connection: call search_capabilities with query "echo", then call execute_capability with the exact match name and body {"text":"${ECHO_TEXT}"}. Reply with the exact text the tool returned.`;
             await ctx.control("composer.set_text", { text: prompt });
             await ctx.waitFor(
-              "window.__ipollowalkControl?.listActions?.().find((a) => a.id === 'composer.send')?.disabled === false",
+              "window.__ipolloworkControl?.listActions?.().find((a) => a.id === 'composer.send')?.disabled === false",
               { timeoutMs: 15_000, label: "composer.send enabled" },
             );
             await ctx.control("composer.send");
@@ -553,7 +553,7 @@ export default {
           },
           screenshot: {
             name: "desktop-org-mcp-chat",
-            claim: "A real desktop chat executed the org MCP tool through iPolloWalk Cloud Control and showed the exact result.",
+            claim: "A real desktop chat executed the org MCP tool through iPolloWork Cloud Control and showed the exact result.",
             requireText: [ECHO_TEXT],
             rejectText: ["Something went wrong"],
           },

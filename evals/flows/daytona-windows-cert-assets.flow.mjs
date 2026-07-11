@@ -92,8 +92,8 @@ export default {
             const skillPath = join(ROOT, ".opencode", "skills", "daytona-windows-cert", "SKILL.md");
             const skill = await readFile(skillPath, "utf8");
             const scripts = [
-              "scripts/support/setup-ipollowalk-tls-repro.ps1",
-              "scripts/support/ipollowalk-doctor.ps1",
+              "scripts/support/setup-ipollowork-tls-repro.ps1",
+              "scripts/support/ipollowork-doctor.ps1",
             ];
             for (const script of scripts) {
               witness(ctx, skill.includes(script), `Skill references ${script}`);
@@ -130,8 +130,8 @@ export default {
             const skillPath = join(ROOT, ".opencode", "skills", "daytona-windows-cert", "SKILL.md");
             const skill = await readFile(skillPath, "utf8");
             const commands = [
-              "schtasks /end /tn iPolloWalkTlsRepro",
-              "setup-ipollowalk-tls-repro.ps1 -Cleanup",
+              "schtasks /end /tn iPolloWorkTlsRepro",
+              "setup-ipollowork-tls-repro.ps1 -Cleanup",
               "daytona sandbox delete <ID>",
               "gh release delete <tag> --yes",
             ];

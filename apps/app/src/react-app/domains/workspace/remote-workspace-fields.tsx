@@ -75,7 +75,7 @@ export function RemoteWorkspaceFields({
             className={inputClass}
           />
           <span className={inputHintClass}>
-            Paste the iPolloWalk worker URL you want to connect to.
+            Paste the iPolloWork worker URL you want to connect to.
           </span>
         </label>
 

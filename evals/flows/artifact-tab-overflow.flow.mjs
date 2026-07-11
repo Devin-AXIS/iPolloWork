@@ -12,7 +12,7 @@ export default {
       run: async (ctx) => {
         const userAgent = await ctx.eval("navigator.userAgent");
         ctx.assert(userAgent.includes("Electron/"), `Expected Electron userAgent, got ${userAgent}`);
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 60_000,
           label: "control API",
         });
@@ -21,11 +21,11 @@ export default {
     {
       name: "Create or select a task and mount the side panel",
       run: async (ctx) => {
-        const hasSelectedSession = await ctx.eval(`window.__ipollowalkControl.snapshot().route.includes("/session/")`);
+        const hasSelectedSession = await ctx.eval(`window.__ipolloworkControl.snapshot().route.includes("/session/")`);
         if (!hasSelectedSession) {
           await ctx.control("session.create_task");
           await ctx.waitFor(
-            `window.__ipollowalkControl.snapshot().route.includes("/session/")`,
+            `window.__ipolloworkControl.snapshot().route.includes("/session/")`,
             { timeoutMs: 60_000, label: "session route after task creation" },
           );
         }
@@ -37,7 +37,7 @@ export default {
           return Boolean(button);
         })()`);
         await ctx.waitFor(
-          `window.__ipollowalkControl.listActions().some((a) => a.id === "eval.artifact_tabs.seed_overflow" && !a.disabled)`,
+          `window.__ipolloworkControl.listActions().some((a) => a.id === "eval.artifact_tabs.seed_overflow" && !a.disabled)`,
           { timeoutMs: 30_000, label: "artifact overflow eval seed action" },
         );
       },

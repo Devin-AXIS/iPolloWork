@@ -1,17 +1,17 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronDown, ChevronRight, Loader2, Mic2, MicOff, Radio, SendHorizontal, Sparkles, Square, X } from "lucide-react";
-import { PaperGrainGradient } from "@ipollowalk/ui/react";
+import { PaperGrainGradient } from "@ipollowork/ui/react";
 
 import { desktopFetch } from "@/app/lib/desktop";
-import type { iPolloWalkServerClient, iPolloWalkSessionMessage } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient, iPolloWorkSessionMessage } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { ScrollArea, ScrollAreaViewport } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { publishInspectorSlice, recordInspectorEvent } from "@/app/lib/app-inspector";
-import { useControlAction, type iPolloWalkControlAction } from "../../../shell/control/control-provider";
+import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 
 type VoiceStatus = "idle" | "connecting" | "listening" | "muted" | "speaking" | "error";
 
@@ -36,13 +36,13 @@ type VoiceRuntimeSnapshot = {
 };
 
 type VoicePanelProps = {
-  client: iPolloWalkServerClient | null;
+  client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   sessionId: string | null;
   onClose: () => void;
 };
 
-const DEFAULT_TEXT_COMMAND = "Summarize the current iPolloWalk session and put the next step in the composer.";
+const DEFAULT_TEXT_COMMAND = "Summarize the current iPolloWork session and put the next step in the composer.";
 const VOICE_SUGGESTIONS = [
   "Read the latest message in this session",
   "Put a concise next step in the composer",
@@ -50,9 +50,9 @@ const VOICE_SUGGESTIONS = [
   "Send the current composer prompt",
 ];
 const TOOL_LABELS: Record<string, string> = {
-  ipollowalk_snapshot: "Checking iPolloWalk",
-  ipollowalk_list_actions: "Listing controls",
-  ipollowalk_execute_action: "Running UI action",
+  ipollowork_snapshot: "Checking iPolloWork",
+  ipollowork_list_actions: "Listing controls",
+  ipollowork_execute_action: "Running UI action",
 };
 
 const initialVoiceRuntimeSnapshot: VoiceRuntimeSnapshot = {
@@ -134,7 +134,7 @@ function safeJson(value: unknown) {
 }
 
 function humanToolLabel(toolName?: string) {
-  if (!toolName) return "iPolloWalk action";
+  if (!toolName) return "iPolloWork action";
   return TOOL_LABELS[toolName] ?? toolName.replace(/_/g, " ");
 }
 
@@ -161,7 +161,7 @@ function voiceAudioArgument(args: unknown) {
   return typeof args.pcm16Base64 === "string" ? args.pcm16Base64.trim() : "";
 }
 
-function messageText(message: iPolloWalkSessionMessage) {
+function messageText(message: iPolloWorkSessionMessage) {
   return message.parts
     .flatMap((part) => {
       if (part.type !== "text") return [];
@@ -173,7 +173,7 @@ function messageText(message: iPolloWalkSessionMessage) {
     .trim();
 }
 
-function buildVoiceSessionContext(messages: iPolloWalkSessionMessage[]) {
+function buildVoiceSessionContext(messages: iPolloWorkSessionMessage[]) {
   const transcript = messages.flatMap((message, index) => {
     const role = message.info.role;
     if (role !== "user" && role !== "assistant") return [];
@@ -200,7 +200,7 @@ function buildVoiceSessionContext(messages: iPolloWalkSessionMessage[]) {
     .slice(0, 6_000);
 }
 
-async function loadVoiceSessionContext(client: iPolloWalkServerClient, workspaceId: string | null, sessionId: string | null) {
+async function loadVoiceSessionContext(client: iPolloWorkServerClient, workspaceId: string | null, sessionId: string | null) {
   if (!workspaceId || !sessionId) return "";
   try {
     const response = await client.getSessionMessages(workspaceId, sessionId, { limit: 40 });
@@ -249,7 +249,7 @@ function setRealtimeDiagnostics(text: string) {
 }
 
 async function requestMacMicrophoneAccess() {
-  const ask = window.__IPOLLOWALK_ELECTRON__?.system?.askMicrophoneAccess;
+  const ask = window.__IPOLLOWORK_ELECTRON__?.system?.askMicrophoneAccess;
   if (!ask) return true;
   const result = await ask();
   if (result.platform !== "darwin") return true;
@@ -258,20 +258,20 @@ async function requestMacMicrophoneAccess() {
   return result.granted;
 }
 
-async function executeiPolloWalkTool(name: string, args: Record<string, unknown>) {
-  const control = window.__ipollowalkControl;
-  if (!control) return { ok: false, error: "iPolloWalk control surface is not available." };
+async function executeiPolloWorkTool(name: string, args: Record<string, unknown>) {
+  const control = window.__ipolloworkControl;
+  if (!control) return { ok: false, error: "iPolloWork control surface is not available." };
 
-  if (name === "ipollowalk_snapshot") return { ok: true, snapshot: control.snapshot() };
-  if (name === "ipollowalk_list_actions") return { ok: true, actions: control.listActions() };
-  if (name === "ipollowalk_execute_action") {
+  if (name === "ipollowork_snapshot") return { ok: true, snapshot: control.snapshot() };
+  if (name === "ipollowork_list_actions") return { ok: true, actions: control.listActions() };
+  if (name === "ipollowork_execute_action") {
     const actionId = typeof args.actionId === "string" ? args.actionId.trim() : "";
     if (!actionId) return { ok: false, error: "Missing actionId." };
     const actionArgs = isRecord(args.args) ? args.args : {};
     return control.execute(actionId, actionArgs);
   }
 
-  return { ok: false, error: `Unknown iPolloWalk voice tool: ${name}` };
+  return { ok: false, error: `Unknown iPolloWork voice tool: ${name}` };
 }
 
 function VoiceOrb(props: { status: VoiceStatus; muted: boolean }) {
@@ -392,8 +392,8 @@ export function VoicePanel(props: VoicePanelProps) {
       status: nextStatus,
       statusText: text ?? (
         nextStatus === "connecting" ? "Connecting to OpenAI Realtime..." :
-          nextStatus === "listening" ? "Listening. Ask iPolloWalk to act." :
-            nextStatus === "speaking" ? "iPolloWalk is speaking..." :
+          nextStatus === "listening" ? "Listening. Ask iPolloWork to act." :
+            nextStatus === "speaking" ? "iPolloWork is speaking..." :
               nextStatus === "muted" ? "Connected, microphone muted." :
                 nextStatus === "error" ? "Voice Mode needs attention." :
                   "Ready for voice control."
@@ -488,7 +488,7 @@ export function VoicePanel(props: VoicePanelProps) {
       const callId = readString(event, "call_id");
       const args = parseJsonRecord(readString(event, "arguments"));
       addEntry("tool", toolName, { toolName });
-      const output = await executeiPolloWalkTool(toolName, args);
+      const output = await executeiPolloWorkTool(toolName, args);
       if (isRecord(output) && output.ok === false) {
         const error = typeof output.error === "string" ? output.error : "Tool failed.";
         addEntry("tool", error, { toolName, error: true });
@@ -528,7 +528,7 @@ export function VoicePanel(props: VoicePanelProps) {
 
   const connectRealtime = useCallback(async (audioInput = true) => {
     const client = props.client;
-    if (!client) throw new Error("iPolloWalk host connection is not ready.");
+    if (!client) throw new Error("iPolloWork host connection is not ready.");
     if (audioInput && !navigator.mediaDevices?.getUserMedia) throw new Error("Microphone capture is unavailable in this runtime.");
 
     disconnectRealtime(true);
@@ -541,7 +541,7 @@ export function VoicePanel(props: VoicePanelProps) {
     if (audioInput) {
       setRuntimeStatus("connecting", "Requesting microphone...");
       const macPermissionGranted = await requestMacMicrophoneAccess();
-      if (!macPermissionGranted) throw new Error("macOS denied microphone access. Enable iPolloWalk in System Settings > Privacy & Security > Microphone, then restart iPolloWalk.");
+      if (!macPermissionGranted) throw new Error("macOS denied microphone access. Enable iPolloWork in System Settings > Privacy & Security > Microphone, then restart iPolloWork.");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
@@ -592,7 +592,7 @@ export function VoicePanel(props: VoicePanelProps) {
     await waitForDataChannelOpen(channel);
     setRealtimeDiagnostics("Realtime data channel is open.");
     setRuntimeStatus("listening", audioInput ? undefined : "Connected. Send a typed voice command.");
-    addEntry("system", `Realtime connected with ${realtimeSession.model} and ${realtimeSession.tools.length} iPolloWalk tools.`);
+    addEntry("system", `Realtime connected with ${realtimeSession.model} and ${realtimeSession.tools.length} iPolloWork tools.`);
     recordInspectorEvent("voice.connected", { sessionId: props.sessionId, model: realtimeSession.model });
   }, [addEntry, disconnectRealtime, handleRealtimeMessage, props.client, props.sessionId, props.workspaceId, setRuntimeStatus]);
 
@@ -670,7 +670,7 @@ export function VoicePanel(props: VoicePanelProps) {
     const text = voiceTextArgument(args);
     setVoiceRuntimeSnapshot((current) => ({ ...current, latestUserTranscript: text }));
     addEntry("user", text);
-    window.dispatchEvent(new CustomEvent("ipollowalk:voice-transcript", { detail: { text } }));
+    window.dispatchEvent(new CustomEvent("ipollowork:voice-transcript", { detail: { text } }));
     recordInspectorEvent("voice.inject_transcript", { sessionId: props.sessionId, text });
     return { ok: true, transcript: text };
   }, [addEntry, props.sessionId]);
@@ -696,7 +696,7 @@ export function VoicePanel(props: VoicePanelProps) {
     return dispose;
   }, [assistantPreview, connected, entries, latestUserTranscript, micDiagnostics, micMuted, props.sessionId, realtimeDiagnostics, status, statusText, textCommand.length]);
 
-  const startAction = useMemo<iPolloWalkControlAction>(() => ({
+  const startAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "voice.start",
     label: "Start Voice Mode",
     description: "Connect the Voice Mode panel to OpenAI Realtime and start listening.",
@@ -707,7 +707,7 @@ export function VoicePanel(props: VoicePanelProps) {
   }), [connected, props.client, startVoice, status]);
   useControlAction(startAction);
 
-  const stopAction = useMemo<iPolloWalkControlAction>(() => ({
+  const stopAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "voice.stop",
     label: "Stop Voice Mode",
     description: "Disconnect the active Voice Mode Realtime session.",
@@ -718,7 +718,7 @@ export function VoicePanel(props: VoicePanelProps) {
   }), [connected, stopVoice]);
   useControlAction(stopAction);
 
-  const muteAction = useMemo<iPolloWalkControlAction>(() => ({
+  const muteAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "voice.toggle_mute",
     label: micMuted ? "Unmute Voice Mode" : "Mute Voice Mode",
     description: "Toggle the microphone track without closing the Realtime session.",
@@ -729,7 +729,7 @@ export function VoicePanel(props: VoicePanelProps) {
   }), [connected, micMuted, toggleMic]);
   useControlAction(muteAction);
 
-  const injectTranscriptAction = useMemo<iPolloWalkControlAction>(() => ({
+  const injectTranscriptAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "voice.inject_transcript",
     label: "Inject a voice transcript",
     description: "Deterministic eval hook: add a transcript to Voice Mode and place it in the composer.",
@@ -742,7 +742,7 @@ export function VoicePanel(props: VoicePanelProps) {
   }), [injectTranscript]);
   useControlAction(injectTranscriptAction);
 
-  const sendTextAction = useMemo<iPolloWalkControlAction>(() => ({
+  const sendTextAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "voice.send_text",
     label: "Send text through Voice Mode",
     description: "Send a deterministic text command through the active OpenAI Realtime voice session.",
@@ -755,7 +755,7 @@ export function VoicePanel(props: VoicePanelProps) {
   }), [sendTextCommand]);
   useControlAction(sendTextAction);
 
-  const injectAudioAction = useMemo<iPolloWalkControlAction>(() => ({
+  const injectAudioAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "voice.inject_audio",
     label: "Inject voice audio",
     description: "Deterministic eval hook: send PCM16 audio through the active OpenAI Realtime input buffer.",
@@ -767,7 +767,7 @@ export function VoicePanel(props: VoicePanelProps) {
   }), [injectAudio]);
   useControlAction(injectAudioAction);
 
-  const statusAction = useMemo<iPolloWalkControlAction>(() => ({
+  const statusAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "voice.status",
     label: "Read Voice Mode status",
     description: "Return the Voice Mode runtime state for tests and agents.",
@@ -792,7 +792,7 @@ export function VoicePanel(props: VoicePanelProps) {
             <Radio className="text-primary" />
             Voice Mode
           </div>
-          <div className="truncate text-xs text-muted-foreground">Realtime voice over iPolloWalk UI MCP controls</div>
+          <div className="truncate text-xs text-muted-foreground">Realtime voice over iPolloWork UI MCP controls</div>
         </div>
         <Button variant="ghost" size="icon-sm" onClick={props.onClose} aria-label="Close Voice Mode">
           <X />
@@ -848,7 +848,7 @@ export function VoicePanel(props: VoicePanelProps) {
                 <CardTitle>Host connection required</CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
-                Voice Mode needs the local iPolloWalk server so it can mint short-lived Realtime client secrets without exposing your API key to the renderer.
+                Voice Mode needs the local iPolloWork server so it can mint short-lived Realtime client secrets without exposing your API key to the renderer.
               </CardContent>
             </Card>
           ) : null}

@@ -40,13 +40,13 @@ export default {
   title: "Open app, send a message, get a response, reopen with session intact",
   spec: "evals/react-session-flows.md",
   precondition: async (ctx) => {
-    await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+    await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
       timeoutMs: 60_000,
       label: "control API",
     });
     const state = await ctx.waitFor(
       `(() => {
-        const control = window.__ipollowalkControl;
+        const control = window.__ipolloworkControl;
         const route = control.snapshot().route;
         if (route.startsWith("/welcome") || route.startsWith("/signin")) return "blocked";
         const action = control.listActions().find((a) => a.id === "session.create_task");
@@ -65,7 +65,7 @@ export default {
       run: async (ctx) => {
         await ctx.prove("App boots clean to a known route", {
           action: async () => {
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
               timeoutMs: 60_000,
               label: "control API",
             });
@@ -74,7 +74,7 @@ export default {
             });
           },
           assert: async () => {
-            const route = await ctx.eval("window.__ipollowalkControl.snapshot().route");
+            const route = await ctx.eval("window.__ipolloworkControl.snapshot().route");
             ctx.assert(
               typeof route === "string" && route.length > 0,
               "No route reported by control snapshot.",
@@ -96,7 +96,7 @@ export default {
             // The newly created session id should be reflected in the route.
             const sessionId = await ctx.waitFor(
               `(() => {
-                const route = window.__ipollowalkControl.snapshot().route || "";
+                const route = window.__ipolloworkControl.snapshot().route || "";
                 const m = route.match(/ses_[A-Za-z0-9]+/);
                 return m ? m[0] : null;
               })()`,
@@ -147,7 +147,7 @@ export default {
         // Capture the active session id before the reload so we can prove the
         // exact same session is restored afterwards.
         const before = await ctx.eval(`(() => {
-          const route = window.__ipollowalkControl.snapshot().route || "";
+          const route = window.__ipolloworkControl.snapshot().route || "";
           const m = route.match(/ses_[A-Za-z0-9]+/);
           return m ? m[0] : null;
         })()`);
@@ -158,7 +158,7 @@ export default {
           action: async () => {
             // Simulate close + reopen: re-boot the renderer/client.
             await ctx.eval("(() => { window.location.reload(); return true; })()");
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
               timeoutMs: 60_000,
               label: "control API after reopen",
             });
@@ -167,7 +167,7 @@ export default {
             // Prove the session persisted: it must still be listed after the
             // reopen (this reads persisted state, not in-memory).
             await ctx.waitFor(
-              "window.__ipollowalkControl.listActions().some((a) => a.id === 'session.list_sessions')",
+              "window.__ipolloworkControl.listActions().some((a) => a.id === 'session.list_sessions')",
               { timeoutMs: 45_000, label: "session.list_sessions available" },
             );
             const sessions = await ctx.control("session.list_sessions");

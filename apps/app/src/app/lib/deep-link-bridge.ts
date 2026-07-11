@@ -1,5 +1,5 @@
-export const deepLinkBridgeEvent = "ipollowalk:deep-link";
-export const nativeDeepLinkEvent = "ipollowalk:deep-link-native";
+export const deepLinkBridgeEvent = "ipollowork:deep-link";
+export const nativeDeepLinkEvent = "ipollowork:deep-link-native";
 
 export type DeepLinkBridgeDetail = {
   urls: string[];
@@ -7,7 +7,7 @@ export type DeepLinkBridgeDetail = {
 
 declare global {
   interface Window {
-    __IPOLLOWALK__?: {
+    __IPOLLOWORK__?: {
       deepLinks?: string[];
     };
   }
@@ -26,9 +26,9 @@ export function pushPendingDeepLinks(target: Window, urls: readonly string[]): s
     return [];
   }
 
-  target.__IPOLLOWALK__ ??= {};
-  const pending = target.__IPOLLOWALK__.deepLinks ?? [];
-  target.__IPOLLOWALK__.deepLinks = [...pending, ...normalized];
+  target.__IPOLLOWORK__ ??= {};
+  const pending = target.__IPOLLOWORK__.deepLinks ?? [];
+  target.__IPOLLOWORK__.deepLinks = [...pending, ...normalized];
   target.dispatchEvent(
     new CustomEvent<DeepLinkBridgeDetail>(deepLinkBridgeEvent, {
       detail: { urls: normalized },
@@ -38,9 +38,9 @@ export function pushPendingDeepLinks(target: Window, urls: readonly string[]): s
 }
 
 export function drainPendingDeepLinks(target: Window): string[] {
-  const pending = target.__IPOLLOWALK__?.deepLinks ?? [];
-  if (target.__IPOLLOWALK__) {
-    target.__IPOLLOWALK__.deepLinks = [];
+  const pending = target.__IPOLLOWORK__?.deepLinks ?? [];
+  if (target.__IPOLLOWORK__) {
+    target.__IPOLLOWORK__.deepLinks = [];
   }
   return [...pending];
 }

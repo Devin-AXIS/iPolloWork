@@ -13,7 +13,7 @@ import {
   parseStructuredOutputUIPart,
   STRUCTURED_OUTPUT_TOOL,
 } from "./parse-tool-parts";
-import type { iPolloWalkSessionSnapshot } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkSessionSnapshot } from "@/app/lib/ipollowork-server";
 import { applyRevertCursor, reconcileTranscriptMessages } from "./transcript-reconcile";
 import {
   useSessionActivityStore,
@@ -23,7 +23,7 @@ import { notifyDesktopEvent } from "../../../shell/desktop-notifications";
 type SyncOptions = {
   workspaceId: string;
   baseUrl: string;
-  ipollowalkToken: string;
+  ipolloworkToken: string;
   onSessionUpdated?: (update: { sessionId: string; info: Record<string, unknown> }) => void;
   onSessionStatus?: (update: { sessionId: string; status: SessionStatus }) => void;
 };
@@ -74,7 +74,7 @@ export const questionKey = (workspaceId: string, sessionId: string) =>
   ["react-session-questions", workspaceId, sessionId] as const;
 
 function syncKey(input: SyncOptions) {
-  return `${input.workspaceId}:${input.baseUrl}:${input.ipollowalkToken}`;
+  return `${input.workspaceId}:${input.baseUrl}:${input.ipolloworkToken}`;
 }
 
 function getErrorStatus(error: unknown) {
@@ -613,11 +613,11 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
     // renderer derives the visible transcript from this cursor, so a revert
     // (or its cleanup on the next prompt) must reach the snapshot cache or
     // the transcript stays frozen on stale history.
-    queryClient.setQueryData<iPolloWalkSessionSnapshot>(
+    queryClient.setQueryData<iPolloWorkSessionSnapshot>(
       snapshotKey(workspaceId, update.sessionId),
       (current) => {
         if (!current) return current;
-        const revert = (update.info as { revert?: iPolloWalkSessionSnapshot["session"]["revert"] }).revert;
+        const revert = (update.info as { revert?: iPolloWorkSessionSnapshot["session"]["revert"] }).revert;
         return { ...current, session: { ...current.session, revert } };
       },
     );
@@ -815,7 +815,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
     queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, props.sessionID), (current = []) =>
       current.filter((message) => message.id !== props.messageID),
     );
-    queryClient.setQueryData<iPolloWalkSessionSnapshot>(
+    queryClient.setQueryData<iPolloWorkSessionSnapshot>(
       snapshotKey(workspaceId, props.sessionID),
       (current) => {
         if (!current) return current;
@@ -1030,7 +1030,7 @@ function flushDeltas(entry: SyncEntry, workspaceId: string) {
 }
 
 function startSync(input: SyncOptions) {
-  const client = createClient(input.baseUrl, undefined, { token: input.ipollowalkToken, mode: "ipollowalk" });
+  const client = createClient(input.baseUrl, undefined, { token: input.ipolloworkToken, mode: "ipollowork" });
   const controller = new AbortController();
   const entry = syncs.get(syncKey(input));
   let disposed = false;
@@ -1145,7 +1145,7 @@ function releaseWorkspaceSessionSync(input: SyncOptions) {
   }
 }
 
-export function seedSessionState(workspaceId: string, snapshot: iPolloWalkSessionSnapshot) {
+export function seedSessionState(workspaceId: string, snapshot: iPolloWorkSessionSnapshot) {
   const queryClient = getReactQueryClient();
   const key = transcriptKey(workspaceId, snapshot.session.id);
   const incoming = snapshotToUIMessages(snapshot);
@@ -1187,7 +1187,7 @@ export function applySessionRevert(workspaceId: string, session: Session) {
   const queryClient = getReactQueryClient();
   const revertMessageId = session.revert?.messageID ?? null;
 
-  queryClient.setQueryData<iPolloWalkSessionSnapshot>(
+  queryClient.setQueryData<iPolloWorkSessionSnapshot>(
     snapshotKey(workspaceId, session.id),
     (current) => (current ? { ...current, session: { ...current.session, revert: session.revert } } : current),
   );

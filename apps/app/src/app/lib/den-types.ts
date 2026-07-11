@@ -1,10 +1,10 @@
 // Den wire types shared across module boundaries (den.ts, den-session-events,
-// ipollowalk-server, desktop cloud sync). Extracted from den.ts so that modules
+// ipollowork-server, desktop cloud sync). Extracted from den.ts so that modules
 // needing only the shapes do not import the 2k-line client implementation —
 // den.ts re-exports everything here, so existing imports keep working.
 import type {
-  iPolloWalkExtensionManifest,
-  iPolloWalkExtensionSourceFormat,
+  iPolloWorkExtensionManifest,
+  iPolloWorkExtensionSourceFormat,
 } from "../extensions";
 
 export type DenSettings = {
@@ -64,8 +64,8 @@ export type DenOrgExtensionProjection = {
   id: string;
   name: string;
   description: string | null;
-  sourceFormat: iPolloWalkExtensionSourceFormat;
-  manifest: iPolloWalkExtensionManifest | null;
+  sourceFormat: iPolloWorkExtensionSourceFormat;
+  manifest: iPolloWorkExtensionManifest | null;
 };
 
 export type DenPluginCloudReadinessState = "ready" | "needs_signin" | "needs_admin_setup" | "desktop_only" | "not_synced";
@@ -92,7 +92,7 @@ export type DenOrgPlugin = {
   memberCount: number;
   updatedAt: string | null;
   componentCounts: Record<string, number>;
-  /** Preferred Den surface: plugins are normalized into iPolloWalk extensions. */
+  /** Preferred Den surface: plugins are normalized into iPolloWork extensions. */
   extension?: DenOrgExtensionProjection | null;
   cloudReadiness?: DenPluginCloudReadiness;
 };

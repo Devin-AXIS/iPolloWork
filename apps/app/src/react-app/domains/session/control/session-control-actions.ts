@@ -2,10 +2,10 @@
 import { useCallback, useMemo } from "react";
 
 import type { createClient } from "../../../../app/lib/opencode";
-import type { iPolloWalkServerClient, iPolloWalkWorkspaceInfo } from "../../../../app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient, iPolloWorkWorkspaceInfo } from "../../../../app/lib/ipollowork-server";
 import { setSessionArchived } from "../../../../app/lib/opencode-session";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
-import { useControlAction, type iPolloWalkControlAction } from "../../../shell/control/control-provider";
+import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import { useSessionManagementStore } from "../sidebar/session-management-store";
 
 type SessionLike = {
@@ -17,7 +17,7 @@ type SessionLike = {
   };
 };
 
-type SessionControlWorkspace = iPolloWalkWorkspaceInfo & {
+type SessionControlWorkspace = iPolloWorkWorkspaceInfo & {
   displayNameResolved?: string;
 };
 
@@ -28,7 +28,7 @@ type UseSessionControlActionsInput = {
   selectedWorkspaceRoot: string;
   selectedSessionId: string | null;
   canCreateTask: boolean;
-  ipollowalkClient: iPolloWalkServerClient | null;
+  ipolloworkClient: iPolloWorkServerClient | null;
   opencodeClient: ReturnType<typeof createClient> | null;
   navigateToSession: (sessionId: string) => void;
   navigateToSessionRoot: () => void;
@@ -71,7 +71,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
     navigateToSession,
     navigateToSessionRoot,
     openModelPicker,
-    ipollowalkClient,
+    ipolloworkClient,
     opencodeClient,
     refreshRouteState,
     selectedSessionId,
@@ -81,7 +81,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
     workspaces,
   } = input;
 
-  const createTaskControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const createTaskControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.create_task",
     label: "Create a new task",
     description: "Create a new session in the selected workspace.",
@@ -95,7 +95,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), [canCreateTask, createTaskInWorkspace, selectedWorkspaceId]);
   useControlAction(createTaskControlAction);
 
-  const listSessionsControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const listSessionsControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.list_sessions",
     label: "List available sessions",
     description: "Return the list of sessions across workspaces so the user can ask to open one by name.",
@@ -118,7 +118,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), [sessionsByWorkspaceId, workspaces]);
   useControlAction(listSessionsControlAction);
 
-  const openSessionControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const openSessionControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.open",
     label: "Open a session by ID",
     description: "Navigate to a specific session. Use list_sessions first to get the session ID.",
@@ -134,7 +134,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), [navigateToSession]);
   useControlAction(openSessionControlAction);
 
-  const renameSessionControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const renameSessionControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.rename",
     label: "Rename a session",
     description: "Rename a session by ID. Use list_sessions first to match the title the user said.",
@@ -164,7 +164,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), [opencodeClient, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
   useControlAction(renameSessionControlAction);
 
-  const deleteSessionControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const deleteSessionControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.delete",
     label: "Delete a session",
     description: "Delete a session by ID. Destructive: only run after explicit user confirmation.",
@@ -175,27 +175,27 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
       { name: "sessionId", type: "string", required: true, description: "Session ID from session.list_sessions." },
       { name: "confirmed", type: "boolean", required: true, description: "Must be true after explicit user confirmation." },
     ],
-    disabled: !ipollowalkClient,
+    disabled: !ipolloworkClient,
     execute: async (args) => {
       const sessionId = stringArg(args, "sessionId");
       const confirmed = booleanArg(args, "confirmed");
       if (!sessionId) return { ok: false, error: "sessionId is required" };
       if (!confirmed) return { ok: false, error: "Deletion requires confirmed: true after explicit user confirmation" };
-      if (!ipollowalkClient) return { ok: false, error: "iPolloWalk server is not connected" };
+      if (!ipolloworkClient) return { ok: false, error: "iPolloWork server is not connected" };
 
       const targetWorkspace = findSessionWorkspace(workspaces, sessionsByWorkspaceId, sessionId);
       if (!targetWorkspace) return { ok: false, error: "Session was not found in the current session list" };
-      await ipollowalkClient.deleteSession(targetWorkspace.id, sessionId);
+      await ipolloworkClient.deleteSession(targetWorkspace.id, sessionId);
       if (selectedSessionId === sessionId) {
         navigateToSessionRoot();
       }
       await refreshRouteState();
       return { ok: true, sessionId, deleted: true };
     },
-  }), [navigateToSessionRoot, ipollowalkClient, refreshRouteState, selectedSessionId, sessionsByWorkspaceId, workspaces]);
+  }), [navigateToSessionRoot, ipolloworkClient, refreshRouteState, selectedSessionId, sessionsByWorkspaceId, workspaces]);
   useControlAction(deleteSessionControlAction);
 
-  const modelPickerControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const modelPickerControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.model_picker.open",
     label: "Open the model picker",
     description: "Open the current session model picker.",
@@ -228,7 +228,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
     return selectedWorkspaceId || undefined;
   }, [selectedWorkspaceId, workspaces]);
 
-  const pinControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const pinControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.pin",
     label: "Pin or unpin a session",
     description: "Toggle pin on a session. Pinned sessions float to the top of the sidebar.",
@@ -245,7 +245,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), []);
   useControlAction(pinControlAction);
 
-  const archiveControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const archiveControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.archive",
     label: "Archive or unarchive a session",
     description: "Archive a session (non-destructive, preserves context). Archived sessions move to the Archived section. Pass archived=false to unarchive.",
@@ -269,7 +269,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), [opencodeClient, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
   useControlAction(archiveControlAction);
 
-  const groupCreateControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const groupCreateControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.group.create",
     label: "Create a session group",
     description: "Create a new group (folder/separator) in the current workspace sidebar. Sessions can then be moved into it.",
@@ -293,7 +293,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), [resolveWorkspaceId]);
   useControlAction(groupCreateControlAction);
 
-  const groupMoveControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const groupMoveControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.group.move",
     label: "Move a session to a group",
     description: "Assign a session to a group (folder). Pass groupId=null or omit to remove from current group. Use session.group.list to see available groups.",
@@ -317,7 +317,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), [resolveWorkspaceId, sessionsByWorkspaceId, workspaces]);
   useControlAction(groupMoveControlAction);
 
-  const groupRemoveControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const groupRemoveControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.group.remove",
     label: "Remove a session group",
     description: "Remove a group from the workspace. Sessions in the group become ungrouped (not deleted).",
@@ -343,7 +343,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), [resolveWorkspaceId]);
   useControlAction(groupRemoveControlAction);
 
-  const groupListControlAction = useMemo<iPolloWalkControlAction>(() => ({
+  const groupListControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.group.list",
     label: "List session groups",
     description: "List all groups in a workspace with their IDs and labels.",

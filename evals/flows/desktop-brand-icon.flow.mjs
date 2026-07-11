@@ -9,7 +9,7 @@ const vo = await loadVoiceoverParagraphs("desktop-brand-icon");
 
 const execFileAsync = promisify(execFile);
 const ADMIN_EMAIL = "alex@acme.test";
-const ADMIN_PASSWORD = "iPolloWalkDemo123!";
+const ADMIN_PASSWORD = "iPolloWorkDemo123!";
 const GENPACT_LOGO = "https://upload.wikimedia.org/wikipedia/commons/5/50/Genpact_Logo_Black_%283%29.png";
 const TEST_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/6/6a/JavaScript-logo.png";
 const ORG_SETTINGS_PATH = "/dashboard/brand-appearance";
@@ -20,7 +20,7 @@ let panelTargetId = null;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function orgSettingsUrl(ctx) {
-  return `${ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL.replace(/\/$/, "")}${ORG_SETTINGS_PATH}`;
+  return `${ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL.replace(/\/$/, "")}${ORG_SETTINGS_PATH}`;
 }
 
 function errorMessage(error) {
@@ -44,8 +44,8 @@ async function waitUntil(ctx, label, predicate, { timeoutMs = 20_000, intervalMs
 }
 
 async function denFetch(ctx, path, options = {}) {
-  const base = ctx.env.IPOLLOWALK_EVAL_DEN_API_URL.replace(/\/$/, "");
-  const token = ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN;
+  const base = ctx.env.IPOLLOWORK_EVAL_DEN_API_URL.replace(/\/$/, "");
+  const token = ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN;
   const response = await fetch(`${base}${path}`, {
     ...options,
     headers: {
@@ -76,7 +76,7 @@ async function waitForDesktopConfig(ctx, label, predicate, timeoutMs = 20_000) {
 
 async function findPanelTarget(ctx) {
   if (!ctx.cdpBaseUrl) throw new Error("Panel target lookup requires ctx.cdpBaseUrl.");
-  const denHost = new URL(ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL).host;
+  const denHost = new URL(ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL).host;
   const targets = await listTargets(ctx.cdpBaseUrl);
   const pages = targets.filter((target) => target.type === "page" && target.webSocketDebuggerUrl);
   return pages.find((target) => panelTargetId && target.id === panelTargetId) ??
@@ -131,7 +131,7 @@ async function openAdminPanel(ctx) {
     return existing;
   }
   await ctx.waitFor(
-    "window.__ipollowalkControl.listActions().some((action) => action.id === 'browser.open_url' && !action.disabled)",
+    "window.__ipolloworkControl.listActions().some((action) => action.id === 'browser.open_url' && !action.disabled)",
     { timeoutMs: 30_000, label: "browser.open_url control action" },
   );
   const result = await ctx.control("browser.open_url", {
@@ -234,15 +234,15 @@ async function clickSaveSettings(ctx) {
 
 async function memberRefresh(ctx) {
   await ctx.eval(`(() => {
-    window.dispatchEvent(new CustomEvent('ipollowalk-den-settings-changed', { detail: {} }));
-    window.dispatchEvent(new CustomEvent('ipollowalk-den-session-updated', { detail: {} }));
+    window.dispatchEvent(new CustomEvent('ipollowork-den-settings-changed', { detail: {} }));
+    window.dispatchEvent(new CustomEvent('ipollowork-den-session-updated', { detail: {} }));
     return true;
   })()`);
   ctx.log("Dispatched member desktop-config refresh events.");
 }
 
 async function getBrandIconState(ctx) {
-  return ctx.eval("window.__IPOLLOWALK_ELECTRON__?.brandIcon?.getState?.()", { awaitPromise: true });
+  return ctx.eval("window.__IPOLLOWORK_ELECTRON__?.brandIcon?.getState?.()", { awaitPromise: true });
 }
 
 async function waitForBrandIconState(ctx, label, predicate, timeoutMs = 30_000, { refresh = false } = {}) {
@@ -261,9 +261,9 @@ async function waitForBrandIconState(ctx, label, predicate, timeoutMs = 30_000, 
 }
 
 async function daytonaExec(ctx, label, script) {
-  const sandbox = ctx.env.IPOLLOWALK_EVAL_DAYTONA_SANDBOX?.trim();
+  const sandbox = ctx.env.IPOLLOWORK_EVAL_DAYTONA_SANDBOX?.trim();
   if (!sandbox) {
-    ctx.log(`Skipping Daytona ${label}: IPOLLOWALK_EVAL_DAYTONA_SANDBOX is not set.`);
+    ctx.log(`Skipping Daytona ${label}: IPOLLOWORK_EVAL_DAYTONA_SANDBOX is not set.`);
     return null;
   }
   try {
@@ -287,13 +287,13 @@ async function daytonaExec(ctx, label, script) {
 async function assertDaytonaCacheExists(ctx) {
   const result = await daytonaExec(ctx, "brand-icon cache exists", `
 set -euo pipefail
-for candidate in "$HOME/.config"/com.differentai.ipollowalk* "$HOME/.config"/*iPolloWalk* "$HOME/.config"/*ipollowalk*; do
+for candidate in "$HOME/.config"/com.differentai.ipollowork* "$HOME/.config"/*iPolloWork* "$HOME/.config"/*ipollowork*; do
   if [ -d "$candidate" ] && [ -f "$candidate/brand-icon.png" ]; then
     printf '%s\n' "$candidate/brand-icon.png"
     exit 0
   fi
 done
-printf 'brand-icon.png not found under ~/.config ipollowalk dirs\n' >&2
+printf 'brand-icon.png not found under ~/.config ipollowork dirs\n' >&2
 exit 1
 `);
   if (result) {
@@ -304,13 +304,13 @@ exit 1
 async function assertDaytonaCacheGone(ctx) {
   const result = await daytonaExec(ctx, "brand-icon cache removed", `
 set -euo pipefail
-for candidate in "$HOME/.config"/com.differentai.ipollowalk* "$HOME/.config"/*iPolloWalk* "$HOME/.config"/*ipollowalk*; do
+for candidate in "$HOME/.config"/com.differentai.ipollowork* "$HOME/.config"/*iPolloWork* "$HOME/.config"/*ipollowork*; do
   if [ -d "$candidate" ] && [ -f "$candidate/brand-icon.png" ]; then
     printf 'unexpected cache file: %s\n' "$candidate/brand-icon.png" >&2
     exit 1
   fi
 done
-printf 'brand-icon.png absent from ipollowalk config dirs\n'
+printf 'brand-icon.png absent from ipollowork config dirs\n'
 `);
   if (result) {
     ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "Daytona userData cache removed brand-icon.png", actual: result.stdout.trim() });
@@ -319,10 +319,10 @@ printf 'brand-icon.png absent from ipollowalk config dirs\n'
 
 async function assertDaytonaWindowIcon(ctx) {
   const result = await daytonaExec(ctx, "window _NET_WM_ICON inspection", `
-export DISPLAY="\${IPOLLOWALK_EVAL_DISPLAY:-:99}"
+export DISPLAY="\${IPOLLOWORK_EVAL_DISPLAY:-:99}"
 window_id=""
 for candidate in $(xprop -root _NET_CLIENT_LIST 2>/dev/null | grep -o '0x[0-9a-f]*'); do
-  if xprop -id "$candidate" WM_NAME 2>/dev/null | grep -qi ipollowalk; then
+  if xprop -id "$candidate" WM_NAME 2>/dev/null | grep -qi ipollowork; then
     window_id="$candidate"
   fi
 done
@@ -373,8 +373,8 @@ async function ensureRendererMounted(ctx, { attempts = 5 } = {}) {
 
 async function assertSignedIntoDen(ctx) {
   const settings = await ctx.eval(`(() => ({
-    authToken: localStorage.getItem('ipollowalk.den.authToken'),
-    activeOrgId: localStorage.getItem('ipollowalk.den.activeOrgId'),
+    authToken: localStorage.getItem('ipollowork.den.authToken'),
+    activeOrgId: localStorage.getItem('ipollowork.den.activeOrgId'),
   }))()`);
   ctx.assert(
     Boolean(settings?.authToken?.trim() && settings?.activeOrgId?.trim()),
@@ -401,7 +401,7 @@ async function assertSignedIntoDen(ctx) {
  * `/session` when we're not already on a workspace route.
  */
 async function ensureWorkspaceReady(ctx) {
-  const workspacePath = ctx.env.IPOLLOWALK_EVAL_WORKSPACE_PATH?.trim() || "/workspace";
+  const workspacePath = ctx.env.IPOLLOWORK_EVAL_WORKSPACE_PATH?.trim() || "/workspace";
   const onOnboarding = await ctx.eval("location.hash.includes('/onboarding')");
   if (onOnboarding) {
     const hasWorkspaceButton = await ctx.eval(
@@ -430,7 +430,7 @@ async function ensureWorkspaceReady(ctx) {
     await ctx.navigateHash("/session");
   }
   await ctx.waitFor(
-    "window.__ipollowalkControl.listActions().some((action) => action.id === 'browser.open_url' && !action.disabled)",
+    "window.__ipolloworkControl.listActions().some((action) => action.id === 'browser.open_url' && !action.disabled)",
     { timeoutMs: 30_000, label: "session browser.open_url action" },
   );
 }
@@ -468,15 +468,15 @@ export default {
   title: "Org Icon URL updates the desktop OS icon live, persists through relaunch, and can be cleared",
   kind: "user-facing",
   spec: "evals/voiceovers/desktop-brand-icon.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "setup",
       run: async (ctx) => {
         await ensureRendererMounted(ctx);
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 30_000,
-          label: "window.__ipollowalkControl",
+          label: "window.__ipolloworkControl",
         });
         await ctx.ensureLightMode();
         await assertSignedIntoDen(ctx);
@@ -611,7 +611,7 @@ export default {
         await ctx.prove("Relaunch boots with the cached org icon already applied", {
           voiceover: vo[4],
           action: async () => {
-            const sandbox = ctx.env.IPOLLOWALK_EVAL_DAYTONA_SANDBOX?.trim();
+            const sandbox = ctx.env.IPOLLOWORK_EVAL_DAYTONA_SANDBOX?.trim();
             if (sandbox) {
               // Quit and relaunch the way the OS would: stop the process and
               // start it again with its own environment (read from /proc).
@@ -625,7 +625,7 @@ pid=$(pgrep -f "electron ./electron/main.mjs" | head -n 1)
 test -n "$pid"
 exe=$(readlink /proc/$pid/exe)
 cwd=$(readlink /proc/$pid/cwd)
-tr '\\0' '\\n' < /proc/$pid/environ | grep -E '^(DISPLAY|ELECTRON_|IPOLLOWALK_)' > /tmp/electron-relaunch.env
+tr '\\0' '\\n' < /proc/$pid/environ | grep -E '^(DISPLAY|ELECTRON_|IPOLLOWORK_)' > /tmp/electron-relaunch.env
 kill "$pid" 2>/dev/null || true
 sleep 3
 pkill -f opencode-x86_64 2>/dev/null || true
@@ -643,7 +643,7 @@ echo relaunched
               });
             } else {
               await ctx.waitFor(
-                "window.__ipollowalkControl.listActions().some((action) => action.id === 'eval.app.relaunch' && !action.disabled)",
+                "window.__ipolloworkControl.listActions().some((action) => action.id === 'eval.app.relaunch' && !action.disabled)",
                 { timeoutMs: 15_000, label: "eval.app.relaunch action" },
               );
               try {
@@ -654,9 +654,9 @@ echo relaunched
             }
             await ctx.reconnect({ timeoutMs: 120_000 });
             await ensureRendererMounted(ctx);
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
               timeoutMs: 60_000,
-              label: "window.__ipollowalkControl after relaunch",
+              label: "window.__ipolloworkControl after relaunch",
             });
             bootState = await waitForBrandIconState(ctx, "cached brand icon applied immediately after relaunch", (state) =>
               state?.applied === true && state?.sourceUrl === TEST_ICON_URL,

@@ -3,14 +3,14 @@ import { contextBridge, ipcRenderer } from "electron";
 let latestRequest = null;
 let showCallback = null;
 
-ipcRenderer.on("ipollowalk:menu-overlay:show", (_event, request) => {
+ipcRenderer.on("ipollowork:menu-overlay:show", (_event, request) => {
   latestRequest = request;
   showCallback?.(request);
 });
 
-contextBridge.exposeInMainWorld("__IPOLLOWALK_MENU_OVERLAY__", {
+contextBridge.exposeInMainWorld("__IPOLLOWORK_MENU_OVERLAY__", {
   ready() {
-    ipcRenderer.send("ipollowalk:menu-overlay:ready");
+    ipcRenderer.send("ipollowork:menu-overlay:ready");
   },
   onShow(callback) {
     showCallback = callback;
@@ -24,9 +24,9 @@ contextBridge.exposeInMainWorld("__IPOLLOWALK_MENU_OVERLAY__", {
     };
   },
   choose(requestId, itemId) {
-    ipcRenderer.send("ipollowalk:menu-overlay:choose", { requestId, itemId });
+    ipcRenderer.send("ipollowork:menu-overlay:choose", { requestId, itemId });
   },
   close(requestId) {
-    ipcRenderer.send("ipollowalk:menu-overlay:close", { requestId });
+    ipcRenderer.send("ipollowork:menu-overlay:close", { requestId });
   },
 });

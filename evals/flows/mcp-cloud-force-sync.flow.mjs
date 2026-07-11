@@ -1,14 +1,14 @@
 /**
- * The Extensions page Refresh button force-syncs the iPolloWalk Cloud Control
+ * The Extensions page Refresh button force-syncs the iPolloWork Cloud Control
  * connection: re-mints the member's token and rewrites the MCP config NOW,
  * bypassing the freshness marker — one click instead of sign-out/sign-in or
  * waiting for the marker to expire.
  *
- * Proof: the `ipollowalk.den.mcp.sync` marker (written only when a sync
+ * Proof: the `ipollowork.den.mcp.sync` marker (written only when a sync
  * actually re-minted + reconnected) changes after clicking Refresh even
  * though it was still fresh — previously Refresh never touched it.
  *
- * Prerequisites: a desktop app (this worktree) signed in to iPolloWalk Cloud
+ * Prerequisites: a desktop app (this worktree) signed in to iPolloWork Cloud
  * with an active org and a workspace open — the state mcp-connections-
  * desktop-e2e.flow.mjs ends in. Fails fast with a clear message otherwise.
  */
@@ -26,10 +26,10 @@ export default {
     {
       name: "App booted and signed in with a fresh sync marker",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000 });
-        const signedIn = await ctx.eval("Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())");
-        ctx.assert(signedIn, "Desktop app must be signed in to iPolloWalk Cloud (run mcp-connections-desktop-e2e first).");
-        const marker = await ctx.eval("localStorage.getItem('ipollowalk.den.mcp.sync')");
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000 });
+        const signedIn = await ctx.eval("Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())");
+        ctx.assert(signedIn, "Desktop app must be signed in to iPolloWork Cloud (run mcp-connections-desktop-e2e first).");
+        const marker = await ctx.eval("localStorage.getItem('ipollowork.den.mcp.sync')");
         ctx.assert(Boolean(marker), "No sync marker present — cloud MCP was never configured.");
         ctx.log(`marker before: ${marker}`);
       },
@@ -48,7 +48,7 @@ export default {
         // `force` nothing would rewrite it — any change after the click is
         // attributable to the Refresh button alone.
         await new Promise((resolve) => setTimeout(resolve, 3_000));
-        const before = await ctx.eval("localStorage.getItem('ipollowalk.den.mcp.sync')");
+        const before = await ctx.eval("localStorage.getItem('ipollowork.den.mcp.sync')");
         ctx.assert(Boolean(before), "No marker after mount settle.");
 
         await ctx.prove("Refresh re-mints and rewrites the cloud MCP config immediately", {
@@ -57,17 +57,17 @@ export default {
           },
           assert: async () => {
             await ctx.waitFor(
-              `localStorage.getItem('ipollowalk.den.mcp.sync') !== ${JSON.stringify(before)}`,
+              `localStorage.getItem('ipollowork.den.mcp.sync') !== ${JSON.stringify(before)}`,
               { timeoutMs: 30_000, label: "sync marker rewritten by Refresh" },
             );
-            ctx.log(`marker after: ${await ctx.eval("localStorage.getItem('ipollowalk.den.mcp.sync')")}`);
-            await ctx.expectText("iPolloWalk Cloud Control");
+            ctx.log(`marker after: ${await ctx.eval("localStorage.getItem('ipollowork.den.mcp.sync')")}`);
+            await ctx.expectText("iPolloWork Cloud Control");
             await ctx.expectNoText("Something went wrong");
           },
           screenshot: {
             name: "force-sync-refreshed",
             claim: "After one Refresh click, the cloud MCP sync marker was rewritten — token re-minted and config re-synced on demand.",
-            requireText: ["iPolloWalk Cloud Control"],
+            requireText: ["iPolloWork Cloud Control"],
             rejectText: ["Something went wrong"],
           },
         });

@@ -1,7 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
-    "IPOLLOWALK_DEV_MODE",
+    "IPOLLOWORK_DEV_MODE",
     "DATABASE_URL",
     "DEN_DB_ENCRYPTION_KEY",
     "DEN_PASSWORD_BREACH_SCREENING_ENABLED",

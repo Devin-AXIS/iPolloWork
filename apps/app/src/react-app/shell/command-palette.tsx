@@ -253,7 +253,7 @@ export function CommandPalette(props: CommandPaletteProps) {
       meta: t("session.cmd_settings_meta"),
       action: () => {
         props.onClose();
-        openUrl("https://ipollowalk.dev/docs");
+        openUrl("https://ipollowork.dev/docs");
       },
     },
     {
@@ -262,7 +262,7 @@ export function CommandPalette(props: CommandPaletteProps) {
       meta: t("session.cmd_settings_meta"),
       action: () => {
         props.onClose();
-        openUrl("https://ipollowalk.dev/feedback");
+        openUrl("https://ipollowork.dev/feedback");
       },
     },
     {

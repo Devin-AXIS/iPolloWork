@@ -37,7 +37,7 @@ export type ShellConfig = {
 /* ------------------------------------------------------------------ */
 
 export const DEFAULT_SHELL_CONFIG: ShellConfig = {
-  appName: "iPolloWalk",
+  appName: "iPolloWork",
   statusBar: true,
   sidebar: true,
   docsButton: true,
@@ -55,7 +55,7 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
 /*  Persistence                                                        */
 /* ------------------------------------------------------------------ */
 
-const STORAGE_KEY = "ipollowalk.shell-config";
+const STORAGE_KEY = "ipollowork.shell-config";
 
 function readShellConfig(): ShellConfig {
   if (typeof window === "undefined") return DEFAULT_SHELL_CONFIG;

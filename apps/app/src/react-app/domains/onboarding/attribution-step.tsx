@@ -74,7 +74,7 @@ type AttributionStepProps = {
 /**
  * Self-reported attribution survey shown once during onboarding.
  * When the user picks "AI assistant" we ask which prompt led them
- * here — first-party data on how answer engines describe iPolloWalk.
+ * here — first-party data on how answer engines describe iPolloWork.
  */
 export function AttributionStep({ onSubmit, onSkip }: AttributionStepProps) {
   const [aiSelected, setAiSelected] = useState(false);
@@ -87,7 +87,7 @@ export function AttributionStep({ onSubmit, onSkip }: AttributionStepProps) {
 
       <div className="relative z-10 w-full max-w-md px-6">
         <PageHeader className="mb-8 text-center">
-          <PageTitle>How did you hear about iPolloWalk?</PageTitle>
+          <PageTitle>How did you hear about iPolloWork?</PageTitle>
           <PageDescription>
             One quick question — it helps us know where to show up.
           </PageDescription>

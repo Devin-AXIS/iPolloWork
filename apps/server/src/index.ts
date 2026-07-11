@@ -1,8 +1,8 @@
 /**
- * Library entry point for the iPolloWalk server.
+ * Library entry point for the iPolloWork server.
  *
  * ```ts
- * import { startEmbeddedServer } from "ipollowalk-server";
+ * import { startEmbeddedServer } from "ipollowork-server";
  *
  * const handle = await startEmbeddedServer({
  *   host: "127.0.0.1",

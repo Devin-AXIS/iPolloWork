@@ -5,7 +5,7 @@ import {
   workspaceUpdateRemote,
   type WorkspaceInfo,
 } from "../../../app/lib/desktop";
-import { buildiPolloWalkWorkspaceBaseUrl } from "../../../app/lib/ipollowalk-server";
+import { buildiPolloWorkWorkspaceBaseUrl } from "../../../app/lib/ipollowork-server";
 import { t } from "../../../i18n";
 import type { RemoteWorkspaceInput } from "./types";
 
@@ -42,16 +42,16 @@ export function useRemoteWorkspaceConnectionEditor<TWorkspace extends WorkspaceI
 
   const initialValues = useMemo(
     () => {
-      const hostUrl = workspace?.ipollowalkHostUrl ?? workspace?.baseUrl ?? "";
-      const mountedUrl = workspace?.remoteType === "ipollowalk"
-        ? buildiPolloWalkWorkspaceBaseUrl(hostUrl, workspace.ipollowalkWorkspaceId) ?? hostUrl
+      const hostUrl = workspace?.ipolloworkHostUrl ?? workspace?.baseUrl ?? "";
+      const mountedUrl = workspace?.remoteType === "ipollowork"
+        ? buildiPolloWorkWorkspaceBaseUrl(hostUrl, workspace.ipolloworkWorkspaceId) ?? hostUrl
         : hostUrl;
       return {
-        ipollowalkHostUrl: mountedUrl,
-        ipollowalkToken:
-          workspace?.ipollowalkToken ??
-          workspace?.ipollowalkClientToken ??
-          workspace?.ipollowalkHostToken ??
+        ipolloworkHostUrl: mountedUrl,
+        ipolloworkToken:
+          workspace?.ipolloworkToken ??
+          workspace?.ipolloworkClientToken ??
+          workspace?.ipolloworkHostToken ??
           "",
         directory: workspace?.directory ?? workspace?.path ?? "",
         displayName: workspace?.displayName ?? workspace?.name ?? "",
@@ -79,7 +79,7 @@ export function useRemoteWorkspaceConnectionEditor<TWorkspace extends WorkspaceI
   const save = useCallback(
     async (fields: RemoteWorkspaceInput) => {
       const id = workspaceId?.trim() ?? "";
-      const baseUrl = fields.ipollowalkHostUrl?.trim() ?? "";
+      const baseUrl = fields.ipolloworkHostUrl?.trim() ?? "";
       if (!id || !baseUrl) {
         setError(t("dashboard.remote_base_url_required"));
         return;
@@ -91,13 +91,13 @@ export function useRemoteWorkspaceConnectionEditor<TWorkspace extends WorkspaceI
         await workspaceUpdateRemote({
           workspaceId: id,
           baseUrl,
-          ipollowalkHostUrl: baseUrl,
-          ipollowalkToken: fields.ipollowalkToken?.trim() ?? "",
-          ipollowalkClientToken: "",
-          ipollowalkHostToken: "",
+          ipolloworkHostUrl: baseUrl,
+          ipolloworkToken: fields.ipolloworkToken?.trim() ?? "",
+          ipolloworkClientToken: "",
+          ipolloworkHostToken: "",
           displayName: fields.displayName?.trim() || null,
           directory: fields.directory?.trim() || null,
-          remoteType: "ipollowalk",
+          remoteType: "ipollowork",
         });
         await onSaved(id);
         setWorkspaceId(null);

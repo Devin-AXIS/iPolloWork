@@ -24,14 +24,14 @@ afterEach(async () => {
 });
 
 async function createWorkspaceRoot() {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-activate-"));
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-activate-"));
   await mkdir(join(root, ".opencode"), { recursive: true });
   roots.push(root);
   return root;
 }
 
 function hostAuth(token: string) {
-  return { "X-iPolloWalk-Host-Token": token };
+  return { "X-iPolloWork-Host-Token": token };
 }
 
 function workspaceIdsFromConfig(value: unknown): string[] {
@@ -87,7 +87,7 @@ function startMockOpencode() {
   return { server, requests };
 }
 
-function startMockRemoteiPolloWalk() {
+function startMockRemoteiPolloWork() {
   const requests: Array<{ pathname: string; authorization: string | null }> = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -113,7 +113,7 @@ function startMockRemoteiPolloWalk() {
   return { server, requests };
 }
 
-async function startiPolloWalkServerWithWorkspaces(input: {
+async function startiPolloWorkServerWithWorkspaces(input: {
   configPath: string;
   workspaces: ServerConfig["workspaces"];
   authorizedRoots: string[];
@@ -170,20 +170,20 @@ describe("workspace activation", () => {
         baseUrl: opencodeBaseUrl,
       },
     ];
-    const ipollowalk = await startiPolloWalkServerWithWorkspaces({
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
       configPath: join(firstRoot, "server.json"),
       workspaces,
       authorizedRoots: [firstRoot, secondRoot],
     });
 
-    const base = `http://127.0.0.1:${ipollowalk.server.port}`;
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
     const disposeCount = () => mock.requests.filter(
       (request) => request.method === "POST" && request.pathname === "/instance/dispose",
     ).length;
 
     const response = await fetch(`${base}/workspaces/ws_2/activate`, {
       method: "POST",
-      headers: hostAuth(ipollowalk.hostToken),
+      headers: hostAuth(ipollowork.hostToken),
     });
 
     expect(response.status).toBe(200);
@@ -201,7 +201,7 @@ describe("workspace activation", () => {
 
     const sameWorkspaceResponse = await fetch(`${base}/workspaces/ws_2/activate`, {
       method: "POST",
-      headers: hostAuth(ipollowalk.hostToken),
+      headers: hostAuth(ipollowork.hostToken),
     });
 
     expect(sameWorkspaceResponse.status).toBe(200);
@@ -233,16 +233,16 @@ describe("workspace activation", () => {
       `${JSON.stringify({ workspaces, authorizedRoots: [firstRoot, secondRoot] }, null, 2)}\n`,
       "utf8",
     );
-    const ipollowalk = await startiPolloWalkServerWithWorkspaces({
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
       configPath,
       workspaces,
       authorizedRoots: [firstRoot, secondRoot],
     });
 
-    const base = `http://127.0.0.1:${ipollowalk.server.port}`;
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
     const persistedResponse = await fetch(`${base}/workspaces/ws_2/activate?persist=true`, {
       method: "POST",
-      headers: hostAuth(ipollowalk.hostToken),
+      headers: hostAuth(ipollowork.hostToken),
     });
     expect(persistedResponse.status).toBe(200);
     const persistedBody = await persistedResponse.json();
@@ -252,7 +252,7 @@ describe("workspace activation", () => {
 
     const volatileResponse = await fetch(`${base}/workspaces/ws_1/activate`, {
       method: "POST",
-      headers: hostAuth(ipollowalk.hostToken),
+      headers: hostAuth(ipollowork.hostToken),
     });
     expect(volatileResponse.status).toBe(200);
     const volatileBody = await volatileResponse.json();
@@ -262,7 +262,7 @@ describe("workspace activation", () => {
 
     const bodyPersistedResponse = await fetch(`${base}/workspaces/ws_1/activate`, {
       method: "POST",
-      headers: { ...hostAuth(ipollowalk.hostToken), "Content-Type": "application/json" },
+      headers: { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" },
       body: JSON.stringify({ persist: true }),
     });
     expect(bodyPersistedResponse.status).toBe(200);
@@ -278,16 +278,16 @@ describe("workspace lifecycle registry", () => {
     const configRoot = await createWorkspaceRoot();
     const workspaceRoot = await createWorkspaceRoot();
     const configPath = join(configRoot, "server.json");
-    const ipollowalk = await startiPolloWalkServerWithWorkspaces({
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
       configPath,
       workspaces: [],
       authorizedRoots: [],
     });
 
-    const base = `http://127.0.0.1:${ipollowalk.server.port}`;
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
     const response = await fetch(`${base}/workspaces/local`, {
       method: "POST",
-      headers: { ...hostAuth(ipollowalk.hostToken), "Content-Type": "application/json" },
+      headers: { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" },
       body: JSON.stringify({ folderPath: workspaceRoot, name: "Persisted Local", preset: "starter" }),
     });
 
@@ -306,7 +306,7 @@ describe("workspace lifecycle registry", () => {
     const configRoot = await createWorkspaceRoot();
     const workspaceRoot = await createWorkspaceRoot();
     const configPath = join(configRoot, "server.json");
-    const ipollowalk = await startiPolloWalkServerWithWorkspaces({
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
       configPath,
       workspaces: [],
       authorizedRoots: [],
@@ -315,10 +315,10 @@ describe("workspace lifecycle registry", () => {
       opencodePassword: "runtime-pass",
     });
 
-    const base = `http://127.0.0.1:${ipollowalk.server.port}`;
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
     const response = await fetch(`${base}/workspaces/local`, {
       method: "POST",
-      headers: { ...hostAuth(ipollowalk.hostToken), "Content-Type": "application/json" },
+      headers: { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" },
       body: JSON.stringify({ folderPath: workspaceRoot, name: "Runtime Local", preset: "starter" }),
     });
     expect(response.status).toBe(201);
@@ -332,27 +332,27 @@ describe("workspace lifecycle registry", () => {
     expect(workspace?.opencodePassword).toBeUndefined();
   });
 
-  test("creates and persists remote iPolloWalk workspace records", async () => {
+  test("creates and persists remote iPolloWork workspace records", async () => {
     const workspaceRoot = await createWorkspaceRoot();
     const configPath = join(workspaceRoot, "server.json");
     await writeFile(configPath, `${JSON.stringify({ workspaces: [], authorizedRoots: [] }, null, 2)}\n`, "utf8");
-    const remote = startMockRemoteiPolloWalk();
-    const ipollowalk = await startiPolloWalkServerWithWorkspaces({
+    const remote = startMockRemoteiPolloWork();
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
       configPath,
       workspaces: [],
       authorizedRoots: [],
     });
 
-    const base = `http://127.0.0.1:${ipollowalk.server.port}`;
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
     const response = await fetch(`${base}/workspaces/remote`, {
       method: "POST",
-      headers: { ...hostAuth(ipollowalk.hostToken), "Content-Type": "application/json" },
+      headers: { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" },
       body: JSON.stringify({
         baseUrl: `http://127.0.0.1:${remote.server.port}`,
-        ipollowalkHostUrl: `http://127.0.0.1:${remote.server.port}`,
-        ipollowalkToken: "remote_token",
+        ipolloworkHostUrl: `http://127.0.0.1:${remote.server.port}`,
+        ipolloworkToken: "remote_token",
         directory: "/remote/project",
-        remoteType: "ipollowalk",
+        remoteType: "ipollowork",
         sandboxRunId: "run_1",
       }),
     });
@@ -360,15 +360,15 @@ describe("workspace lifecycle registry", () => {
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body.activeId).toBe("rem_ws_remote");
-    expect(body.workspaces[0].ipollowalkWorkspaceId).toBe("ws_remote");
-    expect(body.workspaces[0].ipollowalkWorkspaceName).toBe("Remote Project");
+    expect(body.workspaces[0].ipolloworkWorkspaceId).toBe("ws_remote");
+    expect(body.workspaces[0].ipolloworkWorkspaceName).toBe("Remote Project");
     expect(remote.requests[0]).toEqual({ pathname: "/workspaces", authorization: "Bearer remote_token" });
 
     const persisted = await readPersistedConfig(configPath);
     const workspaces = workspacesFromConfig(persisted);
     expect(workspaces[0]?.id).toBe("rem_ws_remote");
     expect(workspaces[0]?.workspaceType).toBe("remote");
-    expect(workspaces[0]?.remoteType).toBe("ipollowalk");
+    expect(workspaces[0]?.remoteType).toBe("ipollowork");
     expect(workspaces[0]?.sandboxRunId).toBe("run_1");
     expect(authorizedRootsFromConfig(persisted)).toEqual([]);
   });
@@ -383,9 +383,9 @@ describe("workspace lifecycle registry", () => {
         path: "/remote/one",
         preset: "remote",
         workspaceType: "remote",
-        remoteType: "ipollowalk",
+        remoteType: "ipollowork",
         baseUrl: "http://127.0.0.1:9",
-        ipollowalkWorkspaceId: "ws_one",
+        ipolloworkWorkspaceId: "ws_one",
       },
       {
         id: "rem_ws_two",
@@ -393,22 +393,22 @@ describe("workspace lifecycle registry", () => {
         path: "/remote/two",
         preset: "remote",
         workspaceType: "remote",
-        remoteType: "ipollowalk",
+        remoteType: "ipollowork",
         baseUrl: "http://127.0.0.1:9",
-        ipollowalkWorkspaceId: "ws_two",
+        ipolloworkWorkspaceId: "ws_two",
       },
     ];
     await writeFile(configPath, `${JSON.stringify({ workspaces, authorizedRoots: [] }, null, 2)}\n`, "utf8");
-    const ipollowalk = await startiPolloWalkServerWithWorkspaces({
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
       configPath,
       workspaces,
       authorizedRoots: [],
     });
-    const base = `http://127.0.0.1:${ipollowalk.server.port}`;
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
 
     const renameResponse = await fetch(`${base}/workspaces/rem_ws_one/display-name`, {
       method: "PATCH",
-      headers: { ...hostAuth(ipollowalk.hostToken), "Content-Type": "application/json" },
+      headers: { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" },
       body: JSON.stringify({ displayName: "Renamed One" }),
     });
     expect(renameResponse.status).toBe(200);
@@ -417,14 +417,14 @@ describe("workspace lifecycle registry", () => {
 
     const activateResponse = await fetch(`${base}/workspaces/rem_ws_two/activate?persist=true`, {
       method: "POST",
-      headers: hostAuth(ipollowalk.hostToken),
+      headers: hostAuth(ipollowork.hostToken),
     });
     expect(activateResponse.status).toBe(200);
     expect(await readPersistedWorkspaceIds(configPath)).toEqual(["rem_ws_two", "rem_ws_one"]);
 
     const deleteResponse = await fetch(`${base}/workspaces/rem_ws_one`, {
       method: "DELETE",
-      headers: hostAuth(ipollowalk.hostToken),
+      headers: hostAuth(ipollowork.hostToken),
     });
     expect(deleteResponse.status).toBe(200);
     persisted = await readPersistedConfig(configPath);

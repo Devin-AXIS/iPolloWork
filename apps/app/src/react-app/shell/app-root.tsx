@@ -28,10 +28,10 @@ import { DevProfiler, DevProfilerOverlay } from "./dev-profiler";
 import { ReactRenderWatchdogOverlay } from "./react-render-watchdog-overlay";
 import { AppMenuProvider } from "./app-menu";
 import {
-  IPolloWalkControlProvider,
-  IPolloWalkRouteControlActions,
+  IPolloWorkControlProvider,
+  IPolloWorkRouteControlActions,
   useControlAction,
-  type iPolloWalkControlAction,
+  type iPolloWorkControlAction,
 } from "./control/control-provider";
 import { SessionRoute } from "./session-route";
 import { SettingsRoute } from "./settings-route";
@@ -170,13 +170,13 @@ function DenSigninGate({ children }: DenSigninGateProps) {
 }
 
 /**
- * Control actions for cloud auth. Placed inside IPolloWalkControlProvider so
+ * Control actions for cloud auth. Placed inside IPolloWorkControlProvider so
  * the actions are available on every route (including /welcome and /signin).
  */
 function DenAuthControlActions() {
   const denAuth = useDenAuth();
 
-  const exchangeGrantAction = useMemo<iPolloWalkControlAction>(() => ({
+  const exchangeGrantAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "auth.exchange-grant",
     label: "Sign in with a handoff grant",
     description: "Exchange a desktop handoff grant string to sign in without the browser flow.",
@@ -203,7 +203,7 @@ function DenAuthControlActions() {
   }), []);
   useControlAction(exchangeGrantAction);
 
-  const authStatusAction = useMemo<iPolloWalkControlAction>(() => ({
+  const authStatusAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "auth.status",
     label: "Get auth status",
     description: "Return the current cloud sign-in status and user.",
@@ -215,7 +215,7 @@ function DenAuthControlActions() {
   }), [denAuth.status, denAuth.user]);
   useControlAction(authStatusAction);
 
-  const setEvalBaseUrlAction = useMemo<iPolloWalkControlAction | null>(() => {
+  const setEvalBaseUrlAction = useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
     return {
       id: "eval.auth.set-base-url",
@@ -253,10 +253,10 @@ function DenAuthControlActions() {
 
 /**
  * Control action for eval automation: inject brand theme (logo, icon, accent color)
- * via the dev-only desktop config bridge. Placed inside IPolloWalkControlProvider.
+ * via the dev-only desktop config bridge. Placed inside IPolloWorkControlProvider.
  */
 function BrandThemeControlActions() {
-  const applyAction = useMemo<iPolloWalkControlAction | null>(() => {
+  const applyAction = useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
     return {
       id: "eval.brand_theme.apply",
@@ -269,7 +269,7 @@ function BrandThemeControlActions() {
         { name: "brandAccentColor", type: "string", description: "Radix color family" },
       ],
       execute: (args) => {
-        const bridge = (window as unknown as Record<string, unknown>).__ipollowalkApplyDesktopConfig;
+        const bridge = (window as unknown as Record<string, unknown>).__ipolloworkApplyDesktopConfig;
         if (typeof bridge !== "function") {
           return { ok: false, error: "Desktop config bridge not available (dev mode only)." };
         }
@@ -280,7 +280,7 @@ function BrandThemeControlActions() {
   }, []);
   useControlAction(applyAction);
 
-  const relaunchAction = useMemo<iPolloWalkControlAction | null>(() => {
+  const relaunchAction = useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
     return {
       id: "eval.app.relaunch",
@@ -313,8 +313,8 @@ export function AppRoot() {
       <DevProfiler id="AppRoot">
         <ShellConfigProvider>
         <AppMenuProvider>
-        <IPolloWalkControlProvider>
-          <IPolloWalkRouteControlActions />
+        <IPolloWorkControlProvider>
+          <IPolloWorkRouteControlActions />
           <DenAuthControlActions />
           <BrandThemeControlActions />
           <DenSigninGate>
@@ -398,7 +398,7 @@ export function AppRoot() {
               <Route path="*" element={<Navigate to="/session" replace />} />
             </Routes>
           </DenSigninGate>
-        </IPolloWalkControlProvider>
+        </IPolloWorkControlProvider>
         </AppMenuProvider>
         </ShellConfigProvider>
         <LoadingOverlay />

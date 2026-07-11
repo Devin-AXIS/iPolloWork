@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, ExternalLink, FolderOpen, X } from "lucide-react";
 
-import type { iPolloWalkServerClient } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getDesktopFileIcon, openDesktopPath, revealDesktopItemInDir } from "@/app/lib/desktop";
 import { isElectronRuntime } from "@/app/utils";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
 type ArtifactPanelProps = {
   sessionId: string;
   tab: ArtifactPanelTab;
-  client: iPolloWalkServerClient | null;
+  client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;
@@ -34,7 +34,7 @@ type ArtifactPanelProps = {
 };
 
 type ArtifactPanelViewProps = {
-  client: iPolloWalkServerClient;
+  client: iPolloWorkServerClient;
   workspaceId: string;
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;

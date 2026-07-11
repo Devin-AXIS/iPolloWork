@@ -10,7 +10,7 @@ const FLOW_ID = "google-slack-oauth-ux";
 const vo = await loadVoiceoverParagraphs(FLOW_ID);
 const execFileAsync = promisify(execFile);
 
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
 const MOCK_SERVER_URL = (process.env.MOCK_DCRLESS_MCP_URL ?? "http://127.0.0.1:3979").trim().replace(/\/+$/, "");
 const MOCK_CLIENT_ID = process.env.MOCK_CLIENT_ID || "mock-preregistered-client";
 const MOCK_CLIENT_SECRET = process.env.MOCK_CLIENT_SECRET || "mock-preregistered-secret";
@@ -42,26 +42,26 @@ function sqlString(value) {
 }
 
 function denWebUrl(ctx, path = "/") {
-  const base = ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
-  ctx.assert(base.length > 0, "IPOLLOWALK_EVAL_DEN_WEB_URL was empty.");
+  const base = ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
+  ctx.assert(base.length > 0, "IPOLLOWORK_EVAL_DEN_WEB_URL was empty.");
   if (path.startsWith("http")) return path;
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 function adminSessionToken(ctx) {
-  const token = ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN.trim();
-  ctx.assert(token.length > 0, "IPOLLOWALK_EVAL_DEN_TOKEN was empty.");
+  const token = ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN.trim();
+  ctx.assert(token.length > 0, "IPOLLOWORK_EVAL_DEN_TOKEN was empty.");
   return token;
 }
 
 function mysqlContainer(ctx) {
-  return ctx.env.IPOLLOWALK_EVAL_DEN_MYSQL_CONTAINER || "ipollowalk-web-local-mysql";
+  return ctx.env.IPOLLOWORK_EVAL_DEN_MYSQL_CONTAINER || "ipollowork-web-local-mysql";
 }
 
 function orgHeaders(session) {
   if (!session) throw new Error("Missing session for org-scoped API call.");
   if (!state.orgId) throw new Error("Missing pinned organization id for org-scoped API call.");
-  return { authorization: `Bearer ${session}`, "x-ipollowalk-legacy-org-id": state.orgId };
+  return { authorization: `Bearer ${session}`, "x-ipollowork-legacy-org-id": state.orgId };
 }
 
 async function runMysql(ctx, sql) {
@@ -71,7 +71,7 @@ async function runMysql(ctx, sql) {
     "mysql",
     "-uroot",
     "-ppassword",
-    "ipollowalk_den",
+    "ipollowork_den",
     "-e",
     sql,
   ]);
@@ -177,7 +177,7 @@ async function signInAdminBrowserWithToken(ctx) {
     const token = ${JSON.stringify(token)};
     document.cookie = 'better-auth.session_token=; Max-Age=0; Path=/; SameSite=Lax';
     document.cookie = 'better-auth.session_token=' + token + '; Path=/; SameSite=Lax';
-    localStorage.setItem('ipollowalk:web:auth-token', token);
+    localStorage.setItem('ipollowork:web:auth-token', token);
     sessionStorage.clear();
     return true;
   })()`);
@@ -365,7 +365,7 @@ function reauthReadyScript() {
     const dialog = document.querySelector('[role="dialog"]');
     const text = dialog?.textContent ?? '';
     const helperOk = text.includes('Changing workspace settings requires a recent sign-in')
-      && text.includes('iPolloWalk retries the pending action automatically');
+      && text.includes('iPolloWork retries the pending action automatically');
     const hasGoogle = text.includes('Continue with Google');
     const hasPassword = text.includes('Verify password');
     const hasSso = text.includes('Continue with organization SSO');
@@ -429,7 +429,7 @@ async function completeVisibleReauth(ctx) {
   ctx.assert(reauthState?.visible, "Reauth dialog was not visible before completing it.");
   await makeBrowserSessionFreshInDb(ctx);
   ctx.assert(typeof reauthState.nonce === "string" && reauthState.nonce.length > 0, "Reauth nonce was missing for the completion seam.");
-  await ctx.eval(`window.postMessage({ type: 'ipollowalk:reauth-complete', nonce: ${JSON.stringify(reauthState.nonce)}, error: null }, window.location.origin); true`);
+  await ctx.eval(`window.postMessage({ type: 'ipollowork:reauth-complete', nonce: ${JSON.stringify(reauthState.nonce)}, error: null }, window.location.origin); true`);
 }
 
 async function waitForNoModalCopy(ctx) {
@@ -489,7 +489,7 @@ export default {
   id: FLOW_ID,
   title: "Google and Slack OAuth setup tells admins exactly what to do next",
   kind: "user-facing",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN", "IPOLLOWALK_EVAL_DEN_WEB_URL", "IPOLLOWALK_EVAL_DEN_MYSQL_CONTAINER"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN", "IPOLLOWORK_EVAL_DEN_WEB_URL", "IPOLLOWORK_EVAL_DEN_MYSQL_CONTAINER"],
   spec: "evals/voiceovers/google-slack-oauth-ux.md",
   steps: [
     {
@@ -550,7 +550,7 @@ export default {
             ctx.assert(actual.visible === true, "Reauth dialog should be visible.");
             ctx.assert(actual.text.includes("Confirm it's you to continue"), `Reauth title missing: ${actual.text}`);
             ctx.assert(actual.text.includes("Changing workspace settings requires a recent sign-in"), `Reauth helper missing recent sign-in copy: ${actual.text}`);
-            ctx.assert(actual.text.includes("iPolloWalk retries the pending action automatically"), `Reauth helper missing automatic retry copy: ${actual.text}`);
+            ctx.assert(actual.text.includes("iPolloWork retries the pending action automatically"), `Reauth helper missing automatic retry copy: ${actual.text}`);
             if (state.authProviders.includes("google")) {
               ctx.assert(actual.hasGoogle === true, `Seeded Google auth provider should expose Continue with Google. Providers: ${JSON.stringify(state.authProviders)}. Dialog: ${actual.text}`);
             } else {
@@ -561,8 +561,8 @@ export default {
             name: "google-workspace-reauth-security-check",
             claim: "The security check explains why it appeared and gives a clear way to continue before retrying the save.",
             requireText: state.authProviders.includes("google")
-              ? ["Confirm it's you to continue", "SECURITY CHECK", "iPolloWalk retries the pending action automatically", "Continue with Google"]
-              : ["Confirm it's you to continue", "SECURITY CHECK", "iPolloWalk retries the pending action automatically"],
+              ? ["Confirm it's you to continue", "SECURITY CHECK", "iPolloWork retries the pending action automatically", "Continue with Google"]
+              : ["Confirm it's you to continue", "SECURITY CHECK", "iPolloWork retries the pending action automatically"],
             rejectText: ["For security, confirm it's you before changing workspace settings."],
           },
         });
@@ -701,7 +701,7 @@ export default {
           },
           screenshot: {
             name: "slack-style-redirect-url-copy-handoff",
-            claim: "After creation, iPolloWalk shows the exact redirect URL and a Copy button before teammates connect.",
+            claim: "After creation, iPolloWork shows the exact redirect URL and a Copy button before teammates connect.",
             requireText: ["Almost done", "redirect URL", "/connect/callback", "Copy"],
             rejectText: ["Something went wrong", "Failed to add connection"],
           },

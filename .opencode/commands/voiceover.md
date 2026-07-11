@@ -15,7 +15,7 @@ Load the **`voiceover` skill** and follow its journey end to end:
    wrong: say so.
 2. Iterate on the words with the user until they would actually record it.
 3. On approval, start clean: create a fresh worktree + branch
-   (`git worktree add ../_worktrees/ipollowalk-<flow-id> -b feat/<flow-id> origin/dev`),
+   (`git worktree add ../_worktrees/ipollowork-<flow-id> -b feat/<flow-id> origin/dev`),
    land the script at `evals/voiceovers/<flow-id>.md` there, and scaffold the
    flow with `pnpm fraimz scaffold <flow-id>`.
 4. Build until the demo holds: delegate the coding (executor subagent when

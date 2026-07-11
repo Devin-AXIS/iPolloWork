@@ -1,6 +1,6 @@
 ---
 title: "Sharing MCP connections with your team"
-description: "Share Notion, Linear, Stripe, Exa, or any MCP server in iPolloWalk Cloud with Individual accounts by default, or One org account when everyone should act as the same account"
+description: "Share Notion, Linear, Stripe, Exa, or any MCP server in iPolloWork Cloud with Individual accounts by default, or One org account when everyone should act as the same account"
 ---
 
 Use `MCP Connections` when you want the org to manage an MCP integration once
@@ -16,9 +16,9 @@ Two ways to handle whose account the AI uses, chosen per connection:
 - **One org account** — an admin signs in once (a bot, service account, or API
   key). Every granted member's AI acts as that identity.
 
-## Publish the connection in iPolloWalk Cloud
+## Publish the connection in iPolloWork Cloud
 
-1. Open `MCP Connections` in the iPolloWalk Cloud dashboard.
+1. Open `MCP Connections` in the iPolloWork Cloud dashboard.
 2. Click `Add Connection`.
 3. Pick a preset (Notion, Linear, Stripe, Sentry, Exa, Context7) or enter any
    MCP server URL.
@@ -28,7 +28,7 @@ Two ways to handle whose account the AI uses, chosen per connection:
 6. Click `Create`.
 
 <Frame>
-  ![MCP Connections admin screen in iPolloWalk Cloud](/images/cloud-mcp-connections-admin.png)
+  ![MCP Connections admin screen in iPolloWork Cloud](/images/cloud-mcp-connections-admin.png)
 </Frame>
 
 For a One org account connection, finish by clicking `Connect` and completing
@@ -44,9 +44,9 @@ On `Your Connections`, an unconnected One org account connection shows
 Slack's MCP server requires a pre-registered Slack OAuth app.
 
 1. Create or open a Slack app in [Slack API apps](https://api.slack.com/apps).
-2. In iPolloWalk Cloud, add the Slack connection and paste the app's client ID
+2. In iPolloWork Cloud, add the Slack connection and paste the app's client ID
    and client secret.
-3. Copy the OAuth redirect URL iPolloWalk shows after creating the connection,
+3. Copy the OAuth redirect URL iPolloWork shows after creating the connection,
    then add it to the Slack app's `OAuth & Permissions` redirect URLs.
 4. Members open `Your Connections` and connect their own Slack account.
 
@@ -72,7 +72,7 @@ catalog as everything else the org shares:
 1. Open `Settings -> Extensions -> Marketplace`.
 2. Click the connection card, then `Connect your account`.
 3. Your browser opens the provider's own sign-in page. Approve access.
-4. The browser shows `Connected` — return to iPolloWalk.
+4. The browser shows `Connected` — return to iPolloWork.
 5. The card updates by itself, no reload needed, and moves to
    `My Extensions`.
 
@@ -80,7 +80,7 @@ catalog as everything else the org shares:
   ![The same card flipped to Connected after the browser sign-in](/images/desktop-org-mcp-connected.png)
 </Frame>
 
-Your sign-in is stored in iPolloWalk Cloud, not on this machine — connect once
+Your sign-in is stored in iPolloWork Cloud, not on this machine — connect once
 and every device you use is connected.
 
 ## Your agent can use it immediately
@@ -89,7 +89,7 @@ No restart, no resync. Ask for something the tool can do:
 
 > Find the "Q3 launch" page in Notion and summarize it.
 
-The agent discovers the org's tools through the `iPolloWalk Cloud Control`
+The agent discovers the org's tools through the `iPolloWork Cloud Control`
 connection, and executes them with **your** account — your permissions,
 your audit trail on the provider's side.
 
@@ -114,6 +114,6 @@ chat with a `Connect` button — you never have to go hunting in settings.
 ## Relationship to local MCP servers
 
 Everything in [Add an MCP server](/start-here/connect-your-stack/add-an-mcp-server)
-still works, with or without a cloud account. Local servers (like iPolloWalk
+still works, with or without a cloud account. Local servers (like iPolloWork
 Browser and UI Control) always run on your machine. Org connections are for
 the things a team shares.

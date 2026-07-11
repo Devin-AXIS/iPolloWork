@@ -53,10 +53,10 @@ importers:
       '@heroicons/react':
         specifier: ^2.2.0
         version: 2.2.0(react@19.2.4)
-      '@ipollowalk/types':
+      '@ipollowork/types':
         specifier: workspace:*
         version: link:../../packages/types
-      '@ipollowalk/ui':
+      '@ipollowork/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@lexical/react':
@@ -238,7 +238,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@ipollowalk/types':
+      '@ipollowork/types':
         specifier: workspace:*
         version: link:../../packages/types
       electron:
@@ -253,7 +253,7 @@ importers:
 
   apps/installer:
     dependencies:
-      '@ipollowalk/install-config':
+      '@ipollowork/install-config':
         specifier: workspace:*
         version: link:../../packages/install-config
       webview-bun:
@@ -271,7 +271,7 @@ importers:
       '@opentui/solid':
         specifier: 0.1.77
         version: 0.1.77(solid-js@1.9.9)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
-      ipollowalk-server:
+      ipollowork-server:
         specifier: 0.17.20
         version: link:../server
       solid-js:
@@ -330,7 +330,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@ipollowalk/types':
+      '@ipollowork/types':
         specifier: workspace:*
         version: link:../../packages/types
       '@types/better-sqlite3':
@@ -351,7 +351,7 @@ importers:
 
   apps/ui-demo:
     dependencies:
-      '@ipollowalk/ui':
+      '@ipollowork/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       react:
@@ -432,9 +432,9 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
-  packages/ipollowalk-bootstrap: {}
+  packages/ipollowork-bootstrap: {}
 
-  packages/ipollowalk-ui-mcp:
+  packages/ipollowork-ui-mcp:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0

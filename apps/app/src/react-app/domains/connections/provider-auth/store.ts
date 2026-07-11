@@ -18,10 +18,10 @@ import {
   readOpencodeConfig,
   writeOpencodeConfig,
   engineRestart,
-  workspaceiPolloWalkRead,
-  workspaceiPolloWalkWrite,
+  workspaceiPolloWorkRead,
+  workspaceiPolloWorkWrite,
 } from "../../../../app/lib/desktop";
-import { iPolloWalkServerError } from "../../../../app/lib/ipollowalk-server";
+import { iPolloWorkServerError } from "../../../../app/lib/ipollowork-server";
 import type {
   Client,
   ProviderListItem,
@@ -34,19 +34,19 @@ import {
 } from "../../../../app/utils/providers";
 import { getReactQueryClient } from "../../../infra/query-client";
 import { ensureProviderListQuery } from "../../../infra/provider-list-query";
-import type { iPolloWalkServerStoreSnapshot } from "../ipollowalk-server-store";
+import type { iPolloWorkServerStoreSnapshot } from "../ipollowork-server-store";
 
 /**
- * The slice of the ipollowalk-server store this store actually consumes.
+ * The slice of the ipollowork-server store this store actually consumes.
  * The settings route passes the full store; the session route passes a
  * lightweight endpoint-backed adapter (previously forced through `as never`).
  */
-export type ProviderAuthiPolloWalkServer = {
+export type ProviderAuthiPolloWorkServer = {
   getSnapshot: () => Pick<
-    iPolloWalkServerStoreSnapshot,
-    "ipollowalkServerStatus" | "ipollowalkServerClient"
+    iPolloWorkServerStoreSnapshot,
+    "ipolloworkServerStatus" | "ipolloworkServerClient"
   > & {
-    ipollowalkServerCapabilities: { config?: { read?: boolean; write?: boolean } } | null;
+    ipolloworkServerCapabilities: { config?: { read?: boolean; write?: boolean } } | null;
   };
 };
 import {
@@ -153,7 +153,7 @@ type CreateProviderAuthStoreOptions = {
   selectedWorkspaceRoot: () => string;
   runtimeWorkspaceId: () => string | null;
   ensureRuntimeWorkspaceId?: () => Promise<string | null | undefined>;
-  ipollowalkServer: ProviderAuthiPolloWalkServer;
+  ipolloworkServer: ProviderAuthiPolloWorkServer;
   setProviders: (value: ProviderListItem[]) => void;
   setProviderDefaults: (value: Record<string, string>) => void;
   setProviderConnectedIds: (value: string[]) => void;
@@ -237,24 +237,24 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     return Array.from(merged.values()).toSorted(compareProviders);
   };
 
-  const resolveiPolloWalkConfigTarget = async (mode: "read" | "write") => {
-    const ipollowalkSnapshot = options.ipollowalkServer.getSnapshot();
-    const ipollowalkClient = ipollowalkSnapshot.ipollowalkServerClient;
-    let ipollowalkWorkspaceId = options.runtimeWorkspaceId()?.trim() || null;
-    if (!ipollowalkWorkspaceId && ipollowalkSnapshot.ipollowalkServerStatus === "connected" && ipollowalkClient) {
-      ipollowalkWorkspaceId = (await options.ensureRuntimeWorkspaceId?.())?.trim() || null;
+  const resolveiPolloWorkConfigTarget = async (mode: "read" | "write") => {
+    const ipolloworkSnapshot = options.ipolloworkServer.getSnapshot();
+    const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
+    let ipolloworkWorkspaceId = options.runtimeWorkspaceId()?.trim() || null;
+    if (!ipolloworkWorkspaceId && ipolloworkSnapshot.ipolloworkServerStatus === "connected" && ipolloworkClient) {
+      ipolloworkWorkspaceId = (await options.ensureRuntimeWorkspaceId?.())?.trim() || null;
     }
-    const hasiPolloWalkTarget =
-      ipollowalkSnapshot.ipollowalkServerStatus === "connected" &&
-      Boolean(ipollowalkClient && ipollowalkWorkspaceId);
-    const canUseiPolloWalkServer =
-      hasiPolloWalkTarget &&
-      ipollowalkSnapshot.ipollowalkServerCapabilities?.config?.[mode] !== false;
+    const hasiPolloWorkTarget =
+      ipolloworkSnapshot.ipolloworkServerStatus === "connected" &&
+      Boolean(ipolloworkClient && ipolloworkWorkspaceId);
+    const canUseiPolloWorkServer =
+      hasiPolloWorkTarget &&
+      ipolloworkSnapshot.ipolloworkServerCapabilities?.config?.[mode] !== false;
     return {
-      ipollowalkClient,
-      ipollowalkWorkspaceId,
-      hasiPolloWalkTarget,
-      canUseiPolloWalkServer,
+      ipolloworkClient,
+      ipolloworkWorkspaceId,
+      hasiPolloWorkTarget,
+      canUseiPolloWorkServer,
     };
   };
 
@@ -317,36 +317,36 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     return "";
   };
 
-  const mirroriPolloWalkModelsVoiceEnv = async (provider: DenOrgLlmProviderConnection, apiKey: string) => {
-    if (provider.source !== "ipollowalk" || !apiKey.trim()) return;
-    const ipollowalkClient = options.ipollowalkServer.getSnapshot().ipollowalkServerClient;
-    if (!ipollowalkClient) return;
+  const mirroriPolloWorkModelsVoiceEnv = async (provider: DenOrgLlmProviderConnection, apiKey: string) => {
+    if (provider.source !== "ipollowork" || !apiKey.trim()) return;
+    const ipolloworkClient = options.ipolloworkServer.getSnapshot().ipolloworkServerClient;
+    if (!ipolloworkClient) return;
     const baseUrl = readCloudProviderBaseUrl(provider);
-    const entries = [{ key: "IPOLLOWALK_API_KEY", value: apiKey.trim() }];
-    if (baseUrl) entries.push({ key: "IPOLLOWALK_INFERENCE_BASE_URL", value: baseUrl });
-    await ipollowalkClient.upsertUserEnv(entries);
+    const entries = [{ key: "IPOLLOWORK_API_KEY", value: apiKey.trim() }];
+    if (baseUrl) entries.push({ key: "IPOLLOWORK_INFERENCE_BASE_URL", value: baseUrl });
+    await ipolloworkClient.upsertUserEnv(entries);
   };
 
-  const readWorkspaceiPolloWalkConfigRecord = async (): Promise<
+  const readWorkspaceiPolloWorkConfigRecord = async (): Promise<
     Record<string, unknown>
   > => {
     const root = options.selectedWorkspaceRoot().trim();
     const isLocalWorkspace =
       options.selectedWorkspaceDisplay().workspaceType === "local";
-    const { ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget, canUseiPolloWalkServer } =
-      await resolveiPolloWalkConfigTarget("read");
+    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+      await resolveiPolloWorkConfigTarget("read");
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      const config = await ipollowalkClient.getConfig(ipollowalkWorkspaceId);
-      return config.ipollowalk ?? {};
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      const config = await ipolloworkClient.getConfig(ipolloworkWorkspaceId);
+      return config.ipollowork ?? {};
     }
 
-    if (hasiPolloWalkTarget) {
+    if (hasiPolloWorkTarget) {
       return {};
     }
 
     if (isLocalWorkspace && isDesktopRuntime() && root) {
-      return (await workspaceiPolloWalkRead({
+      return (await workspaceiPolloWorkRead({
         workspacePath: root,
       })) as unknown as Record<string, unknown>;
     }
@@ -354,33 +354,33 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     return {};
   };
 
-  const writeWorkspaceiPolloWalkConfigRecord = async (
+  const writeWorkspaceiPolloWorkConfigRecord = async (
     config: Record<string, unknown>,
   ) => {
     const root = options.selectedWorkspaceRoot().trim();
     const isLocalWorkspace =
       options.selectedWorkspaceDisplay().workspaceType === "local";
-    const { ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget, canUseiPolloWalkServer } =
-      await resolveiPolloWalkConfigTarget("write");
+    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+      await resolveiPolloWorkConfigTarget("write");
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      await ipollowalkClient.patchConfig(ipollowalkWorkspaceId, { ipollowalk: config });
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      await ipolloworkClient.patchConfig(ipolloworkWorkspaceId, { ipollowork: config });
       return true;
     }
 
-    if (hasiPolloWalkTarget) {
+    if (hasiPolloWorkTarget) {
       return false;
     }
 
     if (isLocalWorkspace && isDesktopRuntime() && root) {
-      const result = await workspaceiPolloWalkWrite({
+      const result = await workspaceiPolloWorkWrite({
         workspacePath: root,
         config: config as never,
       });
       const typed = result as { ok: boolean; stderr?: string; stdout?: string };
       if (!typed.ok) {
         throw new Error(
-          typed.stderr || typed.stdout || "Failed to write .opencode/ipollowalk.json",
+          typed.stderr || typed.stdout || "Failed to write .opencode/ipollowork.json",
         );
       }
       return true;
@@ -391,7 +391,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
   const refreshImportedCloudProviders = async (refreshOptions?: { strict?: boolean }) => {
     try {
-      const config = await readWorkspaceiPolloWalkConfigRecord();
+      const config = await readWorkspaceiPolloWorkConfigRecord();
       const cloudImports = readWorkspaceCloudImports(config);
       const next = cloudImports.providers;
       // Guard: don't overwrite non-empty import state with an empty read.
@@ -415,7 +415,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   const persistImportedCloudProviders = async (
     nextProviders: Record<string, CloudImportedProvider>,
   ) => {
-    const config = await readWorkspaceiPolloWalkConfigRecord();
+    const config = await readWorkspaceiPolloWorkConfigRecord();
     const cloudImports = readWorkspaceCloudImports(config);
     const nextCloudImports = {
       ...cloudImports,
@@ -424,17 +424,17 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const nextConfig = withWorkspaceCloudImports(config, {
       ...nextCloudImports,
     });
-    const persisted = await writeWorkspaceiPolloWalkConfigRecord(nextConfig);
+    const persisted = await writeWorkspaceiPolloWorkConfigRecord(nextConfig);
     if (!persisted) {
       throw new Error(
-        "iPolloWalk server unavailable. Connect to manage imported cloud providers.",
+        "iPolloWork server unavailable. Connect to manage imported cloud providers.",
       );
     }
     setStateField("importedCloudProviders", nextProviders);
-    const target = await resolveiPolloWalkConfigTarget("write");
+    const target = await resolveiPolloWorkConfigTarget("write");
     void refreshDesktopCloudSync({
-      ipollowalkClient: target.ipollowalkClient,
-      workspaceId: target.ipollowalkWorkspaceId,
+      ipolloworkClient: target.ipolloworkClient,
+      workspaceId: target.ipolloworkWorkspaceId,
     }).catch(() => null);
   };
 
@@ -442,15 +442,15 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const root = options.selectedWorkspaceRoot().trim();
     const isLocalWorkspace =
       options.selectedWorkspaceDisplay().workspaceType === "local";
-    const { ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget, canUseiPolloWalkServer } =
-      await resolveiPolloWalkConfigTarget("read");
+    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+      await resolveiPolloWorkConfigTarget("read");
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      return await ipollowalkClient.readOpencodeConfigFile(ipollowalkWorkspaceId, "project");
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      return await ipolloworkClient.readOpencodeConfigFile(ipolloworkWorkspaceId, "project");
     }
 
-    if (hasiPolloWalkTarget) {
-      throw new Error("iPolloWalk server config API is unavailable for this workspace.");
+    if (hasiPolloWorkTarget) {
+      throw new Error("iPolloWork server config API is unavailable for this workspace.");
     }
 
     if (isLocalWorkspace && isDesktopRuntime() && root) {
@@ -464,12 +464,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const root = options.selectedWorkspaceRoot().trim();
     const isLocalWorkspace =
       options.selectedWorkspaceDisplay().workspaceType === "local";
-    const { ipollowalkClient, ipollowalkWorkspaceId, hasiPolloWalkTarget, canUseiPolloWalkServer } =
-      await resolveiPolloWalkConfigTarget("write");
+    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+      await resolveiPolloWorkConfigTarget("write");
 
-    if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-      const result = await ipollowalkClient.writeOpencodeConfigFile(
-        ipollowalkWorkspaceId,
+    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+      const result = await ipolloworkClient.writeOpencodeConfigFile(
+        ipolloworkWorkspaceId,
         "project",
         content,
       ) as { ok: boolean; stderr?: string; stdout?: string };
@@ -479,8 +479,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       return true;
     }
 
-    if (hasiPolloWalkTarget) {
-      throw new Error("iPolloWalk server config API is unavailable for this workspace.");
+    if (hasiPolloWorkTarget) {
+      throw new Error("iPolloWork server config API is unavailable for this workspace.");
     }
 
     if (isLocalWorkspace && isDesktopRuntime() && root) {
@@ -501,12 +501,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
    * is no read-modify-write race and no edit of the user's opencode.jsonc.
    */
   const patchRuntimeProviders = async (update: Record<string, unknown>) => {
-    const { ipollowalkClient, ipollowalkWorkspaceId, canUseiPolloWalkServer } =
-      await resolveiPolloWalkConfigTarget("write");
-    if (!canUseiPolloWalkServer || !ipollowalkClient || !ipollowalkWorkspaceId) {
-      throw new Error("iPolloWalk server unavailable. Connect to manage cloud providers.");
+    const { ipolloworkClient, ipolloworkWorkspaceId, canUseiPolloWorkServer } =
+      await resolveiPolloWorkConfigTarget("write");
+    if (!canUseiPolloWorkServer || !ipolloworkClient || !ipolloworkWorkspaceId) {
+      throw new Error("iPolloWork server unavailable. Connect to manage cloud providers.");
     }
-    await ipollowalkClient.patchConfig(ipollowalkWorkspaceId, {
+    await ipolloworkClient.patchConfig(ipolloworkWorkspaceId, {
       opencode: { provider: update },
     });
   };
@@ -665,10 +665,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
     // Runtime-managed orphans (`lpr_*` keys in the workspace runtime config).
     try {
-      const { ipollowalkClient, ipollowalkWorkspaceId, canUseiPolloWalkServer } =
-        await resolveiPolloWalkConfigTarget("write");
-      if (canUseiPolloWalkServer && ipollowalkClient && ipollowalkWorkspaceId) {
-        const merged = await ipollowalkClient.getConfig(ipollowalkWorkspaceId);
+      const { ipolloworkClient, ipolloworkWorkspaceId, canUseiPolloWorkServer } =
+        await resolveiPolloWorkConfigTarget("write");
+      if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
+        const merged = await ipolloworkClient.getConfig(ipolloworkWorkspaceId);
         const runtimeProvider = isRecord(merged.opencode) ? merged.opencode.provider : null;
         const runtimeOrphans = isRecord(runtimeProvider)
           ? Object.keys(runtimeProvider).filter((key) => /^lpr_/i.test(key))
@@ -716,7 +716,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   ) => {
     const localProviderId = getCloudManagedProviderId(provider);
     const existingImported = state.importedCloudProviders[provider.id] ?? null;
-    // `lpr_*` / `ipollowalk` keys are owned by the cloud-import system. When the
+    // `lpr_*` / `ipollowork` keys are owned by the cloud-import system. When the
     // import baseline was lost or diverged (e.g. it lives in a different file
     // than the provider block, or a prior reconcile failed mid-flight), an
     // existing cloud-managed block must be treated as a re-import to reconcile,
@@ -1144,25 +1144,25 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     if (!c) return null;
 
     if (optionsArg?.dispose) {
-      // Prefer the iPolloWalk server engine reload: it disposes the engine AND
+      // Prefer the iPolloWork server engine reload: it disposes the engine AND
       // re-registers runtime-DB MCPs, so non-primary workspaces and pending
       // changes are picked up instead of silently dropping (toggles "turn
       // off").
       let reloaded = false;
       try {
-        const ipollowalkSnapshot = options.ipollowalkServer.getSnapshot();
-        const ipollowalkClient = ipollowalkSnapshot.ipollowalkServerClient;
-        if (ipollowalkSnapshot.ipollowalkServerStatus === "connected" && ipollowalkClient) {
+        const ipolloworkSnapshot = options.ipolloworkServer.getSnapshot();
+        const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
+        if (ipolloworkSnapshot.ipolloworkServerStatus === "connected" && ipolloworkClient) {
           const workspaceId =
             options.runtimeWorkspaceId()?.trim() ||
             (await options.ensureRuntimeWorkspaceId?.())?.trim() ||
             "";
           if (workspaceId) {
             try {
-              await ipollowalkClient.reloadEngine(workspaceId);
+              await ipolloworkClient.reloadEngine(workspaceId);
             } catch (error) {
               const unreachable =
-                error instanceof iPolloWalkServerError && error.code === "opencode_engine_unreachable";
+                error instanceof iPolloWorkServerError && error.code === "opencode_engine_unreachable";
               if (!unreachable || !isDesktopRuntime()) {
                 throw error;
               }
@@ -1339,7 +1339,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const token = settings.authToken?.trim() ?? "";
     const orgId = settings.activeOrgId?.trim() ?? "";
     if (!token || !orgId) {
-      throw new Error("Sign in to iPolloWalk Cloud and choose an organization first.");
+      throw new Error("Sign in to iPolloWork Cloud and choose an organization first.");
     }
 
     try {
@@ -1360,22 +1360,22 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       await assertCloudProviderImportSafe(provider);
 
       if (envEntries.length > 0) {
-        const ipollowalkClient = options.ipollowalkServer.getSnapshot().ipollowalkServerClient;
-        if (!ipollowalkClient) {
+        const ipolloworkClient = options.ipolloworkServer.getSnapshot().ipolloworkServerClient;
+        if (!ipolloworkClient) {
           throw new Error(
             `${provider.name} needs environment variables (${envEntries
               .map((entry) => entry.key)
-              .join(", ")}) but the iPolloWalk server is not available.`,
+              .join(", ")}) but the iPolloWork server is not available.`,
           );
         }
-        await ipollowalkClient.upsertUserEnv(envEntries);
+        await ipolloworkClient.upsertUserEnv(envEntries);
       }
       if (primaryApiKey) {
         await c.auth.set({
           providerID: localProviderId,
           auth: { type: "api", key: primaryApiKey },
         });
-        await mirroriPolloWalkModelsVoiceEnv(provider, primaryApiKey);
+        await mirroriPolloWorkModelsVoiceEnv(provider, primaryApiKey);
       }
       if (existingImported?.providerId && existingImported.providerId !== localProviderId) {
         try {
@@ -1522,12 +1522,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       return;
     }
 
-    // Imports, baseline reads, and persistence all go through the iPolloWalk
+    // Imports, baseline reads, and persistence all go through the iPolloWork
     // server target (patchRuntimeProviders throws without it). Running before
     // the target resolves made the baseline read fall back to an empty source
     // and re-import every org provider — engine dispose churn on settings open.
-    const target = await resolveiPolloWalkConfigTarget("write");
-    if (!target.canUseiPolloWalkServer || !target.ipollowalkClient || !target.ipollowalkWorkspaceId) {
+    const target = await resolveiPolloWorkConfigTarget("write");
+    if (!target.canUseiPolloWorkServer || !target.ipolloworkClient || !target.ipolloworkWorkspaceId) {
       return;
     }
 

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import type { iPolloWalkRuntimeConfigStatus, iPolloWalkServerStatus } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkRuntimeConfigStatus, iPolloWorkServerStatus } from "@/app/lib/ipollowork-server";
 import {
   DEFAULT_DEN_API_BASE_URL,
   DEFAULT_DEN_BASE_URL,
@@ -47,7 +47,7 @@ import {
 
 type SettingsTone = ComponentProps<typeof SettingsStatusBadge>["tone"];
 
-const DESKTOP_BOOTSTRAP_PATH_HINT = "~/.config/ipollowalk/desktop-bootstrap.json";
+const DESKTOP_BOOTSTRAP_PATH_HINT = "~/.config/ipollowork/desktop-bootstrap.json";
 
 function sourceBadgeLabel(source: DenEndpointSource): string {
   switch (source) {
@@ -285,9 +285,9 @@ interface AdvancedRuntimeSectionProps {
   clientStatusLabel: string;
   clientTone: SettingsTone;
   clientDetailLines: string[];
-  ipollowalkStatusLabel: string;
-  ipollowalkTone: SettingsTone;
-  ipollowalkDetailLines: string[];
+  ipolloworkStatusLabel: string;
+  ipolloworkTone: SettingsTone;
+  ipolloworkDetailLines: string[];
 }
 
 export function AdvancedRuntimeSection(props: AdvancedRuntimeSectionProps) {
@@ -309,11 +309,11 @@ export function AdvancedRuntimeSection(props: AdvancedRuntimeSectionProps) {
         />
         <RuntimeStatusCard
           icon={<Server size={18} />}
-          title={t("settings.ipollowalk_server_label")}
-          description={t("settings.ipollowalk_server_desc")}
-          statusLabel={props.ipollowalkStatusLabel}
-          tone={props.ipollowalkTone}
-          detailLines={props.ipollowalkDetailLines}
+          title={t("settings.ipollowork_server_label")}
+          description={t("settings.ipollowork_server_desc")}
+          statusLabel={props.ipolloworkStatusLabel}
+          tone={props.ipolloworkTone}
+          detailLines={props.ipolloworkDetailLines}
         />
       </div>
     </LayoutSection>
@@ -325,7 +325,7 @@ interface AdvancedRuntimeMigrationSectionProps {
   canMigrate: boolean;
   migrationBusy: boolean;
   migrationStatus: string | null;
-  configStatus: iPolloWalkRuntimeConfigStatus | null;
+  configStatus: iPolloWorkRuntimeConfigStatus | null;
   configStatusBusy: boolean;
   configStatusError: string | null;
   onRefresh: () => Promise<void>;
@@ -429,15 +429,15 @@ export function AdvancedRuntimeMigrationSection(props: AdvancedRuntimeMigrationS
       <LayoutSectionHeader>
         <LayoutSectionTitle>OpenCode config sources</LayoutSectionTitle>
         <LayoutSectionDescription>
-          Inspect what iPolloWalk controls at runtime versus what belongs to your workspace config. This works through the iPolloWalk server and does not require the OpenCode engine to be healthy.
+          Inspect what iPolloWork controls at runtime versus what belongs to your workspace config. This works through the iPolloWork server and does not require the OpenCode engine to be healthy.
         </LayoutSectionDescription>
       </LayoutSectionHeader>
 
       <LayoutSectionItem>
         <LayoutSectionItemHeader>
-          <LayoutSectionItemTitle>Move iPolloWalk-managed config</LayoutSectionItemTitle>
+          <LayoutSectionItemTitle>Move iPolloWork-managed config</LayoutSectionItemTitle>
           <LayoutSectionItemDescription>
-            Moves older iPolloWalk-owned runtime keys from `.opencode/ipollowalk.json` and safe iPolloWalk-managed keys from `opencode.jsonc` into the runtime database.
+            Moves older iPolloWork-owned runtime keys from `.opencode/ipollowork.json` and safe iPolloWork-managed keys from `opencode.jsonc` into the runtime database.
           </LayoutSectionItemDescription>
           <LayoutSectionItemHeaderActions>
             <Button
@@ -469,7 +469,7 @@ export function AdvancedRuntimeMigrationSection(props: AdvancedRuntimeMigrationS
             <div className="space-y-2 rounded-xl border border-blue-6/50 bg-blue-2/40 p-3">
               <div className="font-medium text-gray-12">Effective injected OpenCode config</div>
               <div className="text-[11px] text-gray-9">
-                This is the iPolloWalk-built config object injected through the server-managed `OPENCODE_CONFIG` file. It includes iPolloWalk defaults plus runtime DB values and is rewritten on every runtime config change.
+                This is the iPolloWork-built config object injected through the server-managed `OPENCODE_CONFIG` file. It includes iPolloWork defaults plus runtime DB values and is rewritten on every runtime config change.
               </div>
               <RuntimeConfigSummary config={props.configStatus.effectiveRuntime ?? props.configStatus.runtime} />
               <details className="rounded-lg bg-gray-3 p-2">
@@ -484,7 +484,7 @@ export function AdvancedRuntimeMigrationSection(props: AdvancedRuntimeMigrationS
                 <div>
                   <div className="font-medium text-gray-12">OpenCode source breakdown</div>
                   <div className="text-[11px] text-gray-9">
-                    OpenCode also reads its own project and global config files. iPolloWalk injects the runtime config separately; for iPolloWalk-managed keys, the injected config is the source to inspect.
+                    OpenCode also reads its own project and global config files. iPolloWork injects the runtime config separately; for iPolloWork-managed keys, the injected config is the source to inspect.
                   </div>
                 </div>
                 <RuntimeConfigSourceBlock
@@ -504,14 +504,14 @@ export function AdvancedRuntimeMigrationSection(props: AdvancedRuntimeMigrationS
                   config={props.configStatus.sources.globalOpencode.config}
                 />
                 <RuntimeConfigSourceBlock
-                  title="iPolloWalk runtime DB"
-                  description="iPolloWalk-managed runtime values stored outside workspace files."
+                  title="iPolloWork runtime DB"
+                  description="iPolloWork-managed runtime values stored outside workspace files."
                   keys={props.configStatus.sources.runtimeDatabase.keys}
                   config={props.configStatus.sources.runtimeDatabase.config}
                 />
                 <RuntimeConfigSourceBlock
-                  title="iPolloWalk injected config"
-                  description="The object iPolloWalk injects into OpenCode at runtime."
+                  title="iPolloWork injected config"
+                  description="The object iPolloWork injects into OpenCode at runtime."
                   keys={props.configStatus.sources.injected.keys}
                   config={props.configStatus.sources.injected.config}
                 />
@@ -522,12 +522,12 @@ export function AdvancedRuntimeMigrationSection(props: AdvancedRuntimeMigrationS
               <div>Stored keys: {formatKeys(props.configStatus.runtimeKeys)}</div>
             </div>
             <div>
-              <div className="font-medium text-gray-12">Legacy iPolloWalk metadata</div>
-              <div className="break-all">{props.configStatus.legacyiPolloWalk.path}</div>
-              {props.configStatus.legacyiPolloWalk.error ? (
-                <div className="text-amber-11">{props.configStatus.legacyiPolloWalk.error}; fix this file before moving legacy config.</div>
+              <div className="font-medium text-gray-12">Legacy iPolloWork metadata</div>
+              <div className="break-all">{props.configStatus.legacyiPolloWork.path}</div>
+              {props.configStatus.legacyiPolloWork.error ? (
+                <div className="text-amber-11">{props.configStatus.legacyiPolloWork.error}; fix this file before moving legacy config.</div>
               ) : null}
-              <div>Migratable keys: {formatKeys(props.configStatus.legacyiPolloWalk.keys)}</div>
+              <div>Migratable keys: {formatKeys(props.configStatus.legacyiPolloWork.keys)}</div>
             </div>
             <div>
               <div className="font-medium text-gray-12">User opencode.jsonc</div>
@@ -684,7 +684,7 @@ export function AdvancedDeveloperSection(props: AdvancedDeveloperSectionProps) {
                   value={props.deepLinkInput}
                   onChange={(event) => props.onDeepLinkInput(event.currentTarget.value)}
                   rows={3}
-                  placeholder="ipollowalk://..."
+                  placeholder="ipollowork://..."
                   className="font-mono text-xs"
                 />
               </Field>
@@ -713,9 +713,9 @@ interface AdvancedConnectionSectionProps {
   busy: boolean;
   headerStatus: string;
   baseUrl: string;
-  ipollowalkServerUrl: string;
-  ipollowalkServerStatus: iPolloWalkServerStatus;
-  ipollowalkReconnectBusy: boolean;
+  ipolloworkServerUrl: string;
+  ipolloworkServerStatus: iPolloWorkServerStatus;
+  ipolloworkReconnectBusy: boolean;
   isLocalEngineRunning: boolean;
   restartBusy: boolean;
   reconnectStatus: string | null;
@@ -743,10 +743,10 @@ export function AdvancedConnectionSection(props: AdvancedConnectionSectionProps)
             variant="outline"
             size="sm"
             onClick={() => void props.onReconnect()}
-            disabled={props.busy || props.ipollowalkReconnectBusy || !props.ipollowalkServerUrl.trim()}
+            disabled={props.busy || props.ipolloworkReconnectBusy || !props.ipolloworkServerUrl.trim()}
           >
-            <RefreshCcw size={14} className={props.ipollowalkReconnectBusy ? "animate-spin" : ""} />
-            {props.ipollowalkReconnectBusy ? t("settings.reconnecting") : t("settings.reconnect_server")}
+            <RefreshCcw size={14} className={props.ipolloworkReconnectBusy ? "animate-spin" : ""} />
+            {props.ipolloworkReconnectBusy ? t("settings.reconnecting") : t("settings.reconnect_server")}
           </Button>
 
           {props.isLocalEngineRunning ? (
@@ -758,7 +758,7 @@ export function AdvancedConnectionSection(props: AdvancedConnectionSectionProps)
               disabled={props.busy || props.restartBusy}
             >
               <RefreshCcw size={14} className={props.restartBusy ? "animate-spin" : ""} />
-              {props.restartBusy ? t("settings.restarting") : t("settings.restart_ipollowalk_server")}
+              {props.restartBusy ? t("settings.restarting") : t("settings.restart_ipollowork_server")}
             </Button>
           ) : null}
 
@@ -775,7 +775,7 @@ export function AdvancedConnectionSection(props: AdvancedConnectionSectionProps)
             </Button>
           ) : null}
 
-          {!props.isLocalEngineRunning && props.ipollowalkServerStatus === "connected" ? (
+          {!props.isLocalEngineRunning && props.ipolloworkServerStatus === "connected" ? (
             <Button
               type="button"
               variant="outline"

@@ -1,7 +1,7 @@
 const { X509Certificate } = require("node:crypto");
 const tls = require("node:tls");
 
-const needle = (process.env.IPOLLOWALK_TLS_REPRO_CA_MATCH || "iPolloWalk TLS Repro").toLowerCase();
+const needle = (process.env.IPOLLOWORK_TLS_REPRO_CA_MATCH || "iPolloWork TLS Repro").toLowerCase();
 
 function countMatchingSubjects(certificates) {
   let count = 0;

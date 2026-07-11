@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { installConfigUrlFor, parseInstallerFilenameTag } from "@ipollowalk/install-config"
+import { installConfigUrlFor, parseInstallerFilenameTag } from "@ipollowork/install-config"
 
 import { desktopBootstrapPath, legacyDesktopBootstrapPath } from "../src/bootstrap-path"
 import { parseInstallLinkInput, resolveInstallerConfig } from "../src/config"
@@ -12,43 +12,43 @@ import { releaseAssetFor } from "../src/release-asset"
 
 describe("desktopBootstrapPath", () => {
   test("honors the explicit override", () => {
-    expect(desktopBootstrapPath({ IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH: "/tmp/custom.json" }, "darwin")).toBe("/tmp/custom.json")
+    expect(desktopBootstrapPath({ IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH: "/tmp/custom.json" }, "darwin")).toBe("/tmp/custom.json")
   })
 
   test("prefers XDG_CONFIG_HOME on every platform", () => {
-    expect(desktopBootstrapPath({ XDG_CONFIG_HOME: "/xdg" }, "linux")).toBe(path.join("/xdg", "ipollowalk", "desktop-bootstrap.json"))
-    expect(desktopBootstrapPath({ XDG_CONFIG_HOME: "/xdg" }, "win32")).toBe(path.join("/xdg", "ipollowalk", "desktop-bootstrap.json"))
+    expect(desktopBootstrapPath({ XDG_CONFIG_HOME: "/xdg" }, "linux")).toBe(path.join("/xdg", "ipollowork", "desktop-bootstrap.json"))
+    expect(desktopBootstrapPath({ XDG_CONFIG_HOME: "/xdg" }, "win32")).toBe(path.join("/xdg", "ipollowork", "desktop-bootstrap.json"))
   })
 
   test("uses LOCALAPPDATA on Windows and ~/.config elsewhere", () => {
     expect(desktopBootstrapPath({ LOCALAPPDATA: "C:\\Users\\u\\AppData\\Local" }, "win32")).toBe(
-      path.join("C:\\Users\\u\\AppData\\Local", "ipollowalk", "desktop-bootstrap.json"),
+      path.join("C:\\Users\\u\\AppData\\Local", "ipollowork", "desktop-bootstrap.json"),
     )
-    expect(desktopBootstrapPath({}, "darwin")).toBe(path.join(os.homedir(), ".config", "ipollowalk", "desktop-bootstrap.json"))
+    expect(desktopBootstrapPath({}, "darwin")).toBe(path.join(os.homedir(), ".config", "ipollowork", "desktop-bootstrap.json"))
   })
 
   test("resolves the legacy bootstrap path under ~/.config on every platform", () => {
     expect(legacyDesktopBootstrapPath({ HOME: "/Users/u" }, "darwin")).toBe(
-      path.join("/Users/u", ".config", "ipollowalk", "desktop-bootstrap.json"),
+      path.join("/Users/u", ".config", "ipollowork", "desktop-bootstrap.json"),
     )
     expect(legacyDesktopBootstrapPath({ USERPROFILE: "C:\\Users\\u" }, "win32")).toBe(
-      path.join("C:\\Users\\u", ".config", "ipollowalk", "desktop-bootstrap.json"),
+      path.join("C:\\Users\\u", ".config", "ipollowork", "desktop-bootstrap.json"),
     )
   })
 })
 
 describe("releaseAssetFor", () => {
   test("resolves per-platform asset names", () => {
-    expect(releaseAssetFor("v0.17.7", "darwin", "arm64").fileName).toBe("ipollowalk-mac-arm64-0.17.7.dmg")
-    expect(releaseAssetFor("0.17.7", "darwin", "x64").fileName).toBe("ipollowalk-mac-x64-0.17.7.dmg")
-    expect(releaseAssetFor("0.17.7", "win32", "x64").fileName).toBe("ipollowalk-win-x64-0.17.7.exe")
-    expect(releaseAssetFor("0.17.7", "linux", "x64").fileName).toBe("ipollowalk-linux-x86_64-0.17.7.AppImage")
-    expect(releaseAssetFor("0.17.7", "linux", "arm64").fileName).toBe("ipollowalk-linux-arm64-0.17.7.AppImage")
+    expect(releaseAssetFor("v0.17.7", "darwin", "arm64").fileName).toBe("ipollowork-mac-arm64-0.17.7.dmg")
+    expect(releaseAssetFor("0.17.7", "darwin", "x64").fileName).toBe("ipollowork-mac-x64-0.17.7.dmg")
+    expect(releaseAssetFor("0.17.7", "win32", "x64").fileName).toBe("ipollowork-win-x64-0.17.7.exe")
+    expect(releaseAssetFor("0.17.7", "linux", "x64").fileName).toBe("ipollowork-linux-x86_64-0.17.7.AppImage")
+    expect(releaseAssetFor("0.17.7", "linux", "arm64").fileName).toBe("ipollowork-linux-arm64-0.17.7.AppImage")
   })
 
   test("builds the release download URL from the version tag", () => {
     expect(releaseAssetFor("0.17.7", "darwin", "arm64").url).toBe(
-      "https://github.com/Devin-AXIS/iPolloWalk/releases/download/v0.17.7/ipollowalk-mac-arm64-0.17.7.dmg",
+      "https://github.com/Devin-AXIS/iPolloWork/releases/download/v0.17.7/ipollowork-mac-arm64-0.17.7.dmg",
     )
   })
 
@@ -61,18 +61,18 @@ describe("releaseAssetFor", () => {
 describe("resolveInstallerConfig", () => {
   test("reads env overrides and normalizes URLs", async () => {
     const { config, source } = await resolveInstallerConfig({ env: {
-      IPOLLOWALK_INSTALLER_APP_NAME: "Acme Work",
-      IPOLLOWALK_INSTALLER_CLIENT_NAME: "Acme Corp",
-      IPOLLOWALK_INSTALLER_WEB_URL: "https://ipollowalk.acme.com/",
-      IPOLLOWALK_INSTALLER_API_URL: "https://ipollowalk-api.acme.com",
-      IPOLLOWALK_INSTALLER_REQUIRE_SIGNIN: "true",
+      IPOLLOWORK_INSTALLER_APP_NAME: "Acme Work",
+      IPOLLOWORK_INSTALLER_CLIENT_NAME: "Acme Corp",
+      IPOLLOWORK_INSTALLER_WEB_URL: "https://ipollowork.acme.com/",
+      IPOLLOWORK_INSTALLER_API_URL: "https://ipollowork-api.acme.com",
+      IPOLLOWORK_INSTALLER_REQUIRE_SIGNIN: "true",
     } })
     expect(source).toBe("env")
     expect(config).toEqual({
       appName: "Acme Work",
       clientName: "Acme Corp",
-      webUrl: "https://ipollowalk.acme.com",
-      apiUrl: "https://ipollowalk-api.acme.com",
+      webUrl: "https://ipollowork.acme.com",
+      apiUrl: "https://ipollowork-api.acme.com",
       logoUrl: null,
       requireSignin: true,
     })
@@ -80,34 +80,34 @@ describe("resolveInstallerConfig", () => {
 
   test("accepts an optional logo URL and rejects non-http logos", async () => {
     const { config } = await resolveInstallerConfig({ env: {
-      IPOLLOWALK_INSTALLER_CLIENT_NAME: "Acme",
-      IPOLLOWALK_INSTALLER_WEB_URL: "https://ipollowalk.acme.com",
-      IPOLLOWALK_INSTALLER_API_URL: "https://ipollowalk-api.acme.com",
-      IPOLLOWALK_INSTALLER_LOGO_URL: "https://acme.com/logo.svg",
+      IPOLLOWORK_INSTALLER_CLIENT_NAME: "Acme",
+      IPOLLOWORK_INSTALLER_WEB_URL: "https://ipollowork.acme.com",
+      IPOLLOWORK_INSTALLER_API_URL: "https://ipollowork-api.acme.com",
+      IPOLLOWORK_INSTALLER_LOGO_URL: "https://acme.com/logo.svg",
     } })
     expect(config.logoUrl).toBe("https://acme.com/logo.svg")
     await expect(
       resolveInstallerConfig({
         env: {
-        IPOLLOWALK_INSTALLER_CLIENT_NAME: "Acme",
-        IPOLLOWALK_INSTALLER_WEB_URL: "https://ipollowalk.acme.com",
-        IPOLLOWALK_INSTALLER_API_URL: "https://ipollowalk-api.acme.com",
-        IPOLLOWALK_INSTALLER_LOGO_URL: "file:///etc/passwd",
+        IPOLLOWORK_INSTALLER_CLIENT_NAME: "Acme",
+        IPOLLOWORK_INSTALLER_WEB_URL: "https://ipollowork.acme.com",
+        IPOLLOWORK_INSTALLER_API_URL: "https://ipollowork-api.acme.com",
+        IPOLLOWORK_INSTALLER_LOGO_URL: "file:///etc/passwd",
         },
       }),
     ).rejects.toThrow()
   })
 
   test("fails without a configured deployment", async () => {
-    await expect(resolveInstallerConfig({ env: {}, execPath: path.join(os.tmpdir(), "ipollowalk-installer") })).rejects.toThrow()
+    await expect(resolveInstallerConfig({ env: {}, execPath: path.join(os.tmpdir(), "ipollowork-installer") })).rejects.toThrow()
   })
 
   test("prefers env overrides over sidecar config", async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowalk-installer-precedence-"))
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowork-installer-precedence-"))
     try {
-      const execPath = path.join(dir, "ipollowalk-installer")
+      const execPath = path.join(dir, "ipollowork-installer")
       writeFileSync(execPath, "")
-      writeFileSync(path.join(dir, "ipollowalk-installer.json"), JSON.stringify({
+      writeFileSync(path.join(dir, "ipollowork-installer.json"), JSON.stringify({
         clientName: "Sidecar",
         webUrl: "https://sidecar.example.com",
         apiUrl: "https://sidecar-api.example.com",
@@ -117,9 +117,9 @@ describe("resolveInstallerConfig", () => {
 
       const resolution = await resolveInstallerConfig({
         env: {
-          IPOLLOWALK_INSTALLER_CLIENT_NAME: "Env",
-          IPOLLOWALK_INSTALLER_WEB_URL: "https://env.example.com",
-          IPOLLOWALK_INSTALLER_API_URL: "https://env-api.example.com",
+          IPOLLOWORK_INSTALLER_CLIENT_NAME: "Env",
+          IPOLLOWORK_INSTALLER_WEB_URL: "https://env.example.com",
+          IPOLLOWORK_INSTALLER_API_URL: "https://env-api.example.com",
         },
         execPath,
       })
@@ -135,13 +135,13 @@ describe("resolveInstallerConfig", () => {
   // do not exist on Windows, where path.join builds a backslashed path the
   // bundle matcher rightly rejects.
   test.skipIf(process.platform === "win32")("reads sidecar next to the enclosing app bundle", async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowalk-installer-app-sidecar-"))
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowork-installer-app-sidecar-"))
     try {
-      const macOsDir = path.join(dir, "iPolloWalk Installer.app", "Contents", "MacOS")
+      const macOsDir = path.join(dir, "iPolloWork Installer.app", "Contents", "MacOS")
       mkdirSync(macOsDir, { recursive: true })
-      const execPath = path.join(macOsDir, "iPolloWalk Installer")
+      const execPath = path.join(macOsDir, "iPolloWork Installer")
       writeFileSync(execPath, "")
-      writeFileSync(path.join(dir, "ipollowalk-installer.json"), JSON.stringify({
+      writeFileSync(path.join(dir, "ipollowork-installer.json"), JSON.stringify({
         clientName: "Bundle Sidecar",
         webUrl: "https://bundle.example.com",
         apiUrl: "https://bundle-api.example.com",
@@ -160,16 +160,16 @@ describe("resolveInstallerConfig", () => {
 
 describe("macOS App Translocation helpers", () => {
   test("parses a normal mount table line", () => {
-    expect(parseMountTableLine("/private/tmp/iPolloWalk Installer.app on /private/var/folders/abc/T/AppTranslocation/123 (nullfs, local, read-only)")).toEqual({
-      source: "/private/tmp/iPolloWalk Installer.app",
+    expect(parseMountTableLine("/private/tmp/iPolloWork Installer.app on /private/var/folders/abc/T/AppTranslocation/123 (nullfs, local, read-only)")).toEqual({
+      source: "/private/tmp/iPolloWork Installer.app",
       mountPoint: "/private/var/folders/abc/T/AppTranslocation/123",
       options: "nullfs, local, read-only",
     })
   })
 
   test("parses paths with spaces and on in the source", () => {
-    expect(parseMountTableLine("/private/tmp/folder with spaces/source on disk/iPolloWalk Installer.app on /private/var/folders/abc/T/AppTranslocation/UUID With Space (nullfs, local)")).toEqual({
-      source: "/private/tmp/folder with spaces/source on disk/iPolloWalk Installer.app",
+    expect(parseMountTableLine("/private/tmp/folder with spaces/source on disk/iPolloWork Installer.app on /private/var/folders/abc/T/AppTranslocation/UUID With Space (nullfs, local)")).toEqual({
+      source: "/private/tmp/folder with spaces/source on disk/iPolloWork Installer.app",
       mountPoint: "/private/var/folders/abc/T/AppTranslocation/UUID With Space",
       options: "nullfs, local",
     })
@@ -177,53 +177,53 @@ describe("macOS App Translocation helpers", () => {
 
   test("ignores junk mount table lines", () => {
     expect(parseMountTableLine("not a mount table line")).toBeNull()
-    expect(parseMountTableLine("/private/tmp/iPolloWalk Installer.app on /private/var/folders/abc/T/AppTranslocation/123")).toBeNull()
+    expect(parseMountTableLine("/private/tmp/iPolloWork Installer.app on /private/var/folders/abc/T/AppTranslocation/123")).toBeNull()
   })
 
   test("resolves the original app through the translocated /d path", () => {
     const mountPoint = "/private/var/folders/abc/T/AppTranslocation/123"
-    const source = "/private/tmp/iPolloWalk Installer.app"
-    const execPath = `${mountPoint}/d/iPolloWalk Installer.app/Contents/MacOS/ipollowalk-installer`
+    const source = "/private/tmp/iPolloWork Installer.app"
+    const execPath = `${mountPoint}/d/iPolloWork Installer.app/Contents/MacOS/ipollowork-installer`
 
     expect(resolveTranslocatedOriginalPath(execPath, `${source} on ${mountPoint} (nullfs, local, nodev)\n`)).toBe(source)
   })
 
   test("skips non-nullfs mounts", () => {
     const mountPoint = "/private/var/folders/abc/T/AppTranslocation/123"
-    const source = "/private/tmp/iPolloWalk Installer.app"
-    const execPath = `${mountPoint}/d/iPolloWalk Installer.app/Contents/MacOS/ipollowalk-installer`
+    const source = "/private/tmp/iPolloWork Installer.app"
+    const execPath = `${mountPoint}/d/iPolloWork Installer.app/Contents/MacOS/ipollowork-installer`
 
     expect(resolveTranslocatedOriginalPath(execPath, `${source} on ${mountPoint} (apfs, local)\n`)).toBeNull()
   })
 
   test("requires a mountpoint path-prefix boundary", () => {
     const mountPoint = "/private/var/folders/abc/T/AppTranslocation/123"
-    const source = "/private/tmp/iPolloWalk Installer.app"
-    const execPath = `${mountPoint}-suffix/d/iPolloWalk Installer.app/Contents/MacOS/ipollowalk-installer`
+    const source = "/private/tmp/iPolloWork Installer.app"
+    const execPath = `${mountPoint}-suffix/d/iPolloWork Installer.app/Contents/MacOS/ipollowork-installer`
 
     expect(resolveTranslocatedOriginalPath(execPath, `${source} on ${mountPoint} (nullfs, local)\n`)).toBeNull()
   })
 
   test("returns null when no translocation mount matches", () => {
-    const execPath = "/private/var/folders/abc/T/AppTranslocation/123/d/iPolloWalk Installer.app/Contents/MacOS/ipollowalk-installer"
-    const mountTable = "/private/tmp/iPolloWalk Installer.app on /private/var/folders/abc/T/AppTranslocation/other (nullfs, local)\n"
+    const execPath = "/private/var/folders/abc/T/AppTranslocation/123/d/iPolloWork Installer.app/Contents/MacOS/ipollowork-installer"
+    const mountTable = "/private/tmp/iPolloWork Installer.app on /private/var/folders/abc/T/AppTranslocation/other (nullfs, local)\n"
 
     expect(resolveTranslocatedOriginalPath(execPath, mountTable)).toBeNull()
   })
 
   test("detects App Translocation paths", () => {
-    expect(isTranslocatedPath("/private/var/folders/abc/T/AppTranslocation/123/d/iPolloWalk Installer.app/Contents/MacOS/ipollowalk-installer")).toBe(true)
-    expect(isTranslocatedPath("/Applications/iPolloWalk Installer.app/Contents/MacOS/ipollowalk-installer")).toBe(false)
+    expect(isTranslocatedPath("/private/var/folders/abc/T/AppTranslocation/123/d/iPolloWork Installer.app/Contents/MacOS/ipollowork-installer")).toBe(true)
+    expect(isTranslocatedPath("/Applications/iPolloWork Installer.app/Contents/MacOS/ipollowork-installer")).toBe(false)
   })
 
   test("reads the sidecar next to the original translocated app", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowalk-installer-translocated-"))
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowork-installer-translocated-"))
     try {
-      const originalAppPath = path.join(dir, "iPolloWalk Installer.app")
+      const originalAppPath = path.join(dir, "iPolloWork Installer.app")
       const mountPoint = "/private/var/folders/abc/T/AppTranslocation/123"
-      const execPath = `${mountPoint}/d/iPolloWalk Installer.app/Contents/MacOS/ipollowalk-installer`
+      const execPath = `${mountPoint}/d/iPolloWork Installer.app/Contents/MacOS/ipollowork-installer`
       mkdirSync(originalAppPath, { recursive: true })
-      writeFileSync(path.join(dir, "ipollowalk-installer.json"), JSON.stringify({
+      writeFileSync(path.join(dir, "ipollowork-installer.json"), JSON.stringify({
         clientName: "Translocated Sidecar",
         webUrl: "https://translocated.example.com",
         apiUrl: "https://translocated-api.example.com",
@@ -236,7 +236,7 @@ describe("macOS App Translocation helpers", () => {
         readMountTable: () => `${originalAppPath} on ${mountPoint} (nullfs, local, read-only)\n`,
         warn: () => undefined,
       })).toEqual({
-        appName: "iPolloWalk",
+        appName: "iPolloWork",
         clientName: "Translocated Sidecar",
         webUrl: "https://translocated.example.com",
         apiUrl: "https://translocated-api.example.com",
@@ -249,11 +249,11 @@ describe("macOS App Translocation helpers", () => {
   })
 
   test("falls through when the translocation mount is missing", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowalk-installer-translocated-missing-"))
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowork-installer-translocated-missing-"))
     try {
-      const originalAppPath = path.join(dir, "iPolloWalk Installer.app")
-      const execPath = "/private/var/folders/abc/T/AppTranslocation/123/d/iPolloWalk Installer.app/Contents/MacOS/ipollowalk-installer"
-      writeFileSync(path.join(dir, "ipollowalk-installer.json"), JSON.stringify({
+      const originalAppPath = path.join(dir, "iPolloWork Installer.app")
+      const execPath = "/private/var/folders/abc/T/AppTranslocation/123/d/iPolloWork Installer.app/Contents/MacOS/ipollowork-installer"
+      writeFileSync(path.join(dir, "ipollowork-installer.json"), JSON.stringify({
         clientName: "Missing Mount Sidecar",
         webUrl: "https://missing.example.com",
         apiUrl: "https://missing-api.example.com",
@@ -274,11 +274,11 @@ describe("macOS App Translocation helpers", () => {
 
 describe("install link helpers", () => {
   test("parses filename stamps and install config URLs", () => {
-    expect(parseInstallerFilenameTag("iPolloWalk-Installer--127.0.0.1_8790--abcDEF12.exe")).toEqual({
+    expect(parseInstallerFilenameTag("iPolloWork-Installer--127.0.0.1_8790--abcDEF12.exe")).toEqual({
       host: "127.0.0.1:8790",
       token: "abcDEF12",
     })
-    expect(parseInstallerFilenameTag("iPolloWalk-Installer--api.example.com--abcDEF12")).toEqual({
+    expect(parseInstallerFilenameTag("iPolloWork-Installer--api.example.com--abcDEF12")).toEqual({
       host: "api.example.com",
       token: "abcDEF12",
     })
@@ -302,7 +302,7 @@ describe("install link helpers", () => {
 
 describe("writeBootstrapConfig", () => {
   test("migrates a legacy organization config instead of replacing it with hosted defaults", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowalk-installer-test-"))
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowork-installer-test-"))
     const env = {
       LOCALAPPDATA: path.join(dir, "LocalAppData"),
       USERPROFILE: path.join(dir, "profile"),
@@ -313,11 +313,11 @@ describe("writeBootstrapConfig", () => {
       mkdirSync(path.dirname(target), { recursive: true })
       mkdirSync(path.dirname(legacy), { recursive: true })
       writeFileSync(target, JSON.stringify({
-        baseUrl: "https://app.ipollowalklabs.com/api/den/",
+        baseUrl: "https://app.ipolloworklabs.com/api/den/",
         writtenAt: "2026-07-10T13:00:00.000Z",
       }))
       writeFileSync(legacy, JSON.stringify({
-        baseUrl: "https://ipollowalk.organization.internal.example",
+        baseUrl: "https://ipollowork.organization.internal.example",
         apiBaseUrl: "https://api.organization.internal.example",
         handoff: { grant: "drop-me" },
         prepared: { orgId: "org_example" },
@@ -325,13 +325,13 @@ describe("writeBootstrapConfig", () => {
         writtenAt: "2026-07-09T12:00:00.000Z",
       }))
       const written = writeBootstrapConfig(
-        { appName: "iPolloWalk", clientName: "Hosted", webUrl: "https://app.ipollowalklabs.com/", apiUrl: "https://api.ipollowalklabs.com/", requireSignin: false, logoUrl: null },
+        { appName: "iPolloWork", clientName: "Hosted", webUrl: "https://app.ipolloworklabs.com/", apiUrl: "https://api.ipolloworklabs.com/", requireSignin: false, logoUrl: null },
         env,
         "win32",
       )
       expect(written).toBe(target)
       const parsed = JSON.parse(readFileSync(target, "utf8"))
-      expect(parsed.baseUrl).toBe("https://ipollowalk.organization.internal.example")
+      expect(parsed.baseUrl).toBe("https://ipollowork.organization.internal.example")
       expect(parsed.apiBaseUrl).toBe("https://api.organization.internal.example")
       expect(parsed.handoff).toBeUndefined()
       expect(parsed.prepared).toEqual({ orgId: "org_example" })
@@ -344,7 +344,7 @@ describe("writeBootstrapConfig", () => {
   })
 
   test("keeps a canonical organization config across repeated hosted reinstalls", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowalk-installer-test-"))
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowork-installer-test-"))
     const env = {
       LOCALAPPDATA: path.join(dir, "LocalAppData"),
       USERPROFILE: path.join(dir, "profile"),
@@ -353,17 +353,17 @@ describe("writeBootstrapConfig", () => {
     try {
       mkdirSync(path.dirname(target), { recursive: true })
       writeFileSync(target, JSON.stringify({
-        baseUrl: "https://ipollowalk.organization.internal.example",
+        baseUrl: "https://ipollowork.organization.internal.example",
         apiBaseUrl: "https://api.organization.internal.example",
         handoff: { grant: "drop-me" },
         prepared: { orgId: "org_example" },
         claimLinks: [{ id: "claim_example" }],
       }))
       const hostedConfig = {
-        appName: "iPolloWalk",
+        appName: "iPolloWork",
         clientName: "Hosted",
-        webUrl: "https://api.ipollowalklabs.com/v1/",
-        apiUrl: "https://api.ipollowalklabs.com/",
+        webUrl: "https://api.ipolloworklabs.com/v1/",
+        apiUrl: "https://api.ipolloworklabs.com/",
         requireSignin: false,
         logoUrl: null,
       }
@@ -372,7 +372,7 @@ describe("writeBootstrapConfig", () => {
       writeBootstrapConfig(hostedConfig, env, "win32")
 
       const parsed = JSON.parse(readFileSync(target, "utf8"))
-      expect(parsed.baseUrl).toBe("https://ipollowalk.organization.internal.example")
+      expect(parsed.baseUrl).toBe("https://ipollowork.organization.internal.example")
       expect(parsed.apiBaseUrl).toBe("https://api.organization.internal.example")
       expect(parsed.handoff).toBeUndefined()
       expect(parsed.prepared).toEqual({ orgId: "org_example" })
@@ -383,7 +383,7 @@ describe("writeBootstrapConfig", () => {
   })
 
   test("replaces an installed hosted default with a custom organization config", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowalk-installer-test-"))
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ipollowork-installer-test-"))
     const env = {
       LOCALAPPDATA: path.join(dir, "LocalAppData"),
       USERPROFILE: path.join(dir, "profile"),
@@ -392,8 +392,8 @@ describe("writeBootstrapConfig", () => {
     try {
       mkdirSync(path.dirname(target), { recursive: true })
       writeFileSync(target, JSON.stringify({
-        baseUrl: "https://app.ipollowalklabs.com/api/den/",
-        apiBaseUrl: "https://api.ipollowalklabs.com/",
+        baseUrl: "https://app.ipolloworklabs.com/api/den/",
+        apiBaseUrl: "https://api.ipolloworklabs.com/",
         prepared: { orgId: "org_example" },
         claimLinks: [{ id: "claim_example" }],
       }))
@@ -402,21 +402,21 @@ describe("writeBootstrapConfig", () => {
         {
           appName: "Example Org Work",
           clientName: "Example Org",
-          webUrl: "https://ipollowalk.custom.internal.example",
+          webUrl: "https://ipollowork.custom.internal.example",
           apiUrl: "https://api.custom.internal.example",
           requireSignin: true,
-          logoUrl: "https://ipollowalk.custom.internal.example/assets/wordmark.svg",
+          logoUrl: "https://ipollowork.custom.internal.example/assets/wordmark.svg",
         },
         env,
         "win32",
       )
 
       const parsed = JSON.parse(readFileSync(target, "utf8"))
-      expect(parsed.baseUrl).toBe("https://ipollowalk.custom.internal.example")
+      expect(parsed.baseUrl).toBe("https://ipollowork.custom.internal.example")
       expect(parsed.apiBaseUrl).toBe("https://api.custom.internal.example")
       expect(parsed.requireSignin).toBe(true)
       expect(parsed.brandAppName).toBe("Example Org Work")
-      expect(parsed.brandLogoUrl).toBe("https://ipollowalk.custom.internal.example/assets/wordmark.svg")
+      expect(parsed.brandLogoUrl).toBe("https://ipollowork.custom.internal.example/assets/wordmark.svg")
       expect(parsed.prepared).toEqual({ orgId: "org_example" })
       expect(parsed.claimLinks).toEqual([{ id: "claim_example" }])
     } finally {

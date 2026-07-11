@@ -4,24 +4,24 @@ import { useEffect } from "react";
 import {
   engineInfo,
   engineStart,
-  ipollowalkServerInfo,
-  ipollowalkServerRestart,
+  ipolloworkServerInfo,
+  ipolloworkServerRestart,
   resolveWorkspaceListSelectedId,
   runtimeBootstrap,
   workspaceBootstrap,
   workspaceSetRuntimeActive,
   workspaceSetSelected,
   type EngineInfo,
-  type iPolloWalkServerInfo,
+  type iPolloWorkServerInfo,
   type WorkspaceInfo,
   type WorkspaceList,
 } from "../../app/lib/desktop";
 import { ingestMigrationSnapshotOnElectronBoot } from "../../app/lib/migration";
 import {
-  hydrateiPolloWalkServerSettingsFromEnv,
-  readiPolloWalkServerSettings,
-  writeiPolloWalkServerSettings,
-} from "../../app/lib/ipollowalk-server";
+  hydrateiPolloWorkServerSettingsFromEnv,
+  readiPolloWorkServerSettings,
+  writeiPolloWorkServerSettings,
+} from "../../app/lib/ipollowork-server";
 import { isDesktopRuntime, isElectronRuntime, safeStringify } from "../../app/utils";
 import { useServer } from "../kernel/server-provider";
 import { useBootState } from "./boot-state";
@@ -31,7 +31,7 @@ import { useBootState } from "./boot-state";
 // keeps running across the transient unmount.
 let BOOT_STARTED = false;
 
-type BootiPolloWalkServerInfo = {
+type BootiPolloWorkServerInfo = {
   running?: boolean | null;
   baseUrl?: string | null;
   ownerToken?: string | null;
@@ -41,11 +41,11 @@ type BootiPolloWalkServerInfo = {
   remoteAccessEnabled?: boolean;
 };
 
-function isiPolloWalkServerInfoLike(info: unknown): info is BootiPolloWalkServerInfo {
+function isiPolloWorkServerInfoLike(info: unknown): info is BootiPolloWorkServerInfo {
   return typeof info === "object" && info !== null;
 }
 
-function isiPolloWalkServerReady(info?: BootiPolloWalkServerInfo) {
+function isiPolloWorkServerReady(info?: BootiPolloWorkServerInfo) {
   return Boolean(
     info?.running === true &&
       info.baseUrl?.trim() &&
@@ -56,12 +56,12 @@ function isiPolloWalkServerReady(info?: BootiPolloWalkServerInfo) {
 /**
  * On desktop (Tauri) startup:
  *   1) bootstrap the workspace list
- *   2) if a local workspace is selected, restart the embedded iPolloWalk server
+ *   2) if a local workspace is selected, restart the embedded iPolloWork server
  *   3) start the OpenCode engine pointed at the workspace
- *   4) activate the workspace on the running iPolloWalk server
+ *   4) activate the workspace on the running iPolloWork server
  *   5) notify React routes that fresh desktop runtime info is available. Electron
  *      routes read live runtime info directly instead of persisting ephemeral
- *      localhost ports/tokens into iPolloWalk settings.
+ *      localhost ports/tokens into iPolloWork settings.
  *
  * Safe to call multiple times — gated by a `didBoot` ref so it runs once per mount.
  */
@@ -92,12 +92,12 @@ export function useDesktopRuntimeBoot() {
             console.info(`[migration] hydrated ${hydrated} localStorage keys from Tauri snapshot`);
           }
         }
-        hydrateiPolloWalkServerSettingsFromEnv();
-        const preferredRemoteAccess = readiPolloWalkServerSettings().remoteAccessEnabled === true;
+        hydrateiPolloWorkServerSettingsFromEnv();
+        const preferredRemoteAccess = readiPolloWorkServerSettings().remoteAccessEnabled === true;
 
-        const publishiPolloWalkServerInfo = (serverInfo: BootiPolloWalkServerInfo | null | undefined) => {
+        const publishiPolloWorkServerInfo = (serverInfo: BootiPolloWorkServerInfo | null | undefined) => {
           if (!serverInfo?.baseUrl) return;
-          writeiPolloWalkServerSettings({
+          writeiPolloWorkServerSettings({
             urlOverride: serverInfo.baseUrl,
             token:
               serverInfo.ownerToken?.trim() ||
@@ -108,23 +108,23 @@ export function useDesktopRuntimeBoot() {
             remoteAccessEnabled: serverInfo.remoteAccessEnabled === true,
           });
           try {
-            window.dispatchEvent(new CustomEvent("ipollowalk-server-settings-changed"));
+            window.dispatchEvent(new CustomEvent("ipollowork-server-settings-changed"));
           } catch {
             /* ignore */
           }
         };
 
         const startServerWithoutDesktopWorkspace = async () => {
-          setPhase("starting-engine", "Starting iPolloWalk server");
-          const serverInfo = await ipollowalkServerRestart({ remoteAccessEnabled: preferredRemoteAccess }).catch((error) => {
-            console.warn("[desktop-boot] ipollowalkServerRestart failed:", error);
+          setPhase("starting-engine", "Starting iPolloWork server");
+          const serverInfo = await ipolloworkServerRestart({ remoteAccessEnabled: preferredRemoteAccess }).catch((error) => {
+            console.warn("[desktop-boot] ipolloworkServerRestart failed:", error);
             return null;
           });
-          if (!isiPolloWalkServerInfoLike(serverInfo) || !isiPolloWalkServerReady(serverInfo)) {
-            setError("iPolloWalk server did not finish starting. Please restart iPolloWalk.");
+          if (!isiPolloWorkServerInfoLike(serverInfo) || !isiPolloWorkServerReady(serverInfo)) {
+            setError("iPolloWork server did not finish starting. Please restart iPolloWork.");
             return;
           }
-          publishiPolloWalkServerInfo(serverInfo);
+          publishiPolloWorkServerInfo(serverInfo);
           markReady();
         };
 
@@ -160,47 +160,47 @@ export function useDesktopRuntimeBoot() {
             skipped?: boolean;
             error?: string;
             engine?: { baseUrl?: string | null };
-            ipollowalkServer?: BootiPolloWalkServerInfo;
+            ipolloworkServer?: BootiPolloWorkServerInfo;
           };
 
           if (boot.ok === false) {
-            setError(boot.error || "Failed to start iPolloWalk runtime");
+            setError(boot.error || "Failed to start iPolloWork runtime");
             return;
           }
 
-          if (!boot.skipped && !isiPolloWalkServerReady(boot.ipollowalkServer)) {
-            setError("iPolloWalk server did not finish starting. Please restart iPolloWalk.");
+          if (!boot.skipped && !isiPolloWorkServerReady(boot.ipolloworkServer)) {
+            setError("iPolloWork server did not finish starting. Please restart iPolloWork.");
             return;
           }
 
           if (boot.engine?.baseUrl) {
             setActive(boot.engine.baseUrl);
           }
-          let serverInfo = boot.ipollowalkServer;
+          let serverInfo = boot.ipolloworkServer;
           if (preferredRemoteAccess && serverInfo?.remoteAccessEnabled !== true) {
-            const restarted = await ipollowalkServerRestart({ remoteAccessEnabled: true }).catch((error) => {
-              console.warn("[desktop-boot] ipollowalkServerRestart failed:", error);
+            const restarted = await ipolloworkServerRestart({ remoteAccessEnabled: true }).catch((error) => {
+              console.warn("[desktop-boot] ipolloworkServerRestart failed:", error);
               return null;
             });
-            if (isiPolloWalkServerInfoLike(restarted)) serverInfo = restarted;
+            if (isiPolloWorkServerInfoLike(restarted)) serverInfo = restarted;
           }
-          publishiPolloWalkServerInfo(serverInfo);
+          publishiPolloWorkServerInfo(serverInfo);
           markReady();
           return;
         }
 
         // FAST PATH ─────────────────────────────────────────────────────
         // Cheap status probe: if engine is already running just publish the
-        // current ipollowalk-server base URL + token and finish in <1s.
+        // current ipollowork-server base URL + token and finish in <1s.
         // This mirrors Solid's bootstrap at context/workspace.ts:3883-3907
         // ("localAttachExisting"), which never restarts a running stack.
         try {
           const engine = await engineInfo() as EngineInfo | null;
           if (engine?.running && engine.baseUrl) {
             setActive(engine.baseUrl);
-            const fresh = await ipollowalkServerInfo().catch(() => null) as iPolloWalkServerInfo | null;
+            const fresh = await ipolloworkServerInfo().catch(() => null) as iPolloWorkServerInfo | null;
             if (fresh?.baseUrl) {
-              writeiPolloWalkServerSettings({
+              writeiPolloWorkServerSettings({
                 urlOverride: fresh.baseUrl,
                 token:
                   fresh.ownerToken?.trim() ||
@@ -212,7 +212,7 @@ export function useDesktopRuntimeBoot() {
               });
               try {
                 window.dispatchEvent(
-                  new CustomEvent("ipollowalk-server-settings-changed"),
+                  new CustomEvent("ipollowork-server-settings-changed"),
                 );
               } catch {
                 /* ignore */
@@ -227,7 +227,7 @@ export function useDesktopRuntimeBoot() {
 
         // SLOW PATH ─────────────────────────────────────────────────────
         // No running engine. Tauri now mirrors Electron: engine_start boots
-        // ipollowalk-server and lets that server manage OpenCode.
+        // ipollowork-server and lets that server manage OpenCode.
         const localPaths = list.workspaces.flatMap((entry: WorkspaceInfo) => {
           const path = entry.workspaceType !== "remote" ? entry.path?.trim() ?? "" : "";
           return path ? [path] : [];
@@ -247,7 +247,7 @@ export function useDesktopRuntimeBoot() {
         let engineStartResult = await engineStart(workspaceRoot, {
           runtime: "direct",
           workspacePaths: workspacePathsFor(workspaceRoot),
-          ipollowalkRemoteAccess: readiPolloWalkServerSettings().remoteAccessEnabled === true,
+          ipolloworkRemoteAccess: readiPolloWorkServerSettings().remoteAccessEnabled === true,
         }).catch((error) => {
           console.warn("[desktop-boot] engineStart failed:", error);
           return null;
@@ -268,7 +268,7 @@ export function useDesktopRuntimeBoot() {
             engineStartResult = await engineStart(fallbackRoot, {
               runtime: "direct",
               workspacePaths: workspacePathsFor(fallbackRoot).filter((path) => path !== workspaceRoot),
-              ipollowalkRemoteAccess: readiPolloWalkServerSettings().remoteAccessEnabled === true,
+              ipolloworkRemoteAccess: readiPolloWorkServerSettings().remoteAccessEnabled === true,
             }).catch((error) => {
               console.warn("[desktop-boot] fallback engineStart failed:", error);
               setError(error instanceof Error ? error.message : safeStringify(error));
@@ -288,9 +288,9 @@ export function useDesktopRuntimeBoot() {
             setActive(engineStartResult.baseUrl);
           }
           try {
-            const freshInfo = await ipollowalkServerInfo() as iPolloWalkServerInfo | null;
+            const freshInfo = await ipolloworkServerInfo() as iPolloWorkServerInfo | null;
             if (freshInfo?.baseUrl) {
-              writeiPolloWalkServerSettings({
+              writeiPolloWorkServerSettings({
                 urlOverride: freshInfo.baseUrl,
                 token:
                   freshInfo.ownerToken?.trim() ||
@@ -301,13 +301,13 @@ export function useDesktopRuntimeBoot() {
                 remoteAccessEnabled: freshInfo.remoteAccessEnabled === true,
               });
               try {
-                window.dispatchEvent(new CustomEvent("ipollowalk-server-settings-changed"));
+                window.dispatchEvent(new CustomEvent("ipollowork-server-settings-changed"));
               } catch {
                 /* ignore */
               }
             }
           } catch (error) {
-            console.warn("[desktop-boot] post-engineStart ipollowalkServerInfo failed:", error);
+            console.warn("[desktop-boot] post-engineStart ipolloworkServerInfo failed:", error);
           }
         }
 

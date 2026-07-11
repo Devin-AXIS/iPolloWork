@@ -8,7 +8,7 @@ import {
   type DenMcpToken,
   type DenSettings,
 } from "../../../app/lib/den";
-import type { iPolloWalkServerClient } from "../../../app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient } from "../../../app/lib/ipollowork-server";
 import { unwrap } from "../../../app/lib/opencode";
 import type { Client, McpServerEntry, McpStatusMap } from "../../../app/types";
 import { attemptSilentMcpReauth } from "./mcp-silent-reauth";
@@ -23,12 +23,12 @@ import {
 export const SESSION_MCP_MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000;
 export const CLOUD_MCP_REFRESH_MARGIN_MS = 24 * 60 * 60 * 1000;
 
-type CloudMcpMaintenanceClient = Pick<iPolloWalkServerClient, "baseUrl" | "listMcp" | "addMcp">;
+type CloudMcpMaintenanceClient = Pick<iPolloWorkServerClient, "baseUrl" | "listMcp" | "addMcp">;
 
 const maintenanceInFlight = new Set<string>();
 
 export function getSessionMcpMaintenanceTargetKey(input: {
-  client: Pick<iPolloWalkServerClient, "baseUrl" | "token">;
+  client: Pick<iPolloWorkServerClient, "baseUrl" | "token">;
   cloudSignedIn: boolean;
   workspaceId: string;
   directory: string;
@@ -148,7 +148,7 @@ export async function healWorkspaceMcpInBackground(input: {
 
 export function useSessionMcpMaintenance(input: {
   cloudSignedIn: boolean;
-  client: iPolloWalkServerClient | null;
+  client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   opencodeClient: Client | null;
   directory: string;

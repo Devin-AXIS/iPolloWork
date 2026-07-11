@@ -2,7 +2,7 @@
 import type { UIMessage } from "ai";
 import type { FilePart, Part, ToolPart } from "@opencode-ai/sdk/v2/client";
 
-import type { iPolloWalkSessionSnapshot } from "../../../../app/lib/ipollowalk-server";
+import type { iPolloWorkSessionSnapshot } from "../../../../app/lib/ipollowork-server";
 import { safeStringify } from "../../../../app/utils";
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "../../../../app/types";
 import {
@@ -185,7 +185,7 @@ function mapSnapshotToolParts(part: ToolPart): UIMessage["parts"] {
   return [mapped];
 }
 
-export function snapshotToUIMessages(snapshot: iPolloWalkSessionSnapshot): UIMessage[] {
+export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMessage[] {
   return snapshot.messages.flatMap((message) => {
     const created = message.info.time?.created;
     const uiMessage = {

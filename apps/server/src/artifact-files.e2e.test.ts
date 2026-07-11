@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 async function createWorkspaceRoot() {
-  const root = await mkdtemp(join(tmpdir(), "ipollowalk-artifacts-"));
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-artifacts-"));
   roots.push(root);
   await mkdir(join(root, "reports"), { recursive: true });
   await writeFile(join(root, "reports", "artifact-eval.md"), "# Artifact Eval\n\nHello markdown.\n", "utf8");
@@ -28,7 +28,7 @@ async function createWorkspaceRoot() {
   return root;
 }
 
-async function startiPolloWalkServer(workspaceRoot: string) {
+async function startiPolloWorkServer(workspaceRoot: string) {
   const config: ServerConfig = {
     host: "127.0.0.1",
     port: 0,
@@ -57,7 +57,7 @@ function auth(token: string) {
 describe("artifact file routes", () => {
   test("resolve, read, write, and download markdown/csv/xlsx/pptx/html artifacts", async () => {
     const root = await createWorkspaceRoot();
-    const { base, token } = await startiPolloWalkServer(root);
+    const { base, token } = await startiPolloWorkServer(root);
 
     const resolveResponse = await fetch(`${base}/workspace/ws_1/artifacts/resolve`, {
       method: "POST",

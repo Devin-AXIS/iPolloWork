@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ipollowalk-eval-vnc
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ipollowork-eval-vnc
 
 jobs:
   build-and-push:

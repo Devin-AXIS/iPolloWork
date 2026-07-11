@@ -6,11 +6,11 @@ import { denApiFetch, openAdminConnections, signInApi, signInViaBrowser } from "
 // The runner fails this flow if the narration drifts from that script.
 const vo = await loadVoiceoverParagraphs("org-google-workspace-setup-guide");
 
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MEMBER_EMAIL = process.env.IPOLLOWALK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
-const MEMBER_PASSWORD = process.env.IPOLLOWALK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MEMBER_EMAIL = process.env.IPOLLOWORK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
+const MEMBER_PASSWORD = process.env.IPOLLOWORK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
 const MOCK_SERVER_URL = (process.env.MOCK_OAUTH_MCP_URL ?? "http://127.0.0.1:3978").trim().replace(/\/+$/, "");
 const RUN_TAG = Date.now();
 const DEFAULT_FEATURES = ["calendarRead", "gmailDraft", "driveFile"];
@@ -28,7 +28,7 @@ const state = {
 function orgHeaders(session) {
   if (!session) throw new Error("Missing session for org-scoped API call.");
   if (!state.orgId) throw new Error("Missing pinned organization id for org-scoped API call.");
-  return { authorization: `Bearer ${session}`, "x-ipollowalk-legacy-org-id": state.orgId };
+  return { authorization: `Bearer ${session}`, "x-ipollowork-legacy-org-id": state.orgId };
 }
 
 async function selectAdminOrganization(ctx) {
@@ -57,7 +57,7 @@ async function ensureVerifiedUser(ctx, email, name, password) {
     body: JSON.stringify({ email, name, password }),
   });
   ctx.assert(signUp.response.ok, `Sign-up failed for ${email}: ${signUp.response.status}`);
-  ctx.assert(MARK_VERIFIED_CMD.length > 0, "Set IPOLLOWALK_EVAL_MARK_VERIFIED_CMD to verify eval accounts.");
+  ctx.assert(MARK_VERIFIED_CMD.length > 0, "Set IPOLLOWORK_EVAL_MARK_VERIFIED_CMD to verify eval accounts.");
   execSync(MARK_VERIFIED_CMD.replaceAll("{email}", email), { stdio: "ignore" });
   token = await signInApi(email, password);
   ctx.assert(Boolean(token), `Sign-in still failing for ${email} after sign-up.`);
@@ -190,7 +190,7 @@ export default {
   title: "Google Workspace setup guides admins through OAuth client registration",
   kind: "user-facing",
   spec: "evals/voiceovers/org-google-workspace-setup-guide.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "Setup: admin and member sessions are ready and Google Workspace can start OAuth",
@@ -313,7 +313,7 @@ export default {
           },
           assert: async () => {
             assertRedirectUriMatch(ctx, parseRedirectUri(state.authorizeUrl), state.redirectUri, "Authorize/API");
-            await ctx.waitFor("document.body.innerText.includes('Mock MCP OAuth') && document.body.innerText.includes('Approve iPolloWalk')", {
+            await ctx.waitFor("document.body.innerText.includes('Mock MCP OAuth') && document.body.innerText.includes('Approve iPolloWork')", {
               timeoutMs: 30_000,
               label: "mock Google consent page",
             });
@@ -321,7 +321,7 @@ export default {
           screenshot: {
             name: "org-google-workspace-setup-guide-consent-redirect",
             claim: "The member reaches Google consent after Den generated an authorize URL with the exact setup redirect URI.",
-            requireText: ["Mock MCP OAuth", "Approve iPolloWalk"],
+            requireText: ["Mock MCP OAuth", "Approve iPolloWork"],
             rejectText: ["Connection failed"],
           },
         });

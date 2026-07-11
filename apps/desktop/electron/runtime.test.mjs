@@ -9,9 +9,9 @@ import {
   commandMatchesPackagedSidecar,
   embeddedServerImportUrl,
   prioritizeWorkspacePaths,
-  resolveiPolloWalkServerConfigPath,
+  resolveiPolloWorkServerConfigPath,
   seedWorkspacePathsForEmbeddedServer,
-  selectStickyiPolloWalkPortWorkspace,
+  selectStickyiPolloWorkPortWorkspace,
 } from "./runtime.mjs";
 
 describe("prioritizeWorkspacePaths", () => {
@@ -46,17 +46,17 @@ describe("seedWorkspacePathsForEmbeddedServer", () => {
   });
 });
 
-describe("selectStickyiPolloWalkPortWorkspace", () => {
+describe("selectStickyiPolloWorkPortWorkspace", () => {
   it("uses the requested workspace even when server config owns workspace loading", () => {
     assert.equal(
-      selectStickyiPolloWalkPortWorkspace(["/workspace/current"], []),
+      selectStickyiPolloWorkPortWorkspace(["/workspace/current"], []),
       "/workspace/current",
     );
   });
 
   it("falls back to server workspace paths when no requested path is available", () => {
     assert.equal(
-      selectStickyiPolloWalkPortWorkspace([], ["/workspace/from-server"]),
+      selectStickyiPolloWorkPortWorkspace([], ["/workspace/from-server"]),
       "/workspace/from-server",
     );
   });
@@ -66,8 +66,8 @@ describe("commandMatchesPackagedSidecar", () => {
   it("matches packaged opencode sidecars with platform suffixes", () => {
     assert.equal(
       commandMatchesPackagedSidecar(
-        "/Applications/iPolloWalk.app/Contents/Resources/sidecars/opencode-aarch64-apple-darwin serve --hostname 127.0.0.1 --port 49174 --cors *",
-        ["/Applications/iPolloWalk.app/Contents/Resources/sidecars"],
+        "/Applications/iPolloWork.app/Contents/Resources/sidecars/opencode-aarch64-apple-darwin serve --hostname 127.0.0.1 --port 49174 --cors *",
+        ["/Applications/iPolloWork.app/Contents/Resources/sidecars"],
       ),
       true,
     );
@@ -77,7 +77,7 @@ describe("commandMatchesPackagedSidecar", () => {
     assert.equal(
       commandMatchesPackagedSidecar(
         "/usr/local/bin/opencode serve --hostname 127.0.0.1 --port 49174",
-        ["/Applications/iPolloWalk.app/Contents/Resources/sidecars"],
+        ["/Applications/iPolloWork.app/Contents/Resources/sidecars"],
       ),
       false,
     );
@@ -86,7 +86,7 @@ describe("commandMatchesPackagedSidecar", () => {
 
 describe("embeddedServerImportUrl", () => {
   it("returns the same file URL for unchanged metadata", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "ipollowalk-runtime-"));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-"));
     try {
       const embeddedPath = path.join(dir, "embedded.js");
       await writeFile(embeddedPath, "export const value = 1;\n");
@@ -106,7 +106,7 @@ describe("embeddedServerImportUrl", () => {
   });
 
   it("changes when the file metadata changes", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "ipollowalk-runtime-"));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-"));
     try {
       const embeddedPath = path.join(dir, "embedded.js");
       await writeFile(embeddedPath, "export const value = 1;\n");
@@ -121,25 +121,25 @@ describe("embeddedServerImportUrl", () => {
   });
 
   it("falls back to the plain file URL if stat fails", () => {
-    const missingPath = path.join(os.tmpdir(), "ipollowalk-missing-embedded.js");
+    const missingPath = path.join(os.tmpdir(), "ipollowork-missing-embedded.js");
 
     assert.equal(embeddedServerImportUrl(missingPath), pathToFileURL(missingPath).href);
   });
 });
 
-describe("resolveiPolloWalkServerConfigPath", () => {
+describe("resolveiPolloWorkServerConfigPath", () => {
   it("respects explicit server config path", () => {
     assert.equal(
-      resolveiPolloWalkServerConfigPath({ IPOLLOWALK_SERVER_CONFIG: "/tmp/ipollowalk/server.json" }),
-      "/tmp/ipollowalk/server.json",
+      resolveiPolloWorkServerConfigPath({ IPOLLOWORK_SERVER_CONFIG: "/tmp/ipollowork/server.json" }),
+      "/tmp/ipollowork/server.json",
     );
   });
 
   it("uses XDG config home on Unix", () => {
     if (process.platform === "win32") return;
     assert.equal(
-      resolveiPolloWalkServerConfigPath({ XDG_CONFIG_HOME: "/tmp/xdg" }),
-      "/tmp/xdg/ipollowalk/server.json",
+      resolveiPolloWorkServerConfigPath({ XDG_CONFIG_HOME: "/tmp/xdg" }),
+      "/tmp/xdg/ipollowork/server.json",
     );
   });
 });

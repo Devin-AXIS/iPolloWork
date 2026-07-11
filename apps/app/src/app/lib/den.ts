@@ -1,7 +1,7 @@
 import {
   normalizeDesktopConfig,
   type DesktopConfig as SharedDesktopConfig,
-} from "@ipollowalk/types/den/desktop-policies";
+} from "@ipollowork/types/den/desktop-policies";
 
 // Re-export the shared schema under the local alias so React consumers
 // (e.g. the cloud domain's desktop-config provider) can import it alongside
@@ -10,7 +10,7 @@ import {
 export type { SharedDesktopConfig };
 export { normalizeDesktopConfig };
 
-import { isDesktopDeployment } from "./ipollowalk-deployment";
+import { isDesktopDeployment } from "./ipollowork-deployment";
 import {
   dispatchDenSettingsChanged,
 } from "./den-session-events";
@@ -24,38 +24,38 @@ import {
 import { isDesktopRuntime } from "./runtime-env";
 import type { DenOrgSkillCard, ReloadReason } from "../types";
 import type {
-  iPolloWalkExtensionContribution,
-  iPolloWalkExtensionContributionType,
-  iPolloWalkExtensionLifecycle,
-  iPolloWalkExtensionManifest,
-  iPolloWalkExtensionResource,
-  iPolloWalkExtensionResourceType,
-  iPolloWalkExtensionSetup,
-  iPolloWalkExtensionSource,
-  iPolloWalkExtensionSourceFormat,
+  iPolloWorkExtensionContribution,
+  iPolloWorkExtensionContributionType,
+  iPolloWorkExtensionLifecycle,
+  iPolloWorkExtensionManifest,
+  iPolloWorkExtensionResource,
+  iPolloWorkExtensionResourceType,
+  iPolloWorkExtensionSetup,
+  iPolloWorkExtensionSource,
+  iPolloWorkExtensionSourceFormat,
 } from "../extensions";
 
-export const STORAGE_BASE_URL = "ipollowalk.den.baseUrl";
-const LEGACY_STORAGE_API_BASE_URL = "ipollowalk.den.apiBaseUrl";
-const STORAGE_AUTH_TOKEN = "ipollowalk.den.authToken";
-const STORAGE_ACTIVE_ORG_ID = "ipollowalk.den.activeOrgId";
-const STORAGE_ACTIVE_ORG_SLUG = "ipollowalk.den.activeOrgSlug";
-const STORAGE_ACTIVE_ORG_NAME = "ipollowalk.den.activeOrgName";
-export const CLOUD_MCP_SYNC_MARKER_STORAGE_KEY = "ipollowalk.den.mcp.sync";
-const ORG_PROXY_HEADER = "x-ipollowalk-legacy-org-id";
+export const STORAGE_BASE_URL = "ipollowork.den.baseUrl";
+const LEGACY_STORAGE_API_BASE_URL = "ipollowork.den.apiBaseUrl";
+const STORAGE_AUTH_TOKEN = "ipollowork.den.authToken";
+const STORAGE_ACTIVE_ORG_ID = "ipollowork.den.activeOrgId";
+const STORAGE_ACTIVE_ORG_SLUG = "ipollowork.den.activeOrgSlug";
+const STORAGE_ACTIVE_ORG_NAME = "ipollowork.den.activeOrgName";
+export const CLOUD_MCP_SYNC_MARKER_STORAGE_KEY = "ipollowork.den.mcp.sync";
+const ORG_PROXY_HEADER = "x-ipollowork-legacy-org-id";
 const DEFAULT_DEN_TIMEOUT_MS = 12_000;
 
-export const DEFAULT_DEN_AUTH_NAME = "iPolloWalk User";
+export const DEFAULT_DEN_AUTH_NAME = "iPolloWork User";
 const BUILD_DEN_BASE_URL =
   (typeof import.meta !== "undefined" && typeof import.meta.env?.VITE_DEN_BASE_URL === "string"
     ? import.meta.env.VITE_DEN_BASE_URL
-    : "").trim() || "https://app.ipollowalklabs.com";
+    : "").trim() || "https://app.ipolloworklabs.com";
 const BUILD_DEN_REQUIRE_SIGNIN =
   (typeof import.meta !== "undefined" && typeof import.meta.env?.VITE_DEN_REQUIRE_SIGNIN === "string"
     ? /^(1|true|yes|on)$/i.test(import.meta.env.VITE_DEN_REQUIRE_SIGNIN.trim())
     : false);
 
-const HOSTED_DEFAULT_DEN_BASE_URL = "https://app.ipollowalklabs.com";
+const HOSTED_DEFAULT_DEN_BASE_URL = "https://app.ipolloworklabs.com";
 export const DEFAULT_DEN_BASE_URL = BUILD_DEN_BASE_URL;
 export const DEN_INFERENCE_PATH = "/dashboard/inference";
 
@@ -146,7 +146,7 @@ export type DenWorkerTokens = {
   clientToken: string | null;
   ownerToken: string | null;
   hostToken: string | null;
-  ipollowalkUrl: string | null;
+  ipolloworkUrl: string | null;
   workspaceId: string | null;
 };
 
@@ -186,7 +186,7 @@ export type DenOrgLlmProviderModel = {
 
 export type DenOrgLlmProvider = {
   id: string;
-  source: "models_dev" | "custom" | "ipollowalk";
+  source: "models_dev" | "custom" | "ipollowork";
   providerId: string;
   name: string;
   providerConfig: Record<string, unknown>;
@@ -529,7 +529,7 @@ export function getDenMcpUrl(): string {
 
 /**
  * Detects MCP URLs written by older builds that pointed `/mcp` at the bare
- * web-app origin (e.g. `https://app.ipollowalklabs.com/mcp`). Nothing serves
+ * web-app origin (e.g. `https://app.ipolloworklabs.com/mcp`). Nothing serves
  * MCP there — those entries fail with a 404 and must be reconfigured.
  */
 export function isLegacyWebAppMcpUrl(input: string | null | undefined): boolean {
@@ -545,7 +545,7 @@ export function isLegacyWebAppMcpUrl(input: string | null | undefined): boolean 
 /**
  * Resolve the URL the cloud MCP entry should connect to from a minted
  * token's `resource`. Older den-api builds mint the bare web-app origin
- * (`https://app.ipollowalklabs.com/mcp`) where nothing serves MCP — heal
+ * (`https://app.ipolloworklabs.com/mcp`) where nothing serves MCP — heal
  * those to the `/api/den` proxy on the same origin instead of trusting
  * them verbatim. Returns null when the resource is unusable so callers
  * can keep their bootstrap-derived URL.
@@ -696,7 +696,7 @@ export function buildDenAuthUrl(baseUrl: string, mode: "sign-in" | "sign-up"): s
   target.searchParams.set("mode", mode);
   if (isDesktopDeployment()) {
     target.searchParams.set("desktopAuth", "1");
-    target.searchParams.set("desktopScheme", "ipollowalk");
+    target.searchParams.set("desktopScheme", "ipollowork");
   }
   return target.toString();
 }
@@ -1026,7 +1026,7 @@ function getWorkerTokens(payload: unknown): DenWorkerTokens | null {
     clientToken: typeof tokens.client === "string" ? tokens.client : null,
     ownerToken: typeof tokens.owner === "string" ? tokens.owner : null,
     hostToken: typeof tokens.host === "string" ? tokens.host : null,
-    ipollowalkUrl: connect && typeof connect.ipollowalkUrl === "string" ? connect.ipollowalkUrl : null,
+    ipolloworkUrl: connect && typeof connect.ipolloworkUrl === "string" ? connect.ipolloworkUrl : null,
     workspaceId: connect && typeof connect.workspaceId === "string" ? connect.workspaceId : null,
   };
 }
@@ -1110,7 +1110,7 @@ function parseDenOrgLlmProvider(value: unknown): DenOrgLlmProvider | null {
     typeof value.name !== "string" ||
     (value.source !== "models_dev" &&
       value.source !== "custom" &&
-      value.source !== "ipollowalk")
+      value.source !== "ipollowork")
   ) {
     return null;
   }
@@ -1263,10 +1263,10 @@ function parsePluginConfigObject(value: unknown): DenPluginConfigObject | null {
   };
 }
 
-function parseExtensionSourceFormat(value: unknown): iPolloWalkExtensionSourceFormat | null {
+function parseExtensionSourceFormat(value: unknown): iPolloWorkExtensionSourceFormat | null {
   switch (value) {
-    case "ipollowalk-builtin":
-    case "ipollowalk-extension-manifest":
+    case "ipollowork-builtin":
+    case "ipollowork-extension-manifest":
     case "claude-plugin":
     case "opencode-plugin":
     case "mcp-directory":
@@ -1277,7 +1277,7 @@ function parseExtensionSourceFormat(value: unknown): iPolloWalkExtensionSourceFo
   }
 }
 
-function parseExtensionSourceOrigin(value: unknown): iPolloWalkExtensionSource["origin"] | undefined {
+function parseExtensionSourceOrigin(value: unknown): iPolloWorkExtensionSource["origin"] | undefined {
   switch (value) {
     case "builtin":
     case "den":
@@ -1289,7 +1289,7 @@ function parseExtensionSourceOrigin(value: unknown): iPolloWalkExtensionSource["
   }
 }
 
-function parseExtensionSource(value: unknown): iPolloWalkExtensionSource | null {
+function parseExtensionSource(value: unknown): iPolloWorkExtensionSource | null {
   if (!isRecord(value) || typeof value.trusted !== "boolean") return null;
   const format = parseExtensionSourceFormat(value.format);
   if (!format) return null;
@@ -1307,7 +1307,7 @@ function parseStringList(value: unknown): string[] | undefined {
   return value;
 }
 
-function parseExtensionResourceType(value: unknown): iPolloWalkExtensionResourceType | null {
+function parseExtensionResourceType(value: unknown): iPolloWorkExtensionResourceType | null {
   switch (value) {
     case "skill":
     case "agent":
@@ -1328,17 +1328,17 @@ function parseExtensionResourceType(value: unknown): iPolloWalkExtensionResource
   }
 }
 
-function parseExtensionLocalCommandRef(value: unknown): iPolloWalkExtensionResource["localCommandRef"] | undefined {
+function parseExtensionLocalCommandRef(value: unknown): iPolloWorkExtensionResource["localCommandRef"] | undefined {
   switch (value) {
-    case "ipollowalk.computerUseMcp":
-    case "ipollowalk.uiMcp":
+    case "ipollowork.computerUseMcp":
+    case "ipollowork.uiMcp":
       return value;
     default:
       return undefined;
   }
 }
 
-function parseExtensionResource(value: unknown): iPolloWalkExtensionResource | null {
+function parseExtensionResource(value: unknown): iPolloWorkExtensionResource | null {
   if (!isRecord(value) || typeof value.id !== "string") return null;
   const type = parseExtensionResourceType(value.type);
   if (!type) return null;
@@ -1360,7 +1360,7 @@ function parseExtensionResource(value: unknown): iPolloWalkExtensionResource | n
   };
 }
 
-function parseExtensionContributionType(value: unknown): iPolloWalkExtensionContributionType | null {
+function parseExtensionContributionType(value: unknown): iPolloWorkExtensionContributionType | null {
   switch (value) {
     case "settings-panel":
     case "setup-instructions":
@@ -1377,7 +1377,7 @@ function parseExtensionContributionType(value: unknown): iPolloWalkExtensionCont
   }
 }
 
-function parseExtensionContributionLocation(value: unknown): iPolloWalkExtensionContribution["location"] | undefined {
+function parseExtensionContributionLocation(value: unknown): iPolloWorkExtensionContribution["location"] | undefined {
   switch (value) {
     case "settings-detail":
     case "composer":
@@ -1391,7 +1391,7 @@ function parseExtensionContributionLocation(value: unknown): iPolloWalkExtension
   }
 }
 
-function parseExtensionContribution(value: unknown): iPolloWalkExtensionContribution | null {
+function parseExtensionContribution(value: unknown): iPolloWorkExtensionContribution | null {
   if (!isRecord(value)) return null;
   const type = parseExtensionContributionType(value.type);
   if (!type) return null;
@@ -1406,7 +1406,7 @@ function parseExtensionContribution(value: unknown): iPolloWalkExtensionContribu
   };
 }
 
-function parseExtensionSetup(value: unknown): iPolloWalkExtensionSetup | undefined {
+function parseExtensionSetup(value: unknown): iPolloWorkExtensionSetup | undefined {
   if (!isRecord(value)) return undefined;
   const requiredEnv = parseStringList(value.requiredEnv);
   return {
@@ -1441,7 +1441,7 @@ function parseReloadReasons(value: unknown): ReloadReason[] | undefined {
   return reasons.length === value.length ? reasons : undefined;
 }
 
-function parseExtensionLifecycle(value: unknown): iPolloWalkExtensionLifecycle | undefined {
+function parseExtensionLifecycle(value: unknown): iPolloWorkExtensionLifecycle | undefined {
   if (!isRecord(value)) return undefined;
   const reload = parseReloadReasons(value.reload);
   const detection = parseStringList(value.detection);
@@ -1451,7 +1451,7 @@ function parseExtensionLifecycle(value: unknown): iPolloWalkExtensionLifecycle |
   };
 }
 
-function parseExtensionPlatform(value: unknown): iPolloWalkExtensionManifest["platform"] | undefined {
+function parseExtensionPlatform(value: unknown): iPolloWorkExtensionManifest["platform"] | undefined {
   if (!Array.isArray(value)) return undefined;
   const platforms = value.flatMap((item) => {
     switch (item) {
@@ -1467,7 +1467,7 @@ function parseExtensionPlatform(value: unknown): iPolloWalkExtensionManifest["pl
   return platforms.length === value.length ? platforms : undefined;
 }
 
-function parseiPolloWalkExtensionManifest(value: unknown): iPolloWalkExtensionManifest | null {
+function parseiPolloWorkExtensionManifest(value: unknown): iPolloWorkExtensionManifest | null {
   if (
     !isRecord(value) ||
     value.schemaVersion !== 1 ||
@@ -1528,7 +1528,7 @@ function parseDenExtensionProjection(value: unknown): DenOrgExtensionProjection 
     name: value.name,
     description: typeof value.description === "string" ? value.description : null,
     sourceFormat,
-    manifest: parseiPolloWalkExtensionManifest(value.manifest),
+    manifest: parseiPolloWorkExtensionManifest(value.manifest),
   };
 }
 

@@ -1,12 +1,12 @@
 /**
- * After cloud sign-in, the Den cloud MCP ("iPolloWalk Cloud Control") is
+ * After cloud sign-in, the Den cloud MCP ("iPolloWork Cloud Control") is
  * auto-configured with a first-party org-scoped token: no browser OAuth,
  * entry is hidden by default until Show hidden reveals it, sync marker
  * persisted.
  *
  * Requires the programmatic runner (evals/runner) and a reachable Den API:
- * - IPOLLOWALK_EVAL_DEN_API_URL    Den API base, e.g. http://127.0.0.1:8790
- * - IPOLLOWALK_EVAL_DEN_TOKEN      Bearer session token for a Den account
+ * - IPOLLOWORK_EVAL_DEN_API_URL    Den API base, e.g. http://127.0.0.1:8790
+ * - IPOLLOWORK_EVAL_DEN_TOKEN      Bearer session token for a Den account
  *
  * The app under test must be bootstrapped against the same Den control
  * plane (desktop-bootstrap.json) and signed out at start, or already signed
@@ -22,43 +22,43 @@ export default {
   id: "cloud-mcp-auto-config",
   title: "Cloud MCP auto-configures with first-party token on sign-in",
   spec: "evals/cloud-auth-flows.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_TOKEN"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_TOKEN"],
   steps: [
     {
       name: "App booted",
       run: async (ctx) => {
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000 });
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000 });
       },
     },
     {
       name: "Sign in via desktop handoff (skipped when already signed in)",
       run: async (ctx) => {
         const signedIn = await ctx.eval(
-          "Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())",
+          "Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())",
         );
         if (signedIn) {
           ctx.log("Already signed in; reusing session.");
           return;
         }
 
-        const apiBase = ctx.env.IPOLLOWALK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
+        const apiBase = ctx.env.IPOLLOWORK_EVAL_DEN_API_URL.trim().replace(/\/+$/, "");
         const response = await fetch(`${apiBase}/v1/auth/desktop-handoff`, {
           method: "POST",
           headers: {
-            authorization: `Bearer ${ctx.env.IPOLLOWALK_EVAL_DEN_TOKEN.trim()}`,
+            authorization: `Bearer ${ctx.env.IPOLLOWORK_EVAL_DEN_TOKEN.trim()}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({ desktopScheme: "ipollowalk" }),
+          body: JSON.stringify({ desktopScheme: "ipollowork" }),
         });
         ctx.assert(response.ok, `Handoff create failed: ${response.status}`);
         const payload = await response.json();
 
         await ctx.navigateHash("/settings/cloud-account");
         await ctx.clickText("Paste sign-in code", { timeoutMs: 30_000 });
-        await ctx.fill("#den-signin-link", payload.ipollowalkUrl);
+        await ctx.fill("#den-signin-link", payload.ipolloworkUrl);
         await ctx.clickText("Finish sign-in");
         await ctx.waitFor(
-          "Boolean((localStorage.getItem('ipollowalk.den.authToken') ?? '').trim())",
+          "Boolean((localStorage.getItem('ipollowork.den.authToken') ?? '').trim())",
           { timeoutMs: 30_000, label: "persisted den auth token" },
         );
         // Post-sign-in org onboarding may appear; drive through it best-effort.
@@ -70,7 +70,7 @@ export default {
       name: "Active organization resolves",
       run: async (ctx) => {
         await ctx.waitFor(
-          "Boolean((localStorage.getItem('ipollowalk.den.activeOrgId') ?? '').trim())",
+          "Boolean((localStorage.getItem('ipollowork.den.activeOrgId') ?? '').trim())",
           { timeoutMs: 60_000, label: "active org" },
         );
       },
@@ -79,25 +79,25 @@ export default {
       name: "Cloud MCP auto-config marker is written",
       run: async (ctx) => {
         await ctx.waitFor(
-          "Boolean(localStorage.getItem('ipollowalk.den.mcp.sync'))",
-          { timeoutMs: 120_000, label: "ipollowalk.den.mcp.sync marker" },
+          "Boolean(localStorage.getItem('ipollowork.den.mcp.sync'))",
+          { timeoutMs: 120_000, label: "ipollowork.den.mcp.sync marker" },
         );
-        ctx.log(`marker: ${await ctx.eval("localStorage.getItem('ipollowalk.den.mcp.sync')")}`);
+        ctx.log(`marker: ${await ctx.eval("localStorage.getItem('ipollowork.den.mcp.sync')")}`);
       },
     },
     {
-      name: "iPolloWalk Cloud Control is hidden by default and revealed as a configured app",
+      name: "iPolloWork Cloud Control is hidden by default and revealed as a configured app",
       run: async (ctx) => {
         await ctx.navigateHash("/settings/extensions/mcp");
         await ctx.expectHashIncludes("/settings/extensions/mcp");
         await ctx.waitForText("Add Custom App", { timeoutMs: 30_000 });
-        await ctx.expectNoText("iPolloWalk Cloud Control");
+        await ctx.expectNoText("iPolloWork Cloud Control");
         await revealHidden(ctx);
-        await ctx.expectText("iPolloWalk Cloud Control", { timeoutMs: 30_000 });
+        await ctx.expectText("iPolloWork Cloud Control", { timeoutMs: 30_000 });
         await ctx.screenshot("cloud-mcp-configured", {
-          claim: "iPolloWalk Cloud Control is auto-configured while hidden by default, then appears after Show hidden.",
-          voiceover: "After signing in to iPolloWalk Cloud the connection is already configured and enabled, and it only shows up once the user reveals hidden extensions.",
-          requireText: ["iPolloWalk Cloud Control", "Showing hidden"],
+          claim: "iPolloWork Cloud Control is auto-configured while hidden by default, then appears after Show hidden.",
+          voiceover: "After signing in to iPolloWork Cloud the connection is already configured and enabled, and it only shows up once the user reveals hidden extensions.",
+          requireText: ["iPolloWork Cloud Control", "Showing hidden"],
           rejectText: ["Something went wrong"],
           hashIncludes: "/settings/extensions/mcp",
         });

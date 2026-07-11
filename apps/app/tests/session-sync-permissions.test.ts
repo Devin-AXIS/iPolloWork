@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { UIMessage } from "ai";
 import type { PermissionRequest, PermissionV2Request, QuestionRequest } from "@opencode-ai/sdk/v2/client";
 
-import type { iPolloWalkSessionSnapshot } from "../src/app/lib/ipollowalk-server";
+import type { iPolloWorkSessionSnapshot } from "../src/app/lib/ipollowork-server";
 import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
   __applySessionSyncEventForTest,
@@ -67,7 +67,7 @@ function uiMessage(id: string, role: "user" | "assistant", text: string): UIMess
 function snapshotWithMessages(
   messages: Array<{ id: string; role: "user" | "assistant"; text: string }>,
   sessionId = "session-a",
-): iPolloWalkSessionSnapshot {
+): iPolloWorkSessionSnapshot {
   return {
     session: {
       id: sessionId,
@@ -96,7 +96,7 @@ function snapshotWithMessages(
     })),
     todos: [],
     status: { type: "idle" },
-  } as unknown as iPolloWalkSessionSnapshot;
+  } as unknown as iPolloWorkSessionSnapshot;
 }
 
 afterEach(() => {
@@ -175,7 +175,7 @@ describe("session permission sync", () => {
   });
 
   test("adds and removes live v2 permission events", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipollowalkToken: "token" };
+    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
 
@@ -215,7 +215,7 @@ describe("session question sync", () => {
   });
 
   test("adds and removes live question events", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipollowalkToken: "token" };
+    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
 
@@ -288,7 +288,7 @@ describe("session transcript sync", () => {
   });
 
   test("continues accepting stream deltas for a recently unselected session", async () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipollowalkToken: "token" };
+    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
 
     try {
@@ -334,7 +334,7 @@ describe("session transcript sync", () => {
   });
 
   test("keeps workspace stream alive while retained sessions remain after route unmount", async () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipollowalkToken: "token" };
+    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
     const releaseWorkspace = ensureWorkspaceSessionSync(syncInput);
     const releaseSessionA = trackWorkspaceSessionSync(syncInput, "session-a");
 

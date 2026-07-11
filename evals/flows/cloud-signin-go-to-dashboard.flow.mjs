@@ -8,9 +8,9 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("cloud-signin-go-to-dashboard");
 
-const DEN_WEB_URL = (process.env.IPOLLOWALK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const DEN_WEB_URL = (process.env.IPOLLOWORK_EVAL_DEN_WEB_URL ?? "").trim().replace(/\/+$/, "");
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -66,7 +66,7 @@ async function resetSession(ctx) {
   // with the stored bearer token, then drop the token).
   await ctx.eval(
     `(async () => {
-      const token = localStorage.getItem("ipollowalk:web:auth-token");
+      const token = localStorage.getItem("ipollowork:web:auth-token");
       try {
         await fetch("/api/auth/sign-out", {
           method: "POST",
@@ -77,7 +77,7 @@ async function resetSession(ctx) {
           body: "{}",
         });
       } catch {}
-      localStorage.removeItem("ipollowalk:web:auth-token");
+      localStorage.removeItem("ipollowork:web:auth-token");
       return true;
     })()`,
     { awaitPromise: true },
@@ -89,7 +89,7 @@ export default {
   title: "Cloud sign-in: \"Go to dashboard\" navigates while a desktop handoff is pending",
   kind: "user-facing",
   spec: "evals/voiceovers/cloud-signin-go-to-dashboard.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "Frame 1",
@@ -103,13 +103,13 @@ export default {
           assert: async () => {
             await ctx.waitFor(`(() => {
               const text = document.body.innerText;
-              return text.includes("You're signed in.") && text.includes("Go to dashboard") && text.includes("Open iPolloWalk") && location.pathname === "/";
+              return text.includes("You're signed in.") && text.includes("Go to dashboard") && text.includes("Open iPolloWork") && location.pathname === "/";
             })()`, { timeoutMs: 30_000, label: "signed-in desktop handoff card" });
           },
           screenshot: {
             name: "signed-in-handoff-card",
             claim: "The signed-in handoff card appears with the dashboard escape hatch.",
-            requireText: ["You're signed in.", "Go to dashboard", "Open iPolloWalk"],
+            requireText: ["You're signed in.", "Go to dashboard", "Open iPolloWork"],
             rejectText: ["Something went wrong"],
           },
         });

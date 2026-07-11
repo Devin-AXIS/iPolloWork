@@ -4,19 +4,19 @@ import { execSync } from "node:child_process";
 const FLOW_ID = "org-mcp-agent-config-demo";
 const vo = await loadVoiceoverParagraphs("org-mcp-agent-config-demo");
 
-const DEN_API_URL = (process.env.IPOLLOWALK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
-const DEN_WEB_URL = (process.env.IPOLLOWALK_EVAL_DEN_WEB_URL ?? DEN_API_URL.replace("127.0.0.1", "localhost")).trim().replace(/\/+$/, "");
-const ADMIN_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const ADMIN_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MEMBER_EMAIL = process.env.IPOLLOWALK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
-const MEMBER_PASSWORD = process.env.IPOLLOWALK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWalkDemo123!";
-const MARK_VERIFIED_CMD = process.env.IPOLLOWALK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
+const DEN_API_URL = (process.env.IPOLLOWORK_EVAL_DEN_API_URL ?? "").trim().replace(/\/+$/, "");
+const DEN_WEB_URL = (process.env.IPOLLOWORK_EVAL_DEN_WEB_URL ?? DEN_API_URL.replace("127.0.0.1", "localhost")).trim().replace(/\/+$/, "");
+const ADMIN_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const ADMIN_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MEMBER_EMAIL = process.env.IPOLLOWORK_EVAL_MEMBER_EMAIL?.trim() || "jordan.demo@acme.test";
+const MEMBER_PASSWORD = process.env.IPOLLOWORK_EVAL_MEMBER_PASSWORD?.trim() || "iPolloWorkDemo123!";
+const MARK_VERIFIED_CMD = process.env.IPOLLOWORK_EVAL_MARK_VERIFIED_CMD?.trim() || "";
 const MOCK_SERVER_URL = (process.env.MOCK_OAUTH_MCP_URL ?? "http://127.0.0.1:3978").trim().replace(/\/+$/, "");
 const RUN_TAG = Date.now();
 const CONNECTION_NAME = `Agent Config Knowledge Base ${RUN_TAG}`;
 
 const state = {
-  adminSession: process.env.IPOLLOWALK_EVAL_DEN_TOKEN?.trim() || null,
+  adminSession: process.env.IPOLLOWORK_EVAL_DEN_TOKEN?.trim() || null,
   memberSession: null,
   adminMcpToken: null,
   memberMcpToken: null,
@@ -173,7 +173,7 @@ async function ensureMember(ctx) {
     body: JSON.stringify({ id: invite.body.inviteToken }),
   });
   if (!accept.response.ok && accept.body?.error === "email_verification_required" && !MARK_VERIFIED_CMD) {
-    witness(ctx, false, "Member invitation accept needs IPOLLOWALK_EVAL_MARK_VERIFIED_CMD in this environment", accept.body);
+    witness(ctx, false, "Member invitation accept needs IPOLLOWORK_EVAL_MARK_VERIFIED_CMD in this environment", accept.body);
   }
   witness(ctx, accept.response.ok && accept.body.accepted === true, "Member accepts the invitation into the admin org", accept.body);
   state.memberSession = await signIn(MEMBER_EMAIL, MEMBER_PASSWORD);
@@ -202,7 +202,7 @@ export default {
   kind: "internal",
   requiresApp: false,
   spec: "evals/voiceovers/org-mcp-agent-config-demo.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL"],
   steps: [
     {
       name: "Frame 1",

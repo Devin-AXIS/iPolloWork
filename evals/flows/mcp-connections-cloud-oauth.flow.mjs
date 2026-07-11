@@ -20,15 +20,15 @@
  *      execute_capability) to use it, with zero desktop-side setup.
  *
  * Unlike the Electron-based flows in this directory, this one drives a
- * plain den-web page (Next.js, real path routing, no window.__ipollowalkControl),
+ * plain den-web page (Next.js, real path routing, no window.__ipolloworkControl),
  * so it skips ensureLightMode() (preserveTheme: true) and uses ctx.eval to
  * navigate instead of navigateHash.
  *
  * Prerequisites:
- * - den-api reachable at IPOLLOWALK_EVAL_DEN_API_URL, signed in with
- *   IPOLLOWALK_EVAL_DEMO_EMAIL / IPOLLOWALK_EVAL_DEMO_PASSWORD (defaults to the
+ * - den-api reachable at IPOLLOWORK_EVAL_DEN_API_URL, signed in with
+ *   IPOLLOWORK_EVAL_DEMO_EMAIL / IPOLLOWORK_EVAL_DEMO_PASSWORD (defaults to the
  *   seeded demo owner).
- * - den-web reachable at IPOLLOWALK_EVAL_DEN_WEB_URL, pointed at that den-api.
+ * - den-web reachable at IPOLLOWORK_EVAL_DEN_WEB_URL, pointed at that den-api.
  * - The mock OAuth+MCP server running and reachable at
  *   MOCK_OAUTH_MCP_URL (default http://127.0.0.1:3978) from wherever den-api
  *   runs — for a cloud/Daytona run this must be a URL den-api's own network
@@ -42,8 +42,8 @@
 
 import { denApiFetch, denWebUrl, mcpAgentCall, mintMcpToken, openAdminConnections, signInApi, signInViaBrowser } from "./lib/den-web.mjs";
 
-const DEMO_EMAIL = process.env.IPOLLOWALK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
-const DEMO_PASSWORD = process.env.IPOLLOWALK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWalkDemo123!";
+const DEMO_EMAIL = process.env.IPOLLOWORK_EVAL_DEMO_EMAIL?.trim() || "alex@acme.test";
+const DEMO_PASSWORD = process.env.IPOLLOWORK_EVAL_DEMO_PASSWORD?.trim() || "iPolloWorkDemo123!";
 const MOCK_SERVER_URL = (process.env.MOCK_OAUTH_MCP_URL ?? "http://127.0.0.1:3978").trim().replace(/\/+$/, "");
 const CONNECTION_NAME = `fraimz-mcp-${Date.now()}`;
 const ECHO_TEXT = "search and execute in the cloud proof";
@@ -53,7 +53,7 @@ export default {
   title: "Admin adds an MCP connection in Den; search_capabilities/execute_capability use it for real",
   spec: "evals/cloud-mcp-agent-flows.md",
   preserveTheme: true,
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_API_URL", "IPOLLOWALK_EVAL_DEN_WEB_URL"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_API_URL", "IPOLLOWORK_EVAL_DEN_WEB_URL"],
   steps: [
     {
       name: "den-web and the mock OAuth+MCP server are reachable",

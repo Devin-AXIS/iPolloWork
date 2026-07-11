@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
-import { sanitizeiPolloWalkTemplateConfig } from "./blueprint-sessions.js";
+import { sanitizeiPolloWorkTemplateConfig } from "./blueprint-sessions.js";
 import { buildCommandContent } from "./commands.js";
 import { ApiError } from "./errors.js";
 import { parseFrontmatter } from "./frontmatter.js";
@@ -14,13 +14,13 @@ import { exists } from "./utils.js";
 import { sanitizeCommandName, validateCommandName, validateSkillName } from "./validators.js";
 import {
   opencodeConfigPath,
-  ipollowalkConfigPath,
+  ipolloworkConfigPath,
   projectCommandsDir,
   projectSkillsDir,
 } from "./workspace-files.js";
 
 export type WorkspaceImportMode = "merge" | "replace";
-export type WorkspaceImportChangeKind = "opencode" | "ipollowalk" | "skill" | "command" | "file";
+export type WorkspaceImportChangeKind = "opencode" | "ipollowork" | "skill" | "command" | "file";
 export type WorkspaceImportChangeAction = "create" | "update" | "replace" | "delete" | "unchanged";
 
 export type WorkspaceImportChange = {
@@ -53,13 +53,13 @@ export type WorkspaceImportPlan = Omit<WorkspaceImportPreview, "changes"> & {
   changes: WorkspaceImportPlannedChange[];
 };
 
-type WorkspaceImportSection = "opencode" | "ipollowalk" | "skills" | "commands" | "files";
+type WorkspaceImportSection = "opencode" | "ipollowork" | "skills" | "commands" | "files";
 
 export type NormalizedWorkspaceImport = {
   modes: Record<string, WorkspaceImportMode>;
   sections: Record<WorkspaceImportSection, boolean>;
   opencode?: Record<string, unknown>;
-  ipollowalk?: Record<string, unknown>;
+  ipollowork?: Record<string, unknown>;
   skills: Array<{ name: string; content: string; description?: string }>;
   commands: Array<{
     name: string;
@@ -86,7 +86,7 @@ function normalizeModes(value: unknown): Record<string, WorkspaceImportMode> {
   const record = readRecord(value) ?? {};
   return {
     opencode: readMode(record.opencode),
-    ipollowalk: readMode(record.ipollowalk),
+    ipollowork: readMode(record.ipollowork),
     skills: readMode(record.skills),
     commands: readMode(record.commands),
     files: readMode(record.files),
@@ -175,7 +175,7 @@ export function normalizeWorkspaceImportPayload(
     modes: normalizeModes(payload.mode),
     sections: {
       opencode: payload.opencode !== undefined,
-      ipollowalk: payload.ipollowalk !== undefined,
+      ipollowork: payload.ipollowork !== undefined,
       skills: payload.skills !== undefined,
       commands: payload.commands !== undefined,
       files: payload.files !== undefined,
@@ -183,8 +183,8 @@ export function normalizeWorkspaceImportPayload(
     ...(payload.opencode !== undefined
       ? { opencode: sanitizePortableOpencodeConfig(readRecord(payload.opencode)) }
       : {}),
-    ...(payload.ipollowalk !== undefined
-      ? { ipollowalk: sanitizeiPolloWalkTemplateConfig(readRecord(payload.ipollowalk)) }
+    ...(payload.ipollowork !== undefined
+      ? { ipollowork: sanitizeiPolloWorkTemplateConfig(readRecord(payload.ipollowork)) }
       : {}),
     skills: normalizeSkills(payload.skills),
     commands: normalizeCommands(payload.commands),
@@ -274,13 +274,13 @@ function fingerprintWorkspaceImportChanges(changes: WorkspaceImportPlannedChange
   );
 }
 
-async function readiPolloWalkConfig(path: string): Promise<Record<string, unknown>> {
+async function readiPolloWorkConfig(path: string): Promise<Record<string, unknown>> {
   const raw = await readTextIfPresent(path);
   if (raw === null) return {};
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    throw new ApiError(422, "invalid_json", "Failed to parse ipollowalk.json");
+    throw new ApiError(422, "invalid_json", "Failed to parse ipollowork.json");
   }
 }
 
@@ -330,15 +330,15 @@ export async function buildWorkspaceImportPreview(
     });
   }
 
-  if (input.ipollowalk !== undefined) {
-    const path = ipollowalkConfigPath(workspaceRoot);
+  if (input.ipollowork !== undefined) {
+    const path = ipolloworkConfigPath(workspaceRoot);
     const existsBefore = await exists(path);
-    const before = await readiPolloWalkConfig(path);
-    const after = input.modes.ipollowalk === "replace" ? input.ipollowalk : { ...before, ...input.ipollowalk };
+    const before = await readiPolloWorkConfig(path);
+    const after = input.modes.ipollowork === "replace" ? input.ipollowork : { ...before, ...input.ipollowork };
     changes.push({
-      kind: "ipollowalk",
-      action: actionForTarget(existsBefore, !sameJson(before, after), input.modes.ipollowalk),
-      label: "iPolloWalk config",
+      kind: "ipollowork",
+      action: actionForTarget(existsBefore, !sameJson(before, after), input.modes.ipollowork),
+      label: "iPolloWork config",
       path: rel(workspaceRoot, path),
       absolutePath: path,
       beforeDigest: existsBefore ? jsonDigest(before) : textDigest(null),

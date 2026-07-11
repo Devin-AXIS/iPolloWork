@@ -2,19 +2,19 @@ import type { ModelRef, SuggestedPlugin } from "./types";
 import { t } from "../i18n";
 import { getDenMcpUrl } from "./lib/den";
 import {
-  BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS,
+  BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS,
   extensionContribution,
   extensionResource,
   isTrustedBuiltInExtension,
-  type iPolloWalkExtensionManifest,
+  type iPolloWorkExtensionManifest,
 } from "./extensions";
 
-export const MODEL_PREF_KEY = "ipollowalk.defaultModel";
-export const SESSION_MODEL_PREF_KEY = "ipollowalk.sessionModels";
-export const THINKING_PREF_KEY = "ipollowalk.showThinking";
-export const VARIANT_PREF_KEY = "ipollowalk.modelVariant";
+export const MODEL_PREF_KEY = "ipollowork.defaultModel";
+export const SESSION_MODEL_PREF_KEY = "ipollowork.sessionModels";
+export const THINKING_PREF_KEY = "ipollowork.showThinking";
+export const VARIANT_PREF_KEY = "ipollowork.modelVariant";
 export { LANGUAGE_PREF_KEY } from "../i18n";
-export const HIDE_TITLEBAR_PREF_KEY = "ipollowalk.hideTitlebar";
+export const HIDE_TITLEBAR_PREF_KEY = "ipollowork.hideTitlebar";
 
 export const DEFAULT_MODEL: ModelRef = {
   providerID: "opencode",
@@ -49,17 +49,17 @@ export type McpDirectoryInfo = {
   iconSrc?: string;
   /** Prompt inserted from the composer extension picker. */
   composerPrompt?: string;
-  /** Whether iPolloWalk should show this extension as enabled before user setup. */
+  /** Whether iPolloWork should show this extension as enabled before user setup. */
   defaultEnabled?: boolean;
-  /** Whether iPolloWalk should hide this extension from the default catalog view. */
+  /** Whether iPolloWork should hide this extension from the default catalog view. */
   defaultHidden?: boolean;
   /** Whether this extension is still in preview. */
   preview?: boolean;
   /** Normalized extension manifest backing this catalog entry. */
-  extensionManifest?: iPolloWalkExtensionManifest;
+  extensionManifest?: iPolloWorkExtensionManifest;
 };
 
-function extensionManifestToDirectoryInfo(manifest: iPolloWalkExtensionManifest): McpDirectoryInfo {
+function extensionManifestToDirectoryInfo(manifest: iPolloWorkExtensionManifest): McpDirectoryInfo {
   const mcpResource = extensionResource(manifest, "mcp");
   return {
     id: manifest.id,
@@ -80,7 +80,7 @@ function extensionManifestToDirectoryInfo(manifest: iPolloWalkExtensionManifest)
   };
 }
 
-export function isBuiltIniPolloWalkExtension(entry: Pick<McpDirectoryInfo, "kind" | "extensionManifest">): boolean {
+export function isBuiltIniPolloWorkExtension(entry: Pick<McpDirectoryInfo, "kind" | "extensionManifest">): boolean {
   return entry.kind === "extension" && isTrustedBuiltInExtension(entry.extensionManifest);
 }
 
@@ -151,9 +151,9 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     iconSrc: "/ext-context7.svg",
   },
   {
-    get name() { return t("mcp.quick_connect_ipollowalk_cloud_title"); },
-    serverName: "ipollowalk-cloud",
-    get description() { return t("mcp.quick_connect_ipollowalk_cloud_desc"); },
+    get name() { return t("mcp.quick_connect_ipollowork_cloud_title"); },
+    serverName: "ipollowork-cloud",
+    get description() { return t("mcp.quick_connect_ipollowork_cloud_desc"); },
     get url() {
       // The desktop app connects to the minimal, harness-facing surface
       // (/mcp/agent: search_capabilities + execute_capability only), not the
@@ -163,33 +163,33 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
       try {
         return `${getDenMcpUrl()}/agent`;
       } catch {
-        return "https://app.ipollowalklabs.com/api/den/mcp/agent";
+        return "https://app.ipolloworklabs.com/api/den/mcp/agent";
       }
     },
     type: "remote",
     oauth: true,
     kind: "mcp",
-    iconSrc: "/ipollowalk-mark.svg",
+    iconSrc: "/ipollowork-mark.svg",
     // Auto-managed by the signed-in cloud reconciler (syncCloudControlMcp):
-    // configured + enabled while signed in to iPolloWalk Cloud. Hidden from the
+    // configured + enabled while signed in to iPolloWork Cloud. Hidden from the
     // default catalog; "Show hidden" reveals it.
     defaultHidden: true,
   },
   {
-    get name() { return t("mcp.quick_connect_ipollowalk_ui_title"); },
-    serverName: "ipollowalk-ui",
-    get description() { return t("mcp.quick_connect_ipollowalk_ui_desc"); },
+    get name() { return t("mcp.quick_connect_ipollowork_ui_title"); },
+    serverName: "ipollowork-ui",
+    get description() { return t("mcp.quick_connect_ipollowork_ui_desc"); },
     type: "local",
     // Dev builds replace this with the local checkout path before writing config.
-    command: ["npx", "-y", "ipollowalk-ui-mcp"],
+    command: ["npx", "-y", "ipollowork-ui-mcp"],
     oauth: false,
     kind: "ui-control",
-    iconSrc: "/ipollowalk-mark.svg",
+    iconSrc: "/ipollowork-mark.svg",
     // Internal UI-control surface for agents driving the desktop app. Hidden
     // from the default catalog; "Show hidden" reveals it.
     defaultHidden: true,
   },
-  ...BUILT_IN_IPOLLOWALK_EXTENSION_MANIFESTS.map(extensionManifestToDirectoryInfo),
+  ...BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS.map(extensionManifestToDirectoryInfo),
 ];
 
-export const IPOLLOWALK_EXTENSION_CATALOG = MCP_QUICK_CONNECT.filter((entry) => entry.kind === "extension");
+export const IPOLLOWORK_EXTENSION_CATALOG = MCP_QUICK_CONNECT.filter((entry) => entry.kind === "extension");

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const ELECTRON_UPDATER_CHANNEL_FILENAME = "electron-updater-channel.v1.json";
 
 // In dev mode, app.getVersion() returns the Electron framework version
-// (e.g. "35.7.5") instead of the iPolloWalk app version. Read from
+// (e.g. "35.7.5") instead of the iPolloWork app version. Read from
 // package.json so the UI always shows the correct version.
 const __updater_dirname = path.dirname(fileURLToPath(import.meta.url));
 let _cachedAppVersion = null;
@@ -30,8 +30,8 @@ function resolveAppVersion(app) {
   return _cachedAppVersion;
 }
 const ELECTRON_UPDATER_FEEDS = Object.freeze({
-  stable: "https://github.com/Devin-AXIS/iPolloWalk/releases/latest/download",
-  alpha: "https://github.com/Devin-AXIS/iPolloWalk/releases/download/alpha-macos-latest",
+  stable: "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download",
+  alpha: "https://github.com/Devin-AXIS/iPolloWork/releases/download/alpha-macos-latest",
 });
 
 function normalizeElectronUpdaterChannel(value) {
@@ -176,7 +176,7 @@ function runDefaults(args) {
 
 // Squirrel.Mac's `ShipIt` helper (which swaps the .app on macOS) reads its
 // options from this NSUserDefaults domain.
-const SHIP_IT_DEFAULTS_DOMAIN = "com.differentai.ipollowalk.ShipIt";
+const SHIP_IT_DEFAULTS_DOMAIN = "com.differentai.ipollowork.ShipIt";
 
 // Squirrel.Mac defaults to moving the *entire* app bundle through a temp
 // directory. On repeat installs that move can leave the staged bundle missing,
@@ -256,7 +256,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
         // Forward download progress to the renderer so the UI can show
         // incremental bytes instead of staying stuck at 0.
         autoUpdaterInstance.on("download-progress", (info) => {
-          sendToRenderer("ipollowalk:updater:download-progress", {
+          sendToRenderer("ipollowork:updater:download-progress", {
             bytesPerSecond: info.bytesPerSecond ?? 0,
             percent: info.percent ?? 0,
             transferred: info.transferred ?? 0,
@@ -273,12 +273,12 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
     return autoUpdaterInstance;
   }
 
-  ipcMain.handle("ipollowalk:updater:getChannel", async () => {
+  ipcMain.handle("ipollowork:updater:getChannel", async () => {
     const channel = await readElectronUpdaterChannel(app);
     return updaterChannelState(app, channel);
   });
 
-  ipcMain.handle("ipollowalk:updater:setChannel", async (_event, rawChannel) => {
+  ipcMain.handle("ipollowork:updater:setChannel", async (_event, rawChannel) => {
     const channel = await writeElectronUpdaterChannel(app, rawChannel);
     checkedUpdateVersion = null;
     const updater = await ensureAutoUpdater();
@@ -288,7 +288,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
     return updaterChannelState(app, channel);
   });
 
-  ipcMain.handle("ipollowalk:updater:check", async (_event, rawChannel) => {
+  ipcMain.handle("ipollowork:updater:check", async (_event, rawChannel) => {
     if (rawChannel !== undefined) {
       await writeElectronUpdaterChannel(app, rawChannel);
     }
@@ -317,7 +317,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
     }
   });
 
-  ipcMain.handle("ipollowalk:updater:download", async () => {
+  ipcMain.handle("ipollowork:updater:download", async () => {
     const updater = await ensureAutoUpdater();
     if (!updater) return { ok: false, reason: "unavailable" };
     try {
@@ -343,7 +343,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
     }
   });
 
-  ipcMain.handle("ipollowalk:updater:installAndRestart", async () => {
+  ipcMain.handle("ipollowork:updater:installAndRestart", async () => {
     const updater = await ensureAutoUpdater();
     if (!updater) return { ok: false, reason: "unavailable" };
     try {

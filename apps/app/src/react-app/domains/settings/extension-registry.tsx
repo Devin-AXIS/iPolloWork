@@ -2,15 +2,15 @@
 import type { ReactNode } from "react";
 import type { McpDirectoryInfo } from "../../../app/constants";
 import { extensionContribution } from "../../../app/extensions";
-import type { iPolloWalkServerClient } from "../../../app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient } from "../../../app/lib/ipollowork-server";
 
 /**
  * Context bag that the settings route passes to extension config factories.
  * Each extension picks what it needs; unused fields are ignored.
  */
 export type ExtensionConfigContext = {
-  ipollowalkServerClient?: iPolloWalkServerClient | null;
-  hostiPolloWalkServerClient?: iPolloWalkServerClient | null;
+  ipolloworkServerClient?: iPolloWorkServerClient | null;
+  hostiPolloWorkServerClient?: iPolloWorkServerClient | null;
   extensionConnections?: Record<string, boolean>;
   onExtensionConnectionChange?: (extensionId: string, connected: boolean) => void;
   restartLocalServer?: () => Promise<boolean>;
@@ -56,10 +56,10 @@ export type ExtensionConfigFactory = (ctx: ExtensionConfigContext) => ReactNode;
 
 export type ExtensionRuntimeContext = Pick<
   ExtensionConfigContext,
-  "ipollowalkServerClient" | "extensionConnections" | "onExtensionConnectionChange"
+  "ipolloworkServerClient" | "extensionConnections" | "onExtensionConnectionChange"
 >;
 
-export type iPolloWalkExtensionRuntime = {
+export type iPolloWorkExtensionRuntime = {
   id: string;
   settingsPanel?: ExtensionConfigFactory;
   settingsPanelRefs?: string[];
@@ -67,13 +67,13 @@ export type iPolloWalkExtensionRuntime = {
 };
 
 const registry = new Map<string, ExtensionConfigFactory>();
-const runtimeRegistry = new Map<string, iPolloWalkExtensionRuntime>();
+const runtimeRegistry = new Map<string, iPolloWorkExtensionRuntime>();
 
 export function registerExtensionConfig(id: string, factory: ExtensionConfigFactory) {
   registry.set(id, factory);
 }
 
-export function registerExtensionRuntime(runtime: iPolloWalkExtensionRuntime) {
+export function registerExtensionRuntime(runtime: iPolloWorkExtensionRuntime) {
   runtimeRegistry.set(runtime.id, runtime);
   if (runtime.settingsPanel) {
     registerExtensionConfig(runtime.id, runtime.settingsPanel);

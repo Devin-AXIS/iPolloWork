@@ -7,19 +7,19 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 const FLOW_ID = "bootstrap-config-debug";
 const vo = await loadVoiceoverParagraphs(FLOW_ID);
 
-const INITIAL_BASE_URL = "https://app.ipollowalklabs.com";
+const INITIAL_BASE_URL = "https://app.ipolloworklabs.com";
 const SAVED_BASE_URL = "https://bootstrap-debug.example.test";
 const SAVED_ORG_SERVER_TEXT = `Current organization server: ${SAVED_BASE_URL}`;
-const DEFAULT_ORG_SERVER_TEXT = "Using standard iPolloWalk Cloud.";
+const DEFAULT_ORG_SERVER_TEXT = "Using standard iPolloWork Cloud.";
 
 function bootstrapPath(ctx) {
-  const rawPath = ctx.env.IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH?.trim();
-  ctx.assert(Boolean(rawPath), "IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH must be set so this flow never touches the real user config.");
+  const rawPath = ctx.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH?.trim();
+  ctx.assert(Boolean(rawPath), "IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH must be set so this flow never touches the real user config.");
 
   const resolvedPath = resolve(rawPath);
   const home = os.homedir();
   const unsafePrefixes = [
-    resolve(home, ".config", "ipollowalk"),
+    resolve(home, ".config", "ipollowork"),
     resolve(home, "Library"),
   ];
   const unsafe = unsafePrefixes.some((prefix) => resolvedPath === prefix || resolvedPath.startsWith(`${prefix}/`));
@@ -59,18 +59,18 @@ async function bootstrapFileExists(ctx) {
 
 async function reloadCleanSettingsShell(ctx) {
   await ctx.eval(`(() => {
-    localStorage.removeItem("ipollowalk.developerMode");
-    localStorage.removeItem("ipollowalk.den.baseUrl");
-    localStorage.removeItem("ipollowalk.den.apiBaseUrl");
-    localStorage.removeItem("ipollowalk.den.authToken");
-    localStorage.removeItem("ipollowalk.den.activeOrgId");
-    localStorage.removeItem("ipollowalk.den.activeOrgSlug");
-    localStorage.removeItem("ipollowalk.den.activeOrgName");
+    localStorage.removeItem("ipollowork.developerMode");
+    localStorage.removeItem("ipollowork.den.baseUrl");
+    localStorage.removeItem("ipollowork.den.apiBaseUrl");
+    localStorage.removeItem("ipollowork.den.authToken");
+    localStorage.removeItem("ipollowork.den.activeOrgId");
+    localStorage.removeItem("ipollowork.den.activeOrgSlug");
+    localStorage.removeItem("ipollowork.den.activeOrgName");
     window.location.hash = "#/settings/advanced";
     location.reload();
     return true;
   })()`);
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
     timeoutMs: 30_000,
     label: "control API after reset reload",
   });
@@ -88,7 +88,7 @@ async function enableDeveloperMode(ctx) {
     }
     return true;
   })()`);
-  await ctx.waitFor(`localStorage.getItem("ipollowalk.developerMode") === "1"`, {
+  await ctx.waitFor(`localStorage.getItem("ipollowork.developerMode") === "1"`, {
     timeoutMs: 10_000,
     label: "developer mode enabled",
   });
@@ -117,9 +117,9 @@ export default {
       run: async (ctx) => {
         const targetPath = await seedBootstrapFile(ctx);
         ctx.log(`Using isolated bootstrap config: ${targetPath}`);
-        await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 30_000,
-          label: "window.__ipollowalkControl",
+          label: "window.__ipolloworkControl",
         });
         await reloadCleanSettingsShell(ctx);
       },
@@ -201,7 +201,7 @@ export default {
           action: async () => {
             await ctx.navigateHash("/settings/debug");
             await ctx.eval("location.reload()");
-            await ctx.waitFor("Boolean(window.__ipollowalkControl)", {
+            await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
               timeoutMs: 30_000,
               label: "control API after debug reload",
             });
@@ -248,9 +248,9 @@ export default {
             })()`);
             ctx.assert(inputValue === "", `Expected the default URL to render as an empty custom URL field, got ${inputValue}`);
             ctx.assert(!(await bootstrapFileExists(ctx)), "Expected the isolated canonical bootstrap file to be removed.");
-            // With IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH set, the desktop code disables the legacy path
+            // With IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH set, the desktop code disables the legacy path
             // instead of resolving the real user's ~/.config path. Unit coverage asserts legacy removal.
-            ctx.log("Bootstrap file witness: isolated canonical file removed; legacy path is disabled under IPOLLOWALK_DESKTOP_BOOTSTRAP_PATH.");
+            ctx.log("Bootstrap file witness: isolated canonical file removed; legacy path is disabled under IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH.");
           },
           screenshot: {
             name: "advanced-org-server-url-clear-confirmed",

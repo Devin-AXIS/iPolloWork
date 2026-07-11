@@ -10,9 +10,9 @@
  * upstream endpoint is a real local HTTP server started by this flow.
  *
  * Required env:
- * - IPOLLOWALK_EVAL_DEN_WEB_URL   Den web origin (e.g. http://localhost:3015)
- * - IPOLLOWALK_EVAL_DEN_EMAIL     Seeded user email (sign-in fallback)
- * - IPOLLOWALK_EVAL_DEN_PASSWORD  Seeded user password (sign-in fallback)
+ * - IPOLLOWORK_EVAL_DEN_WEB_URL   Den web origin (e.g. http://localhost:3015)
+ * - IPOLLOWORK_EVAL_DEN_EMAIL     Seeded user email (sign-in fallback)
+ * - IPOLLOWORK_EVAL_DEN_PASSWORD  Seeded user password (sign-in fallback)
  */
 
 import { createServer } from "node:http";
@@ -62,12 +62,12 @@ export default {
   id: "llm-provider-test-connection-api",
   title: "Provider test-connection probe returns real models and heals URLs",
   spec: "evals/cloud-provider-sync-flows.md",
-  requiredEnv: ["IPOLLOWALK_EVAL_DEN_WEB_URL", "IPOLLOWALK_EVAL_DEN_EMAIL", "IPOLLOWALK_EVAL_DEN_PASSWORD"],
+  requiredEnv: ["IPOLLOWORK_EVAL_DEN_WEB_URL", "IPOLLOWORK_EVAL_DEN_EMAIL", "IPOLLOWORK_EVAL_DEN_PASSWORD"],
   steps: [
     {
       name: "Signed-in dashboard session is available (signs in if needed)",
       run: async (ctx) => {
-        const origin = ctx.env.IPOLLOWALK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
+        const origin = ctx.env.IPOLLOWORK_EVAL_DEN_WEB_URL.trim().replace(/\/+$/, "");
         const onOrigin = await ctx.eval(`location.origin === ${JSON.stringify(origin)}`);
         if (!onOrigin) {
           await ctx.eval(`(() => { location.href = ${JSON.stringify(`${origin}/`)}; return true; })()`);
@@ -89,8 +89,8 @@ export default {
               headers: { "content-type": "application/json" },
               credentials: "include",
               body: JSON.stringify({
-                email: ${JSON.stringify(ctx.env.IPOLLOWALK_EVAL_DEN_EMAIL)},
-                password: ${JSON.stringify(ctx.env.IPOLLOWALK_EVAL_DEN_PASSWORD)},
+                email: ${JSON.stringify(ctx.env.IPOLLOWORK_EVAL_DEN_EMAIL)},
+                password: ${JSON.stringify(ctx.env.IPOLLOWORK_EVAL_DEN_PASSWORD)},
               }),
             });
             return response.status;

@@ -23,7 +23,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { isBuiltIniPolloWalkExtension, getMcpServerName, type McpDirectoryInfo } from "../../../../app/constants";
+import { isBuiltIniPolloWorkExtension, getMcpServerName, type McpDirectoryInfo } from "../../../../app/constants";
 import { evaluateEnablement } from "../../../../app/enablement";
 import type { EnablementResult } from "../../../../app/extensions";
 import type { CloudImportedPlugin } from "../../../../app/cloud/import-state";
@@ -52,13 +52,13 @@ import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { AddMcpModal } from "../../connections/modals/add-mcp-modal";
 import { ClaudePluginImportModal } from "../../connections/modals/claude-plugin-import-modal";
 import { canDisconnectNativeProviderAccount } from "../../connections/native-provider-connections";
-import type { iPolloWalkClaudePluginPreview } from "../../../../app/lib/ipollowalk-server";
+import type { iPolloWorkClaudePluginPreview } from "../../../../app/lib/ipollowork-server";
 import {
-  isiPolloWalkExtensionEnabled,
-  isiPolloWalkExtensionHidden,
-  IPOLLOWALK_EXTENSION_STATE_CHANGED,
-  setiPolloWalkExtensionEnabled,
-  setiPolloWalkExtensionHidden,
+  isiPolloWorkExtensionEnabled,
+  isiPolloWorkExtensionHidden,
+  IPOLLOWORK_EXTENSION_STATE_CHANGED,
+  setiPolloWorkExtensionEnabled,
+  setiPolloWorkExtensionHidden,
 } from "../extension-state";
 import {
   initialMcpViewLocalState,
@@ -119,10 +119,10 @@ export type McpViewProps = {
   isExtensionConnected?: (entry: McpDirectoryInfo) => boolean;
   /** Enablement context for evaluating extension active state. */
   enablementContext?: import("../../../../app/enablement").EnablementContext;
-  /** Organization policy restriction for iPolloWalk-provided built-in extensions. */
+  /** Organization policy restriction for iPolloWork-provided built-in extensions. */
   builtInExtensionsDisabled?: boolean;
   /** Preview a Claude Code plugin bundle from a GitHub URL ("Will install" disclosure). */
-  previewClaudePlugin?: (url: string) => Promise<iPolloWalkClaudePluginPreview>;
+  previewClaudePlugin?: (url: string) => Promise<iPolloWorkClaudePluginPreview>;
   /** Install a Claude Code plugin bundle from a GitHub URL. */
   installClaudePlugin?: (url: string) => Promise<{ ok: boolean; message: string }>;
   /** Connected org-level External MCP Connections rendered in My Extensions. */
@@ -190,8 +190,8 @@ const serviceIcon = (name: string) => {
   if (lower.includes("devtools")) {
     return MonitorSmartphone;
   }
-  if (lower.includes("ipollowalk") && lower.includes("cloud")) return Cloud;
-  if (lower.includes("ipollowalk") && lower.includes("ui")) return MonitorSmartphone;
+  if (lower.includes("ipollowork") && lower.includes("cloud")) return Cloud;
+  if (lower.includes("ipollowork") && lower.includes("ui")) return MonitorSmartphone;
   return Plug2;
 };
 
@@ -205,7 +205,7 @@ const serviceColor = (name: string) => {
   if (lower.includes("devtools")) {
     return "text-amber-11";
   }
-  if (lower.includes("ipollowalk")) return "text-gray-12";
+  if (lower.includes("ipollowork")) return "text-gray-12";
   return "text-dls-secondary";
 };
 
@@ -219,7 +219,7 @@ const serviceIconBg = (name: string) => {
   if (lower.includes("devtools")) {
     return "bg-amber-3 border-amber-6";
   }
-  if (lower.includes("ipollowalk")) return "bg-gray-3 border-gray-6";
+  if (lower.includes("ipollowork")) return "bg-gray-3 border-gray-6";
   return "bg-dls-hover border-dls-border";
 };
 
@@ -247,8 +247,8 @@ export function McpView(props: McpViewProps) {
   const [detailSkillContent, setDetailSkillContent] = useState<string | null>(null);
   const [detailPlugin, setDetailPlugin] = useState<CloudImportedPlugin | null>(null);
   const [detailOrgMcpItem, setDetailOrgMcpItem] = useState<ExtensionItem | null>(null);
-  const [ipollowalkUiMcpCommand, setiPolloWalkUiMcpCommand] = useState<string[] | null>(null);
-  const [ipollowalkUiMcpEnvironment, setiPolloWalkUiMcpEnvironment] = useState<Record<string, string> | null>(null);
+  const [ipolloworkUiMcpCommand, setiPolloWorkUiMcpCommand] = useState<string[] | null>(null);
+  const [ipolloworkUiMcpEnvironment, setiPolloWorkUiMcpEnvironment] = useState<Record<string, string> | null>(null);
   const [computerUseMcpCommand, setComputerUseMcpCommand] = useState<string[] | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ExtensionFilter>("all");
@@ -296,10 +296,10 @@ export function McpView(props: McpViewProps) {
 
   useEffect(() => {
     const refresh = () => setExtensionStateVersion((value) => value + 1);
-    window.addEventListener(IPOLLOWALK_EXTENSION_STATE_CHANGED, refresh);
+    window.addEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
     window.addEventListener("storage", refresh);
     return () => {
-      window.removeEventListener(IPOLLOWALK_EXTENSION_STATE_CHANGED, refresh);
+      window.removeEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
       window.removeEventListener("storage", refresh);
     };
   }, []);
@@ -308,25 +308,25 @@ export function McpView(props: McpViewProps) {
     if (!isDesktopRuntime()) return;
     void (async () => {
       try {
-        const command = await window.__IPOLLOWALK_ELECTRON__?.invokeDesktop?.("getiPolloWalkUiMcpCommand");
+        const command = await window.__IPOLLOWORK_ELECTRON__?.invokeDesktop?.("getiPolloWorkUiMcpCommand");
         if (Array.isArray(command) && command.every((part) => typeof part === "string")) {
-          setiPolloWalkUiMcpCommand(command);
+          setiPolloWorkUiMcpCommand(command);
         }
-        const environment = await window.__IPOLLOWALK_ELECTRON__?.invokeDesktop?.("getiPolloWalkUiMcpEnvironment");
+        const environment = await window.__IPOLLOWORK_ELECTRON__?.invokeDesktop?.("getiPolloWorkUiMcpEnvironment");
         if (environment && typeof environment === "object" && !Array.isArray(environment)) {
-          setiPolloWalkUiMcpEnvironment(Object.fromEntries(
+          setiPolloWorkUiMcpEnvironment(Object.fromEntries(
             Object.entries(environment).filter((entry): entry is [string, string] =>
               typeof entry[0] === "string" && typeof entry[1] === "string"
             ),
           ));
         }
-        const computerUseCommand = await window.__IPOLLOWALK_ELECTRON__?.invokeDesktop?.("getComputerUseMcpCommand");
+        const computerUseCommand = await window.__IPOLLOWORK_ELECTRON__?.invokeDesktop?.("getComputerUseMcpCommand");
         if (Array.isArray(computerUseCommand) && computerUseCommand.every((part) => typeof part === "string")) {
           setComputerUseMcpCommand(computerUseCommand);
         }
       } catch {
-        setiPolloWalkUiMcpCommand(null);
-        setiPolloWalkUiMcpEnvironment(null);
+        setiPolloWorkUiMcpCommand(null);
+        setiPolloWorkUiMcpEnvironment(null);
         setComputerUseMcpCommand(null);
       }
     })();
@@ -400,13 +400,13 @@ export function McpView(props: McpViewProps) {
       );
     });
 
-  // Auto-configured built-ins like ipollowalk-cloud remain active but hidden from
+  // Auto-configured built-ins like ipollowork-cloud remain active but hidden from
   // Your apps until Show hidden reveals the row for disable/remove.
   const visibleMcpServers = showHidden
     ? props.mcpServers
     : props.mcpServers.filter((entry) => {
         const match = resolveQuickConnectMatch(entry.name);
-        return !match || !isiPolloWalkExtensionHidden(match);
+        return !match || !isiPolloWorkExtensionHidden(match);
       });
 
   const displayName = (name: string) => resolveQuickConnectMatch(name)?.name ?? name;
@@ -429,7 +429,7 @@ export function McpView(props: McpViewProps) {
   };
 
   const launchCommandForEntry = (entry: McpDirectoryInfo) => {
-    if (entry.serverName === "ipollowalk-ui") return ipollowalkUiMcpCommand ?? undefined;
+    if (entry.serverName === "ipollowork-ui") return ipolloworkUiMcpCommand ?? undefined;
     if (entry.serverName === "computer-use") return computerUseMcpCommand ?? entry.command;
     return entry.command;
   };
@@ -446,11 +446,11 @@ export function McpView(props: McpViewProps) {
   const connectedCount = props.mcpServers.filter(
     (entry) => resolveStatus(entry) === "connected",
   ).length;
-  const hiddenCount = quickConnectList.filter((entry) => isiPolloWalkExtensionHidden(entry)).length +
-    (props.installedSkills ?? []).filter((skill) => isiPolloWalkExtensionHidden(getSkillHiddenId(skill))).length +
-    (props.installedPlugins ?? []).filter((plugin) => isiPolloWalkExtensionHidden(`plugin:${plugin.pluginId}`)).length;
+  const hiddenCount = quickConnectList.filter((entry) => isiPolloWorkExtensionHidden(entry)).length +
+    (props.installedSkills ?? []).filter((skill) => isiPolloWorkExtensionHidden(getSkillHiddenId(skill))).length +
+    (props.installedPlugins ?? []).filter((plugin) => isiPolloWorkExtensionHidden(`plugin:${plugin.pluginId}`)).length;
   const policyHiddenBuiltInCount = props.builtInExtensionsDisabled
-    ? quickConnectList.filter((entry) => isBuiltIniPolloWalkExtension(entry) && !isiPolloWalkExtensionHidden(entry)).length
+    ? quickConnectList.filter((entry) => isBuiltIniPolloWorkExtension(entry) && !isiPolloWorkExtensionHidden(entry)).length
     : 0;
   const hiddenOrPolicyCount = hiddenCount + policyHiddenBuiltInCount;
 
@@ -522,7 +522,7 @@ export function McpView(props: McpViewProps) {
 
       {props.builtInExtensionsDisabled ? (
         <div className="rounded-xl border border-amber-6 bg-amber-2 px-4 py-3 text-xs text-amber-11">
-          Built-in iPolloWalk extensions are disabled by your organization. Use Show hidden to review blocked built-ins.
+          Built-in iPolloWork extensions are disabled by your organization. Use Show hidden to review blocked built-ins.
         </div>
       ) : null}
 
@@ -570,7 +570,7 @@ export function McpView(props: McpViewProps) {
       <McpQuickConnectSection
         entries={
           quickConnectList.filter((entry) => {
-            if (!showHidden && (isiPolloWalkExtensionHidden(entry) || (props.builtInExtensionsDisabled && isBuiltIniPolloWalkExtension(entry)))) return false;
+            if (!showHidden && (isiPolloWorkExtensionHidden(entry) || (props.builtInExtensionsDisabled && isBuiltIniPolloWorkExtension(entry)))) return false;
             if (filter === "skill") return false;
             if (filter === "mcp" && (entry.kind ?? "mcp") !== "mcp" && entry.kind !== "ui-control") return false;
             if (!search.trim()) return true;
@@ -580,7 +580,7 @@ export function McpView(props: McpViewProps) {
         }
         installedSkills={
           (props.installedSkills ?? []).filter((skill) => {
-            if (!showHidden && isiPolloWalkExtensionHidden(getSkillHiddenId(skill))) return false;
+            if (!showHidden && isiPolloWorkExtensionHidden(getSkillHiddenId(skill))) return false;
             if (filter === "mcp") return false;
             if (!search.trim()) return true;
             const q = search.toLowerCase();
@@ -589,7 +589,7 @@ export function McpView(props: McpViewProps) {
         }
         installedPlugins={
           (props.installedPlugins ?? []).filter((plugin) => {
-            if (!showHidden && isiPolloWalkExtensionHidden(`plugin:${plugin.pluginId}`)) return false;
+            if (!showHidden && isiPolloWorkExtensionHidden(`plugin:${plugin.pluginId}`)) return false;
             if (filter === "mcp" || filter === "skill") return false;
             if (!search.trim()) return true;
             const q = search.toLowerCase();
@@ -610,20 +610,20 @@ export function McpView(props: McpViewProps) {
         }
         busy={props.busy}
         connectingName={props.mcpConnectingName}
-        isEntryHidden={(entry) => isiPolloWalkExtensionHidden(entry)}
-        isSkillHidden={(skill) => isiPolloWalkExtensionHidden(getSkillHiddenId(skill))}
-        isPluginHidden={(plugin) => isiPolloWalkExtensionHidden(`plugin:${plugin.pluginId}`)}
+        isEntryHidden={(entry) => isiPolloWorkExtensionHidden(entry)}
+        isSkillHidden={(skill) => isiPolloWorkExtensionHidden(getSkillHiddenId(skill))}
+        isPluginHidden={(plugin) => isiPolloWorkExtensionHidden(`plugin:${plugin.pluginId}`)}
         disabledReasonForEntry={(entry) =>
-          props.builtInExtensionsDisabled && isBuiltIniPolloWalkExtension(entry)
+          props.builtInExtensionsDisabled && isBuiltIniPolloWorkExtension(entry)
             ? builtInExtensionDisabledReason
             : null
         }
         isConfigured={(entry) => {
-          if (props.builtInExtensionsDisabled && isBuiltIniPolloWalkExtension(entry)) return false;
+          if (props.builtInExtensionsDisabled && isBuiltIniPolloWorkExtension(entry)) return false;
           const result = enablementForEntry(entry);
           if (result) return result.active;
           // Fallback for entries without enablement context.
-          if (isToggleOnlyExtension(entry)) return isiPolloWalkExtensionEnabled(entry);
+          if (isToggleOnlyExtension(entry)) return isiPolloWorkExtensionEnabled(entry);
           if (entry.kind === "extension" && !isMcpBackedExtension(entry)) return props.isExtensionConnected?.(entry) ?? false;
           return isQuickConnectConfigured(entry);
         }}
@@ -739,14 +739,14 @@ export function McpView(props: McpViewProps) {
       {detailEntry ? (() => {
         const extensionConfigSlot = props.configSlotForEntry?.(detailEntry) ?? null;
         const hasConfigSlot = extensionConfigSlot !== null;
-        const hidden = isiPolloWalkExtensionHidden(detailEntry);
-        const disabledReason = props.builtInExtensionsDisabled && isBuiltIniPolloWalkExtension(detailEntry)
+        const hidden = isiPolloWorkExtensionHidden(detailEntry);
+        const disabledReason = props.builtInExtensionsDisabled && isBuiltIniPolloWorkExtension(detailEntry)
           ? builtInExtensionDisabledReason
           : null;
         const isConnected = disabledReason
           ? false
           : isToggleOnlyExtension(detailEntry)
-          ? isiPolloWalkExtensionEnabled(detailEntry)
+          ? isiPolloWorkExtensionEnabled(detailEntry)
           : detailEntry.kind === "extension" && !isMcpBackedExtension(detailEntry)
           ? props.isExtensionConnected?.(detailEntry) ?? false
           : isQuickConnectConfigured(detailEntry);
@@ -769,33 +769,33 @@ export function McpView(props: McpViewProps) {
             resourceLabels={isGoogleWorkspace ? [] : extensionResourceLabels(detailEntry)}
             contributionLabels={isGoogleWorkspace ? [] : extensionContributionLabels(detailEntry)}
             launchCommand={launchCommandForEntry(detailEntry)}
-            environment={detailEntry.serverName === "ipollowalk-ui" ? ipollowalkUiMcpEnvironment ?? undefined : undefined}
+            environment={detailEntry.serverName === "ipollowork-ui" ? ipolloworkUiMcpEnvironment ?? undefined : undefined}
             url={typeof detailEntry.url === "string" ? detailEntry.url : undefined}
             oauth={detailEntry.oauth}
             configSlot={disabledReason ? null : extensionConfigSlot}
             showEnablementCard={!isGoogleWorkspace}
             onConnect={disabledReason ? undefined : isToggleOnlyExtension(detailEntry) ? () => {
-              setiPolloWalkExtensionEnabled(detailEntry, true);
+              setiPolloWorkExtensionEnabled(detailEntry, true);
               setDetailEntry(null);
             } : hasConfigSlot ? undefined : () => {
               props.connectMcp(detailEntry);
               setDetailEntry(null);
             }}
             onUninstall={disabledReason ? undefined : isToggleOnlyExtension(detailEntry) && isConnected ? () => {
-              setiPolloWalkExtensionEnabled(detailEntry, false);
+              setiPolloWorkExtensionEnabled(detailEntry, false);
             } : isQuickConnectConfigured(detailEntry) ? () => {
               const slug = getMcpIdentityKey(detailEntry);
               props.removeMcp(slug);
               setDetailEntry(null);
             } : undefined}
-            onHide={() => setiPolloWalkExtensionHidden(detailEntry, true)}
-            onShow={() => setiPolloWalkExtensionHidden(detailEntry, false)}
+            onHide={() => setiPolloWorkExtensionHidden(detailEntry, true)}
+            onShow={() => setiPolloWorkExtensionHidden(detailEntry, false)}
           />
         );
       })() : null}
 
       {detailSkill ? (() => {
-        const hidden = isiPolloWalkExtensionHidden(getSkillHiddenId(detailSkill));
+        const hidden = isiPolloWorkExtensionHidden(getSkillHiddenId(detailSkill));
         return (
           <ExtensionDetailModal
             open={!!detailSkill}
@@ -815,14 +815,14 @@ export function McpView(props: McpViewProps) {
               props.uninstallSkill?.(detailSkill.name);
               setDetailSkill(null);
             } : undefined}
-            onHide={() => setiPolloWalkExtensionHidden(getSkillHiddenId(detailSkill), true)}
-            onShow={() => setiPolloWalkExtensionHidden(getSkillHiddenId(detailSkill), false)}
+            onHide={() => setiPolloWorkExtensionHidden(getSkillHiddenId(detailSkill), true)}
+            onShow={() => setiPolloWorkExtensionHidden(getSkillHiddenId(detailSkill), false)}
           />
         );
       })() : null}
 
       {detailPlugin ? (() => {
-        const hidden = isiPolloWalkExtensionHidden(`plugin:${detailPlugin.pluginId}`);
+        const hidden = isiPolloWorkExtensionHidden(`plugin:${detailPlugin.pluginId}`);
         return (
           <ExtensionDetailModal
             open={!!detailPlugin}
@@ -836,8 +836,8 @@ export function McpView(props: McpViewProps) {
               void props.removeCloudPlugin?.(detailPlugin.pluginId);
               setDetailPlugin(null);
             } : undefined}
-            onHide={() => setiPolloWalkExtensionHidden(`plugin:${detailPlugin.pluginId}`, true)}
-            onShow={() => setiPolloWalkExtensionHidden(`plugin:${detailPlugin.pluginId}`, false)}
+            onHide={() => setiPolloWorkExtensionHidden(`plugin:${detailPlugin.pluginId}`, true)}
+            onShow={() => setiPolloWorkExtensionHidden(`plugin:${detailPlugin.pluginId}`, false)}
           />
         );
       })() : null}

@@ -2,23 +2,23 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 import { fileURLToPath } from "node:url";
 
 const vo = await loadVoiceoverParagraphs("design-html-editor");
-const HEADING = "Design visually in iPolloWalk";
+const HEADING = "Design visually in iPolloWork";
 const INLINE_HEADING = "Edit directly like a slide";
-const IMAGE_FIXTURE = fileURLToPath(new URL("../../packages/docs/images/ipollowalk-providers.png", import.meta.url));
+const IMAGE_FIXTURE = fileURLToPath(new URL("../../packages/docs/images/ipollowork-providers.png", import.meta.url));
 
 async function ensureSession(ctx) {
-  await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "iPolloWalk control API" });
+  await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "iPolloWork control API" });
   await ctx.eval(`(() => {
     const stop = [...document.querySelectorAll('button')].find((button) => (button.textContent || '').trim() === 'Stop' && !button.disabled);
     stop?.click();
     return Boolean(stop);
   })()`);
-  await ctx.waitFor(`window.__ipollowalkControl.listActions().some((a) => a.id === "session.create_task" && !a.disabled)`, {
+  await ctx.waitFor(`window.__ipolloworkControl.listActions().some((a) => a.id === "session.create_task" && !a.disabled)`, {
     timeoutMs: 30_000,
     label: "create task action",
   });
   await ctx.control("session.create_task");
-  await ctx.waitFor(`window.__ipollowalkControl.snapshot().route.includes("/session/")`, {
+  await ctx.waitFor(`window.__ipolloworkControl.snapshot().route.includes("/session/")`, {
     timeoutMs: 60_000,
     label: "active task",
   });
@@ -103,13 +103,13 @@ async function chooseImageFixture(ctx) {
 
 export default {
   id: "design-html-editor",
-  title: "Edit and save a local HTML page in iPolloWalk's dedicated Design space",
+  title: "Edit and save a local HTML page in iPolloWork's dedicated Design space",
   kind: "user-facing",
   precondition: async (ctx) => {
-    await ctx.waitFor("Boolean(window.__ipollowalkControl)", { timeoutMs: 60_000, label: "iPolloWalk control API" });
-    const route = await ctx.eval("window.__ipollowalkControl.snapshot().route");
+    await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "iPolloWork control API" });
+    const route = await ctx.eval("window.__ipolloworkControl.snapshot().route");
     return route.startsWith("/welcome") || route.startsWith("/signin")
-      ? "iPolloWalk must have a local workspace before the Design flow can run."
+      ? "iPolloWork must have a local workspace before the Design flow can run."
       : null;
   },
   steps: [
@@ -139,7 +139,7 @@ export default {
         await ctx.prove("Design opens a local HTML file in its own preview without replacing Browser", {
           voiceover: vo[1],
           action: async () => {
-            await ctx.waitFor(`window.__ipollowalkControl.listActions().some((a) => a.id === "eval.design.seed_html" && !a.disabled)`, {
+            await ctx.waitFor(`window.__ipolloworkControl.listActions().some((a) => a.id === "eval.design.seed_html" && !a.disabled)`, {
               timeoutMs: 30_000,
               label: "Design seed action",
             });

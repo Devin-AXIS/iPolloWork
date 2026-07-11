@@ -5,7 +5,7 @@ description: Daytona development environment overview. Use when the user asks ab
 
 # Skill: Daytona Dev Environment
 
-Launch the iPolloWalk Electron app in a Daytona cloud sandbox. The real desktop
+Launch the iPolloWork Electron app in a Daytona cloud sandbox. The real desktop
 app runs on Daytona's XFCE/noVNC desktop stack and is accessible through your
 browser.
 
@@ -25,7 +25,7 @@ bash .devcontainer/test-on-daytona.sh [branch-or-commit]
 
 The helper uses the VNC snapshot, starts noVNC/Vite/Electron, and prints the
 URLs. If the snapshot is missing, create it with
-`bash .devcontainer/create-daytona-ipollowalk-snapshot.sh`.
+`bash .devcontainer/create-daytona-ipollowork-snapshot.sh`.
 
 Use the Daytona setup as four reusable pieces. Prefer the focused skills when a
 request names one piece directly:
@@ -35,8 +35,8 @@ request names one piece directly:
 - `test-server-on-daytona.sh` for the cloud Den server sandbox.
 - `daytona-electron-den` for Electron connected to a Daytona Den server.
 - `daytona-chrome-cdp` for standalone Chrome in the sandbox, separate from Electron.
-- `ipollowalk-eval-secrets:/daytona-secrets` for provider keys and eval-only secrets.
-- `ipollowalk-eval-artifacts:/daytona-artifacts` for screenshots, validation notes, and recordings.
+- `ipollowork-eval-secrets:/daytona-secrets` for provider keys and eval-only secrets.
+- `ipollowork-eval-artifacts:/daytona-artifacts` for screenshots, validation notes, and recordings.
 
 Focused skills:
 
@@ -58,19 +58,19 @@ cd /workspace
 ### 2. Get the noVNC URL
 
 ```bash
-daytona preview-url ipollowalk-dev -p 6080
+daytona preview-url ipollowork-dev -p 6080
 ```
 
-Open that URL in your browser. You'll see the real Electron iPolloWalk app.
+Open that URL in your browser. You'll see the real Electron iPolloWork app.
 
 ### 4. Get other URLs
 
 ```bash
 # Den Web dashboard (if Den stack is running)
-daytona preview-url ipollowalk-dev -p 3005
+daytona preview-url ipollowork-dev -p 3005
 
 # CDP debugging endpoint
-daytona preview-url ipollowalk-dev -p 9825
+daytona preview-url ipollowork-dev -p 9825
 ```
 
 ## What's Running
@@ -91,7 +91,7 @@ The devcontainer's `docker-compose.yml` includes MySQL. If you're using Daytona'
 
 Just point the app to the production Den:
 1. Open the app via noVNC
-2. Sign in normally (uses production `app.ipollowalklabs.com`)
+2. Sign in normally (uses production `app.ipolloworklabs.com`)
 3. All cloud features work
 
 ### Option B: Daytona sandbox + local Den
@@ -107,31 +107,31 @@ If you need a local Den (for testing customization, restrictions, etc.):
 daytona list
 
 # SSH into sandbox
-daytona ssh ipollowalk-dev
+daytona ssh ipollowork-dev
 
 # Check logs
-daytona exec ipollowalk-dev 'tail -50 /tmp/electron.log'
-daytona exec ipollowalk-dev 'tail -50 /tmp/vite.log'
-daytona exec ipollowalk-dev 'tail -50 /tmp/start-vnc.log'
+daytona exec ipollowork-dev 'tail -50 /tmp/electron.log'
+daytona exec ipollowork-dev 'tail -50 /tmp/vite.log'
+daytona exec ipollowork-dev 'tail -50 /tmp/start-vnc.log'
 
 # Inspect Electron CDP targets
-daytona exec ipollowalk-dev 'curl -s http://127.0.0.1:9825/json/list'
+daytona exec ipollowork-dev 'curl -s http://127.0.0.1:9825/json/list'
 
 # Capture a persistent screenshot artifact
-daytona exec ipollowalk-dev 'bash .devcontainer/capture-daytona-screenshot.sh'
+daytona exec ipollowork-dev 'bash .devcontainer/capture-daytona-screenshot.sh'
 
 # Restart just the Electron app
-daytona exec ipollowalk-dev 'bash -lc "pkill -f electron || true; pkill -f electron-dev || true"'
-daytona exec ipollowalk-dev 'bash -lc "cd /workspace && bash /opt/ipollowalk-daytona/start-daytona-electron.sh --detach"'
+daytona exec ipollowork-dev 'bash -lc "pkill -f electron || true; pkill -f electron-dev || true"'
+daytona exec ipollowork-dev 'bash -lc "cd /workspace && bash /opt/ipollowork-daytona/start-daytona-electron.sh --detach"'
 
 # Stop the sandbox (preserves state)
-daytona stop ipollowalk-dev
+daytona stop ipollowork-dev
 
 # Start it again
-daytona start ipollowalk-dev
+daytona start ipollowork-dev
 
 # Delete (destroys everything)
-daytona delete ipollowalk-dev
+daytona delete ipollowork-dev
 ```
 
 ## Updating the Code
@@ -139,7 +139,7 @@ daytona delete ipollowalk-dev
 Inside the sandbox, the repo is at `/workspace`. To pull latest:
 
 ```bash
-daytona ssh ipollowalk-dev
+daytona ssh ipollowork-dev
 cd /workspace
 git pull origin dev
 pnpm install
@@ -151,18 +151,18 @@ pnpm install
 **Electron shows blank window:**
 Vite might not be running. Check `tail /tmp/vite.log`. Restart with:
 ```bash
-cd /workspace/apps/app && IPOLLOWALK_DEV_MODE=1 nohup npx vite --host 0.0.0.0 --port 5173 > /tmp/vite.log 2>&1 &
+cd /workspace/apps/app && IPOLLOWORK_DEV_MODE=1 nohup npx vite --host 0.0.0.0 --port 5173 > /tmp/vite.log 2>&1 &
 ```
 
 **noVNC shows black screen:**
 Xvfb/XFCE may have crashed. Restart the desktop stack:
 ```bash
-bash /opt/ipollowalk-daytona/start-daytona-vnc.sh
+bash /opt/ipollowork-daytona/start-daytona-vnc.sh
 ```
 
 **"no space left on device" when creating sandbox:**
 Use `--disk 10`. The default Daytona disk can be 3 GB, which is not enough for
-iPolloWalk dependencies and sidecar prep. Also don't use `--context .` — it
+iPolloWork dependencies and sidecar prep. Also don't use `--context .` — it
 uploads the entire repo (with worktrees, node_modules). Use individual
 `--context` flags for just the files needed.
 

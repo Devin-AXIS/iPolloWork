@@ -1,23 +1,23 @@
 # AGENTS.md
 
-iPolloWalk helps users run agents, skills, and MCP. It is an open-source alternative to Claude Cowork/Codex as a desktop app.
+iPolloWork helps users run agents, skills, and MCP. It is an open-source alternative to Claude Cowork/Codex as a desktop app.
 
-## What iPolloWalk Is
+## What iPolloWork Is
 
-iPolloWalk is a practical control surface for agentic work:
+iPolloWork is a practical control surface for agentic work:
 
 * Run local and remote agent workflows from one place.
-* Use OpenCode capabilities directly through iPolloWalk.
+* Use OpenCode capabilities directly through iPolloWork.
 * Compose desktop app, server, and messaging connectors without lock-in.
-* Treat the iPolloWalk app as a client of the iPolloWalk server API surface.
+* Treat the iPolloWork app as a client of the iPolloWork server API surface.
 * Connect to hosted workers through a simple user flow: `Add a worker` -> `Connect remote`.
 
 ## Core Philosophy
 
-* **Local-first, cloud-ready**: iPolloWalk runs on your machine in one click and can connect to cloud workflows when needed.
-* **Server-consumption first**: the app should consume iPolloWalk server surfaces (self-hosted or hosted), not invent parallel behavior.
+* **Local-first, cloud-ready**: iPolloWork runs on your machine in one click and can connect to cloud workflows when needed.
+* **Server-consumption first**: the app should consume iPolloWork server surfaces (self-hosted or hosted), not invent parallel behavior.
 * **Composable**: use the desktop app, WhatsApp/Slack/Telegram connectors, or server mode based on the task.
-* **Ejectable**: iPolloWalk is powered by OpenCode, so anything OpenCode can do is available in iPolloWalk, even before a dedicated UI exists.
+* **Ejectable**: iPolloWork is powered by OpenCode, so anything OpenCode can do is available in iPolloWork, even before a dedicated UI exists.
 * **Sharing is caring**: start solo, then share quickly; one CLI or desktop command can spin up an instantly shareable instance.
 
 
@@ -82,7 +82,7 @@ Feature work starts with the demo, not a PRD:
 
 - Use components from @/components when possible.
 - When creating new components, we prefer using shadcn/ui with (Base UI).
-- Assume most end users of iPolloWalk are non-technical.
+- Assume most end users of iPolloWork are non-technical.
 
 ### Tech Stack Preferences
 

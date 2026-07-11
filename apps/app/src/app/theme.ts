@@ -1,8 +1,8 @@
 export type ThemeMode = "light" | "dark" | "system";
 export type ResolvedThemeMode = "light" | "dark";
 
-const THEME_PREF_KEY = "ipollowalk.react.settings.theme-mode";
-const LEGACY_THEME_PREF_KEYS = ["ipollowalk.themePref"];
+const THEME_PREF_KEY = "ipollowork.react.settings.theme-mode";
+const LEGACY_THEME_PREF_KEYS = ["ipollowork.themePref"];
 
 const mediaQuery = "(prefers-color-scheme: dark)";
 const listeners = new Set<() => void>();
@@ -58,7 +58,7 @@ const emitThemeChange = () => {
 
 const syncNativeTheme = (mode: ThemeMode) => {
   if (typeof window === "undefined") return;
-  void window.__IPOLLOWALK_ELECTRON__?.invokeDesktop?.("__setNativeTheme", mode);
+  void window.__IPOLLOWORK_ELECTRON__?.invokeDesktop?.("__setNativeTheme", mode);
 };
 
 const getCurrentMode = () => {

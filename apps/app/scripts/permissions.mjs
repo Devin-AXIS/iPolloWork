@@ -28,7 +28,7 @@ try {
 
   // Create a session that asks for tool permission.
   const session = await client.session.create({
-    title: "iPolloWalk permission test",
+    title: "iPolloWork permission test",
     permission: [
       {
         permission: "bash",
@@ -75,8 +75,8 @@ try {
   }
 
   // Try to trigger an external-directory permission request deterministically.
-  const externalPath = "/tmp/ipollowalk-permission-test.txt";
-  await writeFile(externalPath, "ipollowalk permission test\n", "utf8");
+  const externalPath = "/tmp/ipollowork-permission-test.txt";
+  await writeFile(externalPath, "ipollowork permission test\n", "utf8");
 
   try {
     await client.file.read({ path: externalPath });

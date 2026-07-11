@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useDragControls } from "motion/react";
 
-import type { iPolloWalkServerClient } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { PanelTab, PanelTabClose, PanelTabItem, PanelTabList } from "@/components/panel-tabs";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +30,7 @@ import {
   useActivePanelTab,
   useSessionPanelState,
 } from "./panel-tab-store";
-import { useControlAction, type iPolloWalkControlAction } from "../../../shell/control/control-provider";
+import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import type { OpenTarget } from "../artifacts/open-target";
 import { useSidePanelTabs } from "./use-side-panel-tabs";
 import {
@@ -43,7 +43,7 @@ import {
 
 type SidePanelProps = {
   sessionId: string;
-  client: iPolloWalkServerClient | null;
+  client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;
@@ -401,7 +401,7 @@ export function SidePanel({
 
   const { createTab, closeTab, selectTab, reorderTabs } = useSidePanelTabs(sessionId);
 
-  const seedArtifactOverflowControlAction = React.useMemo<iPolloWalkControlAction | null>(() => {
+  const seedArtifactOverflowControlAction = React.useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
 
     return {
@@ -430,7 +430,7 @@ export function SidePanel({
         for (let index = 1; index <= count; index += 1) {
           const padded = String(index).padStart(2, "0");
           const baseName = longNameLast && index === count
-            ? `ipollowalk-self-managed-subscription-and-licensing-overview-very-long-${padded}`
+            ? `ipollowork-self-managed-subscription-and-licensing-overview-very-long-${padded}`
             : `overflow-tab-${padded}`;
           const value = `artifacts/${baseName}.md`;
           const label = `${baseName}.md`;
@@ -468,7 +468,7 @@ export function SidePanel({
   }, [client, sessionId, workspaceId]);
   useControlAction(seedArtifactOverflowControlAction);
 
-  const seedPdfArtifactControlAction = React.useMemo<iPolloWalkControlAction | null>(() => {
+  const seedPdfArtifactControlAction = React.useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
 
     return {
@@ -480,7 +480,7 @@ export function SidePanel({
       execute: async () => {
         if (!client || !workspaceId) return { ok: false, error: "Workspace client is not ready." };
 
-        // Minimal single-page PDF that draws "iPolloWalk PDF" — base64 encoded.
+        // Minimal single-page PDF that draws "iPolloWork PDF" — base64 encoded.
         const pdfBase64 =
           "JVBERi0xLjQKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PgplbmRvYmoKMyAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50IDIgMCBSL01lZGlhQm94WzAgMCAzMDAgMTQ0XS9SZXNvdXJjZXM8PC9Gb250PDwvRjEgNCAwIFI+Pj4+L0NvbnRlbnRzIDUgMCBSPj4KZW5kb2JqCjQgMCBvYmoKPDwvVHlwZS9Gb250L1N1YnR5cGUvVHlwZTEvQmFzZUZvbnQvSGVsdmV0aWNhPj4KZW5kb2JqCjUgMCBvYmoKPDwvTGVuZ3RoIDQ0Pj4Kc3RyZWFtCkJUCi9GMSAyNCBUZgo3MiA3MCBUZAooT3BlbldvcmsgUERGKSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0MSAwMDAwMCBuIAowMDAwMDAwMzEyIDAwMDAwIG4gCnRyYWlsZXIKPDwvU2l6ZSA2L1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKNDA2CiUlRU9G";
         const binary = atob(pdfBase64);

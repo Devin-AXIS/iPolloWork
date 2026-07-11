@@ -12,7 +12,7 @@ import {
 import { setDesktopZoomFactor } from "../../app/lib/desktop";
 import { isDesktopRuntime } from "../../app/utils";
 
-const NATIVE_MENU_ZOOM_EVENT = "ipollowalk:native-menu:zoom";
+const NATIVE_MENU_ZOOM_EVENT = "ipollowork:native-menu:zoom";
 
 export function useDesktopFontZoomBehavior() {
   useEffect(() => {
@@ -26,7 +26,7 @@ export function useDesktopFontZoomBehavior() {
       void setDesktopZoomFactor(next)
         .then((applied) => {
           if (applied) {
-            document.documentElement.style.removeProperty("--ipollowalk-font-size");
+            document.documentElement.style.removeProperty("--ipollowork-font-size");
             return;
           }
           applyFontZoom(document.documentElement.style, next);

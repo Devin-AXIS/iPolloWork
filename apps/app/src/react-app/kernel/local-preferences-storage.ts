@@ -1,1 +1,1 @@
-export const LOCAL_PREFERENCES_KEY = "ipollowalk.preferences";
+export const LOCAL_PREFERENCES_KEY = "ipollowork.preferences";

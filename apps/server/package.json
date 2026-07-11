@@ -1,17 +1,17 @@
 {
-  "name": "ipollowalk-server",
+  "name": "ipollowork-server",
   "version": "0.17.20",
-  "description": "Filesystem-backed API for iPolloWalk remote clients",
+  "description": "Filesystem-backed API for iPolloWork remote clients",
   "type": "module",
   "bin": {
-    "ipollowalk-server": "bin/ipollowalk-server.mjs"
+    "ipollowork-server": "bin/ipollowork-server.mjs"
   },
   "scripts": {
-    "dev": "IPOLLOWALK_DEV_MODE=1 bun src/cli.ts",
+    "dev": "IPOLLOWORK_DEV_MODE=1 bun src/cli.ts",
     "test": "bun test",
     "test:artifacts": "bun test src/artifact-files.e2e.test.ts src/workspace-init.test.ts src/server.normalizeWorkspaceRelativePath.test.ts",
-    "build": "tsc -p tsconfig.json && bun build src/opencode-plugins/ipollowalk-extensions-preview.ts src/opencode-plugins/ipollowalk-capabilities-knowledge.ts src/opencode-plugins/ipollowalk-anthropic-adaptive-thinking.ts src/opencode-plugins/ipollowalk-anthropic-tool-schema.ts --outdir dist/opencode-plugins --target node --format esm",
-    "build:bin": "bun build --compile src/cli.ts --outfile dist/bin/ipollowalk-server",
+    "build": "tsc -p tsconfig.json && bun build src/opencode-plugins/ipollowork-extensions-preview.ts src/opencode-plugins/ipollowork-capabilities-knowledge.ts src/opencode-plugins/ipollowork-anthropic-adaptive-thinking.ts src/opencode-plugins/ipollowork-anthropic-tool-schema.ts --outdir dist/opencode-plugins --target node --format esm",
+    "build:bin": "bun build --compile src/cli.ts --outfile dist/bin/ipollowork-server",
     "build:bin:all": "bun ./script/build.ts --outdir dist/bin --target bun-darwin-arm64 --target bun-darwin-x64 --target bun-linux-x64 --target bun-linux-arm64 --target bun-windows-x64 --target bun-windows-arm64",
     "start": "bun dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -24,15 +24,15 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Devin-AXIS/iPolloWalk.git",
+    "url": "git+https://github.com/Devin-AXIS/iPolloWork.git",
     "directory": "apps/server"
   },
-  "homepage": "https://github.com/Devin-AXIS/iPolloWalk/tree/dev/apps/server",
+  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/dev/apps/server",
   "bugs": {
-    "url": "https://github.com/Devin-AXIS/iPolloWalk/issues"
+    "url": "https://github.com/Devin-AXIS/iPolloWork/issues"
   },
   "keywords": [
-    "ipollowalk",
+    "ipollowork",
     "server",
     "opencode",
     "headless",
@@ -55,7 +55,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@ipollowalk/types": "workspace:*",
+    "@ipollowork/types": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^22.10.2",

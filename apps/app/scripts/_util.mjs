@@ -65,7 +65,7 @@ export async function spawnOpencodeServe({
       ...process.env,
       ...env,
       // Make it explicit we're a non-TUI client.
-      OPENCODE_CLIENT: "ipollowalk-test",
+      OPENCODE_CLIENT: "ipollowork-test",
     },
   });
 

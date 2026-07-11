@@ -5,7 +5,7 @@
 
 import type { Session } from "@opencode-ai/sdk/v2/client";
 
-import type { iPolloWalkWorkspaceInfo } from "@/app/lib/ipollowalk-server";
+import type { iPolloWorkWorkspaceInfo } from "@/app/lib/ipollowork-server";
 import type { WorkspaceInfo } from "@/app/lib/desktop-types";
 import type { WorkspaceSessionGroup } from "@/app/types";
 import {
@@ -15,13 +15,13 @@ import {
 } from "@/app/utils";
 import { t } from "@/i18n";
 
-export type RouteWorkspace = iPolloWalkWorkspaceInfo & {
+export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
   displayNameResolved: string;
 };
 
 /**
  * Sessions as the routes handle them: SDK sessions from
- * ipollowalk-server's listSessions, optionally enriched with run-status
+ * ipollowork-server's listSessions, optionally enriched with run-status
  * fields that the sidebar probes defensively via getSessionStatus.
  */
 export type RouteSession = Session & {
@@ -42,19 +42,19 @@ export function mapDesktopWorkspace(workspace: WorkspaceInfo): RouteWorkspace {
   };
 }
 
-export function workspaceLabel(workspace: iPolloWalkWorkspaceInfo) {
+export function workspaceLabel(workspace: iPolloWorkWorkspaceInfo) {
   return (
     workspace.displayName?.trim() ||
-    workspace.ipollowalkWorkspaceName?.trim() ||
+    workspace.ipolloworkWorkspaceName?.trim() ||
     workspace.name?.trim() ||
     workspace.path?.trim() ||
     t("session.workspace_fallback")
   );
 }
 
-export function workspaceExportFilename(workspace: iPolloWalkWorkspaceInfo) {
+export function workspaceExportFilename(workspace: iPolloWorkWorkspaceInfo) {
   const slug = workspaceLabel(workspace).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return `${slug || "workspace"}-ipollowalk-export.json`;
+  return `${slug || "workspace"}-ipollowork-export.json`;
 }
 
 export function downloadWorkspaceJson(filename: string, payload: unknown) {
@@ -102,13 +102,13 @@ export function describeWorkspaceCreateError(error: unknown) {
     lower.includes("os error 60") ||
     lower.includes("etimedout")
   ) {
-    return `${message}\n\niPolloWalk could not read the workspace config before the filesystem timed out. This often happens when the folder is still syncing from iCloud Drive or another remote folder. Wait for the folder to finish downloading, move the workspace to a local folder, or try again.`;
+    return `${message}\n\niPolloWork could not read the workspace config before the filesystem timed out. This often happens when the folder is still syncing from iCloud Drive or another remote folder. Wait for the folder to finish downloading, move the workspace to a local folder, or try again.`;
   }
   return message;
 }
 
 export function mergeRouteWorkspaces(
-  serverWorkspaces: iPolloWalkWorkspaceInfo[],
+  serverWorkspaces: iPolloWorkWorkspaceInfo[],
   desktopWorkspaces: RouteWorkspace[],
 ): RouteWorkspace[] {
   const desktopById = new Map(desktopWorkspaces.map((workspace) => [workspace.id, workspace]));
@@ -120,7 +120,7 @@ export function mergeRouteWorkspaces(
   );
 
   // If a server workspace's id matches a desktop workspace marked as remote,
-  // skip the server's view entirely. The local iPolloWalk server may have stale
+  // skip the server's view entirely. The local iPolloWork server may have stale
   // registrations from earlier (buggy) activate calls that show up here as
   // `workspaceType: "local"`, which would otherwise clobber the desktop's
   // remote routing fields and send workspace-scoped requests back to the

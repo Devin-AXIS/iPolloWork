@@ -17,8 +17,8 @@ const {
   toSessionTransportDirectory,
 } = await import("../src/app/lib/session-scope.ts");
 
-const starterRoot = "/Users/test/iPolloWalk/starter";
-const otherRoot = "/Users/test/iPolloWalk/second";
+const starterRoot = "/Users/test/iPolloWork/starter";
+const otherRoot = "/Users/test/iPolloWork/second";
 
 const results = {
   ok: true,
@@ -99,7 +99,7 @@ try {
       },
     });
 
-    const winRoot = String.raw`C:\Users\Test\iPolloWalk\starter`;
+    const winRoot = String.raw`C:\Users\Test\iPolloWork\starter`;
     const transport = toSessionTransportDirectory(winRoot);
 
     assert.equal(transport, winRoot);
@@ -110,9 +110,9 @@ try {
     assert.equal(toSessionTransportDirectory(uncRoot), String.raw`\\server\share\starter`);
     assert.equal(describeDirectoryScope(uncRoot).normalized, "//server/share/starter");
 
-    const verbatimDriveRoot = String.raw`\\?\C:\Users\Test\iPolloWalk\starter`;
-    assert.equal(toSessionTransportDirectory(verbatimDriveRoot), String.raw`C:\Users\Test\iPolloWalk\starter`);
-    assert.equal(describeDirectoryScope(verbatimDriveRoot).normalized, "c:/users/test/ipollowalk/starter");
+    const verbatimDriveRoot = String.raw`\\?\C:\Users\Test\iPolloWork\starter`;
+    assert.equal(toSessionTransportDirectory(verbatimDriveRoot), String.raw`C:\Users\Test\iPolloWork\starter`);
+    assert.equal(describeDirectoryScope(verbatimDriveRoot).normalized, "c:/users/test/ipollowork/starter");
   });
 
   step("round-trip invariant: every query path equals the create path (unix)", () => {
@@ -126,8 +126,8 @@ try {
     });
 
     const unixPaths = [
-      "/Users/test/iPolloWalk/starter",
-      "/Users/test/iPolloWalk/starter/",
+      "/Users/test/iPolloWork/starter",
+      "/Users/test/iPolloWork/starter/",
       "/home/user/projects/my-app",
       "/tmp/sandbox",
       "/private/tmp/sandbox",
@@ -153,11 +153,11 @@ try {
 
     // Use escaped strings — Bun's parser chokes on String.raw inside array literals.
     const windowsPaths = [
-      "C:\\Users\\Test\\iPolloWalk\\starter",
-      "C:\\Users\\Test\\iPolloWalk\\starter\\",
+      "C:\\Users\\Test\\iPolloWork\\starter",
+      "C:\\Users\\Test\\iPolloWork\\starter\\",
       "D:\\projects\\my-app",
       "\\\\server\\share\\starter",
-      "\\\\?\\C:\\Users\\Test\\iPolloWalk\\starter",
+      "\\\\?\\C:\\Users\\Test\\iPolloWork\\starter",
       "\\\\?\\UNC\\server\\share\\starter",
     ];
 
@@ -181,7 +181,7 @@ try {
     });
 
     const samples = [
-      "/Users/test/iPolloWalk/starter",
+      "/Users/test/iPolloWork/starter",
       "/home/user/projects/my-app",
     ];
     for (const raw of samples) {
@@ -200,7 +200,7 @@ try {
     });
 
     const winSamples = [
-      "C:\\Users\\Test\\iPolloWalk\\starter",
+      "C:\\Users\\Test\\iPolloWork\\starter",
       "\\\\server\\share\\starter",
     ];
     for (const raw of winSamples) {

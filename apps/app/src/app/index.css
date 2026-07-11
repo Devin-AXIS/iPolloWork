@@ -13,22 +13,22 @@
 
 @custom-variant dark (&:is(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 @custom-variant electron {
-  html.ipollowalk-electron & {
+  html.ipollowork-electron & {
     @slot;
   }
 }
 @custom-variant windows {
-  html.ipollowalk-electron.ipollowalk-platform-windows & {
+  html.ipollowork-electron.ipollowork-platform-windows & {
     @slot;
   }
 }
 @custom-variant mac {
-  html.ipollowalk-electron.ipollowalk-platform-mac & {
+  html.ipollowork-electron.ipollowork-platform-mac & {
     @slot;
   }
 }
 @custom-variant linux {
-  html.ipollowalk-electron.ipollowalk-platform-linux & {
+  html.ipollowork-electron.ipollowork-platform-linux & {
     @slot;
   }
 }
@@ -176,7 +176,7 @@ body {
 }
 
 html {
-  font-size: var(--ipollowalk-font-size, 16px);
+  font-size: var(--ipollowork-font-size, 16px);
 }
 
 body {

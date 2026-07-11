@@ -41,7 +41,7 @@ const openAiImageGenConfigFactory = (ctx: ExtensionConfigContext) => (
   />
 );
 
-registerExtensionConfig("ipollowalk.imageGen.settings", openAiImageGenConfigFactory);
+registerExtensionConfig("ipollowork.imageGen.settings", openAiImageGenConfigFactory);
 registerExtensionConfig("openai-image-gen", openAiImageGenConfigFactory);
 
 const DEFAULT_PROMPT =
