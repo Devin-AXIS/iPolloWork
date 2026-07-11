@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/sonner";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { usePlatform } from "../../../kernel/platform";
 import { useDenAuth } from "../../cloud/den-auth-provider";
@@ -373,14 +374,18 @@ export function SessionPage(props: SessionPageProps) {
   const hasDesignBrief = useMemo(() => Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-design-brief.${props.selectedSessionId}`)), [designTemplateRevision, props.selectedSessionId]);
   const chooseDesignTemplate = useCallback(async (templateId: "open-design-saas-landing") => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
-    const template = getDesignTemplate(templateId);
-    if (!template) return;
-    const path = `design/${template.fileName}`;
-    await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content: template.html, baseUpdatedAt: null });
-    window.localStorage.setItem(`ipollowork.session-template.${props.selectedSessionId}`, templateId);
-    window.localStorage.setItem(designSelectionStorageKey(props.runtimeWorkspaceId), path);
-    setDesignTemplateRevision((value) => value + 1);
-    setSidePanelState(props.selectedSessionId, "design");
+    try {
+      const template = getDesignTemplate(templateId);
+      if (!template) throw new Error("Template is unavailable.");
+      const path = `design/${template.fileName}`;
+      await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content: template.html, baseUpdatedAt: null });
+      window.localStorage.setItem(`ipollowork.session-template.${props.selectedSessionId}`, templateId);
+      window.localStorage.setItem(designSelectionStorageKey(props.runtimeWorkspaceId), path);
+      setDesignTemplateRevision((value) => value + 1);
+      setSidePanelState(props.selectedSessionId, "design");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create this template.");
+    }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState]);
   const submitDesignBrief = useCallback(async (brief: { name: string; purpose: string; features: string; color: string }) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
