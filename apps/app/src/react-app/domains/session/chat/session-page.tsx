@@ -2,7 +2,7 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
-import { Cloud, Code2, Columns2, FileText, Film, Globe, Mic2, Settings2, TextSearch, X, Zap } from "lucide-react";
+import { Cloud, Code2, Columns2, FileText, Film, Globe, Image, Mic2, Palette, Presentation, Settings2, TextSearch, X, Zap } from "lucide-react";
 
 import { t } from "../../../../i18n";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
@@ -66,6 +66,7 @@ import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
 import { VideoPanel } from "../video/video-panel";
 import { designSelectionStorageKey } from "../design/design-html-runtime";
+import { getDesignTemplate } from "../design/design-template-catalog";
 import { SidePanel } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
@@ -291,6 +292,31 @@ function controlStringArg(args: unknown, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function DesignStarter({ onChoose }: { onChoose: (templateId: "open-design-saas-landing") => void }) {
+  const [category, setCategory] = useState<"website" | "slides" | "poster" | null>(null);
+  const categories = [
+    { id: "website" as const, label: "网站", detail: "落地页、产品页、个人主页", Icon: Globe },
+    { id: "slides" as const, label: "幻灯片", detail: "演示、提案和报告", Icon: Presentation },
+    { id: "poster" as const, label: "宣传海报", detail: "社媒图和活动视觉", Icon: Image },
+  ];
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12">
+      <div className="w-full max-w-3xl">
+        <div className="mb-7 text-center"><div className="mx-auto mb-3 grid size-11 place-items-center rounded-2xl bg-primary/10 text-primary"><Palette className="size-5" /></div><h2 className="text-lg font-semibold">开始设计</h2><p className="mt-1 text-sm text-dls-secondary">先选择类别，再选择一个模板。</p></div>
+        {!category ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {categories.map(({ id, label, detail, Icon }) => <button key={id} type="button" onClick={() => setCategory(id)} className="group rounded-2xl border border-dls-border bg-dls-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><Icon className="mb-7 size-4 text-dls-secondary group-hover:text-primary" /><div className="text-sm font-semibold">{label}</div><div className="mt-1 text-xs leading-5 text-dls-secondary">{detail}</div></button>)}
+          </div>
+        ) : category === "website" ? (
+          <div><button type="button" className="mb-3 text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => onChoose("open-design-saas-landing")} className="min-h-44 rounded-2xl border border-dls-border bg-gradient-to-br from-stone-100 via-orange-50 to-white p-5 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><div className="text-sm font-semibold">SaaS Landing</div><div className="mt-1 text-xs text-dls-secondary">官网模板 · 完整可编辑的产品落地页</div><div className="mt-8 text-xs font-medium text-primary">使用模板 →</div></button></div></div>
+        ) : (
+          <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">模板即将加入</p><button type="button" className="mt-3 text-xs text-primary" onClick={() => setCategory(null)}>返回类别</button></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SessionPage(props: SessionPageProps) {
   const { config: shellConfig } = useShellConfig();
   const platform = usePlatform();
@@ -325,6 +351,20 @@ export function SessionPage(props: SessionPageProps) {
   const artifactTargetCount = artifactFileTargets.length;
   const hasArtifactTargets = artifactTargetCount > 0;
   const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
+  const [designTemplateRevision, setDesignTemplateRevision] = useState(0);
+  const isDesignSession = Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-type.${props.selectedSessionId}`) === "design");
+  const hasDesignTemplate = useMemo(() => Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`)), [designTemplateRevision, props.selectedSessionId]);
+  const chooseDesignTemplate = useCallback(async (templateId: "open-design-saas-landing") => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
+    const template = getDesignTemplate(templateId);
+    if (!template) return;
+    const path = `design/${template.fileName}`;
+    await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content: template.html, baseUpdatedAt: null });
+    window.localStorage.setItem(`ipollowork.session-template.${props.selectedSessionId}`, templateId);
+    window.localStorage.setItem(designSelectionStorageKey(props.runtimeWorkspaceId), path);
+    setDesignTemplateRevision((value) => value + 1);
+    setSidePanelState(props.selectedSessionId, "design");
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState]);
   const sidePanelOpen = activeSidePanel !== null;
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
@@ -1143,7 +1183,9 @@ export function SessionPage(props: SessionPageProps) {
                   ) : null}
                   <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
                     <div className={cn("min-h-0 min-w-0 flex-1", canRenderSplitSurface && "lg:border-r lg:border-border")}>
-                      <SessionSurface
+                      {isDesignSession && !hasDesignTemplate ? (
+                        <DesignStarter onChoose={(templateId) => void chooseDesignTemplate(templateId)} />
+                      ) : <SessionSurface
                         // Spread `surface` first so the explicit per-workspace
                         // routing props below CAN'T be silently overridden by
                         // anything that leaks into `surface`. SessionSurface's
@@ -1166,7 +1208,7 @@ export function SessionPage(props: SessionPageProps) {
                         respondQuestion={props.respondQuestion}
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
-                      />
+                      />}
                     </div>
                     {canRenderSplitSurface ? (
                       <div className="min-h-0 min-w-0 flex-1 border-t border-border lg:border-t-0">
