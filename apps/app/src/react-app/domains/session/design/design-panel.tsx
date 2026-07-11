@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, MousePointer2, Move, Palette, Paintbrush, Plus, Save, SlidersHorizontal, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
 import type { OpenTarget } from "../artifacts/open-target";
 import {
   buildDesignPreviewDocument,
@@ -161,6 +163,7 @@ export function DesignPanel({
   const [activePageHash, setActivePageHash] = React.useState("");
   const [viewedVersionPath, setViewedVersionPath] = React.useState("current");
   const [viewedVersionUpdatedAt, setViewedVersionUpdatedAt] = React.useState<number | null>(null);
+  const [previewDevice, setPreviewDevice] = React.useState<"desktop" | "mobile">("desktop");
   const [editing, setEditing] = React.useState(false);
   const [selection, setSelection] = React.useState<DesignSelection | null>(null);
   const [draft, setDraft] = React.useState("");
@@ -507,8 +510,8 @@ export function DesignPanel({
     [editing, previewSource],
   );
   const floatingStyle = selection ? {
-    left: `clamp(112px, ${selection.rect.left + selection.rect.width / 2 + 8}px, calc(100% - 112px))`,
-    top: `${Math.max(8, selection.rect.top + 8)}px`,
+    left: `clamp(112px, ${(iframeRef.current?.offsetLeft ?? 0) + selection.rect.left + selection.rect.width / 2 + 8}px, calc(100% - 112px))`,
+    top: `${Math.max(8, (iframeRef.current?.offsetTop ?? 0) + selection.rect.top + 8)}px`,
     transform: selection.rect.top > 58 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
   } satisfies React.CSSProperties : undefined;
 
@@ -607,6 +610,28 @@ export function DesignPanel({
               {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
               Save
             </Button>
+            <ToggleGroup
+              value={[previewDevice]}
+              onValueChange={(value) => {
+                const next = value[0];
+                if (next !== "desktop" && next !== "mobile") return;
+                setPreviewDevice(next);
+                setSelection(null);
+                setQuickEdit(null);
+                setAdvancedOpen(false);
+              }}
+              variant="outline"
+              size="sm"
+              aria-label="Preview device"
+              className="rounded-lg"
+            >
+              <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label="Desktop preview" title="Desktop">
+                <Monitor className="size-3.5" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label="Mobile preview" title="Mobile">
+                <Smartphone className="size-3.5" />
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
 
           {fileQuery.isLoading || !sourceHydrated ? (
@@ -615,13 +640,18 @@ export function DesignPanel({
             <div className="p-4 text-sm text-destructive">{fileQuery.error.message}</div>
           ) : (
             <div className="flex min-h-0 flex-1">
-              <div className="relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2">
+              <div className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}>
                 <iframe
                   ref={iframeRef}
                   key={`${activePagePath}:${previewRevision}:${editing ? "edit" : "preview"}`}
                   srcDoc={preview}
                   title={`Design preview: ${fileName(activePagePath)}`}
-                  className="h-full w-full rounded-lg border border-border bg-white shadow-sm"
+                  className={cn(
+                    "h-full border border-border bg-white transition-[width,border-radius,box-shadow] duration-200",
+                    previewDevice === "desktop"
+                      ? "w-full rounded-lg shadow-sm"
+                      : "w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
+                  )}
                   sandbox="allow-scripts"
                   data-preview-loaded={previewLoaded ? "true" : "false"}
                   onLoad={() => {
