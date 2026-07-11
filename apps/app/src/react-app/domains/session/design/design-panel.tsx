@@ -127,6 +127,10 @@ export function DesignPanel({
       || window.localStorage.getItem(designSessionSelectionStorageKey(workspaceId, sessionId))
       || "";
   }, [sessionId, workspaceId]);
+  const isDesignTemplateSession = React.useMemo(
+    () => typeof window !== "undefined" && Boolean(window.localStorage.getItem(`ipollowork.session-template.${sessionId}`)),
+    [sessionId],
+  );
   const htmlTargets = React.useMemo(() => {
     const unique = new Map<string, { value: string }>();
     catalogQuery.data?.forEach((entry) => {
@@ -138,8 +142,9 @@ export function DesignPanel({
       }
     });
     const entries = Array.from(unique.values()).sort((left, right) => left.value.localeCompare(right.value));
-    return lockedPath ? entries.filter((target) => target.value === lockedPath) : entries;
-  }, [catalogQuery.data, lockedPath, targets]);
+    if (isDesignTemplateSession) return lockedPath ? entries.filter((target) => target.value === lockedPath) : [];
+    return entries;
+  }, [catalogQuery.data, isDesignTemplateSession, lockedPath, targets]);
   const versionTargets = React.useMemo(
     () => (catalogQuery.data ?? [])
       .filter((entry) => entry.kind === "file" && entry.path.startsWith(`design/.versions/${sessionId}/`) && isLocalHtmlPath(entry.path))
@@ -470,9 +475,9 @@ export function DesignPanel({
         <div className="flex flex-1 items-center justify-center p-6 text-center">
           <div className="max-w-xs">
             <Code2 className="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p className="text-sm font-medium">No local HTML artifacts yet</p>
+            <p className="text-sm font-medium">{isDesignTemplateSession ? "No current design file" : "No local HTML artifacts yet"}</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Ask iPolloWork to create an HTML file in this task, then open Design to edit it visually.
+              {isDesignTemplateSession ? "Start a new Design session and select a template." : "Ask iPolloWork to create an HTML file in this task, then open Design to edit it visually."}
             </p>
           </div>
         </div>
