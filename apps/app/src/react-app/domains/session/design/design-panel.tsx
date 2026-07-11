@@ -289,6 +289,13 @@ export function DesignPanel({
       // flight, which is especially important for text nested in controls.
       const content = await readLatestCanvasHtml();
       draftRef.current = content;
+      if (savedSource !== content && lockedPath) {
+        await client.writeWorkspaceFile(workspaceId, {
+          path: `design/.versions/${sessionId}/${Date.now()}-before-save.html`,
+          content: savedSource,
+          baseUpdatedAt: null,
+        });
+      }
       const result = await client.writeWorkspaceFile(workspaceId, {
         path: selectedPath,
         content,
@@ -316,6 +323,14 @@ export function DesignPanel({
   const restoreVersion = async (versionPath: string) => {
     if (!client || !workspaceId || !lockedPath || !fileQuery.data) return;
     try {
+      // Restoring replaces the current file. Capture the exact visible canvas
+      // first so an older version can never discard the latest work.
+      const currentContent = await readLatestCanvasHtml();
+      await client.writeWorkspaceFile(workspaceId, {
+        path: `design/.versions/${sessionId}/${Date.now()}-before-restore.html`,
+        content: currentContent,
+        baseUpdatedAt: null,
+      });
       const snapshot = await client.readWorkspaceFile(workspaceId, versionPath);
       const result = await client.writeWorkspaceFile(workspaceId, {
         path: lockedPath,
@@ -323,7 +338,8 @@ export function DesignPanel({
         baseUpdatedAt: fileQuery.data.updatedAt,
       });
       queryClient.setQueryData<LoadedHtml>(["design-html", workspaceId, lockedPath] as const, { content: snapshot.content, updatedAt: result.updatedAt ?? null });
-      toast.success("Version restored.");
+      await queryClient.invalidateQueries({ queryKey: ["design-html-catalog", workspaceId] });
+      toast.success("Version restored. Your latest work was saved as a new version.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not restore this version.");
     }
