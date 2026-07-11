@@ -8,6 +8,7 @@ export type DesignTemplate = {
   source: { name: string; repository: string; license: string };
   fileName: string;
   html: string;
+  applyChecklist: readonly string[];
 };
 
 const tokenBridge = `<style id="ipollowork-design-tokens">
@@ -40,6 +41,15 @@ export const DESIGN_TEMPLATES: readonly DesignTemplate[] = [
     },
     fileName: "saas-landing.html",
     html: withTokenBridge(saasLandingSource),
+    applyChecklist: [
+      "document title and meta description",
+      "brand mark and navigation labels",
+      "hero heading, copy, and calls to action",
+      "feature cards and proof content",
+      "pricing or section labels",
+      "footer copy and links",
+      "global theme token values",
+    ],
   },
 ];
 

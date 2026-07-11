@@ -394,16 +394,22 @@ export function SessionPage(props: SessionPageProps) {
     if (!template) return;
     const path = `design/${template.fileName}`;
     const current = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path);
+    const versionId = `${Date.now()}-before-brief`;
+    await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
+      path: `design/.versions/${props.selectedSessionId}/${versionId}.html`,
+      content: current.content,
+      baseUpdatedAt: null,
+    });
     const content = current.content.replace(/--ipw-color-primary:\s*#[0-9a-fA-F]{6}/, `--ipw-color-primary: ${brief.color}`);
     await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content, baseUpdatedAt: current.updatedAt ?? null });
     await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
       path: "design/brief.json",
-      content: JSON.stringify({ templateId, template: template.title, ...brief }, null, 2),
+      content: JSON.stringify({ templateId, template: template.title, sourcePath: path, versionId, applyChecklist: template.applyChecklist, ...brief }, null, 2),
       baseUpdatedAt: null,
     });
     window.localStorage.setItem(`ipollowork.session-design-brief.${props.selectedSessionId}`, JSON.stringify(brief));
     setDesignTemplateRevision((value) => value + 1);
-    const prompt = `Use the selected ${template.title} template at ${path} as the fixed design baseline. The structured brief is also saved in design/brief.json. Apply it now: name: ${brief.name}; purpose: ${brief.purpose}; main functions: ${brief.features || "not specified"}; theme primary color: ${brief.color}. Update the existing HTML only, preserve its layout and visual language, and keep the result editable in the Design panel.`;
+    const prompt = `Apply design/brief.json to the selected ${template.title} template at ${path}. This is a whole-page update, not a partial copy edit. Keep the template's layout and visual language, but update every applicable item in this required checklist: ${template.applyChecklist.join("; ")}. Replace all inherited Filebase/original-template names, navigation labels, links, headings, calls to action, cards, section copy, metadata, and footer content with information consistent with this brief. Do not create a new page or leave placeholders. Work only in ${path}; a restore point was saved before this update. Keep the result editable in the Design panel.`;
     props.surface?.onSendDraft({ mode: "prompt", parts: [{ type: "text", text: prompt }], attachments: [], text: prompt }, props.selectedSessionId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const sidePanelOpen = activeSidePanel !== null;
@@ -412,6 +418,12 @@ export function SessionPage(props: SessionPageProps) {
   const videoRailActive = activeSidePanel === "video";
   const extensionsRailActive = activeSidePanel === "extensions";
   const voiceRailActive = activeSidePanel === "voice";
+  useEffect(() => {
+    if (!isDesignSession || !props.selectedSessionId) return;
+    if (activeSidePanel === "video" || activeSidePanel === "panel") {
+      setSidePanelState(props.selectedSessionId, "design");
+    }
+  }, [activeSidePanel, isDesignSession, props.selectedSessionId, setSidePanelState]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
@@ -1555,7 +1567,7 @@ export function SessionPage(props: SessionPageProps) {
             >
               <Code2 size={17} />
             </Button>
-            <Button
+            {!isDesignSession ? <Button
               variant="ghost"
               size="icon-sm"
               className={cn(
@@ -1569,8 +1581,8 @@ export function SessionPage(props: SessionPageProps) {
               disabled={!props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote"}
             >
               <Film size={17} />
-            </Button>
-            <Button
+            </Button> : null}
+            {!isDesignSession ? <Button
               variant="ghost"
               size="icon-sm"
               className={cn(
@@ -1589,7 +1601,7 @@ export function SessionPage(props: SessionPageProps) {
                   {artifactTargetCount > 9 ? "9+" : artifactTargetCount}
                 </span>
               ) : null}
-            </Button>
+            </Button> : null}
             <Button
               variant="ghost"
               size="icon-sm"
