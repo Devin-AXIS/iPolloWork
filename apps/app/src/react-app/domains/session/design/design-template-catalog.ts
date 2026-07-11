@@ -15,7 +15,7 @@ export type DesignTemplate = {
   applyChecklist: readonly string[];
 };
 
-const tokenBridge = \`<style id="ipollowork-design-tokens">
+const tokenBridge = `<style id="ipollowork-design-tokens">
 :root {
   --ipw-color-bg: #fafaf9; --ipw-color-surface: #ffffff; --ipw-color-text: #1c1b1a;
   --ipw-color-muted: #6b6964; --ipw-color-border: #e6e4e0; --ipw-color-primary: #c96442;
@@ -62,7 +62,7 @@ button { border-radius: var(--ipw-button-radius); }
 }
 .tier.featured { border-color: var(--ipw-color-primary); }
 .tier.featured::before, .closing { background: var(--ipw-color-primary); }
-</style>\`;
+</style>`;
 
 function withTokenBridge(html: string) {
   return html.replace("</head>", `${tokenBridge}</head>`);
