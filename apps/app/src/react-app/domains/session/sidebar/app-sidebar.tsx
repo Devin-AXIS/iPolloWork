@@ -84,6 +84,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
 import type { SidebarContextValue, iPolloWorkSessionType, iPolloWorkTemplateId } from "./app-sidebar-provider";
@@ -982,6 +983,7 @@ function WorkspaceSidebarGroup({
     (connectionState.status === "error" || group.status === "error");
   const isExpanded = ctx.expandedWorkspaceIds.has(workspace.id);
   const isSelected = ctx.selectedWorkspaceId === workspace.id;
+  const [designPickerOpen, setDesignPickerOpen] = React.useState(false);
 
   const statusLabel = (() => {
     if (showRemoteConnectionIssue) return t("workspace_list.unavailable");
@@ -1057,26 +1059,33 @@ function WorkspaceSidebarGroup({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" side="bottom" className="w-40">
                     <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "work")} className="gap-2"><BriefcaseBusiness className="size-3.5 text-muted-foreground" />Work</DropdownMenuItem>
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger className="gap-2"><Palette className="size-3.5 text-muted-foreground" />Design</DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="w-48">
-                        <DropdownMenuSub>
-                          <DropdownMenuSubTrigger>Site</DropdownMenuSubTrigger>
-                          <DropdownMenuSubContent className="w-56">
-                            <DropdownMenuSub>
-                              <DropdownMenuSubTrigger>Landing Page</DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent className="w-64">
-                                <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "design", "open-design-saas-landing")}>SaaS Landing</DropdownMenuItem>
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                          </DropdownMenuSubContent>
-                        </DropdownMenuSub>
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
+                    <DropdownMenuItem onClick={() => setDesignPickerOpen(true)} className="gap-2"><Palette className="size-3.5 text-muted-foreground" />Design</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "code")} className="gap-2"><Code2 className="size-3.5 text-muted-foreground" />Code</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "video")} className="gap-2"><Video className="size-3.5 text-muted-foreground" />Video</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                <Dialog open={designPickerOpen} onOpenChange={setDesignPickerOpen}>
+                  <DialogContent className="max-w-2xl gap-4 p-5" showCloseButton>
+                    <div>
+                      <DialogTitle>Start a design</DialogTitle>
+                      <p className="mt-1 text-xs text-muted-foreground">Choose a category, then a template. Everything is editable after generation.</p>
+                    </div>
+                    <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-4">
+                      <div className="rounded-2xl bg-muted/45 p-1.5">
+                        <button type="button" className="flex w-full items-center gap-2 rounded-xl bg-background px-3 py-2 text-left text-xs font-medium shadow-sm"><Code2 className="size-3.5" />Site</button>
+                      </div>
+                      <div className="grid gap-2">
+                        <button
+                          type="button"
+                          className="group flex min-h-28 items-end rounded-2xl border border-border bg-gradient-to-br from-stone-100 via-orange-50 to-white p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"
+                          onClick={() => { setDesignPickerOpen(false); ctx.onCreateTaskInWorkspace(workspace.id, "design", "open-design-saas-landing"); }}
+                        >
+                          <span><span className="block text-sm font-semibold">SaaS Landing</span><span className="mt-1 block text-xs text-muted-foreground">Warm editorial landing page · Open Design</span></span>
+                        </button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
                 <WorkspaceActionsMenu
                   workspace={workspace}
                   isConnectionActionBusy={isConnectionActionBusy}
