@@ -5,30 +5,48 @@ import { CheckCircle2, Film, Layers3, Loader2, RefreshCw, Unplug, X } from "luci
 import { Button } from "@/components/ui/button";
 
 type VideoPanelProps = {
+  sessionId: string;
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;
   onClose: () => void;
 };
 
 const HYPERFRAMES_VERSION = "0.7.52";
-const HYPERFRAMES_PORT = 3002;
+const HYPERFRAMES_PORT_BASE = 3_100;
+const HYPERFRAMES_PORT_RANGE = 800;
 
-export function hyperframesStudioUrl() {
+export function hyperframesStudioPort(sessionId: string) {
+  let hash = 0;
+  for (const character of sessionId) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
+  return HYPERFRAMES_PORT_BASE + (hash % HYPERFRAMES_PORT_RANGE);
+}
+
+export function hyperframesStudioUrl(port = 3_002, projectId = "video") {
   // Start on a deterministic, hydrated main-composition frame. HyperFrames can
   // otherwise restore a panel/playhead state before its preview has mounted,
   // which leaves the first playback visually empty until a timeline layer is
   // selected.
-  return `http://localhost:${HYPERFRAMES_PORT}/#project/video?v=1&t=0&tab=design&rc=1&tv=1`;
+  return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?v=1&t=0&tab=design&rc=1&tv=1`;
 }
 
-export function VideoPanel({ workspaceRoot, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
+export function videoProjectId(sessionId: string) {
+  return sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+export function videoProjectDirectory(sessionId: string) {
+  return `video/${videoProjectId(sessionId)}`;
+}
+
+export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
   const [detail, setDetail] = React.useState(`Starting HyperFrames ${HYPERFRAMES_VERSION}…`);
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [simpleMode, setSimpleMode] = React.useState(true);
-  const studioUrl = hyperframesStudioUrl();
+  const studioPort = hyperframesStudioPort(sessionId);
+  const studioUrl = hyperframesStudioUrl(studioPort, videoProjectId(sessionId));
+  const projectDirectory = videoProjectDirectory(sessionId);
 
   const applySimpleMode = React.useCallback(async (enabled: boolean) => {
     const result = await window.__IPOLLOWORK_ELECTRON__?.hyperframes?.setSimpleMode?.(enabled);
@@ -45,6 +63,9 @@ export function VideoPanel({ workspaceRoot, isRemoteWorkspace = false, onClose }
   }, [applySimpleMode, simpleMode, status, studioFrameLoaded]);
 
   React.useEffect(() => {
+    setStatus("starting");
+    setDetail(`Starting HyperFrames ${HYPERFRAMES_VERSION}…`);
+    setStudioFrameLoaded(false);
     if (isRemoteWorkspace) {
       setStatus("failed");
       setDetail("Video Studio is available for local workspaces.");
@@ -66,7 +87,7 @@ export function VideoPanel({ workspaceRoot, isRemoteWorkspace = false, onClose }
     const removeData = onTerminalData(({ terminalId, data }) => {
       if (terminalIdRef.current !== terminalId) return;
       const plain = data.replace(/\x1b\[[0-9;]*m/g, "");
-      if (/localhost:3002|127\.0\.0\.1:3002|studio.*ready|server.*running/i.test(plain)) {
+      if (new RegExp(`localhost:${studioPort}|127\\.0\\.0\\.1:${studioPort}|studio.*ready|server.*running`, "i").test(plain)) {
         setStatus("ready");
         setDetail("Studio ready · click any canvas element to edit");
         setStudioFrameLoaded(false);
@@ -86,7 +107,7 @@ export function VideoPanel({ workspaceRoot, isRemoteWorkspace = false, onClose }
         return;
       }
       terminalIdRef.current = terminalId;
-      const command = `if [ ! -f video/index.html ]; then HYPERFRAMES_SKIP_SKILLS=1 npx --yes hyperframes@${HYPERFRAMES_VERSION} init video --example warm-grain --non-interactive --skip-skills; fi && cd video && npx --yes hyperframes@${HYPERFRAMES_VERSION} preview --port ${HYPERFRAMES_PORT}\n`;
+      const command = `if [ ! -f ${projectDirectory}/index.html ]; then HYPERFRAMES_SKIP_SKILLS=1 npx --yes hyperframes@${HYPERFRAMES_VERSION} init ${projectDirectory} --example warm-grain --non-interactive --skip-skills; fi && cd ${projectDirectory} && npx --yes hyperframes@${HYPERFRAMES_VERSION} preview --port ${studioPort}\n`;
       void writeTerminal(terminalId, command);
     }).catch((cause) => {
       setStatus("failed");
@@ -101,7 +122,7 @@ export function VideoPanel({ workspaceRoot, isRemoteWorkspace = false, onClose }
       terminalIdRef.current = null;
       if (terminalId) void killTerminal(terminalId);
     };
-  }, [isRemoteWorkspace, workspaceRoot]);
+  }, [isRemoteWorkspace, projectDirectory, studioPort, workspaceRoot]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel">

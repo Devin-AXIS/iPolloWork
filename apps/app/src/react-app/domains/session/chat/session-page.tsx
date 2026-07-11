@@ -372,7 +372,11 @@ export function SessionPage(props: SessionPageProps) {
   const hasArtifactTargets = artifactTargetCount > 0;
   const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
   const [designTemplateRevision, setDesignTemplateRevision] = useState(0);
-  const isDesignSession = Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-type.${props.selectedSessionId}`) === "design");
+  const selectedSessionType = props.selectedSessionId && typeof window !== "undefined"
+    ? window.localStorage.getItem(`ipollowork.session-type.${props.selectedSessionId}`)
+    : null;
+  const isDesignSession = selectedSessionType === "design";
+  const isVideoSession = selectedSessionType === "video";
   const hasDesignTemplate = useMemo(() => Boolean(
     props.selectedSessionId
       && typeof window !== "undefined"
@@ -424,11 +428,16 @@ export function SessionPage(props: SessionPageProps) {
   const extensionsRailActive = activeSidePanel === "extensions";
   const voiceRailActive = activeSidePanel === "voice";
   useEffect(() => {
-    if (!isDesignSession || !props.selectedSessionId) return;
-    if (activeSidePanel === "video" || activeSidePanel === "panel") {
+    if (!props.selectedSessionId) return;
+    if (isVideoSession) {
+      setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
+      if (activeSidePanel !== "video") setSidePanelState(props.selectedSessionId, "video");
+      return;
+    }
+    if (isDesignSession && (activeSidePanel === "video" || activeSidePanel === "panel")) {
       setSidePanelState(props.selectedSessionId, "design");
     }
-  }, [activeSidePanel, isDesignSession, props.selectedSessionId, setSidePanelState]);
+  }, [activeSidePanel, isDesignSession, isVideoSession, props.selectedSessionId, setSidePanelState]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
@@ -1506,6 +1515,7 @@ export function SessionPage(props: SessionPageProps) {
                     />
                   ) : activeSidePanel === "video" && props.selectedSessionId ? (
                     <VideoPanel
+                      sessionId={props.selectedSessionId}
                       workspaceRoot={props.selectedWorkspaceRoot}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
                       onClose={closeRightPane}
@@ -1525,7 +1535,7 @@ export function SessionPage(props: SessionPageProps) {
             ) : null}
           </ResizablePanelGroup>
           <aside className="flex w-11 shrink-0 flex-col items-center gap-1 border-l border-border bg-background/95 px-1 py-2 text-muted-foreground mac:titlebar-no-drag">
-            {isElectronRuntime() ? (
+            {isElectronRuntime() && !isVideoSession ? (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -1541,7 +1551,7 @@ export function SessionPage(props: SessionPageProps) {
                 <Globe size={17} />
               </Button>
             ) : null}
-            {voiceExtensionEnabled ? (
+            {voiceExtensionEnabled && !isVideoSession ? (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -1557,7 +1567,7 @@ export function SessionPage(props: SessionPageProps) {
                 <Mic2 size={17} />
               </Button>
             ) : null}
-            <Button
+            {!isVideoSession ? <Button
               variant="ghost"
               size="icon-sm"
               className={cn(
@@ -1571,7 +1581,7 @@ export function SessionPage(props: SessionPageProps) {
               disabled={!props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote"}
             >
               <Code2 size={17} />
-            </Button>
+            </Button> : null}
             {!isDesignSession ? <Button
               variant="ghost"
               size="icon-sm"
@@ -1587,7 +1597,7 @@ export function SessionPage(props: SessionPageProps) {
             >
               <Film size={17} />
             </Button> : null}
-            {!isDesignSession ? <Button
+            {!isDesignSession && !isVideoSession ? <Button
               variant="ghost"
               size="icon-sm"
               className={cn(
@@ -1607,7 +1617,7 @@ export function SessionPage(props: SessionPageProps) {
                 </span>
               ) : null}
             </Button> : null}
-            <Button
+            {!isVideoSession ? <Button
               variant="ghost"
               size="icon-sm"
               className={cn(
@@ -1620,7 +1630,7 @@ export function SessionPage(props: SessionPageProps) {
               aria-pressed={extensionsRailActive}
             >
               <Settings2 size={17} />
-            </Button>
+            </Button> : null}
           </aside>
           </div>
         </SidebarInset>
