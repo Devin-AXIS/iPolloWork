@@ -156,6 +156,7 @@ export function DesignPanel({
     [catalogQuery.data, sessionId],
   );
   const [selectedPath, setSelectedPath] = React.useState("");
+  const [viewedVersionPath, setViewedVersionPath] = React.useState("current");
   const [editing, setEditing] = React.useState(false);
   const [selection, setSelection] = React.useState<DesignSelection | null>(null);
   const [draft, setDraft] = React.useState("");
@@ -188,12 +189,14 @@ export function DesignPanel({
       return { content: result.content, updatedAt: result.updatedAt ?? null };
     },
     enabled: Boolean(client && workspaceId && selectedPath && !isRemoteWorkspace),
+    refetchInterval: viewedVersionPath === "current" && !editing && draft === savedSource ? 1_500 : false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
 
   React.useEffect(() => {
     if (!fileQuery.data) return;
+    setViewedVersionPath("current");
     draftRef.current = fileQuery.data.content;
     setPendingCanvasChange(false);
     setDraft(fileQuery.data.content);
@@ -289,13 +292,6 @@ export function DesignPanel({
       // flight, which is especially important for text nested in controls.
       const content = await readLatestCanvasHtml();
       draftRef.current = content;
-      if (savedSource !== content && lockedPath) {
-        await client.writeWorkspaceFile(workspaceId, {
-          path: `design/.versions/${sessionId}/${Date.now()}-before-save.html`,
-          content: savedSource,
-          baseUpdatedAt: null,
-        });
-      }
       const result = await client.writeWorkspaceFile(workspaceId, {
         path: selectedPath,
         content,
@@ -320,28 +316,30 @@ export function DesignPanel({
     },
   });
 
-  const restoreVersion = async (versionPath: string) => {
-    if (!client || !workspaceId || !lockedPath || !fileQuery.data) return;
+  const viewVersion = async (versionPath: string) => {
+    if (!client || !workspaceId || !fileQuery.data || versionPath === viewedVersionPath) return;
+    if (viewedVersionPath === "current" && draft !== savedSource && !window.confirm("Discard unsaved design changes and switch versions?")) return;
     try {
-      // Restoring replaces the current file. Capture the exact visible canvas
-      // first so an older version can never discard the latest work.
-      const currentContent = await readLatestCanvasHtml();
-      await client.writeWorkspaceFile(workspaceId, {
-        path: `design/.versions/${sessionId}/${Date.now()}-before-restore.html`,
-        content: currentContent,
-        baseUpdatedAt: null,
-      });
-      const snapshot = await client.readWorkspaceFile(workspaceId, versionPath);
-      const result = await client.writeWorkspaceFile(workspaceId, {
-        path: lockedPath,
-        content: snapshot.content,
-        baseUpdatedAt: fileQuery.data.updatedAt,
-      });
-      queryClient.setQueryData<LoadedHtml>(["design-html", workspaceId, lockedPath] as const, { content: snapshot.content, updatedAt: result.updatedAt ?? null });
-      await queryClient.invalidateQueries({ queryKey: ["design-html-catalog", workspaceId] });
-      toast.success("Version restored. Your latest work was saved as a new version.");
+      const loaded = await client.readWorkspaceFile(workspaceId, versionPath === "current" ? selectedPath : versionPath);
+      const content = loaded.content;
+      if (versionPath === "current") {
+        queryClient.setQueryData<LoadedHtml>(
+          ["design-html", workspaceId, selectedPath] as const,
+          { content, updatedAt: loaded.updatedAt ?? null },
+        );
+      }
+      setViewedVersionPath(versionPath);
+      draftRef.current = content;
+      setDraft(content);
+      setHistory([]);
+      setSelection(null);
+      setQuickEdit(null);
+      setAdvancedOpen(false);
+      setPreviewSource(content);
+      setPreviewLoaded(false);
+      setPreviewRevision((current) => current + 1);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not restore this version.");
+      toast.error(error instanceof Error ? error.message : "Could not open this version.");
     }
   };
 
@@ -505,7 +503,7 @@ export function DesignPanel({
         <>
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
             {lockedPath ? (
-              <div className="min-w-0 flex flex-1 items-center gap-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{fileName(selectedPath)}</p><p className="truncate text-[10px] text-muted-foreground">Current design</p></div>{versionTargets.length > 0 ? <Select value="current" onValueChange={(value) => { if (value && value !== "current") void restoreVersion(value); }}><SelectTrigger size="sm" className="w-32 rounded-lg" aria-label="Design version"><SelectValue>Versions</SelectValue></SelectTrigger><SelectContent><SelectItem value="current">Current version</SelectItem>{versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>Restore v{versionTargets.length - index}</SelectItem>)}</SelectContent></Select> : null}</div>
+              <div className="min-w-0 flex flex-1 items-center gap-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{fileName(selectedPath)}</p><p className="truncate text-[10px] text-muted-foreground">{viewedVersionPath === "current" ? "Current design" : "Version preview"}</p></div>{versionTargets.length > 0 ? <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}><SelectTrigger size="sm" className="w-32 rounded-lg" aria-label="Design version"><SelectValue>Versions</SelectValue></SelectTrigger><SelectContent><SelectItem value="current">Current version</SelectItem>{versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>Version {versionTargets.length - index}</SelectItem>)}</SelectContent></Select> : null}</div>
             ) : (
               <Select value={selectedPath} onValueChange={chooseFile}>
                 <SelectTrigger size="sm" className="min-w-44 max-w-full flex-1 rounded-lg" aria-label="HTML file">
@@ -554,7 +552,7 @@ export function DesignPanel({
             </Button>
             <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || (!editing && !dirty)}>
               {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
-              Save
+              {viewedVersionPath === "current" ? "Save" : "Restore"}
             </Button>
           </div>
 

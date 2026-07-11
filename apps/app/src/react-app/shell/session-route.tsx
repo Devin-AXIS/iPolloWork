@@ -921,6 +921,24 @@ export function SessionRoute() {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
         });
+        const designPath = typeof window !== "undefined"
+          ? window.localStorage.getItem(`ipollowork.session-design-path.${targetSessionId}`)
+          : null;
+        if (designPath && selectedWorkspaceEndpoint) {
+          try {
+            const currentDesign = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, designPath);
+            await selectedWorkspaceEndpoint.client.writeWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, {
+              path: `design/.versions/${targetSessionId}/${Date.now()}-before-ai.html`,
+              content: currentDesign.content,
+              baseUpdatedAt: null,
+            });
+            await getReactQueryClient().invalidateQueries({
+              queryKey: ["design-html-catalog", selectedWorkspaceEndpoint.workspaceId],
+            });
+          } catch (error) {
+            throw new Error(`Could not create the Design version before this AI update: ${error instanceof Error ? error.message : "Unknown error"}`);
+          }
+        }
         const result = await opencodeClient.session.promptAsync({
           sessionID: targetSessionId,
           parts,
@@ -1039,6 +1057,7 @@ export function SessionRoute() {
     selectedSessionId,
     selectedModelUnavailable,
     selectedWorkspace,
+    selectedWorkspaceEndpoint,
     selectedWorkspaceId,
     selectedWorkspaceRoot,
     sessionsByWorkspaceId,
