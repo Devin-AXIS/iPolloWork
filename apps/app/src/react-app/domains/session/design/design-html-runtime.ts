@@ -54,6 +54,10 @@ export function designSelectionStorageKey(workspaceId: string) {
   return `ipollowork:design-html:selected:v1:${workspaceId}`;
 }
 
+export function designSessionSelectionStorageKey(workspaceId: string, sessionId: string) {
+  return `ipollowork:design-html:selected:v1:${workspaceId}:${sessionId}`;
+}
+
 export function buildDesignPreviewDocument(source: string, editing: boolean) {
   if (!editing) return source;
 

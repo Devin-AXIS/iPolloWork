@@ -67,7 +67,7 @@ import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
 import { VideoPanel } from "../video/video-panel";
-import { designSelectionStorageKey } from "../design/design-html-runtime";
+import { designSelectionStorageKey, designSessionSelectionStorageKey } from "../design/design-html-runtime";
 import { getDesignTemplate } from "../design/design-template-catalog";
 import { SidePanel } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
@@ -377,10 +377,11 @@ export function SessionPage(props: SessionPageProps) {
     try {
       const template = getDesignTemplate(templateId);
       if (!template) throw new Error("Template is unavailable.");
-      const path = `design/${template.fileName}`;
+      const path = `design/${props.selectedSessionId}/${template.fileName}`;
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content: template.html, baseUpdatedAt: null });
       window.localStorage.setItem(`ipollowork.session-template.${props.selectedSessionId}`, templateId);
-      window.localStorage.setItem(designSelectionStorageKey(props.runtimeWorkspaceId), path);
+      window.localStorage.setItem(`ipollowork.session-design-path.${props.selectedSessionId}`, path);
+      window.localStorage.setItem(designSessionSelectionStorageKey(props.runtimeWorkspaceId, props.selectedSessionId), path);
       setDesignTemplateRevision((value) => value + 1);
       setSidePanelState(props.selectedSessionId, "design");
     } catch (error) {
@@ -392,7 +393,7 @@ export function SessionPage(props: SessionPageProps) {
     const templateId = window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`);
     const template = getDesignTemplate(templateId ?? undefined);
     if (!template) return;
-    const path = `design/${template.fileName}`;
+    const path = window.localStorage.getItem(`ipollowork.session-design-path.${props.selectedSessionId}`) || `design/${props.selectedSessionId}/${template.fileName}`;
     const current = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path);
     const versionId = `${Date.now()}-before-brief`;
     await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {

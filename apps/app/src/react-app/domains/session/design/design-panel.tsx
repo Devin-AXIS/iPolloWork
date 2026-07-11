@@ -22,6 +22,7 @@ import {
   DESIGN_MESSAGE_CHANNEL,
   DESIGN_STYLE_FIELDS,
   designSelectionStorageKey,
+  designSessionSelectionStorageKey,
   isLocalHtmlPath,
   type DesignField,
   type DesignRuntimeMessage,
@@ -120,6 +121,12 @@ export function DesignPanel({
     staleTime: 10_000,
     refetchOnWindowFocus: false,
   });
+  const lockedPath = React.useMemo(() => {
+    if (!workspaceId || typeof window === "undefined") return "";
+    return window.localStorage.getItem(`ipollowork.session-design-path.${sessionId}`)
+      || window.localStorage.getItem(designSessionSelectionStorageKey(workspaceId, sessionId))
+      || "";
+  }, [sessionId, workspaceId]);
   const htmlTargets = React.useMemo(() => {
     const unique = new Map<string, { value: string }>();
     catalogQuery.data?.forEach((entry) => {
@@ -130,8 +137,9 @@ export function DesignPanel({
         unique.set(target.value, target);
       }
     });
-    return Array.from(unique.values()).sort((left, right) => left.value.localeCompare(right.value));
-  }, [catalogQuery.data, targets]);
+    const entries = Array.from(unique.values()).sort((left, right) => left.value.localeCompare(right.value));
+    return lockedPath ? entries.filter((target) => target.value === lockedPath) : entries;
+  }, [catalogQuery.data, lockedPath, targets]);
   const [selectedPath, setSelectedPath] = React.useState("");
   const [editing, setEditing] = React.useState(false);
   const [selection, setSelection] = React.useState<DesignSelection | null>(null);
@@ -152,10 +160,10 @@ export function DesignPanel({
       setSelectedPath("");
       return;
     }
-    const stored = window.localStorage.getItem(designSelectionStorageKey(workspaceId));
+    const stored = lockedPath || window.localStorage.getItem(designSessionSelectionStorageKey(workspaceId, sessionId)) || window.localStorage.getItem(designSelectionStorageKey(workspaceId));
     const next = htmlTargets.some((target) => target.value === stored) ? stored : htmlTargets[0]?.value;
     setSelectedPath(next || "");
-  }, [htmlTargets, workspaceId]);
+  }, [htmlTargets, lockedPath, sessionId, workspaceId]);
 
   const fileQuery = useQuery<LoadedHtml>({
     queryKey: ["design-html", workspaceId, selectedPath] as const,
@@ -449,16 +457,20 @@ export function DesignPanel({
       ) : (
         <>
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-            <Select value={selectedPath} onValueChange={chooseFile}>
-              <SelectTrigger size="sm" className="min-w-44 max-w-full flex-1 rounded-lg" aria-label="HTML file">
-                <SelectValue>{fileName(selectedPath)}</SelectValue>
-              </SelectTrigger>
-              <SelectContent align="start">
-                {htmlTargets.map((target) => (
-                  <SelectItem key={target.value} value={target.value}>{target.value}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {lockedPath ? (
+              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{fileName(selectedPath)}</p><p className="truncate text-[10px] text-muted-foreground">Current design</p></div>
+            ) : (
+              <Select value={selectedPath} onValueChange={chooseFile}>
+                <SelectTrigger size="sm" className="min-w-44 max-w-full flex-1 rounded-lg" aria-label="HTML file">
+                  <SelectValue>{fileName(selectedPath)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {htmlTargets.map((target) => (
+                    <SelectItem key={target.value} value={target.value}>{target.value}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Label className="flex items-center gap-2 text-xs">
               <Switch
                 size="sm"
