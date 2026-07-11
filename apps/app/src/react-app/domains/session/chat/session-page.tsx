@@ -373,8 +373,7 @@ export function SessionPage(props: SessionPageProps) {
   const hasDesignTemplate = useMemo(() => Boolean(
     props.selectedSessionId
       && typeof window !== "undefined"
-      && window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`)
-      && window.localStorage.getItem(`ipollowork.session-design-path.${props.selectedSessionId}`),
+      && window.localStorage.getItem(`ipollowork.session-template.${props.selectedSessionId}`),
   ), [designTemplateRevision, props.selectedSessionId]);
   const hasDesignBrief = useMemo(() => Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-design-brief.${props.selectedSessionId}`)), [designTemplateRevision, props.selectedSessionId]);
   const chooseDesignTemplate = useCallback(async (templateId: "open-design-saas-landing") => {
