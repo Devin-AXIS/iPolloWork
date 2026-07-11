@@ -115,6 +115,8 @@ import { useSessionProviderAuth } from "@/react-app/domains/connections/provider
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
+import { getDesignTemplate } from "@/react-app/domains/session/design/design-template-catalog";
+import { designSelectionStorageKey } from "@/react-app/domains/session/design/design-html-runtime";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -1224,7 +1226,19 @@ export function SessionRoute() {
         await workspaceClient.session.create({ directory: workspace.path?.trim() || undefined }),
       );
       window.localStorage.setItem(`ipollowork.session-type.${session.id}`, type);
-      if (templateId) window.localStorage.setItem(`ipollowork.session-template.${session.id}`, templateId);
+      if (templateId) {
+        const template = getDesignTemplate(templateId);
+        window.localStorage.setItem(`ipollowork.session-template.${session.id}`, templateId);
+        if (template) {
+          const path = `design/${template.fileName}`;
+          await endpoint.client.writeWorkspaceFile(endpoint.workspaceId, {
+            path,
+            content: template.html,
+            baseUpdatedAt: null,
+          });
+          window.localStorage.setItem(designSelectionStorageKey(endpoint.workspaceId), path);
+        }
+      }
       captureAnalyticsEvent("task_created", {
         source: "new_task",
         workspace_type: workspace.workspaceType ?? "unknown",

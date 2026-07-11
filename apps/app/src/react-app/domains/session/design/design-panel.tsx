@@ -319,6 +319,18 @@ export function DesignPanel({
     }, "*");
   };
 
+  const applyToken = (name: string, value: string) => {
+    if (!editing) return;
+    setPendingCanvasChange(true);
+    setHistory((current) => [...current, draft]);
+    iframeRef.current?.contentWindow?.postMessage({
+      channel: DESIGN_MESSAGE_CHANNEL,
+      type: "set-token",
+      name,
+      value,
+    }, "*");
+  };
+
   const beginQuickEdit = (kind: "text" | "href" | "src" | "color" | "fontSize") => {
     setHistory((current) => [...current, draft]);
     setQuickEdit(kind);
@@ -464,6 +476,20 @@ export function DesignPanel({
               />
               Edit page
             </Label>
+            {editing ? (
+              <div className="ml-auto flex items-center gap-1 rounded-lg border border-border/70 bg-muted/25 p-1" aria-label="Template color theme">
+                {["#c96442", "#2563eb", "#7c3aed", "#059669"].map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className="size-4 rounded-full border border-black/10 transition-transform hover:scale-110"
+                    style={{ backgroundColor: color }}
+                    onClick={() => applyToken("--ipw-color-primary", color)}
+                    aria-label={`Set template accent ${color}`}
+                  />
+                ))}
+              </div>
+            ) : null}
             <Button variant="ghost" size="icon-sm" onClick={undo} disabled={history.length === 0} aria-label="Undo design change">
               <Undo2 />
             </Button>

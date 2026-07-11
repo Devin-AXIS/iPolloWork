@@ -1064,11 +1064,9 @@ function WorkspaceSidebarGroup({
                           <DropdownMenuSubTrigger>Site</DropdownMenuSubTrigger>
                           <DropdownMenuSubContent className="w-56">
                             <DropdownMenuSub>
-                              <DropdownMenuSubTrigger>Personal Website</DropdownMenuSubTrigger>
+                              <DropdownMenuSubTrigger>Landing Page</DropdownMenuSubTrigger>
                               <DropdownMenuSubContent className="w-64">
-                                <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "design", "personal-minimal")}>Minimal Profile</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "design", "personal-editorial")}>Editorial Portfolio</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "design", "personal-portfolio")}>Creative Portfolio</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "design", "open-design-saas-landing")}>SaaS Landing</DropdownMenuItem>
                               </DropdownMenuSubContent>
                             </DropdownMenuSub>
                           </DropdownMenuSubContent>

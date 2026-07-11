@@ -424,6 +424,11 @@ function designRuntime(channel: string, styleFields: readonly string[]) {
       window.parent.postMessage({ channel, type: "snapshot", requestId: data.requestId, html: serialize() }, "*");
       return;
     }
+    if (data.type === "set-token" && typeof data.name === "string" && typeof data.value === "string" && data.name.startsWith("--ipw-")) {
+      document.documentElement.style.setProperty(data.name, data.value);
+      post("draft");
+      return;
+    }
     if (!selected || data.type !== "set") return;
     if (data.id !== selected.getAttribute(idAttribute) || typeof data.field !== "string" || typeof data.value !== "string") return;
 
