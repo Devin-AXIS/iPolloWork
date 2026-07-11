@@ -20,6 +20,10 @@ import {
   Settings,
   FolderOpen,
   Tag,
+  BriefcaseBusiness,
+  Code2,
+  Palette,
+  Video,
 } from "lucide-react";
 import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
@@ -83,6 +87,7 @@ import { Button } from "@/components/ui/button";
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
 import type { SidebarContextValue } from "./app-sidebar-provider";
+import type { iPolloWorkSessionType } from "./app-sidebar-provider";
 import {
   MAX_SESSIONS_PREVIEW,
   buildSessionTreeState,
@@ -572,7 +577,7 @@ export type AppSidebarProps = {
   onSelectWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
-  onCreateTaskInWorkspace: (workspaceId: string) => void;
+  onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType) => void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
   onArchiveSession?: (sessionId: string, archived: boolean) => void;
@@ -1043,19 +1048,32 @@ function WorkspaceSidebarGroup({
                 onTitlePointerDown={onWorkspaceTitlePointerDown}
               />
               <div data-workspace-actions className="group/workspace-actions absolute right-9 top-1/2 flex -translate-y-1/2 items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-6 text-muted-foreground opacity-0 group-hover/workspace-header:opacity-100 group-focus-within/workspace-actions:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    ctx.onCreateTaskInWorkspace(workspace.id);
-                  }}
-                  disabled={ctx.newTaskDisabled}
-                  aria-label={t("session.new_task")}
-                >
-                  <Plus className="size-4" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-muted group-hover/workspace-header:opacity-100 group-focus-within/workspace-actions:opacity-100"
+                    disabled={ctx.newTaskDisabled}
+                    aria-label={t("session.new_task")}
+                  >
+                    <Plus className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="bottom" className="w-40">
+                    {([
+                      ["work", "Work", BriefcaseBusiness],
+                      ["design", "Design", Palette],
+                      ["code", "Code", Code2],
+                      ["video", "Video", Video],
+                    ] as const).map(([type, label, Icon]) => (
+                      <DropdownMenuItem
+                        key={type}
+                        onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, type)}
+                        className="gap-2"
+                      >
+                        <Icon className="size-3.5 text-muted-foreground" />
+                        {label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <WorkspaceActionsMenu
                   workspace={workspace}
                   isConnectionActionBusy={isConnectionActionBusy}

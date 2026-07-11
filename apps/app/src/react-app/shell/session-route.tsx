@@ -114,6 +114,7 @@ import type { CreateWorkspaceOptions } from "@/react-app/domains/workspace/types
 import { useSessionProviderAuth } from "@/react-app/domains/connections/provider-auth/use-session-provider-auth";
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
+import type { iPolloWorkSessionType } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -1198,7 +1199,7 @@ export function SessionRoute() {
   );
 
 
-  const handleCreateTaskInWorkspace = useCallback(async (workspaceId: string): Promise<string | null> => {
+  const handleCreateTaskInWorkspace = useCallback(async (workspaceId: string, type: iPolloWorkSessionType = "work"): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     if (
       !workspace ||
@@ -1222,6 +1223,7 @@ export function SessionRoute() {
       const session = unwrap(
         await workspaceClient.session.create({ directory: workspace.path?.trim() || undefined }),
       );
+      window.localStorage.setItem(`ipollowork.session-type.${session.id}`, type);
       captureAnalyticsEvent("task_created", {
         source: "new_task",
         workspace_type: workspace.workspaceType ?? "unknown",
@@ -2077,8 +2079,8 @@ export function SessionRoute() {
           navigateToWorkspaceSession(workspaceId, sessionId);
         },
         onPrefetchSession: () => {},
-        onCreateTaskInWorkspace: (workspaceId) => {
-          void handleCreateTaskInWorkspace(workspaceId);
+        onCreateTaskInWorkspace: (workspaceId, type) => {
+          void handleCreateTaskInWorkspace(workspaceId, type);
         },
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
           void (async () => {
