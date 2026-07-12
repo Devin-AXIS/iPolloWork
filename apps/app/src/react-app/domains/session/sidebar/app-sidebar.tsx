@@ -7,7 +7,6 @@ import {
   ChevronRight,
   FolderPlus,
   Loader2,
-  LogIn,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -19,12 +18,14 @@ import {
   RefreshCw,
   RotateCcw,
   Settings,
+  SquarePen,
   FolderOpen,
   Tag,
   BriefcaseBusiness,
   Code2,
   Palette,
   Video,
+  UserRound,
 } from "lucide-react";
 import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
@@ -772,37 +773,31 @@ export function AppSidebar(props: AppSidebarProps) {
         ) : null}
         <SidebarHeader className="gap-1.5 pb-2">
           <SidebarMenu>
-            <SidebarMenuItem className="flex items-center gap-1">
+            <SidebarMenuItem>
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
                     <SidebarMenuButton
-                      className="h-9 flex-1 bg-sidebar-primary text-sidebar-primary-foreground shadow-sm hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground"
+                      className="h-8 rounded-lg px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
                       aria-label={t("session.new_task")}
+                      aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
                     />
                   }
                 >
-                  <Plus className="size-4" />
-                  <span className="font-medium">{t("session.new_task")}</span>
+                  <SquarePen className="size-3.5" />
+                  <span className="flex-1 truncate text-xs font-medium">{t("session.new_task")}</span>
+                  <kbd className="font-sans text-[10px] tracking-wide text-sidebar-foreground/40">{isMacPlatform() ? "⌘N" : "Ctrl N"}</kbd>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="bottom" className="w-44">
                   <DropdownMenuItem onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")} className="gap-2"><BriefcaseBusiness className="size-3.5 text-muted-foreground" />Work</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "design")} className="gap-2"><Palette className="size-3.5 text-muted-foreground" />Design</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "code")} className="gap-2"><Code2 className="size-3.5 text-muted-foreground" />Code</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "video")} className="gap-2"><Video className="size-3.5 text-muted-foreground" />Video</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={props.onOpenCreateWorkspace} className="gap-2"><FolderPlus className="size-3.5 text-muted-foreground" />{t("workspace_list.add_workspace")}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="size-9 shrink-0 rounded-lg text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                onClick={props.onOpenCreateWorkspace}
-                aria-label={t("workspace_list.add_workspace")}
-                title={t("workspace_list.add_workspace")}
-              >
-                <FolderPlus className="size-4" />
-              </Button>
             </SidebarMenuItem>
             {props.onOpenSessionSearch ? (
               <SidebarMenuItem>
@@ -853,25 +848,27 @@ export function AppSidebar(props: AppSidebarProps) {
           <SidebarMenu>
             <SidebarMenuItem>
               {props.account.loading ? (
-                <SidebarMenuButton disabled className="h-11">
-                  <Loader2 className="size-4 animate-spin" />
+                <SidebarMenuButton disabled className="h-9 rounded-lg px-2">
+                  <Loader2 className="size-3.5 animate-spin" />
                   <span className="truncate text-xs">{t("den.checking_session")}</span>
                 </SidebarMenuButton>
               ) : props.account.signedIn ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
-                      <SidebarMenuButton className="h-12 gap-2 rounded-xl px-2" aria-label={props.account.name || props.account.email || t("settings.tab_cloud_account")} />
+                      <SidebarMenuButton className="group/account h-9 gap-2 rounded-lg px-2" aria-label={props.account.name || props.account.email || t("settings.tab_cloud_account")} />
                     }
                   >
-                    <MarbleAvatar seed={props.account.email || props.account.name || "ipollowork"} className="size-7 shrink-0 rounded-full" />
-                    <span className="min-w-0 flex-1 text-left">
-                      <span className="block truncate text-xs font-medium">{props.account.name || props.account.email}</span>
-                      {props.account.name && props.account.email ? <span className="block truncate text-[10px] text-sidebar-foreground/55">{props.account.email}</span> : null}
-                    </span>
-                    <MoreHorizontal className="size-4 text-sidebar-foreground/50" />
+                    <MarbleAvatar seed={props.account.email || props.account.name || "ipollowork"} className="size-5 shrink-0 rounded-full" />
+                    <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">{props.account.name || props.account.email}</span>
+                    <MoreHorizontal className="size-3.5 text-sidebar-foreground/45 opacity-0 transition-opacity group-hover/account:opacity-100 group-focus-visible/account:opacity-100" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" side="top" className="w-60">
+                    <div className="px-3 py-2">
+                      <p className="truncate text-xs font-medium">{props.account.name || props.account.email}</p>
+                      {props.account.name && props.account.email ? <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{props.account.email}</p> : null}
+                    </div>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={props.onOpenAccount}>
                       <Settings className="size-4 text-muted-foreground" />
                       {t("settings.tab_cloud_account")}
@@ -879,14 +876,11 @@ export function AppSidebar(props: AppSidebarProps) {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <SidebarMenuButton onClick={props.onSignIn} className="h-11 gap-2 rounded-xl px-2" aria-label={t("den.signin_title")}>
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground">
-                    <LogIn className="size-3.5" />
+                <SidebarMenuButton onClick={props.onSignIn} className="h-9 gap-2 rounded-lg px-2" aria-label={t("den.signin_title")}>
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground">
+                    <UserRound className="size-3" />
                   </span>
-                  <span className="min-w-0 flex-1 text-left">
-                    <span className="block truncate text-xs font-medium">{t("den.signin_button")}</span>
-                    <span className="block truncate text-[10px] text-sidebar-foreground/55">{t("den.signed_out")}</span>
-                  </span>
+                  <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">{t("den.signin_button")}</span>
                 </SidebarMenuButton>
               )}
             </SidebarMenuItem>
