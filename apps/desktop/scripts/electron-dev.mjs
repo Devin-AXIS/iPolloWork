@@ -81,7 +81,9 @@ async function looksLikeVite(url) {
     const response = await fetchWithTimeout(`${url}/@vite/client`);
     if (!response.ok) return false;
     const body = await response.text();
-    return body.includes("@vite/client") || body.includes("import.meta.hot");
+    return body.includes("@vite/client")
+      || body.includes("import.meta.hot")
+      || (body.includes("createHotContext") && body.includes("vite:beforeUpdate"));
   } catch {
     return false;
   }
