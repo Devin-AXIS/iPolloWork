@@ -2,7 +2,8 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
-import { Cloud, Code2, Columns2, Ellipsis, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, Presentation, Settings2, TextSearch, Upload, X, Zap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Code2, Columns2, Ellipsis, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, Presentation, Settings2, TextSearch, Upload, X, Zap } from "lucide-react";
 import type { DesignSessionTemplateState, TemplateCatalogItem, TemplateManifestV1 } from "@ipollowork/types/templates";
 
 import { t } from "../../../../i18n";
@@ -61,6 +62,7 @@ import { NotificationBell } from "../../../shell/notification-center";
 import { useReactRenderWatchdog } from "../../../shell/react-render-watchdog";
 import { useShellConfig } from "../../../shell/shell-config";
 import { type SidePanelItem, useUiStateStore } from "../../../shell/ui-state-store";
+import { workspaceSettingsRoute } from "../../../shell/workspace-routes";
 
 import { isElectronRuntime } from "../../../../app/utils";
 import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTarget, type OpenTarget } from "../artifacts/open-target";
@@ -371,6 +373,7 @@ function DesignBriefCard({ template, onSubmit }: { template: TemplateManifestV1;
 export function SessionPage(props: SessionPageProps) {
   const { config: shellConfig } = useShellConfig();
   const platform = usePlatform();
+  const navigate = useNavigate();
   const denAuth = useDenAuth();
   const sidebarOpen = useUiStateStore((state) => state.sidebarOpen);
   const setSidebarOpen = useUiStateStore((state) => state.setSidebarOpen);
@@ -545,12 +548,16 @@ export function SessionPage(props: SessionPageProps) {
     [],
   );
   const voiceExtensionEnabled = voiceExtension ? isiPolloWorkExtensionEnabled(voiceExtension) : false;
-  const showCloudSignIn = shellConfig.cloudSignin && !denAuth.isSignedIn && denAuth.status !== "checking";
   const openCloudSignIn = useCallback(() => {
     const baseUrl = readDenBootstrapConfig().baseUrl;
     // Label stays "Sign in"; opens the sign-up tab so new users aren't defaulted into sign-in.
     platform.openLink(buildDenAuthUrl(baseUrl, "sign-up"));
   }, [platform]);
+  const openCloudAccount = useCallback(() => {
+    navigate(props.selectedWorkspaceId
+      ? workspaceSettingsRoute(props.selectedWorkspaceId, "cloud-account")
+      : "/settings/cloud-account");
+  }, [navigate, props.selectedWorkspaceId]);
 
   useReactRenderWatchdog("SessionPage", {
     selectedSessionId: props.selectedSessionId,
@@ -1165,6 +1172,14 @@ export function SessionPage(props: SessionPageProps) {
           onEditWorkspaceConnection={props.sidebar.onEditWorkspaceConnection}
           onForgetWorkspace={props.sidebar.onForgetWorkspace}
           onOpenCreateWorkspace={props.sidebar.onOpenCreateWorkspace}
+          account={{
+            loading: denAuth.status === "checking",
+            signedIn: denAuth.isSignedIn,
+            name: denAuth.user?.name ?? null,
+            email: denAuth.user?.email ?? null,
+          }}
+          onOpenAccount={openCloudAccount}
+          onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch}
           onReorderWorkspaces={props.sidebar.onReorderWorkspaces}
           onStartResize={startLeftSidebarResize}
@@ -1222,18 +1237,6 @@ export function SessionPage(props: SessionPageProps) {
                 </Tooltip>
               ) : null}
               <NotificationBell />
-              {showCloudSignIn ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={openCloudSignIn}
-                  title={t("den.signin_title")}
-                  aria-label={t("den.signin_title")}
-                >
-                  <Cloud className="size-3.5" />
-                  <span>{t("den.signin_button")}</span>
-                </Button>
-              ) : null}
               {props.developerMode ? (
                 <Button
                   variant="ghost"
