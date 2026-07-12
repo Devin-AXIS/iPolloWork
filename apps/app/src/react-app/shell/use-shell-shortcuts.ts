@@ -7,12 +7,10 @@ export type UseShellShortcutsInput = {
   canCreateTask: boolean;
   workspaceId: string;
   onCreateTask: (workspaceId: string) => void | Promise<void>;
-  onNextSessionTab?: () => void;
-  onPrevSessionTab?: () => void;
 };
 
 export function useShellShortcuts(input: UseShellShortcutsInput) {
-  const { canCreateTask, workspaceId, onCreateTask, onNextSessionTab, onPrevSessionTab } = input;
+  const { canCreateTask, workspaceId, onCreateTask } = input;
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -23,8 +21,6 @@ export function useShellShortcuts(input: UseShellShortcutsInput) {
   //   Cmd/Ctrl+J        -> toggle terminal panel (matches VS Code)
   //   Cmd/Ctrl+F        -> find in current conversation (handled by session surface)
   //   Cmd/Ctrl+Shift+F  -> search every session (titles + messages)
-  //   Cmd/Ctrl+T        -> next session tab
-  //   Cmd/Ctrl+Shift+T  -> previous session tab
   const handleGlobalShortcut = useEffectEvent((event: KeyboardEvent) => {
     const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
     const mod = isMac ? event.metaKey : event.ctrlKey;
@@ -32,11 +28,6 @@ export function useShellShortcuts(input: UseShellShortcutsInput) {
     if (event.shiftKey && !event.altKey && event.key?.toLowerCase() === "f") {
       event.preventDefault();
       setSessionSearchOpen((value) => !value);
-      return;
-    }
-    if (event.shiftKey && !event.altKey && event.key?.toLowerCase() === "t") {
-      event.preventDefault();
-      onPrevSessionTab?.();
       return;
     }
     if (event.shiftKey || event.altKey) return;
@@ -64,11 +55,6 @@ export function useShellShortcuts(input: UseShellShortcutsInput) {
     if (key === "j") {
       event.preventDefault();
       setTerminalOpen((value) => !value);
-      return;
-    }
-    if (key === "t") {
-      event.preventDefault();
-      onNextSessionTab?.();
       return;
     }
   });

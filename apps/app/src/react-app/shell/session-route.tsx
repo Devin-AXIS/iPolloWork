@@ -92,7 +92,7 @@ import {
 } from "@/react-app/shell/route-workspaces";
 import { useLocal } from "@/react-app/kernel/local-provider";
 import { usePlatform } from "@/react-app/kernel/platform";
-import { SessionPage, type OpenSessionTab } from "@/react-app/domains/session/chat/session-page";
+import { SessionPage } from "@/react-app/domains/session/chat/session-page";
 import { isDesktopProviderBlocked, DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID } from "@/app/cloud/desktop-app-restrictions";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { useRestrictionNotice } from "@/react-app/domains/cloud/restriction-notice-provider";
@@ -1391,35 +1391,6 @@ export function SessionRoute() {
     });
   }, [canCreateTask, selectedSessionId, selectedWorkspaceId, sessionsByWorkspaceId, handleCreateTaskInWorkspace]);
 
-  // Latest session-list state for prev/next session tab navigation. The
-  // `options` field is updated by `onSessionTabsChange` from SessionPage so we
-  // only cycle through tabs the user actually opened (not artifact sessions).
-  // The remaining fields are refreshed during render.
-  const sessionTabNavRef = useRef<{
-    options: OpenSessionTab[];
-    workspaceId: string;
-    sessionId: string | null;
-    navigate: (workspaceId: string, sessionId?: string | null) => void;
-  }>({ options: [], workspaceId: "", sessionId: null, navigate: () => {} });
-
-  const goToSessionTabByOffset = useCallback((offset: number) => {
-    const { options, workspaceId, sessionId, navigate } = sessionTabNavRef.current;
-    const scoped = options.filter((option) => option.workspaceId === workspaceId);
-    if (scoped.length === 0) return;
-    const currentIndex = sessionId
-      ? scoped.findIndex((option) => option.sessionId === sessionId)
-      : -1;
-    const nextIndex = currentIndex === -1
-      ? offset > 0 ? 0 : scoped.length - 1
-      : (currentIndex + offset + scoped.length) % scoped.length;
-    const target = scoped[nextIndex];
-    if (!target || target.sessionId === sessionId) return;
-    navigate(target.workspaceId, target.sessionId);
-  }, []);
-
-  const goToNextSessionTab = useCallback(() => goToSessionTabByOffset(1), [goToSessionTabByOffset]);
-  const goToPrevSessionTab = useCallback(() => goToSessionTabByOffset(-1), [goToSessionTabByOffset]);
-
   const {
     commandPaletteOpen,
     setCommandPaletteOpen,
@@ -1431,8 +1402,6 @@ export function SessionRoute() {
     canCreateTask,
     workspaceId: selectedWorkspaceId,
     onCreateTask: (workspaceId: string) => void handleCreateTaskInWorkspace(workspaceId),
-    onNextSessionTab: goToNextSessionTab,
-    onPrevSessionTab: goToPrevSessionTab,
   });
   useReactRenderWatchdog("SessionRoute", {
     selectedSessionId,
@@ -1547,15 +1516,6 @@ export function SessionRoute() {
     });
     return out;
   }, [sessionsByWorkspaceId, selectedWorkspaceId, workspaces]);
-
-  // Refresh the non-tab fields of the nav ref during render. The `options`
-  // field is maintained by the `onSessionTabsChange` callback from SessionPage.
-  sessionTabNavRef.current = {
-    options: sessionTabNavRef.current.options,
-    workspaceId: selectedWorkspaceId,
-    sessionId: selectedSessionId,
-    navigate: navigateToWorkspaceSession,
-  };
 
   const paletteSessionGroups = useMemo<SessionGroupOption[]>(
     () => selectedWorkspaceGroupState?.groups ?? [],
@@ -1698,30 +1658,6 @@ export function SessionRoute() {
       }
     },
   }), [buildCommandDiagnosticsBundle]);
-
-  const nextSessionTabPaletteItem = useMemo<PaletteItem>(() => ({
-    id: "session-tab.next",
-    title: "Next session tab",
-    detail: "Switch to the next session in this workspace",
-    meta: "Cmd/Ctrl+T",
-    searchText: "next session tab switch forward",
-    action: () => {
-      setCommandPaletteOpen(false);
-      goToNextSessionTab();
-    },
-  }), [goToNextSessionTab]);
-
-  const prevSessionTabPaletteItem = useMemo<PaletteItem>(() => ({
-    id: "session-tab.previous",
-    title: "Previous session tab",
-    detail: "Switch to the previous session in this workspace",
-    meta: "Cmd/Ctrl+Shift+T",
-    searchText: "previous session tab switch back",
-    action: () => {
-      setCommandPaletteOpen(false);
-      goToPrevSessionTab();
-    },
-  }), [goToPrevSessionTab]);
 
   const reloadConfigPaletteItem = useMemo<PaletteItem>(() => ({
     id: "reload-opencode-config",
@@ -2066,9 +2002,6 @@ export function SessionRoute() {
       }
       terminalOpen={terminalOpen}
       onTerminalOpenChange={setTerminalOpen}
-      onSessionTabsChange={(tabs) => {
-        sessionTabNavRef.current = { ...sessionTabNavRef.current, options: tabs };
-      }}
       sidebar={{
         workspaceSessionGroups,
         selectedWorkspaceId,
@@ -2344,7 +2277,7 @@ export function SessionRoute() {
       currentSessionForGroupMove={currentSessionForGroupMove}
       currentSessionGroupId={currentSessionGroupId}
       onMoveCurrentSessionToGroup={handleMoveCurrentSessionToGroup}
-      extraItems={[...(sessionFindPaletteItem ? [sessionFindPaletteItem] : []), sessionSearchPaletteItem, ...terminalPaletteItems, developerModePaletteItem, diagnosticsCopyPaletteItem, diagnosticsExportPaletteItem, nextSessionTabPaletteItem, prevSessionTabPaletteItem, reloadConfigPaletteItem]}
+      extraItems={[...(sessionFindPaletteItem ? [sessionFindPaletteItem] : []), sessionSearchPaletteItem, ...terminalPaletteItems, developerModePaletteItem, diagnosticsCopyPaletteItem, diagnosticsExportPaletteItem, reloadConfigPaletteItem]}
       listAgents={listAgents}
       selectedAgent={selectedAgent}
       onSelectAgent={setSelectedAgent}

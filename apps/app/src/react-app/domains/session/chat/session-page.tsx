@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
-import { Code2, Columns2, Ellipsis, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, Presentation, Settings2, TextSearch, Upload, X, Zap } from "lucide-react";
+import { Code2, Ellipsis, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, Presentation, Settings2, TextSearch, Upload, Zap } from "lucide-react";
 import type { DesignSessionTemplateState, TemplateCatalogItem, TemplateManifestV1 } from "@ipollowork/types/templates";
 
 import { t } from "../../../../i18n";
@@ -202,7 +202,6 @@ export type SessionPageProps = {
   settingsSlot?: React.ReactNode;
   terminalOpen?: boolean;
   onTerminalOpenChange?: (open: boolean) => void;
-  onSessionTabsChange?: (tabs: OpenSessionTab[]) => void;
 };
 
 function getSidebarInitialLoading(props: SessionPageSidebarProps) {
@@ -227,13 +226,6 @@ function sessionTitleForId(groups: WorkspaceSessionGroup[], id: string | null | 
   const sessionsById = new Map(groups.flatMap((group) => group.sessions.map((session) => [session.id, session] as const)));
   const match = sessionsById.get(id);
   return match ? getDisplaySessionTitle(match.title) : "";
-}
-
-function sessionExistsInWorkspace(groups: WorkspaceSessionGroup[], workspaceId: string, sessionId: string | null | undefined) {
-  if (!sessionId) return false;
-  return groups.some((group) => (
-    group.workspace.id === workspaceId && group.sessions.some((session) => session.id === sessionId)
-  ));
 }
 
 function isTrackableAccessibleTarget(target: OpenTarget) {
@@ -574,8 +566,6 @@ export function SessionPage(props: SessionPageProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [sessionActionId, setSessionActionId] = useState<string | null>(null);
-  const [sessionTabs, setSessionTabs] = useState<OpenSessionTab[]>([]);
-  const [splitSessionId, setSplitSessionId] = useState<string | null>(null);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createGroupLabel, setCreateGroupLabel] = useState("");
   const [createGroupWorkspaceId, setCreateGroupWorkspaceId] = useState<string | null>(null);
@@ -962,31 +952,6 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.workspaceSessionGroups, props.selectedSessionId),
     [props.selectedSessionId, props.sidebar.workspaceSessionGroups],
   );
-  useEffect(() => {
-    setSessionTabs((current) => {
-      const currentWorkspaceTabs = current.filter((tab) => tab.workspaceId === props.selectedWorkspaceId);
-      const next = props.selectedSessionId && !currentWorkspaceTabs.some((tab) => tab.sessionId === props.selectedSessionId)
-        ? [...currentWorkspaceTabs, { workspaceId: props.selectedWorkspaceId, sessionId: props.selectedSessionId }]
-        : currentWorkspaceTabs;
-      return next.filter((tab) => (
-        tab.sessionId === props.selectedSessionId ||
-        sessionExistsInWorkspace(props.sidebar.workspaceSessionGroups, tab.workspaceId, tab.sessionId)
-      ));
-    });
-  }, [props.selectedSessionId, props.selectedWorkspaceId, props.sidebar.workspaceSessionGroups]);
-  useEffect(() => {
-    props.onSessionTabsChange?.(sessionTabs);
-  }, [sessionTabs, props.onSessionTabsChange]);
-  useEffect(() => {
-    if (!splitSessionId) return;
-    if (splitSessionId === props.selectedSessionId) {
-      setSplitSessionId(null);
-      return;
-    }
-    if (!sessionExistsInWorkspace(props.sidebar.workspaceSessionGroups, props.selectedWorkspaceId, splitSessionId)) {
-      setSplitSessionId(null);
-    }
-  }, [props.selectedSessionId, props.selectedWorkspaceId, props.sidebar.workspaceSessionGroups, splitSessionId]);
   const sessionActionTitle = useMemo(
     () => sessionTitleForId(props.sidebar.workspaceSessionGroups, sessionActionId),
     [props.sidebar.workspaceSessionGroups, sessionActionId],
@@ -1047,30 +1012,7 @@ export function SessionPage(props: SessionPageProps) {
       reactSessionToken &&
       props.surface,
   );
-  const canRenderSplitSurface = Boolean(canRenderReactSurface && splitSessionId && splitSessionId !== props.selectedSessionId);
   const findButtonSessionId = props.selectedSessionId;
-
-  const openSessionTab = useCallback((workspaceId: string, sessionId: string) => {
-    setSessionTabs((current) => {
-      const next = current.filter((tab) => tab.workspaceId === workspaceId);
-      if (next.some((tab) => tab.sessionId === sessionId)) return next;
-      return [...next, { workspaceId, sessionId }];
-    });
-    props.sidebar.onOpenSession(workspaceId, sessionId);
-  }, [props.sidebar]);
-
-  const closeSessionTab = useCallback((sessionId: string) => {
-    setSessionTabs((current) => current.filter((tab) => tab.sessionId !== sessionId));
-    setSplitSessionId((current) => current === sessionId ? null : current);
-    if (sessionId !== props.selectedSessionId) return;
-
-    const nextTab = sessionTabs.find((tab) => tab.sessionId !== sessionId && tab.workspaceId === props.selectedWorkspaceId);
-    if (nextTab) {
-      props.sidebar.onOpenSession(nextTab.workspaceId, nextTab.sessionId);
-      return;
-    }
-    props.sidebar.onSelectWorkspace(props.selectedWorkspaceId);
-  }, [props.selectedSessionId, props.selectedWorkspaceId, props.sidebar, sessionTabs]);
 
   useEffect(() => {
     if (!showSessionLoadingState) {
@@ -1148,7 +1090,7 @@ export function SessionPage(props: SessionPageProps) {
           workspaceConnectionStateById={props.sidebar.workspaceConnectionStateById}
           newTaskDisabled={props.sidebar.newTaskDisabled}
           onSelectWorkspace={props.sidebar.onSelectWorkspace}
-          onOpenSession={openSessionTab}
+          onOpenSession={props.sidebar.onOpenSession}
           onPrefetchSession={props.sidebar.onPrefetchSession}
           onCreateTaskInWorkspace={props.sidebar.onCreateTaskInWorkspace}
           onOpenRenameSession={props.onRenameSession ? openRenameModal : undefined}
@@ -1302,59 +1244,8 @@ export function SessionPage(props: SessionPageProps) {
               ) : null}
 
               {!showDelayedSessionLoadingState && canRenderReactSurface ? (
-                <div className="flex h-full min-h-0 flex-col">
-                  {sessionTabs.length > 0 ? (
-                    <div className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-background/80 px-2 mac:backdrop-blur-xl">
-                      {sessionTabs.map((tab) => {
-                        const title = sessionTitleForId(props.sidebar.workspaceSessionGroups, tab.sessionId) || t("session.default_title");
-                        const active = tab.sessionId === props.selectedSessionId;
-                        const split = tab.sessionId === splitSessionId;
-                        return (
-                          <div
-                            key={tab.sessionId}
-                            data-session-tab-id={tab.sessionId}
-                            className={cn(
-                              "group flex max-w-56 shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors",
-                              active
-                                ? "border-border bg-dls-surface text-dls-text shadow-sm"
-                                : "border-transparent text-dls-secondary hover:bg-dls-hover hover:text-dls-text",
-                              split && "border-primary/30 bg-primary/10 text-primary",
-                            )}
-                          >
-                            <button
-                              type="button"
-                              className="min-w-0 flex-1 truncate text-left"
-                              onClick={() => props.sidebar.onOpenSession(tab.workspaceId, tab.sessionId)}
-                              title={title}
-                            >
-                              {title}
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded p-0.5 text-dls-secondary hover:bg-dls-hover hover:text-dls-text disabled:pointer-events-none disabled:opacity-40"
-                              onClick={() => setSplitSessionId(split ? null : tab.sessionId)}
-                              disabled={active}
-                              title={split ? "Close split" : "Open in split view"}
-                              aria-label={split ? "Close split" : "Open in split view"}
-                            >
-                              <Columns2 size={13} />
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded p-0.5 text-dls-secondary opacity-80 hover:bg-dls-hover hover:text-dls-text group-hover:opacity-100"
-                              onClick={() => closeSessionTab(tab.sessionId)}
-                              title="Close tab"
-                              aria-label="Close tab"
-                            >
-                              <X size={13} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                  <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-                    <div className={cn("min-h-0 min-w-0 flex-1", canRenderSplitSurface && "lg:border-r lg:border-border")}>
+                <div className="flex h-full min-h-0 flex-col lg:flex-row">
+                  <div className="min-h-0 min-w-0 flex-1">
                       {isDesignSession && !hasDesignTemplate && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
                         <DesignStarter
                           client={props.ipolloworkServerClient}
@@ -1395,22 +1286,6 @@ export function SessionPage(props: SessionPageProps) {
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
                       />}
-                    </div>
-                    {canRenderSplitSurface ? (
-                      <div className="min-h-0 min-w-0 flex-1 border-t border-border lg:border-t-0">
-                        <SessionSurface
-                          {...props.surface!}
-                          client={props.ipolloworkServerClient!}
-                          environmentClient={props.environmentClient}
-                          workspaceId={props.runtimeWorkspaceId!}
-                          sessionId={splitSessionId!}
-                          opencodeBaseUrl={reactSessionBaseUrl}
-                          ipolloworkToken={reactSessionToken}
-                          todos={[]}
-                          onOpenTarget={openTarget}
-                        />
-                      </div>
-                    ) : null}
                   </div>
                 </div>
               ) : null}
