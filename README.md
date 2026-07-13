@@ -19,55 +19,108 @@ This is not another chat wrapper. iPolloWork brings conversation, files, browser
 
 This source-available repository contains the Work client and its local runtime integration. Accounts, organization administration, hosted worker management, payments, and mobile Apps are separate iPolloCloud capabilities and are not required for local use.
 
-## Requirements
+## Install iPolloWork
 
-- Node.js 22 or newer
-- pnpm 11 (`corepack enable`)
-- Platform build tools: Xcode Command Line Tools on macOS, Visual Studio Build Tools on Windows, or the standard Electron build toolchain on Linux
+### Download a desktop build
 
-OpenCode is prepared by the desktop build and remains a separate upstream dependency. iPolloWork does not fork or rewrite OpenCode.
+When public installers are published, they appear on [GitHub Releases](https://github.com/Devin-AXIS/iPolloWork/releases). This repository does not currently have a public release, so the source workflow below is the available installation path today. For future releases, choose the file that matches both your operating system and CPU:
+
+| System | CPU | Installer to use |
+| --- | --- | --- |
+| macOS | Apple Silicon (M-series) | `ipollowork-mac-arm64-<version>.dmg` |
+| macOS | Intel | `ipollowork-mac-x64-<version>.dmg` |
+| Windows | Intel/AMD 64-bit | `ipollowork-win-x64-<version>.exe` |
+| Windows | ARM64 | `ipollowork-win-arm64-<version>.exe` |
+| Linux | Intel/AMD 64-bit | `ipollowork-linux-x64-<version>.AppImage` |
+| Linux | ARM64 | `ipollowork-linux-arm64-<version>.AppImage` |
+
+The macOS `.zip` and Linux `.tar.gz` files are portable/update artifacts; most users should choose `.dmg`, `.exe`, or `.AppImage`. If the Releases page does not yet contain an installer for your system, run or package the app from source below.
+
+Installation after downloading:
+
+- **macOS:** open the `.dmg`, then drag **iPolloWork** into Applications.
+- **Windows:** run the `.exe` installer. A locally built, unsigned installer may trigger Microsoft Defender SmartScreen.
+- **Linux:** make the AppImage executable with `chmod +x ipollowork-*.AppImage`, then run it. The `.tar.gz` package can be extracted and run without installation.
+
+### Requirements for source development and packaging
+
+- [Git](https://git-scm.com/downloads)
+- [Node.js](https://nodejs.org/en/download) 22 or newer
+- pnpm 11, enabled through Corepack with `corepack enable`
+- [Bun](https://bun.sh/docs/installation) 1.3.10 or newer, used to build the local Orchestrator sidecar
+- macOS: Xcode Command Line Tools (`xcode-select --install`)
+- Windows: [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **Desktop development with C++** and the Windows SDK; use PowerShell or Command Prompt
+- Linux: a standard Electron build environment with a C/C++ toolchain, Python 3, `pkg-config`, and the desktop libraries required by Electron; the release build uses Ubuntu 22.04
+
+OpenCode is downloaded and prepared as a separate sidecar during the first desktop build. iPolloWork does not fork or rewrite OpenCode, and OpenCode can continue to be upgraded independently.
 
 ## Start from source
+
+### macOS and Linux
 
 ```bash
 git clone https://github.com/Devin-AXIS/iPolloWork.git
 cd iPolloWork
+corepack enable
 ./ipollowork setup
 ./ipollowork dev
 ```
 
-Windows users can run the same commands through pnpm:
+### Windows PowerShell
 
 ```powershell
+git clone https://github.com/Devin-AXIS/iPolloWork.git
+Set-Location iPolloWork
 corepack enable
-pnpm setup
-pnpm dev
+.\ipollowork.cmd setup
+.\ipollowork.cmd dev
 ```
 
-Useful development commands:
+The setup command installs the locked workspace dependencies. The dev command prepares the OpenCode and Orchestrator sidecars, starts the UI, and opens the Electron desktop client. Development mode uses isolated iPolloWork/OpenCode state and does not overwrite the user's normal OpenCode configuration.
 
-```bash
-./ipollowork dev:ui       # browser UI only
-./ipollowork check        # type checks and desktop tests
-./ipollowork build        # production application build
-```
+### Development commands
 
-Development mode uses isolated iPolloWork/OpenCode state and does not overwrite the user's normal OpenCode configuration.
+| Purpose | macOS / Linux | Windows |
+| --- | --- | --- |
+| Start desktop app | `./ipollowork dev` | `.\ipollowork.cmd dev` |
+| Start browser UI only | `./ipollowork dev:ui` | `.\ipollowork.cmd dev:ui` |
+| Connect local Cloud | `./ipollowork dev:cloud http://localhost:3100` | `.\ipollowork.cmd dev:cloud http://localhost:3100` |
+| Type checks and desktop tests | `./ipollowork check` | `.\ipollowork.cmd check` |
+| Production build | `./ipollowork build` | `.\ipollowork.cmd build` |
 
 ## Build and package
 
+There are three different build levels:
+
+| Command | Result |
+| --- | --- |
+| `build` | Compiles the production UI, server, Electron shell, and sidecars; does not create an installer |
+| `package:dir` | Creates the fastest unpacked desktop app for local verification |
+| `package` | Creates the native installer and portable/update artifacts for the current system and CPU |
+
+### macOS and Linux
+
 ```bash
-./ipollowork build
+./ipollowork check
+./ipollowork package:dir
 ./ipollowork package
 ```
 
-Native installers are written to `apps/desktop/dist-electron/`. For a faster unpacked application build:
+### Windows PowerShell
 
-```bash
-./ipollowork package:dir
+```powershell
+.\ipollowork.cmd check
+.\ipollowork.cmd package:dir
+.\ipollowork.cmd package
 ```
 
-The package command uses Electron Builder and creates the native targets configured for the current operating system.
+All outputs are written to `apps/desktop/dist-electron/`:
+
+- **macOS:** `.dmg`, `.zip`, and an unpacked `.app`
+- **Windows:** NSIS `.exe` and `win-unpacked/`
+- **Linux:** `.AppImage`, `.tar.gz`, and `linux-unpacked/`
+
+Local packaging targets the machine's current operating system and CPU architecture. Use the GitHub release workflow to produce the complete signed/notarized matrix for macOS ARM64/x64, Windows ARM64/x64, and Linux ARM64/x64. Local packages are unsigned unless the appropriate Apple or Windows signing credentials are supplied; they are suitable for development testing but should not be presented as official releases.
 
 ## Connect to iPolloCloud
 

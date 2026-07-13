@@ -9,6 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const command = process.argv[2] ?? "help";
 const args = process.argv.slice(3);
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const launcher = process.platform === "win32" ? ".\\ipollowork.cmd" : "./ipollowork";
 
 function run(bin, binArgs, env = process.env) {
   const child = spawn(bin, binArgs, {
@@ -55,14 +56,14 @@ function requireCommand(bin, installHint) {
 function printHelp() {
   console.log(`iPolloWork development commands
 
-  ./ipollowork setup              Install workspace dependencies
-  ./ipollowork dev                Start the source-available desktop app
-  ./ipollowork dev:ui             Start only the browser UI
-  ./ipollowork dev:cloud [url]    Start desktop connected to iPolloCloud
-  ./ipollowork check              Run type checks and desktop tests
-  ./ipollowork build              Build the desktop application
-  ./ipollowork package            Build native installers
-  ./ipollowork package:dir        Build an unpacked desktop application
+  ${launcher} setup              Install workspace dependencies
+  ${launcher} dev                Start the source-available desktop app
+  ${launcher} dev:ui             Start only the browser UI
+  ${launcher} dev:cloud [url]    Start desktop connected to iPolloCloud
+  ${launcher} check              Run type checks and desktop tests
+  ${launcher} build              Build the desktop application
+  ${launcher} package            Build native installers
+  ${launcher} package:dir        Build an unpacked desktop application
 
 The default local iPolloCloud URL is http://localhost:3100.`);
 }
