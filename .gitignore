@@ -63,3 +63,4 @@ transcript-analysis
 evals/results/
 .playwright-mcp/
 .vscode/
+.ipollowork-dev/

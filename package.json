@@ -3,6 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
+    "setup": "node scripts/ipollowork.mjs setup",
+    "dev:cloud": "node scripts/ipollowork.mjs dev:cloud",
+    "check": "node scripts/ipollowork.mjs check",
+    "package": "node scripts/ipollowork.mjs package",
+    "package:dir": "node scripts/ipollowork.mjs package:dir",
     "dev": "IPOLLOWORK_DEV_MODE=1 IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=${IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT:-9823} pnpm --filter @ipollowork/desktop dev",
     "dev:electron": "IPOLLOWORK_DEV_MODE=1 pnpm --filter @ipollowork/desktop dev:electron",
     "dev:electron:two": "IPOLLOWORK_DEV_MODE=1 node scripts/dev-two-electron-demo.mjs",
