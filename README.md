@@ -1,15 +1,21 @@
 # iPolloWork
 
-iPolloWork is a source-available, local-first desktop workspace for AI agents. It runs on macOS, Windows, and Linux, works directly with your files, and keeps OpenCode as an independently upgradeable runtime.
+> **Build with agents. Edit everything.**
 
-## What is included
+**The next-generation, source-available alternative to Codex and Claude Code — built not only for coding, but for getting real work finished.**
 
-- Local and remote agent sessions
-- Design and video workspaces
-- Skills, plugins, and MCP integrations
-- Streaming tasks, permissions, plans, and artifacts
-- Desktop, browser UI, and headless server modes
-- Optional connection to an iPolloCloud deployment
+iPolloWork turns AI agents into a complete visual workspace for code, office work, websites, presentations, design, and video. Describe the outcome, let the agent build it, then keep editing the result yourself: rewrite text in place, replace images, change colors and typography, move and resize elements, switch between desktop and mobile views, or refine video scenes on a timeline — as naturally as editing a slide in PowerPoint.
+
+This is not another chat wrapper. iPolloWork brings conversation, files, browser, editable canvas, design tools, video studio, task history, permissions, Skills, plugins, and MCP into one local-first desktop experience.
+
+## One agent workspace. Every kind of work.
+
+- **Code** — understand repositories, plan changes, write code, run tools, and review the result with a full agent workflow.
+- **Office** — research, draft documents, work with spreadsheets, and turn ideas into polished presentations instead of stopping at a text response.
+- **Design** — generate websites, slides, and visual assets, then directly edit text, images, colors, typography, layout, and responsive states on the canvas.
+- **Video** — create and refine visual scenes in an integrated studio with editable content and timeline controls.
+- **Extensible agents** — connect any model and expand the workspace with Skills, plugins, MCP servers, and browser automation.
+- **Local-first by default** — work directly with your files on macOS, Windows, or Linux; use the desktop app, browser UI, or headless server, and connect iPolloCloud only when you need team and commercial capabilities.
 
 This source-available repository contains the Work client and its local runtime integration. Accounts, organization administration, hosted worker management, payments, and mobile Apps are separate iPolloCloud capabilities and are not required for local use.
 
