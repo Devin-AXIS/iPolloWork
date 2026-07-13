@@ -56,7 +56,7 @@ function printHelp() {
   console.log(`iPolloWork development commands
 
   ./ipollowork setup              Install workspace dependencies
-  ./ipollowork dev                Start the open-source desktop app
+  ./ipollowork dev                Start the source-available desktop app
   ./ipollowork dev:ui             Start only the browser UI
   ./ipollowork dev:cloud [url]    Start desktop connected to iPolloCloud
   ./ipollowork check              Run type checks and desktop tests

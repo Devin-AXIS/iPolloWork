@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "MCP server for iPolloWork UI control — exposes snapshot, actions, and execute as MCP tools",
   "author": "iPolloWork <support@ipolloworklabs.com>",
-  "license": "MIT",
+  "license": "SEE LICENSE IN ../../LICENSE",
   "type": "module",
   "bin": {
     "ipollowork-ui-mcp": "index.mjs"

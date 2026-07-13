@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "macOS semantic AX and background computer-use runtime for iPolloWork",
-  "license": "MIT",
+  "license": "SEE LICENSE IN ../../LICENSE",
   "type": "module",
   "bin": {
     "ipollowork-handsfree-computer-use": "bin/ipollowork-handsfree-computer-use.mjs"

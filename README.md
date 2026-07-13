@@ -1,6 +1,6 @@
 # iPolloWork
 
-iPolloWork is an open-source, local-first desktop workspace for AI agents. It runs on macOS, Windows, and Linux, works directly with your files, and keeps OpenCode as an independently upgradeable runtime.
+iPolloWork is a source-available, local-first desktop workspace for AI agents. It runs on macOS, Windows, and Linux, works directly with your files, and keeps OpenCode as an independently upgradeable runtime.
 
 ## What is included
 
@@ -11,7 +11,7 @@ iPolloWork is an open-source, local-first desktop workspace for AI agents. It ru
 - Desktop, browser UI, and headless server modes
 - Optional connection to an iPolloCloud deployment
 
-The open-source repository contains the Work client and its local runtime integration. Accounts, organization administration, hosted worker management, payments, and mobile Apps are separate iPolloCloud capabilities and are not required for local use.
+This source-available repository contains the Work client and its local runtime integration. Accounts, organization administration, hosted worker management, payments, and mobile Apps are separate iPolloCloud capabilities and are not required for local use.
 
 ## Requirements
 
@@ -107,8 +107,14 @@ Read `AGENTS.md`, `VISION.md`, `PRINCIPLES.md`, `PRODUCT.md`, and `ARCHITECTURE.
 git diff --check
 ```
 
-See `CODE_OF_CONDUCT.md` and `SECURITY.md` for community and security policies.
+See `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md` for contribution, community, and security policies.
 
 ## License
 
-iPolloWork is licensed under the MIT License. See `LICENSE`.
+iPolloWork uses the **iPolloWork Source Available License 1.0**:
+
+- Free for personal, non-commercial, evaluation, and company-internal use.
+- A commercial license is required for customer-facing SaaS or hosting, paid delivery or deployment, resale, white-label distribution, or use as a material part of an external commercial product or service.
+- Separately licensed third-party components and code previously released under MIT retain their original licenses and existing rights.
+
+See `LICENSE` for the controlling terms and `LICENSES/MIT-legacy.txt` for the historical MIT notice. This is a source-available license, not an OSI-approved open-source license.
