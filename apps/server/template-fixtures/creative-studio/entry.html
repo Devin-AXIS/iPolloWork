@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A creative studio website ready to make your own.">
+  <title>Northstar Creative Studio</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow-x: hidden; }
+    a { color: inherit; }
+    img { display: block; max-width: 100%; }
+    button, input, textarea { font: inherit; }
+    :focus-visible { outline: 3px solid color-mix(in srgb, var(--ipw-color-primary) 60%, white); outline-offset: 3px; }
+    .site-header { position: sticky; z-index: 20; top: 0; border-bottom: 1px solid color-mix(in srgb, var(--ipw-color-border) 72%, transparent); background: color-mix(in srgb, var(--ipw-color-bg) 86%, transparent); backdrop-filter: blur(18px); }
+    .nav-row { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { text-decoration: none; font-family: var(--ipw-font-display); font-size: 19px; font-weight: 800; letter-spacing: -.03em; }
+    .brand-mark { color: var(--ipw-color-primary); }
+    .site-nav { display: flex; align-items: center; gap: 24px; }
+    .site-nav a { color: var(--ipw-color-muted); text-decoration: none; font-size: 14px; font-weight: 650; }
+    .site-nav a:hover { color: var(--ipw-color-primary); }
+    .menu-toggle { display: none; width: 42px; height: 42px; cursor: pointer; border: 1px solid var(--ipw-color-border); border-radius: 50%; background: var(--ipw-color-surface); color: var(--ipw-color-text); }
+    .hero { position: relative; display: grid; min-height: 720px; place-items: center; padding-block: 110px 90px; }
+    .hero::before { position: absolute; z-index: -1; width: 520px; height: 520px; border-radius: 46% 54% 61% 39%; background: color-mix(in srgb, var(--ipw-color-primary) 12%, transparent); content: ""; filter: blur(2px); transform: translate(48%, -15%) rotate(16deg); }
+    .hero-grid { display: grid; align-items: center; gap: 64px; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); }
+    .eyebrow { margin: 0 0 18px; font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    .hero h1 { max-width: 12ch; margin: 0; font-size: clamp(54px, 7vw, 92px); line-height: .96; letter-spacing: -.065em; }
+    .hero-copy { max-width: 55ch; margin: 28px 0 36px; color: var(--ipw-color-muted); font-size: 19px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+    .button { display: inline-flex; min-height: 50px; padding: 0 24px; align-items: center; justify-content: center; border: 1px solid; cursor: pointer; text-decoration: none; font-size: 14px; font-weight: 750; }
+    .hero-art { position: relative; min-height: 460px; }
+    .hero-card { position: absolute; overflow: hidden; border: 1px solid var(--ipw-color-border); border-radius: 30px; background: var(--ipw-color-surface); box-shadow: var(--ipw-card-shadow); }
+    .hero-card img { width: 100%; height: 100%; object-fit: cover; }
+    .hero-card-main { inset: 20px 40px 40px 20px; transform: rotate(3deg); }
+    .hero-card-small { right: 0; bottom: 0; width: 45%; height: 42%; transform: rotate(-6deg); }
+    .section-heading { max-width: 680px; margin: 0 auto 52px; text-align: center; }
+    .section-heading h2 { margin: 0 0 14px; font-size: clamp(34px, 4vw, 52px); line-height: 1.05; letter-spacing: -.045em; }
+    .section-heading p { margin: 0; color: var(--ipw-color-muted); }
+    .services { border-block: 1px solid var(--ipw-color-border); background: color-mix(in srgb, var(--ipw-color-surface) 76%, transparent); }
+    .service-grid { display: grid; gap: 18px; grid-template-columns: repeat(4, 1fr); }
+    .service-card { padding: 28px; border-style: solid; border-width: 1px; }
+    .service-icon { display: grid; width: 44px; height: 44px; margin-bottom: 36px; place-items: center; border-radius: 14px; background: color-mix(in srgb, var(--ipw-color-primary) 12%, white); font-size: 20px; }
+    .service-card h3 { margin: 0 0 9px; font-size: 19px; letter-spacing: -.02em; }
+    .service-card p { margin: 0; color: var(--ipw-color-muted); font-size: 14px; }
+    .portfolio-grid { display: grid; gap: 18px; grid-template-columns: repeat(3, 1fr); }
+    .portfolio-card { overflow: hidden; border-style: solid; border-width: 1px; transition: transform .2s ease; }
+    .portfolio-card:hover { transform: translateY(-5px); }
+    .portfolio-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+    .portfolio-copy { padding: 20px 22px 24px; }
+    .portfolio-copy span { color: var(--ipw-color-primary); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .portfolio-copy h3 { margin: 6px 0 0; font-size: 20px; }
+    .cta { color: #ffffff; text-align: center; }
+    .cta h2 { max-width: 15ch; margin: 0 auto 16px; font-size: clamp(38px, 5vw, 64px); line-height: 1; letter-spacing: -.05em; }
+    .cta p { max-width: 55ch; margin: 0 auto 30px; color: rgba(255,255,255,.78); }
+    .contact-grid { display: grid; align-items: start; gap: 64px; grid-template-columns: .8fr 1.2fr; }
+    .contact-copy h2 { margin: 0 0 18px; font-size: clamp(38px, 5vw, 60px); line-height: 1; letter-spacing: -.05em; }
+    .contact-list { display: grid; gap: 12px; margin-top: 28px; }
+    .contact-list a { color: var(--ipw-color-primary); font-weight: 700; text-decoration: none; }
+    .contact-card { display: grid; gap: 18px; padding: 34px; border-style: solid; border-width: 1px; }
+    .field { display: grid; gap: 7px; }
+    .field span { font-size: 12px; font-weight: 750; }
+    .field input, .field textarea { width: 100%; border: 1px solid var(--ipw-color-border); border-radius: 13px; background: var(--ipw-color-bg); padding: 13px 14px; color: var(--ipw-color-text); }
+    .field textarea { min-height: 130px; resize: vertical; }
+    .site-footer { padding-block: 34px; border-top: 1px solid var(--ipw-color-border); color: var(--ipw-color-muted); font-size: 13px; }
+    .footer-row { display: flex; justify-content: space-between; gap: 20px; }
+    .footer-row a { color: var(--ipw-color-muted); }
+    @media (max-width: 900px) {
+      .hero-grid, .contact-grid { grid-template-columns: 1fr; }
+      .hero h1 { max-width: 14ch; }
+      .hero-art { min-height: 380px; }
+      .service-grid { grid-template-columns: repeat(2, 1fr); }
+      .portfolio-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 680px) {
+      .menu-toggle { display: grid; place-items: center; }
+      .site-nav { position: absolute; top: calc(100% + 8px); right: var(--ipw-page-padding); left: var(--ipw-page-padding); display: none; padding: 10px; align-items: stretch; flex-direction: column; gap: 2px; border: 1px solid var(--ipw-color-border); border-radius: 18px; background: var(--ipw-color-surface); box-shadow: var(--ipw-card-shadow); }
+      .site-header[data-menu-open="true"] .site-nav { display: flex; }
+      .site-nav a { padding: 11px 12px; border-radius: 10px; }
+      .hero { min-height: auto; padding-block: 76px 60px; }
+      .hero-grid { gap: 36px; }
+      .hero h1 { font-size: clamp(48px, 16vw, 68px); }
+      .hero-art { min-height: 310px; }
+      .hero-card-main { inset: 10px 30px 30px 8px; }
+      .service-grid, .portfolio-grid { grid-template-columns: 1fr; }
+      .footer-row { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header" data-template-section="site-header">
+    <div class="container nav-row">
+      <a class="brand" href="#top"><span class="brand-mark">●</span> Northstar Studio</a>
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="#services">Services</a><a href="#portfolio">Work</a><a href="#contact">Contact</a>
+      </nav>
+    </div>
+  </header>
+  <main id="top">
+    <section class="hero" data-template-section="hero">
+      <div class="container hero-grid">
+        <div><p class="eyebrow">Independent creative studio</p><h1>Ideas people remember.</h1><p class="hero-copy">We shape bold brands, useful digital products, and campaigns that turn curious audiences into loyal communities.</p><div class="actions"><a class="button button-primary" href="#portfolio">Explore our work</a><a class="button button-secondary" href="#contact">Start a project</a></div></div>
+        <div class="hero-art" aria-label="Selected studio work"><div class="hero-card hero-card-main"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agc3RvcC1jb2xvcj0iI2ZmYjI4ZiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2Y0NjIzYSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjZmZmMGU3Ii8+PGNpcmNsZSBjeD0iMjYwIiBjeT0iMjgwIiByPSIxOTAiIGZpbGw9InVybCgjYSkiLz48cmVjdCB4PSIzOTAiIHk9IjExMCIgd2lkdGg9IjI1MCIgaGVpZ2h0PSIzODAiIHJ4PSIxMjUiIGZpbGw9IiMyNDFiMTYiLz48Y2lyY2xlIGN4PSI1MjAiIGN5PSIzMDAiIHI9IjcyIiBmaWxsPSIjZmZmYWY1Ii8+PC9zdmc+Cg==" alt="Abstract coral brand identity composition"></div><div class="hero-card hero-card-small"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImIiIHgxPSIwIiB5MT0iMSIgeDI9IjEiPjxzdG9wIHN0b3AtY29sb3I9IiMxZDRlZDgiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM2MGE1ZmEiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2U3ZjBmZiIvPjxwYXRoIGQ9Im04MCA0ODAgMTgwLTM2MCAxNjAgMzYwWiIgZmlsbD0idXJsKCNiKSIvPjxyZWN0IHg9IjQ0MCIgeT0iMTAwIiB3aWR0aD0iMjcwIiBoZWlnaHQ9IjM4MCIgcng9IjMwIiBmaWxsPSIjMTcyNTU0Ii8+PHBhdGggZD0iTTQ4MCAxNzBoMTkwTTQ4MCAyMzBoMTMwTTQ4MCAzNjBoMTkwTTQ4MCA0MjBoMTAwIiBzdHJva2U9IiNlN2YwZmYiIHN0cm9rZS13aWR0aD0iMTgiLz48L3N2Zz4K" alt="Abstract blue editorial composition"></div></div>
+      </div>
+    </section>
+    <section class="section services" id="services" data-template-section="services">
+      <div class="container"><div class="section-heading"><p class="eyebrow">What we do</p><h2>Strategy and craft, under one roof.</h2><p>Small senior teams work from the first sketch to the final launch.</p></div><div class="service-grid">
+        <article class="service-card"><div class="service-icon">✦</div><h3>Brand systems</h3><p>Positioning, identity, voice, and flexible toolkits built to grow.</p></article>
+        <article class="service-card"><div class="service-icon">◇</div><h3>Digital products</h3><p>Focused websites and interfaces that make complex ideas feel simple.</p></article>
+        <article class="service-card"><div class="service-icon">↗</div><h3>Launch campaigns</h3><p>Creative direction and content that give new work a strong opening.</p></article>
+        <article class="service-card"><div class="service-icon">◎</div><h3>Design partnership</h3><p>Ongoing creative support for teams moving quickly and thoughtfully.</p></article>
+      </div></div>
+    </section>
+    <section class="section" id="portfolio" data-template-section="portfolio">
+      <div class="container"><div class="section-heading"><p class="eyebrow">Selected work</p><h2>Different challenges. Distinct answers.</h2><p>A mix of identities, digital experiences, and expressive campaigns.</p></div><div class="portfolio-grid">
+        <article class="portfolio-card"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agc3RvcC1jb2xvcj0iI2ZmYjI4ZiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2Y0NjIzYSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjZmZmMGU3Ii8+PGNpcmNsZSBjeD0iMjYwIiBjeT0iMjgwIiByPSIxOTAiIGZpbGw9InVybCgjYSkiLz48cmVjdCB4PSIzOTAiIHk9IjExMCIgd2lkdGg9IjI1MCIgaGVpZ2h0PSIzODAiIHJ4PSIxMjUiIGZpbGw9IiMyNDFiMTYiLz48Y2lyY2xlIGN4PSI1MjAiIGN5PSIzMDAiIHI9IjcyIiBmaWxsPSIjZmZmYWY1Ii8+PC9zdmc+Cg==" alt="Coral and cream shapes for Atlas Coffee"><div class="portfolio-copy"><span>Brand identity</span><h3>Atlas Coffee</h3></div></article>
+        <article class="portfolio-card"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2U4ZjVkZiIvPjxwYXRoIGQ9Ik0xMjAgNDgwIDM2MCA4MGwxMjAgMjAwTDY1MCAxMjBsNzAgMzYwWiIgZmlsbD0iIzFkN2E3MyIvPjxjaXJjbGUgY3g9IjM3MCIgY3k9IjMzMCIgcj0iMTA1IiBmaWxsPSIjYjllMzZiIi8+PHBhdGggZD0iTTAgNTEwaDgwMHY5MEgweiIgZmlsbD0iIzE0M2MzOSIvPjwvc3ZnPgo=" alt="Green geometric shapes for Grove Finance"><div class="portfolio-copy"><span>Digital product</span><h3>Grove Finance</h3></div></article>
+        <article class="portfolio-card"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2VmZThmZiIvPjxjaXJjbGUgY3g9IjQwMCIgY3k9IjMwMCIgcj0iMjMwIiBmaWxsPSIjNWIzZGI4Ii8+PGNpcmNsZSBjeD0iNDAwIiBjeT0iMzAwIiByPSIxNjAiIGZpbGw9IiNhNzhiZmEiLz48Y2lyY2xlIGN4PSI0MDAiIGN5PSIzMDAiIHI9Ijg4IiBmaWxsPSIjZmZmYWY1Ii8+PHBhdGggZD0iTTQwMCA3MHY0NjBNMTcwIDMwMGg0NjAiIHN0cm9rZT0iIzI0MWIxNiIgc3Ryb2tlLXdpZHRoPSIxOCIvPjwvc3ZnPgo=" alt="Purple concentric forms for Common Ground"><div class="portfolio-copy"><span>Campaign</span><h3>Common Ground</h3></div></article>
+        <article class="portfolio-card"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2ZmZjVjMiIvPjxnIGZpbGw9IiNmNGI5NDIiPjxyZWN0IHg9IjEwMCIgeT0iOTAiIHdpZHRoPSIyNjAiIGhlaWdodD0iMTkwIiByeD0iMjgiLz48cmVjdCB4PSI0NDAiIHk9IjMyMCIgd2lkdGg9IjI2MCIgaGVpZ2h0PSIxOTAiIHJ4PSIyOCIvPjwvZz48ZyBmaWxsPSIjMjQxYjE2Ij48Y2lyY2xlIGN4PSI1NzAiIGN5PSIxODUiIHI9Ijk1Ii8+PGNpcmNsZSBjeD0iMjMwIiBjeT0iNDE1IiByPSI5NSIvPjwvZz48L3N2Zz4K" alt="Yellow modular shapes for Loop Workspace"><div class="portfolio-copy"><span>Brand system</span><h3>Loop Workspace</h3></div></article>
+        <article class="portfolio-card"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImIiIHgxPSIwIiB5MT0iMSIgeDI9IjEiPjxzdG9wIHN0b3AtY29sb3I9IiMxZDRlZDgiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM2MGE1ZmEiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2U3ZjBmZiIvPjxwYXRoIGQ9Im04MCA0ODAgMTgwLTM2MCAxNjAgMzYwWiIgZmlsbD0idXJsKCNiKSIvPjxyZWN0IHg9IjQ0MCIgeT0iMTAwIiB3aWR0aD0iMjcwIiBoZWlnaHQ9IjM4MCIgcng9IjMwIiBmaWxsPSIjMTcyNTU0Ii8+PHBhdGggZD0iTTQ4MCAxNzBoMTkwTTQ4MCAyMzBoMTMwTTQ4MCAzNjBoMTkwTTQ4MCA0MjBoMTAwIiBzdHJva2U9IiNlN2YwZmYiIHN0cm9rZS13aWR0aD0iMTgiLz48L3N2Zz4K" alt="Blue editorial forms for North Journal"><div class="portfolio-copy"><span>Editorial design</span><h3>North Journal</h3></div></article>
+        <article class="portfolio-card"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2ZmZTRlOCIvPjxwYXRoIGQ9Ik04MCAzMDBjMTAwLTIzMCAyNDAtMjMwIDM0MCAwczI0MCAyMzAgMzAwIDB2MzAwSDgwWiIgZmlsbD0iI2UyMzg1YSIvPjxjaXJjbGUgY3g9IjI2MCIgY3k9IjIzMCIgcj0iMTI1IiBmaWxsPSIjZmY4MTk4Ii8+PGNpcmNsZSBjeD0iNTYwIiBjeT0iMjMwIiByPSIxMjUiIGZpbGw9IiM5ZjEyMzkiLz48Y2lyY2xlIGN4PSI0MTAiIGN5PSIzMDAiIHI9IjYyIiBmaWxsPSIjZmZmYWY1Ii8+PC9zdmc+Cg==" alt="Red and pink forms for Sunday Radio"><div class="portfolio-copy"><span>Digital experience</span><h3>Sunday Radio</h3></div></article>
+      </div></div>
+    </section>
+    <section class="section cta accent-surface" data-template-section="call-to-action"><div class="container"><h2>Make the next thing unmistakably yours.</h2><p>Bring us a rough idea, a hard problem, or a launch date. We will help turn it into something clear and memorable.</p><a class="button button-secondary" href="#contact">Tell us about it</a></div></section>
+    <section class="section" id="contact" data-template-section="contact"><div class="container contact-grid"><div class="contact-copy"><p class="eyebrow">Get in touch</p><h2>Let’s make good work together.</h2><p class="muted">Share a little about your project and we will reply within two working days.</p><div class="contact-list"><a href="mailto:hello@example.com">hello@example.com</a><a href="tel:+15550142200">+1 555 014 2200</a></div></div><form class="contact-card"><label class="field"><span>Your name</span><input type="text" name="name" placeholder="Ada Lovelace"></label><label class="field"><span>Email address</span><input type="email" name="email" placeholder="ada@example.com"></label><label class="field"><span>Project overview</span><textarea name="message" placeholder="What are you hoping to make?"></textarea></label><button class="button button-primary" type="button">Send inquiry</button></form></div></section>
+  </main>
+  <footer class="site-footer" data-template-section="site-footer"><div class="container footer-row"><span>© 2026 Northstar Creative Studio</span><span><a href="#top">Back to top</a> · Built with care</span></div></footer>
+  <script>
+    const header = document.querySelector(".site-header");
+    const toggle = document.querySelector(".menu-toggle");
+    toggle?.addEventListener("click", () => {
+      const open = header?.dataset.menuOpen !== "true";
+      if (header) header.dataset.menuOpen = String(open);
+      toggle.setAttribute("aria-expanded", String(open));
+    });
+  </script>
+</body>
+</html>

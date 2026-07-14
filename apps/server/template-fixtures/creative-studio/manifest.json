@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "startbootstrap.creative-studio",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "site",
+  "subcategory": "creative-agency",
+  "title": "Creative Studio",
+  "description": "A warm, responsive studio website with editable services, portfolio, calls to action and contact details.",
+  "cover": "cover.svg",
+  "entry": "entry.html",
+  "source": {
+    "name": "Start Bootstrap Creative",
+    "repository": "https://github.com/StartBootstrap/startbootstrap-creative",
+    "license": "MIT"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": ["theme", "background", "typography", "components"]
+  },
+  "applyChecklist": [
+    "document title and description",
+    "studio name and navigation labels",
+    "hero heading, copy and primary action",
+    "service names and descriptions",
+    "portfolio artwork, titles and categories",
+    "call to action and contact details",
+    "footer copy and responsive navigation",
+    "global theme, typography and component tokens"
+  ],
+  "minimumAppVersion": "0.17.20"
+}
