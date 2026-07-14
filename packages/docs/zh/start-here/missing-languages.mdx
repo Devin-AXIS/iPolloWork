@@ -1,0 +1,44 @@
+---
+title: "语言支持"
+description: "了解 iPolloWork 当前支持的界面语言与中文文档覆盖范围。"
+---
+
+iPolloWork 已提供不断扩展的多语言界面，我们也会继续完善文档翻译。
+
+## 当前可用的界面语言
+
+- English (`en`)
+- 日本語 (`ja`)
+- 简体中文 (`zh`)
+- Tiếng Việt (`vi`)
+- Português (Brasil) (`pt-BR`)
+- ไทย (`th`)
+- Français (`fr`)
+- Català (`ca`)
+- Español (`es`)
+- Русский (`ru`)
+
+## 中文文档
+
+中文文档与英文文档位于同一个站点，使用右上角的语言选择器即可切换，不会跳转到另一套中文站点。
+
+本次先覆盖开始使用、模型连接、MCP 与浏览器自动化等高频路径。Cloud、API 参考、部署、路线图与更新日志会继续按相同的文件结构补齐；在对应中文页面上线前，请切换到 English 阅读完整内容。
+
+## 改进翻译或新增语言
+
+界面翻译文件位于 [`apps/app/src/i18n/locales`](https://github.com/Devin-AXIS/iPolloWork/tree/main/apps/app/src/i18n/locales)。每种语言各有一个文件，因此大多数改动只需要更新相应的文案文件。
+
+若想新增语言，需要：
+
+- 在 `apps/app/src/i18n/locales/<language-code>.ts` 创建语言文件。
+- 在 `apps/app/src/i18n/index.ts` 注册 import、语言代码、语言选项与翻译表。
+- 从 `apps/app/src/i18n/locales/index.ts` 导出该语言。
+- 把语言代码加入 `scripts/i18n-audit.mjs`，让审计脚本检查缺失键。
+
+修改后可运行：
+
+```bash
+node scripts/i18n-audit.mjs --missing
+```
+
+如需提出语言需求或跟进国际化计划，请查看 [i18n roadmap](https://github.com/Devin-AXIS/iPolloWork/issues/1385)。
