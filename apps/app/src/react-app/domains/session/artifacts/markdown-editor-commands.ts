@@ -63,6 +63,53 @@ export function wrapMarkdownSelection(
   };
 }
 
+export function wrapMarkdownSelectionByLine(
+  document: string,
+  from: number,
+  to: number,
+  before: string,
+  after: string,
+  placeholder: string,
+): MarkdownEdit {
+  const selected = document.slice(from, to);
+
+  if (!selected) {
+    return wrapMarkdownSelection(document, from, to, before, after, placeholder);
+  }
+
+  const wrapLine = (line: string) => {
+    if (!line.trim()) return line;
+    const leadingWhitespace = line.match(/^\s*/)?.[0] ?? "";
+    const trailingWhitespace = line.match(/\s*$/)?.[0] ?? "";
+    const content = line.slice(leadingWhitespace.length, line.length - trailingWhitespace.length);
+    return `${leadingWhitespace}${before}${content}${after}${trailingWhitespace}`;
+  };
+
+  if (!selected.includes("\n")) {
+    const insert = wrapLine(selected);
+    return { from, to, insert, selection: { anchor: from + insert.length } };
+  }
+
+  const trailingNewlines = selected.match(/\n+$/)?.[0] ?? "";
+  const body = trailingNewlines ? selected.slice(0, -trailingNewlines.length) : selected;
+
+  if (!body) {
+    return wrapMarkdownSelection(document, from, to, before, after, placeholder);
+  }
+
+  const insert = body
+    .split("\n")
+    .map(wrapLine)
+    .join("\n") + trailingNewlines;
+
+  return {
+    from,
+    to,
+    insert,
+    selection: { anchor: from + insert.length - trailingNewlines.length },
+  };
+}
+
 export function replaceSlashCommand(match: SlashCommandMatch, insert: string, cursorOffset = insert.length): MarkdownEdit {
   return {
     from: match.from,

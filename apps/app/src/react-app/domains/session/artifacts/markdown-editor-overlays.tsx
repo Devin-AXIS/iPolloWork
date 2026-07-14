@@ -28,6 +28,7 @@ import {
   replaceLinePrefix,
   replaceSlashCommand,
   wrapMarkdownSelection,
+  wrapMarkdownSelectionByLine,
   type MarkdownEdit,
   type SlashCommandMatch,
 } from "./markdown-editor-commands";
@@ -71,7 +72,7 @@ function applyEdit(view: EditorView, edit: MarkdownEdit) {
 
 function formatSelection(view: EditorView, before: string, after: string, placeholder: string) {
   const range = view.state.selection.main;
-  applyEdit(view, wrapMarkdownSelection(view.state.doc.toString(), range.from, range.to, before, after, placeholder));
+  applyEdit(view, wrapMarkdownSelectionByLine(view.state.doc.toString(), range.from, range.to, before, after, placeholder));
 }
 
 function applyBlock(view: EditorView, command: BlockCommand, slash: SlashCommandMatch | null) {
