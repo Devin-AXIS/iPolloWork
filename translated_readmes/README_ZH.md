@@ -1,5 +1,9 @@
 # iPolloWork
 
+<p align="center">
+  <a href="../README.md">English</a> · 简体中文 · <a href="./README_ZH_hk.md">繁體中文</a> · <a href="./README_JA.md">日本語</a>
+</p>
+
 > **让智能体创造，让每一个结果都能继续编辑。**
 
 **Codex 与 Claude Code 的下一代源码开放平替——不只帮你写代码，更直接完成真正的工作。**

@@ -1,5 +1,9 @@
 # iPolloWork
 
+<p align="center">
+  English · <a href="./translated_readmes/README_ZH.md">简体中文</a> · <a href="./translated_readmes/README_ZH_hk.md">繁體中文</a> · <a href="./translated_readmes/README_JA.md">日本語</a>
+</p>
+
 > **Build with agents. Edit everything.**
 
 **The next-generation, source-available alternative to Codex and Claude Code — built not only for coding, but for getting real work finished.**
