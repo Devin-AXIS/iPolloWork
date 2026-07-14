@@ -129,6 +129,7 @@ export type DenOrgSummary = {
   id: string;
   name: string;
   slug: string;
+  kind?: "personal" | "team";
   role: "owner" | "admin" | "member";
 };
 
@@ -945,6 +946,7 @@ function getOrgList(payload: unknown): DenOrgSummary[] {
         id: entry.id,
         name: entry.name,
         slug: entry.slug,
+        ...(entry.kind === "personal" || entry.kind === "team" ? { kind: entry.kind } : {}),
         role: entry.role,
       } satisfies DenOrgSummary,
     ];
@@ -1989,6 +1991,24 @@ export function createDenClient(options: { baseUrl: string; token?: string | nul
         activeOrgSlug,
         defaultOrgId: activeOrgId,
       };
+    },
+
+    async createTeam(name: string): Promise<DenOrgSummary> {
+      const payload = await requestJson<unknown>(baseUrls, "/v1/teams", {
+        method: "POST",
+        token,
+        body: { name },
+      });
+      const team = isRecord(payload) ? getOrgList({ orgs: [payload.team] })[0] : null;
+      if (!team) throw new DenApiError(500, "invalid_team_payload", "Team response was invalid.");
+      return team;
+    },
+
+    async deleteTeam(teamId: string): Promise<void> {
+      await requestJson<unknown>(baseUrls, `/v1/teams/${encodeURIComponent(teamId)}`, {
+        method: "DELETE",
+        token,
+      });
     },
 
     async listWorkers(orgId: string, limit = 20): Promise<DenWorkerSummary[]> {

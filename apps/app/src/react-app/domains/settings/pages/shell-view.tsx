@@ -81,7 +81,7 @@ function ShellWireframe({ config }: { config: ShellConfig }) {
         </g>
 
         {/* Main content */}
-        <rect x={cx} y="31" width={cw} height="195" fill="var(--dls-surface)" />
+        <rect x={cx} y="31" width={cw} height="229" fill="var(--dls-surface)" />
 
         {/* Starter cards */}
         <g className="transition-all duration-300" style={{ opacity: config.starterCards ? 1 : 0 }}>
@@ -113,39 +113,6 @@ function ShellWireframe({ config }: { config: ShellConfig }) {
         {config.modelPicker ? (
           <text x={cx + 14} y="174" fontSize="4.5" fill="var(--dls-text-secondary)" opacity="0.3">big-pickle</text>
         ) : null}
-
-        {/* Status bar */}
-        <g className="transition-all duration-300" style={{ opacity: config.statusBar ? 1 : 0.08 }}>
-          <line x1="0" y1="226" x2="400" y2="226" stroke="var(--dls-border)" strokeWidth="0.5" />
-          <rect x="0.5" y="226" width="399" height="33.5" rx="0" fill="var(--dls-hover)" />
-          {/* Bottom corners */}
-          <rect x="0.5" y="250" width="399" height="10" rx="10" fill="var(--dls-hover)" />
-
-          {/* Status dot + label */}
-          <circle cx="14" cy="242" r="2.5" fill="#28c840" opacity="0.5" />
-          <text x="22" y="245" fontSize="5.5" fontWeight="500" fill="var(--dls-text-primary)" opacity="0.5">Ready</text>
-
-          {/* Cloud sign-in */}
-          {config.cloudSignin ? (
-            <g>
-              <rect x="280" y="236" width="32" height="12" rx="6" fill="var(--dls-accent)" opacity="0.2" />
-              <text x="296" y="244" textAnchor="middle" fontSize="4.5" fontWeight="500" fill="var(--dls-accent)" opacity="0.5">Sign in</text>
-            </g>
-          ) : null}
-
-          {/* Docs */}
-          {config.docsButton ? (
-            <text x="326" y="244" fontSize="5" fill="var(--dls-text-secondary)" opacity="0.35">Docs</text>
-          ) : null}
-
-          {/* Feedback */}
-          {config.feedbackButton ? (
-            <text x="350" y="244" fontSize="5" fill="var(--dls-text-secondary)" opacity="0.35">Feedback</text>
-          ) : null}
-
-          {/* Settings gear */}
-          <text x="388" y="245" textAnchor="middle" fontSize="7" fill="var(--dls-text-secondary)" opacity="0.3">{"\u2699"}</text>
-        </g>
 
         {/* Browser panel */}
         <g className="transition-all duration-300" style={{ opacity: config.browser ? 1 : 0 }}>
@@ -315,37 +282,6 @@ export function ShellCustomizationView() {
         />
 
         <ToggleRow
-          label="Display status bar"
-          description="Quick access to status, settings, and actions along the bottom edge."
-          checked={config.statusBar}
-          onChange={(v) => update({ statusBar: v })}
-          warning="When hidden, the only way to access settings is via Cmd+K."
-        />
-
-        {config.statusBar ? (
-          <div className="ml-6 flex flex-col gap-3 border border-dls-border px-4 py-4 rounded-2xl -mr-4">
-            <ToggleRow
-              label="Display documentation link"
-              description="Show a link to your documentation."
-              checked={config.docsButton}
-              onChange={(value) => update({ docsButton: value })}
-            />
-            <ToggleRow
-              label="Display feedback button"
-              description="Show a button for submitting feedback."
-              checked={config.feedbackButton}
-              onChange={(value) => update({ feedbackButton: value })}
-            />
-            <ToggleRow
-              label="Display cloud sign-in"
-              description="Show a sign-in prompt for users who aren't logged in."
-              checked={config.cloudSignin}
-              onChange={(value) => update({ cloudSignin: value })}
-            />
-          </div>
-        ) : null}
-
-        <ToggleRow
           label="Display notifications"
           description="A bell in the header collecting updates from iPolloWork Cloud and your workspaces."
           checked={config.notifications}
@@ -353,8 +289,15 @@ export function ShellCustomizationView() {
         />
 
         <ToggleRow
-          label="Display task suggestions"
-          description="Show task suggestions to help users get started."
+          label="Display cloud sign-in"
+          description="Show sign-in prompts for users who aren't logged in."
+          checked={config.cloudSignin}
+          onChange={(value) => update({ cloudSignin: value })}
+        />
+
+        <ToggleRow
+          label="Display conversation starter"
+          description="Show the focused starting surface in new conversations."
           checked={config.starterCards}
           onChange={(v) => update({ starterCards: v })}
         />

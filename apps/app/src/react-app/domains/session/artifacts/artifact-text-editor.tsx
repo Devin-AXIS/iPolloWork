@@ -1,11 +1,12 @@
 /** @jsxImportSource react */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { cn } from "@/lib/utils";
 import { markdownLivePreview } from "./markdown-live-preview";
+import { MarkdownEditorOverlays } from "./markdown-editor-overlays";
 
 type ArtifactTextEditorProps = {
   className?: string;
@@ -18,6 +19,8 @@ export function ArtifactTextEditor(props: ArtifactTextEditorProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(props.onChange);
+  const [editorView, setEditorView] = useState<EditorView | null>(null);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
     onChangeRef.current = props.onChange;
@@ -44,6 +47,9 @@ export function ArtifactTextEditor(props: ArtifactTextEditorProps) {
             if (update.docChanged) {
               onChangeRef.current(update.state.doc.toString());
             }
+            if (update.docChanged || update.selectionSet || update.viewportChanged || update.focusChanged) {
+              setRevision((current) => current + 1);
+            }
           }),
           props.language === "markdown"
             ? EditorView.theme({
@@ -66,6 +72,7 @@ export function ArtifactTextEditor(props: ArtifactTextEditorProps) {
     });
 
     viewRef.current = view;
+    setEditorView(view);
 
     // Dev-only handle so e2e flows can drive the editor selection.
     if (import.meta.env.DEV) {
@@ -75,6 +82,7 @@ export function ArtifactTextEditor(props: ArtifactTextEditorProps) {
     return () => {
       view.destroy();
       viewRef.current = null;
+      setEditorView(null);
       if (import.meta.env.DEV) {
         delete (window as unknown as { __artifactEditorView?: EditorView }).__artifactEditorView;
       }
@@ -97,5 +105,10 @@ export function ArtifactTextEditor(props: ArtifactTextEditorProps) {
     view.dispatch({ changes: { from: 0, to: current.length, insert: props.value } });
   }, [props.value]);
 
-  return <div ref={rootRef} className={cn("h-full min-h-0 overflow-hidden", props.className)} />;
+  return (
+    <div className={cn("relative flex h-full min-h-0 flex-col overflow-hidden", props.className)}>
+      <div ref={rootRef} className="min-h-0 flex-1 overflow-hidden" />
+      {props.language === "markdown" && editorView ? <MarkdownEditorOverlays view={editorView} revision={revision} /> : null}
+    </div>
+  );
 }

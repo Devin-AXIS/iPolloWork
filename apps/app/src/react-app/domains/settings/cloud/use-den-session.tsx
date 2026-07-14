@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
 import {
@@ -17,6 +18,7 @@ import {
   type DenOrgSummary,
 } from "@/app/lib/den";
 import { clearDesktopBootstrapConfig } from "@/app/lib/desktop";
+import { activateOrganizationWorkspace, removeOrganizationWorkspace } from "@/app/cloud/organization-workspaces";
 import { exchangeHandoffAndSignIn } from "@/app/lib/den-handoff";
 import {
   denSessionUpdatedEvent,
@@ -28,6 +30,7 @@ import { useDenAuth } from "../../cloud/den-auth-provider";
 import { tryOpenBrowserAuthUrl } from "../../cloud/open-browser-auth";
 import { useCloudSession } from "./cloud-session-provider";
 import { defaultControlPlaneUrl, saveControlPlaneUrl } from "./control-plane-url";
+import { workspaceSessionRoute } from "../../../shell/workspace-routes";
 
 type SettingsTone = "ready" | "warning" | "neutral" | "error";
 
@@ -73,6 +76,7 @@ export function useDenSession({
   developerMode,
   openLink,
 }: UseDenSessionProps) {
+  const navigate = useNavigate();
   const denAuth = useDenAuth();
   const {
     authToken,
@@ -378,10 +382,15 @@ export function useDenSession({
         // - If there's exactly one org, auto-select it (no choice needed).
         // - Otherwise, leave blank so the user is prompted to choose.
         let next = "";
-        if (current && response.orgs.some((org) => org.id === current)) {
+        if (response.activeOrgId && response.orgs.some((org) => org.id === response.activeOrgId)) {
+          next = response.activeOrgId;
+        } else if (current && response.orgs.some((org) => org.id === current)) {
           next = current;
-        } else if (response.orgs.length === 1) {
-          next = response.orgs[0].id;
+        } else {
+          next = response.orgs.find((org) => org.id === response.activeOrgId)?.id
+            ?? response.orgs.find((org) => org.kind === "personal")?.id
+            ?? response.orgs[0]?.id
+            ?? "";
         }
         // else: leave next = "" so the org picker is shown
 
@@ -402,6 +411,7 @@ export function useDenSession({
         }
         if (next) {
           await ensureDenActiveOrganization({ forceServerSync: true }).catch(() => null);
+          if (nextOrg) await activateOrganizationWorkspace(nextOrg).catch(() => null);
         }
         if (!quiet && response.orgs.length > 0) {
           toast.info(t("den.status_loaded_orgs", { count: response.orgs.length }));
@@ -561,15 +571,67 @@ export function useDenSession({
         // covered the critical path.
       }
 
+      try {
+        const workspaceId = await activateOrganizationWorkspace(nextOrg);
+        if (workspaceId) navigate(workspaceSessionRoute(workspaceId), { replace: true });
+      } catch (error) {
+        setOrgsError(error instanceof Error ? error.message : "工作站切换失败");
+        setOrgsBusy(false);
+        return;
+      }
+
       setOrgsBusy(false);
     },
-    [authToken, baseUrl, client, orgs, setActiveOrganization],
+    [authToken, baseUrl, client, navigate, orgs, setActiveOrganization],
   );
 
   // User is signed in, orgs loaded, multiple orgs available, but none selected yet.
   // The UI should prompt the user to pick an org before cloud features activate.
   const needsOrgSelection =
     !!authToken.trim() && !!user && !orgsBusy && orgs.length > 1 && !activeOrgId;
+
+  const createTeam = React.useCallback(async (name: string) => {
+    setOrgsBusy(true);
+    setOrgsError(null);
+    try {
+      const created = await client.createTeam(name);
+      await client.setActiveOrganization({ organizationId: created.id });
+      setOrgs((current) => [created, ...current.filter((org) => org.id !== created.id)]);
+      setActiveOrgId(created.id);
+      writeDenSettings({
+        baseUrl,
+        authToken: authToken || null,
+        activeOrgId: created.id,
+        activeOrgSlug: created.slug,
+        activeOrgName: created.name,
+      });
+      setActiveOrganization({ id: created.id, name: created.name, role: created.role, slug: created.slug });
+      const workspaceId = await activateOrganizationWorkspace(created);
+      if (workspaceId) navigate(workspaceSessionRoute(workspaceId), { replace: true });
+    } catch (error) {
+      setOrgsError(error instanceof Error ? error.message : "团队创建失败");
+      throw error;
+    } finally {
+      setOrgsBusy(false);
+    }
+  }, [authToken, baseUrl, client, navigate, setActiveOrganization]);
+
+  const deleteTeam = React.useCallback(async (teamId: string) => {
+    setOrgsBusy(true);
+    setOrgsError(null);
+    try {
+      await client.deleteTeam(teamId);
+      const workspaceId = await removeOrganizationWorkspace(teamId);
+      setActiveOrgId("");
+      await refreshOrgs(true);
+      if (workspaceId) navigate(workspaceSessionRoute(workspaceId), { replace: true });
+    } catch (error) {
+      setOrgsError(error instanceof Error ? error.message : "团队删除失败");
+      throw error;
+    } finally {
+      setOrgsBusy(false);
+    }
+  }, [client, navigate, refreshOrgs]);
 
   return {
     authBusy,
@@ -588,6 +650,8 @@ export function useDenSession({
     summaryTone,
     syncCurrentDenSettings,
     onActiveOrgChange: handleActiveOrgChange,
+    onCreateTeam: createTeam,
+    onDeleteTeam: deleteTeam,
     onApplyBaseUrl: applyBaseUrl,
     onBaseUrlDraftChange: setBaseUrlDraft,
     onClearServerConfiguration: clearServerConfiguration,
