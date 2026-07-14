@@ -30,7 +30,7 @@ describe("Creative Studio local Design template", () => {
     expect(manifest).toMatchObject({
       schemaVersion: 1,
       id: "startbootstrap.creative-studio",
-      version: "1.0.0",
+      version: "1.0.1",
       kind: "design",
       category: "site",
       subcategory: "creative-agency",
@@ -50,7 +50,7 @@ describe("Creative Studio local Design template", () => {
     });
   });
 
-  test("ships an editable page with local portfolio artwork", async () => {
+  test("ships an editable page with embedded portfolio artwork", async () => {
     const html = await text("entry.html");
     const files = await readdir(root);
 
@@ -60,10 +60,15 @@ describe("Creative Studio local Design template", () => {
     for (const landmark of ["site-header", "hero", "services", "portfolio", "call-to-action", "contact", "site-footer"]) {
       expect(html).toContain(`data-template-section="${landmark}"`);
     }
-    for (let index = 1; index <= 6; index += 1) {
-      const number = String(index).padStart(2, "0");
-      expect(html).toMatch(new RegExp(`<img[^>]+src="assets/portfolio-${number}\\.svg"[^>]+alt="[^"]+"`));
+    const images = [...html.matchAll(/<img[^>]+src="([^"]+)"[^>]+alt="([^"]+)"/g)];
+    expect(images).toHaveLength(8);
+    for (const [, source, alt] of images) {
+      expect(source).toMatch(/^data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+$/);
+      expect(alt.trim().length).toBeGreaterThan(0);
+      const svg = Buffer.from(source.slice("data:image/svg+xml;base64,".length), "base64").toString("utf8");
+      expect(svg).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"[\s\S]*<\/svg>\s*$/);
     }
+    expect(html).not.toMatch(/(?:src|href)="assets\//);
   });
 
   test("has no runtime network or framework dependency", async () => {
