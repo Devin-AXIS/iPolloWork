@@ -99,8 +99,8 @@ There are three different build levels:
 | Command | Result |
 | --- | --- |
 | `build` | Compiles the production UI, server, Electron shell, and sidecars; does not create an installer |
-| `package:dir` | Creates the fastest unpacked desktop app for local verification |
-| `package` | Creates the native installer and portable/update artifacts for the current system and CPU |
+| `package:dir` | Creates the fastest unpacked desktop app for local verification; does not change the release version |
+| `package` | Runs checks, advances the client version, then creates native installer and portable/update artifacts for the current system and CPU without publishing them |
 
 ### macOS and Linux
 
@@ -119,6 +119,8 @@ There are three different build levels:
 ```
 
 All outputs are written to `apps/desktop/dist-electron/`:
+
+`package` is the local release command. It keeps the App, Desktop, Orchestrator, and Server versions in sync, and uses the sequence `0.1.0` through `0.99.0`, then `1.0.0` (the source checkout starts at the unshipped baseline `0.0.0`). Use `./ipollowork package --dry-run` to inspect the next version, or `--skip-check` only when the checks have already passed. Local packaging never commits, tags, pushes, or publishes a release.
 
 - **macOS:** `.dmg`, `.zip`, and an unpacked `.app`
 - **Windows:** NSIS `.exe` and `win-unpacked/`

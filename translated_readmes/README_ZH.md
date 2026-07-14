@@ -97,8 +97,8 @@ corepack enable
 | 命令 | 产物 |
 | --- | --- |
 | `build` | 编译生产 UI、Server、Electron 和 sidecar，但不生成安装包 |
-| `package:dir` | 生成免安装目录，速度最快，适合本地验证 |
-| `package` | 为当前系统和当前 CPU 生成原生安装包及便携/更新文件 |
+| `package:dir` | 生成免安装目录，速度最快，适合本地验证；不会修改正式版本号 |
+| `package` | 先执行检查、递增客户端版本号，再为当前系统和当前 CPU 生成原生安装包及便携/更新文件；不会发布 |
 
 ### macOS 和 Linux
 
@@ -117,6 +117,8 @@ corepack enable
 ```
 
 所有产物输出到 `apps/desktop/dist-electron/`：
+
+`package` 是本地正式打包命令。它会同步 App、Desktop、Orchestrator 和 Server 的版本，并按 `0.1.0` 到 `0.99.0`、再到 `1.0.0` 的顺序递增（源码开发基线为未发行的 `0.0.0`）。可使用 `./ipollowork package --dry-run` 查看下一个版本；仅在检查已经通过时才使用 `--skip-check`。本地打包不会自动提交、打 tag、推送或发布。
 
 - **macOS：**`.dmg`、`.zip` 和免安装 `.app`
 - **Windows：**NSIS `.exe` 和 `win-unpacked/`
