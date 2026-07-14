@@ -13,7 +13,7 @@ Last reviewed: 2026-07-14
 | Electron development client | Supported | Start through `ipollowork.cmd`; the shared React UI, local server, OpenCode, workspaces, sessions, and MCP endpoints have been exercised on Windows 11. |
 | Production build | Supported | `ipollowork.cmd build` compiles the UI, embedded server, Electron shell, and executable sidecars. |
 | Unpacked desktop application | Supported | `ipollowork.cmd package:dir` creates `win-unpacked/` for the current Windows architecture. |
-| NSIS installer | Supported | `ipollowork.cmd package` creates an `.exe` installer; locally produced installers are unsigned unless Windows signing is configured. |
+| NSIS installer | Supported | `ipollowork.cmd package` checks the project, advances the shared client version, then creates an `.exe` installer; locally produced installers are unsigned unless Windows signing is configured. |
 | Windows x64 and ARM64 sidecars | Covered | The packaging hook has regression coverage for both Windows target triples. |
 | Computer Use | Not available | The native helper and composer `@App` integration are currently macOS-only. |
 | Rolling alpha updater | Not available | The rolling alpha channel is currently macOS-only. |
@@ -103,7 +103,7 @@ variables without POSIX shell syntax.
 | `.\ipollowork.cmd check` | Runs App type checking, Electron type checking, and desktop tests. |
 | `.\ipollowork.cmd build` | Builds production assets without creating an installer. |
 | `.\ipollowork.cmd package:dir` | Creates the fastest unpacked Windows application for local validation. |
-| `.\ipollowork.cmd package` | Creates the Windows NSIS installer. |
+| `.\ipollowork.cmd package` | Runs checks, advances the shared client version, and creates the Windows NSIS installer without publishing it. |
 
 Do not use the root `pnpm dev` command directly from Windows `cmd.exe`. That
 script still contains POSIX inline environment-variable syntax and can fail

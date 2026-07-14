@@ -62,8 +62,10 @@ function printHelp() {
   ${launcher} dev:cloud [url]    Start desktop connected to iPolloCloud
   ${launcher} check              Run README localization, type checks, and desktop tests
   ${launcher} build              Build the desktop application
-  ${launcher} package            Build native installers
-  ${launcher} package:dir        Build an unpacked desktop application
+  ${launcher} package [flags]    Check, advance the client version, and build installers
+  ${launcher} package:dir        Build an unpacked desktop application without advancing a version
+
+  package flags: --dry-run (show the next version), --skip-check (skip type checks/tests)
 
 The default local iPolloCloud URL is http://localhost:3100.`);
 }
@@ -134,7 +136,10 @@ switch (command) {
     break;
   case "package":
     requireCommand("pnpm", "Run: corepack enable");
-    run(pnpm, ["--filter", "@ipollowork/desktop", "package:electron", ...args]);
+    run(process.execPath, [
+      resolve(root, "scripts", "release", "package-client.mjs"),
+      ...args,
+    ]);
     break;
   case "package:dir":
     requireCommand("pnpm", "Run: corepack enable");

@@ -94,11 +94,13 @@ const updatePackageJson = async (nextVersion) => {
 // apps/orchestrator pins exact versions of workspace packages, so the lockfile
 // must be resynced after a bump or CI's --frozen-lockfile install fails.
 const syncLockfile = () => {
-  const result = spawnSync("pnpm", ["install", "--lockfile-only"], {
+  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  const result = spawnSync(pnpm, ["install", "--lockfile-only"], {
     cwd: REPO_ROOT,
     stdio: "inherit",
+    shell: process.platform === "win32",
   });
-  if (result.status !== 0) {
+  if (result.error || result.status !== 0) {
     throw new Error("pnpm install --lockfile-only failed");
   }
 };
