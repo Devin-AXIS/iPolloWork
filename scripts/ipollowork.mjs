@@ -60,7 +60,7 @@ function printHelp() {
   ${launcher} dev                Start the source-available desktop app
   ${launcher} dev:ui             Start only the browser UI
   ${launcher} dev:cloud [url]    Start desktop connected to iPolloCloud
-  ${launcher} check              Run type checks and desktop tests
+  ${launcher} check              Run README localization, type checks, and desktop tests
   ${launcher} build              Build the desktop application
   ${launcher} package            Build native installers
   ${launcher} package:dir        Build an unpacked desktop application
@@ -123,6 +123,7 @@ switch (command) {
   case "check":
     requireCommand("pnpm", "Run: corepack enable");
     await runSequence([
+      [process.execPath, [resolve(root, "scripts", "sync-readme-zh-hant.mjs"), "--check"]],
       [pnpm, ["--filter", "@ipollowork/app", "typecheck", ...args]],
       [pnpm, ["--filter", "@ipollowork/desktop", "typecheck:electron", ...args]],
       [pnpm, ["--filter", "@ipollowork/desktop", "test", ...args]],

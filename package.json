@@ -6,6 +6,8 @@
     "setup": "node scripts/ipollowork.mjs setup",
     "dev:cloud": "node scripts/ipollowork.mjs dev:cloud",
     "check": "node scripts/ipollowork.mjs check",
+    "readme:zh-hant": "node scripts/sync-readme-zh-hant.mjs",
+    "readme:zh-hant:check": "node scripts/sync-readme-zh-hant.mjs --check",
     "package": "node scripts/ipollowork.mjs package",
     "package:dir": "node scripts/ipollowork.mjs package:dir",
     "dev": "IPOLLOWORK_DEV_MODE=1 IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=${IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT:-9823} pnpm --filter @ipollowork/desktop dev",
@@ -48,6 +50,7 @@
     "release:ship:watch": "node scripts/release/ship.mjs --watch"
   },
   "devDependencies": {
+    "opencc-js": "^1.4.0",
     "turbo": "^2.5.5"
   },
   "packageManager": "pnpm@11.4.0"
