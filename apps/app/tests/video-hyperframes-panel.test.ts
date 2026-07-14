@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { hyperframesPreviewCommand, hyperframesStudioPort, hyperframesStudioUrl, videoProjectDirectory, videoProjectId } from "../src/react-app/domains/session/video/video-panel";
+import { hyperframesPreviewCommand, hyperframesStudioPort, hyperframesStudioUrl, videoProjectDirectory, videoProjectId, videoTaskSystemContext } from "../src/react-app/domains/session/video/video-project";
 
 describe("HyperFrames Video Studio", () => {
   test("opens the native Studio on a hydrated first frame", () => {
@@ -24,7 +24,18 @@ describe("HyperFrames Video Studio", () => {
   test("starts the embedded Studio without opening an external browser", () => {
     const command = hyperframesPreviewCommand("ses_video_a");
     expect(command).toContain("cd video/ses_video_a");
+    expect(command).toContain("--example blank");
+    expect(command).not.toContain("warm-grain");
+    expect(command).not.toContain("HYPERFRAMES_SKIP_SKILLS");
     expect(command).toContain(`--port ${hyperframesStudioPort("ses_video_a")}`);
     expect(command).toContain("--no-open");
+  });
+
+  test("gives the agent the same session-scoped project as the Studio", () => {
+    const contract = videoTaskSystemContext("ses/current video");
+    expect(contract).toContain("video/ses_current_video/index.html");
+    expect(contract).toContain("HyperFrames skill is installed automatically");
+    expect(contract).toContain("Never add example clips");
+    expect(contract).toContain("another conversation's project");
   });
 });

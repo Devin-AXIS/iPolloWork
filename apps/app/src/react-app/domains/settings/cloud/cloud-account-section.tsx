@@ -1,9 +1,11 @@
 /** @jsxImportSource react */
-import { Building2, Check, LogOut, Loader2 } from "lucide-react";
+import { Building2, Check, LogOut, Loader2, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
 
 import type { DenOrgSummary } from "../../../../app/lib/den";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   SettingsNotice,
   SettingsSectionHeaderDescription,
@@ -21,6 +23,8 @@ export interface CloudAccountSectionProps {
   orgsError: string | null;
   sessionBusy: boolean;
   onActiveOrgChange: (orgId: string) => void | Promise<void>;
+  onCreateTeam: (name: string) => void | Promise<void>;
+  onDeleteTeam: (orgId: string) => void | Promise<void>;
   onRefreshOrgs: () => void | Promise<void>;
   onSignOut: () => void | Promise<void>;
 }
@@ -34,6 +38,8 @@ export function CloudAccountSection({
   orgsError,
   sessionBusy,
   onActiveOrgChange,
+  onCreateTeam,
+  onDeleteTeam,
   onRefreshOrgs,
   onSignOut,
 }: CloudAccountSectionProps) {
@@ -71,12 +77,14 @@ export function CloudAccountSection({
       </div>
 
       {/* Org picker (stepper-style) or connected org display */}
-      {needsOrgSelection ? (
+      {needsOrgSelection || orgs.length > 1 ? (
         <OrgPicker
+          activeOrgId={activeOrgId}
           orgs={orgs}
           orgsBusy={orgsBusy}
           disabled={controlsDisabled}
           onSelect={onActiveOrgChange}
+          onDelete={onDeleteTeam}
           onRefresh={onRefreshOrgs}
         />
       ) : activeOrg ? (
@@ -89,6 +97,7 @@ export function CloudAccountSection({
       ) : null}
 
       {orgsError ? <SettingsNotice tone="error">{orgsError}</SettingsNotice> : null}
+      <CreateTeamForm disabled={controlsDisabled} onCreate={onCreateTeam} />
     </section>
   );
 }
@@ -119,19 +128,24 @@ function ConnectedOrg({ org }: { org: DenOrgSummary }) {
 /* ------------------------------------------------------------------ */
 
 function OrgPicker({
+  activeOrgId,
   orgs,
   orgsBusy,
   disabled,
   onSelect,
+  onDelete,
   onRefresh,
 }: {
+  activeOrgId: string;
   orgs: DenOrgSummary[];
   orgsBusy: boolean;
   disabled: boolean;
   onSelect: (orgId: string) => void | Promise<void>;
+  onDelete: (orgId: string) => void | Promise<void>;
   onRefresh: () => void | Promise<void>;
 }) {
   const { filtered, query, showMore, updateQuery, visible } = useOrgListWindow(orgs);
+  const [deleteTarget, setDeleteTarget] = useState<DenOrgSummary | null>(null);
   const hasMore = visible.length < filtered.length;
 
   if (orgsBusy) {
@@ -161,10 +175,10 @@ function OrgPicker({
   return (
     <div className="flex flex-col gap-3">
       <div className="text-sm font-medium text-dls-text">
-        Select an organization
+        切换工作站
       </div>
       <div className="text-xs text-dls-secondary">
-        Choose the organization to use with this workspace. Sign out to switch later.
+        切换后聊天列表、当前会话、记录、草稿和文件都会随工作站变化。
       </div>
       {orgs.length > 10 ? (
         <Input
@@ -177,23 +191,31 @@ function OrgPicker({
       ) : null}
       <div className="flex flex-col gap-2">
         {visible.map((org) => (
-          <button
+          <div
             key={org.id}
-            type="button"
-            disabled={disabled}
-            className="flex items-center gap-3 rounded-xl border border-dls-border bg-dls-surface px-4 py-3 text-left transition-colors hover:border-dls-text/20 hover:bg-dls-hover disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={() => void onSelect(org.id)}
+            className="flex items-center gap-2"
           >
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-hover text-dls-secondary">
-              <Building2 size={16} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-dls-text">{org.name}</div>
-              <div className="text-xs text-dls-secondary">
-                {org.role === "owner" ? "Owner" : "Member"}
+            <button
+              type="button"
+              disabled={disabled || org.id === activeOrgId}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-dls-border bg-dls-surface px-4 py-3 text-left transition-colors hover:border-dls-text/20 hover:bg-dls-hover disabled:cursor-default disabled:opacity-70"
+              onClick={() => void onSelect(org.id)}
+            >
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-hover text-dls-secondary">
+                <Building2 size={16} />
               </div>
-            </div>
-          </button>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-dls-text">{org.name}</div>
+                <div className="text-xs text-dls-secondary">{org.kind === "personal" ? "个人工作站" : org.role === "owner" ? "Owner" : "Member"}</div>
+              </div>
+              {org.id === activeOrgId ? <Check size={16} className="text-green-11" /> : null}
+            </button>
+            {org.kind !== "personal" && org.role === "owner" ? (
+              <Button type="button" size="icon-sm" variant="ghost" disabled={disabled} aria-label={`删除 ${org.name}`} onClick={() => setDeleteTarget(org)}>
+                <Trash2 size={15} />
+              </Button>
+            ) : null}
+          </div>
         ))}
       </div>
       {filtered.length === 0 && query.trim() ? (
@@ -217,6 +239,35 @@ function OrgPicker({
           </div>
         </div>
       ) : null}
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除“{deleteTarget?.name}”？</AlertDialogTitle>
+            <AlertDialogDescription>该团队将从工作站列表移除。个人工作站和其他团队不会受影响。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => { if (deleteTarget) void onDelete(deleteTarget.id); }}>删除团队</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  );
+}
+
+function CreateTeamForm({ disabled, onCreate }: { disabled: boolean; onCreate: (name: string) => void | Promise<void> }) {
+  const [name, setName] = useState("");
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const value = name.trim();
+    if (value.length < 2) return;
+    await onCreate(value);
+    setName("");
+  };
+  return (
+    <form className="flex gap-2" onSubmit={(event) => void submit(event)}>
+      <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="创建新的团队" minLength={2} maxLength={80} disabled={disabled} />
+      <Button type="submit" variant="outline" disabled={disabled || name.trim().length < 2}><Plus size={15} />创建</Button>
+    </form>
   );
 }

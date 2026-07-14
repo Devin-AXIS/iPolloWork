@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
-import { Code2, Ellipsis, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, Presentation, Settings2, TextSearch, Upload, Zap } from "lucide-react";
+import { Code2, Ellipsis, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, Zap } from "lucide-react";
 import type { DesignSessionTemplateState, TemplateCatalogItem, TemplateManifestV1 } from "@ipollowork/types/templates";
 
 import { t } from "../../../../i18n";
@@ -24,6 +24,7 @@ import type {
 } from "../../../../app/types";
 import type { ShareWorkspaceModalProps } from "../../workspace/types";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
@@ -44,7 +45,6 @@ import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { useSessionManagementStore } from "../sidebar/session-management-store";
 import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
-import { useSessionFindStore } from "../surface/find-store";
 import {
   SidebarInset,
   SidebarProvider,
@@ -56,9 +56,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { ShareWorkspaceModal } from "../../workspace/share-workspace-modal";
-import { StatusBar, type StatusBarProps } from "./status-bar";
 import { OwDotTicker } from "../../../shell/dot-ticker";
-import { NotificationBell } from "../../../shell/notification-center";
 import { useReactRenderWatchdog } from "../../../shell/react-render-watchdog";
 import { useShellConfig } from "../../../shell/shell-config";
 import { type SidePanelItem, useUiStateStore } from "../../../shell/ui-state-store";
@@ -86,20 +84,6 @@ const STARTUP_SKELETON_ROWS = [
 ];
 const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowork_voice__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
-
-export type OpenSessionTab = {
-  workspaceId: string;
-  sessionId: string;
-};
-
-type StatusBarOverrides = Pick<
-  StatusBarProps,
-  | "loading"
-  | "showSettingsButton"
-  | "settingsOpen"
-  | "reloadBusy"
-  | "reloadError"
->;
 
 export type SessionPageHistoryControls = {
   canUndo: boolean;
@@ -175,7 +159,6 @@ export type SessionPageProps = {
   hasUsableModel?: boolean;
   providers?: ProviderListItem[];
   mcpConnectedCount: number;
-  onSendFeedback: () => void;
   onOpenSettings: () => void;
   sidebar: SessionPageSidebarProps;
   surface?: SessionPageSurfaceProps | null;
@@ -191,7 +174,6 @@ export type SessionPageProps = {
   activeQuestion?: PendingQuestion | null;
   questionReplyBusy?: boolean;
   respondQuestion?: (requestID: string, answers: string[][]) => void;
-  statusBar?: Partial<StatusBarOverrides>;
   notFoundMessage?: string | null;
   onOpenProviderAuth?: () => void;
   onRenameSession?: (sessionId: string, title: string) => Promise<void> | void;
@@ -717,6 +699,21 @@ export function SessionPage(props: SessionPageProps) {
     }
     toggleCurrentSidePanel("panel");
   }, [panelRailActive, sessionPanelState.tabs, toggleCurrentSidePanel]);
+  const lastOpenedRightPanelRef = useRef<SidePanelItem>("panel");
+  useEffect(() => {
+    if (activeSidePanel !== null) lastOpenedRightPanelRef.current = activeSidePanel;
+  }, [activeSidePanel]);
+  const toggleRightPanel = useCallback(() => {
+    if (sidePanelOpen) {
+      closeRightPane();
+      return;
+    }
+    if (lastOpenedRightPanelRef.current === "panel") {
+      openBrowserRailPane();
+      return;
+    }
+    setCurrentSidePanel(lastOpenedRightPanelRef.current);
+  }, [closeRightPane, openBrowserRailPane, setCurrentSidePanel, sidePanelOpen]);
   const openDesignRailPane = useCallback(() => {
     toggleCurrentSidePanel("design");
   }, [toggleCurrentSidePanel]);
@@ -956,12 +953,7 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.workspaceSessionGroups, sessionActionId),
     [props.sidebar.workspaceSessionGroups, sessionActionId],
   );
-  const workspaceName =
-    props.selectedWorkspaceDisplay.displayName?.trim() ||
-    props.selectedWorkspaceDisplay.name?.trim() ||
-    t("session.workspace_fallback");
   const providerCount = props.hasUsableModel ? 1 : props.providerConnectedIds.length;
-  const messageCountVisible = props.selectedSessionId ? 1 : 0;
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !props.selectedSessionId;
   const showStartupSkeleton =
     !props.selectedSessionId &&
@@ -1012,7 +1004,9 @@ export function SessionPage(props: SessionPageProps) {
       reactSessionToken &&
       props.surface,
   );
-  const findButtonSessionId = props.selectedSessionId;
+  const showHeaderMenu = Boolean(
+    (props.selectedSessionId && (props.onRenameSession || props.onDeleteSession)) || props.developerMode,
+  );
 
   useEffect(() => {
     if (!showSessionLoadingState) {
@@ -1121,6 +1115,7 @@ export function SessionPage(props: SessionPageProps) {
             email: denAuth.user?.email ?? null,
           }}
           onOpenAccount={openCloudAccount}
+          onOpenSettings={props.onOpenSettings}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch}
           onReorderWorkspaces={props.sidebar.onReorderWorkspaces}
@@ -1135,65 +1130,114 @@ export function SessionPage(props: SessionPageProps) {
           >
             <ResizablePanel minSize="360px" className="min-w-0">
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border">
-          <header className="z-10 flex h-10 shrink-0 items-center justify-between border-b border-border px-4 md:px-6 mac:titlebar-drag  mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar">
-            <div className="flex min-w-0 items-center gap-3">
-              {shellConfig.sidebar ? <SidebarTrigger className="mac:hidden" /> : null}
+          <header className="z-10 flex h-10 shrink-0 items-center justify-between border-b border-border px-4 md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar">
+            <div className="flex min-w-0 items-center gap-1">
+              {shellConfig.sidebar ? (
+                <SidebarTrigger
+                  className="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
+                  aria-label={sidebarOpen ? t("sidebar.collapse") : t("sidebar.expand")}
+                  title={sidebarOpen ? t("sidebar.collapse") : t("sidebar.expand")}
+                />
+              ) : null}
               <h1 className="truncate text-[15px] font-semibold text-dls-text">
                 {showWorkspaceSetupEmptyState
                   ? t("session.create_or_connect_workspace")
                   : selectedSessionTitle || t("session.default_title")}
               </h1>
-              <span className="hidden truncate text-[13px] text-dls-secondary lg:inline">
-                {workspaceName}
-              </span>
-              {props.developerMode ? (
-                <span className="hidden text-[12px] text-dls-secondary lg:inline">
-                  {props.headerStatus}
-                </span>
-              ) : null}
-              {props.busyHint ? (
-                <span className="hidden text-[12px] text-dls-secondary lg:inline">
-                  {props.busyHint}
-                </span>
+              {showHeaderMenu ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
+                        aria-label={t("session.palette_title_actions")}
+                        title={t("session.palette_title_actions")}
+                      >
+                        <Ellipsis className="size-4" />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="start" className="w-48">
+                    {props.selectedSessionId && props.onRenameSession ? (
+                      <DropdownMenuItem onClick={() => openRenameModal(props.selectedSessionId!)}>
+                        <Pencil className="size-4" />
+                        {t("workspace_list.rename_session")}
+                      </DropdownMenuItem>
+                    ) : null}
+                    {props.selectedSessionId && props.onDeleteSession ? (
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => {
+                          setSessionActionId(props.selectedSessionId!);
+                          setDeleteOpen(true);
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                        {t("workspace_list.delete_session")}
+                      </DropdownMenuItem>
+                    ) : null}
+                    {props.developerMode ? (
+                      <>
+                        {props.selectedSessionId && (props.onRenameSession || props.onDeleteSession) ? <DropdownMenuSeparator /> : null}
+                        <DropdownMenuItem
+                          onClick={() => {
+                            try {
+                              window.localStorage.removeItem("ipollowork.acknowledgedProviders");
+                              window.localStorage.removeItem("ipollowork.orgOnboardingSeen");
+                            } catch {
+                              // Browser storage may be unavailable in hardened runtimes.
+                            }
+                          }}
+                        >
+                          Reset notifications
+                        </DropdownMenuItem>
+                      </>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : null}
             </div>
 
             <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
-              {/* Revert/redo moved to per-message actions */}
-              {findButtonSessionId ? (
+              {props.sidebar.onOpenSessionSearch ? (
                 <Tooltip>
                   <TooltipTrigger
                     render={
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="rounded-xl text-gray-10 transition-colors hover:bg-muted hover:text-foreground"
-                        aria-label="Find in conversation"
-                        onClick={() => useSessionFindStore.getState().openFind({ sessionId: findButtonSessionId })}
+                        className="rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        aria-label={t("session.cmd_sessions_title")}
+                        onClick={props.sidebar.onOpenSessionSearch}
                       >
-                        <TextSearch size={17} />
+                        <Search className="size-4" />
                       </Button>
                     }
                   />
-                  <TooltipContent>Find in conversation (⌘F)</TooltipContent>
+                  <TooltipContent>{t("session.cmd_sessions_title")}</TooltipContent>
                 </Tooltip>
               ) : null}
-              <NotificationBell />
-              {props.developerMode ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    try {
-                      window.localStorage.removeItem("ipollowork.acknowledgedProviders");
-                      window.localStorage.removeItem("ipollowork.orgOnboardingSeen");
-                    } catch {}
-                  }}
-                  title="Clears acknowledged providers + org onboarding so they trigger again"
-                >
-                  Reset notifications
-                </Button>
-              ) : null}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                      title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                      aria-pressed={sidePanelOpen}
+                      disabled={!props.selectedSessionId}
+                      onClick={toggleRightPanel}
+                    >
+                      {sidePanelOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
+                    </Button>
+                  }
+                />
+                <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
+              </Tooltip>
             </div>
           </header>
 
@@ -1285,6 +1329,12 @@ export function SessionPage(props: SessionPageProps) {
                         respondQuestion={props.respondQuestion}
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
+                        onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type, templateId)}
+                        designTemplates={templateCatalog}
+                        designTemplatesLoading={templateCatalogLoading}
+                        designTemplateBusyId={templateBusyId}
+                        onInstallDesignTemplate={(templateId) => void installDesignTemplate(templateId)}
+                        onRequestDesignTemplates={() => void refreshTemplateCatalog()}
                       />}
                   </div>
                 </div>
@@ -1457,22 +1507,6 @@ export function SessionPage(props: SessionPageProps) {
             ) : null}
           </ResizablePanelGroup>
 
-          {shellConfig.statusBar ? (
-            <StatusBar
-              clientConnected={props.clientConnected}
-              ipolloworkServerStatus={props.ipolloworkServerStatus}
-              developerMode={props.developerMode}
-              settingsOpen={props.statusBar?.settingsOpen ?? false}
-              onSendFeedback={props.onSendFeedback}
-              onOpenSettings={props.onOpenSettings}
-              providerConnectedIds={props.providerConnectedIds}
-              mcpConnectedCount={props.mcpConnectedCount}
-              loading={props.statusBar?.loading ?? false}
-              showSettingsButton={props.statusBar?.showSettingsButton}
-              reloadBusy={props.statusBar?.reloadBusy}
-              reloadError={props.statusBar?.reloadError}
-            />
-          ) : null}
               </main>
             </ResizablePanel>
               {sidePanelOpen ? (
@@ -1507,6 +1541,7 @@ export function SessionPage(props: SessionPageProps) {
                     />
                   ) : activeSidePanel === "video" && props.selectedSessionId ? (
                     <VideoPanel
+                      key={`${props.selectedWorkspaceId}:${props.selectedSessionId}`}
                       sessionId={props.selectedSessionId}
                       workspaceRoot={props.selectedWorkspaceRoot}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
@@ -1626,7 +1661,6 @@ export function SessionPage(props: SessionPageProps) {
           </aside>
           </div>
         </SidebarInset>
-        {shellConfig.sidebar ? <SidebarTrigger className="hidden mac:absolute mac:left-[64px] top-[3px] z-50 mac:flex titlebar-no-drag" /> : null}
       </SidebarProvider>
 
       {props.providerAuthModal ? <ProviderAuthModal {...props.providerAuthModal} /> : null}

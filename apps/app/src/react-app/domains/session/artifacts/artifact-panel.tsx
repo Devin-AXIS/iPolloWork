@@ -9,7 +9,7 @@ import { isElectronRuntime } from "@/app/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatFileSize } from "@/lib/utils";
+import { cn, formatFileSize } from "@/lib/utils";
 import { type ArtifactPanelTab, usePanelTabStore } from "../panel/panel-tab-store";
 import { isCollectibleArtifactTarget, type BinaryData, type Data, type OpenTarget, type TextData } from "./open-target";
 import { HTMLPreview, ImagePreview, MarkdownPreview, PdfPreview, PlainText, PreviewError, PreviewLoading, PreviewUnavailable } from "./preview";
@@ -84,6 +84,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [autoSaveBlockedDraft, setAutoSaveBlockedDraft] = useState<string | null>(null);
   const isDirectTextEdit = isTextContent(target) && target.preview === "markdown";
   const externalPath = useMemo(() => target.kind === "file" ? absoluteWorkspacePath(workspaceRoot, target.value) : target.value, [target.kind, target.value, workspaceRoot]);
 
@@ -140,6 +141,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   useEffect(() => {
     setEditing(false);
     setDraft("");
+    setAutoSaveBlockedDraft(null);
   }, [target.id, workspaceId]);
 
   useEffect(() => {
@@ -169,10 +171,32 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
       );
 
       if (input.kind === "text") {
-        setDraft(input.data);
+        setDraft((current) => current === input.data ? input.data : current);
       }
+      setAutoSaveBlockedDraft(null);
+    },
+    onError: (cause, input) => {
+      if (input.kind === "text") setAutoSaveBlockedDraft(input.data);
+      toast.error(cause instanceof Error ? cause.message : "Could not save this file.");
     },
   });
+
+  useEffect(() => {
+    if (
+      !isDirectTextEdit ||
+      target.kind !== "file" ||
+      data?.kind !== "text" ||
+      draft === data.data ||
+      draft === autoSaveBlockedDraft ||
+      isSaving
+    ) return;
+
+    const timer = window.setTimeout(() => {
+      mutate({ kind: "text", data: draft, baseUpdatedAt: data.updatedAt });
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [autoSaveBlockedDraft, data, draft, isDirectTextEdit, isSaving, mutate, target.kind]);
 
   const download = async () => {
     if (target.kind === "url") {
@@ -233,6 +257,25 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
     );
   };
 
+  const close = async () => {
+    if (isDirectTextEdit && target.kind === "file" && data?.kind === "text" && draft !== data.data) {
+      try {
+        await mutateAsync({ kind: "text", data: draft, baseUpdatedAt: data.updatedAt });
+      } catch {
+        return;
+      }
+    }
+    onClose();
+  };
+
+  const saveStatus = isSaving
+    ? "Saving…"
+    : data?.kind === "text" && draft === data.data
+      ? "Saved"
+      : draft === autoSaveBlockedDraft
+        ? "Save failed"
+        : "Unsaved";
+
   const saveSpreadsheetContent = async (payload: Data) => {
     if (target.kind !== "file") {
       return;
@@ -261,7 +304,24 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
           </div>
           <div className="flex shrink-0 items-center gap-2">
           {isTextContent(target) && data?.kind === "text" ? (
-            editing || isDirectTextEdit ? (
+            isDirectTextEdit ? (
+              <button
+                type="button"
+                className={cn(
+                  "rounded-lg px-2 py-1 text-[11px] transition-colors",
+                  saveStatus === "Save failed" ? "text-destructive hover:bg-destructive/10" : "text-muted-foreground",
+                )}
+                disabled={saveStatus !== "Save failed"}
+                title={saveStatus === "Save failed" ? "Retry save" : saveStatus}
+                onClick={() => {
+                  if (target.kind !== "file") return;
+                  setAutoSaveBlockedDraft(null);
+                  mutate({ kind: "text", data: draft, baseUpdatedAt: data.updatedAt });
+                }}
+              >
+                {saveStatus}
+              </button>
+            ) : editing ? (
               <>
                 <Tooltip>
                   <TooltipTrigger
@@ -340,7 +400,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
           <Tooltip>
             <TooltipTrigger
               render={(
-                <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close artifact">
+                <Button variant="ghost" size="icon-sm" onClick={() => void close()} aria-label="Close artifact">
                   <X />
                 </Button>
               )}

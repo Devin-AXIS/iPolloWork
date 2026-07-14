@@ -112,6 +112,7 @@ import { cn } from "@/lib/utils";
 import { WorkspaceIcon } from "../../../design-system/workspace-icon";
 import { MarbleAvatar } from "../../../design-system/marble-avatar";
 import { getSessionActivityStatusLabel, type SessionActivityStatus } from "../status/session-activity-store";
+import { NotificationBell } from "../../../shell/notification-center";
 
 interface SessionStatusIndicatorProps {
   className?: string;
@@ -599,6 +600,7 @@ export type AppSidebarProps = {
     email: string | null;
   };
   onOpenAccount: () => void;
+  onOpenSettings: () => void;
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
@@ -774,30 +776,17 @@ export function AppSidebar(props: AppSidebarProps) {
         <SidebarHeader className="gap-1.5 pb-2">
           <SidebarMenu>
             <SidebarMenuItem>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <SidebarMenuButton
-                      className="h-8 rounded-lg px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
-                      aria-label={t("session.new_task")}
-                      aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
-                    />
-                  }
-                >
-                  <SquarePen className="size-3.5" />
-                  <span className="flex-1 truncate text-xs font-medium">{t("session.new_task")}</span>
-                  <kbd className="font-sans text-[10px] tracking-wide text-sidebar-foreground/40">{isMacPlatform() ? "⌘N" : "Ctrl N"}</kbd>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="bottom" className="w-44">
-                  <DropdownMenuItem onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")} className="gap-2"><BriefcaseBusiness className="size-3.5 text-muted-foreground" />Work</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "design")} className="gap-2"><Palette className="size-3.5 text-muted-foreground" />Design</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "code")} className="gap-2"><Code2 className="size-3.5 text-muted-foreground" />Code</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "video")} className="gap-2"><Video className="size-3.5 text-muted-foreground" />Video</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={props.onOpenCreateWorkspace} className="gap-2"><FolderPlus className="size-3.5 text-muted-foreground" />{t("workspace_list.add_workspace")}</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <SidebarMenuButton
+                className="h-8 rounded-lg px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
+                aria-label={t("session.new_task")}
+                aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
+                onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")}
+              >
+                <SquarePen className="size-3.5" />
+                <span className="flex-1 truncate text-xs font-medium">{t("session.new_task")}</span>
+                <kbd className="font-sans text-[10px] tracking-wide text-sidebar-foreground/40">{isMacPlatform() ? "⌘N" : "Ctrl N"}</kbd>
+              </SidebarMenuButton>
             </SidebarMenuItem>
             {props.onOpenSessionSearch ? (
               <SidebarMenuItem>
@@ -846,7 +835,8 @@ export function AppSidebar(props: AppSidebarProps) {
 
         <SidebarFooter>
           <SidebarMenu>
-            <SidebarMenuItem>
+            <SidebarMenuItem className="flex items-center gap-1">
+              <div className="min-w-0 flex-1">
               {props.account.loading ? (
                 <SidebarMenuButton disabled className="h-9 rounded-lg px-2">
                   <Loader2 className="size-3.5 animate-spin" />
@@ -869,20 +859,42 @@ export function AppSidebar(props: AppSidebarProps) {
                       {props.account.name && props.account.email ? <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{props.account.email}</p> : null}
                     </div>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={props.onOpenAccount}>
+                    <DropdownMenuItem onClick={props.onOpenSettings}>
                       <Settings className="size-4 text-muted-foreground" />
+                      {t("status.settings")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={props.onOpenAccount}>
+                      <UserRound className="size-4 text-muted-foreground" />
                       {t("settings.tab_cloud_account")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <SidebarMenuButton onClick={props.onSignIn} className="h-9 gap-2 rounded-lg px-2" aria-label={t("den.signin_title")}>
-                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground">
-                    <UserRound className="size-3" />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">{t("den.signin_button")}</span>
-                </SidebarMenuButton>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<SidebarMenuButton className="h-9 gap-2 rounded-lg px-2" aria-label={t("den.signin_title")} />}
+                  >
+                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground">
+                      <UserRound className="size-3" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">{t("den.signin_button")}</span>
+                    <MoreHorizontal className="size-3.5 text-sidebar-foreground/45" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="top" className="w-60">
+                    <DropdownMenuItem onClick={props.onOpenSettings}>
+                      <Settings className="size-4 text-muted-foreground" />
+                      {t("status.settings")}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={props.onSignIn}>
+                      <UserRound className="size-4 text-muted-foreground" />
+                      {t("den.signin_button")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
+              </div>
+              <NotificationBell className="shrink-0 rounded-lg text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
@@ -1116,21 +1128,17 @@ function WorkspaceSidebarGroup({
                 onTitlePointerDown={onWorkspaceTitlePointerDown}
               />
               <div data-workspace-actions className="group/workspace-actions absolute right-9 top-1/2 flex -translate-y-1/2 items-center gap-1">
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-muted group-hover/workspace-header:opacity-100 group-focus-within/workspace-actions:opacity-100"
-                    disabled={ctx.newTaskDisabled}
-                    aria-label={t("session.new_task")}
-                  >
-                    <Plus className="size-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" side="bottom" className="w-40">
-                    <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "work")} className="gap-2"><BriefcaseBusiness className="size-3.5 text-muted-foreground" />Work</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "design")} className="gap-2"><Palette className="size-3.5 text-muted-foreground" />Design</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "code")} className="gap-2"><Code2 className="size-3.5 text-muted-foreground" />Code</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "video")} className="gap-2"><Video className="size-3.5 text-muted-foreground" />Video</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-6 text-muted-foreground opacity-0 hover:bg-muted group-hover/workspace-header:opacity-100 group-focus-within/workspace-actions:opacity-100"
+                  disabled={ctx.newTaskDisabled}
+                  aria-label={t("session.new_task")}
+                  onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "work")}
+                >
+                  <Plus className="size-4" />
+                </Button>
                 <WorkspaceActionsMenu
                   workspace={workspace}
                   isConnectionActionBusy={isConnectionActionBusy}

@@ -9,7 +9,9 @@ import {
   readDenBootstrapConfig,
   readDenSettings,
   setDenBootstrapConfig,
+  writeDenSettings,
 } from "../../app/lib/den";
+import { organizationForWorkspace, shouldSyncOrganizationForWorkspace } from "../../app/cloud/organization-workspaces";
 import { exchangeHandoffAndSignIn } from "../../app/lib/den-handoff";
 import {
   denSettingsChangedEvent,
@@ -42,6 +44,33 @@ import { WelcomeRoute } from "./welcome-route";
 type DenSigninGateProps = {
   children: ReactNode;
 };
+
+function CloudWorkspaceRouteSync() {
+  const location = useLocation();
+  const denAuth = useDenAuth();
+
+  useEffect(() => {
+    if (!denAuth.isSignedIn) return;
+    const match = location.pathname.match(/^\/workspace\/([^/]+)/);
+    const workspaceId = match?.[1] ? decodeURIComponent(match[1]) : "";
+    const organization = workspaceId ? organizationForWorkspace(workspaceId) : null;
+    if (!organization) return;
+    if (!shouldSyncOrganizationForWorkspace(organization.id)) return;
+    const settings = readDenSettings();
+    if (settings.activeOrgId === organization.id) return;
+
+    writeDenSettings({
+      ...settings,
+      activeOrgId: organization.id,
+      activeOrgSlug: organization.slug,
+      activeOrgName: organization.name,
+    });
+    void createDenClient({ baseUrl: settings.baseUrl, token: settings.authToken })
+      .setActiveOrganization({ organizationId: organization.id });
+  }, [denAuth.isSignedIn, location.pathname]);
+
+  return null;
+}
 
 const readRequireSigninSnapshot = () => readDenBootstrapConfig().requireSignin;
 
@@ -142,6 +171,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
 
   return (
     <>
+      <CloudWorkspaceRouteSync />
       {denAuth.status === "unavailable" ? (
         <div className="pointer-events-none fixed inset-x-0 top-3 z-[100] flex justify-center px-4">
           <div

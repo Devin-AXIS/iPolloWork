@@ -3,6 +3,22 @@ import * as React from "react";
 import { CheckCircle2, Film, Layers3, Loader2, RefreshCw, Unplug, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  HYPERFRAMES_VERSION,
+  hyperframesPreviewCommand,
+  hyperframesStudioPort,
+  hyperframesStudioUrl,
+  videoProjectDirectory,
+  videoProjectId,
+} from "./video-project";
+
+export {
+  hyperframesPreviewCommand,
+  hyperframesStudioPort,
+  hyperframesStudioUrl,
+  videoProjectDirectory,
+  videoProjectId,
+} from "./video-project";
 
 type VideoPanelProps = {
   sessionId: string;
@@ -10,38 +26,6 @@ type VideoPanelProps = {
   isRemoteWorkspace?: boolean;
   onClose: () => void;
 };
-
-const HYPERFRAMES_VERSION = "0.7.52";
-const HYPERFRAMES_PORT_BASE = 3_100;
-const HYPERFRAMES_PORT_RANGE = 800;
-
-export function hyperframesStudioPort(sessionId: string) {
-  let hash = 0;
-  for (const character of sessionId) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
-  return HYPERFRAMES_PORT_BASE + (hash % HYPERFRAMES_PORT_RANGE);
-}
-
-export function hyperframesStudioUrl(port = 3_002, projectId = "video") {
-  // Start on a deterministic, hydrated main-composition frame. HyperFrames can
-  // otherwise restore a panel/playhead state before its preview has mounted,
-  // which leaves the first playback visually empty until a timeline layer is
-  // selected.
-  return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?v=1&t=0&tab=design&rc=1&tv=1`;
-}
-
-export function videoProjectId(sessionId: string) {
-  return sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
-
-export function videoProjectDirectory(sessionId: string) {
-  return `video/${videoProjectId(sessionId)}`;
-}
-
-export function hyperframesPreviewCommand(sessionId: string) {
-  const projectDirectory = videoProjectDirectory(sessionId);
-  const studioPort = hyperframesStudioPort(sessionId);
-  return `if [ ! -f ${projectDirectory}/index.html ]; then HYPERFRAMES_SKIP_SKILLS=1 npx --yes hyperframes@${HYPERFRAMES_VERSION} init ${projectDirectory} --example warm-grain --non-interactive --skip-skills; fi && cd ${projectDirectory} && npx --yes hyperframes@${HYPERFRAMES_VERSION} preview --port ${studioPort} --no-open\n`;
-}
 
 export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
@@ -150,7 +134,7 @@ export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false
       ) : (
         <div className="relative min-h-0 flex-1 bg-[#0c0c0d]">
           {status === "starting" ? <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"><div className="text-center"><Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /><p className="text-xs text-muted-foreground">Starting the native HyperFrames workspace…</p></div></div> : null}
-          {status === "ready" ? <iframe key={revision} src={studioUrl} title="HyperFrames Video Studio" className="h-full w-full border-0" data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
+          {status === "ready" ? <iframe key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" className="h-full w-full border-0" data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
             setStudioFrameLoaded(true);
             [350, 1_200, 2_800].forEach((delay) => window.setTimeout(() => void applySimpleMode(true), delay));
           }} /> : null}

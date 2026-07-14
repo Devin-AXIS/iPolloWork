@@ -56,7 +56,7 @@ function formatTimeAgo(timestamp: number): string {
  * session and settings headers; hidden via the `notifications` shell flag.
  * Closing the panel marks everything read.
  */
-export function NotificationBell() {
+export function NotificationBell({ className }: { className?: string }) {
   const { config } = useShellConfig();
   const [open, setOpen] = useState(false);
   const notifications = useNotificationStore((state) => state.notifications);
@@ -135,7 +135,7 @@ export function NotificationBell() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="rounded-xl text-gray-10 transition-colors hover:bg-muted hover:text-foreground"
+            className={cn("rounded-xl text-gray-10 transition-colors hover:bg-muted hover:text-foreground", className)}
             title={t("notifications.title")}
             aria-label={
               unreadCount > 0

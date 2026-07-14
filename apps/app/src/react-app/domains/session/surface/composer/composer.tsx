@@ -99,6 +99,8 @@ type ComposerProps = {
   isSandboxWorkspace: boolean;
   onUploadInboxFiles?: ((files: File[]) => void | Promise<unknown>) | null;
   draftScopeKey?: string;
+  placeholder?: string;
+  layout?: "dock" | "inline";
   compactTopSpacing?: boolean;
   topAccessory?: ReactNode;
 };
@@ -1133,7 +1135,9 @@ export function ReactSessionComposer(props: ComposerProps) {
   return (
     <div
       ref={rootRef}
-      className={`sticky bottom-0 ${toolMenuOpen ? "z-50" : "z-20"} bg-gradient-to-t from-dls-surface via-dls-surface/95 to-transparent px-4 pb-2 md:px-8 ${props.compactTopSpacing ? "pt-0" : "pt-1"}`}
+      className={props.layout === "inline"
+        ? `relative ${toolMenuOpen ? "z-50" : "z-20"} w-full bg-transparent p-0`
+        : `sticky bottom-0 ${toolMenuOpen ? "z-50" : "z-20"} bg-gradient-to-t from-dls-surface via-dls-surface/95 to-transparent px-4 pb-2 md:px-8 ${props.compactTopSpacing ? "pt-0" : "pt-1"}`}
       style={{ contain: "layout style" }}
       onKeyDownCapture={handleKeyDownCapture}
       onCompositionStart={() => {
@@ -1210,7 +1214,7 @@ export function ReactSessionComposer(props: ComposerProps) {
               mentions={props.mentions}
               pastedText={pastedTextTokens}
               disabled={props.disabled}
-              placeholder={t("composer.placeholder")}
+              placeholder={props.placeholder ?? t("composer.placeholder")}
               onChange={props.onDraftChange}
               onSubmit={handleEditorSubmit}
               onExpandPastedText={handleExpandPastedText}

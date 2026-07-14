@@ -46,6 +46,8 @@ type CloudAccountSession = Pick<
   | "summaryLabel"
   | "summaryTone"
   | "onActiveOrgChange"
+  | "onCreateTeam"
+  | "onDeleteTeam"
   | "onApplyBaseUrl"
   | "onBaseUrlDraftChange"
   | "onClearAuthError"
@@ -235,6 +237,8 @@ export function CloudAccountView({ developerMode, session }: CloudAccountViewPro
             orgsError={session.orgsError}
             sessionBusy={session.sessionBusy}
             onActiveOrgChange={session.onActiveOrgChange}
+            onCreateTeam={session.onCreateTeam}
+            onDeleteTeam={session.onDeleteTeam}
             onRefreshOrgs={session.onRefreshOrgs}
             onSignOut={session.onSignOut}
           />

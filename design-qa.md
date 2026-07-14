@@ -55,3 +55,51 @@ The Electron flow completed without an app error state or failed Design request.
 - P3: a future wider inspector/resizable split would make long URLs and style values easier to scan on narrower app windows.
 
 final result: passed
+
+---
+
+## Session header simplification — 2026-07-13
+
+- Source visual truth: `/Users/devin/Library/Group Containers/7D498F54KM.com.yinxiang.Mac/Evernote/quick-note/22991999-personal-app.yinxiang.com/quick-note-Sum1lI/attachment--AJdxtI/screenshot.png`.
+- Implementation screenshot: `/tmp/ipollowork-header-simplified.png`.
+- Full header comparison: `/tmp/ipollowork-header-codex-comparison.png`.
+- Narrow viewport screenshot: `/tmp/ipollowork-header-narrow.png`.
+- Viewport and state: Electron desktop with an active session; a 980 × 760 narrow-width check was also captured.
+
+**Findings**
+
+- No actionable P0, P1, or P2 differences remain for the requested header hierarchy.
+- Typography: the session name stays the sole text hierarchy in the header, with a compact adjacent ellipsis. The previous workspace name, connection state, debug reset control, and notification text no longer compete for attention.
+- Spacing and layout: the leading group follows the Codex title-plus-overflow pattern and includes the left conversation-sidebar toggle. The trailing group contains global session search plus an independent right-work-panel toggle; both remain visible at 980px.
+- Colors and tokens: controls use the existing quiet muted foreground, hover surface, border, and focus tokens; no black or high-emphasis utility control was added.
+- Image and icon fidelity: no reference imagery is involved. Product controls use the existing Lucide icon system; the reference's information hierarchy, not its product identity, is reproduced.
+- Copy and content: global search uses the existing localized `搜索会话` / `Search sessions` label. Rename and delete stay inside the ellipsis menu. Notifications now sit beside the account control at the lower-left sidebar.
+
+**Focused region comparison evidence**
+
+The stacked header comparison shows the same structural read: title and ellipsis at the leading edge, with a quiet utility area separated to the far edge. A focused header crop was sufficient because the change is isolated to the title bar; the full Electron capture verifies the surrounding sidebar and composer remain intact.
+
+**Primary interactions tested**
+
+- Opened the title ellipsis and confirmed Rename session and Delete session are available.
+- Opened the global search icon and confirmed its dialog opens.
+- Toggled the leading conversation-sidebar trigger and confirmed it moves only the left sidebar off canvas and back.
+- Toggled the trailing right-work-panel trigger and confirmed it closes and restores only the right panel.
+- Verified the notification bell renders beside the lower-left account control.
+
+**Comparison history**
+
+- Initial state contained title, workspace, connected status, notification bell, find control, and debug reset text in one header row.
+- Replaced that with a title-plus-overflow group, moved notifications to the sidebar footer, and initially placed the sidebar trigger in the trailing group.
+- Follow-up correction: split the controls into a leading left-sidebar trigger and a trailing right-work-panel trigger. Runtime geometry confirmed the controls operate independently.
+- Post-fix Electron captures show the requested hierarchy with no P0/P1/P2 follow-up finding.
+
+**Implementation Checklist**
+
+- [x] Keep only session title and ellipsis in the leading header group.
+- [x] Put rename/delete in the ellipsis menu.
+- [x] Keep a global search icon in the header.
+- [x] Move notifications beside the sidebar account control.
+- [x] Keep separate left-sidebar and right-work-panel toggles and verify their independent behavior.
+
+final result: passed

@@ -100,6 +100,13 @@ function killTerminal(terminalId) {
   const terminal = terminalProcesses.get(terminalId);
   if (!terminal) return;
   terminalProcesses.delete(terminalId);
+  // node-pty closes the shell but does not always terminate foreground child
+  // processes. HyperFrames previews would then outlive their conversation and
+  // keep serving an old project on its session port. End the POSIX process
+  // group first so the panel cannot reconnect to stale video content.
+  if (process.platform !== "win32" && Number.isInteger(terminal.process.pid) && terminal.process.pid > 0) {
+    try { process.kill(-terminal.process.pid, "SIGTERM"); } catch { /* process group already gone */ }
+  }
   try { terminal.process.kill(); } catch { /* already gone */ }
 }
 
