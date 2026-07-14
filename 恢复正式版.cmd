@@ -1,9 +1,14 @@
 @echo off
 setlocal
 
+rem Restore ipollowork:// to an installed production iPolloWork executable.
+rem Discovery completes before any registry write. If no executable is found,
+rem the current handler is left unchanged.
 set "REGISTRY_ROOT=%IPOLLOWORK_PROTOCOL_REGISTRY_ROOT%"
 if not defined REGISTRY_ROOT set "REGISTRY_ROOT=HKCU\Software\Classes\ipollowork"
 
+rem Search common install paths and Windows uninstall metadata. Tests may
+rem provide IPOLLOWORK_PRODUCTION_EXE to exercise this without an installation.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$key = 'Registry::' + $env:REGISTRY_ROOT;" ^
   "$exe = $env:IPOLLOWORK_PRODUCTION_EXE;" ^
