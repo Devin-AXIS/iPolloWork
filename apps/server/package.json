@@ -7,7 +7,7 @@
     "ipollowork-server": "bin/ipollowork-server.mjs"
   },
   "scripts": {
-    "dev": "IPOLLOWORK_DEV_MODE=1 bun src/cli.ts",
+    "dev": "cross-env IPOLLOWORK_DEV_MODE=1 bun src/cli.ts",
     "test": "bun test",
     "test:artifacts": "bun test src/artifact-files.e2e.test.ts src/workspace-init.test.ts src/server.normalizeWorkspaceRelativePath.test.ts",
     "build": "tsc -p tsconfig.json && node script/copy-bundled-templates.mjs && bun build src/templates.ts --outfile dist/templates.js --target node --format esm --external zod && bun build src/opencode-plugins/ipollowork-extensions-preview.ts src/opencode-plugins/ipollowork-capabilities-knowledge.ts src/opencode-plugins/ipollowork-anthropic-adaptive-thinking.ts src/opencode-plugins/ipollowork-anthropic-tool-schema.ts --outdir dist/opencode-plugins --target node --format esm",
