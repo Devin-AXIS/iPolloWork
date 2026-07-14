@@ -92,6 +92,11 @@ The setup command installs the locked workspace dependencies. The dev command pr
 | Type checks and desktop tests | `./ipollowork check` | `.\ipollowork.cmd check` |
 | Production build | `./ipollowork build` | `.\ipollowork.cmd build` |
 
+Windows development builds do not register the production `ipollowork://`
+handler automatically. When testing Cloud sign-in through an external browser,
+use the repository's protocol switcher and restore the production handler when
+you finish. See [Windows protocol switching](docs/windows-protocol-switcher.md).
+
 ## Build and package
 
 There are three different build levels:
