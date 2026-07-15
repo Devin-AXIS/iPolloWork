@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
-import { Code2, Ellipsis, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, Zap } from "lucide-react";
+import { Code2, Ellipsis, FileText, Film, Folder, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, Zap } from "lucide-react";
 import type { DesignSessionTemplateState, TemplateCatalogItem, TemplateManifestV1 } from "@ipollowork/types/templates";
 
 import { t } from "../../../../i18n";
@@ -48,7 +48,6 @@ import { SessionSurface, type SessionSurfaceProps } from "../surface/session-sur
 import {
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
   ResizableHandle,
@@ -1131,14 +1130,10 @@ export function SessionPage(props: SessionPageProps) {
             <ResizablePanel minSize="360px" className="min-w-0">
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border">
           <header className="z-10 flex h-10 shrink-0 items-center justify-between border-b border-border px-4 md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar">
-            <div className="flex min-w-0 items-center gap-1">
-              {shellConfig.sidebar ? (
-                <SidebarTrigger
-                  className="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
-                  aria-label={sidebarOpen ? t("sidebar.collapse") : t("sidebar.expand")}
-                  title={sidebarOpen ? t("sidebar.collapse") : t("sidebar.expand")}
-                />
-              ) : null}
+            <div className="flex min-w-0 items-center gap-4">
+              <span className="grid size-8 shrink-0 place-items-center text-muted-foreground" aria-hidden="true">
+                <Folder className="size-5" />
+              </span>
               <h1 className="truncate text-[15px] font-semibold text-dls-text">
                 {showWorkspaceSetupEmptyState
                   ? t("session.create_or_connect_workspace")
