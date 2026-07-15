@@ -48,6 +48,7 @@ import { SessionSurface, type SessionSurfaceProps } from "../surface/session-sur
 import {
   SidebarInset,
   SidebarProvider,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
   ResizableHandle,
@@ -1130,7 +1131,21 @@ export function SessionPage(props: SessionPageProps) {
             <ResizablePanel minSize="360px" className="min-w-0">
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border">
           <header className="z-10 flex h-10 shrink-0 items-center justify-between border-b border-border px-4 md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar">
-            <div className="flex min-w-0 items-center gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              {!sidebarOpen ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <SidebarTrigger
+                        className="size-8 shrink-0 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
+                        aria-label={t("sidebar.expand")}
+                        title={t("sidebar.expand")}
+                      />
+                    }
+                  />
+                  <TooltipContent>{t("sidebar.expand")}</TooltipContent>
+                </Tooltip>
+              ) : null}
               <span className="grid size-8 shrink-0 place-items-center text-muted-foreground" aria-hidden="true">
                 <Folder className="size-5" />
               </span>
