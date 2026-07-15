@@ -16,6 +16,14 @@ function actionRowSource() {
   return composerSource.slice(start, end);
 }
 
+function busyActionSource() {
+  const start = composerSource.indexOf("{props.busy ? (");
+  const end = composerSource.indexOf(") : (", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return composerSource.slice(start, end);
+}
+
 describe("composer plus entry menu", () => {
   test("routes the attachment, tool, and agent entries from one plus menu", () => {
     expect(composerSource).toContain("plusMenuOpen");
@@ -49,5 +57,18 @@ describe("composer plus entry menu", () => {
     expect(filesIndex).toBeGreaterThan(-1);
     expect(toolsIndex).toBeGreaterThan(filesIndex);
     expect(agentsIndex).toBeGreaterThan(toolsIndex);
+  });
+
+  test("busy composer shows stop without send or queued follow-up controls", () => {
+    const busyAction = busyActionSource();
+
+    expect(busyAction).toContain("props.onStop");
+    expect(busyAction).toContain('t("composer.stop")');
+    expect(busyAction).not.toContain("props.onSteer");
+    expect(busyAction).not.toContain("props.onQueue");
+    expect(busyAction).not.toContain('t("composer.steer")');
+    expect(busyAction).not.toContain('t("composer.queue")');
+    expect(composerSource).not.toContain("props.onSteer");
+    expect(composerSource).not.toContain("props.onQueue");
   });
 });
