@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en" data-ipw-template="ppt-keynote" data-ipw-style="minimal">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0a0a0a; font-family:'Inter Tight','Noto Sans SC',sans-serif; }
+  .deck { display:flex; flex-direction:column; align-items:center; gap:32px; padding:40px 0; }
+  .slide { position:relative; width:1280px; max-width:96vw; aspect-ratio:16/9; border-radius:18px; overflow:hidden; box-shadow:0 30px 80px -20px rgba(0,0,0,0.7); display:flex; flex-direction:column; padding:64px 80px; color:#0a0a0a; background:#fafaf7; }
+  .slide.dark { background:#15140f; color:#fafaf7; }
+  .slide.brand { background:linear-gradient(135deg,#c96442 0%,#e9b94a 100%); color:#fff; }
+  .slide .num { position:absolute; top:24px; right:32px; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.18em; opacity:0.55; }
+  .slide .eyebrow { font-size:12px; font-weight:600; letter-spacing:0.22em; text-transform:uppercase; opacity:0.65; margin-bottom:20px; }
+  .slide h1 { font-size:84px; font-weight:800; line-height:1.05; letter-spacing:-0.025em; margin:0; }
+  .slide h2 { font-size:64px; font-weight:700; line-height:1.1; letter-spacing:-0.02em; margin:0 0 24px; }
+  .slide p { font-size:24px; line-height:1.5; opacity:0.78; max-width:65ch; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; margin-top:auto; }
+  .card { padding:28px; border-radius:14px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); }
+  .card .k { font-size:48px; font-weight:700; letter-spacing:-0.02em; margin-bottom:8px; }
+  .card .l { font-size:14px; opacity:0.65; }
+</style>
+<link rel="stylesheet" href="design-tokens.css"></head>
+<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
+<div class="deck">
+
+  <section class="slide brand">
+    <span class="num">01 / 07</span>
+    <div class="eyebrow">Product · 2026</div>
+    <h1 style="margin-top:auto">HTML <em style="font-family:Georgia,serif;font-style:italic;font-weight:400">Anything</em></h1>
+    <p style="font-size:28px; opacity:0.95; margin-top:24px">Keynote-style Slides</p>
+    <div style="margin-top:auto; display:flex; align-items:center; gap:16px; font-size:14px; opacity:0.85">
+      <div style="width:32px;height:32px;border-radius:999px;background:rgba(255,255,255,0.25);display:grid;place-items:center;font-family:Georgia,serif;font-style:italic;font-weight:600">H</div>
+      <span>Opportunity</span>
+    </div>
+  </section>
+
+  <section class="slide">
+    <span class="num">02 / 07</span>
+    <div class="eyebrow" style="color:#c96442">Strategy</div>
+    <h2>Product<br/>Market<span style="color:#c96442">Growth</span>Team</h2>
+    <ul style="font-size:24px; line-height:2; opacity:0.78; list-style:none; padding:0">
+      <li>A focused path to growth</li>
+      <li>Designed for the next chapter</li>
+      <li>From insight to impact</li>
+    </ul>
+  </section>
+
+  <section class="slide dark">
+    <span class="num">03 / 07</span>
+    <div class="eyebrow" style="color:#e9b94a">Next</div>
+    <h2 style="font-size:96px; margin-top:auto; margin-bottom:auto">
+      Overview<br/>
+      <span style="font-family:Georgia,serif;font-style:italic;font-weight:600;color:#e9b94a">Opportunity</span>
+    </h2>
+    <p style="font-size:22px;opacity:0.6">Ideas worth sharing</p>
+  </section>
+
+  <section class="slide">
+    <span class="num">04 / 07</span>
+    <div class="eyebrow">Strategy</div>
+    <h2>A focused path to growth</h2>
+    <div class="grid3" style="grid-template-columns:repeat(3,1fr); gap:20px">
+      <div class="card" style="background:#f4f1ec; border-color:#e7e5e0; color:#15140f">
+        <div style="font-size:36px; margin-bottom:14px">🔌</div>
+        <div style="font-weight:600; font-size:18px; margin-bottom:6px">Product</div>
+        <div style="font-size:14px; opacity:0.7; line-height:1.6">Designed for the next chapter</div>
+      </div>
+      <div class="card" style="background:#f4f1ec; border-color:#e7e5e0; color:#15140f">
+        <div style="font-size:36px; margin-bottom:14px">🎨</div>
+        <div style="font-weight:600; font-size:18px; margin-bottom:6px">Market</div>
+        <div style="font-size:14px; opacity:0.7; line-height:1.6">From insight to impact</div>
+      </div>
+      <div class="card" style="background:#f4f1ec; border-color:#e7e5e0; color:#15140f">
+        <div style="font-size:36px; margin-bottom:14px">📋</div>
+        <div style="font-weight:600; font-size:18px; margin-bottom:6px">Growth</div>
+        <div style="font-size:14px; opacity:0.7; line-height:1.6">Ideas worth sharing</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide dark">
+    <span class="num">05 / 07</span>
+    <div class="eyebrow" style="color:#e9b94a">Team</div>
+    <h2>Next</h2>
+    <div class="grid3">
+      <div class="card"><div class="k" style="color:#e9b94a">80<span style="font-size:24px">s</span></div><div class="l">A focused path to growth</div></div>
+      <div class="card"><div class="k" style="color:#e9b94a">9</div><div class="l">Overview</div></div>
+      <div class="card"><div class="k" style="color:#e9b94a">8</div><div class="l">Opportunity</div></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <span class="num">06 / 07</span>
+    <div class="eyebrow" style="color:#c96442">Strategy</div>
+    <h2 style="font-size:56px; margin-top:auto; margin-bottom:auto">
+      Product<br/>
+      <span style="font-family:Georgia,serif;font-style:italic;font-weight:600;color:#c96442">Market</span>
+    </h2>
+    <p>Designed for the next chapter</p>
+  </section>
+
+  <section class="slide brand">
+    <span class="num">07 / 07</span>
+    <h1 style="margin:auto 0; font-size:120px">Thanks.</h1>
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; font-size:18px">
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:16px; opacity:0.85">$ pnpm dev</div>
+        <div style="opacity:0.85; margin-top:6px">→ http://localhost:3000 → ⌘+Enter</div>
+      </div>
+      <div style="opacity:0.7">github.com/nexu-io/iPolloWork</div>
+    </div>
+  </section>
+
+</div>
+<script>
+  // ←/→ scroll between slides; current implementation just smooth-scrolls
+  const slides=document.querySelectorAll('.slide');
+  let i=0;
+  document.addEventListener('keydown', e=>{
+    if(e.key==='ArrowRight') i=Math.min(i+1, slides.length-1);
+    else if(e.key==='ArrowLeft') i=Math.max(i-1,0);
+    else return;
+    slides[i].scrollIntoView({behavior:'smooth', block:'center'});
+  });
+</script>
+</body>
+</html>

@@ -1,21 +1,115 @@
-MIT License
+iPolloWork Source Available License
+Version 1.0, 13 July 2026
 
-Copyright (c) 2026 Different AI, Inc. and iPolloWork contributors
+Copyright (c) 2026 Different AI, Inc. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+By using, copying, modifying, or distributing the Software, You accept this
+License.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. License Grant
+
+Subject to this License, the Licensor grants You a non-exclusive,
+royalty-free, worldwide, non-sublicensable, and non-transferable license to
+use, copy, modify, and distribute the Software solely as permitted below.
+
+2. Permitted Uses
+
+You may use and modify the Software without a commercial license for:
+
+  a. personal use;
+  b. non-commercial education, research, evaluation, or testing; and
+  c. Internal Business Use by You and Your Company.
+
+Internal Business Use includes use by employees and contractors solely on
+behalf of Your Company, provided that the Software or its functionality is not
+made available to customers or other external third parties. Internal use is
+permitted even when Your Company is a for-profit organization.
+
+3. Commercial License Required
+
+You must obtain prior written authorization from the Licensor before You do
+any of the following:
+
+  a. provide the Software or its functionality to any external third party as
+     a hosted, managed, cloud, SaaS, single-tenant, or multi-tenant service;
+  b. sell, rent, lease, sublicense, resell, or distribute the Software for a
+     fee or other commercial advantage;
+  c. incorporate the Software as a material component of a product or service
+     offered to external third parties for revenue or other commercial
+     advantage;
+  d. use the Software to provide paid customer delivery, implementation,
+     customization, operation, or outsourcing services; or
+  e. white-label the Software, or remove, alter, or obscure the iPolloWork
+     name, logo, copyright notice, or license notice in a version distributed
+     or made available to external third parties.
+
+A commercial license may grant some or all of these rights under separate
+terms. To request authorization, contact the repository owner through
+https://github.com/Devin-AXIS/iPolloWork.
+
+4. Non-Commercial Redistribution
+
+You may distribute unmodified or modified copies of the Software only free of
+charge and for non-commercial purposes. Every copy must include this License
+and all copyright, attribution, trademark, and third-party notices. Modified
+copies must prominently state that You changed the Software. You may not
+impose terms that weaken or bypass this License.
+
+5. Third-Party and Previously Licensed Code
+
+Third-party components, templates, dependencies, and other portions identified
+by a separate license remain governed by that license. Nothing in this License
+restricts rights already granted under an earlier license. In particular,
+versions or portions previously released under the MIT License remain
+available under those prior, irrevocable terms. A copy of the historical MIT
+notice is included in LICENSES/MIT-legacy.txt.
+
+This License applies only to portions for which the Licensor owns or controls
+the necessary rights and that are first released under this License.
+
+6. Patents
+
+The Licensor grants You a patent license only to the extent necessary for the
+Permitted Uses. If You or Your Company assert in writing that the Software
+infringes a patent, any patent license granted under this License terminates
+immediately.
+
+7. No Trademark License
+
+This License does not grant permission to use the Licensor's names, logos, or
+trademarks except as required to preserve notices and accurately describe the
+origin of the Software.
+
+8. Termination
+
+Any use outside this License is unlicensed and automatically terminates Your
+rights. If this is Your first violation and You cure it within 30 days after
+written notice, the Licensor may reinstate Your rights. A later violation
+terminates them permanently unless the Licensor agrees otherwise in writing.
+
+9. No Warranty and Limitation of Liability
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, TITLE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT PERMITTED BY LAW,
+THE LICENSOR AND CONTRIBUTORS WILL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+10. Definitions
+
+"Licensor" means Different AI, Inc. or a successor authorized to license the
+applicable Software.
+
+"Software" means the iPolloWork source code, object code, documentation, and
+other materials made available with this License, excluding separately
+licensed portions.
+
+"You" means the individual or legal entity exercising rights under this
+License.
+
+"Your Company" means the legal entity for which You act, together with
+entities that control, are controlled by, or are under common control with it.
+
+"Internal Business Use" means use solely for Your Company's internal
+operations and not to provide the Software or its functionality to external
+third parties.

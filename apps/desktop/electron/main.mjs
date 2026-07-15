@@ -100,6 +100,13 @@ function killTerminal(terminalId) {
   const terminal = terminalProcesses.get(terminalId);
   if (!terminal) return;
   terminalProcesses.delete(terminalId);
+  // node-pty closes the shell but does not always terminate foreground child
+  // processes. HyperFrames previews would then outlive their conversation and
+  // keep serving an old project on its session port. End the POSIX process
+  // group first so the panel cannot reconnect to stale video content.
+  if (process.platform !== "win32" && Number.isInteger(terminal.process.pid) && terminal.process.pid > 0) {
+    try { process.kill(-terminal.process.pid, "SIGTERM"); } catch { /* process group already gone */ }
+  }
   try { terminal.process.kill(); } catch { /* already gone */ }
 }
 
@@ -2234,9 +2241,31 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
     return matches;
   };
   const allFrames = collectFrames(event.sender.mainFrame);
-  const studioFrame = allFrames.find((frame) => (
-    frame.frames.some((child) => child.url.includes("/api/projects/"))
-  ));
+  // HyperFrames 0.7 no longer keeps its canvas on the old
+  // `/api/projects/:id` child URL. Identify the actual Studio document by its
+  // own stable UI contract instead of inferring it from an implementation URL.
+  // This keeps the integration scoped to the embedded Studio and avoids ever
+  // running the cleanup against the iPolloWork app frame.
+  const studioFrame = (await Promise.all(allFrames
+    .filter((frame) => frame !== event.sender.mainFrame)
+    .map(async (frame) => {
+      try {
+        const isStudio = await frame.executeJavaScript(`(() => {
+          const title = (document.title || '').trim().toLowerCase();
+          if (title.includes('hyperframes')) return true;
+          const labels = [...document.querySelectorAll('button')].map((node) => (
+            (node.getAttribute('aria-label') || node.textContent || '').trim().toLowerCase()
+          ));
+          return labels.includes('inspector')
+            || labels.includes('storyboard')
+            || labels.some((label) => label.startsWith('renders'));
+        })()`);
+        return isStudio ? frame : null;
+      } catch {
+        return null;
+      }
+    })))
+    .find(Boolean);
   if (!studioFrame) return { ok: false, reason: "studio-frame-missing" };
   const frames = collectFrames(studioFrame, []);
   const result = await studioFrame.executeJavaScript(`(() => {
@@ -2271,8 +2300,162 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
     );
     button?.click();
     const inspector = document.querySelector('button[aria-label="Inspector"]');
-    const brand = document.querySelector('svg[aria-label="Hyperframes"]')?.parentElement;
-    if (brand) brand.style.display = 'none';
+    // iPolloWork supplies the panel title itself. Remove HyperFrames'
+    // redundant project-identity group and non-essential Storyboard tab, but
+    // leave the header container and editing controls intact. The Studio can
+    // re-render its header after a composition change, so observe that small
+    // piece of DOM rather than hiding its parent container once.
+    const simplifyStudioHeader = () => {
+      const compactText = (node) => (node?.textContent || '').replace(/\s+/g, ' ').trim();
+      const isBrandText = (value) => /(?:heygen\s*)?hyperframes/i.test(value || '');
+      const isSessionIdentity = (value) => /^ses_[a-z0-9_-]+$/i.test((value || '').trim());
+      const hasStudioControl = (node) => [...node.querySelectorAll('button')].some((button) => {
+        const label = (button.getAttribute('aria-label') || compactText(button)).replace(/\s+/g, '').toLowerCase();
+        return label === 'storyboard' || label === 'inspector' || label === 'capture' || label.startsWith('renders');
+      });
+      const brandNodes = [...document.querySelectorAll('img,svg,[aria-label],[alt],[title],span,a,div')]
+        .filter((node) => isBrandText([
+          compactText(node),
+          node.getAttribute('aria-label'),
+          node.getAttribute('alt'),
+          node.getAttribute('title'),
+        ].filter(Boolean).join(' ')))
+        .sort((left, right) => compactText(left).length - compactText(right).length);
+      const headerFromBrand = brandNodes
+        .flatMap((node) => {
+          const parents = [];
+          let current = node.parentElement;
+          while (current) {
+            parents.push(current);
+            current = current.parentElement;
+          }
+          return parents;
+        })
+        .find((node) => hasStudioControl(node));
+      const headerFromControls = [...document.querySelectorAll('button')]
+        .filter((button) => {
+          const label = (button.getAttribute('aria-label') || compactText(button)).replace(/\s+/g, '').toLowerCase();
+          return button.getBoundingClientRect().top < 40 && (
+            label === 'preview' || label === 'capture' || label === 'inspector' || label === 'export' || label === 'storyboard'
+          );
+        })
+        .flatMap((button) => {
+          const parents = [];
+          let current = button.parentElement;
+          while (current && current !== document.body) {
+            parents.push(current);
+            current = current.parentElement;
+          }
+          return parents;
+        })
+        .filter((node) => {
+          const rect = node.getBoundingClientRect();
+          return rect.top < 12 && rect.height <= 80 && [...node.querySelectorAll('button')]
+            .filter((button) => button.getBoundingClientRect().top < 40).length >= 3;
+        })
+        .sort((left, right) => right.getBoundingClientRect().width - left.getBoundingClientRect().width)[0];
+      const header = headerFromBrand
+        ?? headerFromControls
+        ?? [...document.querySelectorAll('header,div')].find((node) => {
+          const classes = typeof node.className === 'string' ? node.className : '';
+          return /(?:^|\s)h-10(?:\s|$)|h-\[40px\]/.test(classes) && hasStudioControl(node);
+        });
+      if (!header) return false;
+
+      // The current Studio header renders the HeyGen/HyperFrames mark as a
+      // text-and-image group, not as the old labelled SVG. Remove its direct
+      // header group, the generated session id and its separator structurally
+      // so a later Studio re-render cannot surface them again.
+      const identityRoots = new Set();
+      for (const brand of brandNodes) {
+        const root = [...header.children].find((child) => child.contains(brand));
+        if (root) identityRoots.add(root);
+      }
+      for (const sessionNode of [...header.querySelectorAll('span,a,code,div')]) {
+        if (!isSessionIdentity(compactText(sessionNode))) continue;
+        const root = [...header.children].find((child) => child.contains(sessionNode));
+        if (root) identityRoots.add(root);
+      }
+      for (const child of [...header.children]) {
+        const text = compactText(child);
+        if (isBrandText(text) || isSessionIdentity(text) || /^[|｜]$/.test(text)) identityRoots.add(child);
+      }
+      for (const identity of identityRoots) identity.remove();
+
+      for (const button of [...header.querySelectorAll('button')]) {
+        if (compactText(button) === 'Storyboard') button.remove();
+      }
+
+      // HyperFrames treats Renders, Inspector, and the optional sidebar as
+      // independent views, but none gives the user a consistent way back to
+      // the uncluttered editing canvas. Add one small dismissal control to
+      // the native action group whenever one of those views is active.
+      let dismiss = document.querySelector('[data-ipollowork-studio-dismiss]');
+      if (!dismiss && header) {
+        if (!document.querySelector('[data-ipollowork-studio-dismiss-style]')) {
+          const style = document.createElement('style');
+          style.dataset.ipolloworkStudioDismissStyle = 'true';
+          style.textContent = '[data-ipollowork-studio-dismiss]{display:none;align-items:center;gap:5px;height:28px;padding:0 9px;border:0;border-radius:7px;background:transparent;color:#a1a1aa;font:600 11px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer;transition:background-color .15s,color .15s}[data-ipollowork-studio-dismiss]:hover{background:#27272a;color:#f4f4f5}[data-ipollowork-studio-dismiss] svg{width:14px;height:14px}';
+          document.head.appendChild(style);
+        }
+        dismiss = document.createElement('button');
+        dismiss.type = 'button';
+        dismiss.setAttribute('data-ipollowork-studio-dismiss', 'true');
+        dismiss.setAttribute('aria-label', 'Collapse active studio panel');
+        dismiss.setAttribute('title', 'Collapse active studio panel');
+        dismiss.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg><span>收起</span>';
+        dismiss.addEventListener('click', () => {
+          const activeInspector = document.querySelector('button[aria-label="Inspector"]');
+          if (activeInspector?.getAttribute('aria-pressed') === 'true') activeInspector.click();
+          const hideSidebar = document.querySelector('button[aria-label="Hide sidebar"]');
+          hideSidebar?.click();
+          const textEditor = document.querySelector('[data-ipollowork-video-text-panel]');
+          if (textEditor) textEditor.style.display = 'none';
+          window.__ipolloworkVideoTextSource = null;
+          const [path, query = ''] = location.hash.slice(1).split('?');
+          const params = new URLSearchParams(query);
+          params.set('tab', 'design');
+          location.hash = path + '?' + params.toString();
+        });
+        header.querySelector(':scope > div:last-child')?.prepend(dismiss);
+      }
+      if (dismiss) {
+        const [, query = ''] = location.hash.slice(1).split('?');
+        const params = new URLSearchParams(query);
+        const activeTab = params.get('tab');
+        const inspectorOpen = document.querySelector('button[aria-label="Inspector"]')?.getAttribute('aria-pressed') === 'true';
+        const sidebarOpen = Boolean(document.querySelector('button[aria-label="Hide sidebar"]'));
+        const textEditorOpen = document.querySelector('[data-ipollowork-video-text-panel]')?.style.display === 'flex';
+        const display = activeTab && activeTab !== 'design' || inspectorOpen || sidebarOpen || textEditorOpen ? 'inline-flex' : 'none';
+        if (dismiss.style.display !== display) dismiss.style.display = display;
+      }
+      return ![...header.children].some((child) => {
+        const text = compactText(child);
+        return isBrandText(text) || isSessionIdentity(text) || /^[|｜]$/.test(text);
+      }) && ![...header.querySelectorAll('button')].some((node) => compactText(node) === 'Storyboard');
+    };
+    const studioChromeClean = simplifyStudioHeader();
+    if (window.__ipolloworkHyperframesBrandObserver !== 2) {
+      window.__ipolloworkHyperframesBrandObserver = 2;
+      new MutationObserver(simplifyStudioHeader).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['aria-label', 'class', 'style'],
+        childList: true,
+        subtree: true,
+      });
+    }
+    if (window.__ipolloworkStudioDismissRefresh !== 1) {
+      window.__ipolloworkStudioDismissRefresh = 1;
+      const refreshStudioChrome = () => {
+        window.clearTimeout(window.__ipolloworkStudioDismissRefreshTimer);
+        window.__ipolloworkStudioDismissRefreshTimer = window.setTimeout(simplifyStudioHeader, 0);
+      };
+      // Some native Studio views change without replacing their header. Run
+      // the same small cleanup after each view-changing click and hash update
+      // so every open panel receives the common dismissal affordance.
+      window.addEventListener('hashchange', refreshStudioChrome);
+      document.addEventListener('click', refreshStudioChrome, true);
+    }
     if (enabled && !wasEnabled) clearCanvasSelection();
     if (enabled && !wasEnabled && inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
     for (const label of ['Layers', 'Renders', 'Slideshow', 'Variables']) {
@@ -2471,7 +2654,12 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       }, true);
     }
     document.documentElement.dataset.ipolloworkSimpleMode = enabled ? 'true' : 'false';
-    return { ok: true, sidebarToggled: Boolean(button), inspectorEnabled: inspector?.getAttribute('aria-pressed') === 'true' };
+    return {
+      ok: true,
+      chromeClean: studioChromeClean,
+      sidebarToggled: Boolean(button),
+      inspectorEnabled: inspector?.getAttribute('aria-pressed') === 'true',
+    };
   })()`);
   if (enabled) {
     await Promise.all(frames.filter((frame) => frame !== studioFrame).map((frame) => frame.executeJavaScript(`(() => {

@@ -62,7 +62,6 @@ import type {
   WorkspaceDisplay,
   WorkspaceSessionGroup,
 } from "@/app/types";
-import { buildFeedbackUrl } from "@/app/lib/feedback";
 import {
   getWorkspaceTaskLoadErrorDisplay,
   isDesktopRuntime,
@@ -115,7 +114,8 @@ import { useSessionProviderAuth } from "@/react-app/domains/connections/provider
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
-import { designSessionSelectionStorageKey } from "@/react-app/domains/session/design/design-html-runtime";
+import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
+import { shouldInjectVideoTaskContext, videoTaskSystemContext } from "@/react-app/domains/session/video/video-project";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -691,10 +691,6 @@ export function SessionRoute() {
     sessionId: selectedSessionId,
     workspaceRoot: selectedWorkspaceRoot,
   });
-  const showPreparingStatus =
-    effectiveLoading ||
-    (!canCreateTask && !routeError && !selectedWorkspaceError);
-
   useEffect(() => {
     if (!opencodeClient) {
       setProviders([]);
@@ -920,12 +916,27 @@ export function SessionRoute() {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
         });
-        const isDesignTask = typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-type.${targetSessionId}`) === "design";
-        const designSessionTemplate = selectedWorkspaceEndpoint && isDesignTask
-          ? await selectedWorkspaceEndpoint.client.getDesignSessionTemplate(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
+        // Template-session metadata is authoritative. The in-memory surface
+        // cache is used only for legacy sessions created before that record
+        // existed, so an already-open Video Studio still gets its contract.
+        let sessionTemplate = selectedWorkspaceEndpoint
+          ? await selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
           : null;
+        // Claim a pre-template Studio project before the prompt is sent. This
+        // is the one-time migration that makes the persisted session record,
+        // the agent contract, and the right-side Studio point at one path.
+        if (!sessionTemplate && selectedWorkspaceEndpoint && readSessionType(targetSessionId) === "video") {
+          sessionTemplate = await selectedWorkspaceEndpoint.client.adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null);
+        }
+        const isDesignTask = sessionTemplate?.surface === "design";
+        const isVideoTask = shouldInjectVideoTaskContext(sessionTemplate?.surface, readSessionType(targetSessionId));
+        const designSessionTemplate = isDesignTask ? sessionTemplate : null;
+        const videoTemplate = isVideoTask ? sessionTemplate?.manifest ?? null : null;
         const designPath = designSessionTemplate?.state.entry ?? null;
-        if (designPath && selectedWorkspaceEndpoint) {
+        // Version history is a site-only workflow. Slides and every other
+        // design category keep their single session artifact without creating
+        // website-style snapshots before each AI turn.
+        if (designPath && selectedWorkspaceEndpoint && designSessionTemplate?.manifest.category === "site") {
           try {
             const currentDesign = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, designPath);
             let versionContent = currentDesign.content;
@@ -959,12 +970,17 @@ export function SessionRoute() {
         const designContract = designTemplate?.category === "slides"
           ? "Design slide contract: preserve a fixed 16:9 stage, one .slide section per page, safe margins, concise audience-facing content, separate hidden speaker notes, keyboard navigation, slide counter, and presentation controls. Keep a coherent narrative across 6 to 10 slides. Never turn the deck into a scrolling website, never place presenter instructions on the visible slide, and never invent metrics."
           : "Design site contract: every site must be responsive at desktop and mobile widths. On mobile, collapse dense desktop navigation into a compact accessible menu toggle and a polished glass-style menu; never allow navigation to overflow or disappear. Keep same-page navigation as real #section links with matching element ids. When the requested experience implies a child page such as login, signup, docs, product detail, or checkout, create the sibling HTML file inside the same Design task directory and use a real relative href (for example ./login.html) or data-href. Never leave navigation as a plain button with no destination, and do not use placeholder href=\"#\" for an action that should open a page.";
-        const promptParts = designPath
-          ? [{
-              type: "text" as const,
-              text: designContract,
-            }, ...parts]
-          : parts;
+        const promptParts = [
+          ...(isVideoTask ? [{
+            type: "text" as const,
+            text: videoTaskSystemContext(targetSessionId, selectedWorkspaceRoot, videoTemplate),
+          }] : []),
+          ...(designPath ? [{
+            type: "text" as const,
+            text: designContract,
+          }] : []),
+          ...parts,
+        ];
         const result = await opencodeClient.session.promptAsync({
           sessionID: targetSessionId,
           parts: promptParts,
@@ -1270,11 +1286,12 @@ export function SessionRoute() {
       const session = unwrap(
         await workspaceClient.session.create({ directory: workspace.path?.trim() || undefined }),
       );
-      window.localStorage.setItem(`ipollowork.session-type.${session.id}`, type);
+      let sessionType = type;
       if (templateId) {
         const materialized = await endpoint.client.materializeTemplate(endpoint.workspaceId, templateId, session.id);
-        window.localStorage.setItem(designSessionSelectionStorageKey(endpoint.workspaceId, session.id), materialized.state.entry);
+        sessionType = sessionTypeForTemplate(materialized.manifest);
       }
+      setSessionType(session.id, sessionType);
       captureAnalyticsEvent("task_created", {
         source: "new_task",
         workspace_type: workspace.workspaceType ?? "unknown",
@@ -1942,13 +1959,6 @@ export function SessionRoute() {
       hasUsableModel={hasUsableModel}
       providers={providers}
       mcpConnectedCount={mcpConnectedCount}
-      onSendFeedback={() => {
-        platform.openLink(
-          buildFeedbackUrl({
-            entrypoint: "status-bar",
-          }),
-        );
-      }}
       onOpenSettings={() => handleOpenSettings("/settings/general")}
       onOpenProviderAuth={() => sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" })}
       providerAuthModal={sessionProviderAuthSnapshot.providerAuthModalOpen ? {
@@ -2184,7 +2194,6 @@ export function SessionRoute() {
           : undefined
       }
       onArchiveSession={opencodeClient ? handleArchiveSession : undefined}
-      statusBar={{ loading: showPreparingStatus, reloadBusy: reloadCoordinator.reloadBusy, reloadError: reloadCoordinator.reloadError }}
       notFoundMessage={routeNotFoundMessage}
       onAccessibleTargetsChange={setPaletteAccessibleTargets}
     />

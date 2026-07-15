@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { t } from "@/i18n";
 import type { GoogleWorkspaceAuthStatus, iPolloWorkServerClient } from "../../../app/lib/ipollowork-server";
 import { usePlatform } from "../../kernel/platform";
 import type { ExtensionConfigContext } from "./extension-registry";
@@ -23,12 +24,25 @@ import { registerExtensionRuntime } from "./extension-registry";
 type BusyAction = "status" | "connect" | "disconnect" | "set-active" | "test" | "smoke-test" | "save-secret";
 type OptionalFeature = "gmailRead" | "driveFull" | "calendarWrite" | "chat";
 
-const OPTIONAL_FEATURES: { id: OptionalFeature; label: string; description: string }[] = [
-  { id: "gmailRead", label: "Read Gmail", description: "Read your Gmail messages and threads." },
-  { id: "driveFull", label: "Full Google Drive access", description: "Search, read, and edit all files in your Drive, not just files created through iPolloWork." },
-  { id: "calendarWrite", label: "Create calendar events", description: "Create events on your Google Calendar." },
-  { id: "chat", label: "Google Chat", description: "List spaces, read messages, and send messages in Google Chat." },
-];
+const OPTIONAL_FEATURES: OptionalFeature[] = ["gmailRead", "driveFull", "calendarWrite", "chat"];
+const optionalFeatureCopy = (feature: OptionalFeature) => ({
+  gmailRead: {
+    label: t("settings.integration.google.gmail_read"),
+    description: t("settings.integration.google.gmail_read_description"),
+  },
+  driveFull: {
+    label: t("settings.integration.google.drive_full"),
+    description: t("settings.integration.google.drive_full_description"),
+  },
+  calendarWrite: {
+    label: t("settings.integration.google.calendar_write"),
+    description: t("settings.integration.google.calendar_write_description"),
+  },
+  chat: {
+    label: t("settings.integration.google.chat"),
+    description: t("settings.integration.google.chat_description"),
+  },
+})[feature];
 type GoogleWorkspaceCommand = () => Promise<unknown>;
 const DESKTOP_ACTION_TIMEOUT_MS = 6 * 60 * 1000;
 const CONNECT_POLL_INTERVAL_MS = 1_000;
@@ -164,7 +178,7 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
 
   const connectGoogleWorkspace = async () => {
     if (!ipolloworkServerClient) return null;
-    const features = status?.customClient === true ? OPTIONAL_FEATURES.filter((feature) => optionalFeatures[feature.id]).map((feature) => feature.id) : [];
+    const features = status?.customClient === true ? OPTIONAL_FEATURES.filter((feature) => optionalFeatures[feature]) : [];
     const flow = await ipolloworkServerClient.googleWorkspaceConnectStart({ features });
     platform.openLink(flow.authUrl);
     return waitForGoogleWorkspaceConnection(ipolloworkServerClient, flow.flowId, flow.expiresAt);
@@ -234,26 +248,28 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
       {!serverAvailable ? (
         <Alert variant="warning">
           <ShieldCheck />
-          <AlertTitle>iPolloWork server required</AlertTitle>
-          <AlertDescription>Start iPolloWork server to connect Google Workspace.</AlertDescription>
+          <AlertTitle>{t("settings.integration.google.server_required_title")}</AlertTitle>
+          <AlertDescription>{t("settings.integration.google.server_required_description")}</AlertDescription>
         </Alert>
       ) : null}
 
       {status?.connected ? (
         <Alert>
           <CheckCircle2 />
-          <AlertTitle>Connected to Google Workspace</AlertTitle>
+          <AlertTitle>{t("settings.integration.google.connected_title")}</AlertTitle>
           <AlertDescription>
-            {connectedAccounts.length === 1 && connectedAccounts[0]?.email ? `Signed in as ${connectedAccounts[0].email}.` : `${connectedAccounts.length} Google accounts connected.`}
+            {connectedAccounts.length === 1 && connectedAccounts[0]?.email
+              ? t("settings.integration.google.signed_in_as", { email: connectedAccounts[0].email })
+              : t("settings.integration.google.accounts_connected", { count: connectedAccounts.length })}
             {status.testStatus ? ` ${status.testStatus}` : ""}
           </AlertDescription>
         </Alert>
       ) : (
         <Alert variant="warning">
           <ShieldCheck />
-          <AlertTitle>Connect Google Workspace</AlertTitle>
+          <AlertTitle>{t("settings.integration.google.connect_title")}</AlertTitle>
           <AlertDescription>
-            Let iPolloWork use your calendar, selected Drive files, and Gmail drafts when you ask it to.
+            {t("settings.integration.google.connect_description")}
           </AlertDescription>
         </Alert>
       )}
@@ -261,17 +277,17 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
       {status && !status.configured ? (
         <Alert variant="warning">
           <XCircle />
-          <AlertTitle>Google OAuth client not configured</AlertTitle>
-          <AlertDescription>Add your Google OAuth desktop client secret to connect Google Workspace.</AlertDescription>
+          <AlertTitle>{t("settings.integration.google.oauth_unconfigured_title")}</AlertTitle>
+          <AlertDescription>{t("settings.integration.google.oauth_unconfigured_description")}</AlertDescription>
         </Alert>
       ) : null}
 
       {status && !status.configured ? (
         <Card variant="outline" size="sm">
           <CardHeader>
-            <CardTitle>Set up Google OAuth</CardTitle>
+            <CardTitle>{t("settings.integration.google.setup_title")}</CardTitle>
             <CardDescription>
-              Use a Google Cloud OAuth desktop client. iPolloWork already includes the desktop client ID; paste the matching client secret here.
+              {t("settings.integration.google.setup_description")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -279,17 +295,17 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
               type="password"
               value={clientSecret}
               onChange={(event) => setClientSecret(event.target.value)}
-              placeholder="Google OAuth desktop client secret"
+              placeholder={t("settings.integration.google.client_secret_placeholder")}
               autoComplete="off"
             />
             <p className="text-xs leading-relaxed text-muted-foreground">
-              The secret is saved locally in iPolloWork environment settings and applied after the local server restarts.
+              {t("settings.integration.google.secret_saved_hint")}
             </p>
           </CardContent>
           <CardFooter>
             <Button disabled={busyAction === "save-secret" || !clientSecret.trim() || !hostServerAvailable} onClick={() => void saveGoogleClientSecret()}>
               {busyAction === "save-secret" ? <Loader2 className="size-4 animate-spin" /> : null}
-              Save and apply
+              {t("settings.integration.google.save_and_apply")}
             </Button>
           </CardFooter>
         </Card>
@@ -298,15 +314,15 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
       {status?.vault === "unavailable" ? (
         <Alert variant="destructive">
           <XCircle />
-          <AlertTitle>Encrypted token vault unavailable</AlertTitle>
-          <AlertDescription>iPolloWork cannot securely save your Google connection on this machine right now.</AlertDescription>
+          <AlertTitle>{t("settings.integration.google.vault_unavailable_title")}</AlertTitle>
+          <AlertDescription>{t("settings.integration.google.vault_unavailable_description")}</AlertDescription>
         </Alert>
       ) : null}
 
       {error || status?.error ? (
         <Alert variant="destructive">
           <XCircle />
-          <AlertTitle>Google Workspace error</AlertTitle>
+          <AlertTitle>{t("settings.integration.google.error_title")}</AlertTitle>
           <AlertDescription>{error ?? status?.error}</AlertDescription>
         </Alert>
       ) : null}
@@ -314,33 +330,33 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
       {status?.smokeTest ? (
         <Alert>
           <CheckCircle2 />
-          <AlertTitle>Scope smoke test complete</AlertTitle>
-          <AlertDescription>Calendar, Drive, and Gmail draft access were verified.</AlertDescription>
+          <AlertTitle>{t("settings.integration.google.diagnostic_complete_title")}</AlertTitle>
+          <AlertDescription>{t("settings.integration.google.diagnostic_complete_description")}</AlertDescription>
         </Alert>
       ) : null}
 
       <Card variant="outline" size="sm">
         <CardHeader>
-          <CardTitle>What iPolloWork can do</CardTitle>
+          <CardTitle>{t("settings.integration.google.capabilities_title")}</CardTitle>
           <CardDescription>
-            Connect Google Workspace so iPolloWork can help with meeting prep, selected files, and draft emails.
+            {t("settings.integration.google.capabilities_description")}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-border bg-card p-3">
             <CalendarDays className="mb-2 size-4 text-blue-11" />
-            <div className="text-sm font-medium text-card-foreground">Calendar read</div>
-            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">List upcoming events and provide meeting context.</div>
+            <div className="text-sm font-medium text-card-foreground">{t("settings.integration.google.calendar_read")}</div>
+            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{t("settings.integration.google.calendar_read_description")}</div>
           </div>
           <div className="rounded-2xl border border-border bg-card p-3">
             <MailPlus className="mb-2 size-4 text-red-11" />
-            <div className="text-sm font-medium text-card-foreground">Gmail drafts</div>
-            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">Create draft emails only. No send tool in Phase 1.</div>
+            <div className="text-sm font-medium text-card-foreground">{t("settings.integration.google.gmail_drafts")}</div>
+            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{t("settings.integration.google.gmail_drafts_description")}</div>
           </div>
           <div className="rounded-2xl border border-border bg-card p-3">
             <FileText className="mb-2 size-4 text-green-11" />
-            <div className="text-sm font-medium text-card-foreground">Selected Drive files</div>
-            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">Read files explicitly selected or created through iPolloWork.</div>
+            <div className="text-sm font-medium text-card-foreground">{t("settings.integration.google.selected_drive_files")}</div>
+            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{t("settings.integration.google.selected_drive_files_description")}</div>
           </div>
         </CardContent>
       </Card>
@@ -351,8 +367,8 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
             {connectedAccounts.map((account) => (
               <div key={account.accountId ?? account.email ?? account.sub ?? "google-account"} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-card-foreground">{account.email ?? account.name ?? "Google account"}</div>
-                  <div className="text-xs text-muted-foreground">{account.accountId === status?.activeAccountId ? "Default for extension actions" : "Connected"}</div>
+                  <div className="truncate text-sm font-medium text-card-foreground">{account.email ?? account.name ?? t("settings.integration.google.account_fallback")}</div>
+                  <div className="text-xs text-muted-foreground">{account.accountId === status?.activeAccountId ? t("settings.integration.google.default_account") : t("status.connected")}</div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {account.accountId && account.accountId !== status?.activeAccountId ? (
@@ -362,11 +378,11 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
                       void runDesktopAction("set-active", () => ipolloworkServerClient?.googleWorkspaceSetActiveAccount(accountId) ?? Promise.resolve(null));
                     }}>
                       {busyAction === "set-active" ? <Loader2 className="size-4 animate-spin" /> : null}
-                      Make default
+                      {t("settings.integration.google.make_default")}
                     </Button>
                   ) : null}
                   <Button variant="destructive" size="sm" disabled={Boolean(busyAction)} onClick={() => void runDesktopAction("disconnect", () => ipolloworkServerClient?.googleWorkspaceDisconnect(account.accountId) ?? Promise.resolve(null))}>
-                    Disconnect
+                    {t("settings.integration.google.disconnect")}
                   </Button>
                 </div>
               </div>
@@ -377,21 +393,21 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
           <div className="flex flex-wrap gap-2">
             <Button disabled={Boolean(busyAction) || !canConnect} onClick={() => void runDesktopAction("connect", connectGoogleWorkspace)}>
               {busyAction === "connect" ? <Loader2 className="size-4 animate-spin" /> : null}
-              {status?.connected ? "Add another Google account" : "Connect with Google"}
+              {status?.connected ? t("settings.integration.google.add_account") : t("settings.integration.google.connect_action")}
             </Button>
             {connectedAccounts.length > 1 ? (
               <Button variant="destructive" disabled={Boolean(busyAction)} onClick={() => void runDesktopAction("disconnect", () => ipolloworkServerClient?.googleWorkspaceDisconnect() ?? Promise.resolve(null))}>
                 {busyAction === "disconnect" ? <Loader2 className="size-4 animate-spin" /> : null}
-                Disconnect all
+                {t("settings.integration.google.disconnect_all")}
               </Button>
             ) : null}
             <Button variant="outline" disabled={Boolean(busyAction) || !canTest} onClick={() => void runDesktopAction("test", () => ipolloworkServerClient?.googleWorkspaceTestConnection() ?? Promise.resolve(null))}>
               {busyAction === "test" ? <Loader2 className="size-4 animate-spin" /> : null}
-              Test connection
+              {t("config.test_connection")}
             </Button>
             <Button variant="outline" disabled={Boolean(busyAction) || !canTest} onClick={() => void runDesktopAction("smoke-test", () => ipolloworkServerClient?.googleWorkspaceRunScopeSmokeTest() ?? Promise.resolve(null))}>
               {busyAction === "smoke-test" ? <Loader2 className="size-4 animate-spin" /> : null}
-              Run diagnostic
+              {t("settings.integration.google.run_diagnostic")}
             </Button>
           </div>
         </CardFooter>
@@ -399,61 +415,64 @@ function GoogleWorkspaceConfig({ ipolloworkServerClient, hostiPolloWorkServerCli
 
       <Accordion>
         <AccordionItem value="advanced">
-          <AccordionTrigger>Advanced</AccordionTrigger>
+          <AccordionTrigger>{t("settings.integration.google.advanced")}</AccordionTrigger>
           <AccordionContent className="space-y-4">
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Use your own Google OAuth client to unlock extra permissions, like reading Gmail, full Drive access, creating calendar events, and Google Chat.
+              {t("settings.integration.google.advanced_description")}
             </p>
             {status?.customClient ? (
               <Alert>
                 <CheckCircle2 />
-                <AlertTitle>Using your own Google OAuth client</AlertTitle>
-                <AlertDescription>Extra permissions below are available.</AlertDescription>
+                <AlertTitle>{t("settings.integration.google.custom_client_title")}</AlertTitle>
+                <AlertDescription>{t("settings.integration.google.custom_client_description")}</AlertDescription>
               </Alert>
             ) : (
               <div className="space-y-3">
                 <Input
                   value={customClientId}
                   onChange={(event) => setCustomClientId(event.target.value)}
-                  placeholder="Your Google OAuth desktop client ID"
+                  placeholder={t("settings.integration.google.client_id_placeholder")}
                   autoComplete="off"
                 />
                 <Input
                   type="password"
                   value={customClientSecret}
                   onChange={(event) => setCustomClientSecret(event.target.value)}
-                  placeholder="Your Google OAuth desktop client secret"
+                  placeholder={t("settings.integration.google.client_secret_placeholder")}
                   autoComplete="off"
                 />
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Create a desktop OAuth client in Google Cloud Console, then paste its client ID and secret. They are saved locally in iPolloWork environment settings and applied after the local server restarts.
+                  {t("settings.integration.google.custom_client_hint")}
                 </p>
                 <Button disabled={busyAction === "save-secret" || !customClientId.trim() || !customClientSecret.trim() || !hostServerAvailable} onClick={() => void saveCustomOauthClient()}>
                   {busyAction === "save-secret" ? <Loader2 className="size-4 animate-spin" /> : null}
-                  Save and apply
+                  {t("settings.integration.google.save_and_apply")}
                 </Button>
               </div>
             )}
             <div className="space-y-3">
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {status?.customClient
-                  ? "Allow or deny each extra permission below. They are requested the next time you connect a Google account. Already connected? Disconnect and connect again to change them."
-                  : "Add your own Google OAuth client above to enable these options."}
+                  ? t("settings.integration.google.permissions_enabled_hint")
+                  : t("settings.integration.google.permissions_disabled_hint")}
               </p>
-              {OPTIONAL_FEATURES.map((feature) => (
-                <label key={feature.id} className="flex items-start gap-2.5">
+              {OPTIONAL_FEATURES.map((feature) => {
+                const copy = optionalFeatureCopy(feature);
+                return (
+                <label key={feature} className="flex items-start gap-2.5">
                   <Checkbox
-                    checked={optionalFeatures[feature.id]}
-                    onCheckedChange={(checked) => setOptionalFeatures((current) => ({ ...current, [feature.id]: checked === true }))}
+                    checked={optionalFeatures[feature]}
+                    onCheckedChange={(checked) => setOptionalFeatures((current) => ({ ...current, [feature]: checked === true }))}
                     disabled={Boolean(busyAction) || status?.customClient !== true}
                     className="mt-0.5"
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-card-foreground">{feature.label}</span>
-                    <span className="block text-xs leading-relaxed text-muted-foreground">{feature.description}</span>
+                    <span className="block text-sm font-medium text-card-foreground">{copy.label}</span>
+                    <span className="block text-xs leading-relaxed text-muted-foreground">{copy.description}</span>
                   </span>
                 </label>
-              ))}
+                );
+              })}
             </div>
           </AccordionContent>
         </AccordionItem>

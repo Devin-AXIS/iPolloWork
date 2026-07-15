@@ -1,0 +1,54 @@
+---
+title: 使用存储中心
+description: 一次配置对象存储，以统一契约保存工作区产物。
+---
+
+存储中心是 iPolloWork 对持久对象存储的本地统一边界。它不会替换工作区文件、预览或直连下载票据；这些仍保持本地优先。只有功能明确需要把某个工作区文件复制到对象存储时，才调用存储中心。
+
+## 配置 Provider
+
+打开 **设置 → 授权中心**，配置一个或多个 Provider：
+
+| Provider | 必填信息 | 适用场景 |
+| --- | --- | --- |
+| 阿里云 OSS | AccessKey ID、AccessKey Secret、Bucket、Region；可选公开 URL | 阿里云 OSS Bucket。需要简洁公开链接时，填写已绑定的 HTTPS 域名。 |
+| Wasabi | Access key、Secret access key、Bucket、Region | 海外 Wasabi Bucket |
+
+在**存储路由**中保存默认 Provider。`auto` 会使用该已配置的默认项；调用时也可明确指定 `aliyun-oss` 或 `wasabi`。凭证只保存在本机 iPolloWork 主机，API 不会返回凭证。
+
+## 稳定能力契约
+
+可信的 iPolloWork 前端功能通过这一契约调用。它是能力调用，不是产品业务流程：由调用方决定何时需要持久存储，以及如何使用返回的对象地址。
+
+```ts
+const result = await client.callStorage("upload_workspace_file", {
+  sourcePath: "artifacts/product-demo.mp4",
+  provider: "auto",
+  objectKey: "videos/product-demo.mp4",
+}, { directory: activeWorkspace.path });
+
+if (result.ok) {
+  const uploaded = result.result as {
+    provider: string;
+    objectKey: string;
+    url: string;
+    downloadUrl?: string;
+  };
+}
+```
+
+`sourcePath` 必须是当前工作区内的相对路径。存储中心会拒绝越界路径，只读取普通文件，保留原本地文件，当前单次上传上限为 100 MB。返回 Provider、对象 Key、MIME 类型、字节数和 Provider URL；阿里云 OSS 配置了公开 URL 时，`downloadUrl` 会使用这个绑定域名。不会返回凭证。
+
+调用 `client.callStorage("status")` 可查看已配置的 Provider 与 `auto` 实际选择项。
+
+## 智能体与 OpenCode 边界
+
+智能体通过随包扩展桥接调用 `extensionId: "storage"`，其中包含 `status` 与 `upload_workspace_file`。它不会改变 OpenCode 的源码、Provider、配置或文件。未来增加 Provider 时，只需新增本地存储适配器和授权卡片，前端业务不需要改厂商判断。
+
+## 验证桥接
+
+```bash
+pnpm --filter ipollowork-server exec bun test src/extensions/storage.test.ts src/extensions-connect-gating.test.ts
+```
+
+启动桌面开发版后，`ipollowork_extension_list_actions` 应列出 `storage` 扩展。

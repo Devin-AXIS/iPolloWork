@@ -152,7 +152,9 @@ describe("runtime OpenCode config store", () => {
       const mcpItems = await listMcp(config, WORKSPACE_ID, root);
       const pluginItems = await listPlugins(config, WORKSPACE_ID, root, false);
 
-      expect(mcpItems.map((item) => item.name)).toEqual(["runtime"]);
+      // Global MCPs remain visible by design. A malformed project config must
+      // not hide the runtime-owned entry that iPolloWork adds for this workspace.
+      expect(mcpItems.find((item) => item.name === "runtime")?.source).toBe("config.remote");
       expect(pluginItems.items.map((item) => item.spec)).toEqual(["runtime-plugin"]);
     });
   });

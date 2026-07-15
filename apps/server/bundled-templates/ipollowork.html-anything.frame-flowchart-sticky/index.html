@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Sticky Flowchart Frame"},{"id":"brandName","type":"string","label":"Brand name","default":"iPolloWork"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg"},{"id":"accent","type":"color","label":"Accent","default":"#275efe"}]' data-ipw-template="frame-flowchart-sticky">
+<head>
+<meta charset="UTF-8" />
+<title>Sticky Flowchart · iPolloWork Onboarding</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Patrick+Hand&family=Inter:wght@400;500;600&family=IBM+Plex+Mono&display=swap" rel="stylesheet" />
+<style>
+  body {
+    font-family:'Patrick Hand','Caveat',cursive;
+    background:
+      linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px),
+      #f4ede1;
+    background-size: 40px 40px;
+    color:#2a2a2a;
+    min-height:100vh;
+    margin:0;
+  }
+  .sticky {
+    width:200px; min-height:150px;
+    padding:14px 16px;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
+    position:absolute;
+    border-radius: 2px 2px 4px 4px;
+  }
+  .sticky::before {
+    content:''; position:absolute; top:-8px; left:50%; transform:translateX(-50%) rotate(-2deg);
+    width:80px; height:18px; background:rgba(255,255,255,0.6);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .yellow { background:#fcd34d; transform: rotate(-1.5deg); }
+  .peach { background:#fca5a5; transform: rotate(1.2deg); }
+  .mint { background:#a7f3d0; transform: rotate(-0.8deg); }
+  .sky { background:#a5b4fc; transform: rotate(2deg); }
+  .sticky h3 { font-family:'Caveat',cursive; font-size:22px; font-weight:700; line-height:1.1; }
+  .sticky p { font-family:'Patrick Hand',cursive; font-size:14px; line-height:1.3; margin-top:6px; opacity:0.85; }
+  .num { font-family:'Caveat',cursive; font-weight:700; font-size:28px; line-height:1; }
+  .mono { font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.12em; text-transform:uppercase; }
+  .cursor-tag {
+    position:absolute; transform: translate(-50%,-100%);
+    background:#1a1a1a; color:#fff; font-family:'Inter',sans-serif; font-size:10px;
+    padding:2px 8px; border-radius:10px; font-weight:600;
+  }
+</style>
+<style>:root{--accent:#275efe}.ipw-composition-root{position:relative;width:100%;min-height:100vh;overflow:hidden}.ipw-video-brand{position:absolute;right:42px;bottom:32px;z-index:999999;display:flex;align-items:center;gap:10px;color:#fff;font:600 16px/1.2 Inter,system-ui,sans-serif;text-shadow:0 1px 16px #000}.ipw-video-brand img{width:28px;height:28px;object-fit:contain}.ipw-video-brand b{margin-left:10px;color:var(--accent);font-size:12px;letter-spacing:.08em;text-transform:uppercase}</style></head>
+<body class="relative overflow-hidden"><div id="root" class="ipw-composition-root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="8"><div class="ipw-video-brand"><img src="assets/ipollowork-logo.svg" data-var-src="logoUrl" alt="Brand logo"><span data-var-text="brandName">iPolloWork</span><b data-var-text="title">Sticky Flowchart Frame</b></div>
+  <!-- header -->
+  <header class="px-12 pt-10 flex items-baseline justify-between">
+    <div class="mono opacity-70">FLOW · ONBOARDING · 2026</div>
+    <h1 style="font-family:'Caveat',cursive;font-size:36px;font-weight:700">Play</h1>
+    <div class="mono opacity-70">FRAME-FLOWCHART-STICKY</div>
+  </header>
+
+  <!-- canvas -->
+  <div class="relative" style="height:780px">
+
+    <!-- SVG connectors layer -->
+    <svg class="absolute inset-0 w-full h-full" viewBox="0 0 1500 780" preserveAspectRatio="none" style="pointer-events:none">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#2a2a2a"/>
+        </marker>
+      </defs>
+      <!-- 1 → 2 -->
+      <path d="M 240 240 C 320 240, 360 240, 420 240" fill="none" stroke="#2a2a2a" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+      <!-- 2 → 3 -->
+      <path d="M 620 240 C 700 240, 740 240, 800 240" fill="none" stroke="#2a2a2a" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+      <!-- 3 → 4 -->
+      <path d="M 1000 240 C 1100 240, 1140 290, 1100 360 S 980 480, 880 480" fill="none" stroke="#2a2a2a" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+      <!-- 4 → 5 -->
+      <path d="M 680 480 C 580 480, 540 480, 480 480" fill="none" stroke="#2a2a2a" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+      <!-- 5 → 6 -->
+      <path d="M 280 480 C 200 480, 160 540, 180 600 S 280 700, 380 700" fill="none" stroke="#2a2a2a" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+      <!-- branch: 2 → installer (dashed) -->
+      <path d="M 520 320 C 520 400, 560 440, 700 440" fill="none" stroke="#2a2a2a" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 6" marker-end="url(#arrow)"/>
+    </svg>
+
+    <!-- node 1: Studio -->
+    <div class="sticky yellow" style="top:160px; left:60px">
+      <div class="num">01</div>
+      <h3 class="mt-1">Scene</h3>
+      <p>Sticky Flowchart Frame</p>
+    </div>
+
+    <!-- node 2: Studio agent -->
+    <div class="sticky peach" style="top:160px; left:420px">
+      <div class="num">02</div>
+      <h3 class="mt-1">Story</h3>
+      <p>A story in motion</p>
+    </div>
+
+    <!-- node 3: Studio -->
+    <div class="sticky mint" style="top:160px; left:800px">
+      <div class="num">03</div>
+      <h3 class="mt-1">Motion</h3>
+      <p>Designed to be remembered</p>
+    </div>
+
+    <!-- node 4: Studio -->
+    <div class="sticky sky" style="top:400px; left:680px">
+      <div class="num">04</div>
+      <h3 class="mt-1">Focus</h3>
+      <p>Brand</p>
+    </div>
+
+    <!-- node 5: Studio -->
+    <div class="sticky yellow" style="top:400px; left:280px">
+      <div class="num">05</div>
+      <h3 class="mt-1">Reveal</h3>
+      <p>Watch</p>
+    </div>
+
+    <!-- node 6: Studio -->
+    <div class="sticky mint" style="top:620px; left:380px">
+      <div class="num">06</div>
+      <h3 class="mt-1">Play</h3>
+      <p>Scene</p>
+    </div>
+
+    <!-- branch: Studio agent -->
+    <div class="sticky peach" style="top:400px; left:700px; transform:rotate(3deg); width:200px">
+      <div class="num">⤳</div>
+      <h3 class="mt-1">Story</h3>
+      <p>Motion</p>
+    </div>
+
+    <!-- cursor tag -->
+    <div class="cursor-tag" style="top:280px; left:520px;">🟠 you</div>
+  </div>
+
+  <footer class="px-12 pb-6 flex items-baseline justify-between mono opacity-60">
+    <span>FLOWCHART · WHITEBOARD STYLE · 6 NODES + 1 BRANCH</span>
+    <span>iPolloWork/onboarding</span>
+  </footer>
+</div></body>
+</html>

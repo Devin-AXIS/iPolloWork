@@ -1,6 +1,6 @@
 # AGENTS.md
 
-iPolloWork helps users run agents, skills, and MCP. It is an open-source alternative to Claude Cowork/Codex as a desktop app.
+iPolloWork helps users run agents, skills, and MCP. It is a source-available alternative to Claude Cowork/Codex as a desktop app.
 
 ## What iPolloWork Is
 

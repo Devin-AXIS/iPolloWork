@@ -1,0 +1,51 @@
+---
+title: "添加 Anthropic API 密钥"
+description: "创建 Anthropic API 密钥并在 iPolloWork 中使用。"
+---
+
+Anthropic 已停止向第三方提供 OAuth 授权。因此，iPolloWork 现在默认通过手动填写 API 密钥来支持 Anthropic 模型：先在 Anthropic 创建密钥，再粘贴到 iPolloWork。
+
+## 开始前
+
+- 你需要一个 [platform.claude.com](https://platform.claude.com) 的 Anthropic 账户。
+- Claude 订阅与 Anthropic API 计费并不总是同一回事；请确认账户已开通 API 访问。
+- 请像保管密码一样保管密钥。Anthropic 只会在创建时完整显示一次。
+
+如果要在团队中共享这个密钥，请在 iPolloWork Cloud 的 `LLM Providers` 中统一添加 Anthropic，再从 `Settings -> Cloud` 导入，而不要在每个工作空间分别粘贴。
+
+## 在 Anthropic 创建密钥
+
+1. 登录 [platform.claude.com](https://platform.claude.com)。
+2. 打开 `API Keys` 页面。
+
+<Frame>
+  ![Anthropic API Keys 页面](/images/anthropic-key.png)
+</Frame>
+
+3. 点击 `Create Key`。
+4. 为密钥设置易识别的名称，例如 `iPolloWork`。
+
+<Frame>
+  ![Anthropic Create Key 对话框](/images/anthropic-ipollowork-key.png)
+</Frame>
+
+5. 立即复制新密钥，格式通常类似 `sk-ant-...`。
+
+## 添加到 iPolloWork
+
+1. 在 iPolloWork 打开 `Settings`。
+2. 进入 `Connect Provider`，选择 `Anthropic`。
+3. 将 API 密钥粘贴到手动密钥输入框。
+4. 保存提供方后，在聊天中选择 Anthropic 模型。
+
+<Frame>
+  ![如何在 iPolloWork 添加新模型提供方](/images/ipollowork-providers.png)
+</Frame>
+
+## 常见问题
+
+- 密钥被拒绝时，请确认复制完整且没有额外空格。
+- 看不到 `API Keys` 时，请确认 Anthropic 账户已配置 API 权限和计费。
+- 遗失密钥后，请在 Anthropic 创建新密钥，并在 iPolloWork 中更新。
+
+大多数使用手动 API 密钥的提供方都遵循相同流程：在提供方的开发者控制台创建密钥、只复制一次，然后粘贴到 iPolloWork。

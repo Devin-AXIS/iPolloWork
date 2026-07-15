@@ -1,67 +1,137 @@
 # iPolloWork
 
-iPolloWork is an open-source, local-first desktop workspace for AI agents. It runs on macOS, Windows, and Linux, works directly with your files, and keeps OpenCode as an independently upgradeable runtime.
+<p align="center">
+  English · <a href="./translated_readmes/README_ZH.md">简体中文</a> · <a href="./translated_readmes/README_ZH_hk.md">繁體中文</a> · <a href="./translated_readmes/README_JA.md">日本語</a>
+</p>
 
-## What is included
+> **Build with agents. Edit everything.**
 
-- Local and remote agent sessions
-- Design and video workspaces
-- Skills, plugins, and MCP integrations
-- Streaming tasks, permissions, plans, and artifacts
-- Desktop, browser UI, and headless server modes
-- Optional connection to an iPolloCloud deployment
+**The next-generation, source-available alternative to Codex and Claude Code — built not only for coding, but for getting real work finished.**
 
-The open-source repository contains the Work client and its local runtime integration. Accounts, organization administration, hosted worker management, payments, and mobile Apps are separate iPolloCloud capabilities and are not required for local use.
+iPolloWork turns AI agents into a complete visual workspace for code, office work, websites, presentations, design, and video. Describe the outcome, let the agent build it, then keep editing the result yourself: rewrite text in place, replace images, change colors and typography, move and resize elements, switch between desktop and mobile views, or refine video scenes on a timeline — as naturally as editing a slide in PowerPoint.
 
-## Requirements
+This is not another chat wrapper. iPolloWork brings conversation, files, browser, editable canvas, design tools, video studio, task history, permissions, Skills, plugins, and MCP into one local-first desktop experience.
 
-- Node.js 22 or newer
-- pnpm 11 (`corepack enable`)
-- Platform build tools: Xcode Command Line Tools on macOS, Visual Studio Build Tools on Windows, or the standard Electron build toolchain on Linux
+## One agent workspace. Every kind of work.
 
-OpenCode is prepared by the desktop build and remains a separate upstream dependency. iPolloWork does not fork or rewrite OpenCode.
+- **Code** — understand repositories, plan changes, write code, run tools, and review the result with a full agent workflow.
+- **Office** — research, draft documents, work with spreadsheets, and turn ideas into polished presentations instead of stopping at a text response.
+- **Design** — generate websites, slides, and visual assets, then directly edit text, images, colors, typography, layout, and responsive states on the canvas.
+- **Video** — create and refine visual scenes in an integrated studio with editable content and timeline controls.
+- **Extensible agents** — connect any model and expand the workspace with Skills, plugins, MCP servers, and browser automation.
+- **Local-first by default** — work directly with your files on macOS, Windows, or Linux; use the desktop app, browser UI, or headless server, and connect iPolloCloud only when you need team and commercial capabilities.
+
+This source-available repository contains the Work client and its local runtime integration. Accounts, organization administration, hosted worker management, payments, and mobile Apps are separate iPolloCloud capabilities and are not required for local use.
+
+## Install iPolloWork
+
+### Download a desktop build
+
+When public installers are published, they appear on [GitHub Releases](https://github.com/Devin-AXIS/iPolloWork/releases). This repository does not currently have a public release, so the source workflow below is the available installation path today. For future releases, choose the file that matches both your operating system and CPU:
+
+| System | CPU | Installer to use |
+| --- | --- | --- |
+| macOS | Apple Silicon (M-series) | `ipollowork-mac-arm64-<version>.dmg` |
+| macOS | Intel | `ipollowork-mac-x64-<version>.dmg` |
+| Windows | Intel/AMD 64-bit | `ipollowork-win-x64-<version>.exe` |
+| Windows | ARM64 | `ipollowork-win-arm64-<version>.exe` |
+| Linux | Intel/AMD 64-bit | `ipollowork-linux-x64-<version>.AppImage` |
+| Linux | ARM64 | `ipollowork-linux-arm64-<version>.AppImage` |
+
+The macOS `.zip` and Linux `.tar.gz` files are portable/update artifacts; most users should choose `.dmg`, `.exe`, or `.AppImage`. If the Releases page does not yet contain an installer for your system, run or package the app from source below.
+
+Installation after downloading:
+
+- **macOS:** open the `.dmg`, then drag **iPolloWork** into Applications.
+- **Windows:** run the `.exe` installer. A locally built, unsigned installer may trigger Microsoft Defender SmartScreen.
+- **Linux:** make the AppImage executable with `chmod +x ipollowork-*.AppImage`, then run it. The `.tar.gz` package can be extracted and run without installation.
+
+### Requirements for source development and packaging
+
+- [Git](https://git-scm.com/downloads)
+- [Node.js](https://nodejs.org/en/download) 22 or newer
+- pnpm 11, enabled through Corepack with `corepack enable`
+- [Bun](https://bun.sh/docs/installation) 1.3.10 or newer, used to build the local Orchestrator sidecar
+- macOS: Xcode Command Line Tools (`xcode-select --install`)
+- Windows: [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **Desktop development with C++** and the Windows SDK; use PowerShell or Command Prompt
+- Linux: a standard Electron build environment with a C/C++ toolchain, Python 3, `pkg-config`, and the desktop libraries required by Electron; the release build uses Ubuntu 22.04
+
+OpenCode is downloaded and prepared as a separate sidecar during the first desktop build. iPolloWork does not fork or rewrite OpenCode, and OpenCode can continue to be upgraded independently.
 
 ## Start from source
+
+### macOS and Linux
 
 ```bash
 git clone https://github.com/Devin-AXIS/iPolloWork.git
 cd iPolloWork
+corepack enable
 ./ipollowork setup
 ./ipollowork dev
 ```
 
-Windows users can run the same commands through pnpm:
+### Windows PowerShell
 
 ```powershell
+git clone https://github.com/Devin-AXIS/iPolloWork.git
+Set-Location iPolloWork
 corepack enable
-pnpm setup
-pnpm dev
+.\ipollowork.cmd setup
+.\ipollowork.cmd dev
 ```
 
-Useful development commands:
+The setup command installs the locked workspace dependencies. The dev command prepares the OpenCode and Orchestrator sidecars, starts the UI, and opens the Electron desktop client. Development mode uses isolated iPolloWork/OpenCode state and does not overwrite the user's normal OpenCode configuration.
 
-```bash
-./ipollowork dev:ui       # browser UI only
-./ipollowork check        # type checks and desktop tests
-./ipollowork build        # production application build
-```
+### Development commands
 
-Development mode uses isolated iPolloWork/OpenCode state and does not overwrite the user's normal OpenCode configuration.
+| Purpose | macOS / Linux | Windows |
+| --- | --- | --- |
+| Start desktop app | `./ipollowork dev` | `.\ipollowork.cmd dev` |
+| Start browser UI only | `./ipollowork dev:ui` | `.\ipollowork.cmd dev:ui` |
+| Connect local Cloud | `./ipollowork dev:cloud http://localhost:3100` | `.\ipollowork.cmd dev:cloud http://localhost:3100` |
+| Type checks and desktop tests | `./ipollowork check` | `.\ipollowork.cmd check` |
+| Production build | `./ipollowork build` | `.\ipollowork.cmd build` |
+
+Windows development builds do not register the production `ipollowork://`
+handler automatically. When testing Cloud sign-in through an external browser,
+use the repository's protocol switcher and restore the production handler when
+you finish. See [Windows protocol switching](docs/windows-protocol-switcher.md).
 
 ## Build and package
 
+There are three different build levels:
+
+| Command | Result |
+| --- | --- |
+| `build` | Compiles the production UI, server, Electron shell, and sidecars; does not create an installer |
+| `package:dir` | Creates the fastest unpacked desktop app for local verification; does not change the release version |
+| `package` | Runs checks, advances the client version, then creates native installer and portable/update artifacts for the current system and CPU without publishing them |
+
+### macOS and Linux
+
 ```bash
-./ipollowork build
+./ipollowork check
+./ipollowork package:dir
 ./ipollowork package
 ```
 
-Native installers are written to `apps/desktop/dist-electron/`. For a faster unpacked application build:
+### Windows PowerShell
 
-```bash
-./ipollowork package:dir
+```powershell
+.\ipollowork.cmd check
+.\ipollowork.cmd package:dir
+.\ipollowork.cmd package
 ```
 
-The package command uses Electron Builder and creates the native targets configured for the current operating system.
+All outputs are written to `apps/desktop/dist-electron/`:
+
+`package` is the local release command. It keeps the App, Desktop, Orchestrator, and Server versions in sync, and uses the sequence `0.1.0` through `0.99.0`, then `1.0.0` (the source checkout starts at the unshipped baseline `0.0.0`). Use `./ipollowork package --dry-run` to inspect the next version, or `--skip-check` only when the checks have already passed. Local packaging never commits, tags, pushes, or publishes a release.
+
+- **macOS:** `.dmg`, `.zip`, and an unpacked `.app`
+- **Windows:** NSIS `.exe` and `win-unpacked/`
+- **Linux:** `.AppImage`, `.tar.gz`, and `linux-unpacked/`
+
+Local packaging targets the machine's current operating system and CPU architecture. Use the GitHub release workflow to produce the complete signed/notarized matrix for macOS ARM64/x64, Windows ARM64/x64, and Linux ARM64/x64. Local packages are unsigned unless the appropriate Apple or Windows signing credentials are supplied; they are suitable for development testing but should not be presented as official releases.
 
 ## Connect to iPolloCloud
 
@@ -107,8 +177,14 @@ Read `AGENTS.md`, `VISION.md`, `PRINCIPLES.md`, `PRODUCT.md`, and `ARCHITECTURE.
 git diff --check
 ```
 
-See `CODE_OF_CONDUCT.md` and `SECURITY.md` for community and security policies.
+See `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md` for contribution, community, and security policies.
 
 ## License
 
-iPolloWork is licensed under the MIT License. See `LICENSE`.
+iPolloWork uses the **iPolloWork Source Available License 1.0**:
+
+- Free for personal, non-commercial, evaluation, and company-internal use.
+- A commercial license is required for customer-facing SaaS or hosting, paid delivery or deployment, resale, white-label distribution, or use as a material part of an external commercial product or service.
+- Separately licensed third-party components and code previously released under MIT retain their original licenses and existing rights.
+
+See `LICENSE` for the controlling terms and `LICENSES/MIT-legacy.txt` for the historical MIT notice. This is a source-available license, not an OSI-approved open-source license.

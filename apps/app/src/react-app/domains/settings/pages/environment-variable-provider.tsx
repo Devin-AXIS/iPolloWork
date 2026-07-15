@@ -79,6 +79,7 @@ interface EnvironmentVariableContextValue {
   canModify: boolean;
   canApplyChanges: boolean;
   isPendingChanges: boolean;
+  markChangesPending: () => void;
   applyAsync: UseMutateFunction<ApplyEnvironmentChangesResult | undefined, Error, void, unknown>;
   modifyAsync: UseMutateFunction<unknown, Error, EnvironmentEditorDraft, unknown>;
   removeAsync: UseMutateFunction<string, Error, string, unknown>;
@@ -191,6 +192,7 @@ export function EnvironmentVariableProvider({ children, client, runtimeKey, onAp
     canModify: client !== null,
     canApplyChanges: onApplyChanges !== undefined,
     isPendingChanges: data === true,
+    markChangesPending,
     applyAsync,
     modifyAsync,
     removeAsync,
@@ -203,6 +205,7 @@ export function EnvironmentVariableProvider({ children, client, runtimeKey, onAp
   }), [
     client,
     onApplyChanges,
+    markChangesPending,
     applyAsync,
     modifyAsync,
     removeAsync,
@@ -268,6 +271,11 @@ export function useIsEnvironmentVariableChangesPending() {
   const { isPendingChanges } = useEnvironmentVariableContext();
 
   return isPendingChanges;
+}
+
+export function useEnvironmentVariableMarkChangesPending() {
+  const { markChangesPending } = useEnvironmentVariableContext();
+  return markChangesPending;
 }
 
 export function useEnvironmentVariableAvailability() {

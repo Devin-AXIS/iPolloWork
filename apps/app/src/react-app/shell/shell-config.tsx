@@ -8,14 +8,8 @@ import { createContext, useCallback, use, useMemo, useState, type ReactNode } fr
 export type ShellConfig = {
   /** Display name shown in the title bar, sidebar, and welcome page. */
   appName: string;
-  /** Show the bottom status bar (connection status, docs, feedback). */
-  statusBar: boolean;
   /** Show the left sidebar with workspace/session list. */
   sidebar: boolean;
-  /** Show the Docs button in the status bar. */
-  docsButton: boolean;
-  /** Show the Feedback button in the status bar. */
-  feedbackButton: boolean;
   /** Show the Cloud sign-in button when not signed in. */
   cloudSignin: boolean;
   /** Show the welcome/onboarding page for new users. */
@@ -38,10 +32,7 @@ export type ShellConfig = {
 
 export const DEFAULT_SHELL_CONFIG: ShellConfig = {
   appName: "iPolloWork",
-  statusBar: true,
   sidebar: true,
-  docsButton: true,
-  feedbackButton: true,
   cloudSignin: true,
   welcomePage: true,
   starterCards: true,

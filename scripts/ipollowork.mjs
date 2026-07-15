@@ -9,6 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const command = process.argv[2] ?? "help";
 const args = process.argv.slice(3);
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const launcher = process.platform === "win32" ? ".\\ipollowork.cmd" : "./ipollowork";
 
 function run(bin, binArgs, env = process.env) {
   const child = spawn(bin, binArgs, {
@@ -55,14 +56,16 @@ function requireCommand(bin, installHint) {
 function printHelp() {
   console.log(`iPolloWork development commands
 
-  ./ipollowork setup              Install workspace dependencies
-  ./ipollowork dev                Start the open-source desktop app
-  ./ipollowork dev:ui             Start only the browser UI
-  ./ipollowork dev:cloud [url]    Start desktop connected to iPolloCloud
-  ./ipollowork check              Run type checks and desktop tests
-  ./ipollowork build              Build the desktop application
-  ./ipollowork package            Build native installers
-  ./ipollowork package:dir        Build an unpacked desktop application
+  ${launcher} setup              Install workspace dependencies
+  ${launcher} dev                Start the source-available desktop app
+  ${launcher} dev:ui             Start only the browser UI
+  ${launcher} dev:cloud [url]    Start desktop connected to iPolloCloud
+  ${launcher} check              Run README localization, type checks, and desktop tests
+  ${launcher} build              Build the desktop application
+  ${launcher} package [flags]    Check, advance the client version, and build installers
+  ${launcher} package:dir        Build an unpacked desktop application without advancing a version
+
+  package flags: --dry-run (show the next version), --skip-check (skip type checks/tests)
 
 The default local iPolloCloud URL is http://localhost:3100.`);
 }
@@ -122,6 +125,7 @@ switch (command) {
   case "check":
     requireCommand("pnpm", "Run: corepack enable");
     await runSequence([
+      [process.execPath, [resolve(root, "scripts", "sync-readme-zh-hant.mjs"), "--check"]],
       [pnpm, ["--filter", "@ipollowork/app", "typecheck", ...args]],
       [pnpm, ["--filter", "@ipollowork/desktop", "typecheck:electron", ...args]],
       [pnpm, ["--filter", "@ipollowork/desktop", "test", ...args]],
@@ -132,7 +136,10 @@ switch (command) {
     break;
   case "package":
     requireCommand("pnpm", "Run: corepack enable");
-    run(pnpm, ["--filter", "@ipollowork/desktop", "package:electron", ...args]);
+    run(process.execPath, [
+      resolve(root, "scripts", "release", "package-client.mjs"),
+      ...args,
+    ]);
     break;
   case "package:dir":
     requireCommand("pnpm", "Run: corepack enable");

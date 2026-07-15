@@ -4,7 +4,7 @@ import { isDesktopRuntime } from "./runtime-env";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
 import type { DenOrgMarketplace, DenOrgPluginResolved, DenResourceSnapshot } from "./den-types";
 import type { CloudImportedMarketplace, CloudImportedPlugin } from "../cloud/import-state";
-import type { DesignSessionTemplateState, TemplateCatalogItem, TemplateManifestV1 } from "@ipollowork/types/templates";
+import type { TemplateCatalogItem, TemplateCategory, TemplateManifestV1, TemplateSessionSnapshot, TemplateSessionState } from "@ipollowork/types/templates";
 
 export type iPolloWorkServerCapabilities = {
   skills: { read: boolean; write: boolean; source: "ipollowork" | "opencode" };
@@ -450,6 +450,29 @@ export type iPolloWorkExtensionActionResult =
     message: string;
   };
 
+/**
+ * The stable app-facing contract for media features. It is deliberately an
+ * iPolloWork extension action, not an OpenCode provider/config contract, so
+ * app surfaces can use it without coupling to the bundled OpenCode version.
+ */
+export type iPolloWorkMediaAction =
+  | "status"
+  | "speech_synthesize"
+  | "voice_clone"
+  | "voice_list"
+  | "voice_clone_workspace_file"
+  | "speech_transcribe"
+  | "speech_recognize_realtime"
+  | "speech_translate"
+  | "video_generate"
+  | "video_edit"
+  | "digital_human_generate"
+  | "task_get";
+
+export type iPolloWorkStorageAction =
+  | "status"
+  | "upload_workspace_file";
+
 export type iPolloWorkResolvedArtifactTarget = {
   id: string;
   kind: "file" | "url";
@@ -496,6 +519,33 @@ export type iPolloWorkUserEnvItem = {
   updatedAt: number;
   hasValue: boolean;
   value?: string;
+};
+
+export type iPolloWorkAuthorizationServiceId =
+  | "openai-images"
+  | "aliyun-bailian"
+  | "volcengine-video"
+  | "aliyun-oss"
+  | "wasabi"
+  | "storage-routing";
+
+export type iPolloWorkAuthorizationService = {
+  id: iPolloWorkAuthorizationServiceId;
+  configured: boolean;
+  fields: Array<{ key: string; configured: boolean }>;
+  category: "media" | "storage";
+  kind: "credentials" | "routing";
+  agent: {
+    capability: string;
+    useWhen: string;
+    instruction: string;
+  };
+};
+
+export type iPolloWorkAuthorizationServiceTestResult = {
+  ok: boolean;
+  detail: string;
+  missingKeys?: string[];
 };
 
 export type iPolloWorkActor = {
@@ -1082,6 +1132,22 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         body: payload,
         timeoutMs: timeouts.binary,
       }),
+    callMedia: (action: iPolloWorkMediaAction, args: Record<string, unknown>, context?: Record<string, unknown>) =>
+      requestJson<iPolloWorkExtensionActionResult>(baseUrl, "/experimental/extensions/call", {
+        token,
+        hostToken,
+        method: "POST",
+        body: { extensionId: "media", action, args, ...(context ? { context } : {}) },
+        timeoutMs: timeouts.binary,
+      }),
+    callStorage: (action: iPolloWorkStorageAction, args: Record<string, unknown> = {}, context?: Record<string, unknown>) =>
+      requestJson<iPolloWorkExtensionActionResult>(baseUrl, "/experimental/extensions/call", {
+        token,
+        hostToken,
+        method: "POST",
+        body: { extensionId: "storage", action, args, ...(context ? { context } : {}) },
+        timeoutMs: timeouts.binary,
+      }),
     listWorkspaces: () => requestJson<iPolloWorkWorkspaceList>(baseUrl, "/workspaces", { token, hostToken, timeoutMs: timeouts.listWorkspaces }),
     createLocalWorkspace: (payload: { folderPath: string; name: string; preset: string }) =>
       requestJson<WorkspaceList>(baseUrl, "/workspaces/local", {
@@ -1143,12 +1209,20 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       requestJson<{ items: TemplateCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates`, { token, hostToken }),
     installTemplate: (workspaceId: string, templateId: string) =>
       requestJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/install`, { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceImport }),
-    importTemplate: (workspaceId: string, file: File) =>
+    importTemplate: (workspaceId: string, file: File, category: TemplateCategory) =>
       requestRawJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/import`, {
         token,
         hostToken,
         body: file,
-        headers: { "Content-Type": "application/vnd.ipollowork-template+zip", "X-iPolloWork-Filename": encodeURIComponent(file.name) },
+        headers: { "Content-Type": "application/vnd.ipollowork-template+zip", "X-iPolloWork-Filename": encodeURIComponent(file.name), "X-iPolloWork-Template-Category": category },
+        timeoutMs: timeouts.workspaceImport,
+      }),
+    saveTemplateFromSession: (workspaceId: string, input: { sessionId: string; category: TemplateManifestV1["category"]; title: string; description?: string; subcategory?: string; style?: TemplateManifestV1["style"]; tags?: string[] }) =>
+      requestJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/from-session`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: input,
         timeoutMs: timeouts.workspaceImport,
       }),
     uninstallTemplate: (workspaceId: string, templateId: string) =>
@@ -1156,11 +1230,13 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
     getTemplateCover: (workspaceId: string, templateId: string) =>
       requestBinary(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/cover`, { token, hostToken, direct: true }),
     materializeTemplate: (workspaceId: string, templateId: string, sessionId: string, brief?: unknown) =>
-      requestJson<{ state: DesignSessionTemplateState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/materialize`, { token, hostToken, method: "POST", body: { sessionId, brief }, timeoutMs: timeouts.workspaceImport }),
-    getDesignSessionTemplate: (workspaceId: string, sessionId: string) =>
-      requestJson<{ state: DesignSessionTemplateState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/design-sessions/${encodeURIComponent(sessionId)}/template`, { token, hostToken }),
-    adoptDesignSession: (workspaceId: string, sessionId: string, input: { templateId: string; entry: string; brief?: unknown }) =>
-      requestJson<{ state: DesignSessionTemplateState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/design-sessions/${encodeURIComponent(sessionId)}/adopt`, { token, hostToken, method: "POST", body: input, timeoutMs: timeouts.workspaceImport }),
+      requestJson<{ state: TemplateSessionState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/materialize`, { token, hostToken, method: "POST", body: { sessionId, brief }, timeoutMs: timeouts.workspaceImport }),
+    getTemplateSession: (workspaceId: string, sessionId: string) =>
+      requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}`, { token, hostToken }),
+    adoptLegacyVideoSession: (workspaceId: string, sessionId: string) =>
+      requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}/adopt-video`, { token, hostToken, method: "POST", body: {}, timeoutMs: timeouts.workspaceImport }),
+    listTemplateSessions: (workspaceId: string) =>
+      requestJson<{ items: TemplateSessionSnapshot[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions`, { token, hostToken }),
     listSessions: (
       workspaceId: string,
       options?: { roots?: boolean; start?: number; search?: string; limit?: number },
@@ -1873,6 +1949,26 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         method: "DELETE",
         timeoutMs: timeouts.config,
       }),
+
+    listAuthorizationServices: () =>
+      requestJson<{ items: iPolloWorkAuthorizationService[] }>(baseUrl, "/authorization-services", {
+        token,
+        hostToken,
+        timeoutMs: timeouts.config,
+      }),
+
+    testAuthorizationService: (serviceId: iPolloWorkAuthorizationServiceId) =>
+      requestJson<iPolloWorkAuthorizationServiceTestResult>(
+        baseUrl,
+        `/authorization-services/${encodeURIComponent(serviceId)}/test`,
+        {
+          token,
+          hostToken,
+          method: "POST",
+          body: {},
+          timeoutMs: Math.max(timeouts.config, 15_000),
+        },
+      ),
 
     createVoiceRealtimeSession: (payload?: { model?: string; sessionContext?: string }) =>
       requestJson<{

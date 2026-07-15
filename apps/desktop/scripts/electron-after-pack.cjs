@@ -4,11 +4,12 @@ const { spawnSync } = require("node:child_process");
 
 const computerUseHelperAppName = "iPolloWork Computer Use.app";
 
+// Only native executables are copied to their canonical aliases. The server
+// runs in-process inside Electron and Chrome DevTools MCP is an OpenCode
+// plugin, so neither has a packaged executable to normalize here.
 const sidecarBases = [
   "opencode",
-  "ipollowork-server",
   "ipollowork-orchestrator",
-  "chrome-devtools-mcp",
 ];
 
 function targetTriple(platformName, arch) {

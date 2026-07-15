@@ -206,7 +206,7 @@ function Sidebar({
     <div
       className={cn(
         "group peer text-sidebar-foreground",
-        collapsible === "none" ? "block" : "hidden md:block"
+        collapsible === "none" ? "block" : "hidden md:block electron:block"
       )}
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}

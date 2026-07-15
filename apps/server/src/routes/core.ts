@@ -5,6 +5,11 @@ import {
   googleWorkspaceStatusConnectExtra,
   writeConnectState,
 } from "../connect-state.js";
+import {
+  isAuthorizationServiceId,
+  listAuthorizationServices,
+  testAuthorizationService,
+} from "../authorization-center.js";
 import { EnvStoreReadError, InvalidEnvKeyError, isValidEnvKey, type EnvService } from "../env-file.js";
 import { ApiError } from "../errors.js";
 import {
@@ -501,6 +506,26 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       throw new ApiError(404, "env_not_found", "Environment variable not found");
     }
     return jsonResponse({ ok: true });
+  });
+
+  // Curated service credentials use the same user-scoped local secret store
+  // as the generic Environment settings. This route only
+  // exposes configuration state; raw secrets stay server-side.
+  addRoute(routes, "GET", "/authorization-services", "host-token", async () => {
+    const items = await env.list().catch(rethrowEnvStoreReadError);
+    return jsonResponse({ items: listAuthorizationServices(items) });
+  });
+
+  addRoute(routes, "POST", "/authorization-services/:serviceId/test", "host-token", async (ctx) => {
+    const serviceId = ctx.params.serviceId;
+    if (!isAuthorizationServiceId(serviceId)) {
+      throw new ApiError(404, "authorization_service_not_found", "Authorization service not found");
+    }
+    const result = await testAuthorizationService(env, serviceId).catch(rethrowEnvStoreReadError);
+    // A failed remote credential test is a valid completed test, not a route
+    // failure. Returning it as JSON lets the UI show a useful result instead
+    // of collapsing the provider response into a generic request error.
+    return jsonResponse(result);
   });
 
   addRoute(routes, "POST", "/voice/realtime/session", "host", async (ctx) => {

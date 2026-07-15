@@ -65,6 +65,7 @@ import {
   RadioGroupItem,
 } from "@/components/ui/radio-group"
 import { useOrgListWindow } from "./use-org-list-window";
+import { activateOrganizationWorkspace } from "@/app/cloud/organization-workspaces";
 
 const RELOAD_AFTER_ONBOARDING_KEY = "ipollowork.reloadAfterOrgOnboarding";
 
@@ -716,6 +717,7 @@ function OrganizationSelectionPage({
   const { error, isPending, mutate } = useMutation({
     mutationFn: async (nextOrg: DenOrgSummary) => {
       await denClient.setActiveOrganization({ organizationId: nextOrg.id });
+      await activateOrganizationWorkspace(nextOrg);
       return nextOrg;
     },
     onSuccess: (nextOrg) => {

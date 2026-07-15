@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/desktop",
   "private": true,
-  "version": "0.17.20",
+  "version": "0.0.0",
   "description": "iPolloWork desktop shell",
   "author": {
     "name": "iPolloWork",
@@ -14,13 +14,13 @@
     "dev:electron": "node ./scripts/electron-dev.mjs",
     "build": "node ./scripts/electron-build.mjs",
     "build:electron": "node ./scripts/electron-build.mjs",
-    "package:electron": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml",
-    "package:electron:dir": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --dir",
+    "package:electron": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --publish never",
+    "package:electron:dir": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --dir --publish never",
     "electron": "pnpm exec electron ./electron/main.mjs",
     "check:electron": "node ./scripts/check-electron-bridge.mjs",
     "typecheck:electron": "pnpm --dir ../server exec tsc -p ../desktop/tsconfig.electron.json --noEmit",
     "prepare:sidecar": "node ./scripts/prepare-sidecar.mjs",
-    "test": "node --test electron/brand-icon-windows.test.mjs electron/open-external.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs"
+    "test": "node --test electron/brand-icon-windows.test.mjs electron/open-external.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.17.11",

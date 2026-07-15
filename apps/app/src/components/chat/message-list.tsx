@@ -37,7 +37,6 @@ import { WebfetchTool } from "@/components/tools/webfetch"
 import { WebsearchTool } from "@/components/tools/websearch"
 import { useMessageList, useSessionErrorMessage } from "@/components/chat/message-list-provider"
 import { ArtifactList } from "@/components/chat/artifact"
-import { TaskSuggestions } from "@/components/chat/task-suggestions"
 import {
   DescriptiveButtonContent,
   DescriptiveButtonDescription,
@@ -828,8 +827,6 @@ export function MessageList({ messages, status, retryStatus }: MessageListProps)
 
   return (
     <div className={cn("flex flex-col gap-2 @container/message-list")}>
-      {messages.length === 0 && <TaskSuggestions className="mx-auto w-full max-w-3xl shrink-0 px-3 pb-3 md:px-5 md:pb-5 grow" />}
-
       {items.map((item) => {
         if (isMessageGroup(item)) {
           return (

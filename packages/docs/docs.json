@@ -16,97 +16,149 @@
     "openapi": "openapi.json"
   },
   "navigation": {
-    "tabs": [
+    "languages": [
       {
-        "tab": "Start here",
-        "pages": [
-          "start-here/get-started",
+        "language": "en",
+        "default": true,
+        "tabs": [
           {
-            "group": "Connect your stack",
+            "tab": "Start here",
             "pages": [
-              "start-here/connect-your-stack/sign-in-with-chatgpt",
-              "start-here/connect-your-stack/add-anthropic-api-key",
-              "start-here/connect-your-stack/add-a-custom-llm",
-              "start-here/connect-your-stack/add-an-mcp-server",
-              "start-here/connect-your-stack/connect-slack-mcp",
-              "start-here/connect-your-stack/enable-exa-search"
+              "start-here/get-started",
+              {
+                "group": "Connect your stack",
+                "pages": [
+                  "start-here/connect-your-stack/sign-in-with-chatgpt",
+                  "start-here/connect-your-stack/add-anthropic-api-key",
+                  "start-here/connect-your-stack/add-a-custom-llm",
+                  "start-here/connect-your-stack/add-an-mcp-server",
+                  "start-here/connect-your-stack/connect-slack-mcp",
+                  "start-here/connect-your-stack/enable-exa-search"
+                ]
+              },
+              {
+                "group": "Do work with it",
+                "pages": [
+                  "start-here/do-work-with-it/control-the-browser",
+                  "start-here/do-work-with-it/import-a-skill",
+                  "start-here/do-work-with-it/build-a-template",
+                  "start-here/do-work-with-it/media-center",
+                  "start-here/do-work-with-it/storage-center",
+                  "start-here/do-work-with-it/cross-chat-memory",
+                  "start-here/do-work-with-it/workflows",
+                  "start-here/do-work-with-it/share-your-setup"
+                ]
+              },
+              {
+                "group": "Self-host",
+                "pages": [
+                  "start-here/self-host",
+                  "start-here/on-prem-branding",
+                  "start-here/github-connector-helm"
+                ]
+              },
+              {
+                "group": "Troubleshooting",
+                "pages": [
+                  "start-here/troubleshooting/diagnostic-prompts"
+                ]
+              },
+              {
+                "group": "Help improve iPolloWork",
+                "pages": [
+                  "start-here/missing-docs",
+                  "start-here/missing-languages"
+                ]
+              }
             ]
           },
           {
-            "group": "Do work with it",
+            "tab": "Cloud",
             "pages": [
-              "start-here/do-work-with-it/control-the-browser",
-              "start-here/do-work-with-it/import-a-skill",
-              "start-here/do-work-with-it/cross-chat-memory",
-              "start-here/do-work-with-it/workflows",
-              "start-here/do-work-with-it/share-your-setup"
+              "cloud/get-started",
+              {
+                "group": "Share with your team",
+                "pages": [
+                  "cloud/share-with-your-team/team-templates",
+                  "cloud/share-with-your-team/desktop-policies",
+                  "cloud/share-with-your-team/managed-llm-provider",
+                  "cloud/share-with-your-team/custom-llm-provider",
+                  "cloud/share-with-your-team/shared-mcp-connections"
+                ]
+              },
+              {
+                "group": "Run in the cloud",
+                "pages": [
+                  "cloud/run-in-the-cloud/shared-workspace",
+                  "cloud/run-in-the-cloud/cloud-mcp"
+                ]
+              },
+              "cloud/members-and-rbac",
+              "cloud/sso-microsoft-entra",
+              "cloud/security-and-operations",
+              "cloud/enterprise"
             ]
           },
           {
-            "group": "Self-host",
+            "tab": "API",
+            "openapi": "/openapi.json"
+          },
+          {
+            "tab": "Roadmap",
             "pages": [
-              "start-here/self-host",
-              "start-here/on-prem-branding",
-              "start-here/github-connector-helm"
+              "roadmap"
             ]
           },
           {
-            "group": "Troubleshooting",
+            "tab": "Changelog",
             "pages": [
-              "start-here/troubleshooting/diagnostic-prompts"
-            ]
-          },
-          {
-            "group": "Help improve iPolloWork",
-            "pages": [
-              "start-here/missing-docs",
-              "start-here/missing-languages"
+              "changelog"
             ]
           }
         ]
       },
       {
-        "tab": "Cloud",
-        "pages": [
-          "cloud/get-started",
+        "language": "zh",
+        "tabs": [
           {
-            "group": "Share with your team",
+            "tab": "开始使用",
             "pages": [
-              "cloud/share-with-your-team/team-templates",
-              "cloud/share-with-your-team/desktop-policies",
-              "cloud/share-with-your-team/managed-llm-provider",
-              "cloud/share-with-your-team/custom-llm-provider",
-              "cloud/share-with-your-team/shared-mcp-connections"
+              "zh/start-here/get-started",
+              {
+                "group": "连接模型与工具",
+                "pages": [
+                  "zh/start-here/connect-your-stack/sign-in-with-chatgpt",
+                  "zh/start-here/connect-your-stack/add-anthropic-api-key",
+                  "zh/start-here/connect-your-stack/add-a-custom-llm",
+                  "zh/start-here/connect-your-stack/add-an-mcp-server"
+                ]
+              },
+              {
+                "group": "用 iPolloWork 完成工作",
+                "pages": [
+                  "zh/start-here/do-work-with-it/control-the-browser",
+                  "zh/start-here/do-work-with-it/build-a-template",
+                  "zh/start-here/do-work-with-it/media-center",
+                  "zh/start-here/do-work-with-it/storage-center"
+                ]
+              },
+              {
+                "group": "帮助改进文档",
+                "pages": [
+                  "zh/start-here/missing-docs",
+                  "zh/start-here/missing-languages"
+                ]
+              }
             ]
-          },
-          {
-            "group": "Run in the cloud",
-            "pages": [
-              "cloud/run-in-the-cloud/shared-workspace",
-              "cloud/run-in-the-cloud/cloud-mcp"
-            ]
-          },
-          "cloud/members-and-rbac",
-          "cloud/sso-microsoft-entra",
-          "cloud/security-and-operations",
-          "cloud/enterprise"
-        ]
-      },
-      {
-        "tab": "API",
-        "openapi": "/openapi.json"
-      },
-      {
-        "tab": "Roadmap",
-        "pages": [
-          "roadmap"
-        ]
-      },
-      {
-        "tab": "Changelog",
-        "pages": [
-          "changelog"
-        ]
+          }
+        ],
+        "navbar": {
+          "primary": {
+            "type": "button",
+            "label": "下载 iPolloWork",
+            "href": "https://ipolloworklabs.com/download"
+          }
+        }
       }
     ]
   },

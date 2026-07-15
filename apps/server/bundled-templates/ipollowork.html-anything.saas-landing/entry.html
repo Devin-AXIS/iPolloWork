@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en" data-ipw-template="saas-landing" data-ipw-style="glass" data-ipw-mobile-ready="true">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>iPolloWork - sync that respects your bandwidth</title>
+  <style>
+    :root {
+      --bg: #fafaf9; --fg: #1c1b1a; --muted: #6b6964; --border: #e6e4e0;
+      --accent: #c96442; --surface: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow-x: hidden; background: var(--bg); color: var(--fg); font: 16px/1.55 -apple-system, system-ui, sans-serif; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; }
+    .logo { font-weight: 600; font-size: 17px; letter-spacing: -0.01em; }
+    nav a { color: var(--fg); text-decoration: none; margin-left: 22px; font-size: 14px; }
+    button { font: inherit; cursor: pointer; padding: 11px 20px; border-radius: 8px; font-weight: 500; }
+    .btn-primary { background: var(--accent); color: white; border: 1px solid var(--accent); }
+    .btn-secondary { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+    .btn-link { background: transparent; border: none; color: var(--accent); padding: 11px 0; font-weight: 500; cursor: pointer; }
+    section { padding: 80px 0; }
+    .hero { padding: 100px 0; }
+    .hero h1 { font-size: clamp(44px, 6vw, 76px); line-height: 1.05; letter-spacing: -0.02em; max-width: 17ch; margin: 0 0 22px; }
+    .hero p { font-size: 19px; color: var(--muted); max-width: 56ch; margin: 0 0 36px; }
+    .hero .cta { display: flex; gap: 12px; }
+    .features { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+    @media (max-width: 800px) { .feature-grid { grid-template-columns: 1fr; } }
+    .feature h3 { font-size: 18px; margin: 0 0 8px; letter-spacing: -0.01em; }
+    .feature .num { font-family: ui-monospace, monospace; color: var(--accent); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 12px; display: block; }
+    .feature p { margin: 0; color: var(--muted); font-size: 14.5px; }
+    .proof { text-align: center; }
+    .proof h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin: 0 0 28px; }
+    .logos { display: flex; justify-content: center; gap: 56px; flex-wrap: wrap; opacity: 0.6; font-weight: 600; font-size: 17px; letter-spacing: -0.01em; }
+    .pricing h2 { text-align: center; font-size: 36px; margin: 0 0 12px; letter-spacing: -0.02em; }
+    .pricing .lede { text-align: center; color: var(--muted); margin: 0 0 48px; }
+    .tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    @media (max-width: 800px) { .tiers { grid-template-columns: 1fr; } }
+    .tier { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 32px; }
+    .tier.featured { border-color: var(--accent); position: relative; }
+    .tier.featured::before { content: 'Recommended'; position: absolute; top: -12px; left: 24px; background: var(--accent); color: white; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 500; }
+    .tier h3 { margin: 0 0 8px; font-size: 18px; }
+    .tier .price { font-size: 40px; letter-spacing: -0.02em; margin: 6px 0 16px; }
+    .tier .price small { font-size: 14px; color: var(--muted); font-weight: 400; }
+    .tier ul { list-style: none; padding: 0; margin: 16px 0 24px; color: var(--muted); font-size: 14px; }
+    .tier ul li { padding: 5px 0; border-top: 1px solid var(--border); }
+    .tier ul li:first-child { border-top: none; }
+    .closing { background: var(--accent); color: white; text-align: center; }
+    .closing h2 { font-size: 38px; letter-spacing: -0.02em; margin: 0 0 14px; }
+    .closing p { opacity: 0.85; margin: 0 0 28px; }
+    .closing button { background: white; color: var(--accent); border: none; }
+    footer { padding: 28px 0; color: var(--muted); font-size: 13px; text-align: center; }
+    .mobile-nav-toggle { position: relative; display: none; width: 42px; height: 42px; padding: 0; place-items: center; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 78%, transparent); color: var(--fg); }
+    .mobile-nav-toggle span, .mobile-nav-toggle::before, .mobile-nav-toggle::after { content: ""; position: absolute; left: 12px; display: block; width: 16px; height: 1.5px; border-radius: 2px; background: currentColor; transition: top .2s ease, transform .2s ease, opacity .2s ease; }
+    .mobile-nav-toggle::before { top: 13px; }
+    .mobile-nav-toggle span { top: 20px; }
+    .mobile-nav-toggle::after { top: 27px; }
+    @media (max-width: 720px) {
+      .wrap { padding-inline: 18px; }
+      header { position: sticky; top: 10px; z-index: 20; margin-top: 10px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--border) 80%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--surface) 82%, transparent); box-shadow: 0 10px 32px rgba(28,27,26,.10); backdrop-filter: blur(18px) saturate(1.3); -webkit-backdrop-filter: blur(18px) saturate(1.3); }
+      .mobile-nav-toggle { display: grid; }
+      header nav { display: none; position: absolute; top: calc(100% + 8px); left: 0; right: 0; padding: 8px; flex-direction: column; align-items: stretch; gap: 3px; border: 1px solid var(--border); border-radius: 16px; background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: 0 18px 48px rgba(28,27,26,.16); backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4); }
+      header[data-menu-open="true"] nav { display: flex; }
+      header nav a, header nav button { display: flex; width: 100%; min-height: 44px; margin: 0 !important; padding: 10px 12px; align-items: center; justify-content: flex-start; border-radius: 10px; }
+      header[data-menu-open="true"] .mobile-nav-toggle span { opacity: 0; }
+      header[data-menu-open="true"] .mobile-nav-toggle::before { top: 20px; transform: rotate(45deg); }
+      header[data-menu-open="true"] .mobile-nav-toggle::after { top: 20px; transform: rotate(-45deg); }
+      section { padding: 64px 0; }
+      .hero { padding: 72px 0 64px; }
+      .hero h1 { font-size: clamp(40px, 12vw, 52px); }
+      .hero p { font-size: 17px; }
+      .hero .cta { align-items: stretch; flex-direction: column; }
+      .hero .cta button { min-height: 46px; width: 100%; }
+      .logos { gap: 24px 32px; }
+      .tier { padding: 26px 22px; }
+      .closing h2 { font-size: 32px; }
+    }
+  </style>
+<link rel="stylesheet" href="design-tokens.css"></head>
+<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
+  <div class="wrap">
+    <header data-od-id="topnav">
+      <span class="logo">◰ iPolloWork</span>
+      <button class="mobile-nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"><span></span></button>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#docs">Docs</a>
+        <button class="btn-secondary" style="margin-left: 12px;">Sign in</button>
+      </nav>
+    </header>
+    <section class="hero" data-od-id="hero">
+      <h1>File sync that doesn't eat your bandwidth.</h1>
+      <p>Block-level deltas, end-to-end encryption, and a pricing model that doesn't punish you for working with video.</p>
+      <div class="cta">
+        <button class="btn-primary">Get iPolloWork</button>
+        <button class="btn-link">Read the whitepaper →</button>
+      </div>
+    </section>
+  </div>
+
+  <section class="features" id="features" data-od-id="features">
+    <div class="wrap feature-grid">
+      <div class="feature">
+        <span class="num">01</span>
+        <h3>Block-level diffs</h3>
+        <p>Edit a 4 GB Final Cut project? We sync the 200 KB you changed. Not the whole file.</p>
+      </div>
+      <div class="feature">
+        <span class="num">02</span>
+        <h3>End-to-end encrypted</h3>
+        <p>Files are encrypted on your laptop before they leave. We can't read them. Neither can law enforcement, by design.</p>
+      </div>
+      <div class="feature">
+        <span class="num">03</span>
+        <h3>Honest pricing</h3>
+        <p>One flat rate for unlimited storage. No "fair use" clauses. No throttling at 90%.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="proof wrap" data-od-id="proof">
+    <h2>Used by teams at</h2>
+    <div class="logos"><span>Anthropic</span><span>Stripe</span><span>Linear</span><span>Vercel</span><span>Cursor</span></div>
+  </section>
+
+  <section class="pricing wrap" id="pricing" data-od-id="pricing">
+    <h2>Pricing</h2>
+    <p class="lede">Pick a tier. Switch or cancel any time.</p>
+    <div class="tiers">
+      <div class="tier">
+        <h3>Solo</h3>
+        <div class="price">$8<small>/mo</small></div>
+        <p style="color: var(--muted); margin: 0;">For individuals.</p>
+        <ul>
+          <li>1 TB storage</li>
+          <li>Block-level sync</li>
+          <li>Email support</li>
+        </ul>
+        <button class="btn-secondary" style="width: 100%;">Choose Solo</button>
+      </div>
+      <div class="tier featured">
+        <h3>Team</h3>
+        <div class="price">$14<small>/seat/mo</small></div>
+        <p style="color: var(--muted); margin: 0;">For teams up to 50.</p>
+        <ul>
+          <li>5 TB pooled storage</li>
+          <li>Shared folders & roles</li>
+          <li>Priority support</li>
+          <li>Audit log</li>
+        </ul>
+        <button class="btn-primary" style="width: 100%;">Choose Team</button>
+      </div>
+      <div class="tier">
+        <h3>Enterprise</h3>
+        <div class="price">Custom</div>
+        <p style="color: var(--muted); margin: 0;">SSO, on-prem keys, SLA.</p>
+        <ul>
+          <li>Unlimited storage</li>
+          <li>SAML / SCIM</li>
+          <li>Dedicated support</li>
+        </ul>
+        <button class="btn-secondary" style="width: 100%;">Talk to sales</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="closing" data-od-id="closing">
+    <div class="wrap">
+      <h2>Sync less, ship more.</h2>
+      <p>14-day free trial. No credit card needed.</p>
+      <button>Get iPolloWork</button>
+    </div>
+  </section>
+
+  <footer class="wrap" data-od-id="footer">© iPolloWork · Privacy · Terms · Status</footer>
+  <script>
+    (() => {
+      const header = document.querySelector('header[data-od-id="topnav"]');
+      const toggle = header?.querySelector('.mobile-nav-toggle');
+      if (!header || !toggle) return;
+      const setOpen = (open) => {
+        header.dataset.menuOpen = String(open);
+        toggle.setAttribute('aria-expanded', String(open));
+        toggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+      };
+      toggle.addEventListener('click', () => setOpen(header.dataset.menuOpen !== 'true'));
+      header.querySelectorAll('nav a, nav button').forEach((item) => item.addEventListener('click', () => setOpen(false)));
+      document.addEventListener('click', (event) => { if (!header.contains(event.target)) setOpen(false); });
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
+    })();
+  </script>
+</body>
+</html>
