@@ -1,8 +1,9 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import type { WorkspaceConnectionState } from "../../../../app/types";
+import type { iPolloWorkSessionType } from "./session-type";
 
-export type iPolloWorkSessionType = "work" | "design" | "code" | "video";
+export type { iPolloWorkSessionType } from "./session-type";
 export type iPolloWorkTemplateId = string;
 
 export type SidebarContextValue = {

@@ -3,7 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   buildDesignPreviewDocument,
   DESIGN_MESSAGE_CHANNEL,
-  designSelectionStorageKey,
   isLocalHtmlPath,
 } from "../src/react-app/domains/session/design/design-html-runtime";
 
@@ -46,15 +45,23 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('selected.style.width = `${width}px`');
   });
 
+  test("keeps a dormant editor bridge and deck adapter in the same preview document", () => {
+    const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
+    const preview = buildDesignPreviewDocument(source, true, "", false);
+
+    expect(preview).toContain('id="ipollowork-design-runtime"');
+    expect(preview).toContain('id="ipollowork-design-deck-runtime"');
+    expect(preview).toContain('type === "set-editing"');
+    expect(preview).toContain("deck-navigate");
+    expect(preview).toContain('data-ipw-slide');
+    expect(preview).toContain('data-action=\'next\'');
+  });
+
   test("inlines template token CSS into the preview without treating it as user HTML", () => {
     const source = "<!doctype html><html><body><h1>Hello</h1></body></html>";
     const preview = buildDesignPreviewDocument(source, true, ":root { --ipw-color-primary: #123456; }");
     expect(preview).toContain('id="ipollowork-design-template-token-style"');
     expect(preview).toContain("--ipw-color-primary: #123456");
     expect(preview).toContain("document-draft");
-  });
-
-  test("scopes the remembered file to its workspace", () => {
-    expect(designSelectionStorageKey("workspace-a")).not.toBe(designSelectionStorageKey("workspace-b"));
   });
 });

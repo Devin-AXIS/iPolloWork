@@ -26,6 +26,7 @@ import {
   Palette,
   Video,
   UserRound,
+  LayoutTemplate,
 } from "lucide-react";
 import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
@@ -89,6 +90,7 @@ import { Button } from "@/components/ui/button";
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
 import type { SidebarContextValue, iPolloWorkSessionType, iPolloWorkTemplateId } from "./app-sidebar-provider";
+import { readSessionType, subscribeToSessionType } from "./session-type";
 import {
   MAX_SESSIONS_PREVIEW,
   buildSessionTreeState,
@@ -601,6 +603,7 @@ export type AppSidebarProps = {
   };
   onOpenAccount: () => void;
   onOpenSettings: () => void;
+  onOpenTemplateMarket: () => void;
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
@@ -867,6 +870,10 @@ export function AppSidebar(props: AppSidebarProps) {
                       <UserRound className="size-4 text-muted-foreground" />
                       {t("settings.tab_cloud_account")}
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={props.onOpenTemplateMarket}>
+                      <LayoutTemplate className="size-4 text-muted-foreground" />
+                      模板市场
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
@@ -881,6 +888,10 @@ export function AppSidebar(props: AppSidebarProps) {
                     <MoreHorizontal className="size-3.5 text-sidebar-foreground/45" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" side="top" className="w-60">
+                    <DropdownMenuItem onClick={props.onOpenTemplateMarket}>
+                      <LayoutTemplate className="size-4 text-muted-foreground" />
+                      模板市场
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={props.onOpenSettings}>
                       <Settings className="size-4 text-muted-foreground" />
                       {t("status.settings")}
@@ -1644,9 +1655,13 @@ function PinnedIndicator({ isPinned }: { isPinned: boolean }) {
 }
 
 function SessionTypeIcon({ sessionId }: { sessionId: string }) {
-  const type = typeof window === "undefined"
-    ? "work"
-    : window.localStorage.getItem(`ipollowork.session-type.${sessionId}`) ?? "work";
+  const [type, setType] = React.useState(() => readSessionType(sessionId));
+  React.useEffect(() => {
+    setType(readSessionType(sessionId));
+    return subscribeToSessionType((changedSessionId, changedType) => {
+      if (changedSessionId === sessionId) setType(changedType);
+    });
+  }, [sessionId]);
   const Icon = type === "design" ? Palette : type === "code" ? Code2 : type === "video" ? Video : BriefcaseBusiness;
   const label = type[0].toUpperCase() + type.slice(1);
   return <Icon className="size-3 shrink-0 text-muted-foreground/70" aria-label={label} />;

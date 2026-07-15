@@ -3,8 +3,8 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
-import { Code2, Ellipsis, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, Zap } from "lucide-react";
-import type { DesignSessionTemplateState, TemplateCatalogItem, TemplateManifestV1 } from "@ipollowork/types/templates";
+import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, Zap } from "lucide-react";
+import type { TemplateCatalogItem, TemplateManifestV1, TemplateSessionState, TemplateStyle } from "@ipollowork/types/templates";
 
 import { t } from "../../../../i18n";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
@@ -30,6 +30,7 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -43,6 +44,7 @@ import ProviderAuthModal, { type ProviderAuthModalProps } from "../../connection
 import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
+import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
 import { useSessionManagementStore } from "../sidebar/session-management-store";
 import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
 import {
@@ -68,7 +70,7 @@ import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
 import { VideoPanel } from "../video/video-panel";
-import { designSelectionStorageKey, designSessionSelectionStorageKey } from "../design/design-html-runtime";
+import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { SidePanel } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
@@ -84,6 +86,10 @@ const STARTUP_SKELETON_ROWS = [
 ];
 const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowork_voice__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
+
+function videoPanelCollapsedStorageKey(sessionId: string) {
+  return `ipollowork.video-panel-collapsed.${sessionId}`;
+}
 
 export type SessionPageHistoryControls = {
   canUndo: boolean;
@@ -270,19 +276,20 @@ function controlStringArg(args: unknown, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function TemplateCover({ client, workspaceId, template }: { client: iPolloWorkServerClient; workspaceId: string; template: TemplateCatalogItem }) {
+function TemplateCover({ client, workspaceId, template, className, alt = "" }: { client: iPolloWorkServerClient; workspaceId: string; template: TemplateCatalogItem; className?: string; alt?: string }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
     let active = true;
     let objectUrl = "";
+    setSrc("");
     void client.getTemplateCover(workspaceId, template.manifest.id).then(({ data, contentType }) => {
       if (!active) return;
       objectUrl = URL.createObjectURL(new Blob([data], { type: contentType ?? "image/svg+xml" }));
       setSrc(objectUrl);
     }).catch(() => undefined);
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [client, template.manifest.id, workspaceId]);
-  return src ? <img src={src} alt="" className="h-28 w-full object-cover" /> : <div className="h-28 animate-pulse bg-dls-hover" />;
+  }, [client, template.installedVersion, template.manifest.id, template.manifest.version, workspaceId]);
+  return src ? <img src={src} alt={alt} className={cn("h-28 w-full object-cover", className)} /> : <div className={cn("h-28 animate-pulse bg-dls-hover", className)} />;
 }
 
 function DesignStarter({ client, workspaceId, templates, loading, busyId, error, onRefresh, onChoose, onInstall, onUninstall, onImport }: {
@@ -296,17 +303,18 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   onChoose: (templateId: iPolloWorkTemplateId) => void;
   onInstall: (templateId: string) => void;
   onUninstall: (templateId: string) => void;
-  onImport: (file: File) => void;
+  onImport: (file: File, category: TemplateManifestV1["category"]) => void;
 }) {
   const [category, setCategory] = useState<"website" | "slides" | "poster" | null>(null);
   const [pendingImport, setPendingImport] = useState<File | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<TemplateCatalogItem | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const categories = [
     { id: "website" as const, label: "网站", detail: "落地页、产品页、个人主页", Icon: Globe },
     { id: "slides" as const, label: "幻灯片", detail: "演示、提案和报告", Icon: Presentation },
     { id: "poster" as const, label: "宣传海报", detail: "社媒图和活动视觉", Icon: Image },
   ];
-  return (
+  return (<>
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12">
       <div className="w-full max-w-3xl">
         <div className="mb-7 text-center"><div className="mx-auto mb-3 grid size-11 place-items-center rounded-2xl bg-primary/10 text-primary"><Palette className="size-5" /></div><h2 className="text-lg font-semibold">开始设计</h2><p className="mt-1 text-sm text-dls-secondary">先选择类别，再选择一个模板。</p></div>
@@ -319,13 +327,14 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
           const visible = templates.filter((item) => item.manifest.category === serverCategory);
           return <div>
             <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><button type="button" onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text"><Upload className="size-3" />导入 .ipwt</button><input ref={importRef} type="file" accept=".ipwt,application/zip" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
-            {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB · 本地模板将标记为未验证</div></div><button type="button" onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text">取消</button><button type="button" onClick={() => { onImport(pendingImport); setPendingImport(null); }} className="h-7 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground">安装</button></div> : null}
-            {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><TemplateCover client={client} workspaceId={workspaceId} template={item} /><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2 text-sm font-semibold">{item.manifest.title}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">Local</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">更新</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">卸载</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">更新</button> : null}</div></details></div><button type="button" disabled={busyId === item.manifest.id} onClick={() => item.installed ? onChoose(item.manifest.id) : onInstall(item.manifest.id)} className="mt-4 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.installed ? "使用模板" : "安装"}</button></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">这个分类还没有模板</p><p className="mt-1 text-xs text-dls-secondary">可导入标准 .ipwt 模板包。</p></div>}
+            {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB · 类型：{categories.find((item) => item.id === category)?.label}</div></div><button type="button" onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text">取消</button><button type="button" onClick={() => { onImport(pendingImport, serverCategory); setPendingImport(null); }} className="h-7 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground">安装</button></div> : null}
+            {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><button type="button" className="block w-full text-left" onClick={() => setPreviewTemplate(item)} aria-label={`预览 ${item.manifest.title}`}><TemplateCover client={client} workspaceId={workspaceId} template={item} alt={`${item.manifest.title} 模板封面`} /></button><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2 text-sm font-semibold">{item.manifest.title}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">Local</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">更新</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">卸载</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">更新</button> : null}</div></details></div><div className="mt-4 flex items-center gap-2"><button type="button" onClick={() => setPreviewTemplate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dls-border px-3 text-xs font-medium text-dls-text transition hover:bg-dls-hover"><Eye className="size-3.5" />预览</button><button type="button" disabled={busyId === item.manifest.id} onClick={() => item.updateAvailable || !item.installed ? onInstall(item.manifest.id) : onChoose(item.manifest.id)} className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.updateAvailable ? "更新" : item.installed ? "使用模板" : "安装"}</button></div></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">这个分类还没有模板</p><p className="mt-1 text-xs text-dls-secondary">可导入标准 .ipwt 模板包。</p></div>}
           </div>;
         })()}
       </div>
     </div>
-  );
+    <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}><DialogContent className="max-w-5xl gap-0 overflow-hidden p-0 sm:max-w-5xl">{previewTemplate ? <><div className="aspect-video overflow-hidden bg-dls-hover"><TemplateCover client={client} workspaceId={workspaceId} template={previewTemplate} className="h-full" alt={`${previewTemplate.manifest.title} 模板预览`} /></div><div className="flex flex-col gap-4 border-t border-dls-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle><DialogDescription className="mt-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-dls-secondary">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>返回</Button><Button size="sm" className="rounded-xl" disabled={busyId === previewTemplate.manifest.id} onClick={() => previewTemplate.updateAvailable || !previewTemplate.installed ? onInstall(previewTemplate.manifest.id) : onChoose(previewTemplate.manifest.id)}>{busyId === previewTemplate.manifest.id ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? "更新模板" : previewTemplate.installed ? "使用模板" : "安装模板"}</Button></div></div></> : null}</DialogContent></Dialog>
+  </>);
 }
 
 const DESIGN_THEME_PRESETS = [
@@ -384,15 +393,28 @@ export function SessionPage(props: SessionPageProps) {
   const [templateCatalogLoading, setTemplateCatalogLoading] = useState(false);
   const [templateCatalogError, setTemplateCatalogError] = useState<string | null>(null);
   const [templateBusyId, setTemplateBusyId] = useState<string | null>(null);
-  const [designTemplateData, setDesignTemplateData] = useState<{ state: DesignSessionTemplateState; manifest: TemplateManifestV1; hasBrief: boolean } | null>(null);
-  const selectedSessionType = props.selectedSessionId && typeof window !== "undefined"
-    ? window.localStorage.getItem(`ipollowork.session-type.${props.selectedSessionId}`)
-    : null;
+  const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
+  const [designTemplateData, setDesignTemplateData] = useState<{ state: TemplateSessionState; manifest: TemplateManifestV1; hasBrief: boolean } | null>(null);
+  const [sessionTypeRevision, setSessionTypeRevision] = useState(0);
+  const [videoPanelVisibilityRevision, setVideoPanelVisibilityRevision] = useState(0);
+  const selectedSessionType = useMemo(() => (
+    props.selectedSessionId && typeof window !== "undefined"
+      ? readSessionType(props.selectedSessionId)
+      : null
+  ), [props.selectedSessionId, sessionTypeRevision]);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
+  const isVideoPanelCollapsed = useMemo(() => (
+    Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(videoPanelCollapsedStorageKey(props.selectedSessionId)) === "true")
+  ), [props.selectedSessionId, videoPanelVisibilityRevision]);
   const hasDesignTemplate = Boolean(designTemplateData);
   const hasDesignBrief = designTemplateData?.hasBrief === true;
   const selectedDesignTemplate = designTemplateData?.manifest ?? null;
+  const activateVideoStudio = useCallback(() => {
+    // Video creation always begins with a selected video template. This keeps
+    // the right studio and the agent on the same canonical session snapshot.
+    setTemplateMarketOpen(true);
+  }, []);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateCatalogLoading(true);
@@ -401,28 +423,30 @@ export function SessionPage(props: SessionPageProps) {
     catch (error) { setTemplateCatalogError(error instanceof Error ? error.message : "无法读取模板"); }
     finally { setTemplateCatalogLoading(false); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
+  const getTemplateCover = useCallback((templateId: string) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
+      return Promise.reject(new Error("Template cover is unavailable."));
+    }
+    return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   useEffect(() => {
-    if (!isDesignSession || !props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) { setDesignTemplateData(null); return; }
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) { setDesignTemplateData(null); return; }
     let active = true;
     const client = props.ipolloworkServerClient;
     const workspaceId = props.runtimeWorkspaceId;
     const sessionId = props.selectedSessionId;
     void (async () => {
       try {
-        let result;
-        try { result = await client.getDesignSessionTemplate(workspaceId, sessionId); }
-        catch {
-          const legacyId = window.localStorage.getItem(`ipollowork.session-template.${sessionId}`);
-          const templateId = legacyId === "open-design-saas-landing" ? "ipollowork.saas-landing" : legacyId === "open-design-pitch-deck" ? "ipollowork.pitch-deck" : "";
-          const entry = window.localStorage.getItem(`ipollowork.session-design-path.${sessionId}`) ?? "";
-          if (!templateId || !entry) throw new Error("no-template");
-          let brief: unknown = undefined;
-          const legacyBrief = window.localStorage.getItem(`ipollowork.session-design-brief.${sessionId}`);
-          if (legacyBrief) try { brief = JSON.parse(legacyBrief); } catch { brief = undefined; }
-          result = await client.adoptDesignSession(workspaceId, sessionId, { templateId, entry, brief });
-          window.localStorage.removeItem(`ipollowork.session-template.${sessionId}`);
-          window.localStorage.removeItem(`ipollowork.session-design-path.${sessionId}`);
-          window.localStorage.removeItem(`ipollowork.session-design-brief.${sessionId}`);
+        const result = await client.getTemplateSession(workspaceId, sessionId);
+        const materializedType = sessionTypeForTemplate(result.manifest);
+        if (materializedType !== selectedSessionType) {
+          setSessionType(sessionId, materializedType);
+          setSessionTypeRevision((value) => value + 1);
+          if (materializedType === "video") setVideoPanelVisibilityRevision((value) => value + 1);
+        }
+        if (materializedType !== "design") {
+          if (active) setDesignTemplateData(null);
+          return;
         }
         let hasBrief = false;
         try { const brief = JSON.parse((await client.readWorkspaceFile(workspaceId, result.state.briefPath)).content); hasBrief = Boolean(brief && typeof brief === "object" && Object.keys(brief).length); } catch { hasBrief = false; }
@@ -431,14 +455,15 @@ export function SessionPage(props: SessionPageProps) {
     })();
     void refreshTemplateCatalog();
     return () => { active = false; };
-  }, [designTemplateRevision, isDesignSession, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog]);
+  }, [designTemplateRevision, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog, selectedSessionType]);
   const chooseDesignTemplate = useCallback(async (templateId: iPolloWorkTemplateId) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     try {
       setTemplateBusyId(templateId);
       const result = await props.ipolloworkServerClient.materializeTemplate(props.runtimeWorkspaceId, templateId, props.selectedSessionId);
-      window.localStorage.setItem(designSessionSelectionStorageKey(props.runtimeWorkspaceId, props.selectedSessionId), result.state.entry);
+      setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
       setDesignTemplateData({ ...result, hasBrief: false });
+      setSessionTypeRevision((value) => value + 1);
       setDesignTemplateRevision((value) => value + 1);
       setSidePanelState(props.selectedSessionId, "design");
     } catch (error) {
@@ -460,13 +485,31 @@ export function SessionPage(props: SessionPageProps) {
     catch (error) { toast.error(error instanceof Error ? error.message : "卸载模板失败"); }
     finally { setTemplateBusyId(null); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
-  const importDesignTemplate = useCallback(async (file: File) => {
+  const importDesignTemplate = useCallback(async (file: File, category: TemplateManifestV1["category"]) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateBusyId("import");
-    try { const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file); toast.success(`已安装 ${result.item.manifest.title}`); await refreshTemplateCatalog(); }
+    try { const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file, category); toast.success(`已安装 ${result.item.manifest.title}`); await refreshTemplateCatalog(); }
     catch (error) { toast.error(error instanceof Error ? error.message : "模板包无效"); }
     finally { setTemplateBusyId(null); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
+  const saveCurrentAsTemplate = useCallback(async (input: { title: string; category: TemplateManifestV1["category"]; style: TemplateStyle }) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
+    try {
+      setTemplateBusyId("save");
+      const result = await props.ipolloworkServerClient.saveTemplateFromSession(props.runtimeWorkspaceId, {
+        sessionId: props.selectedSessionId,
+        category: input.category,
+        title: input.title,
+        style: input.style,
+      });
+      toast.success(`已保存 ${result.item.manifest.title}`);
+      await refreshTemplateCatalog();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存模板失败");
+    } finally {
+      setTemplateBusyId(null);
+    }
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog]);
   const submitDesignBrief = useCallback(async (brief: { name: string; purpose: string; features: string; color: string }) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     const template = designTemplateData?.manifest;
@@ -510,13 +553,13 @@ export function SessionPage(props: SessionPageProps) {
     if (!props.selectedSessionId) return;
     if (isVideoSession) {
       setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
-      if (activeSidePanel !== "video") setSidePanelState(props.selectedSessionId, "video");
+      if (!isVideoPanelCollapsed && activeSidePanel !== "video") setSidePanelState(props.selectedSessionId, "video");
       return;
     }
     if (isDesignSession && (activeSidePanel === "video" || activeSidePanel === "panel")) {
       setSidePanelState(props.selectedSessionId, "design");
     }
-  }, [activeSidePanel, isDesignSession, isVideoSession, props.selectedSessionId, setSidePanelState]);
+  }, [activeSidePanel, isDesignSession, isVideoPanelCollapsed, isVideoSession, props.selectedSessionId, setSidePanelState]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
@@ -684,8 +727,12 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel("panel");
   }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel]);
   const closeRightPane = useCallback(() => {
+    if (isVideoSession && props.selectedSessionId && typeof window !== "undefined") {
+      window.localStorage.setItem(videoPanelCollapsedStorageKey(props.selectedSessionId), "true");
+      setVideoPanelVisibilityRevision((value) => value + 1);
+    }
     setCurrentSidePanel(null);
-  }, [setCurrentSidePanel]);
+  }, [isVideoSession, props.selectedSessionId, setCurrentSidePanel]);
   const openBrowserRailPane = useCallback(() => {
     // Opening the browser pane should land on a usable page, not an empty
     // panel that forces the user to click "+". If no browser tab exists yet,
@@ -712,21 +759,33 @@ export function SessionPage(props: SessionPageProps) {
       openBrowserRailPane();
       return;
     }
+    if (lastOpenedRightPanelRef.current === "video" && props.selectedSessionId && typeof window !== "undefined") {
+      window.localStorage.removeItem(videoPanelCollapsedStorageKey(props.selectedSessionId));
+      setVideoPanelVisibilityRevision((value) => value + 1);
+    }
     setCurrentSidePanel(lastOpenedRightPanelRef.current);
-  }, [closeRightPane, openBrowserRailPane, setCurrentSidePanel, sidePanelOpen]);
+  }, [closeRightPane, openBrowserRailPane, props.selectedSessionId, setCurrentSidePanel, sidePanelOpen]);
   const openDesignRailPane = useCallback(() => {
     toggleCurrentSidePanel("design");
   }, [toggleCurrentSidePanel]);
   const openVideoRailPane = useCallback(() => {
-    toggleCurrentSidePanel("video");
-  }, [toggleCurrentSidePanel]);
+    if (videoRailActive) {
+      closeRightPane();
+      return;
+    }
+    if (props.selectedSessionId && typeof window !== "undefined") {
+      window.localStorage.removeItem(videoPanelCollapsedStorageKey(props.selectedSessionId));
+      setVideoPanelVisibilityRevision((value) => value + 1);
+    }
+    setCurrentSidePanel("video");
+  }, [closeRightPane, props.selectedSessionId, setCurrentSidePanel, videoRailActive]);
   const seedDesignHtmlControlAction = useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
 
     return {
       id: "eval.design.seed_html",
       label: "Seed a local HTML design",
-      description: "Create and open a deterministic local HTML artifact in the Design space.",
+      description: "Materialize a deterministic local website template in the Design space.",
       sideEffect: "mutation",
       disabled: !props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
       execute: async () => {
@@ -734,7 +793,13 @@ export function SessionPage(props: SessionPageProps) {
           return { ok: false, error: "Workspace client is not ready." };
         }
 
-        const path = "design-demo.html";
+        await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, "ipollowork.saas-landing");
+        const materialized = await props.ipolloworkServerClient.materializeTemplate(
+          props.runtimeWorkspaceId,
+          "ipollowork.saas-landing",
+          props.selectedSessionId,
+        );
+        const path = materialized.state.entry;
         const content = `<!doctype html>
 <html lang="en">
   <head>
@@ -760,36 +825,108 @@ export function SessionPage(props: SessionPageProps) {
   </body>
 </html>`;
         const existing = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path).catch(() => null);
-        const result = await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
+        await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
           path,
           content,
           baseUpdatedAt: existing?.updatedAt ?? null,
         });
-        const target: OpenTarget = {
-          id: `file:${path}`,
-          kind: "file",
-          value: path,
-          name: path,
-          preview: "html",
-          confidence: 100,
-          reason: "eval",
-          exists: true,
-          size: content.length,
-          updatedAt: result.updatedAt,
-        };
-        const store = usePanelTabStore.getState();
-        const current = store.transcriptArtifactTargets[props.selectedSessionId] ?? [];
-        store.syncTranscriptArtifacts(
+        setSessionType(props.selectedSessionId, sessionTypeForTemplate(materialized.manifest));
+        setDesignTemplateData({ ...materialized, hasBrief: false });
+        setSessionTypeRevision((value) => value + 1);
+        setDesignTemplateRevision((value) => value + 1);
+        setCurrentSidePanel("design");
+        return { ok: true, path };
+      },
+    };
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, setCurrentSidePanel]);
+  const seedDesignDeckControlAction = useMemo<iPolloWorkControlAction | null>(() => {
+    if (!import.meta.env.DEV) return null;
+
+    return {
+      id: "eval.design.seed_deck",
+      label: "Seed a local slide deck",
+      description: "Materialize a deterministic local slide template in the Design space.",
+      sideEffect: "mutation",
+      disabled: !props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
+      execute: async () => {
+        if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) {
+          return { ok: false, error: "Workspace client is not ready." };
+        }
+
+        // The runtime always opens the current session's materialized template.
+        // Keep the visual fixture on that same production path rather than
+        // creating a workspace-global HTML file that users cannot select.
+        await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, "ipollowork.pitch-deck");
+        const materialized = await props.ipolloworkServerClient.materializeTemplate(
+          props.runtimeWorkspaceId,
+          "ipollowork.pitch-deck",
           props.selectedSessionId,
-          [...current.filter((entry) => entry.id !== target.id), target],
         );
-        window.localStorage.setItem(designSelectionStorageKey(props.runtimeWorkspaceId), path);
+        const path = materialized.state.entry;
+        const content = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iPolloWork Slide Editing Demo</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #111827; color: #f8fafc; }
+      main { width: min(760px, calc(100% - 48px)); }
+      .slide { display: none; min-height: 390px; padding: 52px; border-radius: 28px; background: linear-gradient(135deg, #312e81, #0f172a); box-sizing: border-box; }
+      .slide.is-active { display: block; }
+      .eyebrow { color: #c4b5fd; font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+      h1 { max-width: 620px; margin: 72px 0 16px; font-size: 54px; line-height: 1.02; letter-spacing: -.04em; }
+      p { max-width: 560px; color: #cbd5e1; font-size: 19px; line-height: 1.6; }
+      .deck-controls { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 16px; }
+      .counter { margin-right: auto; color: #94a3b8; font-size: 13px; }
+      button { width: 38px; height: 34px; border: 0; border-radius: 10px; background: #f8fafc; color: #111827; font-size: 18px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="slide is-active" data-title="Cover"><p class="eyebrow">01 / 03</p><h1>Native slide controls stay usable.</h1><p>Open edit mode without losing the current page.</p></section>
+      <section class="slide" data-title="Edit second slide"><p class="eyebrow">02 / 03</p><h1>Edit this second slide directly.</h1><p>Continue to the next page without closing the editor.</p></section>
+      <section class="slide" data-title="Finish"><p class="eyebrow">03 / 03</p><h1>Keep refining every page.</h1><p>One deck, one visual editing flow.</p></section>
+      <div class="deck-controls"><span class="counter">1 / 3</span><button type="button" data-action="prev" aria-label="Previous slide">←</button><button type="button" data-action="next" aria-label="Next slide">→</button></div>
+    </main>
+    <script>
+      (() => {
+        const slides = [...document.querySelectorAll('.slide')];
+        const counter = document.querySelector('.counter');
+        let index = 0;
+        const show = (next) => {
+          index = (next + slides.length) % slides.length;
+          slides.forEach((slide, slideIndex) => {
+            slide.classList.toggle('is-active', slideIndex === index);
+            slide.setAttribute('aria-hidden', String(slideIndex !== index));
+          });
+          counter.textContent = \`\${index + 1} / \${slides.length}\`;
+          history.replaceState(null, '', \`#\${index + 1}\`);
+        };
+        document.querySelector('[data-action="prev"]').addEventListener('click', () => show(index - 1));
+        document.querySelector('[data-action="next"]').addEventListener('click', () => show(index + 1));
+        show(0);
+      })();
+    </script>
+  </body>
+</html>`;
+        const existing = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path).catch(() => null);
+        await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
+          path,
+          content,
+          baseUpdatedAt: existing?.updatedAt ?? null,
+        });
+        setSessionType(props.selectedSessionId, sessionTypeForTemplate(materialized.manifest));
+        setDesignTemplateData({ ...materialized, hasBrief: false });
+        setSessionTypeRevision((value) => value + 1);
+        setDesignTemplateRevision((value) => value + 1);
         setCurrentSidePanel("design");
         return { ok: true, path };
       },
     };
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, setCurrentSidePanel]);
   useControlAction(seedDesignHtmlControlAction);
+  useControlAction(seedDesignDeckControlAction);
   const openBrowserUrlControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.open_url",
     label: "Open URL in built-in browser",
@@ -1116,6 +1253,7 @@ export function SessionPage(props: SessionPageProps) {
           }}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
+          onOpenTemplateMarket={() => setTemplateMarketOpen(true)}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch}
           onReorderWorkspaces={props.sidebar.onReorderWorkspaces}
@@ -1302,7 +1440,7 @@ export function SessionPage(props: SessionPageProps) {
                           onChoose={(templateId) => void chooseDesignTemplate(templateId)}
                           onInstall={(templateId) => void installDesignTemplate(templateId)}
                           onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
-                          onImport={(file) => void importDesignTemplate(file)}
+                          onImport={(file, category) => void importDesignTemplate(file, category)}
                         />
                       ) : isDesignSession && !hasDesignBrief ? (
                         selectedDesignTemplate ? <DesignBriefCard template={selectedDesignTemplate} onSubmit={(brief) => void submitDesignBrief(brief)} /> : null
@@ -1330,6 +1468,7 @@ export function SessionPage(props: SessionPageProps) {
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type, templateId)}
+                        onActivateVideoStudio={activateVideoStudio}
                         designTemplates={templateCatalog}
                         designTemplatesLoading={templateCatalogLoading}
                         designTemplateBusyId={templateBusyId}
@@ -1535,7 +1674,6 @@ export function SessionPage(props: SessionPageProps) {
                       sessionId={props.selectedSessionId}
                       client={props.ipolloworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
-                      targets={transcriptTargets}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
                       onClose={closeRightPane}
                     />
@@ -1662,6 +1800,32 @@ export function SessionPage(props: SessionPageProps) {
           </div>
         </SidebarInset>
       </SidebarProvider>
+
+      {props.ipolloworkServerClient && props.runtimeWorkspaceId ? <TemplateMarketDialog
+        open={templateMarketOpen}
+        onOpenChange={setTemplateMarketOpen}
+        templates={templateCatalog}
+        loading={templateCatalogLoading}
+        error={templateCatalogError}
+        busyId={templateBusyId}
+        getCover={getTemplateCover}
+        canSaveCurrent={Boolean(props.selectedSessionId && (isDesignSession || isVideoSession))}
+        currentSurface={isVideoSession ? "video" : isDesignSession ? "design" : null}
+        currentCategory={isVideoSession ? "video" : selectedDesignTemplate?.category ?? "site"}
+        onRefresh={refreshTemplateCatalog}
+        onInstall={(templateId) => void installDesignTemplate(templateId)}
+        onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
+        onImport={(file, category) => void importDesignTemplate(file, category)}
+        onSaveCurrent={(input) => void saveCurrentAsTemplate(input)}
+        onUse={(template) => {
+          if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {
+            toast.error("视频模板仅支持本地工作站。");
+            return;
+          }
+          setTemplateMarketOpen(false);
+          props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, sessionTypeForTemplate(template.manifest), template.manifest.id);
+        }}
+      /> : null}
 
       {props.providerAuthModal ? <ProviderAuthModal {...props.providerAuthModal} /> : null}
 

@@ -161,7 +161,7 @@ declare global {
         onExit?: (callback: (payload: { terminalId: string; exitCode: number | null; signal?: number }) => void) => () => void;
       };
       hyperframes?: {
-        setSimpleMode?: (enabled: boolean) => Promise<{ ok: boolean; reason?: string; sidebarToggled?: boolean; inspectorEnabled?: boolean }>;
+        setSimpleMode?: (enabled: boolean) => Promise<{ ok: boolean; reason?: string; chromeClean?: boolean; sidebarToggled?: boolean; inspectorEnabled?: boolean }>;
       };
       meta?: {
         initialDeepLinks?: string[];
