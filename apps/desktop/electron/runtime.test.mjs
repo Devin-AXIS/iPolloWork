@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   commandMatchesPackagedSidecar,
+  devModeHomeDirectoryPaths,
   embeddedServerImportUrl,
   prioritizeWorkspacePaths,
   resolveiPolloWorkServerConfigPath,
@@ -129,9 +130,10 @@ describe("embeddedServerImportUrl", () => {
 
 describe("resolveiPolloWorkServerConfigPath", () => {
   it("respects explicit server config path", () => {
+    const explicitPath = path.join(os.tmpdir(), "ipollowork", "server.json");
     assert.equal(
-      resolveiPolloWorkServerConfigPath({ IPOLLOWORK_SERVER_CONFIG: "/tmp/ipollowork/server.json" }),
-      "/tmp/ipollowork/server.json",
+      resolveiPolloWorkServerConfigPath({ IPOLLOWORK_SERVER_CONFIG: explicitPath }),
+      path.resolve(explicitPath),
     );
   });
 
@@ -140,6 +142,19 @@ describe("resolveiPolloWorkServerConfigPath", () => {
     assert.equal(
       resolveiPolloWorkServerConfigPath({ XDG_CONFIG_HOME: "/tmp/xdg" }),
       "/tmp/xdg/ipollowork/server.json",
+    );
+  });
+});
+
+describe("devModeHomeDirectoryPaths", () => {
+  it("includes common shell folders for Windows file pickers", () => {
+    assert.deepEqual(
+      devModeHomeDirectoryPaths(path.join("tmp", "home")),
+      [
+        path.join("tmp", "home", "Desktop"),
+        path.join("tmp", "home", "Downloads"),
+        path.join("tmp", "home", "Documents"),
+      ],
     );
   });
 });

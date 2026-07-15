@@ -41,6 +41,9 @@
                 "pages": [
                   "start-here/do-work-with-it/control-the-browser",
                   "start-here/do-work-with-it/import-a-skill",
+                  "start-here/do-work-with-it/build-a-template",
+                  "start-here/do-work-with-it/media-center",
+                  "start-here/do-work-with-it/storage-center",
                   "start-here/do-work-with-it/cross-chat-memory",
                   "start-here/do-work-with-it/workflows",
                   "start-here/do-work-with-it/share-your-setup"
@@ -133,7 +136,10 @@
               {
                 "group": "用 iPolloWork 完成工作",
                 "pages": [
-                  "zh/start-here/do-work-with-it/control-the-browser"
+                  "zh/start-here/do-work-with-it/control-the-browser",
+                  "zh/start-here/do-work-with-it/build-a-template",
+                  "zh/start-here/do-work-with-it/media-center",
+                  "zh/start-here/do-work-with-it/storage-center"
                 ]
               },
               {

@@ -373,7 +373,7 @@ export function CloudSkillsSection({
   const [searchQuery, setSearchQuery] = React.useState("");
   const visibleRows = useSearch({ items: rows, keys: skillSearchKeys, query: searchQuery });
   const skillGroups = [
-    { value: "available", label: "Available", rows: visibleRows.filter((row) => row.status === "available") },
+    { value: "available", label: t("settings.cloud.available"), rows: visibleRows.filter((row) => row.status === "available") },
     { value: "out_of_sync", label: t("den.out_of_sync_badge"), rows: visibleRows.filter((row) => row.status === "out_of_sync") },
     { value: "installed", label: t("skills.cloud_status_installed"), rows: visibleRows.filter((row) => row.status === "installed") },
     { value: "removed_from_cloud", label: t("den.removed_from_cloud_badge"), rows: visibleRows.filter((row) => row.status === "removed_from_cloud") },
@@ -413,14 +413,14 @@ export function CloudSkillsSection({
         <>
           <Field>
             <FieldLabel className="sr-only" htmlFor="cloud-skill-search">
-              Search
+              {t("settings.cloud.search")}
             </FieldLabel>
             <SettingsListSearchInput
               id="cloud-skill-search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.currentTarget.value)}
             />
-            <FieldDescription className="sr-only">Search for a skill.</FieldDescription>
+            <FieldDescription className="sr-only">{t("settings.cloud.search_skill")}</FieldDescription>
           </Field>
 
           {visibleRows.length > 0 ? (
@@ -450,7 +450,7 @@ export function CloudSkillsSection({
               ))}
             </Accordion>
           ) : (
-            <SettingsListEmptyState>No skills match your search.</SettingsListEmptyState>
+            <SettingsListEmptyState>{t("settings.cloud.no_skills_match")}</SettingsListEmptyState>
           )}
         </>
       ) : null}
@@ -490,7 +490,7 @@ export function MarketplacePluginsSection({
   const selectedRows = selectedMarketplace ? rowsByMarketplace[selectedMarketplace.marketplace.id] ?? [] : [];
   const visibleRows = useSearch({ items: selectedRows, keys: pluginSearchKeys, query: searchQuery });
   const pluginGroups = [
-    { value: "available", label: "Available", rows: visibleRows.filter((row) => row.status === "available") },
+    { value: "available", label: t("settings.cloud.available"), rows: visibleRows.filter((row) => row.status === "available") },
     { value: "out_of_sync", label: t("den.out_of_sync_badge"), rows: visibleRows.filter((row) => row.status === "out_of_sync") },
     { value: "imported", label: t("den.imported_badge"), rows: visibleRows.filter((row) => row.status === "imported") },
   ].filter((group) => group.rows.length > 0);
@@ -500,10 +500,10 @@ export function MarketplacePluginsSection({
       <SettingsSectionHeader>
         <SettingsSectionHeaderContent>
           <SettingsSectionHeaderTitle>
-            Marketplaces & Plugins
+            {t("settings.cloud.marketplaces_title")}
           </SettingsSectionHeaderTitle>
           <SettingsSectionHeaderDescription>
-            Browse organization marketplaces and import plugin files into this workspace.
+            {t("settings.cloud.marketplaces_description")}
           </SettingsSectionHeaderDescription>
         </SettingsSectionHeaderContent>
         <SettingsSectionHeaderActions>
@@ -523,7 +523,7 @@ export function MarketplacePluginsSection({
 
       {!busy && marketplaces.length === 0 ? (
         <SettingsListEmptyState>
-          {hasActiveOrg ? "No marketplaces are available yet." : "Choose an organization to view marketplaces."}
+          {hasActiveOrg ? t("settings.cloud.no_marketplaces") : t("settings.cloud.choose_org_for_marketplaces")}
         </SettingsListEmptyState>
       ) : null}
 
@@ -547,14 +547,14 @@ export function MarketplacePluginsSection({
 
           <Field>
             <FieldLabel className="sr-only" htmlFor="marketplace-plugin-search">
-              Search
+              {t("settings.cloud.search")}
             </FieldLabel>
             <SettingsListSearchInput
               id="marketplace-plugin-search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.currentTarget.value)}
             />
-            <FieldDescription className="sr-only">Search for a plugin.</FieldDescription>
+            <FieldDescription className="sr-only">{t("settings.cloud.search_plugin")}</FieldDescription>
           </Field>
 
           <TabsContent value={selectedMarketplace?.marketplace.id}>
@@ -584,11 +584,11 @@ export function MarketplacePluginsSection({
             ) : null}
 
             {selectedRows.length > 0 && visibleRows.length === 0 ? (
-              <SettingsListEmptyState>No plugins match your search.</SettingsListEmptyState>
+              <SettingsListEmptyState>{t("settings.cloud.no_plugins_match")}</SettingsListEmptyState>
             ) : null}
 
             {selectedMarketplace && selectedRows.length === 0 ? (
-              <SettingsListEmptyState>This marketplace does not have plugins yet.</SettingsListEmptyState>
+              <SettingsListEmptyState>{t("settings.cloud.marketplace_empty")}</SettingsListEmptyState>
             ) : null}
           </TabsContent>
         </Tabs>
@@ -624,7 +624,7 @@ export function CloudProvidersSection({
   const [searchQuery, setSearchQuery] = React.useState("");
   const visibleRows = useSearch({ items: rows, keys: nameSearchKeys, query: searchQuery });
   const providerGroups = [
-    { value: "available", label: "Available", rows: visibleRows.filter((row) => row.status === "available") },
+    { value: "available", label: t("settings.cloud.available"), rows: visibleRows.filter((row) => row.status === "available") },
     { value: "out_of_sync", label: t("den.out_of_sync_badge"), rows: visibleRows.filter((row) => row.status === "out_of_sync") },
     { value: "imported", label: t("den.imported_badge"), rows: visibleRows.filter((row) => row.status === "imported") },
     { value: "removed_from_cloud", label: t("den.removed_from_cloud_badge"), rows: visibleRows.filter((row) => row.status === "removed_from_cloud") },
@@ -662,14 +662,14 @@ export function CloudProvidersSection({
         <>
           <Field>
             <FieldLabel className="sr-only" htmlFor="cloud-provider-search">
-              Search
+              {t("settings.cloud.search")}
             </FieldLabel>
             <SettingsListSearchInput
               id="cloud-provider-search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.currentTarget.value)}
             />
-            <FieldDescription className="sr-only">Search for a provider.</FieldDescription>
+            <FieldDescription className="sr-only">{t("settings.cloud.search_provider")}</FieldDescription>
           </Field>
 
           {visibleRows.length > 0 ? (
@@ -699,7 +699,7 @@ export function CloudProvidersSection({
               ))}
             </Accordion>
           ) : (
-            <SettingsListEmptyState>No providers match your search.</SettingsListEmptyState>
+            <SettingsListEmptyState>{t("settings.cloud.no_providers_match")}</SettingsListEmptyState>
           )}
         </>
       ) : null}

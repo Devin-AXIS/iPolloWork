@@ -1,4 +1,7 @@
-import type { iPolloWorkServerClient } from "../../../../app/lib/ipollowork-server";
+import type {
+  iPolloWorkAuthorizationService,
+  iPolloWorkServerClient,
+} from "../../../../app/lib/ipollowork-server";
 import { readiPolloWorkEnvPendingChanges } from "../../../../app/lib/ipollowork-env-runtime";
 
 const DEFAULT_CACHE_KEY = "__ipollowork_env_default__";
@@ -21,6 +24,32 @@ function normalizeEnvKeys(keys: string[]): string[] {
   ).sort((a, b) => a.localeCompare(b));
 }
 
+function configuredAuthorizationServices(
+  services: iPolloWorkAuthorizationService[],
+): iPolloWorkAuthorizationService[] {
+  return services.filter((service) =>
+    service.configured &&
+    service.fields.every((field) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(field.key)) &&
+    Boolean(service.agent?.capability?.trim()) &&
+    Boolean(service.agent?.useWhen?.trim()) &&
+    Boolean(service.agent?.instruction?.trim()),
+  );
+}
+
+function buildAuthorizationAgentContext(services: iPolloWorkAuthorizationService[]): string | undefined {
+  const configured = configuredAuthorizationServices(services);
+  if (configured.length === 0) return undefined;
+
+  return [
+    "iPolloWork global AI services already authorized for this runtime:",
+    ...configured.flatMap((service) => [
+      `- ${service.agent.capability} (${service.fields.map((field) => field.key).join(", ")}): ${service.agent.useWhen}`,
+      `  ${service.agent.instruction}`,
+    ]),
+    "The credentials are available only as runtime environment variables. Never ask for, read, reveal, copy, or put their values in client-side code, URLs, generated files, or chat output.",
+  ].join("\n");
+}
+
 export async function buildiPolloWorkEnvSystemContext(
   client: iPolloWorkServerClient | null,
   options: {
@@ -40,20 +69,30 @@ export async function buildiPolloWorkEnvSystemContext(
   }
 
   try {
-    const response = await client.listUserEnvKeys();
-    const keys = normalizeEnvKeys(response.keys ?? []);
-    if (keys.length === 0) {
+    // The generic key inventory and curated authorization catalog are both
+    // intentionally secret-free. Together they let every agent select an
+    // already configured service without receiving a credential value.
+    const [envResponse, authorizationResponse] = await Promise.all([
+      client.listUserEnvKeys(),
+      client.listAuthorizationServices(),
+    ]);
+    const keys = normalizeEnvKeys(envResponse.keys ?? []);
+    const authorizationContext = buildAuthorizationAgentContext(authorizationResponse.items ?? []);
+    if (keys.length === 0 && !authorizationContext) {
       rememberEnvSystemContext(cacheKey, undefined);
       return undefined;
     }
 
-    const keyList = keys.map((key) => `- ${key}`).join("\n");
-
     const context = [
-      "iPolloWork environment variables configured:",
-      keyList,
-      "Only names are shown; values are secret. Use these names when relevant.",
-    ].join("\n");
+      authorizationContext,
+      keys.length > 0
+        ? [
+            "iPolloWork environment variables configured:",
+            keys.map((key) => `- ${key}`).join("\n"),
+            "Only names are shown; values are secret. Use these names when relevant.",
+          ].join("\n")
+        : undefined,
+    ].filter((value): value is string => Boolean(value)).join("\n\n");
     rememberEnvSystemContext(cacheKey, context);
     return context;
   } catch {

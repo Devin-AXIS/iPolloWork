@@ -190,6 +190,7 @@ export const SETTINGS_TAB_VALUES = [
   "skills",
   "memory",
   "extensions",
+  "authorizations",
   "environment",
   "advanced",
   "appearance",

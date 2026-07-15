@@ -1,10 +1,11 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,16 +19,14 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
-import type { OpenTarget } from "../artifacts/open-target";
 import {
   buildDesignPreviewDocument,
   DESIGN_MESSAGE_CHANNEL,
   DESIGN_STYLE_FIELDS,
-  designSelectionStorageKey,
-  designSessionSelectionStorageKey,
   isLocalHtmlPath,
   resolveDesignNavigationPath,
   type DesignField,
+  type DesignDeckState,
   type DesignRuntimeMessage,
   type DesignSelection,
   type DesignStyleField,
@@ -38,7 +37,6 @@ type DesignPanelProps = {
   sessionId: string;
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
-  targets: OpenTarget[];
   isRemoteWorkspace?: boolean;
   onClose: () => void;
 };
@@ -48,7 +46,22 @@ type LoadedHtml = {
   updatedAt: number | null;
 };
 
+type DesignPublication = {
+  version: 1;
+  entryPath: string;
+  objectPrefix: string;
+  publicUrl: string;
+  revision: number;
+  publishedAt: number;
+};
+
+type LoadedDesignPublication = {
+  publication: DesignPublication;
+  updatedAt: number | null;
+};
+
 const COLOR_SWATCHES = ["#111827", "#ffffff", "#7c3aed", "#2563eb", "#059669", "#ea580c", "#dc2626", "#db2777"];
+const PUBLISHABLE_DESIGN_FILE = /\.(?:avif|css|gif|html?|ico|jpe?g|js|json|map|mjs|png|svg|webp|woff2?|ttf|otf)$/i;
 
 const TYPE_PRESETS = [
   { label: "Display", sample: "Aa", styles: { fontSize: "48px", fontWeight: "700", lineHeight: "1.05", letterSpacing: "-0.025em" } },
@@ -59,7 +72,7 @@ const TYPE_PRESETS = [
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate");
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck");
 }
 
 function readDesignTokenValues(...sources: string[]): DesignTokenValues {
@@ -88,6 +101,40 @@ function linkedDesignTokenPath(source: string | undefined): string {
 
 function fileName(path: string) {
   return path.split(/[\\/]/).pop() || path;
+}
+
+function directoryPath(path: string) {
+  const boundary = path.lastIndexOf("/");
+  return boundary < 0 ? "" : path.slice(0, boundary + 1);
+}
+
+function publicationManifestPath(sessionId: string) {
+  return `.ipollowork/publications/${sessionId.replace(/[^a-zA-Z0-9_-]/g, "-")}.json`;
+}
+
+function publicationPathSegment(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
+}
+
+function parsePublication(value: string): DesignPublication | null {
+  try {
+    const parsed = JSON.parse(value) as Partial<DesignPublication>;
+    if (parsed.version !== 1
+      || typeof parsed.entryPath !== "string"
+      || typeof parsed.objectPrefix !== "string"
+      || typeof parsed.publicUrl !== "string"
+      || typeof parsed.revision !== "number"
+      || typeof parsed.publishedAt !== "number") return null;
+    return parsed as DesignPublication;
+  } catch {
+    return null;
+  }
+}
+
+function isPublishableDesignFile(path: string) {
+  return PUBLISHABLE_DESIGN_FILE.test(path)
+    && !path.includes("/.versions/")
+    && !path.includes("/.ipollowork/");
 }
 
 function normalizeHexColor(value: string) {
@@ -132,54 +179,45 @@ export function DesignPanel({
   sessionId,
   client,
   workspaceId,
-  targets,
   isRemoteWorkspace = false,
   onClose,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
+  const templateQuery = useQuery({
+    queryKey: ["design-session-template", workspaceId, sessionId] as const,
+    queryFn: async () => {
+      if (!client || !workspaceId) return null;
+      try {
+        const snapshot = await client.getTemplateSession(workspaceId, sessionId);
+        return snapshot.surface === "design" ? snapshot : null;
+      } catch { return null; }
+    },
+    enabled: Boolean(client && workspaceId),
+    staleTime: 5_000,
+  });
+  const lockedPath = templateQuery.data?.state.entry ?? "";
+  const hasSiteVersioning = templateQuery.data?.manifest.category === "site";
+  const designTemplate = templateQuery.data?.manifest ?? null;
   const catalogQuery = useQuery({
     queryKey: ["design-html-catalog", workspaceId] as const,
     queryFn: async () => {
       if (!client || !workspaceId) return [];
       return client.listWorkspaceFiles(workspaceId);
     },
-    enabled: Boolean(client && workspaceId && !isRemoteWorkspace),
+    // The workspace file catalog is needed solely to discover version
+    // snapshots for a site. A slide deck (or any other design category) has
+    // one materialized entry and must never become a workspace-wide picker.
+    enabled: Boolean(client && workspaceId && !isRemoteWorkspace && hasSiteVersioning),
     staleTime: 10_000,
     refetchOnWindowFocus: false,
   });
-  const templateQuery = useQuery({
-    queryKey: ["design-session-template", workspaceId, sessionId] as const,
-    queryFn: async () => {
-      if (!client || !workspaceId) return null;
-      try { return await client.getDesignSessionTemplate(workspaceId, sessionId); } catch { return null; }
-    },
-    enabled: Boolean(client && workspaceId),
-    staleTime: 5_000,
-  });
-  const lockedPath = templateQuery.data?.state.entry ?? "";
-  const isDesignTemplateSession = Boolean(templateQuery.data);
-  const designTemplate = templateQuery.data?.manifest ?? null;
-  const htmlTargets = React.useMemo(() => {
-    const unique = new Map<string, { value: string }>();
-    catalogQuery.data?.forEach((entry) => {
-      if (entry.kind === "file" && isLocalHtmlPath(entry.path)) unique.set(entry.path, { value: entry.path });
-    });
-    targets.forEach((target) => {
-      if (target.kind === "file" && target.exists !== false && isLocalHtmlPath(target.value)) {
-        unique.set(target.value, target);
-      }
-    });
-    const entries = Array.from(unique.values()).sort((left, right) => left.value.localeCompare(right.value));
-    if (isDesignTemplateSession) return lockedPath ? entries.filter((target) => target.value === lockedPath) : [];
-    return entries;
-  }, [catalogQuery.data, isDesignTemplateSession, lockedPath, targets]);
   const versionTargets = React.useMemo(
-    () => (catalogQuery.data ?? [])
+    () => hasSiteVersioning ? (catalogQuery.data ?? [])
       .filter((entry) => entry.kind === "file" && entry.path.startsWith(`design/.versions/${sessionId}/`) && isLocalHtmlPath(entry.path))
-      .sort((left, right) => right.path.localeCompare(left.path)),
-    [catalogQuery.data, sessionId],
+      .sort((left, right) => right.path.localeCompare(left.path)) : [],
+    [catalogQuery.data, hasSiteVersioning, sessionId],
   );
   const [selectedPath, setSelectedPath] = React.useState("");
   const [activePagePath, setActivePagePath] = React.useState("");
@@ -188,6 +226,8 @@ export function DesignPanel({
   const [viewedVersionUpdatedAt, setViewedVersionUpdatedAt] = React.useState<number | null>(null);
   const [previewDevice, setPreviewDevice] = React.useState<"desktop" | "mobile">("desktop");
   const [editing, setEditing] = React.useState(false);
+  const [deck, setDeck] = React.useState<DesignDeckState | null>(null);
+  const hydratedPageRef = React.useRef("");
   const [selection, setSelection] = React.useState<DesignSelection | null>(null);
   const [draft, setDraft] = React.useState("");
   const draftRef = React.useRef("");
@@ -203,19 +243,21 @@ export function DesignPanel({
   const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
 
   React.useEffect(() => {
-    if (!workspaceId || htmlTargets.length === 0) {
+    if (!lockedPath) {
       setSelectedPath("");
+      setActivePagePath("");
+      setViewedVersionPath("current");
+      setViewedVersionUpdatedAt(null);
       return;
     }
-    const stored = lockedPath || window.localStorage.getItem(designSessionSelectionStorageKey(workspaceId, sessionId)) || window.localStorage.getItem(designSelectionStorageKey(workspaceId));
-    const next = htmlTargets.some((target) => target.value === stored) ? stored : htmlTargets[0]?.value;
-    const path = next || "";
-    if (path !== selectedPath) {
-      setSelectedPath(path);
-      setActivePagePath(path);
+    if (lockedPath !== selectedPath) {
+      setSelectedPath(lockedPath);
+      setActivePagePath(lockedPath);
       setActivePageHash("");
+      setViewedVersionPath("current");
+      setViewedVersionUpdatedAt(null);
     }
-  }, [htmlTargets, lockedPath, selectedPath, sessionId, workspaceId]);
+  }, [lockedPath, selectedPath]);
 
   const fileQuery = useQuery<LoadedHtml>({
     queryKey: ["design-html", workspaceId, activePagePath] as const,
@@ -243,6 +285,38 @@ export function DesignPanel({
     },
     enabled: Boolean(client && workspaceId && templateTokenPath && !isRemoteWorkspace),
     staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+  const [publishOpen, setPublishOpen] = React.useState(false);
+  const publicationQuery = useQuery<LoadedDesignPublication | null>({
+    queryKey: ["design-publication", workspaceId, sessionId] as const,
+    queryFn: async () => {
+      if (!client || !workspaceId) return null;
+      try {
+        const saved = await client.readWorkspaceFile(workspaceId, publicationManifestPath(sessionId));
+        const publication = parsePublication(saved.content);
+        return publication ? { publication, updatedAt: saved.updatedAt ?? null } : null;
+      } catch {
+        return null;
+      }
+    },
+    enabled: Boolean(client && workspaceId && !isRemoteWorkspace),
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+  });
+  const storageStatusQuery = useQuery({
+    queryKey: ["design-publication-storage", workspaceId] as const,
+    queryFn: async () => {
+      if (!client) throw new Error("Storage is unavailable.");
+      const result = await client.callStorage("status", {}, workspaceId ? { workspaceId } : undefined);
+      if (!result.ok || !result.result || typeof result.result !== "object") {
+        throw new Error("Storage Center is unavailable.");
+      }
+      const status = result.result as { defaultProvider?: string | null };
+      return { defaultProvider: status.defaultProvider ?? null };
+    },
+    enabled: Boolean(publishOpen && client && workspaceId && !isRemoteWorkspace),
+    staleTime: 5_000,
     refetchOnWindowFocus: false,
   });
 
@@ -284,6 +358,11 @@ export function DesignPanel({
     setSavedSource(fileQuery.data.content);
     setHistory([]);
     setSelection(null);
+    const pageIdentity = `${sessionId}:${activePagePath}`;
+    if (hydratedPageRef.current !== pageIdentity) {
+      hydratedPageRef.current = pageIdentity;
+      setDeck(null);
+    }
     setQuickEdit(null);
     setAdvancedOpen(false);
     setDesignSystemOpen(false);
@@ -291,13 +370,17 @@ export function DesignPanel({
     setPreviewLoaded(false);
     setSourceHydrated(true);
     setPreviewRevision((current) => current + 1);
-  }, [fileQuery.data, sessionId, viewedVersionPath]);
+  }, [activePagePath, fileQuery.data?.content, fileQuery.data?.updatedAt, sessionId, viewedVersionPath]);
 
   React.useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow || !isDesignRuntimeMessage(event.data)) return;
       if (event.data.type === "navigate") {
         void openDesignLink(event.data.href);
+        return;
+      }
+      if (event.data.type === "deck") {
+        setDeck(event.data.deck);
         return;
       }
       if (event.data.type === "document-draft") {
@@ -320,6 +403,27 @@ export function DesignPanel({
     window.addEventListener("message", receiveMessage);
     return () => window.removeEventListener("message", receiveMessage);
   }, [draft, openDesignLink]);
+
+  React.useEffect(() => {
+    if (!previewLoaded) return;
+    iframeRef.current?.contentWindow?.postMessage({
+      channel: DESIGN_MESSAGE_CHANNEL,
+      type: "set-editing",
+      editing,
+    }, "*");
+  }, [editing, previewLoaded]);
+
+  const navigateDeck = React.useCallback((direction: "previous" | "next") => {
+    if (!deck) return;
+    setSelection(null);
+    setQuickEdit(null);
+    setAdvancedOpen(false);
+    iframeRef.current?.contentWindow?.postMessage({
+      channel: DESIGN_MESSAGE_CHANNEL,
+      type: "deck-navigate",
+      direction,
+    }, "*");
+  }, [deck]);
 
   const readLatestCanvasHtml = React.useCallback(async () => {
     const frameWindow = iframeRef.current?.contentWindow;
@@ -376,7 +480,7 @@ export function DesignPanel({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!client || !workspaceId || !selectedPath || !fileQuery.data) {
+      if (!client || !workspaceId || !activePagePath || !fileQuery.data) {
         throw new Error("Workspace file is not ready.");
       }
       // Read the DOM snapshot directly at save time. This includes the last
@@ -417,16 +521,15 @@ export function DesignPanel({
     if (!client || !workspaceId || !fileQuery.data || versionPath === viewedVersionPath) return;
     if (draft !== savedSource && !window.confirm("Discard unsaved design changes and switch versions?")) return;
     try {
-      const loaded = await client.readWorkspaceFile(workspaceId, versionPath === "current" ? selectedPath : versionPath);
+      const loaded = await client.readWorkspaceFile(workspaceId, versionPath === "current" ? activePagePath : versionPath);
       const content = loaded.content;
       if (versionPath === "current") {
         queryClient.setQueryData<LoadedHtml>(
-          ["design-html", workspaceId, selectedPath] as const,
+          ["design-html", workspaceId, activePagePath] as const,
           { content, updatedAt: loaded.updatedAt ?? null },
         );
       }
       setViewedVersionPath(versionPath);
-      setActivePagePath(selectedPath);
       setActivePageHash("");
       setViewedVersionUpdatedAt(loaded.updatedAt ?? null);
       window.localStorage.setItem(`ipollowork.session-design-version.${sessionId}`, versionPath);
@@ -444,20 +547,6 @@ export function DesignPanel({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not open this version.");
     }
-  };
-
-  const chooseFile = (path: string | null) => {
-    if (!path || path === selectedPath) return;
-    if (draft !== savedSource && !window.confirm("Discard unsaved design changes and open another file?")) return;
-    setSelectedPath(path);
-    setEditing(false);
-    setSelection(null);
-    setQuickEdit(null);
-    setAdvancedOpen(false);
-    setPreviewSource("");
-    setPreviewLoaded(false);
-    setSourceHydrated(false);
-    if (workspaceId) window.localStorage.setItem(designSelectionStorageKey(workspaceId), path);
   };
 
   const applyField = (field: DesignField, value: string, remember = true) => {
@@ -552,13 +641,82 @@ export function DesignPanel({
   };
 
   const dirty = pendingCanvasChange || draft !== savedSource;
+  const publishMutation = useMutation({
+    mutationFn: async () => {
+      if (!client || !workspaceId || !lockedPath) throw new Error("This design is not ready to publish.");
+      if (!storageStatusQuery.data?.defaultProvider) throw new Error("Configure a default object-storage provider before publishing.");
+      if (dirty) await saveMutation.mutateAsync();
+
+      const root = directoryPath(lockedPath);
+      const catalog = await client.listWorkspaceFiles(workspaceId);
+      const paths = new Set<string>([lockedPath]);
+      for (const item of catalog) {
+        if (item.kind !== "file" || !isPublishableDesignFile(item.path)) continue;
+        if (root ? item.path.startsWith(root) : item.path === lockedPath) paths.add(item.path);
+      }
+      if (templateTokenPath && isPublishableDesignFile(templateTokenPath)) paths.add(templateTokenPath);
+      const sourcePaths = [...paths].sort();
+      if (sourcePaths.length > 100) throw new Error("This design has more than 100 publishable files. Reduce its asset folder before publishing.");
+
+      const previous = publicationQuery.data?.publication ?? null;
+      const objectPrefix = previous?.objectPrefix
+        ?? `ipollowork/published/${publicationPathSegment(workspaceId)}/${publicationPathSegment(sessionId)}`;
+      let publicUrl = "";
+      for (const sourcePath of sourcePaths) {
+        const uploaded = await client.callStorage("upload_workspace_file", {
+          sourcePath,
+          provider: "auto",
+          objectKey: `${objectPrefix}/${sourcePath}`,
+        }, { workspaceId });
+        if (!uploaded.ok || !uploaded.result || typeof uploaded.result !== "object") {
+          throw new Error(`Could not publish ${fileName(sourcePath)}.`);
+        }
+        if (sourcePath === lockedPath) {
+          const output = uploaded.result as { url?: unknown; downloadUrl?: unknown };
+          publicUrl = typeof output.downloadUrl === "string" ? output.downloadUrl : typeof output.url === "string" ? output.url : "";
+        }
+      }
+      if (!publicUrl) throw new Error("The published design did not return a share link.");
+
+      const publication: DesignPublication = {
+        version: 1,
+        entryPath: lockedPath,
+        objectPrefix,
+        publicUrl,
+        revision: (previous?.revision ?? 0) + 1,
+        publishedAt: Date.now(),
+      };
+      const saved = await client.writeWorkspaceFile(workspaceId, {
+        path: publicationManifestPath(sessionId),
+        content: `${JSON.stringify(publication, null, 2)}\n`,
+        baseUpdatedAt: publicationQuery.data?.updatedAt ?? null,
+      });
+      return { publication, updatedAt: saved.updatedAt ?? null, files: sourcePaths.length };
+    },
+    onSuccess: ({ publication, updatedAt, files }) => {
+      queryClient.setQueryData<LoadedDesignPublication | null>(
+        ["design-publication", workspaceId, sessionId] as const,
+        { publication, updatedAt },
+      );
+      toast.success(`Published ${files} file${files === 1 ? "" : "s"} to OSS.`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Could not publish this design.");
+    },
+  });
+  const publishDesign = () => {
+    if (publicationQuery.data?.publication && !window.confirm("Update the existing live page with this local design?")) return;
+    void publishMutation.mutateAsync();
+  };
   const designTokenValues = React.useMemo(
     () => readDesignTokenValues(templateTokenQuery.data ?? "", draft),
     [draft, templateTokenQuery.data],
   );
   const preview = React.useMemo(
-    () => buildDesignPreviewDocument(previewSource, editing, templateTokenQuery.data ?? ""),
-    [editing, previewSource, templateTokenQuery.data],
+    // The bridge is always present but starts inactive. Toggling Edit page is
+    // a message to that bridge, not a new srcDoc, so a deck stays on its slide.
+    () => buildDesignPreviewDocument(previewSource, true, templateTokenQuery.data ?? "", false),
+    [previewSource, templateTokenQuery.data],
   );
   const floatingStyle = selection ? {
     left: `clamp(112px, ${(iframeRef.current?.offsetLeft ?? 0) + selection.rect.left + selection.rect.width / 2 + 8}px, calc(100% - 112px))`,
@@ -579,12 +737,75 @@ export function DesignPanel({
           event.currentTarget.value = "";
         }}
       />
+      <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{publicationQuery.data?.publication ? "Update live design" : "Publish design"}</DialogTitle>
+            <DialogDescription>
+              Publish this local HTML design and its static assets to your configured object storage. The original workspace files remain local and editable.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-border/70 bg-muted/25 px-3 py-2.5">
+              <p className="text-[11px] font-medium text-foreground">Storage</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {storageStatusQuery.isLoading
+                  ? "Checking your local storage authorization…"
+                  : storageStatusQuery.data?.defaultProvider
+                    ? `Uploads use your local default: ${storageStatusQuery.data.defaultProvider}.`
+                    : "Configure a default storage provider in Settings → Authorizations first."}
+              </p>
+            </div>
+            {publicationQuery.data?.publication ? (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+                <p className="text-[11px] font-medium text-foreground">Live version {publicationQuery.data.publication.revision}</p>
+                <a
+                  className="mt-1 block truncate text-xs text-primary underline-offset-2 hover:underline"
+                  href={publicationQuery.data.publication.publicUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={publicationQuery.data.publication.publicUrl}
+                >
+                  {publicationQuery.data.publication.publicUrl}
+                </a>
+                <div className="mt-2 flex gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(publicationQuery.data?.publication?.publicUrl ?? "");
+                      toast.success("Share link copied.");
+                    }}
+                  >
+                    <Link2 /> Copy link
+                  </Button>
+                  <Button variant="outline" size="xs" onClick={() => window.open(publicationQuery.data?.publication?.publicUrl, "_blank", "noopener,noreferrer")}>
+                    <ExternalLink /> Open
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {publishMutation.error ? <p className="text-xs leading-5 text-destructive">{publishMutation.error instanceof Error ? publishMutation.error.message : "Could not publish this design."}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setPublishOpen(false)} disabled={publishMutation.isPending}>Cancel</Button>
+            <Button size="sm" onClick={publishDesign} disabled={publishMutation.isPending || storageStatusQuery.isLoading || !storageStatusQuery.data?.defaultProvider}>
+              {publishMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Share2 className="size-3.5" />}
+              {publicationQuery.data?.publication ? "Update live" : "Publish"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
         <Code2 className="size-4 text-primary" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">Design</p>
           <p className="truncate text-[11px] text-muted-foreground">Local HTML only</p>
         </div>
+        <Button variant="ghost" size="sm" className="gap-1.5 rounded-lg" onClick={() => setPublishOpen(true)} disabled={!lockedPath || isRemoteWorkspace}>
+          <Share2 className="size-3.5" />
+          Share
+        </Button>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close Design">
           <X />
         </Button>
@@ -594,43 +815,43 @@ export function DesignPanel({
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
           Design editing is available for local workspaces only.
         </div>
-      ) : catalogQuery.isLoading && htmlTargets.length === 0 ? (
+      ) : templateQuery.isLoading ? (
         <div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
-      ) : htmlTargets.length === 0 ? (
+      ) : !lockedPath ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center">
           <div className="max-w-xs">
             <Code2 className="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p className="text-sm font-medium">{isDesignTemplateSession ? "No current design file" : "No local HTML artifacts yet"}</p>
+            <p className="text-sm font-medium">No current design file</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {isDesignTemplateSession ? "Start a new Design session and select a template." : "Ask iPolloWork to create an HTML file in this task, then open Design to edit it visually."}
+              Start a new Design session and select a template.
             </p>
           </div>
         </div>
       ) : (
         <>
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-            {lockedPath ? (
-              <div className="min-w-0 flex flex-1 items-center gap-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{fileName(activePagePath)}</p><p className="truncate text-[10px] text-muted-foreground">{viewedVersionPath === "current" ? "Current design" : "Version preview"}</p></div>{versionTargets.length > 0 ? <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}><SelectTrigger size="sm" className="w-32 rounded-lg" aria-label="Design version"><SelectValue>Versions</SelectValue></SelectTrigger><SelectContent><SelectItem value="current">Current version</SelectItem>{versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>Version {versionTargets.length - index}</SelectItem>)}</SelectContent></Select> : null}</div>
-            ) : (
-              <Select value={selectedPath} onValueChange={chooseFile}>
-                <SelectTrigger size="sm" className="min-w-44 max-w-full flex-1 rounded-lg" aria-label="HTML file">
-                  <SelectValue>{fileName(selectedPath)}</SelectValue>
-                </SelectTrigger>
-                <SelectContent align="start">
-                  {htmlTargets.map((target) => (
-                    <SelectItem key={target.value} value={target.value}>{target.value}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            {hasSiteVersioning ? (
+              <div className="min-w-0 flex flex-1 items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{fileName(activePagePath)}</p>
+                  <p className="truncate text-[10px] text-muted-foreground">{viewedVersionPath === "current" ? "Current design" : "Version preview"}</p>
+                </div>
+                {versionTargets.length > 0 ? (
+                <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}>
+                  <SelectTrigger size="sm" className="w-32 rounded-lg" aria-label="Design version"><SelectValue>Versions</SelectValue></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="current">Current version</SelectItem>
+                    {versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>Version {versionTargets.length - index}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                ) : null}
+              </div>
+            ) : null}
             <Label className="flex items-center gap-2 text-xs">
               <Switch
                 size="sm"
                 checked={editing}
                 onCheckedChange={(checked) => {
-                  setPreviewSource(draft);
-                  setPreviewLoaded(false);
-                  setPreviewRevision((current) => current + 1);
                   setEditing(checked);
                   setSelection(null);
                   setQuickEdit(null);
@@ -641,6 +862,19 @@ export function DesignPanel({
               />
               Edit page
             </Label>
+            {editing && deck ? (
+              <div className="flex h-8 min-w-0 items-center rounded-lg border border-border/80 bg-muted/35 p-0.5 shadow-sm" data-testid="design-deck-navigation">
+                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <span className="min-w-0 max-w-40 truncate px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground" aria-live="polite">
+                  {deck.index + 1} / {deck.total}{deck.title ? ` · ${deck.title}` : ""}
+                </span>
+                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md" onClick={() => navigateDeck("next")} disabled={deck.index >= deck.total - 1} aria-label="Next slide" title="Next slide">
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
+            ) : null}
             {editing && designTemplate ? (
               <Button
                 variant={designSystemOpen ? "secondary" : "ghost"}
@@ -696,7 +930,7 @@ export function DesignPanel({
               <div className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}>
                 <iframe
                   ref={iframeRef}
-                  key={`${activePagePath}:${previewRevision}:${editing ? "edit" : "preview"}`}
+                  key={`${activePagePath}:${previewRevision}`}
                   srcDoc={preview}
                   title={`Design preview: ${fileName(activePagePath)}`}
                   className={cn(
@@ -710,6 +944,8 @@ export function DesignPanel({
                   onLoad={() => {
                     setPreviewLoaded(true);
                     iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
+                    iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
+                    if (deck) iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "deck-navigate", direction: "index", index: deck.index }, "*");
                   }}
                 />
                 {editing && selection ? (

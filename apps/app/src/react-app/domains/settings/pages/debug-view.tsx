@@ -223,24 +223,24 @@ function ExecutionDetails(props: { execution: OpencodeExecutionSnapshot }) {
     <div className="rounded-xl border border-blue-6/30 bg-blue-3/20 p-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-11">OpenCode execution</div>
-          <div className="text-[11px] text-dls-secondary">Command, working directory, and iPolloWork-injected environment.</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-11">{t("settings.debug.execution_title")}</div>
+          <div className="text-[11px] text-dls-secondary">{t("settings.debug.execution_description")}</div>
         </div>
         <div className="shrink-0 rounded-full border border-blue-7/30 bg-blue-7/10 px-2 py-1 text-[10px] font-medium text-blue-11">
-          redacted
+          {t("settings.debug.redacted")}
         </div>
       </div>
       <div className="space-y-3">
         <div>
-          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-dls-secondary">Command</div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-dls-secondary">{t("settings.debug.command")}</div>
           <pre className={miniPreClass}>{formatExecutionCommand(props.execution)}</pre>
         </div>
         <div>
-          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-dls-secondary">Working directory</div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-dls-secondary">{t("settings.debug.working_directory")}</div>
           <pre className={miniPreClass}>{props.execution.cwd}</pre>
         </div>
         <div>
-          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-dls-secondary">Injected environment</div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-dls-secondary">{t("settings.debug.injected_environment")}</div>
           <div className="max-h-64 overflow-auto rounded-lg border border-dls-border bg-dls-sidebar/30">
             {props.execution.env.length > 0 ? props.execution.env.map((entry) => (
               <div key={entry.name} className="grid gap-2 border-b border-dls-border/50 p-2 last:border-b-0 md:grid-cols-[180px_minmax(0,1fr)]">
@@ -248,7 +248,7 @@ function ExecutionDetails(props: { execution: OpencodeExecutionSnapshot }) {
                 <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-dls-secondary">{entry.value}</pre>
               </div>
             )) : (
-              <div className="p-2 text-[11px] text-dls-secondary">No injected environment captured.</div>
+              <div className="p-2 text-[11px] text-dls-secondary">{t("settings.debug.no_injected_environment")}</div>
             )}
           </div>
         </div>
@@ -419,8 +419,8 @@ export function DebugView(props: DebugViewProps) {
         </details>
         <div className={subCardClass}>
           <div>
-            <div className="text-sm font-semibold tracking-[-0.1px] text-dls-text">Bootstrap config</div>
-            <div className="text-[12px] text-dls-secondary">Desktop bootstrap paths, parsed config, and normalized values.</div>
+            <div className="text-sm font-semibold tracking-[-0.1px] text-dls-text">{t("settings.debug.bootstrap_title")}</div>
+            <div className="text-[12px] text-dls-secondary">{t("settings.debug.bootstrap_description")}</div>
           </div>
           <pre className={monoPreClass}>{props.bootstrapConfigDebugJson}</pre>
         </div>
@@ -928,10 +928,9 @@ export function DebugView(props: DebugViewProps) {
         <div className={cardClass}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className={sectionTitleClass}>Electron alpha migration</div>
+              <div className={sectionTitleClass}>{t("settings.debug.electron_migration_title")}</div>
               <div className={sectionDescClass}>
-                Debug-only Tauri controls. Preparing migration data is non-destructive; installing requires a URL and two
-                confirmations.
+                {t("settings.debug.electron_migration_description")}
               </div>
             </div>
             <Button
@@ -940,13 +939,12 @@ export function DebugView(props: DebugViewProps) {
               onClick={() => void props.onOpenElectronPreviewRelease()}
             >
               <ExternalLink size={13} className="mr-1.5" />
-              Alpha release
+              {t("settings.debug.alpha_release")}
             </Button>
           </div>
 
           <div className="rounded-xl border border-green-7/25 bg-green-3/10 px-3 py-2 text-[12px] leading-relaxed text-green-11">
-            Safe default: use <strong>Prepare migration data</strong> first. It writes the Electron snapshot only and does
-            not replace, quit, or delete the Tauri app. The install handoff keeps rollback backup at{" "}
+            {t("settings.debug.migration_safe_prefix")}<strong>{t("settings.debug.prepare_migration_data")}</strong>{t("settings.debug.migration_safe_suffix")}{" "}
             <code className="font-mono">iPolloWork.app.migrate-bak</code>.
           </div>
 
@@ -956,49 +954,49 @@ export function DebugView(props: DebugViewProps) {
               onClick={() => void props.onResolveElectronAlphaArtifact()}
               disabled={props.electronMigrationBusy}
             >
-              {props.electronMigrationBusy ? "Resolving…" : "Resolve latest Electron alpha"}
+              {props.electronMigrationBusy ? t("settings.debug.resolving") : t("settings.debug.resolve_latest_alpha")}
             </Button>
             {props.electronMigrationArtifactLabel ? (
               <div className="min-w-0 flex-1 truncate text-[11px] text-dls-secondary">
                 {props.electronMigrationArtifactLabel}
               </div>
             ) : (
-              <div className="text-[11px] text-dls-secondary">Uses latest-mac.yml from the rolling alpha release.</div>
+              <div className="text-[11px] text-dls-secondary">{t("settings.debug.uses_latest_alpha_manifest")}</div>
             )}
           </div>
 
           <details className="rounded-xl border border-dls-border bg-dls-sidebar/30 p-3">
             <summary className="cursor-pointer select-none text-[11px] font-medium uppercase tracking-wider text-dls-secondary">
-              Advanced manual artifact override
+              {t("settings.debug.advanced_artifact_override")}
             </summary>
             <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
               <label className="space-y-1 text-[12px] text-dls-secondary">
-                <span>Electron artifact URL</span>
+                <span>{t("settings.debug.electron_artifact_url")}</span>
                 <input
                   type="url"
                   value={props.electronMigrationUrl}
                   onChange={(event) => props.onSetElectronMigrationUrl(event.currentTarget.value)}
-                  placeholder="Paste a trusted Electron .zip/.exe/AppImage URL"
+                  placeholder={t("settings.debug.electron_artifact_url_placeholder")}
                   className="h-10 w-full rounded-xl border border-dls-border bg-dls-surface px-3 font-mono text-[11px] text-dls-text outline-none transition-colors placeholder:text-dls-secondary focus:border-dls-accent"
                 />
               </label>
               <label className="space-y-1 text-[12px] text-dls-secondary">
-                <span>sha512 from latest-mac.yml</span>
+                <span>{t("settings.debug.sha512_from_manifest")}</span>
                 <input
                   type="text"
                   value={props.electronMigrationSha512}
                   onChange={(event) => props.onSetElectronMigrationSha512(event.currentTarget.value)}
-                  placeholder="recommended"
+                  placeholder={t("settings.debug.recommended")}
                   className="h-10 w-full rounded-xl border border-dls-border bg-dls-surface px-3 font-mono text-[11px] text-dls-text outline-none transition-colors placeholder:text-dls-secondary focus:border-dls-accent"
                 />
               </label>
               <label className="space-y-1 text-[12px] text-dls-secondary md:col-span-2">
-                <span>sha256 override (legacy optional)</span>
+                <span>{t("settings.debug.sha256_override")}</span>
                 <input
                   type="text"
                   value={props.electronMigrationSha256}
                   onChange={(event) => props.onSetElectronMigrationSha256(event.currentTarget.value)}
-                  placeholder="Only needed when the artifact provider gives sha256 instead of latest-mac.yml sha512"
+                  placeholder={t("settings.debug.sha256_override_placeholder")}
                   className="h-10 w-full rounded-xl border border-dls-border bg-dls-surface px-3 font-mono text-[11px] text-dls-text outline-none transition-colors placeholder:text-dls-secondary focus:border-dls-accent"
                 />
               </label>
@@ -1011,16 +1009,16 @@ export function DebugView(props: DebugViewProps) {
               onClick={() => void props.onPrepareElectronMigrationSnapshot()}
               disabled={props.electronMigrationBusy}
             >
-              {props.electronMigrationBusy ? "Preparing…" : "Prepare migration data"}
+              {props.electronMigrationBusy ? t("settings.debug.preparing") : t("settings.debug.prepare_migration_data")}
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => void props.onInstallElectronPreviewFromTauri()}
               disabled={props.electronMigrationBusy || !props.electronMigrationUrl.trim()}
-              title="Requires a trusted artifact URL. macOS keeps iPolloWork.app.migrate-bak for rollback."
+              title={t("settings.debug.install_handoff_hint")}
             >
-              Start install handoff…
+              {t("settings.debug.start_install_handoff")}
             </Button>
             <Button
               variant="outline"
@@ -1028,10 +1026,10 @@ export function DebugView(props: DebugViewProps) {
               onClick={() => void props.onRevealElectronMigrationBackup()}
               disabled={props.electronMigrationBusy}
             >
-              Open backup in Finder
+              {t("settings.debug.open_backup")}
             </Button>
             <div className="text-[11px] text-dls-secondary">
-              Release page: <span className="font-mono">{props.electronPreviewReleaseUrl}</span>
+              {t("settings.debug.release_page")}: <span className="font-mono">{props.electronPreviewReleaseUrl}</span>
             </div>
           </div>
 
@@ -1046,13 +1044,13 @@ export function DebugView(props: DebugViewProps) {
         <div className={cardClass}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className={sectionTitleClass}>Electron alpha channel</div>
+              <div className={sectionTitleClass}>{t("settings.debug.electron_alpha_channel")}</div>
               <div className={sectionDescClass}>
-                Debug-only controls for migrated Electron users. Stable updates remain the default in Settings → Updates.
+                {t("settings.debug.electron_alpha_channel_description")}
               </div>
             </div>
             <div className="rounded-full border border-dls-border bg-dls-sidebar/50 px-2.5 py-1 text-[11px] font-medium text-dls-secondary">
-              {props.electronAlphaUpdaterChannel === "alpha" ? "Alpha" : "Stable"}
+              {props.electronAlphaUpdaterChannel === "alpha" ? t("settings.update_channel_alpha") : t("settings.update_channel_stable")}
             </div>
           </div>
 
@@ -1063,7 +1061,7 @@ export function DebugView(props: DebugViewProps) {
               onClick={() => void props.onSetElectronAlphaUpdaterChannel("alpha")}
               disabled={props.electronAlphaUpdaterBusy}
             >
-              Use alpha feed
+              {t("settings.debug.use_alpha_feed")}
             </Button>
             <Button
               variant={props.electronAlphaUpdaterChannel === "stable" ? "secondary" : "outline"}
@@ -1071,7 +1069,7 @@ export function DebugView(props: DebugViewProps) {
               onClick={() => void props.onSetElectronAlphaUpdaterChannel("stable")}
               disabled={props.electronAlphaUpdaterBusy}
             >
-              Return to stable
+              {t("settings.debug.return_to_stable")}
             </Button>
             <Button
               variant="outline"
@@ -1079,12 +1077,12 @@ export function DebugView(props: DebugViewProps) {
               onClick={() => void props.onCheckElectronAlphaUpdates()}
               disabled={props.electronAlphaUpdaterBusy}
             >
-              {props.electronAlphaUpdaterBusy ? "Checking…" : "Check selected feed"}
+              {props.electronAlphaUpdaterBusy ? t("settings.debug.checking") : t("settings.debug.check_selected_feed")}
             </Button>
           </div>
 
           <div className="text-[11px] text-dls-secondary">
-            Alpha feed: <span className="font-mono">alpha-macos-latest/latest-mac.yml</span>. Stable feed:{" "}
+            {t("settings.debug.alpha_feed")}: <span className="font-mono">alpha-macos-latest/latest-mac.yml</span>. {t("settings.debug.stable_feed")}:{" "}
             <span className="font-mono">releases/latest/download/latest-mac.yml</span>.
           </div>
 

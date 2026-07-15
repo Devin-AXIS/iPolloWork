@@ -1,4 +1,5 @@
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
+import { connect, debuggerUrlFor, evaluate, listTargets } from "../runner/cdp.mjs";
 import { fileURLToPath } from "node:url";
 
 const vo = await loadVoiceoverParagraphs("design-html-editor");
@@ -38,38 +39,26 @@ async function clickWithMouse(ctx, selector, label) {
   await ctx.client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
 }
 
-async function clickPreviewAt(ctx, yRatio, label, xMode = "center", clickCount = 1) {
-  const point = await ctx.eval(`(() => {
-    const frame = document.querySelector('[data-testid="design-panel"] iframe');
-    if (!frame) return null;
-    const rect = frame.getBoundingClientRect();
-    return {
-      x: ${JSON.stringify(xMode)} === "content-left" ? rect.left + Math.min(100, rect.width * 0.28) : rect.left + rect.width / 2,
-      y: rect.top + rect.height * ${yRatio},
-    };
-  })()`);
-  ctx.assert(point, `${label}: Design preview was not available.`);
-  await ctx.client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
-  await ctx.client.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount });
-  await ctx.client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount });
+async function withPreviewClient(ctx, callback) {
+  const targets = await listTargets(ctx.cdpBaseUrl);
+  const target = targets.find((entry) => entry.type === "iframe" && entry.url === "about:srcdoc" && entry.webSocketDebuggerUrl);
+  if (!target) return null;
+  const client = await connect(debuggerUrlFor(ctx.cdpBaseUrl, target));
+  try {
+    return await callback(client);
+  } finally {
+    client.close();
+  }
 }
 
-async function doubleClickCurrentSelection(ctx, label) {
-  const point = await ctx.eval(`(() => {
-    const frame = document.querySelector('[data-testid="design-panel"] iframe');
-    const toolbar = document.querySelector('[data-testid="design-floating-toolbar"]');
-    if (!frame || !toolbar) return null;
-    const frameRect = frame.getBoundingClientRect();
-    const toolbarRect = toolbar.getBoundingClientRect();
-    return {
-      x: toolbarRect.left + toolbarRect.width / 2,
-      y: Math.min(frameRect.bottom - 12, toolbarRect.bottom + 30),
-    };
-  })()`);
-  ctx.assert(point, `${label}: Selected Design element was not available.`);
-  await ctx.client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
-  await ctx.client.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 2 });
-  await ctx.client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 2 });
+async function clickPreviewElement(ctx, selector, label) {
+  const clicked = await withPreviewClient(ctx, (client) => evaluate(client, `(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!element) return false;
+    element.click();
+    return true;
+  })()`));
+  ctx.assert(clicked, `${label}: Design preview element was not available.`);
 }
 
 async function setInputValue(ctx, selector, value, label) {
@@ -85,10 +74,23 @@ async function setInputValue(ctx, selector, value, label) {
   ctx.assert(changed, `${label} could not be updated.`);
 }
 
-async function replaceFocusedText(ctx, value) {
-  await ctx.client.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "a", code: "KeyA", modifiers: 4, commands: ["SelectAll"] });
-  await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: 4 });
-  await ctx.client.send("Input.insertText", { text: value });
+async function editPreviewHeadingDirectly(ctx, value) {
+  const updated = await withPreviewClient(ctx, async (client) => {
+    const beganEditing = await evaluate(client, `(() => {
+      const heading = document.querySelector("h1");
+      if (!heading) return false;
+      heading.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+      return heading.getAttribute("contenteditable") === "true";
+    })()`);
+    if (!beganEditing) return "";
+    await client.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "a", code: "KeyA", modifiers: 4, commands: ["SelectAll"] });
+    await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: 4 });
+    await client.send("Input.insertText", { text: value });
+    await client.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Escape", code: "Escape" });
+    await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
+    return evaluate(client, "document.querySelector('h1')?.textContent || ''");
+  });
+  ctx.assert(updated.includes(value), `Direct heading editing did not update the preview: ${updated}`);
 }
 
 async function chooseImageFixture(ctx) {
@@ -152,11 +154,12 @@ export default {
           assert: async () => {
             await ctx.expectText("Local HTML only");
             const state = await ctx.eval(`(() => ({
-              file: document.querySelector('[aria-label="HTML file"]')?.textContent || "",
+              file: [...document.querySelectorAll('[data-testid="design-panel"] p')].map((element) => (element.textContent || '').trim()).find((text) => text === "entry.html") || "",
+              hasWorkspaceFilePicker: Boolean(document.querySelector('[aria-label="HTML file"]')),
               browser: Boolean(document.querySelector('button[aria-label="Browser"]:not([disabled])')),
               edit: Boolean(document.querySelector('[aria-label="Edit page"]')),
             }))()`);
-            ctx.assert(state.file.includes("design-demo.html"), `Unexpected Design file: ${state.file}`);
+            ctx.assert(state.file.includes("entry.html") && !state.hasWorkspaceFilePicker, `Unexpected Design source state: ${JSON.stringify(state)}`);
             ctx.assert(state.browser && state.edit, "Browser or Edit page control disappeared.");
           },
           screenshot: { name: "local-html-preview", requireText: ["Design", "Local HTML only", "Edit page", "Save"] },
@@ -171,7 +174,7 @@ export default {
           action: async () => {
             await clickWithMouse(ctx, '[aria-label="Edit page"]', "Edit page");
             await new Promise((resolve) => setTimeout(resolve, 750));
-            await clickPreviewAt(ctx, 0.61, "Select heading", "content-left");
+            await clickPreviewElement(ctx, "h1", "Select heading");
           },
           assert: async () => {
             await ctx.waitFor(`Boolean(document.querySelector('[data-testid="design-floating-toolbar"]'))`, { timeoutMs: 10_000, label: "floating Design toolbar" });
@@ -206,10 +209,7 @@ export default {
             await clickWithMouse(ctx, '[aria-label="Change selected text color"]', "Quick text color");
             await clickWithMouse(ctx, '[aria-label="Set text color #2563eb"]', "Blue text color");
             await clickWithMouse(ctx, '[aria-label="Done quick editing"]', "Done color editing");
-            await doubleClickCurrentSelection(ctx, "Directly edit heading");
-            await replaceFocusedText(ctx, INLINE_HEADING);
-            await ctx.client.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Escape", code: "Escape" });
-            await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
+            await editPreviewHeadingDirectly(ctx, INLINE_HEADING);
             await ctx.waitFor(`Boolean(document.querySelector('[aria-label="Edit selected text"]'))`, {
               timeoutMs: 5_000,
               label: "Edited heading selection",
@@ -235,7 +235,7 @@ export default {
         await ctx.prove("Selecting an image exposes compact replace controls and a local image can be placed in the page", {
           voiceover: vo[4],
           action: async () => {
-            await clickPreviewAt(ctx, 0.33, "Select image", "content-left");
+            await clickPreviewElement(ctx, "img", "Select image");
             await ctx.waitFor(`Boolean(document.querySelector('[aria-label="Upload replacement image"]'))`, { timeoutMs: 10_000, label: "image replacement button" });
             await chooseImageFixture(ctx);
             await ctx.waitForText("Image replaced in the design.", { timeoutMs: 10_000 });
@@ -259,7 +259,7 @@ export default {
         await ctx.prove("Undo, save, close, and reopen preserve the direct text and image workflow without disturbing the task", {
           voiceover: vo[5],
           action: async () => {
-            await clickPreviewAt(ctx, 0.61, "Select heading for advanced styling", "content-left");
+            await clickPreviewElement(ctx, "h1", "Select heading for advanced styling");
             await clickWithMouse(ctx, '[aria-label="Toggle advanced design settings"]', "Advanced design settings");
             await ctx.waitForText("Design properties", { timeoutMs: 10_000 });
             await clickWithMouse(ctx, '[aria-label="Apply Heading text preset"]', "Heading text preset");
@@ -285,16 +285,17 @@ export default {
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              file: document.querySelector('[aria-label="HTML file"]')?.textContent || "",
+              file: [...document.querySelectorAll('[data-testid="design-panel"] p')].map((element) => (element.textContent || '').trim()).find((text) => text === "entry.html") || "",
+              hasWorkspaceFilePicker: Boolean(document.querySelector('[aria-label="HTML file"]')),
               browser: Boolean(document.querySelector('button[aria-label="Browser"]:not([disabled])')),
               extensions: Boolean(document.querySelector('button[aria-label="Extensions"]:not([disabled])')),
               saveDisabled: [...document.querySelectorAll('[data-testid="design-panel"] button')]
                 .find((button) => (button.textContent || '').includes('Save'))?.disabled === true,
             }))()`);
-            ctx.assert(state.file.includes("design-demo.html"), `Saved file was not reopened: ${JSON.stringify(state)}`);
+            ctx.assert(state.file.includes("entry.html") && !state.hasWorkspaceFilePicker, `Saved file was not reopened: ${JSON.stringify(state)}`);
             ctx.assert(state.browser && state.extensions && state.saveDisabled, `Task tools or saved state regressed: ${JSON.stringify(state)}`);
           },
-          screenshot: { name: "saved-and-reopened", requireText: ["Design", "design-demo.html", "Save"] },
+          screenshot: { name: "saved-and-reopened", requireText: ["Design", "entry.html", "Save"] },
         });
       },
     },

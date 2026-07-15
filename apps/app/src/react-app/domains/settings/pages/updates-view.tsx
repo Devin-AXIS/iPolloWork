@@ -30,10 +30,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "../settings-section";
 
-const RELEASE_CHANNEL_OPTIONS: { label: string; value: ReleaseChannel }[] = [
-  { label: "Stable", value: "stable" },
-  { label: "Alpha", value: "alpha" },
-];
+const RELEASE_CHANNEL_OPTIONS: ReleaseChannel[] = ["stable", "alpha"];
 
 type UpdateDownloadProgressProps = {
   downloadedBytes: number | null;
@@ -110,7 +107,7 @@ export function UpdatesView(props: UpdatesViewProps) {
       {props.appVersion ? (
         <LayoutSectionItem>
           <LayoutSectionItemHeader>
-            <LayoutSectionItemTitle>Current version</LayoutSectionItemTitle>
+            <LayoutSectionItemTitle>{t("settings.update_current_version")}</LayoutSectionItemTitle>
             <LayoutSectionItemDescription className="font-mono">v{props.appVersion}</LayoutSectionItemDescription>
           </LayoutSectionItemHeader>
         </LayoutSectionItem>
@@ -231,14 +228,17 @@ export function UpdatesView(props: UpdatesViewProps) {
           {props.alphaChannelSupported && props.releaseChannel ? (
             <LayoutSectionItem>
               <LayoutSectionItemHeader>
-                <LayoutSectionItemTitle>Release channel</LayoutSectionItemTitle>
+                <LayoutSectionItemTitle>{t("settings.update_release_channel")}</LayoutSectionItemTitle>
                 <LayoutSectionItemDescription>
-                  Stable gets fully tested releases. Alpha includes the very latest changes but may be less polished (macOS only).
+                  {t("settings.update_release_channel_description")}
                 </LayoutSectionItemDescription>
                 <LayoutSectionItemHeaderActions>
                   <Select
                     value={props.releaseChannel}
-                    items={RELEASE_CHANNEL_OPTIONS}
+                    items={RELEASE_CHANNEL_OPTIONS.map((value) => ({
+                      value,
+                      label: t(`settings.update_channel_${value}`),
+                    }))}
                     onValueChange={(value) => {
                       if (value === "stable" || value === "alpha") {
                         props.onReleaseChannelChange?.(value);
@@ -246,14 +246,14 @@ export function UpdatesView(props: UpdatesViewProps) {
                     }}
                     disabled={!props.onReleaseChannelChange}
                   >
-                    <SelectTrigger aria-label="Release channel" className="w-48">
+                    <SelectTrigger aria-label={t("settings.update_release_channel")} className="w-48">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
                         {RELEASE_CHANNEL_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
+                          <SelectItem key={option} value={option}>
+                            {t(`settings.update_channel_${option}`)}
                           </SelectItem>
                         ))}
                       </SelectGroup>

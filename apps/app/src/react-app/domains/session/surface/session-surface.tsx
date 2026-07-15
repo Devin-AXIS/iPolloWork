@@ -142,6 +142,8 @@ export type SessionSurfaceProps = {
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
+  /** Marks the first prompt as a video task before it reaches the agent. */
+  onActivateVideoStudio?: (sessionId: string) => void;
   designTemplates?: TemplateCatalogItem[];
   designTemplatesLoading?: boolean;
   designTemplateBusyId?: string | null;
@@ -814,6 +816,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const handleSend = useCallback(async () => {
     const text = draft.trim();
     if (!text && attachments.length === 0) return;
+    // A user can select Video and type directly into the centred first-prompt
+    // composer. Mark it before the request is sent so SessionPage opens the
+    // session-owned Studio while the agent is creating the composition.
+    if (isEmptyConversation && newConversationMode === "video") {
+      props.onActivateVideoStudio?.(props.sessionId);
+    }
     const nextDraft = buildDraft(text, attachments);
     const sentAttachments = attachments;
     try {
@@ -822,7 +830,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     } catch {
       setComposerDraft(props.sessionId, "");
     }
-  }, [attachments, buildDraft, clearComposer, draft, props.sessionId, sendDraft, setComposerDraft]);
+  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, newConversationMode, props.onActivateVideoStudio, props.sessionId, sendDraft, setComposerDraft]);
 
   const handleSteer = handleSend;
 
@@ -1458,7 +1466,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
               onInstallWebsiteTemplate={props.onInstallDesignTemplate}
               onRequestWebsiteTemplates={props.onRequestDesignTemplates}
             />
-            <div ref={composerShellRef} className="mt-6">
+            <div ref={composerShellRef} className="mt-14">
               {renderComposer("inline")}
             </div>
           </div>

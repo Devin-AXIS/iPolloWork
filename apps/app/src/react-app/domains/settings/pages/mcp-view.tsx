@@ -131,8 +131,6 @@ export type McpViewProps = {
   disconnectOrgMcp?: (connectionId: string) => void;
 };
 
-const builtInExtensionDisabledReason = "Disabled by organization";
-
 const statusDot = (status: ReactMcpStatus) => {
   switch (status) {
     case "connected":
@@ -522,7 +520,7 @@ export function McpView(props: McpViewProps) {
 
       {props.builtInExtensionsDisabled ? (
         <div className="rounded-xl border border-amber-6 bg-amber-2 px-4 py-3 text-xs text-amber-11">
-          Built-in iPolloWork extensions are disabled by your organization. Use Show hidden to review blocked built-ins.
+          {t("settings.extensions.builtins_disabled_hint")}
         </div>
       ) : null}
 
@@ -541,7 +539,7 @@ export function McpView(props: McpViewProps) {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-dls-secondary" />
           <input
             className="w-full rounded-lg border border-dls-border bg-dls-surface py-2 pl-9 pr-3 text-xs text-dls-text placeholder:text-dls-secondary focus:outline-none focus:ring-2 focus:ring-[rgba(var(--dls-accent-rgb),0.2)]"
-            placeholder="Search extensions..."
+            placeholder={t("settings.extensions.search")}
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
           />
@@ -554,7 +552,7 @@ export function McpView(props: McpViewProps) {
               size="xs"
               onClick={() => setFilter(f)}
             >
-              {f === "all" ? "All" : f === "mcp" ? "MCPs" : "Skills"}
+              {f === "all" ? t("settings.extensions.filter_all") : f === "mcp" ? t("settings.extensions.filter_mcp") : t("settings.extensions.filter_skills")}
             </Button>
           ))}
           <Button
@@ -562,7 +560,11 @@ export function McpView(props: McpViewProps) {
             size="xs"
             onClick={() => setShowHidden((current) => !current)}
           >
-            {showHidden ? "Showing hidden" : hiddenOrPolicyCount > 0 ? `Show hidden (${hiddenOrPolicyCount})` : "Show hidden"}
+            {showHidden
+              ? t("settings.extensions.showing_hidden")
+              : hiddenOrPolicyCount > 0
+                ? t("settings.extensions.show_hidden_count", { count: hiddenOrPolicyCount })
+                : t("settings.extensions.show_hidden")}
           </Button>
         </div>
       </div>
@@ -615,7 +617,7 @@ export function McpView(props: McpViewProps) {
         isPluginHidden={(plugin) => isiPolloWorkExtensionHidden(`plugin:${plugin.pluginId}`)}
         disabledReasonForEntry={(entry) =>
           props.builtInExtensionsDisabled && isBuiltIniPolloWorkExtension(entry)
-            ? builtInExtensionDisabledReason
+            ? t("settings.extensions.disabled_by_organization")
             : null
         }
         isConfigured={(entry) => {
@@ -741,7 +743,7 @@ export function McpView(props: McpViewProps) {
         const hasConfigSlot = extensionConfigSlot !== null;
         const hidden = isiPolloWorkExtensionHidden(detailEntry);
         const disabledReason = props.builtInExtensionsDisabled && isBuiltIniPolloWorkExtension(detailEntry)
-          ? builtInExtensionDisabledReason
+          ? t("settings.extensions.disabled_by_organization")
           : null;
         const isConnected = disabledReason
           ? false
@@ -862,8 +864,8 @@ export function McpView(props: McpViewProps) {
             showEnablementCard={false}
             configSlot={(
               <div className="flex flex-wrap gap-2">
-                <span className="rounded-full border border-dls-border bg-dls-hover px-2 py-1 text-xs text-dls-secondary">Shared by your organization</span>
-                <span className="rounded-full border border-dls-border bg-dls-hover px-2 py-1 text-xs text-dls-secondary">{connection.credentialMode === "shared" ? "Org account" : "Your account"}</span>
+                <span className="rounded-full border border-dls-border bg-dls-hover px-2 py-1 text-xs text-dls-secondary">{t("mcp.org_connection_managed_label")}</span>
+                <span className="rounded-full border border-dls-border bg-dls-hover px-2 py-1 text-xs text-dls-secondary">{connection.credentialMode === "shared" ? t("settings.extensions.org_account") : t("settings.extensions.your_account")}</span>
               </div>
             )}
           />
@@ -1047,8 +1049,8 @@ function McpQuickConnectSection(props: {
         {props.entries.length === 0 && (props.installedSkills ?? []).length === 0 && (props.installedPlugins ?? []).length === 0 && (props.installedOrgMcpItems ?? []).length === 0 ? (
           <div className="col-span-full rounded-xl border border-dashed border-dls-border px-5 py-10 text-center">
             <Unplug size={24} className="mx-auto mb-3 text-dls-secondary/30" />
-            <div className="text-sm font-medium text-dls-secondary">No extensions found</div>
-            <div className="mt-1 text-xs text-dls-secondary/60">Try a different search, filter, or open Marketplace to add one.</div>
+            <div className="text-sm font-medium text-dls-secondary">{t("settings.extensions.empty_title")}</div>
+            <div className="mt-1 text-xs text-dls-secondary/60">{t("settings.extensions.empty_description")}</div>
           </div>
         ) : null}
       </div>

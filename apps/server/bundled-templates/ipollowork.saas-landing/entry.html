@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-ipw-mobile-ready="true">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="design-tokens.css" />
-  <title>Filebase — sync that respects your bandwidth</title>
+  <title>Filebase - sync that respects your bandwidth</title>
   <style>
     :root {
       --bg: #fafaf9; --fg: #1c1b1a; --muted: #6b6964; --border: #e6e4e0;
@@ -68,8 +68,13 @@
       header[data-menu-open="true"] .mobile-nav-toggle::before { top: 18px; transform: rotate(45deg); }
       header[data-menu-open="true"] .mobile-nav-toggle::after { top: 18px; transform: rotate(-45deg); }
       .hero { padding: 72px 0 64px; }
-      .hero h1 { font-size: clamp(40px, 13vw, 58px); }
+      .hero h1 { font-size: clamp(40px, 12vw, 52px); }
       .hero .cta { align-items: stretch; flex-direction: column; }
+      section { padding: 64px 0; }
+      .hero .cta button { min-height: 46px; width: 100%; }
+      .logos { gap: 24px 32px; }
+      .tier { padding: 26px 22px; }
+      .closing h2 { font-size: 32px; }
     }
   </style>
 </head>

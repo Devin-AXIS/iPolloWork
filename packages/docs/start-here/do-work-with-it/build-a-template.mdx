@@ -1,0 +1,163 @@
+---
+title: "Build a template"
+description: "Package a reusable design or HyperFrames video template for iPolloWork"
+---
+
+Template Market lets developers and design teams reuse a proven starting point without copying an old project by hand. Importing a template installs it in the desktop profile's personal library, so it can be used from any of that person's workstations. Applying a template creates a session-owned copy; uninstalling it never removes existing work.
+
+This page documents the current local `.ipwt` format. There is no public hosted-market publishing API yet.
+
+## Choose a template surface
+
+| Use case | `category` | `surface` | Required entry |
+| --- | --- | --- | --- |
+| Website, App prototype, slides, poster, cards, report, article, or other design | `site`, `app`, `slides`, `poster`, `cards`, `report`, `article`, or `other` | `design` | Any static HTML entry, conventionally `entry.html` |
+| HyperFrames video | `video` | `video` | `index.html` at the package root |
+
+The nine supported categories are `site`, `video`, `app`, `slides`, `poster`, `cards`, `report`, `article`, and `other`. Use `other` for resumes, documents, assets, and design formats that do not fit a dedicated category. A video package must use both `category: "video"` and `surface: "video"`; its entry must be `index.html`. The importer rejects mismatched combinations.
+
+## Package layout
+
+An `.ipwt` file is a ZIP archive. Put `manifest.json` directly at the archive root—do not wrap the files in another parent folder.
+
+```text
+acme-growth-brief.ipwt
+├── manifest.json
+├── cover.svg
+├── entry.html                 # design templates
+├── design-tokens.css          # optional but recommended for design templates
+└── assets/
+    └── chart.png
+```
+
+A video template uses `index.html` in place of `entry.html`:
+
+```text
+acme-product-reveal.ipwt
+├── manifest.json
+├── cover.svg
+├── index.html
+└── assets/
+    └── product.png
+```
+
+The current importer accepts static `.html`, `.css`, `.js`, `.mjs`, `.json`, image, font, `.txt`, `.md`, `LICENSE`, and `NOTICE` files. It rejects symbolic links, executable files, absolute paths, `..` traversal, and duplicate paths.
+
+Limits are 50 MB for the uploaded archive, 200 MB after extraction, 1,000 files, and 25 MB per file.
+
+## Write `manifest.json`
+
+Every package needs this versioned manifest. Keep `kind` set to `"design"` for both design and video templates in v1; `surface` selects the iPolloWork editor.
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "acme.growth-brief",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "report",
+  "subcategory": "kpi",
+  "style": "editorial",
+  "tags": ["growth", "weekly"],
+  "surface": "design",
+  "title": "Growth Brief",
+  "description": "A concise weekly operating report for product and growth teams.",
+  "cover": "cover.svg",
+  "entry": "entry.html",
+  "source": {
+    "name": "Acme Design",
+    "repository": "https://github.com/acme/design-templates",
+    "license": "MIT"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "--ipw-color-primary", "label": "Primary", "type": "color", "group": "theme" },
+      { "id": "--ipw-font-display", "label": "Display font", "type": "font", "group": "typography" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the sample metrics and date range.",
+    "Update the visual tokens and brand mark.",
+    "Check the final report at its intended width."
+  ],
+  "minimumAppVersion": "0.17.20"
+}
+```
+
+`id` must be lowercase and contain at least one `.` or `-`, for example `acme.growth-brief`. Local packages cannot use the reserved `ipollowork.*` namespace. Versions use semantic versioning such as `1.2.0`; increase the version whenever you publish a changed package.
+
+`style`, `tags`, and `surface` are optional in v1 and default to `"minimal"`, `[]`, and `"design"`. Include them anyway so the Market can filter and describe the template correctly. The controlled style families are `minimal`, `editorial`, `newsprint`, `swiss`, `bold`, `soft`, `pastel`, `glass`, `dark`, `cyber`, `technical`, `playful`, `cinematic`, `data`, `brutalist`, `retro`, `sketch`, and `custom`. Pick one primary visual language; put secondary traits in `tags`.
+
+`designSystem.variables` is the public editing contract. A design variable ID must be an `--ipw-*` custom property present in the declared token stylesheet. Video variables must also exist in `data-composition-variables`. This keeps Market metadata, the Design drawer, and the Video Studio aligned instead of maintaining three unrelated configurations.
+
+## Make a design template easy to edit
+
+Use a self-contained HTML entry and keep reusable tokens in a separate stylesheet when possible. The Design panel works best when the document has semantic structure, stable IDs, and responsive CSS rather than a single rasterized canvas.
+
+The following conventions are optional but useful for authoring tools and agents:
+
+```html
+<link rel="stylesheet" href="design-tokens.css" />
+<h1 data-ipw-text="hero.title">Make the signal visible.</h1>
+<article data-ipw-card>...</article>
+```
+
+Use relative paths for images and fonts. A 16:9 SVG or PNG cover is recommended for a clean Market card, though the importer does not enforce cover dimensions.
+
+## Make a video template
+
+Video templates are HyperFrames projects. The right-side Video Studio reads only the session's `video/<session-id>/index.html`, so keep the playable composition at that exact path after the template is applied. Video is the only Template Market category that uses HyperFrames variables; all other categories remain ordinary HTML, CSS, and packaged assets.
+
+Every video template must declare a non-empty `data-composition-variables` array on `<html>`. Each variable needs `id`, `type`, `label`, and `default`; `enum` variables also need `options`. Scalar values become CSS variables on the composition root, while `data-var-text` and `data-var-src` provide direct bindings.
+
+```html
+<html data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Product Reveal"},{"id":"accent","type":"color","label":"Accent","default":"#7c3aed"}]'>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="6">
+      <section id="scene-main" class="clip" data-start="0" data-duration="6" data-track-index="1" style="color: var(--accent)">
+        <h1 id="title" data-var-text="title">Product Reveal</h1>
+      </section>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
+```
+
+Do not start a second preview server from the template or agent instructions. iPolloWork owns the embedded preview. Before import, run the same strict structural check used for built-in video templates:
+
+```bash
+npx --yes hyperframes@0.7.52 check . --strict --at-transitions
+```
+
+Keep video assets inside the package and avoid depending on an external browser window. The project should still make sense when it is copied into one isolated session. For site, app, slides, poster, cards, report, and article templates, do not add `data-composition-variables` or a HyperFrames runtime: author them as ordinary static HTML/CSS/asset packages, just like the built-in design templates.
+
+## Package and import
+
+From the directory that contains `manifest.json`, create a ZIP archive with the files at its root and give it the `.ipwt` extension:
+
+```bash
+zip -r acme-growth-brief.ipwt manifest.json cover.svg entry.html design-tokens.css assets
+```
+
+In iPolloWork, open your avatar menu, choose **Template Market**, and select **Import .ipwt**. Choose the template category before installing; it must match the package's `manifest.json`, or the import is rejected. The package is then installed into your personal library. You can test it by choosing **Use**; this creates a new session copy, so it is safe to uninstall or update the library template afterward.
+
+## Canonical session record
+
+Each applied template creates one canonical template-session record in the local runtime database. The record contains the session id, surface (`design` or `video`), template id and version, entry path, brief path, and manifest snapshot. The sidebar icon, right-side editor, and Agent instruction all read this same record.
+
+There is no browser-side fallback or alternate “design session” endpoint. On the first launch after upgrading, older `template.json` metadata is migrated into the canonical record and then removed. A video template therefore always opens and edits its own `video/<session-id>/index.html`; it never inherits a different conversation's project.
+
+## Release checklist
+
+- Keep the entry, cover, and optional token file inside the archive and refer to them with relative paths.
+- Do not include keys, credentials, executables, symlinks, or generated build caches.
+- State a real license for every package and only include assets you are allowed to redistribute.
+- Test desktop and narrow layouts for design templates.
+- For video templates, run `hyperframes check`, make sure `index.html` is the only project entry, and verify every declared HyperFrames variable has a valid type and default.
+- Increase `version` and retain the same `id` for an update; use a new `id` for a distinct template.

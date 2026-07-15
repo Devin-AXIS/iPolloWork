@@ -92,7 +92,7 @@ export function CloudAccountSection({
       ) : orgsBusy ? (
         <div className="flex items-center gap-2 text-sm text-dls-secondary">
           <Loader2 size={14} className="animate-spin" />
-          Loading organizations...
+          {t("settings.cloud.loading_organizations")}
         </div>
       ) : null}
 
@@ -115,7 +115,7 @@ function ConnectedOrg({ org }: { org: DenOrgSummary }) {
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-dls-text">{org.name}</div>
         <div className="text-xs text-dls-secondary">
-          {org.role === "owner" ? "Owner" : "Member"} &middot; Connected
+          {org.role === "owner" ? t("settings.cloud.role_owner") : t("settings.cloud.role_member")} &middot; {t("status.connected")}
         </div>
       </div>
       <Check size={16} className="shrink-0 text-green-11" />
@@ -152,7 +152,7 @@ function OrgPicker({
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-sm text-dls-secondary">
         <Loader2 size={20} className="animate-spin" />
-        Loading your organizations...
+        {t("settings.cloud.loading_organizations")}
       </div>
     );
   }
@@ -160,13 +160,13 @@ function OrgPicker({
   if (orgs.length === 0) {
     return (
       <div className="rounded-xl border border-dls-border bg-dls-surface px-4 py-6 text-center text-sm text-dls-secondary">
-        No organizations found.{" "}
+        {t("settings.cloud.no_organizations")}{" "}
         <button
           type="button"
           className="font-medium text-dls-text underline underline-offset-2"
           onClick={() => void onRefresh()}
         >
-          Refresh
+          {t("common.refresh")}
         </button>
       </div>
     );
@@ -182,8 +182,8 @@ function OrgPicker({
       </div>
       {orgs.length > 10 ? (
         <Input
-          aria-label="Search organizations"
-          placeholder="Search organizations..."
+          aria-label={t("settings.cloud.search_organizations")}
+          placeholder={t("settings.cloud.search_organizations")}
           value={query}
           className="h-auto rounded-xl border-dls-border bg-dls-surface px-4 py-2.5 text-sm text-dls-text shadow-none placeholder:text-dls-secondary focus-visible:border-dls-text/30 focus-visible:ring-0 dark:bg-dls-surface"
           onChange={(event) => updateQuery(event.target.value)}
@@ -206,7 +206,7 @@ function OrgPicker({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-dls-text">{org.name}</div>
-                <div className="text-xs text-dls-secondary">{org.kind === "personal" ? "个人工作站" : org.role === "owner" ? "Owner" : "Member"}</div>
+                <div className="text-xs text-dls-secondary">{org.kind === "personal" ? "个人工作站" : org.role === "owner" ? t("settings.cloud.role_owner") : t("settings.cloud.role_member")}</div>
               </div>
               {org.id === activeOrgId ? <Check size={16} className="text-green-11" /> : null}
             </button>
@@ -220,7 +220,7 @@ function OrgPicker({
       </div>
       {filtered.length === 0 && query.trim() ? (
         <div className="text-sm text-dls-secondary">
-          No organizations match your search.
+          {t("settings.cloud.no_organizations_match")}
         </div>
       ) : null}
       {hasMore ? (
@@ -232,10 +232,10 @@ function OrgPicker({
             className="rounded-xl border-dls-border text-dls-text hover:bg-dls-hover"
             onClick={showMore}
           >
-            Show more
+            {t("workspace_list.show_more_fallback")}
           </Button>
           <div className="text-xs text-dls-secondary">
-            Showing {visible.length} of {filtered.length} organizations
+            {t("settings.cloud.organizations_showing", { visible: visible.length, total: filtered.length })}
           </div>
         </div>
       ) : null}
