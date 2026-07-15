@@ -114,6 +114,11 @@
       text-transform: uppercase; margin: 0;
     }
     .hero .meta-col p { font-family: var(--sans); font-size: 14px; line-height: 1.55; margin: 0; max-width: 38ch; text-align: justify; }
+    .hero > * { min-width: 0; }
+    .hero .meta-col h2,
+    .hero .meta-col p,
+    .ascii-frame,
+    .meta-row span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
     .meta-row { display: grid; grid-template-columns: 8ch 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--ink); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; }
     .meta-row b { color: var(--hazard); font-weight: 500; }
 
@@ -225,6 +230,11 @@
     .spec-row .glyph.s2 { font-size: clamp(60px, 9vw, 120px); }
     .spec-row .glyph.s3 { font-size: clamp(120px, 16vw, 220px); }
     .spec-row .stats { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; text-align: right; line-height: 1.6; }
+    .spec-row,
+    .spec-row > * { min-width: 0; max-width: 100%; }
+    .spec-row .label,
+    .spec-row .glyph,
+    .spec-row .stats { overflow-wrap: anywhere; }
 
     /* ========= ALERT BLOCK ========= */
     .alert {
@@ -261,12 +271,13 @@
 
     /* ========= RESPONSIVE ========= */
     @media (max-width: 880px) {
+      html, body { max-width: 100%; overflow-x: hidden; }
       .strip { grid-template-columns: 1fr 1fr; gap: 8px 22px; }
       .strip > div:nth-child(n+5) { display: none; }
       .nav ul { display: none; }
-      .hero { grid-template-columns: 1fr; }
+      .hero { grid-template-columns: 1fr; width: 100%; max-width: 100%; overflow: hidden; }
       .hero .num { font-size: 36vw; }
-      .hero .meta-col { border-left: none; border-top: 1px solid var(--ink); }
+      .hero .meta-col { min-width: 0; max-width: 100%; overflow: hidden; border-left: none; border-top: 1px solid var(--ink); }
       .abstract { grid-template-columns: 1fr; }
       .thesis { grid-template-columns: 6ch 1fr; }
       .thesis .tag { display: none; }
@@ -313,7 +324,7 @@
       .spec-row { grid-template-columns: 1fr; gap: 8px; }
       .spec-row .glyph.s1 { font-size: 34px; }
       .spec-row .glyph.s2 { font-size: 54px; }
-      .spec-row .glyph.s3 { font-size: 104px; }
+      .spec-row .glyph.s3 { font-size: clamp(64px, 25vw, 96px); }
       .spec-row .stats { text-align: left; }
       .alert { padding: 18px 16px; }
       .colophon { padding: 28px 16px; }
@@ -323,7 +334,7 @@
     }
   </style>
 <link rel="stylesheet" href="design-tokens.css"></head>
-<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
+<body data-ipw-frame="fluid"><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
   <div class="strip">
     <div><b>VOL.</b><span>04 / FIELD UNIT</span></div>
     <div><b>ISS.</b><span>2026 · MAY · QRTLY</span></div>
