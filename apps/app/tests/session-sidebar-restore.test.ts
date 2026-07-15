@@ -6,6 +6,14 @@ const sessionPageSource = readFileSync(
   resolve(import.meta.dir, "../src/react-app/domains/session/chat/session-page.tsx"),
   "utf8",
 );
+const useMobileSource = readFileSync(
+  resolve(import.meta.dir, "../src/hooks/use-mobile.ts"),
+  "utf8",
+);
+const sidebarSource = readFileSync(
+  resolve(import.meta.dir, "../src/components/ui/sidebar.tsx"),
+  "utf8",
+);
 
 function mainTitlebarLeadSource() {
   const headerStart = sessionPageSource.indexOf("<header");
@@ -23,5 +31,12 @@ describe("session sidebar restore control", () => {
     expect(titlebarLead).toContain("!sidebarOpen ? (");
     expect(titlebarLead).toContain("<SidebarTrigger");
     expect(titlebarLead).toContain('aria-label={t("sidebar.expand")}');
+  });
+
+  test("keeps the desktop sidebar layout when an Electron window is narrow", () => {
+    expect(useMobileSource).toContain("isNarrowMobileViewport");
+    expect(useMobileSource).toContain("__IPOLLOWORK_ELECTRON__");
+    expect(useMobileSource).toContain("return false");
+    expect(sidebarSource).toContain("hidden md:block electron:block");
   });
 });
