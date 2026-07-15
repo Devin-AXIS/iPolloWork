@@ -10,4 +10,15 @@ describe("settings route parsing", () => {
       redirectPath: null,
     });
   });
+
+  test("recognizes the Authorization Center settings tab", () => {
+    expect(parseSettingsPath("/settings/authorizations")).toEqual({
+      tab: "authorizations",
+      redirectPath: null,
+    });
+    expect(parseSettingsPath("/workspace/workspace_1/settings/authorizations")).toEqual({
+      tab: "authorizations",
+      redirectPath: null,
+    });
+  });
 });

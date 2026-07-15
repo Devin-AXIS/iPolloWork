@@ -1,0 +1,69 @@
+---
+title: 使用媒体中心
+description: 通过 Provider 无关的媒体中心接入语音、翻译、视频和数字人能力，不修改 OpenCode。
+---
+
+iPolloWork 提供一个本地的**媒体中心能力契约**。第一批接入的是阿里百炼，只需在 **设置 → 授权中心 → 阿里百炼媒体服务** 配置一个 `DASHSCOPE_API_KEY`。Provider 实现在本地服务端：前端、生成文件和 OpenCode 都不会拿到密钥值。
+
+## 已统一的能力
+
+| 能力 | 调用动作 | 返回结果 |
+| --- | --- | --- |
+| 文本转语音 | `speech_synthesize` | CosyVoice 的音频 URL |
+| 声音克隆 | `voice_clone` | 可复用的百炼音色 ID |
+| 录音转写 | `speech_transcribe` | Fun-ASR 异步任务 |
+| 短音频低延迟识别 | `speech_recognize_realtime` | Fun-ASR 实时模型响应 |
+| 音视频文件翻译 | `speech_translate` | 翻译文本，可选 Base64 音频分片 |
+| 视频生成 | `video_generate` | 万相异步任务 |
+| 模型级视频编辑 | `video_edit` | 万相异步任务 |
+| 数字人 | `digital_human_generate` | 万相对口型异步任务 |
+| 查询任务 | `task_get` | 任务状态与结果 URL |
+
+百炼返回的媒体 URL 有效期有限。功能需要把工作区产物长期保存时，再调用存储中心上传到对象存储。
+
+每个媒体中心调用都返回同一层结构：`provider`、`operation`、`output`，异步任务还会返回 `taskId`。`output` 保留 Provider 特有字段，但业务调用路径无需分支判断厂商。
+
+## 前端调用
+
+使用 iPolloWork 客户端的统一方法。它始终经由本地 iPolloWork 服务调用，浏览器不会直连百炼。
+
+```ts
+const result = await client.callMedia("speech_synthesize", {
+  text: "欢迎来到 iPolloWork。",
+  voice: "longanyang",
+});
+
+const translation = await client.callMedia("speech_translate", {
+  fileUrl: "https://assets.example.com/meeting.wav",
+  format: "wav",
+  sourceLanguage: "zh",
+  targetLanguage: "en",
+  includeAudio: true,
+});
+```
+
+异步任务创建后，保存 `result.taskId`，通过 `task_get` 主动轮询，避免重复提交：
+
+```ts
+const task = await client.callMedia("task_get", { taskId });
+```
+
+输入媒体必须是可访问的 HTTPS URL 或模型支持的 Data URI。生产环境建议先上传到自己的 OSS，再使用短期授权 URL。
+
+## 智能体调用与 OpenCode 边界
+
+iPolloWork 随包附带的扩展插件向智能体暴露相同动作。智能体先调用 `ipollowork_extension_list_actions`，再以 `extensionId: "media"` 调用 `ipollowork_extension_call`。
+
+这套能力只属于 iPolloWork：不会向 OpenCode 增加百炼 Provider，不修改 OpenCode 源码、配置或内部数据。因此升级 OpenCode 时不需要迁移百炼逻辑。
+
+升级后运行：
+
+```bash
+pnpm --filter ipollowork-server exec bun test src/extensions/media-center.test.ts src/extensions-connect-gating.test.ts
+```
+
+然后启动桌面开发版，在会话里确认 `ipollowork_extension_list_actions` 能列出 `media`。
+
+## 实时边界
+
+`speech_recognize_realtime` 适用于已上传的短音频分片；`speech_translate` 会消费百炼的流式响应，并通过本地网关返回完整翻译结果。连续麦克风到麦克风的同传需要单独的 WebSocket 中继和短期凭证。后续增加时也应放在 iPolloWork 内，不暴露永久 Key，也不改动 OpenCode。

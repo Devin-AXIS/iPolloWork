@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea, ScrollAreaViewport } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 import { registerExtensionConfig } from "./extension-registry";
 
 // ---------------------------------------------------------------------------
@@ -145,9 +146,9 @@ export function ComputerUseConfig({
   return (
     <Card variant="outline" size="sm">
       <CardHeader>
-        <CardTitle>Computer Use setup (Mac only)</CardTitle>
+        <CardTitle>{t("settings.integration.computer.title")}</CardTitle>
         <CardDescription>
-          Computer Use only works on Mac. Connect the local MCP server and grant the macOS permissions it needs to control apps.
+          {t("settings.integration.computer.description")}
         </CardDescription>
         <CardAction>
           <Button variant="ghost" size="icon-sm" onClick={() => void verify()} disabled={isBusy}>
@@ -166,8 +167,8 @@ export function ComputerUseConfig({
 
         {/* Step 1 — MCP */}
         <SetupRow
-          title="1. Connect Computer Use MCP"
-          description="Adds the local Computer Use server to this workspace so Composer can use the computer-control tools."
+          title={t("settings.integration.computer.connect_title")}
+          description={t("settings.integration.computer.connect_description")}
           complete={connected}
         >
           <Button
@@ -177,21 +178,21 @@ export function ComputerUseConfig({
           >
             {connecting ? <Loader2 className="size-4 shrink-0 animate-spin" /> : null}
             <span className="min-w-0 break-words">
-              {connected ? "Configured" : connecting ? "Connecting…" : "Connect MCP"}
+              {connected ? t("settings.integration.configured") : connecting ? t("status.connecting") : t("settings.integration.computer.connect_action")}
             </span>
           </Button>
         </SetupRow>
 
         {/* Step 2 — Permissions */}
         <SetupRow
-          title="2. Grant macOS permissions"
-          description="Opens the iPolloWork Computer Use helper. Grant both permissions there, then click Verify below."
+          title={t("settings.integration.computer.permissions_title")}
+          description={t("settings.integration.computer.permissions_description")}
           complete={allGranted}
         >
           <div className="flex w-full min-w-0 flex-col gap-3">
             <div className="grid gap-2">
-              <Pill label="Accessibility" granted={result?.accessibility === true} checked={result !== null} />
-              <Pill label="Screen Recording" granted={result?.screenRecording === true} checked={result !== null} />
+              <Pill label={t("settings.integration.computer.accessibility")} granted={result?.accessibility === true} checked={result !== null} />
+              <Pill label={t("settings.integration.computer.screen_recording")} granted={result?.screenRecording === true} checked={result !== null} />
             </div>
 
             <Button
@@ -205,7 +206,7 @@ export function ComputerUseConfig({
                 <Settings2 className="size-4 shrink-0" />
               )}
               <span className="min-w-0 wrap-break-word">
-                {isBusy ? "Opening…" : allGranted ? "Reopen helper" : "Grant permissions"}
+                {isBusy ? t("settings.integration.opening") : allGranted ? t("settings.integration.computer.reopen_helper") : t("settings.integration.computer.grant_permissions")}
               </span>
             </Button>
           </div>
@@ -216,8 +217,8 @@ export function ComputerUseConfig({
         <div className="flex w-full flex-col gap-3">
           <p className="text-xs text-muted-foreground">
             {allGranted
-              ? "Permissions verified. Try a Composer prompt that uses Computer Use."
-              : "After granting permissions in the helper, click Verify."}
+              ? t("settings.integration.computer.permissions_verified")
+              : t("settings.integration.computer.verify_hint")}
           </p>
           <div className="flex w-full justify-end gap-2">
             {onRefresh ? (
@@ -225,7 +226,7 @@ export function ComputerUseConfig({
                 variant="outline"
                 onClick={() => void onRefresh?.()}
               >
-                Refresh
+                {t("common.refresh")}
               </Button>
             ) : null}
             <Button
@@ -233,7 +234,7 @@ export function ComputerUseConfig({
               disabled={isBusy}
             >
               {isBusy ? <Loader2 className="size-4 shrink-0 animate-spin" /> : null}
-              Verify permissions
+              {t("settings.integration.computer.verify")}
             </Button>
           </div>
         </div>
@@ -291,7 +292,7 @@ function Pill({ label, granted, checked }: PillProps) {
           checked && !granted && "text-amber-11",
         )}
       >
-        {!checked ? "…" : granted ? "Granted" : "Needed"}
+        {!checked ? "…" : granted ? t("settings.integration.granted") : t("settings.integration.needed")}
       </span>
     </div>
   );
