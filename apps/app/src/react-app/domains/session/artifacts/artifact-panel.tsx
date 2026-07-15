@@ -275,7 +275,7 @@ async function createMarkdownPdf(source: HTMLElement) {
     const captureHeight = Math.max(exportFrame.root.scrollHeight, exportFrame.root.offsetHeight, 1);
     const canvas = await html2canvas(exportFrame.root, {
       backgroundColor: "#ffffff",
-      scale: 2,
+      scale: 1.5,
       useCORS: true,
       width: 794,
       height: captureHeight,
@@ -310,9 +310,10 @@ async function createMarkdownPdf(source: HTMLElement) {
 
       if (page > 0) pdf.addPage();
 
-      const sliceHeightMm = sliceHeight * imageWidth / canvas.width;
+      const pageHeightMm = sliceHeight * imageWidth / canvas.width;
+      const pageImage = pageCanvas.toDataURL("image/jpeg", 0.88);
 
-      pdf.addImage(pageCanvas, "JPEG", margin, margin, imageWidth, sliceHeightMm, undefined, "FAST");
+      pdf.addImage(pageImage, "JPEG", margin, margin, imageWidth, pageHeightMm, undefined, "FAST");
     }
 
     return pdf.output("blob");
