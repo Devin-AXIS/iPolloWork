@@ -186,9 +186,11 @@ async function expectLegacyCallPassesThrough(base: string) {
 }
 
 function expectAllActions(actions: ActionItem[]) {
-  expect(actions).toHaveLength(16);
+  expect(actions).toHaveLength(28);
   expect(actions.filter((action) => action.extensionId === "google-workspace")).toHaveLength(14);
   expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(2);
+  expect(actions.filter((action) => action.extensionId === "media")).toHaveLength(10);
+  expect(actions.filter((action) => action.extensionId === "storage")).toHaveLength(2);
 }
 
 beforeEach(() => {
@@ -260,8 +262,20 @@ describe("Connect-aware legacy extension gating", () => {
     const actions = await listActions(base);
     expect(actionKeys(actions)).toEqual([
       "google-workspace/status",
+      "media/digital_human_generate",
+      "media/speech_recognize_realtime",
+      "media/speech_synthesize",
+      "media/speech_transcribe",
+      "media/speech_translate",
+      "media/status",
+      "media/task_get",
+      "media/video_edit",
+      "media/video_generate",
+      "media/voice_clone",
       "openai-image-generation/image_generate",
       "openai-image-generation/status",
+      "storage/status",
+      "storage/upload_workspace_file",
     ]);
 
     const gated = await callCalendarListEvents(base);

@@ -17,10 +17,22 @@ import {
   OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS,
   OPENAI_IMAGE_GENERATION_EXTENSION_ID,
 } from "./openai-image-generation.js";
+import {
+  MEDIA_EXTENSION_ACTIONS,
+  MEDIA_EXTENSION_ID,
+  callMediaExtensionAction,
+} from "./media-center.js";
+import {
+  callStorageExtensionAction,
+  STORAGE_EXTENSION_ACTIONS,
+  STORAGE_EXTENSION_ID,
+} from "./storage.js";
 
 const IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS = [
   ...GOOGLE_WORKSPACE_EXTENSION_ACTIONS,
   ...OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS,
+  ...MEDIA_EXTENSION_ACTIONS,
+  ...STORAGE_EXTENSION_ACTIONS,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,6 +90,16 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
 
   if (extensionId === OPENAI_IMAGE_GENERATION_EXTENSION_ID) {
     const result = await callOpenAiImageGenerationExtensionAction(config, env, action, args, context);
+    if (result) return result;
+  }
+
+  if (extensionId === MEDIA_EXTENSION_ID) {
+    const result = await callMediaExtensionAction(config, env, action, args, context);
+    if (result) return result;
+  }
+
+  if (extensionId === STORAGE_EXTENSION_ID) {
+    const result = await callStorageExtensionAction(config, env, action, args, context);
     if (result) return result;
   }
 

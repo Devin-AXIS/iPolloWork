@@ -83,6 +83,7 @@ function TemplateThumbnail({ template, getTemplateCover }: { template: TemplateC
     if (!getTemplateCover) return;
     let active = true;
     let objectUrl = "";
+    setSrc(null);
     void getTemplateCover(template.manifest.id).then(({ data, contentType }) => {
       if (!active) return;
       objectUrl = URL.createObjectURL(new Blob([data], { type: contentType ?? "image/svg+xml" }));
@@ -92,7 +93,7 @@ function TemplateThumbnail({ template, getTemplateCover }: { template: TemplateC
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [getTemplateCover, template.manifest.id]);
+  }, [getTemplateCover, template.installedVersion, template.manifest.id, template.manifest.version]);
 
   return src ? (
     <img src={src} alt="" className="h-full w-full object-cover" />

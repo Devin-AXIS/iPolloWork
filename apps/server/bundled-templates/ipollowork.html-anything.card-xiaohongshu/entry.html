@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" data-ipw-template="card-xiaohongshu" data-ipw-style="playful">
+<head>
+<meta charset="UTF-8" />
+<title>Xiaohongshu Card</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;900&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#f3eee5; font-family:'Noto Sans SC',sans-serif; padding:36px 0; -webkit-font-smoothing:antialiased; }
+  .deck { display:flex; flex-direction:column; align-items:center; gap:24px; }
+  .card { width:1080px; max-width:96vw; aspect-ratio:3/4; border-radius:32px; overflow:hidden; position:relative; padding:80px 64px; display:flex; flex-direction:column; box-shadow:0 24px 60px -20px rgba(0,0,0,0.18); }
+  .c1 { background:linear-gradient(160deg,#f7d2c2 0%,#f3a98a 100%); color:#3a1d10; }
+  .c2 { background:linear-gradient(160deg,#fff7e6 0%,#ffe4b8 100%); color:#3a2e10; }
+  .c3 { background:linear-gradient(160deg,#e8f0e3 0%,#bcd6b3 100%); color:#1f3a1f; }
+  .c4 { background:linear-gradient(160deg,#e7e8f5 0%,#bec1e8 100%); color:#1d1f4a; }
+  .c5 { background:linear-gradient(160deg,#fce7f0 0%,#f5b3ce 100%); color:#4a1b34; }
+  .c6 { background:linear-gradient(160deg,#fff8e1 0%,#f7c99b 100%); color:#3a2210; }
+  .c7 { background:linear-gradient(160deg,#15140f 0%,#3a2620 100%); color:#fafaf7; }
+  .badge { display:inline-flex; align-items:center; gap:8px; padding:8px 16px; border-radius:999px; background:rgba(255,255,255,0.55); backdrop-filter:blur(8px); font-size:18px; font-weight:600; align-self:flex-start; }
+  .num { font-family:Georgia, serif; font-style:italic; font-size:120px; font-weight:700; line-height:0.9; opacity:0.85; margin-bottom:24px; }
+  h2 { font-size:64px; font-weight:900; line-height:1.1; letter-spacing:-0.01em; margin:0 0 32px; }
+  .body { font-size:30px; font-weight:500; line-height:1.55; opacity:0.85; max-width:24ch; }
+  .watermark { position:absolute; bottom:32px; right:36px; font-size:16px; opacity:0.55; font-weight:500; }
+  .pageno { position:absolute; top:36px; right:44px; font-family:'Inter',sans-serif; font-size:18px; font-weight:600; opacity:0.45; letter-spacing:0.08em; }
+  .hero { font-size:120px; font-weight:900; line-height:1.0; letter-spacing:-0.025em; margin:0; }
+</style>
+<link rel="stylesheet" href="design-tokens.css"></head>
+<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
+<div class="deck">
+
+  <div class="card c1">
+    <div class="pageno">01 / 07</div>
+    <div class="badge">Made to be shared</div>
+    <div style="margin:auto 0">
+      <div style="font-size:24px; font-weight:600; opacity:0.7; margin-bottom:18px">Featured</div>
+      <h2 class="hero">New<br/>Today<br/>Saved<br/><span style="color:#9c2a25">Share</span></h2>
+    </div>
+    <div style="font-size:22px; opacity:0.65; font-weight:500">View</div>
+    <div class="watermark">@HTMLAnything · 5/11</div>
+  </div>
+
+  <div class="card c2">
+    <div class="pageno">02 / 07</div>
+    <div class="num">01</div>
+    <h2>Explore<br/>Follow</h2>
+    <p class="body">One clear message <strong>Featured</strong>New</p>
+    <div class="watermark">@HTMLAnything</div>
+  </div>
+
+  <div class="card c3">
+    <div class="pageno">03 / 07</div>
+    <div class="num">02</div>
+    <h2>Today<br/>Saved</h2>
+    <p class="body">Keep the story moving <strong>A small format with a big idea</strong>Share<br/><br/>Made to be shared</p>
+    <div class="watermark">@HTMLAnything</div>
+  </div>
+
+  <div class="card c4">
+    <div class="pageno">04 / 07</div>
+    <div class="num">03</div>
+    <h2>View<br/>Explore</h2>
+    <p class="body">One clear message<br/><br/><strong>Follow</strong> Featured</p>
+    <div class="watermark">@HTMLAnything</div>
+  </div>
+
+  <div class="card c5">
+    <div class="pageno">05 / 07</div>
+    <div class="num">04</div>
+    <h2>New<br/>Today</h2>
+    <p class="body">Keep the story moving<strong>Saved</strong>A small format with a big idea<br/><br/>Made to be shared</p>
+    <div class="watermark">@HTMLAnything</div>
+  </div>
+
+  <div class="card c6">
+    <div class="pageno">06 / 07</div>
+    <div class="num">05</div>
+    <h2>Share<br/>View</h2>
+    <p class="body">One clear message<br/><br/><strong>Explore</strong>Keep the story moving</p>
+    <div class="watermark">@HTMLAnything</div>
+  </div>
+
+  <div class="card c7">
+    <div class="pageno">07 / 07</div>
+    <div style="margin:auto 0">
+      <div style="font-size:24px; font-weight:600; color:#e9b94a; margin-bottom:24px">Follow</div>
+      <h2 class="hero" style="color:#fafaf7">Featured<br/>New<br/><span style="color:#e9b94a">Today</span><br/>A small format with a big idea</h2>
+    </div>
+    <div style="display:flex; gap:14px; font-size:22px; font-weight:600">
+      <span style="padding:10px 22px; background:#e9b94a; color:#15140f; border-radius:999px">Saved</span>
+      <span style="padding:10px 22px; background:rgba(255,255,255,0.12); color:#fafaf7; border-radius:999px; border:1px solid rgba(255,255,255,0.2)">Share</span>
+      <span style="padding:10px 22px; background:rgba(255,255,255,0.12); color:#fafaf7; border-radius:999px; border:1px solid rgba(255,255,255,0.2)">View</span>
+    </div>
+    <div class="watermark" style="color:rgba(255,255,255,0.5)">Made to be shared</div>
+  </div>
+
+</div>
+</body>
+</html>
