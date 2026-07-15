@@ -1,12 +1,18 @@
 /** @jsxImportSource react */
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, FolderOpen, X } from "lucide-react";
+import { Download, ExternalLink, FolderOpen, Loader2, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getDesktopFileIcon, openDesktopPath, revealDesktopItemInDir } from "@/app/lib/desktop";
 import { isElectronRuntime } from "@/app/utils";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatFileSize } from "@/lib/utils";
@@ -85,6 +91,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [autoSaveBlockedDraft, setAutoSaveBlockedDraft] = useState<string | null>(null);
+  const isPdfGenerating = false;
   const isDirectTextEdit = isTextContent(target) && target.preview === "markdown";
   const externalPath = useMemo(() => target.kind === "file" ? absoluteWorkspacePath(workspaceRoot, target.value) : target.value, [target.kind, target.value, workspaceRoot]);
 
@@ -214,6 +221,10 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const downloadPdf = () => {
+    toast.info("PDF export is not wired up yet.");
+  };
+
   const openExternal = async () => {
     if (target.kind === "url") {
       window.open(target.value, "_blank", "noopener,noreferrer");
@@ -288,7 +299,13 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="relative flex h-full min-h-0 flex-col bg-background">
+      {isPdfGenerating ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-50 inline-flex -translate-x-1/2 items-center gap-2 rounded-md border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+          <Loader2 className="size-3.5 animate-spin" />
+          <span>正在生成PDF~</span>
+        </div>
+      ) : null}
       <div className="shrink-0 border-b border-border bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
         <div className="flex h-10 items-center gap-2 pe-2 ps-4">
           <div className="min-w-0 flex-1 flex items-center gap-1.5">
@@ -363,7 +380,25 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
               </Tooltip>
             )
           ) : null}
-          {target.kind === "file" ? (
+          {target.kind === "file" && target.preview === "markdown" ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={(
+                  <Button variant="ghost" size="icon-sm" aria-label="Download options">
+                    <Download />
+                  </Button>
+                )}
+              />
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={() => void download()}>
+                  下载MarkDown文件
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={isPdfGenerating} onClick={() => void downloadPdf()}>
+                  下载PDF文件
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : target.kind === "file" ? (
             <Tooltip>
               <TooltipTrigger
                 render={(
