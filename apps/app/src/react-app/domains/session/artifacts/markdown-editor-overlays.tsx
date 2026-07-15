@@ -102,6 +102,17 @@ function commandMatches(command: BlockCommand, query: string) {
   return command.label.toLowerCase().includes(normalized) || command.aliases.some((alias) => alias.includes(normalized));
 }
 
+function getSelectionBoundaryCoords(view: EditorView, position: number, direction: "start" | "end") {
+  const coords = view.coordsAtPos(position);
+  if (coords) return coords;
+
+  const fallbackPosition = direction === "start"
+    ? Math.min(view.state.doc.length, position + 1)
+    : Math.max(0, position - 1);
+
+  return view.coordsAtPos(fallbackPosition);
+}
+
 export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlaysProps) {
   const [activeCommand, setActiveCommand] = useState(0);
   const [slashDismissedAt, setSlashDismissedAt] = useState<number | null>(null);
@@ -179,8 +190,8 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
 
   const editorRect = view.dom.getBoundingClientRect();
   const slashCoords = visibleSlash ? view.coordsAtPos(visibleSlash.to) : null;
-  const selectionStart = !selection.empty ? view.coordsAtPos(selection.from) : null;
-  const selectionEnd = !selection.empty ? view.coordsAtPos(selection.to) : null;
+  const selectionStart = !selection.empty ? getSelectionBoundaryCoords(view, selection.from, "start") : null;
+  const selectionEnd = !selection.empty ? getSelectionBoundaryCoords(view, selection.to, "end") : null;
   const selectionToolbarLeft = selectionStart && selectionEnd
     ? Math.max(152, Math.min(editorRect.width - 152, ((selectionStart.left + selectionEnd.right) / 2) - editorRect.left))
     : 0;

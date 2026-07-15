@@ -47,6 +47,11 @@ const QUOTE = Decoration.line({ class: "cm-md-quote" });
 const CODE_BLOCK = Decoration.line({ class: "cm-md-codeblock" });
 const TABLE_BORDER_COLOR = "rgba(100, 116, 139, 0.85)";
 
+type RichPreviewRange = {
+  from: number;
+  to: number;
+};
+
 function styleTableCell(cell: HTMLTableCellElement) {
   cell.style.border = `1px solid ${TABLE_BORDER_COLOR}`;
 }
@@ -256,6 +261,9 @@ function suppressPreviewSelection(element: HTMLElement) {
 
 function selectionTouchesRange(view: EditorView, from: number, to: number) {
   for (const range of view.state.selection.ranges) {
+    if (range.from === range.to && range.from >= from && range.from <= to) {
+      return true;
+    }
     if (range.from < to && range.to > from) {
       return true;
     }
@@ -263,36 +271,47 @@ function selectionTouchesRange(view: EditorView, from: number, to: number) {
   return false;
 }
 
-function lineHasSelection(view: EditorView, pos: number) {
-  const line = view.state.doc.lineAt(pos);
-  return selectionTouchesRange(view, line.from, line.to);
-}
-
-function firstLineIsSelected(view: EditorView, from: number) {
-  const line = view.state.doc.lineAt(from);
-  return view.state.selection.ranges.some((range) => range.from === line.from && range.to === line.to);
-}
-
-function blankLineBordersRichPreview(view: EditorView, position: number) {
-  const line = view.state.doc.lineAt(position);
-  if (line.text.trim()) return false;
-
-  const document = view.state.doc.toString();
-  const ranges = [
+function getRichPreviewRanges(document: string): RichPreviewRange[] {
+  return [
     ...findMarkdownTables(document),
     ...findMarkdownCodeBlocks(document),
     ...findMarkdownImages(document),
   ];
+}
+
+function getRichPreviewRangeAtBoundaryPosition(view: EditorView, position: number) {
+  const line = view.state.doc.lineAt(position);
+  const document = view.state.doc.toString();
+  const ranges = getRichPreviewRanges(document);
+
+  for (const range of ranges) {
+    const firstLine = view.state.doc.lineAt(range.from);
+    if (position >= firstLine.from && position <= firstLine.to) {
+      return range;
+    }
+  }
+
+  if (line.text.trim()) return null;
+
   const previousLine = line.number > 1 ? view.state.doc.line(line.number - 1) : null;
   const nextLine = line.number < view.state.doc.lines ? view.state.doc.line(line.number + 1) : null;
 
-  return ranges.some((range) => previousLine?.to === range.to || nextLine?.from === range.from);
+  return ranges.find((range) => previousLine?.to === range.to || nextLine?.from === range.from) ?? null;
 }
 
-function suppressMultiClickBesidePreview(event: MouseEvent | PointerEvent, view: EditorView) {
-  if (event.detail < 2) return false;
+function isInsideRichPreviewWidget(event: MouseEvent | PointerEvent) {
+  return event.target instanceof Element
+    && event.target.closest(".cm-md-image, .cm-md-table-wrap, .cm-md-code-wrap") !== null;
+}
+
+function suppressPointerBesidePreview(event: MouseEvent | PointerEvent, view: EditorView) {
+  if (isInsideRichPreviewWidget(event)) return false;
+
   const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
-  if (position === null || !blankLineBordersRichPreview(view, position)) return false;
+  if (position === null) return false;
+
+  const range = getRichPreviewRangeAtBoundaryPosition(view, position);
+  if (!range || selectionTouchesRange(view, range.from, range.to)) return false;
 
   event.preventDefault();
   event.stopPropagation();
@@ -385,7 +404,7 @@ function buildDecorations(view: EditorView): DecorationSet {
   }
 
   for (const table of findMarkdownTables(document)) {
-    if (!isInsideCodeBlock(table.from, table.to) && !firstLineIsSelected(view, table.from)) {
+    if (!isInsideCodeBlock(table.from, table.to) && !selectionTouchesRange(view, table.from, table.to)) {
       const firstLine = view.state.doc.lineAt(table.from);
       widgets.push(Decoration.replace({ widget: new TableWidget(table) }).range(firstLine.from, firstLine.to));
       for (let lineNumber = firstLine.number + 1; lineNumber <= view.state.doc.lines; lineNumber += 1) {
@@ -398,7 +417,7 @@ function buildDecorations(view: EditorView): DecorationSet {
   }
 
   for (const block of codeBlocks) {
-    if (firstLineIsSelected(view, block.from)) continue;
+    if (selectionTouchesRange(view, block.from, block.to)) continue;
     const firstLine = view.state.doc.lineAt(block.from);
     widgets.push(Decoration.replace({ widget: new CodeBlockWidget(block) }).range(firstLine.from, firstLine.to));
     for (let lineNumber = firstLine.number + 1; lineNumber <= view.state.doc.lines; lineNumber += 1) {
@@ -475,11 +494,17 @@ const livePreviewPlugin = ViewPlugin.fromClass(
 );
 
 const protectRichPreviewBoundaries = EditorView.domEventHandlers({
-  pointerdown: suppressMultiClickBesidePreview,
-  mousedown: suppressMultiClickBesidePreview,
+  pointerdown: suppressPointerBesidePreview,
+  mousedown: suppressPointerBesidePreview,
   dblclick(event, view) {
+    if (isInsideRichPreviewWidget(event)) return false;
+
     const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
-    if (position === null || !blankLineBordersRichPreview(view, position)) return false;
+    if (position === null) return false;
+
+    const range = getRichPreviewRangeAtBoundaryPosition(view, position);
+    if (!range || selectionTouchesRange(view, range.from, range.to)) return false;
+
     event.preventDefault();
     event.stopPropagation();
     return true;
