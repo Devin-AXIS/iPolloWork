@@ -3,6 +3,7 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
+import type { TemplateCatalogItem } from "@ipollowork/types/templates";
 import { Check, Minimize2 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
@@ -73,6 +74,7 @@ import {
   useComposerStateStore,
 } from "./composer-state-store";
 import { MessageList } from "@/components/chat/message-list";
+import { NewConversationStarter, newConversationPlaceholder, type NewConversationMode } from "@/components/chat/new-conversation-starter";
 import { MessageListProvider, type DispatchAction } from "@/components/chat/message-list-provider";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import type { ThreadStatus } from "@/lib/messages";
@@ -139,6 +141,14 @@ export type SessionSurfaceProps = {
   onChangeModel?: (model: { providerID: string; modelID: string }) => void;
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
+  onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
+  /** Marks the first prompt as a video task before it reaches the agent. */
+  onActivateVideoStudio?: (sessionId: string) => void;
+  designTemplates?: TemplateCatalogItem[];
+  designTemplatesLoading?: boolean;
+  designTemplateBusyId?: string | null;
+  onInstallDesignTemplate?: (templateId: string) => void;
+  onRequestDesignTemplates?: () => void;
   onOpenSettingsSection?: ((section: "commands" | "skills" | "mcps" | "plugins" | "providers") => void) | undefined;
   onRevertToMessage?: (messageId: string, sessionId: string) => Promise<boolean>;
   onForkAtMessage?: (messageId: string | null, sessionId: string) => void;
@@ -469,6 +479,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
   const [toolImportedPlugins, setToolImportedPlugins] = useState<CloudImportedPlugin[]>([]);
   const [verifiedOpenTargets, setVerifiedOpenTargets] = useState<OpenTarget[]>([]);
+  const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
   const composerShellRef = useRef<HTMLDivElement>(null);
   const hydratedKeyRef = useRef<string | null>(null);
   const autoOpenedTargetRef = useRef<string | null>(null);
@@ -516,6 +527,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     autoOpenedTargetRef.current = null;
     initializedAutoOpenSessionRef.current = null;
     setVerifiedOpenTargets([]);
+    setNewConversationMode("work");
   }, [props.sessionId]);
 
   // Publish a composer inspector slice so external drivers can read draft
@@ -607,6 +619,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
   );
   const autoOpenTarget = selectAutoOpenTarget(verifiedOpenTargets);
   const pendingSessionLoad = !snapshot && snapshotQuery.isLoading && renderedMessages.length === 0;
+  const isEmptyConversation = renderedMessages.length === 0
+    && !chatStreaming
+    && !pendingSessionLoad
+    && !error
+    && !snapshotQuery.isError;
   const assistantOutputAfterAwaitStart = useMemo(() => {
     if (awaitingAssistantBaseline === null) return false;
     return renderedMessages
@@ -799,6 +816,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const handleSend = useCallback(async () => {
     const text = draft.trim();
     if (!text && attachments.length === 0) return;
+    // A user can select Video and type directly into the centred first-prompt
+    // composer. Mark it before the request is sent so SessionPage opens the
+    // session-owned Studio while the agent is creating the composition.
+    if (isEmptyConversation && newConversationMode === "video") {
+      props.onActivateVideoStudio?.(props.sessionId);
+    }
     const nextDraft = buildDraft(text, attachments);
     const sentAttachments = attachments;
     try {
@@ -807,7 +830,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     } catch {
       setComposerDraft(props.sessionId, "");
     }
-  }, [attachments, buildDraft, clearComposer, draft, props.sessionId, sendDraft, setComposerDraft]);
+  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, newConversationMode, props.onActivateVideoStudio, props.sessionId, sendDraft, setComposerDraft]);
 
   const handleSteer = handleSend;
 
@@ -1305,6 +1328,112 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }), [props.sessionId, renderedMessages]);
   useControlAction(sessionReadTranscriptControlAction);
 
+  const getDesignTemplateCover = useCallback(
+    (templateId: string) => props.client.getTemplateCover(props.workspaceId, templateId),
+    [props.client, props.workspaceId],
+  );
+
+  const renderComposer = (layout: "dock" | "inline") => (
+    <>
+      {(props.providerConnectedCount ?? 0) === 0 ? (
+        <button
+          type="button"
+          className="mx-3 mb-2 flex w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg border border-amber-7/40 bg-amber-2/30 px-3 py-2 text-left text-xs text-amber-11 transition-colors hover:bg-amber-3/40"
+          onClick={() => props.onOpenSettingsSection?.("providers")}
+        >
+          <span className="font-medium">No AI model connected.</span>
+          <span className="text-amber-11/70">Add a provider to run tasks.</span>
+        </button>
+      ) : null}
+      <DevProfiler id="SessionComposer">
+        <ReactSessionComposer
+          draft={draft}
+          mentions={mentions}
+          onDraftChange={handleComposerDraftChange}
+          onSend={handleSend}
+          onSteer={handleSteer}
+          onQueue={handleQueue}
+          onStop={handleAbort}
+          busy={chatStreaming}
+          queuedCount={queuedMessages.length}
+          disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
+          modelUnavailable={Boolean(props.modelUnavailable)}
+          statusLabel={statusLabel(snapshot ?? undefined, chatStreaming)}
+          modelPickerOpen={props.modelPickerOpen}
+          selectedModel={props.selectedModel}
+          onModelPickerOpenChange={props.onModelPickerOpenChange}
+          onModelChange={props.onModelChange}
+          attachments={attachments}
+          onAttachFiles={handleAttachFiles}
+          onRemoveAttachment={handleRemoveAttachment}
+          attachmentsEnabled={props.attachmentsEnabled}
+          attachmentsDisabledReason={props.attachmentsDisabledReason}
+          modelVariantLabel={props.modelVariantLabel}
+          modelVariant={props.modelVariant}
+          modelBehaviorOptions={props.modelBehaviorOptions}
+          onModelVariantChange={props.onModelVariantChange}
+          agentLabel={props.agentLabel}
+          selectedAgent={props.selectedAgent}
+          listAgents={props.listAgents}
+          onSelectAgent={props.onSelectAgent}
+          listCommands={props.listCommands}
+          listSkills={listSkills}
+          skills={toolSkills}
+          listMcp={listMcp}
+          mcpServers={toolMcpServers}
+          mcpStatus={toolMcpStatus}
+          mcpStatuses={toolMcpStatuses}
+          listImportedPlugins={listImportedPlugins}
+          importedPlugins={toolImportedPlugins}
+          onOpenSettingsSection={props.onOpenSettingsSection}
+          recentFiles={props.recentFiles}
+          searchFiles={props.searchFiles}
+          onInsertMention={handleInsertMention}
+          inputHistory={inputHistory}
+          onPasteText={handlePasteText}
+          onUnsupportedFileLinks={handleUnsupportedFileLinks}
+          pastedText={pasteParts}
+          onExpandPastedText={handleExpandPastedText}
+          onRemovePastedText={handleRemovePastedText}
+          isRemoteWorkspace={props.isRemoteWorkspace}
+          isSandboxWorkspace={props.isSandboxWorkspace}
+          onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
+          layout={layout}
+          placeholder={isEmptyConversation ? newConversationPlaceholder(newConversationMode) : undefined}
+          compactTopSpacing={Boolean(props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
+          topAccessory={
+            props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
+              <div>
+                {queuedMessages.length > 0 ? (
+                  <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} />
+                ) : null}
+                {props.activeQuestion ? (
+                  <QuestionPanel
+                    questions={props.activeQuestion.questions}
+                    busy={props.questionReplyBusy ?? false}
+                    onReply={(answers) => {
+                      if (props.activeQuestion) props.respondQuestion?.(props.activeQuestion.id, answers);
+                    }}
+                  />
+                ) : (props.todos ?? []).some((todo) => todo.content.trim()) ? (
+                  <TodoPanel todos={props.todos ?? []} />
+                ) : null}
+                {props.activePermission ? (
+                  <PermissionApprovalPanel
+                    permission={props.activePermission}
+                    busy={props.permissionReplyBusy}
+                    respondPermission={props.respondPermission}
+                    safeStringify={props.safeStringify}
+                  />
+                ) : null}
+              </div>
+            ) : null
+          }
+        />
+      </DevProfiler>
+    </>
+  );
+
   return (
     <DevProfiler id="SessionSurface">
     <div
@@ -1321,6 +1450,31 @@ export function SessionSurface(props: SessionSurfaceProps) {
         </div>
       ) : null}
 
+      {isEmptyConversation ? (
+        <div className="flex min-h-0 flex-1 overflow-y-auto px-5">
+          <div className="mx-auto flex w-full max-w-[720px] flex-col justify-center py-10 sm:py-16">
+            <NewConversationStarter
+              selectedMode={newConversationMode}
+              onSelectMode={setNewConversationMode}
+              onSelectPrompt={(prompt) => void typeComposerText(prompt)}
+              onCreateVideoSession={props.onCreateSession ? () => props.onCreateSession?.("video") : undefined}
+              websiteTemplates={props.designTemplates}
+              websiteTemplatesLoading={props.designTemplatesLoading}
+              websiteTemplateBusyId={props.designTemplateBusyId}
+              getTemplateCover={getDesignTemplateCover}
+              onUseWebsiteTemplate={props.onCreateSession ? (templateId) => props.onCreateSession?.("design", templateId) : undefined}
+              onInstallWebsiteTemplate={props.onInstallDesignTemplate}
+              onRequestWebsiteTemplates={props.onRequestDesignTemplates}
+            />
+            <div ref={composerShellRef} className="mt-14">
+              {renderComposer("inline")}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {!isEmptyConversation ? (
+        <>
       <div className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}
@@ -1428,103 +1582,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
       </div>
 
       <div ref={composerShellRef} className="shrink-0 px-0 pb-2 pt-2">
-        {(props.providerConnectedCount ?? 0) === 0 ? (
-          <button
-            type="button"
-            className="mx-3 mb-2 flex w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg border border-amber-7/40 bg-amber-2/30 px-3 py-2 text-left text-xs text-amber-11 transition-colors hover:bg-amber-3/40"
-            onClick={() => props.onOpenSettingsSection?.("providers")}
-          >
-            <span className="font-medium">No AI model connected.</span>
-            <span className="text-amber-11/70">Add a provider to run tasks.</span>
-          </button>
-        ) : null}
-        <DevProfiler id="SessionComposer">
-        <ReactSessionComposer
-          draft={draft}
-          mentions={mentions}
-          onDraftChange={handleComposerDraftChange}
-        onSend={handleSend}
-        onSteer={handleSteer}
-        onQueue={handleQueue}
-        onStop={handleAbort}
-        busy={chatStreaming}
-        queuedCount={queuedMessages.length}
-        disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
-        modelUnavailable={Boolean(props.modelUnavailable)}
-        statusLabel={statusLabel(snapshot ?? undefined, chatStreaming)}
-        modelPickerOpen={props.modelPickerOpen}
-        selectedModel={props.selectedModel}
-        onModelPickerOpenChange={props.onModelPickerOpenChange}
-        onModelChange={props.onModelChange}
-        attachments={attachments}
-        onAttachFiles={handleAttachFiles}
-        onRemoveAttachment={handleRemoveAttachment}
-        attachmentsEnabled={props.attachmentsEnabled}
-        attachmentsDisabledReason={props.attachmentsDisabledReason}
-        modelVariantLabel={props.modelVariantLabel}
-        modelVariant={props.modelVariant}
-        modelBehaviorOptions={props.modelBehaviorOptions}
-        onModelVariantChange={props.onModelVariantChange}
-        agentLabel={props.agentLabel}
-        selectedAgent={props.selectedAgent}
-        listAgents={props.listAgents}
-        onSelectAgent={props.onSelectAgent}
-        listCommands={props.listCommands}
-        listSkills={listSkills}
-        skills={toolSkills}
-        listMcp={listMcp}
-        mcpServers={toolMcpServers}
-        mcpStatus={toolMcpStatus}
-        mcpStatuses={toolMcpStatuses}
-        listImportedPlugins={listImportedPlugins}
-        importedPlugins={toolImportedPlugins}
-        onOpenSettingsSection={props.onOpenSettingsSection}
-        recentFiles={props.recentFiles}
-        searchFiles={props.searchFiles}
-        onInsertMention={handleInsertMention}
-        inputHistory={inputHistory}
-        onPasteText={handlePasteText}
-        onUnsupportedFileLinks={handleUnsupportedFileLinks}
-        pastedText={pasteParts}
-        onExpandPastedText={handleExpandPastedText}
-        onRemovePastedText={handleRemovePastedText}
-        isRemoteWorkspace={props.isRemoteWorkspace}
-          isSandboxWorkspace={props.isSandboxWorkspace}
-          onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
-          compactTopSpacing={Boolean(props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
-          topAccessory={
-            props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
-              <div>
-                {queuedMessages.length > 0 ? (
-                  <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} />
-                ) : null}
-                {props.activeQuestion ? (
-                  <QuestionPanel
-                    questions={props.activeQuestion.questions}
-                    busy={props.questionReplyBusy ?? false}
-                    onReply={(answers) => {
-                      if (props.activeQuestion) {
-                        props.respondQuestion?.(props.activeQuestion.id, answers);
-                      }
-                    }}
-                  />
-                ) : (props.todos ?? []).some((todo) => todo.content.trim()) ? (
-                  <TodoPanel todos={props.todos ?? []} />
-                ) : null}
-                {props.activePermission ? (
-                  <PermissionApprovalPanel
-                    permission={props.activePermission}
-                    busy={props.permissionReplyBusy}
-                    respondPermission={props.respondPermission}
-                    safeStringify={props.safeStringify}
-                  />
-                ) : null}
-              </div>
-            ) : null
-          }
-        />
-        </DevProfiler>
+        {renderComposer("dock")}
       </div>
+        </>
+      ) : null}
       {/* Error display moved inline into the session conversation area */}
       {props.developerMode ? <SessionDebugPanel model={model} snapshot={snapshot} /> : null}
     </div>

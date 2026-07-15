@@ -99,6 +99,8 @@ type ComposerProps = {
   isSandboxWorkspace: boolean;
   onUploadInboxFiles?: ((files: File[]) => void | Promise<unknown>) | null;
   draftScopeKey?: string;
+  placeholder?: string;
+  layout?: "dock" | "inline";
   compactTopSpacing?: boolean;
   topAccessory?: ReactNode;
 };
@@ -1133,7 +1135,9 @@ export function ReactSessionComposer(props: ComposerProps) {
   return (
     <div
       ref={rootRef}
-      className={`sticky bottom-0 ${toolMenuOpen ? "z-50" : "z-20"} bg-gradient-to-t from-dls-surface via-dls-surface/95 to-transparent px-4 pb-2 md:px-8 ${props.compactTopSpacing ? "pt-0" : "pt-1"}`}
+      className={props.layout === "inline"
+        ? `relative ${toolMenuOpen ? "z-50" : "z-20"} w-full bg-transparent p-0`
+        : `sticky bottom-0 ${toolMenuOpen ? "z-50" : "z-20"} bg-gradient-to-t from-dls-surface via-dls-surface/95 to-transparent px-4 pb-2 md:px-8 ${props.compactTopSpacing ? "pt-0" : "pt-1"}`}
       style={{ contain: "layout style" }}
       onKeyDownCapture={handleKeyDownCapture}
       onCompositionStart={() => {
@@ -1146,7 +1150,12 @@ export function ReactSessionComposer(props: ComposerProps) {
       <div className="max-w-[800px] mx-auto">
         {/* Main composer panel */}
         <div
-          className={`relative overflow-visible rounded-[24px] border border-dls-border bg-dls-surface transition-all ${panelRoundedClass}`}
+          className={`relative overflow-visible rounded-[18px] border border-transparent bg-dls-surface shadow-[0_4px_12.9px_rgba(80,130,222,0.20)] transition-all ${panelRoundedClass}`}
+          style={{
+            backgroundImage: "linear-gradient(var(--dls-surface), var(--dls-surface)), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)",
+            backgroundOrigin: "border-box",
+            backgroundClip: "padding-box, border-box",
+          }}
         >
           {props.topAccessory ? <div className="relative z-10">{props.topAccessory}</div> : null}
 
@@ -1210,7 +1219,7 @@ export function ReactSessionComposer(props: ComposerProps) {
               mentions={props.mentions}
               pastedText={pastedTextTokens}
               disabled={props.disabled}
-              placeholder={t("composer.placeholder")}
+              placeholder={props.placeholder ?? t("composer.placeholder")}
               onChange={props.onDraftChange}
               onSubmit={handleEditorSubmit}
               onExpandPastedText={handleExpandPastedText}
@@ -1731,7 +1740,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                     type="button"
                     onClick={canSend ? props.onSend : undefined}
                     disabled={props.disabled || !canSend}
-                    className={`inline-flex h-9 max-h-9 items-center gap-2 rounded-full px-4 text-[13px] font-medium transition-colors ${
+                    className={`inline-flex h-9 max-h-9 w-9 items-center justify-center rounded-full transition-colors ${
                       !canSend || props.disabled
                         ? "bg-gray-4 text-gray-10"
                         : "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
@@ -1739,7 +1748,6 @@ export function ReactSessionComposer(props: ComposerProps) {
                     title={t("composer.run_task")}
                   >
                     <ArrowUp size={15} />
-                    <span>{t("composer.run_task")}</span>
                   </button>
                 )}
               </div>
