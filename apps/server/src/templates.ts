@@ -640,6 +640,63 @@ export async function materializeTemplate(config: ServerConfig, workspace: Works
   }
 }
 
+/**
+ * Claims a pre-template Video Studio project for the session that already
+ * owns it. Early Video Studio sessions wrote directly to video/<sessionId>
+ * before template snapshots existed, so the Studio and the agent could lose
+ * their common source of truth after an app restart. This migration records
+ * that existing project; it never copies, replaces, or scans other folders.
+ */
+export async function adoptLegacyVideoSession(config: ServerConfig, workspace: WorkspaceInfo, sessionId: string): Promise<TemplateSessionSnapshot> {
+  return withTemplateLock(`${runtimeDbPath(config)}:${workspace.id}:video-session:${sessionId}`, async () => {
+    const db = await templateDb(config);
+    const current = db.getSession(workspace.id, sessionId);
+    if (current) {
+      if (current.surface !== "video") throw new ApiError(409, "template_session_surface_conflict", "This session is already bound to a non-video template");
+      return snapshotFromRow(current);
+    }
+
+    const root = sessionRoot(workspace, sessionId, "video");
+    const entryPath = join(root, "index.html");
+    const entry = await stat(entryPath).catch(() => null);
+    if (!entry?.isFile()) throw new ApiError(404, "video_session_project_missing", "This session has no Video Studio project to adopt");
+
+    const bundled = (await bundledTemplates()).find((candidate) => candidate.manifest.id === "ipollowork.html-anything.video-hyperframes");
+    if (!bundled) throw new ApiError(500, "video_template_missing", "The bundled Video Studio template is unavailable");
+    const manifest = bundled.manifest;
+    const now = Date.now();
+    const state: TemplateSessionState = {
+      schemaVersion: 1,
+      template: { id: manifest.id, version: manifest.version, sourceType: "bundled" },
+      entry: `video/${sessionId}/index.html`,
+      briefPath: `video/${sessionId}/brief.json`,
+      createdAt: now,
+    };
+
+    // An object with one migration marker keeps the brief card from reopening
+    // for an already-working Studio project, while leaving an existing brief
+    // untouched.
+    const briefFile = join(root, "brief.json");
+    if (!existsSync(briefFile)) {
+      await writeFile(briefFile, `${JSON.stringify({ source: "legacy-video-session" }, null, 2)}\n`, "utf8");
+    }
+    const row: TemplateSessionRow = {
+      workspaceId: workspace.id,
+      sessionId,
+      surface: "video",
+      templateId: manifest.id,
+      version: manifest.version,
+      sourceType: "bundled",
+      entry: state.entry,
+      briefPath: state.briefPath,
+      manifestJson: JSON.stringify(manifest),
+      createdAt: state.createdAt,
+    };
+    db.upsertSession(row);
+    return snapshotFromRow(row);
+  });
+}
+
 function snapshotFromRow(row: TemplateSessionRow): TemplateSessionSnapshot {
   const manifest = templateManifestV1Schema.parse(JSON.parse(row.manifestJson));
   if (manifest.surface !== row.surface || manifest.id !== row.templateId || manifest.version !== row.version) {
