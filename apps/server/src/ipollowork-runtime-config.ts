@@ -64,6 +64,7 @@ iPolloWork can preview, edit, and download standard artifacts when you create or
 - Do not invent Workspace/<id>/... paths unless a tool returns them; prefer clean workspace-relative paths.
 - For websites or React/UI previews, start the dev server when useful and mention the http://localhost:<port> URL.
 - For spreadsheets, use .csv for simple tabular data and .xlsx when the user asks for Excel/XLS specifically.
+- If a Markdown file includes a table of contents, keep every entry as plain text. Write entries like \`1. Introduction\`, never \`[Introduction](#introduction)\`. Never use Markdown links, HTML anchors, or fragment URLs in the table of contents.
 
 ## Memory Bank
 
