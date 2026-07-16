@@ -142,6 +142,8 @@ export type SessionSurfaceProps = {
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
+  /** Marks the first prompt as a video task before it reaches the agent. */
+  onActivateVideoStudio?: (sessionId: string) => void;
   designTemplates?: TemplateCatalogItem[];
   designTemplatesLoading?: boolean;
   designTemplateBusyId?: string | null;
@@ -462,7 +464,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   // session B when the route swaps the same surface component to another
   // session.
   const queuedDrafts = useComposerStateStore((state) => getComposerQueuedDrafts(state, props.sessionId));
-  const appendQueuedDraft = useComposerStateStore((state) => state.appendQueuedDraft);
   const removeQueuedDraftFromStore = useComposerStateStore((state) => state.removeQueuedDraft);
   const clearQueuedDrafts = useComposerStateStore((state) => state.clearQueuedDrafts);
   const prependQueuedDrafts = useComposerStateStore((state) => state.prependQueuedDrafts);
@@ -809,11 +810,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
     props.onDraftChange(buildDraft("", []));
   }, [buildDraft, clearComposerSession, props.onDraftChange, props.sessionId]);
 
-  // Initial send (agent idle) and explicit "Steer" follow-up (agent busy)
-  // share the same immediate path.
   const handleSend = useCallback(async () => {
     const text = draft.trim();
     if (!text && attachments.length === 0) return;
+    // A user can select Video and type directly into the centred first-prompt
+    // composer. Mark it before the request is sent so SessionPage opens the
+    // session-owned Studio while the agent is creating the composition.
+    if (isEmptyConversation && newConversationMode === "video") {
+      props.onActivateVideoStudio?.(props.sessionId);
+    }
     const nextDraft = buildDraft(text, attachments);
     const sentAttachments = attachments;
     try {
@@ -822,18 +827,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     } catch {
       setComposerDraft(props.sessionId, "");
     }
-  }, [attachments, buildDraft, clearComposer, draft, props.sessionId, sendDraft, setComposerDraft]);
-
-  const handleSteer = handleSend;
-
-  // Queue: hold the draft locally and clear the composer. The drain effect
-  // sends it once the session reports idle.
-  const handleQueue = useCallback(() => {
-    const text = draft.trim();
-    if (!text && attachments.length === 0) return;
-    appendQueuedDraft(props.sessionId, buildDraft(text, attachments));
-    clearComposer();
-  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId]);
+  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, newConversationMode, props.onActivateVideoStudio, props.sessionId, sendDraft, setComposerDraft]);
 
   const removeQueuedDraft = useCallback((index: number) => {
     removeQueuedDraftFromStore(props.sessionId, index);
@@ -1069,13 +1063,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
     label: "Send the composer prompt",
     description: "Send the currently visible composer draft to the active session.",
     sideEffect: "mutation",
-    disabled: props.modelUnavailable || (!draft.trim() && attachments.length === 0) || model.transitionState !== "idle",
+    disabled: chatStreaming || props.modelUnavailable || (!draft.trim() && attachments.length === 0) || model.transitionState !== "idle",
     targetRef: composerShellRef,
     execute: async () => {
       await handleSend();
       return true;
     },
-  }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable]);
+  }), [attachments.length, chatStreaming, draft, handleSend, model.transitionState, props.modelUnavailable]);
   useControlAction(composerSendControlAction);
 
   const composerStopControlAction = useMemo<iPolloWorkControlAction>(() => ({
@@ -1343,11 +1337,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mentions={mentions}
           onDraftChange={handleComposerDraftChange}
           onSend={handleSend}
-          onSteer={handleSteer}
-          onQueue={handleQueue}
           onStop={handleAbort}
           busy={chatStreaming}
-          queuedCount={queuedMessages.length}
           disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
           modelUnavailable={Boolean(props.modelUnavailable)}
           statusLabel={statusLabel(snapshot ?? undefined, chatStreaming)}
@@ -1458,7 +1449,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
               onInstallWebsiteTemplate={props.onInstallDesignTemplate}
               onRequestWebsiteTemplates={props.onRequestDesignTemplates}
             />
-            <div ref={composerShellRef} className="mt-6">
+            <div ref={composerShellRef} className="mt-14">
               {renderComposer("inline")}
             </div>
           </div>

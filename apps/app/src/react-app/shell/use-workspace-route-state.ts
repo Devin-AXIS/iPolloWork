@@ -31,6 +31,7 @@ import {
   testRemoteWorkspaceConnection,
 } from "@/react-app/domains/workspace/remote-workspace-diagnostics";
 import { useLocal } from "@/react-app/kernel/local-provider";
+import { setTemplateSessionTypes } from "@/react-app/domains/session/sidebar/session-type";
 import { useBootState } from "./boot-state";
 import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
@@ -417,6 +418,18 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       );
       setLegacySelectedWorkspaceId(nextWorkspaceId);
       writeActiveWorkspaceId(nextWorkspaceId || null);
+      // Session surface is canonical server metadata. Populate the small
+      // in-memory icon cache from that one source; no browser persistence or
+      // legacy path probing is involved.
+      void Promise.all(nextWorkspaces.map(async (workspace) => {
+        const endpoint = endpointForWorkspace(workspace);
+        if (!endpoint) return [];
+        try {
+          return (await endpoint.client.listTemplateSessions(endpoint.workspaceId)).items;
+        } catch {
+          return [];
+        }
+      })).then((results) => setTemplateSessionTypes(results.flat()));
       // Mark the chosen workspace as active on the server so that the
       // OpenCode engine bound to it re-reads opencode.jsonc and applies
       // permissions. Fire-and-forget; the route is idempotent and any

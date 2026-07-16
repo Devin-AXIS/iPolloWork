@@ -234,6 +234,143 @@ describe("env routes", () => {
     expect(await list.json()).toEqual({ keys: ["ANTHROPIC_API_KEY", "NBA_LIVE_KEY"] });
   });
 
+  test("authorization catalog returns safe AI usage metadata, never secret values", async () => {
+    const { base } = await boot();
+    await fetch(`${base}/env`, {
+      method: "PUT",
+      headers: hostAuth(),
+      body: JSON.stringify({
+        entries: [
+          { key: "OPENAI_API_KEY", value: "sk-openai-secret" },
+          { key: "ALIYUN_OSS_BUCKET", value: "private-assets" },
+        ],
+      }),
+    });
+
+    const response = await fetch(`${base}/authorization-services`, { headers: hostAuth() });
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).not.toContain("sk-openai-secret");
+    expect(body).not.toContain("private-assets");
+    const catalog = JSON.parse(body) as {
+      items: Array<{
+        id: string;
+        configured: boolean;
+        fields: Array<{ key: string; configured: boolean }>;
+        agent: { capability: string; useWhen: string; instruction: string };
+      }>;
+    };
+    expect(catalog.items.find((item) => item.id === "openai-images")).toMatchObject({
+      configured: true,
+      fields: [{ key: "OPENAI_API_KEY", configured: true }],
+      agent: {
+        capability: "OpenAI image generation",
+      },
+    });
+    expect(catalog.items.find((item) => item.id === "aliyun-oss")?.configured).toBe(false);
+  });
+
+  test("authorization tests keep credentials server-side and return a completed test result", async () => {
+    const { base } = await boot();
+    await fetch(`${base}/env`, {
+      method: "PUT",
+      headers: hostAuth(),
+      body: JSON.stringify({ key: "OPENAI_API_KEY", value: "sk-openai-secret" }),
+    });
+
+    globalThis.fetch = ((input, init) => {
+      if (String(input) === "https://api.openai.com/v1/models") {
+        expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-openai-secret" });
+        return Promise.resolve(new Response(JSON.stringify({ object: "list", data: [] }), { status: 200 }));
+      }
+      return nativeFetch(input, init);
+    }) as typeof fetch;
+
+    const response = await fetch(`${base}/authorization-services/openai-images/test`, {
+      method: "POST",
+      headers: hostAuth(),
+      body: "{}",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, detail: "Connection verified." });
+  });
+
+  test("OSS authorization test signs a read-only bucket listing with V4", async () => {
+    const { base } = await boot();
+    await fetch(`${base}/env`, {
+      method: "PUT",
+      headers: hostAuth(),
+      body: JSON.stringify({
+        entries: [
+          { key: "ALIYUN_OSS_ACCESS_KEY_ID", value: "LTAItest" },
+          { key: "ALIYUN_OSS_ACCESS_KEY_SECRET", value: "test-secret" },
+          { key: "ALIYUN_OSS_BUCKET", value: "private-assets" },
+          { key: "ALIYUN_OSS_REGION", value: "cn-hangzhou" },
+        ],
+      }),
+    });
+
+    globalThis.fetch = ((input, init) => {
+      const url = String(input);
+      if (url === "https://private-assets.oss-cn-hangzhou.aliyuncs.com/?list-type=2&max-keys=1") {
+        expect(init?.method).toBeUndefined();
+        expect(init?.headers).toMatchObject({
+          "x-oss-content-sha256": "UNSIGNED-PAYLOAD",
+          Authorization: expect.stringContaining("Credential=LTAItest/"),
+        });
+        expect(JSON.stringify(init?.headers)).not.toContain("test-secret");
+        return Promise.resolve(new Response("<ListBucketResult />", { status: 200 }));
+      }
+      return nativeFetch(input, init);
+    }) as typeof fetch;
+
+    const response = await fetch(`${base}/authorization-services/aliyun-oss/test`, {
+      method: "POST",
+      headers: hostAuth(),
+      body: "{}",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, detail: "Connection verified." });
+  });
+
+  test("Wasabi authorization test signs a read-only bucket listing with V4", async () => {
+    const { base } = await boot();
+    await fetch(`${base}/env`, {
+      method: "PUT",
+      headers: hostAuth(),
+      body: JSON.stringify({
+        entries: [
+          { key: "WASABI_ACCESS_KEY_ID", value: "WasabiAccess" },
+          { key: "WASABI_SECRET_ACCESS_KEY", value: "wasabi-secret" },
+          { key: "WASABI_BUCKET", value: "media" },
+          { key: "WASABI_REGION", value: "us-east-1" },
+        ],
+      }),
+    });
+
+    globalThis.fetch = ((input, init) => {
+      const url = String(input);
+      if (url === "https://s3.us-east-1.wasabisys.com/media?list-type=2&max-keys=1") {
+        expect(init?.method).toBeUndefined();
+        expect(init?.headers).toMatchObject({
+          "x-amz-content-sha256": expect.any(String),
+          Authorization: expect.stringContaining("Credential=WasabiAccess/"),
+        });
+        expect(JSON.stringify(init?.headers)).not.toContain("wasabi-secret");
+        return Promise.resolve(new Response("<ListBucketResult />", { status: 200 }));
+      }
+      return nativeFetch(input, init);
+    }) as typeof fetch;
+
+    const response = await fetch(`${base}/authorization-services/wasabi/test`, {
+      method: "POST",
+      headers: hostAuth(),
+      body: "{}",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, detail: "Connection verified." });
+  });
+
   test("invalid env store returns 409 instead of overwriting on PUT", async () => {
     writeFileSync(process.env.IPOLLOWORK_ENV_STORE!, "{ this is not json");
     const { base } = await boot();

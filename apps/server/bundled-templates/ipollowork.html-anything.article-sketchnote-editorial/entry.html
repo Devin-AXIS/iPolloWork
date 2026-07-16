@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en" data-ipw-template="article-sketchnote-editorial" data-ipw-style="editorial">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editorial Sketchnote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;700;900&family=Noto+Sans+SC:wght@400;500;700&family=Caveat:wght@500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FAF7EF;
+  --paper: #F5F1E5;
+  --ink-strong: #0F0F0F;
+  --ink: #1F1F1F;
+  --ink-light: #6B6B6B;
+  --red: #B23A2C;
+  --blue-deep: #3D5A80;
+  --amber: #BB8A2B;
+  --amber-soft: #D7A85A;
+  --hair: rgba(15, 15, 15, 0.12);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #3a3a3a; min-height: 100%; }
+body {
+  font-family: "Noto Sans SC", "PingFang SC", -apple-system, sans-serif;
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.canvas { padding: 32px 16px; display: flex; justify-content: center; }
+.page {
+  width: 1080px; max-width: 100%;
+  background: var(--bg);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+  position: relative;
+}
+.serif { font-family: "Noto Serif SC", "Songti SC", serif; }
+.sans { font-family: "Noto Sans SC", "PingFang SC", sans-serif; }
+.mono { font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace; }
+.hand { font-family: "Caveat", "Kaiti SC", cursive; }
+
+/* magazine-head */
+.magazine-head {
+  background: var(--paper);
+  padding: 44px 60px 30px;
+  border-bottom: 3px solid var(--ink-strong);
+}
+.top-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-light);
+  padding-bottom: 18px; border-bottom: 1px solid var(--hair);
+}
+.top-bar .badge {
+  display: inline-block;
+  padding: 3px 10px;
+  background: var(--ink-strong); color: var(--bg);
+  font-weight: 700;
+  margin-right: 14px;
+  letter-spacing: 0.12em;
+}
+.top-bar .left { display: flex; align-items: center; gap: 4px; }
+.magazine-head h1 {
+  font-family: "Noto Serif SC", serif;
+  font-weight: 900;
+  font-size: 58px;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: var(--ink-strong);
+  margin-top: 24px;
+}
+.magazine-head .deck {
+  font-family: "Noto Serif SC", serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.55;
+  color: var(--ink-light);
+  margin-top: 18px;
+  max-width: 720px;
+  border-left: 2px solid var(--red);
+  padding-left: 16px;
+}
+
+/* shared kicker */
+.kicker {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-light);
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 14px;
+}
+.kicker .num {
+  background: var(--ink-strong); color: var(--bg);
+  padding: 2px 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.kicker .rule {
+  display: inline-block;
+  width: 36px; height: 1px;
+  background: var(--ink-strong);
+}
+
+/* 01 feature */
+.feature {
+  padding: 38px 60px 44px;
+  background: var(--paper);
+  display: grid;
+  grid-template-columns: 6fr 6fr;
+  gap: 36px;
+  align-items: start;
+}
+.feature .visual {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  padding-top: 24px;
+}
+.feature .visual svg { max-width: 100%; height: auto; display: block; }
+.feature .head-serif {
+  font-family: "Noto Serif SC", serif;
+  font-weight: 900;
+  font-size: 38px;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--ink-strong);
+}
+.feature .lead {
+  font-family: "Noto Serif SC", serif;
+  font-style: italic; font-weight: 400;
+  font-size: 21px; line-height: 1.5;
+  color: var(--ink);
+  border-left: 2px solid var(--red);
+  padding-left: 14px;
+  margin: 18px 0 24px;
+}
+.body-sans, .body-serif { font-size: 16px; line-height: 1.7; }
+.body-sans { font-family: "Noto Sans SC", sans-serif; }
+.body-serif { font-family: "Noto Serif SC", serif; }
+.body-sans p + p, .body-serif p + p { margin-top: 8px; }
+.body-sans em, .body-serif em { font-style: italic; color: var(--ink-strong); font-weight: 500; }
+.drop-cap p:first-child::first-letter {
+  float: left;
+  font-family: "Noto Serif SC", serif;
+  font-size: 96px; line-height: 0.85;
+  font-weight: 900;
+  margin: 6px 12px -4px 0;
+  color: var(--ink-strong);
+}
+.ask {
+  display: inline-block;
+  font-family: "Caveat", cursive;
+  font-size: 26px; font-weight: 700;
+  color: var(--red);
+  margin-top: 16px;
+  transform: rotate(-1deg);
+}
+
+/* 02 note */
+.note {
+  margin-top: 24px;
+  padding: 22px 60px;
+  display: grid;
+  grid-template-columns: 1fr 540px;
+  gap: 36px;
+  align-items: start;
+}
+.note .sidekick {
+  position: relative;
+  padding-top: 12px;
+}
+.note .formula {
+  font-family: "Caveat", cursive;
+  font-size: 26px; font-weight: 700;
+  color: var(--ink-strong);
+  border-left: 2px dashed var(--ink-light);
+  padding-left: 14px;
+  transform: rotate(-1deg);
+  line-height: 1.5;
+}
+.note .formula em {
+  display: block;
+  font-style: normal;
+  color: var(--red);
+  margin-top: 4px;
+}
+.note .doodle-caption {
+  margin-top: 12px;
+  font-family: "Caveat", cursive;
+  font-size: 19px;
+  color: var(--ink-light);
+  transform: rotate(1deg);
+}
+.note .paper {
+  background: #FFFCF0;
+  padding: 26px 28px;
+  border: 1px solid rgba(15,15,15,0.08);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+  transform: rotate(0.5deg);
+  position: relative;
+}
+.note .paper::before {
+  content: "";
+  position: absolute;
+  left: 18px; right: 18px; top: 8px;
+  height: 1px;
+  border-top: 1px dashed rgba(15,15,15,0.25);
+}
+.note .head-sans {
+  font-family: "Noto Sans SC", sans-serif;
+  font-weight: 700;
+  font-size: 24px; line-height: 1.25;
+  margin-bottom: 10px;
+}
+.note .strike {
+  text-decoration: line-through;
+  text-decoration-color: var(--red);
+  text-decoration-thickness: 2.5px;
+  color: var(--ink-light);
+}
+.note .footnote {
+  margin-top: 18px; padding-top: 12px;
+  border-top: 1px dashed var(--ink-light);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  color: var(--ink-light);
+  display: flex; gap: 8px;
+}
+.note .footnote .mark {
+  color: var(--red); font-weight: 700;
+}
+.note .scribble {
+  display: inline-block;
+  margin-top: 16px;
+  font-family: "Caveat", cursive;
+  font-size: 24px; font-weight: 700;
+  color: var(--red);
+  border: 1.5px dashed var(--red);
+  padding: 4px 12px;
+  transform: rotate(-2deg);
+}
+
+/* 03 archive */
+.archive {
+  margin-top: 24px;
+  padding: 22px 60px 24px;
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+.archive .stamp {
+  background: var(--ink-strong);
+  color: var(--bg);
+  padding: 16px 12px;
+  text-align: center;
+  font-family: "JetBrains Mono", monospace;
+  position: relative;
+}
+.archive .stamp .label {
+  font-size: 12px; letter-spacing: 0.18em;
+  border-bottom: 1px solid rgba(255,255,255,0.3);
+  padding-bottom: 6px;
+}
+.archive .stamp .x {
+  font-family: "Noto Serif SC", serif;
+  font-size: 64px; line-height: 1;
+  font-weight: 900;
+  margin: 10px 0 6px;
+  color: var(--red);
+}
+.archive .stamp .case {
+  font-size: 11px; letter-spacing: 0.22em;
+  border-top: 1px solid rgba(255,255,255,0.3);
+  padding-top: 6px;
+  text-transform: uppercase;
+}
+.archive .head-sans {
+  font-family: "Noto Sans SC", sans-serif;
+  font-weight: 700;
+  font-size: 26px; line-height: 1.2;
+  margin-bottom: 14px;
+}
+.archive .visual {
+  margin: 12px 0;
+}
+.archive .visual svg { max-width: 100%; height: auto; }
+.archive .verdict {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--ink-light);
+  font-family: "Noto Serif SC", serif;
+  font-style: italic;
+  font-size: 19px;
+  color: var(--red);
+  font-weight: 500;
+}
+
+/* 04 cross */
+.cross {
+  margin-top: 30px;
+  padding: 64px 60px 60px;
+  background: var(--bg);
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+}
+.cross .mega {
+  font-family: "Noto Serif SC", serif;
+  font-weight: 900;
+  font-size: 200px;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  color: var(--ink-strong);
+  margin-bottom: 32px;
+  text-align: left;
+}
+.cross .mega .em {
+  background: linear-gradient(transparent 58%, var(--amber-soft) 58%, var(--amber-soft) 92%, transparent 92%);
+  padding: 0 4px;
+}
+.cross .grid {
+  display: grid;
+  grid-template-columns: 6fr 6fr;
+  gap: 36px;
+  align-items: start;
+}
+.cross .left .kicker { color: var(--amber); }
+.cross .left .kicker .num { background: var(--amber); color: var(--bg); }
+.cross .left .body-serif {
+  font-size: 19px; line-height: 1.65;
+}
+.cross .left .ask { color: var(--amber); }
+.cross .right .visual { display: flex; align-items: center; justify-content: center; }
+.cross .right .visual svg { max-width: 100%; height: auto; }
+.cross .right .caption {
+  font-family: "Caveat", cursive;
+  font-size: 19px;
+  color: var(--ink-light);
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* 05 hero */
+.hero {
+  margin-top: 32px;
+  padding: 52px 60px 48px;
+  border-top: 4px solid var(--blue-deep);
+}
+.hero .layout {
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  gap: 40px;
+  align-items: start;
+}
+.hero .visual { display: flex; flex-direction: column; align-items: center; }
+.hero .visual svg { max-width: 100%; height: auto; }
+.hero .visual .caption {
+  font-family: "Caveat", cursive;
+  font-size: 20px;
+  color: var(--ink-light);
+  margin-top: 8px;
+  text-align: center;
+  font-weight: 500;
+}
+.hero .text .kicker { color: var(--blue-deep); }
+.hero .text .kicker .num { background: var(--blue-deep); color: var(--bg); }
+.hero .head-serif {
+  font-family: "Noto Serif SC", serif;
+  font-weight: 900;
+  font-size: 38px; line-height: 1.18;
+  letter-spacing: -0.015em;
+  color: var(--blue-deep);
+}
+.hero .pull-quote {
+  position: relative;
+  margin: 22px 0 22px 16px;
+  padding: 4px 0 4px 18px;
+  border-left: 4px solid var(--blue-deep);
+  font-family: "Noto Serif SC", serif;
+  font-style: italic; font-weight: 500;
+  font-size: 26px; line-height: 1.4;
+  color: var(--ink-strong);
+}
+.hero .pull-quote::before {
+  content: "\201C";
+  position: absolute;
+  left: -36px; top: -28px;
+  font-size: 100px;
+  font-family: "Noto Serif SC", serif;
+  color: var(--blue-deep);
+  opacity: 0.35;
+  font-style: normal;
+  line-height: 1;
+}
+.hero .body-serif { font-size: 17px; }
+
+/* 06 closing */
+.closing {
+  margin-top: 32px;
+  padding: 60px 60px 64px;
+  background: var(--paper);
+  text-align: center;
+  border-top: 6px double var(--ink-strong);
+}
+.closing .approach {
+  font-family: "Noto Sans SC", sans-serif;
+  font-size: 16px;
+  color: var(--ink-light);
+  letter-spacing: 0.04em;
+}
+.closing .mega-name {
+  font-family: "Noto Serif SC", serif;
+  font-weight: 900;
+  font-size: 120px;
+  line-height: 1.05;
+  letter-spacing: -0.05em;
+  color: var(--ink-strong);
+  margin-top: 12px;
+}
+.closing .en-name {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 22px;
+  letter-spacing: 0.32em;
+  color: var(--ink-light);
+  margin-top: 8px;
+  text-transform: uppercase;
+}
+.closing .byline {
+  display: inline-block;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-top: 28px;
+  padding: 14px 0;
+  border-top: 1px solid var(--ink-strong);
+  border-bottom: 1px solid var(--ink-strong);
+}
+.closing .byline strong { font-weight: 700; color: var(--ink-strong); }
+.closing .byline .sep { margin: 0 10px; color: var(--ink-light); }
+.closing-body {
+  max-width: 640px;
+  margin: 28px auto 0;
+  font-family: "Noto Serif SC", serif;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--ink);
+  text-align: left;
+}
+.closing-body p + p { margin-top: 8px; }
+.epilogue {
+  font-family: "Noto Serif SC", serif;
+  font-style: italic;
+  font-size: 22px;
+  color: var(--ink-strong);
+  margin-top: 32px;
+}
+.epilogue::before {
+  content: "— ";
+  color: var(--red);
+  font-style: normal;
+  font-weight: 700;
+}
+</style>
+<link rel="stylesheet" href="design-tokens.css"></head>
+<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
+<div class="canvas">
+<article class="page">
+
+  <header class="magazine-head">
+    <div class="top-bar">
+      <div class="left"><span class="badge">№ 01</span><span>Journal</span></div>
+      <div class="right">COMPLEX SYSTEMS / SCIENCE</div>
+    </div>
+    <h1>Notes on making better work<br>Ideas</h1>
+    <p class="deck">A considered editorial layout that gives long-form writing a calm rhythm and a distinctive point of view.</p>
+  </header>
+
+  <!-- 01 feature -->
+  <section class="feature">
+    <div class="visual">
+      <svg viewBox="0 0 480 320" xmlns="http://www.w3.org/2000/svg">
+        <g fill="none" stroke="#1F1F1F" stroke-width="1.4">
+          <circle cx="60" cy="260" r="8"/><circle cx="100" cy="260" r="8"/><circle cx="140" cy="260" r="8"/><circle cx="180" cy="260" r="8"/>
+          <text x="100" y="290" font-family="JetBrains Mono" font-size="11" fill="#6B6B6B">Culture</text>
+          <rect x="60" y="180" width="120" height="40" rx="3"/>
+          <text x="100" y="206" font-family="JetBrains Mono" font-size="11" fill="#6B6B6B">Design</text>
+          <rect x="40" y="100" width="160" height="50" rx="3"/>
+          <text x="92" y="132" font-family="JetBrains Mono" font-size="11" fill="#6B6B6B">Research</text>
+          <rect x="20" y="20" width="200" height="50" rx="3"/>
+          <text x="80" y="52" font-family="JetBrains Mono" font-size="11" fill="#6B6B6B">Read</text>
+          <path d="M120 175 L120 155" stroke-dasharray="3,3"/>
+          <path d="M120 95 L120 75" stroke-dasharray="3,3"/>
+          <path d="M120 250 L120 230" stroke-dasharray="3,3"/>
+        </g>
+        <g transform="translate(260,40)">
+          <text font-family="Caveat" font-size="22" fill="#B23A2C" transform="rotate(-3)">Share</text>
+          <text y="28" font-family="Caveat" font-size="22" fill="#B23A2C" transform="rotate(-3)">Archive</text>
+          <text y="80" font-family="Caveat" font-size="22" fill="#B23A2C" transform="rotate(-3)">Journal</text>
+          <text y="108" font-family="Caveat" font-size="22" fill="#B23A2C" transform="rotate(-3)">Ideas</text>
+          <path d="M0 130 Q 60 150, 30 200" stroke="#B23A2C" stroke-width="1.5" fill="none" stroke-dasharray="4,3"/>
+          <path d="M30 200 L 22 192 M30 200 L 40 195" stroke="#B23A2C" stroke-width="1.5" fill="none"/>
+        </g>
+      </svg>
+    </div>
+    <div class="meta">
+      <div class="kicker"><span class="num">01</span><span class="rule"></span>Where ideas become perspective</div>
+      <h2 class="head-serif">Designed for thoughtful reading</h2>
+      <p class="lead">Strong typography, generous spacing, and flexible media blocks make every section easy to read and easy to shape.</p>
+      <div class="body-sans drop-cap">
+        <p>Use this space for essays, interviews, field notes, or a publication with a voice of its own.<em>A story with room to breathe</em>Culture</p>
+        <p>A considered editorial layout that gives long-form writing a calm rhythm and a distinctive point of view.</p>
+        <span class="ask">Notes on making better work</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 note -->
+  <aside class="note">
+    <div class="sidekick">
+      <div class="formula">
+        Design<br>
+        <em>Research</em>
+      </div>
+      <div class="doodle-caption">Where ideas become perspective</div>
+    </div>
+    <div class="paper">
+      <div class="kicker"><span class="num">02</span>Read</div>
+      <h3 class="head-sans">Designed for thoughtful reading</h3>
+      <div class="body-serif">
+        <p>Strong typography, generous spacing, and flexible media blocks make every section easy to read and easy to shape.<span class="strike">A story with room to breathe</span>Notes on making better work</p>
+        <p>Use this space for essays, interviews, field notes, or a publication with a voice of its own.</p>
+      </div>
+      <div class="footnote"><span class="mark">¹</span><span>A considered editorial layout that gives long-form writing a calm rhythm and a distinctive point of view.</span></div>
+      <div class="scribble">Where ideas become perspective</div>
+    </div>
+  </aside>
+
+  <!-- 03 archive -->
+  <section class="archive">
+    <div class="stamp">
+      <div class="label">EX-02</div>
+      <div class="x">✕</div>
+      <div class="case">Failed</div>
+    </div>
+    <div class="body-area">
+      <div class="kicker"><span>Share</span></div>
+      <h3 class="head-sans">Designed for thoughtful reading</h3>
+      <div class="visual">
+        <svg viewBox="0 0 720 140" xmlns="http://www.w3.org/2000/svg">
+          <g fill="none" stroke="#1F1F1F" stroke-width="1.2">
+            <g transform="translate(0,30)">
+              <circle cx="20" cy="40" r="6"/><circle cx="50" cy="40" r="6"/><circle cx="80" cy="40" r="6"/><circle cx="110" cy="40" r="6"/><circle cx="140" cy="40" r="6"/><circle cx="170" cy="40" r="6"/><circle cx="200" cy="40" r="6"/><circle cx="230" cy="40" r="6"/>
+              <text x="0" y="80" font-family="JetBrains Mono" font-size="11" fill="#6B6B6B">Archive</text>
+            </g>
+            <text x="310" y="78" font-family="Noto Serif SC" font-size="38" fill="#1F1F1F">=</text>
+            <g transform="translate(380,30)">
+              <text font-family="JetBrains Mono" font-size="14" fill="#1F1F1F">Journal</text>
+              <text y="22" font-family="JetBrains Mono" font-size="14" fill="#1F1F1F">Ideas</text>
+              <text y="44" font-family="JetBrains Mono" font-size="14" fill="#1F1F1F">Culture</text>
+              <text y="76" font-family="Caveat" font-size="22" fill="#B23A2C">A story with room to breathe</text>
+            </g>
+            <g transform="translate(620,40)" stroke="#B23A2C" stroke-width="3">
+              <path d="M0 0 L 60 60"/>
+              <path d="M60 0 L 0 60"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <div class="body-serif">
+        <p>Strong typography, generous spacing, and flexible media blocks make every section easy to read and easy to shape.</p>
+      </div>
+      <div class="verdict">Notes on making better work</div>
+    </div>
+  </section>
+
+  <!-- 04 cross -->
+  <section class="cross">
+    <h2 class="mega"><span class="em">Design</span>——</h2>
+    <div class="grid">
+      <div class="left">
+        <div class="kicker"><span class="num">04</span>Research</div>
+        <div class="body-serif">
+          <p>Use this space for essays, interviews, field notes, or a publication with a voice of its own.<em>Read</em>Where ideas become perspective<em>Share</em>Archive</p>
+        </div>
+        <span class="ask">Designed for thoughtful reading</span>
+      </div>
+      <div class="right">
+        <div class="visual">
+          <svg viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg">
+            <g fill="none" stroke="#1F1F1F" stroke-width="1.3">
+              <circle cx="40" cy="60" r="5"/>
+              <text x="62" y="64" font-family="JetBrains Mono" font-size="11" fill="#6B6B6B">Journal</text>
+              <text x="62" y="80" font-family="JetBrains Mono" font-size="11" fill="#6B6B6B">Ideas</text>
+            </g>
+            <g fill="#1F1F1F">
+              <circle cx="200" cy="160" r="3"/><circle cx="215" cy="155" r="3"/><circle cx="230" cy="165" r="3"/><circle cx="245" cy="150" r="3"/><circle cx="222" cy="170" r="3"/>
+              <circle cx="240" cy="180" r="3"/><circle cx="255" cy="170" r="3"/><circle cx="208" cy="180" r="3"/><circle cx="200" cy="180" r="3"/><circle cx="232" cy="185" r="3"/>
+              <circle cx="248" cy="190" r="3"/><circle cx="220" cy="190" r="3"/><circle cx="262" cy="180" r="3"/><circle cx="270" cy="165" r="3"/><circle cx="195" cy="165" r="3"/>
+              <circle cx="260" cy="195" r="3"/><circle cx="280" cy="175" r="3"/>
+            </g>
+            <g fill="none" stroke="#BB8A2B" stroke-width="2" stroke-dasharray="5,4">
+              <path d="M185 195 Q 230 130, 290 175 Q 300 200, 250 210 Q 195 215, 185 195 Z"/>
+            </g>
+            <text x="190" y="138" font-family="Caveat" font-size="20" fill="#BB8A2B" font-weight="700">Culture</text>
+          </svg>
+        </div>
+        <p class="caption">A story with room to breathe</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 hero -->
+  <section class="hero">
+    <div class="layout">
+      <div class="visual">
+        <svg viewBox="0 0 520 320" xmlns="http://www.w3.org/2000/svg">
+          <g fill="none" stroke="#1F1F1F" stroke-width="1.2">
+            <line x1="40" y1="280" x2="490" y2="280"/>
+            <line x1="40" y1="280" x2="40" y2="40"/>
+            <text x="40" y="305" font-family="JetBrains Mono" font-size="11" fill="#6B6B6B">Design</text>
+            <text x="12" y="60" font-family="JetBrains Mono" font-size="11" fill="#6B6B6B" transform="rotate(-90,12,60)">Research</text>
+          </g>
+          <path d="M50 270 Q 180 268, 260 260 Q 280 255, 300 240" fill="none" stroke="#6B6B6B" stroke-width="1.5"/>
+          <line x1="300" y1="40" x2="300" y2="280" stroke="#3D5A80" stroke-width="1.2" stroke-dasharray="4,4"/>
+          <text x="306" y="50" font-family="JetBrains Mono" font-size="11" fill="#3D5A80">Read</text>
+          <path d="M300 240 Q 320 220, 340 150 Q 380 70, 470 56" fill="none" stroke="#3D5A80" stroke-width="2.5"/>
+          <g transform="translate(360,90)">
+            <text font-family="Caveat" font-size="22" fill="#3D5A80" font-weight="700">Share</text>
+            <text y="28" font-family="Caveat" font-size="22" fill="#3D5A80" font-weight="700">Archive</text>
+          </g>
+          <circle cx="300" cy="240" r="6" fill="#3D5A80"/>
+        </svg>
+        <div class="caption">Notes on making better work</div>
+      </div>
+      <div class="text">
+        <div class="kicker"><span class="num">05</span>Journal</div>
+        <h2 class="head-serif">Where ideas become perspective</h2>
+        <div class="pull-quote">A considered editorial layout that gives long-form writing a calm rhythm and a distinctive point of view.</div>
+        <div class="body-serif drop-cap">
+          <p>Strong typography, generous spacing, and flexible media blocks make every section easy to read and easy to shape.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 closing -->
+  <section class="closing">
+    <p class="approach">Designed for thoughtful reading</p>
+    <h1 class="mega-name">Ideas</h1>
+    <div class="en-name">Emergence</div>
+    <div class="byline">
+      <span><strong>Phil Anderson</strong></span><span class="sep">·</span>
+      <span>1972</span><span class="sep">·</span>
+      <span>More Is Different</span><span class="sep">·</span>
+      <span>Science 177</span>
+    </div>
+    <div class="closing-body">
+      <p>A story with room to breathe</p>
+      <p>Use this space for essays, interviews, field notes, or a publication with a voice of its own.</p>
+    </div>
+    <p class="epilogue">Notes on making better work</p>
+  </section>
+
+</article>
+</div>
+</body>
+</html>

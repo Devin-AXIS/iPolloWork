@@ -15,7 +15,7 @@ import {
   RectangleStackIcon,
   VideoCameraIcon,
   WrenchScrewdriverIcon,
-} from "@heroicons/react/24/solid";
+} from "@heroicons/react/24/outline";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
 
 import { t } from "@/i18n";
@@ -41,11 +41,11 @@ type NewConversationStarterProps = {
 };
 
 const MODES = [
-  { id: "work", icon: BriefcaseIcon, label: "new_conversation.mode.work" },
-  { id: "code", icon: CodeBracketIcon, label: "new_conversation.mode.code" },
-  { id: "design", icon: PaintBrushIcon, label: "new_conversation.mode.design" },
-  { id: "video", icon: FilmIcon, label: "new_conversation.mode.video" },
-] as const satisfies ReadonlyArray<{ id: NewConversationMode; icon: Icon; label: string }>;
+  { id: "work", iconSrc: "/new-conversation-tabs/work.svg", label: "new_conversation.mode.work" },
+  { id: "code", iconSrc: "/new-conversation-tabs/code.svg", label: "new_conversation.mode.code" },
+  { id: "design", iconSrc: "/new-conversation-tabs/design.svg", label: "new_conversation.mode.design" },
+  { id: "video", iconSrc: "/new-conversation-tabs/video.svg", label: "new_conversation.mode.video" },
+] as const satisfies ReadonlyArray<{ id: NewConversationMode; iconSrc: string; label: string }>;
 
 type StarterAction = {
   label: string;
@@ -83,6 +83,7 @@ function TemplateThumbnail({ template, getTemplateCover }: { template: TemplateC
     if (!getTemplateCover) return;
     let active = true;
     let objectUrl = "";
+    setSrc(null);
     void getTemplateCover(template.manifest.id).then(({ data, contentType }) => {
       if (!active) return;
       objectUrl = URL.createObjectURL(new Blob([data], { type: contentType ?? "image/svg+xml" }));
@@ -92,7 +93,7 @@ function TemplateThumbnail({ template, getTemplateCover }: { template: TemplateC
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [getTemplateCover, template.manifest.id]);
+  }, [getTemplateCover, template.installedVersion, template.manifest.id, template.manifest.version]);
 
   return src ? (
     <img src={src} alt="" className="h-full w-full object-cover" />
@@ -188,6 +189,7 @@ export function NewConversationStarter({
   onRequestWebsiteTemplates,
 }: NewConversationStarterProps) {
   const [websiteTemplatesOpen, setWebsiteTemplatesOpen] = useState(false);
+  const [hoveredMode, setHoveredMode] = useState<NewConversationMode | null>(null);
   const actions = MODE_ACTIONS[selectedMode];
 
   const selectMode = (mode: NewConversationMode) => {
@@ -197,21 +199,28 @@ export function NewConversationStarter({
   };
 
   return (
-    <div className="w-full">
-      <header className="max-w-xl">
-        <p className="text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-[2.5rem]">iPolloWork</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-3xl">
-          {t("new_conversation.title")}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground sm:text-base">{t("new_conversation.subtitle")}</p>
-      </header>
+    <div className="relative w-full overflow-hidden px-6 py-8 sm:px-0 sm:pb-0 sm:pt-12">
+      <img
+        src="/new-conversation-bg.png"
+        alt=""
+        aria-hidden
+        className="pointer-events-none absolute left-[calc(50%-280px)] -top-[18px] h-[243px] w-[243px] max-w-none"
+      />
+      <div className="relative">
+        <header className="max-w-4xl">
+          <img src="/ipollo-work-wordmark.svg" alt="iPollo Work" className="h-[25px] w-[144px]" />
+          <h1 className="mt-3 font-['PingFang_SC',_'PingFang_SC'] text-[48px] font-semibold leading-normal tracking-[-1.92px] text-black">
+            {t("new_conversation.title")}
+          </h1>
+          <p className="mt-8 font-['PingFang_SC',_'PingFang_SC'] text-[16px] font-light leading-normal tracking-[-0.8px] text-[#666]">{t("new_conversation.subtitle")}</p>
+        </header>
 
-      <div
-        className="mt-5 inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-xl border border-border bg-muted/45 p-0.5"
-        role="tablist"
-        aria-label={t("new_conversation.mode_label")}
-      >
-        {MODES.map(({ id, icon: Icon, label }) => {
+        <div
+          className="mt-8 flex w-full max-w-[502px] items-center gap-1.5 overflow-x-auto rounded-[12px] bg-[#F5F5F5] p-1 [scrollbar-width:none] sm:inline-flex sm:w-auto sm:max-w-full [&::-webkit-scrollbar]:hidden"
+          role="tablist"
+          aria-label={t("new_conversation.mode_label")}
+        >
+        {MODES.map(({ id, iconSrc, label }) => {
           const selected = id === selectedMode;
           return (
             <button
@@ -220,22 +229,29 @@ export function NewConversationStarter({
               role="tab"
               aria-selected={selected}
               className={cn(
-                "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "inline-flex h-[42px] w-[119px] shrink-0 items-center justify-center gap-2 rounded-[8px] px-3 font-['PingFang_SC'] text-[14px] font-medium leading-normal transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 selected
-                  ? "bg-background text-primary shadow-sm ring-1 ring-primary/20"
-                  : "text-muted-foreground hover:bg-background/75 hover:text-foreground",
+                  ? "bg-white text-black"
+                  : "text-[#999] hover:bg-white/70 hover:text-black",
               )}
               onClick={() => selectMode(id)}
+              onMouseEnter={() => setHoveredMode(id)}
+              onMouseLeave={() => setHoveredMode(null)}
             >
-              <Icon className="size-3.5" aria-hidden />
+              <img
+                src={iconSrc}
+                alt=""
+                aria-hidden
+                className={cn("shrink-0 object-contain", id === "video" ? "h-[14px] w-[18px]" : "size-4", (selected || hoveredMode === id) && "brightness-0")}
+              />
               <span>{t(label)}</span>
             </button>
           );
         })}
-      </div>
+        </div>
 
-      <div className="mt-7 flex flex-wrap gap-1.5" aria-label={t("new_conversation.quick_actions_label")}>
-        {actions.map(({ label, icon: Icon, prompt, action }) => {
+        <div className="mt-5 flex flex-wrap gap-1.5" aria-label={t("new_conversation.quick_actions_label")}>
+        {actions.map(({ label, prompt, action }) => {
           const selectedWebsiteAction = action === "website" && websiteTemplatesOpen;
           return (
             <button
@@ -243,10 +259,10 @@ export function NewConversationStarter({
               type="button"
               aria-pressed={action === "website" ? websiteTemplatesOpen : undefined}
               className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-[background-color,border-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "inline-flex h-8 items-center rounded-[18px] border border-[#CBCBCB] px-4 text-[13px] font-medium transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 selectedWebsiteAction
-                  ? "border-primary/35 bg-primary/10 text-primary shadow-sm"
-                  : "border-border bg-background text-foreground shadow-sm hover:border-primary/25 hover:bg-muted",
+                  ? "bg-primary/10 text-primary"
+                  : "bg-background text-foreground hover:bg-muted",
               )}
               onClick={() => {
                 if (action === "video") onCreateVideoSession?.();
@@ -258,23 +274,23 @@ export function NewConversationStarter({
               }}
               disabled={action === "video" && !onCreateVideoSession}
             >
-              <Icon className="size-3.5 text-muted-foreground" aria-hidden />
               <span>{t(label)}</span>
             </button>
           );
         })}
-      </div>
+        </div>
 
-      {selectedMode === "design" && websiteTemplatesOpen ? (
-        <WebsiteTemplateStrip
-          templates={websiteTemplates}
-          loading={websiteTemplatesLoading}
-          busyId={websiteTemplateBusyId}
-          getTemplateCover={getTemplateCover}
-          onUseTemplate={onUseWebsiteTemplate}
-          onInstallTemplate={onInstallWebsiteTemplate}
-        />
-      ) : null}
+        {selectedMode === "design" && websiteTemplatesOpen ? (
+          <WebsiteTemplateStrip
+            templates={websiteTemplates}
+            loading={websiteTemplatesLoading}
+            busyId={websiteTemplateBusyId}
+            getTemplateCover={getTemplateCover}
+            onUseTemplate={onUseWebsiteTemplate}
+            onInstallTemplate={onInstallWebsiteTemplate}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

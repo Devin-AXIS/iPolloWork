@@ -53,7 +53,6 @@ type SettingsExtensionControllerInput = {
 function hasOpenAiEnv(input: Pick<SettingsExtensionControllerInput, "providers" | "providerConnectedIds" | "userEnvKeys">) {
   return input.userEnvKeys.includes("OPENAI_REALTIME_API_KEY") ||
     input.userEnvKeys.includes("OPENAI_API_KEY") ||
-    input.userEnvKeys.includes("IPOLLOWORK_OPENAI_IMAGE_API_KEY") ||
     input.providers.some((provider) => provider.id === "openai" && provider.source === "env") ||
     input.providerConnectedIds.includes("openai");
 }

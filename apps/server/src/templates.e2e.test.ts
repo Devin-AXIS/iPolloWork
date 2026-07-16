@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "./server.js";
@@ -32,17 +32,46 @@ describe("template API", () => {
     const capabilities = await fetch(`${base}/capabilities`, { headers }).then((response) => response.json());
     expect(capabilities.templates).toEqual({ read: true, install: true, import: true, uninstall: true });
     const catalog = await fetch(`${base}/workspace/ws/templates`, { headers }).then((response) => response.json());
-    expect(catalog.items).toHaveLength(2);
+    expect(catalog.items).toHaveLength(65);
+
+    const missingCategory = await fetch(`${base}/workspace/ws/templates/import`, {
+      method: "POST",
+      headers: { Authorization: "Bearer token", "Content-Type": "application/vnd.ipollowork-template+zip" },
+      body: new Uint8Array([1]),
+    });
+    expect(missingCategory.status).toBe(400);
+    expect((await missingCategory.json()).code).toBe("template_category_required");
 
     const materializedResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.saas-landing/materialize`, { method: "POST", headers, body: JSON.stringify({ sessionId: "session_api" }) });
     expect(materializedResponse.status).toBe(200);
     const materialized = await materializedResponse.json();
     expect(materialized.state.entry).toBe("design/session_api/entry.html");
 
+    const videoMaterializedResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.html-anything.video-hyperframes/materialize`, { method: "POST", headers, body: JSON.stringify({ sessionId: "session_video" }) });
+    expect(videoMaterializedResponse.status).toBe(200);
+    const videoMaterialized = await videoMaterializedResponse.json();
+    expect(videoMaterialized.state.entry).toBe("video/session_video/index.html");
+    expect(await readFile(join(root, videoMaterialized.state.entry), "utf8")).toContain("data-composition-variables");
+    const videoTemplate = await fetch(`${base}/workspace/ws/template-sessions/session_video`, { headers }).then((response) => response.json());
+    expect(videoTemplate.manifest.surface).toBe("video");
+    expect((await fetch(`${base}/workspace/ws/design-sessions/session_video/template`, { headers })).status).toBe(404);
+
+    await mkdir(join(root, "video", "legacy_video"), { recursive: true });
+    await writeFile(join(root, "video", "legacy_video", "index.html"), "<!doctype html><div data-composition-id=\"legacy-video\" data-duration=\"8\"></div>", "utf8");
+    const adoptedResponse = await fetch(`${base}/workspace/ws/template-sessions/legacy_video/adopt-video`, { method: "POST", headers, body: "{}" });
+    expect(adoptedResponse.status).toBe(200);
+    const adopted = await adoptedResponse.json();
+    expect(adopted.state.entry).toBe("video/legacy_video/index.html");
+    expect(adopted.manifest.surface).toBe("video");
+    expect(await readFile(join(root, adopted.state.entry), "utf8")).toContain("legacy-video");
+    expect(JSON.parse(await readFile(join(root, adopted.state.briefPath), "utf8"))).toEqual({ source: "legacy-video-session" });
+
     const uninstallResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.saas-landing`, { method: "DELETE", headers });
     expect(uninstallResponse.status).toBe(200);
     expect(await readFile(join(root, materialized.state.entry), "utf8")).toContain("<!doctype html>");
-    const metadata = await fetch(`${base}/workspace/ws/design-sessions/session_api/template`, { headers }).then((response) => response.json());
+    const sessions = await fetch(`${base}/workspace/ws/template-sessions`, { headers }).then((response) => response.json());
+    expect(sessions.items.map((item: { sessionId: string }) => item.sessionId)).toEqual(expect.arrayContaining(["session_api", "session_video"]));
+    const metadata = await fetch(`${base}/workspace/ws/template-sessions/session_api`, { headers }).then((response) => response.json());
     expect(metadata.manifest.id).toBe("ipollowork.saas-landing");
   });
 });

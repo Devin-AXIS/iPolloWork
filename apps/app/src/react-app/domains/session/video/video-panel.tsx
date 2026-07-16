@@ -1,8 +1,11 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { CheckCircle2, Film, Layers3, Loader2, RefreshCw, Unplug, X } from "lucide-react";
+import { AudioLines, CheckCircle2, Film, Layers3, Loader2, PanelRightClose, Play, RefreshCw, Unplug } from "lucide-react";
 
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { t } from "@/i18n";
 import {
   HYPERFRAMES_VERSION,
   hyperframesPreviewCommand,
@@ -11,6 +14,7 @@ import {
   videoProjectDirectory,
   videoProjectId,
 } from "./video-project";
+import { VideoVoicePanel } from "./video-voice-panel";
 
 export {
   hyperframesPreviewCommand,
@@ -23,32 +27,43 @@ export {
 type VideoPanelProps = {
   sessionId: string;
   workspaceRoot: string;
+  client: iPolloWorkServerClient | null;
+  workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   onClose: () => void;
 };
 
-export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
+export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
   const [detail, setDetail] = React.useState(`Starting HyperFrames ${HYPERFRAMES_VERSION}…`);
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
+  const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [simpleMode, setSimpleMode] = React.useState(true);
+  const [voicePanelOpen, setVoicePanelOpen] = React.useState(false);
+  const [voicePreviewRequest, setVoicePreviewRequest] = React.useState(0);
   const studioPort = hyperframesStudioPort(sessionId);
   const studioUrl = hyperframesStudioUrl(studioPort, videoProjectId(sessionId));
   const projectDirectory = videoProjectDirectory(sessionId);
 
   const applySimpleMode = React.useCallback(async (enabled: boolean) => {
-    const result = await window.__IPOLLOWORK_ELECTRON__?.hyperframes?.setSimpleMode?.(enabled);
-    if (result?.ok) setSimpleMode(enabled);
+    try {
+      const result = await window.__IPOLLOWORK_ELECTRON__?.hyperframes?.setSimpleMode?.(enabled);
+      if (result?.ok) setSimpleMode(enabled);
+      return Boolean(result?.ok && result.chromeClean);
+    } catch {
+      return false;
+    }
   }, []);
 
   React.useEffect(() => {
-    if (status !== "ready" || !studioFrameLoaded || !simpleMode) return;
+    if (status !== "ready" || !studioFrameLoaded) return;
     // HyperFrames replaces its preview iframe when the playhead crosses into a
-    // different composition. Re-apply the bridge so direct editing survives
-    // those native iframe navigations instead of only working on the first frame.
-    const interval = window.setInterval(() => void applySimpleMode(true), 1_000);
+    // different composition. Re-apply the selected mode so the iPolloWork
+    // chrome cleanup survives those native iframe navigations in both Simple
+    // and Advanced modes.
+    const interval = window.setInterval(() => void applySimpleMode(simpleMode), 1_000);
     return () => window.clearInterval(interval);
   }, [applySimpleMode, simpleMode, status, studioFrameLoaded]);
 
@@ -56,6 +71,7 @@ export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false
     setStatus("starting");
     setDetail(`Starting HyperFrames ${HYPERFRAMES_VERSION}…`);
     setStudioFrameLoaded(false);
+    setStudioChromeReady(false);
     if (isRemoteWorkspace) {
       setStatus("failed");
       setDetail("Video Studio is available for local workspaces.");
@@ -124,20 +140,49 @@ export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false
             {detail}
           </p>
         </div>
-        <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setDetail("Reloading Studio…"); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
+        <Tooltip>
+          <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => setVoicePanelOpen((open) => !open)} disabled={isRemoteWorkspace} aria-label="打开配音设置"><AudioLines /></Button>} />
+          <TooltipContent>配音设置</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger render={<Button variant="ghost" size="xs" onClick={() => { setVoicePanelOpen(true); setVoicePreviewRequest((value) => value + 1); }} disabled={isRemoteWorkspace} aria-label="试听当前配音"><Play />Preview</Button>} />
+          <TooltipContent>试听当前已选音色</TooltipContent>
+        </Tooltip>
+        <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setDetail("Reloading Studio…"); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
         <Button variant={simpleMode ? "ghost" : "secondary"} size="xs" onClick={() => void applySimpleMode(!simpleMode)} aria-label="Toggle advanced Video Studio"><Layers3 />{simpleMode ? "Advanced" : "Simple"}</Button>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close Video"><X /></Button>
+        <Button variant="ghost" size="xs" onClick={onClose} aria-label={t("session.right_panel_close")} title={t("session.right_panel_close")}><PanelRightClose />{t("session.right_panel_close")}</Button>
       </header>
 
       {isRemoteWorkspace ? (
         <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">Video Studio is available for local workspaces only.</div>
       ) : (
         <div className="relative min-h-0 flex-1 bg-[#0c0c0d]">
-          {status === "starting" ? <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"><div className="text-center"><Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /><p className="text-xs text-muted-foreground">Starting the native HyperFrames workspace…</p></div></div> : null}
-          {status === "ready" ? <iframe key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" className="h-full w-full border-0" data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
+          {status === "starting" || (status === "ready" && !studioChromeReady) ? <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"><div className="text-center"><Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /><p className="text-xs text-muted-foreground">{status === "starting" ? "Starting the native HyperFrames workspace…" : "Preparing the Video Studio…"}</p></div></div> : null}
+          {status === "ready" ? <iframe key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
             setStudioFrameLoaded(true);
-            [350, 1_200, 2_800].forEach((delay) => window.setTimeout(() => void applySimpleMode(true), delay));
+            // Do not reveal the embedded Studio while it still has its own
+            // product header. HyperFrames renders that header after the first
+            // iframe load, so confirm the native cleanup before exposing the
+            // canvas rather than relying on a timing-only delay.
+            void (async () => {
+              for (const delay of [0, 120, 420, 1_200, 2_800]) {
+                if (delay) await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
+                if (await applySimpleMode(simpleMode)) {
+                  setStudioChromeReady(true);
+                  return;
+                }
+              }
+              setDetail("Video Studio is still preparing. Reload to try again.");
+            })();
           }} /> : null}
+          {voicePanelOpen ? <VideoVoicePanel
+            sessionId={sessionId}
+            workspaceRoot={workspaceRoot}
+            client={client}
+            workspaceId={workspaceId}
+            previewRequest={voicePreviewRequest}
+            onClose={() => setVoicePanelOpen(false)}
+          /> : null}
         </div>
       )}
     </div>

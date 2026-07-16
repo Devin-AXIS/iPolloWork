@@ -555,7 +555,7 @@ export function CloudMarketplacesView({
       {!isSignedIn ? (
         <SettingsNotice>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>You can use iPolloWork without an account. Sign in to iPolloWork Cloud to load the Marketplace, including iPolloWork's built-in extensions and any organization marketplaces.</span>
+            <span>{t("settings.marketplace.signin_hint")}</span>
             <Button size="sm" onClick={onOpenAccount}>
               {t("skills.share_team_sign_in")}
             </Button>
@@ -568,7 +568,7 @@ export function CloudMarketplacesView({
       ) : null}
 
       {busy ? (
-        <SettingsNotice>Loading marketplace extensions...</SettingsNotice>
+        <SettingsNotice>{t("settings.marketplace.loading")}</SettingsNotice>
       ) : null}
 
       {removedUpstreamPlugins.map((plugin) => (
@@ -581,7 +581,7 @@ export function CloudMarketplacesView({
               disabled={Boolean(actionId)}
               onClick={() => void removePlugin(plugin.pluginId, plugin.name)}
             >
-              {actionId === plugin.pluginId ? "Working..." : t("extensions.remove_from_workspace_button")}
+              {actionId === plugin.pluginId ? t("settings.marketplace.working") : t("extensions.remove_from_workspace_button")}
             </Button>
           </div>
         </SettingsNotice>
@@ -591,7 +591,7 @@ export function CloudMarketplacesView({
         <SettingsListSearchInput
           value={search}
           onChange={(event) => setSearch(event.currentTarget.value)}
-          placeholder="Search marketplace extensions..."
+          placeholder={t("settings.marketplace.search")}
         />
         <div className="flex flex-wrap items-center gap-2">
           {(["all", "available", "installed", "update_available"] as const).map((filter) => (
@@ -601,22 +601,22 @@ export function CloudMarketplacesView({
               size="xs"
               onClick={() => setStatusFilter(filter)}
             >
-              {filter === "all" ? "All" : filter === "update_available" ? "Updates" : filter === "installed" ? "Installed" : "Available"}
+              {filter === "all" ? t("settings.marketplace.filter_all") : filter === "update_available" ? t("settings.marketplace.filter_updates") : filter === "installed" ? t("settings.marketplace.filter_installed") : t("settings.cloud.available")}
             </Button>
           ))}
           <details className="group relative">
             <summary className="flex h-7 cursor-pointer list-none items-center rounded-md border border-dls-border px-2.5 text-xs font-medium text-dls-secondary transition-colors hover:bg-dls-hover hover:text-dls-text">
-              Filters
+              {t("settings.marketplace.filters")}
             </summary>
             <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-dls-border bg-dls-surface p-3 shadow-[var(--dls-shell-shadow)]">
               <label className="grid gap-1.5 text-xs text-dls-secondary">
-                Marketplace
+                {t("settings.marketplace.marketplace_label")}
                 <select
                   className="rounded-lg border border-dls-border bg-dls-surface px-2 py-1.5 text-xs text-dls-text"
                   value={marketplaceFilter}
                   onChange={(event) => setMarketplaceFilter(event.currentTarget.value)}
                 >
-                  <option value="all">All marketplaces</option>
+                  <option value="all">{t("settings.marketplace.all_marketplaces")}</option>
                   {marketplaceOptions.map((marketplace) => (
                     <option key={marketplace.id} value={marketplace.id}>{marketplace.name}</option>
                   ))}
@@ -629,12 +629,12 @@ export function CloudMarketplacesView({
 
       {!busy && displayRows.length === 0 ? (
         <SettingsListEmptyState>
-          {!isSignedIn ? "Sign in to view marketplace extensions." : activeOrgId ? "No marketplace extensions are available yet." : "Choose an organization to view marketplace extensions."}
+          {!isSignedIn ? t("settings.marketplace.signin_empty") : activeOrgId ? t("settings.marketplace.empty") : t("settings.marketplace.choose_org")}
         </SettingsListEmptyState>
       ) : null}
 
       {displayRows.length > 0 && visibleRows.length === 0 ? (
-        <SettingsListEmptyState>No marketplace extensions match your search or filters.</SettingsListEmptyState>
+        <SettingsListEmptyState>{t("settings.marketplace.no_match")}</SettingsListEmptyState>
       ) : null}
 
       {visibleRows.length > 0 ? (
@@ -899,14 +899,14 @@ function OrgMcpConnectionDetailModal(props: {
       open
       onClose={onClose}
       name={row.item.name}
-      description={row.item.description ?? "Available from your organization."}
+      description={row.item.description ?? t("mcp.org_connection_desc_per_member")}
       kind="mcp"
       connected={ready}
       connectedLabel={orgMcpConnectionActionLabel(row.connection)}
       beta
       connecting={connecting || props.disconnecting}
       connectLabel={orgMcpConnectionActionLabel(row.connection)}
-      connectingLabel="Waiting for browser..."
+      connectingLabel={t("connect.waiting_for_browser")}
       uninstallLabel={t("mcp.org_connection_disconnect_action")}
       url={row.connection.url}
       oauth={row.connection.authType === "oauth"}
@@ -916,12 +916,12 @@ function OrgMcpConnectionDetailModal(props: {
       configSlot={(
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            <SettingsPill>Shared by your organization</SettingsPill>
-            <SettingsPill>{row.connection.credentialMode === "shared" ? "Org account" : "Your account"}</SettingsPill>
+            <SettingsPill>{t("mcp.org_connection_managed_label")}</SettingsPill>
+            <SettingsPill>{row.connection.credentialMode === "shared" ? t("settings.marketplace.organization_account") : t("settings.marketplace.your_account")}</SettingsPill>
             <SettingsPill>MCP</SettingsPill>
           </div>
           <SettingsNotice>
-            iPolloWork stores this sign-in in the organization cloud. Once connected, your desktop agent can use the tools through iPolloWork Cloud Control.
+            {t("settings.marketplace.organization_connection_notice")}
           </SettingsNotice>
         </div>
       )}
@@ -1005,7 +1005,7 @@ function MarketplacePackageDetailModal(props: {
             {row.counts.map((label) => <SettingsPill key={label}>{label}</SettingsPill>)}
           </div>
           <div className="rounded-xl border border-dls-border bg-dls-hover px-3 py-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Composition</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("settings.marketplace.composition")}</div>
             <div className="mt-2 grid gap-2">
               {row.composition.map((entry) => (
                 <div key={entry.type} className="flex items-center justify-between text-sm">
@@ -1019,7 +1019,7 @@ function MarketplacePackageDetailModal(props: {
             <SettingsNotice tone="error">{resolveError}</SettingsNotice>
           ) : null}
           {resolving ? (
-            <SettingsNotice>Loading extension contents...</SettingsNotice>
+            <SettingsNotice>{t("settings.marketplace.loading_contents")}</SettingsNotice>
           ) : null}
           {missingImportedConnectionCount > 0 ? (
             <SettingsNotice tone="error">
@@ -1028,7 +1028,7 @@ function MarketplacePackageDetailModal(props: {
           ) : null}
           {importedConnections.length > 0 ? (
             <div className="rounded-xl border border-dls-border bg-dls-hover px-3 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Cloud MCP connections</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("settings.marketplace.cloud_mcp_connections")}</div>
               <div className="mt-3 grid gap-2">
                 {importedConnections.map((connection) => {
                   const ready = isOrgMcpConnectionReady(connection);
@@ -1061,7 +1061,7 @@ function MarketplacePackageDetailModal(props: {
           ) : null}
           {resolved ? (
             <div className="space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Extension contents</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("settings.marketplace.extension_contents")}</div>
               {resolved.memberships.length > 0 ? resolved.memberships.map((membership) => {
                 const object = membership.configObject;
                 const version = object?.latestVersion ?? null;
@@ -1084,7 +1084,7 @@ function MarketplacePackageDetailModal(props: {
                   </details>
                 );
               }) : (
-                <SettingsNotice>This extension does not expose detailed contents yet.</SettingsNotice>
+                <SettingsNotice>{t("settings.marketplace.no_contents")}</SettingsNotice>
               )}
             </div>
           ) : null}

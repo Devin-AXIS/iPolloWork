@@ -1,0 +1,54 @@
+---
+title: Use Storage Center
+description: Configure object storage once and use one provider-neutral contract for workspace artifacts.
+---
+
+Storage Center is iPolloWork's local boundary for durable object storage. It does not replace workspace files, previews, or direct-download tickets. Those stay local-first. A feature opts in only when it wants to copy one workspace file to object storage.
+
+## Configure a provider
+
+Open **Settings → Authorizations** and configure one or more providers:
+
+| Provider | Required values | Use it for |
+| --- | --- | --- |
+| Alibaba Cloud OSS | AccessKey ID, AccessKey Secret, Bucket, Region; optional Public URL | An Alibaba Cloud OSS bucket. Set its bound HTTPS domain when a feature needs a clean public link. |
+| Wasabi | Access key, Secret access key, Bucket, Region | A Wasabi bucket outside mainland China |
+
+Use **Storage routing** to save a default. `auto` selects that configured default; a call can always request `aliyun-oss` or `wasabi` explicitly. Credentials are stored only by the local iPolloWork host and never returned by the API.
+
+## Stable capability contract
+
+Use this contract from a trusted iPolloWork app feature. It is a capability call, not a product workflow: the calling feature decides when it needs durable storage and what it does with the returned object URL.
+
+```ts
+const result = await client.callStorage("upload_workspace_file", {
+  sourcePath: "artifacts/product-demo.mp4",
+  provider: "auto",
+  objectKey: "videos/product-demo.mp4",
+}, { directory: activeWorkspace.path });
+
+if (result.ok) {
+  const uploaded = result.result as {
+    provider: string;
+    objectKey: string;
+    url: string;
+    downloadUrl?: string;
+  };
+}
+```
+
+`sourcePath` must be a relative path inside the active workspace. Storage Center rejects traversal, reads only regular files, preserves the original local artifact, and currently accepts uploads up to 100 MB per call. Returned values include the provider, object key, MIME type, byte count, and provider URL; when Alibaba Cloud OSS has a Public URL, `downloadUrl` uses that bound domain. Credentials are never returned.
+
+Call `client.callStorage("status")` to discover which providers are configured and which provider `auto` will choose.
+
+## Agent and OpenCode boundary
+
+Agents use the bundled extension bridge with `extensionId: "storage"`. It exposes `status` and `upload_workspace_file`. It does not alter OpenCode source, providers, configuration, or files. New providers are added as local Storage Center adapters plus one authorization card, leaving calling app features unchanged.
+
+## Verify the bridge
+
+```bash
+pnpm --filter ipollowork-server exec bun test src/extensions/storage.test.ts src/extensions-connect-gating.test.ts
+```
+
+After starting the desktop development client, `ipollowork_extension_list_actions` should list the `storage` extension.

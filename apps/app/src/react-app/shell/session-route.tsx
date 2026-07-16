@@ -114,8 +114,8 @@ import { useSessionProviderAuth } from "@/react-app/domains/connections/provider
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
-import { designSessionSelectionStorageKey } from "@/react-app/domains/session/design/design-html-runtime";
-import { videoTaskSystemContext } from "@/react-app/domains/session/video/video-project";
+import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
+import { shouldInjectVideoTaskContext, videoTaskSystemContext } from "@/react-app/domains/session/video/video-project";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -916,13 +916,27 @@ export function SessionRoute() {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
         });
-        const isDesignTask = typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-type.${targetSessionId}`) === "design";
-        const isVideoTask = typeof window !== "undefined" && window.localStorage.getItem(`ipollowork.session-type.${targetSessionId}`) === "video";
-        const designSessionTemplate = selectedWorkspaceEndpoint && isDesignTask
-          ? await selectedWorkspaceEndpoint.client.getDesignSessionTemplate(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
+        // Template-session metadata is authoritative. The in-memory surface
+        // cache is used only for legacy sessions created before that record
+        // existed, so an already-open Video Studio still gets its contract.
+        let sessionTemplate = selectedWorkspaceEndpoint
+          ? await selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
           : null;
+        // Claim a pre-template Studio project before the prompt is sent. This
+        // is the one-time migration that makes the persisted session record,
+        // the agent contract, and the right-side Studio point at one path.
+        if (!sessionTemplate && selectedWorkspaceEndpoint && readSessionType(targetSessionId) === "video") {
+          sessionTemplate = await selectedWorkspaceEndpoint.client.adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null);
+        }
+        const isDesignTask = sessionTemplate?.surface === "design";
+        const isVideoTask = shouldInjectVideoTaskContext(sessionTemplate?.surface, readSessionType(targetSessionId));
+        const designSessionTemplate = isDesignTask ? sessionTemplate : null;
+        const videoTemplate = isVideoTask ? sessionTemplate?.manifest ?? null : null;
         const designPath = designSessionTemplate?.state.entry ?? null;
-        if (designPath && selectedWorkspaceEndpoint) {
+        // Version history is a site-only workflow. Slides and every other
+        // design category keep their single session artifact without creating
+        // website-style snapshots before each AI turn.
+        if (designPath && selectedWorkspaceEndpoint && designSessionTemplate?.manifest.category === "site") {
           try {
             const currentDesign = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, designPath);
             let versionContent = currentDesign.content;
@@ -959,7 +973,7 @@ export function SessionRoute() {
         const promptParts = [
           ...(isVideoTask ? [{
             type: "text" as const,
-            text: videoTaskSystemContext(targetSessionId),
+            text: videoTaskSystemContext(targetSessionId, selectedWorkspaceRoot, videoTemplate),
           }] : []),
           ...(designPath ? [{
             type: "text" as const,
@@ -1272,11 +1286,12 @@ export function SessionRoute() {
       const session = unwrap(
         await workspaceClient.session.create({ directory: workspace.path?.trim() || undefined }),
       );
-      window.localStorage.setItem(`ipollowork.session-type.${session.id}`, type);
+      let sessionType = type;
       if (templateId) {
         const materialized = await endpoint.client.materializeTemplate(endpoint.workspaceId, templateId, session.id);
-        window.localStorage.setItem(designSessionSelectionStorageKey(endpoint.workspaceId, session.id), materialized.state.entry);
+        sessionType = sessionTypeForTemplate(materialized.manifest);
       }
+      setSessionType(session.id, sessionType);
       captureAnalyticsEvent("task_created", {
         source: "new_task",
         workspace_type: workspace.workspaceType ?? "unknown",

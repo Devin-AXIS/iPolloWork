@@ -19,6 +19,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { t } from "@/i18n";
 import { registerExtensionConfig, type ExtensionConfigContext } from "./extension-registry";
 
 export type IPolloWorkVoiceConfigProps = {
@@ -51,25 +52,25 @@ export function IPolloWorkVoiceConfig(props: IPolloWorkVoiceConfigProps) {
   return (
     <Card variant="outline" size="sm">
       <CardHeader>
-        <CardTitle>Realtime voice</CardTitle>
+        <CardTitle>{t("settings.integration.voice.title")}</CardTitle>
         <CardDescription>
-          Voice Mode uses OpenAI Realtime and the same iPolloWork UI control surface exposed through iPolloWork UI MCP.
+          {t("settings.integration.voice.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {props.envKeyDetected ? (
           <Alert>
             <Mic2 />
-            <AlertTitle>OpenAI key detected</AlertTitle>
+            <AlertTitle>{t("settings.integration.voice.key_detected_title")}</AlertTitle>
             <AlertDescription>
-              Voice Mode will use OPENAI_REALTIME_API_KEY when present, otherwise OPENAI_API_KEY from iPolloWork environment variables.
+              {t("settings.integration.voice.key_detected_description")}
             </AlertDescription>
           </Alert>
         ) : null}
 
         <FieldGroup className="gap-4">
           <Field>
-            <FieldLabel htmlFor="ipollowork-voice-api-key">OpenAI API key</FieldLabel>
+            <FieldLabel htmlFor="ipollowork-voice-api-key">{t("settings.integration.openai_api_key")}</FieldLabel>
             <Input
               id="ipollowork-voice-api-key"
               type="password"
@@ -78,7 +79,7 @@ export function IPolloWorkVoiceConfig(props: IPolloWorkVoiceConfigProps) {
               placeholder="sk-..."
             />
             <FieldDescription>
-              Saved as OPENAI_API_KEY in iPolloWork's local env store. The renderer only receives short-lived Realtime client secrets.
+              {t("settings.integration.voice.key_description")}
             </FieldDescription>
           </Field>
         </FieldGroup>
@@ -99,10 +100,10 @@ export function IPolloWorkVoiceConfig(props: IPolloWorkVoiceConfigProps) {
       <CardFooter className="flex-wrap gap-2 border-t border-border justify-between">
         <Button onClick={() => void props.onSaveApiKey(apiKey)} disabled={props.busy || !canSave}>
           {props.busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
-          Save key
+          {t("settings.integration.save_key")}
         </Button>
         <Button variant="outline" onClick={() => void props.onTestSession()} disabled={props.busy || !props.envKeyDetected}>
-          Test Realtime
+          {t("settings.integration.voice.test")}
         </Button>
       </CardFooter>
     </Card>

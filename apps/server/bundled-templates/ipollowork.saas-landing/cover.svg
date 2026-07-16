@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="SaaS landing page preview">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fafaf9"/><stop offset="1" stop-color="#fde7dc"/></linearGradient></defs>
-  <rect width="640" height="360" rx="28" fill="url(#g)"/><rect x="48" y="40" width="544" height="30" rx="15" fill="#fff" opacity=".85"/>
-  <circle cx="70" cy="55" r="8" fill="#c96442"/><rect x="92" y="49" width="72" height="12" rx="6" fill="#292524" opacity=".78"/>
-  <rect x="48" y="112" width="338" height="34" rx="10" fill="#292524"/><rect x="48" y="158" width="272" height="14" rx="7" fill="#78716c" opacity=".55"/>
-  <rect x="48" y="192" width="118" height="38" rx="12" fill="#c96442"/><rect x="420" y="106" width="172" height="148" rx="24" fill="#fff" opacity=".9"/>
-  <rect x="48" y="286" width="166" height="34" rx="12" fill="#fff"/><rect x="237" y="286" width="166" height="34" rx="12" fill="#fff"/><rect x="426" y="286" width="166" height="34" rx="12" fill="#fff"/>
-</svg>

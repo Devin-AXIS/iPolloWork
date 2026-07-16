@@ -82,6 +82,7 @@ import { MemoryView } from "@/react-app/domains/settings/pages/memory-view";
 import { useFeatureFlagsPreferences } from "@/react-app/domains/settings/state/feature-flags-preferences";
 import { DebugView } from "@/react-app/domains/settings/pages/debug-view";
 import { EnvironmentView } from "@/react-app/domains/settings/pages/environment-view";
+import { AuthorizationCenterView } from "@/react-app/domains/settings/pages/authorization-center-view";
 import { ExtensionsView } from "@/react-app/domains/settings/pages/extensions-view";
 import { McpView } from "@/react-app/domains/settings/pages/mcp-view";
 import { RecoveryView } from "@/react-app/domains/settings/pages/recovery-view";
@@ -264,6 +265,7 @@ export function parseSettingsPath(pathname: string): {
     case "shell":
     case "advanced":
     case "appearance":
+    case "authorizations":
     case "environment":
     case "updates":
     case "recovery":
@@ -2304,6 +2306,21 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       case "environment":
         return (
           <EnvironmentView
+            client={ipolloworkServerSnapshot.ipolloworkServerClient}
+            isRemoteWorkspace={isRemoteWorkspace}
+            onApplyChanges={isDesktopRuntime() && !isRemoteWorkspace ? handleApplyEnvironmentChanges : undefined}
+            applyBlocked={activeReloadBlockingSessions.length > 0}
+            applyBlockedReason={
+              activeReloadBlockingSessions.length > 0
+                ? t("settings.environment.apply_blocked_active_tasks")
+                : null
+            }
+            runtimeKey={environmentRuntimeKey}
+          />
+        );
+      case "authorizations":
+        return (
+          <AuthorizationCenterView
             client={ipolloworkServerSnapshot.ipolloworkServerClient}
             isRemoteWorkspace={isRemoteWorkspace}
             onApplyChanges={isDesktopRuntime() && !isRemoteWorkspace ? handleApplyEnvironmentChanges : undefined}
