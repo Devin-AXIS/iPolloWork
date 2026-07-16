@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent } from "@opencode-ai/sdk/v2/client";
-import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, FileText, ListPlus, Paperclip, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, FileText, ListPlus, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -35,7 +35,8 @@ type PastedTextChip = {
 };
 
 type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
-type ToolMenuSection = "agents" | "commands" | "skills" | "mcps" | "extensions" | `plugin:${string}`;
+type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions" | `plugin:${string}`;
+type PlusMenuSection = "tools" | "agents";
 
 function isComposerExtensionAvailable(entry: McpDirectoryInfo) {
   const hasSessionSurface = entry.extensionManifest?.contributions?.some((contribution) =>
@@ -288,6 +289,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [importedPlugins, setImportedPlugins] = useState<CloudImportedPlugin[]>(props.importedPlugins ?? []);
   const [pluginsLoading, setPluginsLoading] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [plusMenuSection, setPlusMenuSection] = useState<PlusMenuSection | null>(null);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
@@ -316,6 +319,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [agentMenuIndex, setAgentMenuIndex] = useState(0);
   const agentItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [dropzoneActive, setDropzoneActive] = useState(false);
+  const plusMenuRef = useRef<HTMLDivElement | null>(null);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<LexicalPromptEditorHandle | null>(null);
   const agentMenuRef = useRef<HTMLDivElement | null>(null);
@@ -331,8 +335,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.draft]);
 
   // Follow-up message UX (only relevant while the agent is busy):
-  // - Enter sends immediately (the agent adjusts mid-task, aka "steer").
-  // - Cmd/Ctrl+Enter queues the message to send once the agent finishes.
+  // - Enter queues the message to send once the agent finishes.
+  // - Cmd/Ctrl+Enter sends immediately (the agent adjusts mid-task).
   // - Escape arms a "Hit Escape again to stop the agent" prompt for 3s;
   //   a second Escape within that window stops the agent.
   const [escapeArmed, setEscapeArmed] = useState(false);
@@ -372,8 +376,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, []);
 
   // Editor submit (Enter). While idle this sends normally; while busy
-  // Enter sends immediately (steer) and Cmd/Ctrl+Enter queues the
-  // message to send once the agent finishes the current task.
+  // Enter queues and Cmd/Ctrl+Enter sends immediately (steer).
   const handleEditorSubmit = useCallback((options: { queue: boolean }) => {
     const hasContent = props.draft.trim().length > 0 || props.attachments.length > 0;
     if (!hasContent) return;
@@ -405,9 +408,9 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [mentionOpenNext, mentionQuery]);
 
   useEffect(() => {
-    if (!agentMenuOpen && !(toolMenuOpen && toolMenuSection === "agents")) return;
+    if (!agentMenuOpen) return;
     void props.listAgents().then(setAgents).catch(() => setAgents([]));
-  }, [agentMenuOpen, toolMenuOpen, toolMenuSection, props.listAgents]);
+  }, [agentMenuOpen, props.listAgents]);
 
   useEffect(() => {
     if (!showAgentPicker) setAgentMenuOpen(false);
@@ -503,6 +506,27 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, []);
 
   useEffect(() => {
+    if (!plusMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (plusMenuRef.current?.contains(target)) return;
+      setPlusMenuOpen(false);
+      setPlusMenuSection(null);
+      setToolMenuOpen(false);
+      setAgentMenuOpen(false);
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [plusMenuOpen]);
+
+  useEffect(() => {
+    if (!plusMenuOpen) return;
+    setToolMenuOpen(plusMenuSection === "tools");
+    setAgentMenuOpen(plusMenuSection === "agents");
+  }, [plusMenuOpen, plusMenuSection]);
+
+  useEffect(() => {
     if (!toolMenuOpen) return;
     toolMenuLoadRef.current = {
       openId: toolMenuLoadRef.current.openId + 1,
@@ -583,7 +607,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (toolMenuRef.current?.contains(target)) return;
+      if (plusMenuRef.current?.contains(target) || toolMenuRef.current?.contains(target)) return;
       setToolMenuOpen(false);
     };
     window.addEventListener("mousedown", handlePointerDown);
@@ -597,7 +621,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (agentMenuRef.current?.contains(target)) return;
+      if (plusMenuRef.current?.contains(target) || agentMenuRef.current?.contains(target)) return;
       setAgentMenuOpen(false);
     };
     window.addEventListener("mousedown", handlePointerDown);
@@ -871,7 +895,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     // Escape-to-stop while the agent is busy. Only when no menu is open so
     // Escape can still close menus. First press arms a confirmation prompt
     // for 3s; a second Escape within that window stops the agent.
-    const anyMenuOpen = agentMenuOpen || toolMenuOpen || Boolean(activeMenu);
+    const anyMenuOpen = plusMenuOpen || agentMenuOpen || toolMenuOpen || Boolean(activeMenu);
     if (event.key === "Escape" && props.busy && !anyMenuOpen) {
       event.preventDefault();
       if (escapeArmed) {
@@ -911,6 +935,12 @@ export function ReactSessionComposer(props: ComposerProps) {
         setAgentMenuOpen(false);
         return;
       }
+    }
+
+    if (plusMenuOpen && event.key === "Escape") {
+      event.preventDefault();
+      setPlusMenuOpen(false);
+      return;
     }
 
     if (toolMenuOpen && event.key === "Escape") {
@@ -1313,20 +1343,71 @@ export function ReactSessionComposer(props: ComposerProps) {
                     event.currentTarget.value = "";
                   }}
                 />
-                <button
-                  type="button"
-                  className={`inline-flex h-9 max-h-9 w-9 items-center justify-center rounded-md text-gray-10 transition-colors hover:bg-gray-3 ${
-                    !props.attachmentsEnabled ? "cursor-not-allowed opacity-60" : ""
-                  }`}
-                  onClick={() => {
-                    if (!props.attachmentsEnabled) return;
-                    fileInput?.click();
-                  }}
-                  disabled={!props.attachmentsEnabled}
-                  title={props.attachmentsDisabledReason ?? t("composer.attach_files")}
-                >
-                  <Paperclip size={16} />
-                </button>
+                <div ref={plusMenuRef} className="relative">
+                  <button
+                    type="button"
+                    className={`inline-flex h-9 max-h-9 w-9 items-center justify-center rounded-md transition-colors ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "text-gray-10 hover:bg-gray-3"}`}
+                    onClick={() => {
+                      setToolMenuOpen(false);
+                      setAgentMenuOpen(false);
+                      setPlusMenuOpen((open) => {
+                        if (open) setPlusMenuSection(null);
+                        return !open;
+                      });
+                    }}
+                    aria-expanded={plusMenuOpen}
+                    aria-haspopup="menu"
+                    title={t("composer.plus_menu_label")}
+                  >
+                    <Plus size={18} />
+                  </button>
+                  {plusMenuOpen ? (
+                    <div className="absolute bottom-full left-0 z-40 mb-2 flex items-end gap-1">
+                      <div className="w-52 shrink-0 rounded-[16px] border border-dls-border bg-dls-surface p-1.5 shadow-[var(--dls-shell-shadow)]">
+                      <button
+                        type="button"
+                        className={`flex w-full items-center rounded-[12px] px-3 py-2.5 text-left text-sm ${props.attachmentsEnabled ? "text-gray-11 hover:bg-gray-2" : "cursor-not-allowed text-gray-9 opacity-60"}`}
+                        onClick={() => {
+                          if (!props.attachmentsEnabled) return;
+                          setPlusMenuOpen(false);
+                          setPlusMenuSection(null);
+                          fileInput?.click();
+                        }}
+                        disabled={!props.attachmentsEnabled}
+                      >
+                        {t("composer.plus_attach_files")}
+                      </button>
+                      <button
+                        type="button"
+                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        onMouseEnter={() => setPlusMenuSection("tools")}
+                        onClick={() => {
+                          setPlusMenuSection("tools");
+                          setToolMenuOpen(true);
+                          setAgentMenuOpen(false);
+                        }}
+                      >
+                        <span>{t("composer.plus_tools")}</span>
+                        <ChevronRight size={14} className="text-gray-9" />
+                      </button>
+                      <button
+                        type="button"
+                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm disabled:cursor-not-allowed disabled:text-gray-9 disabled:opacity-60 ${plusMenuSection === "agents" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        onMouseEnter={() => setPlusMenuSection("agents")}
+                        onClick={() => {
+                          setPlusMenuSection("agents");
+                          setAgentMenuOpen(true);
+                          setToolMenuOpen(false);
+                        }}
+                        disabled={!showAgentPicker || props.busy}
+                      >
+                        <span>{t("composer.plus_agents")}</span>
+                        <ChevronRight size={14} className="text-gray-9" />
+                      </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
                 <div
                   ref={toolMenuRef}
                   className="relative"
@@ -1335,27 +1416,11 @@ export function ReactSessionComposer(props: ComposerProps) {
                     if (target instanceof Element && target.closest("button")) event.preventDefault();
                   }}
                 >
-                  <button
-                    type="button"
-                    className={`inline-flex h-9 max-h-9 w-9 items-center justify-center rounded-md transition-colors ${toolMenuOpen ? "bg-gray-3 text-gray-12" : "text-gray-10 hover:bg-gray-3"}`}
-                    onClick={() => {
-                      setMentionOpen(false);
-                      setMentionItems([]);
-                      setSlashOpen(false);
-                      setToolMenuOpen((value) => !value);
-                    }}
-                    aria-expanded={toolMenuOpen}
-                    aria-haspopup="dialog"
-                    title={t("composer.tools_label")}
-                  >
-                    <Plug size={16} />
-                  </button>
                   {toolMenuOpen ? (
-                    <div className="absolute bottom-full left-0 z-40 mb-3 w-[min(calc(100vw-2.5rem),34rem)] overflow-hidden rounded-[22px] border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
+                    <div className="absolute bottom-full left-[10.75rem] z-40 mb-2 w-[min(calc(100vw-16rem),34rem)] overflow-hidden rounded-[22px] border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
                       <div className="grid grid-cols-[152px_minmax(0,1fr)] sm:grid-cols-[176px_minmax(0,1fr)]">
                         <div className="border-r border-dls-border bg-gray-2/30 p-2">
                           {([
-                            ["agents", t("composer.agents_label")],
                             ["commands", t("dashboard.commands")],
                             ["skills", t("dashboard.skills")],
                             ["extensions", "Extensions"],
@@ -1398,37 +1463,6 @@ export function ReactSessionComposer(props: ComposerProps) {
                               {t("composer.configure")}
                             </button>
                           </div>
-                          {toolMenuSection === "agents" ? (
-                            <div className="grid gap-1">
-                              <button
-                                type="button"
-                                className={`flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left transition-colors hover:bg-gray-2/70 ${props.selectedAgent === null ? "bg-gray-2 text-gray-12" : "text-gray-11"}`}
-                                onClick={() => applyAgentSelection(null)}
-                              >
-                                <Zap size={14} className="mt-0.5 shrink-0 text-gray-9" />
-                                <div className="min-w-0 flex-1 truncate text-xs font-semibold">{t("composer.default_agent")}</div>
-                                {props.selectedAgent === null ? <Check size={14} className="mt-0.5 shrink-0 text-gray-10" /> : null}
-                              </button>
-                              {nonDefaultAgents.map((agent) => {
-                                const active = props.selectedAgent === agent.name;
-                                return (
-                                  <button
-                                    key={agent.name}
-                                    type="button"
-                                    className={`flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left transition-colors hover:bg-gray-2/70 ${active ? "bg-gray-2 text-gray-12" : "text-gray-11"}`}
-                                    onClick={() => applyAgentSelection(agent.name)}
-                                  >
-                                    <Zap size={14} className="mt-0.5 shrink-0 text-gray-9" />
-                                    <div className="min-w-0 flex-1">
-                                      <div className="truncate text-xs font-semibold">{agent.name.charAt(0).toUpperCase() + agent.name.slice(1)}</div>
-                                      {agent.description ? <div className="truncate text-xs text-gray-10">{agent.description}</div> : null}
-                                    </div>
-                                    {active ? <Check size={14} className="mt-0.5 shrink-0 text-gray-10" /> : null}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : null}
                           {toolMenuSection === "commands" ? (
                             toolCommandItems.length > 0 ? (
                               <div className="grid gap-1">
@@ -1566,24 +1600,9 @@ export function ReactSessionComposer(props: ComposerProps) {
                   ) : null}
                 </div>
 
-                {/* Agent picker (#2101/#1971). Shows the active agent and lets
-                    the user switch without leaving the composer. The same
-                    selection is reachable from the plug menu, the command
-                    palette ("Switch agent"), and @agent mentions. */}
                 <div ref={agentMenuRef} className={showAgentPicker ? "relative" : "hidden"}>
-                  <button
-                    type="button"
-                    className="flex h-9 max-h-9 items-center gap-1 rounded-md px-1.5 text-[12px] font-medium text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12"
-                    onClick={() => setAgentMenuOpen((value) => !value)}
-                    disabled={props.busy}
-                    aria-expanded={agentMenuOpen}
-                    title={t("composer.agent_label")}
-                  >
-                    <span className="max-w-[140px] truncate">{props.agentLabel}</span>
-                    <ChevronDown size={13} />
-                  </button>
                   {agentMenuOpen ? (
-                    <div className="absolute left-0 bottom-full z-40 mb-2 w-64 overflow-hidden rounded-[18px] border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
+                    <div className="absolute left-[10.75rem] bottom-full z-40 mb-2 w-64 overflow-hidden rounded-[18px] border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
                       <div className="border-b border-dls-border px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-10">
                         {t("composer.agent_label")}
                       </div>
@@ -1684,17 +1703,17 @@ export function ReactSessionComposer(props: ComposerProps) {
                     <div className="flex items-end">
                       <button
                         type="button"
-                        onClick={canSend ? props.onSteer : undefined}
+                        onClick={canSend ? props.onQueue : undefined}
                         disabled={!canSend}
                         className={`inline-flex h-9 max-h-9 items-center gap-2 rounded-l-full pl-4 pr-3 text-[13px] font-medium transition-colors ${
                           canSend
                             ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
                             : "bg-gray-4 text-gray-10"
                         }`}
-                        title={t("composer.steer_hint")}
+                        title={t("composer.queue_hint")}
                       >
-                        <Zap size={14} />
-                        <span>{t("composer.steer")}</span>
+                        <ListPlus size={14} />
+                        <span>{t("composer.queue")}</span>
                       </button>
                       <DropdownMenu>
                         <DropdownMenuTrigger
@@ -1720,15 +1739,11 @@ export function ReactSessionComposer(props: ComposerProps) {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             disabled={!canSend}
-                            onClick={() => void props.onQueue()}
-                            title={t("composer.queue_hint")}
+                            onClick={() => void props.onSteer()}
+                            title={t("composer.steer_hint")}
                           >
-                            <ListPlus size={14} />
-                            <span>
-                              {props.queuedCount > 0
-                                ? `${t("composer.queue")} · ${t("composer.queued_count", { count: props.queuedCount })}`
-                                : t("composer.queue")}
-                            </span>
+                            <Zap size={14} />
+                            <span>{t("composer.steer")}</span>
                             <DropdownMenuShortcut>{isMacPlatform() ? "⌘⏎" : "Ctrl+⏎"}</DropdownMenuShortcut>
                           </DropdownMenuItem>
                         </DropdownMenuContent>

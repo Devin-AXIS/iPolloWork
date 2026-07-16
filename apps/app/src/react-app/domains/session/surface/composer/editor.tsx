@@ -619,11 +619,10 @@ function SubmitPlugin(props: { onSubmit: (options: { queue: boolean }) => void |
         if (event?.shiftKey) return false;
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return false;
-        // Plain Enter submits. Cmd/Ctrl+Enter submits with the queue
-        // modifier — while the agent is busy this queues the message to
-        // send once the current task finishes.
+        // Plain Enter uses the default send path. Cmd/Ctrl+Enter requests an
+        // immediate send while the agent is busy.
         event?.preventDefault();
-        void onSubmitRef.current({ queue: event?.metaKey === true || event?.ctrlKey === true });
+        void onSubmitRef.current({ queue: !(event?.metaKey === true || event?.ctrlKey === true) });
         return true;
       },
       COMMAND_PRIORITY_HIGH,
