@@ -754,6 +754,7 @@ export default {
   "session.outputs.empty_hint": "本次对话生成的文件会显示在这里。",
   "session.outputs.action_browse_edit": "可浏览 / 编辑",
   "session.outputs.action_video_studio": "可在视频工作台编辑",
+  "session.outputs.action_video_preview_edit": "预览 / 编辑",
   "session.outputs.open_video_studio": "打开视频工作台",
   "session.outputs.bundle_count": "包含 {count} 个文件",
   "session.outputs.expand_bundle": "展开包含文件",

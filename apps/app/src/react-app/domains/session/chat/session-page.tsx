@@ -26,6 +26,7 @@ import type {
 } from "../../../../app/types";
 import type { ShareWorkspaceModalProps } from "../../workspace/types";
 import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
+import { getArtifactsFromMessages, isVideoHtmlArtifact } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -92,10 +93,6 @@ const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
 const MAIN_WORKSPACE_MIN_WIDTH = 520;
 const MAIN_WORKSPACE_FALLBACK_MIN_WIDTH = 480;
 type SessionPanelView = SidePanelItem | "launcher";
-
-function videoPanelCollapsedStorageKey(sessionId: string) {
-  return `ipollowork.video-panel-collapsed.${sessionId}`;
-}
 
 export type SessionPageHistoryControls = {
   canUndo: boolean;
@@ -430,7 +427,6 @@ export function SessionPage(props: SessionPageProps) {
   const [templateSessionData, setTemplateSessionData] = useState<{ state: TemplateSessionState; manifest: TemplateManifestV1; hasBrief: boolean } | null>(null);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
   const [sessionTypeRevision, setSessionTypeRevision] = useState(0);
-  const [videoPanelVisibilityRevision, setVideoPanelVisibilityRevision] = useState(0);
   const selectedSessionType = useMemo(() => (
     props.selectedSessionId && typeof window !== "undefined"
       ? readSessionType(props.selectedSessionId)
@@ -438,9 +434,6 @@ export function SessionPage(props: SessionPageProps) {
   ), [props.selectedSessionId, sessionTypeRevision]);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
-  const isVideoPanelCollapsed = useMemo(() => (
-    Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(videoPanelCollapsedStorageKey(props.selectedSessionId)) === "true")
-  ), [props.selectedSessionId, videoPanelVisibilityRevision]);
   const hasTemplateSession = Boolean(templateSessionData);
   const hasTemplateBrief = templateSessionData?.hasBrief === true;
   const selectedTemplate = templateSessionData?.manifest ?? null;
@@ -455,21 +448,20 @@ export function SessionPage(props: SessionPageProps) {
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
     : [];
+  const videoOutput = useMemo(() => (
+    getArtifactsFromMessages(conversationMessages, accessibleTargets, { includeTargetFallbacks: true })
+      .find(isVideoHtmlArtifact) ?? null
+  ), [accessibleTargets, conversationMessages]);
+  const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
     props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
   );
   const activateVideoStudio = useCallback((sessionId: string) => {
-    // A prompt can start a blank video project. Template selection remains an
-    // explicit action in the composer or template library, never a surprise
-    // modal that interrupts the user's first request.
+    // Mark the agent turn as a video task so it receives the session-owned
+    // project contract. The Studio itself opens only after an output exists.
     setSessionType(sessionId, "video");
     setSessionTypeRevision((value) => value + 1);
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(videoPanelCollapsedStorageKey(sessionId));
-    }
-    setVideoPanelVisibilityRevision((value) => value + 1);
-    setSidePanelState(sessionId, "video");
-  }, [setSidePanelState]);
+  }, []);
   const openCurrentVideoStudio = useCallback(() => {
     if (!props.selectedSessionId) return;
     setSidePanelState(props.selectedSessionId, "video");
@@ -515,7 +507,6 @@ export function SessionPage(props: SessionPageProps) {
         if (materializedType !== selectedSessionType) {
           setSessionType(sessionId, materializedType);
           setSessionTypeRevision((value) => value + 1);
-          if (materializedType === "video") setVideoPanelVisibilityRevision((value) => value + 1);
         }
         if (materializedType !== "design" && materializedType !== "video") {
           if (active) setTemplateSessionData(null);
@@ -654,13 +645,24 @@ export function SessionPage(props: SessionPageProps) {
     if (!props.selectedSessionId) return;
     if (isVideoSession) {
       setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
-      if (!isVideoPanelCollapsed && activeSidePanel !== "video") setSidePanelState(props.selectedSessionId, "video");
       return;
     }
     if (isDesignSession && (activeSidePanel === "video" || activeSidePanel === "panel")) {
       setSidePanelState(props.selectedSessionId, "design");
     }
-  }, [activeSidePanel, isDesignSession, isVideoPanelCollapsed, isVideoSession, props.selectedSessionId, setSidePanelState]);
+  }, [activeSidePanel, isDesignSession, isVideoSession, props.selectedSessionId, setSidePanelState]);
+  useEffect(() => {
+    if (!props.selectedSessionId || !isVideoSession || !videoOutput) return;
+    const status = props.sidebar.sessionStatusById[props.selectedSessionId] ?? "idle";
+    if (status !== "idle") return;
+    const outputKey = `${props.selectedSessionId}:${videoOutput.messageId}:${videoOutput.path}`;
+    if (autoOpenedVideoOutputRef.current === outputKey) return;
+    autoOpenedVideoOutputRef.current = outputKey;
+    openCurrentVideoStudio();
+  }, [isVideoSession, openCurrentVideoStudio, props.selectedSessionId, props.sidebar.sessionStatusById, videoOutput]);
+  useEffect(() => {
+    autoOpenedVideoOutputRef.current = null;
+  }, [props.selectedSessionId]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
@@ -846,13 +848,9 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel("panel");
   }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel]);
   const closeRightPane = useCallback(() => {
-    if (isVideoSession && props.selectedSessionId && typeof window !== "undefined") {
-      window.localStorage.setItem(videoPanelCollapsedStorageKey(props.selectedSessionId), "true");
-      setVideoPanelVisibilityRevision((value) => value + 1);
-    }
     setSessionPanelView(null);
     setCurrentSidePanel(null);
-  }, [isVideoSession, props.selectedSessionId, setCurrentSidePanel]);
+  }, [setCurrentSidePanel]);
   const openBrowserRailPane = useCallback(() => {
     // Opening the browser pane should land on a usable page, not an empty
     // panel that forces the user to click "+". If no browser tab exists yet,
@@ -891,19 +889,11 @@ export function SessionPage(props: SessionPageProps) {
       closeRightPane();
       return;
     }
-    if (props.selectedSessionId && typeof window !== "undefined") {
-      window.localStorage.removeItem(videoPanelCollapsedStorageKey(props.selectedSessionId));
-      setVideoPanelVisibilityRevision((value) => value + 1);
-    }
     setCurrentSidePanel("video");
-  }, [closeRightPane, props.selectedSessionId, setCurrentSidePanel, videoRailActive]);
+  }, [closeRightPane, setCurrentSidePanel, videoRailActive]);
   const showVideoRailPane = useCallback(() => {
-    if (props.selectedSessionId && typeof window !== "undefined") {
-      window.localStorage.removeItem(videoPanelCollapsedStorageKey(props.selectedSessionId));
-      setVideoPanelVisibilityRevision((value) => value + 1);
-    }
     setCurrentSidePanel("video");
-  }, [props.selectedSessionId, setCurrentSidePanel]);
+  }, [setCurrentSidePanel]);
   const seedDesignHtmlControlAction = useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
 

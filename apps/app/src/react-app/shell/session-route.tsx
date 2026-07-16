@@ -654,10 +654,9 @@ export function SessionRoute() {
     clientReady: Boolean(opencodeClient),
     workspaceId: selectedWorkspaceId,
     providerConnectedIds,
-    // First-run users get the iPolloWork Models pitch from the provider
-    // selection step on their first send, not a startup popup. Completing
-    // the step marks the promo as shown, so it never auto-pops for them.
-    suppressed: providerStepOpen || !local.prefs.providerStepCompleted,
+    // Cloud sign-in is always an explicit user action. New local installs
+    // enter the workspace directly instead of receiving a login promotion.
+    suppressed: true,
   });
 
   const { store: sessionProviderAuthStore, snapshot: sessionProviderAuthSnapshot } =

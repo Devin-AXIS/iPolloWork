@@ -595,25 +595,7 @@ export function NewConversationStarter({
             </button>
           );
         })}
-        {selectedMode === "video" ? (
-          <button
-            type="button"
-            aria-pressed={activeTemplateCategory === "video"}
-            className={cn(
-              "inline-flex h-[24px] min-w-[50px] items-center justify-center rounded-[18px] border px-2 text-[12px] font-medium transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              activeTemplateCategory === "video"
-                ? "border-[#CCC] bg-[#F5F5F5] text-[#999]"
-                : "border-[#CBCBCB] bg-white text-[#999] hover:border-[#CCC] hover:bg-[#F5F5F5]",
-            )}
-            onClick={() => {
-              onRequestTemplates?.();
-              setActiveTemplateCategory((current) => current === "video" ? null : "video");
-            }}
-          >
-            <Film className="mr-1 size-3.5 shrink-0" aria-hidden />
-            <span className="whitespace-nowrap">{t("new_conversation.action.video_template")}</span>
-          </button>
-        ) : selectedMode !== "code" ? (
+        {selectedMode !== "video" && selectedMode !== "code" ? (
           <div ref={shortcutEditorRef} className="relative">
             <button
               ref={shortcutButtonRef}
@@ -655,17 +637,6 @@ export function NewConversationStarter({
             loading={templatesLoading}
             busyId={templateBusyId}
             category={activeTemplateCategory}
-            getTemplateCover={getTemplateCover}
-            onUseTemplate={onUseTemplate}
-            onInstallTemplate={onInstallTemplate}
-          />
-        ) : null}
-        {selectedMode === "video" && activeTemplateCategory === "video" ? (
-          <TemplateStrip
-            templates={templates}
-            loading={templatesLoading}
-            busyId={templateBusyId}
-            category="video"
             getTemplateCover={getTemplateCover}
             onUseTemplate={onUseTemplate}
             onInstallTemplate={onInstallTemplate}

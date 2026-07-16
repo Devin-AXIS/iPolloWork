@@ -985,6 +985,7 @@ export default {
   "session.outputs.empty_hint": "Files created in this conversation will appear here.",
   "session.outputs.action_browse_edit": "Browse / edit",
   "session.outputs.action_video_studio": "Edit in Video Studio",
+  "session.outputs.action_video_preview_edit": "Preview / edit",
   "session.outputs.open_video_studio": "Open Video Studio",
   "session.outputs.bundle_count": "{count} files",
   "session.outputs.expand_bundle": "Show included files",
