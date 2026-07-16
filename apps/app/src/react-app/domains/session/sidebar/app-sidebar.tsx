@@ -775,7 +775,7 @@ export function AppSidebar(props: AppSidebarProps) {
               />
             ) : (
               <img
-                src="/sidebar-icon/ipollo-work.svg"
+                src={publicAssetUrl("sidebar-icon/ipollo-work.svg")}
                 alt="iPollo Work"
                 className="h-3.5 w-auto max-w-[140px] object-contain object-left"
                 data-testid="brand-logo"
@@ -789,7 +789,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 aria-keyshortcuts={isMacPlatform() ? "Meta+Shift+F" : "Control+Shift+F"}
                 className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
               >
-                <img src="/sidebar-icon/search.svg" alt="" className="size-6" />
+                <img src={publicAssetUrl("sidebar-icon/search.svg")} alt="" className="size-6" />
               </button>
             ) : null}
           </div>
@@ -802,7 +802,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
                 onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")}
               >
-                <img src="/sidebar-icon/edit.svg" alt="" className="size-[22px] shrink-0 -me-1.5" />
+                <img src={publicAssetUrl("sidebar-icon/edit.svg")} alt="" className="size-[22px] shrink-0 -me-1.5" />
                 <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("session.new_task")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -812,7 +812,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 isActive={props.activePrimaryItem === "template-market"}
                 className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               >
-                <img src="/sidebar-icon/doc-plus.svg" alt="" className="size-[22px] shrink-0 -translate-x-0.5 -me-1.5" />
+                <img src={publicAssetUrl("sidebar-icon/doc-plus.svg")} alt="" className="size-[22px] shrink-0 -translate-x-0.5 -me-1.5" />
                 <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("template_market.title")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -822,7 +822,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 isActive={props.activePrimaryItem === "extensions"}
                 className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               >
-                <img src="/sidebar-icon/plugin.svg" alt="" className="size-[22px] shrink-0 -translate-x-0.5 -me-1.5" />
+                <img src={publicAssetUrl("sidebar-icon/plugin.svg")} alt="" className="size-[22px] shrink-0 -translate-x-0.5 -me-1.5" />
                 <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("settings.tab_extensions")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
