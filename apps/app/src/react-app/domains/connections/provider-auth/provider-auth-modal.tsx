@@ -703,7 +703,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
         if (!open) handleClose();
       }}
     >
-      <DialogContent className="flex max-h-[calc(100vh-2rem)] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
+      <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Connect providers</DialogTitle>
           <DialogDescription>

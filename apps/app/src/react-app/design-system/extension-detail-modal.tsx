@@ -227,7 +227,7 @@ export function ExtensionDetailModal({
     >
       <DialogContent
         className={cn(
-          "flex max-h-[90vh] min-h-0 w-full flex-col overflow-hidden",
+          "flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full flex-col overflow-hidden",
           size === "wide" ? "max-w-3xl sm:max-w-3xl" : "max-w-xl sm:max-w-xl",
         )}
       >

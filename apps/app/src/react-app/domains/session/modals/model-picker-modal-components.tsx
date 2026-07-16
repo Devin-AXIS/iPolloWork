@@ -79,7 +79,7 @@ export function ModelPickerDialog(props: {
         if (!open) props.onClose();
       }}
     >
-      <DialogContent className="flex max-h-[calc(100vh-2rem)] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
+      <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {t(props.target === "default" ? "model_picker.default_model_title" : "model_picker.chat_model_title")}

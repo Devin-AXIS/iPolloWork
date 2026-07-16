@@ -132,7 +132,7 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
         if (!open) handleClose();
       }}
     >
-      <DialogContent className="flex max-h-[90vh] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
+      <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Install a plugin from GitHub</DialogTitle>
           <DialogDescription>

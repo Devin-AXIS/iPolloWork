@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   CheckIcon,
@@ -22,6 +22,7 @@ import {
   MonitorCog,
   PanelsTopLeft,
   Presentation,
+  Plus,
   Table2,
   Wrench,
   type LucideIcon,
@@ -169,13 +170,44 @@ function TemplateStrip({
   ));
   const categoryLabel = t(`new_conversation.template_category.${category}`);
   const CategoryIcon = TEMPLATE_CATEGORY_ICONS[category];
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [scrollable, setScrollable] = useState(false);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    const updateScrollState = () => {
+      const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+      setScrollable(maxScroll > 1);
+      setScrollProgress(maxScroll > 0 ? Math.round((scroller.scrollLeft / maxScroll) * 100) : 0);
+    };
+
+    updateScrollState();
+    const observer = new ResizeObserver(updateScrollState);
+    observer.observe(scroller);
+    scroller.addEventListener("scroll", updateScrollState, { passive: true });
+    return () => {
+      observer.disconnect();
+      scroller.removeEventListener("scroll", updateScrollState);
+    };
+  }, [categoryTemplates.length, loading]);
+
+  const handleSliderChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+    const nextProgress = Number(event.currentTarget.value);
+    scroller.scrollLeft = maxScroll * (nextProgress / 100);
+    setScrollProgress(nextProgress);
+  };
 
   return (
     <section className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3" aria-live="polite">
       <div className="mb-2 flex items-baseline justify-between gap-3 px-0.5">
         <div>
           <p className="text-[13px] font-medium text-foreground">{t("new_conversation.templates.title", { category: categoryLabel })}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{t("new_conversation.templates.subtitle")}</p>
         </div>
         <CategoryIcon className="size-4 shrink-0 text-primary/70" aria-hidden />
       </div>
@@ -185,33 +217,49 @@ function TemplateStrip({
           {[0, 1, 2].map((index) => <div key={index} className="h-[106px] min-w-[172px] animate-pulse rounded-lg bg-muted" />)}
         </div>
       ) : categoryTemplates.length ? (
-        <div className="-mx-0.5 flex snap-x snap-mandatory gap-2 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {categoryTemplates.map((template) => {
-            const busy = busyId === template.manifest.id;
-            const canUse = template.installed && Boolean(onUseTemplate);
-            const label = template.installed ? t("new_conversation.templates.use") : t("new_conversation.templates.install");
-            return (
-              <button
-                key={template.manifest.id}
-                type="button"
-                disabled={busy || (!canUse && !onInstallTemplate)}
-                className="group min-w-[172px] snap-start overflow-hidden rounded-lg border border-border/80 bg-background text-left shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-55"
-                onClick={() => {
-                  if (template.installed) onUseTemplate?.(template.manifest.id, template.manifest.surface);
-                  else onInstallTemplate?.(template.manifest.id);
-                }}
-              >
-                <div className="h-14 overflow-hidden border-b border-border/60 bg-muted/60"><TemplateThumbnail template={template} getTemplateCover={getTemplateCover} /></div>
-                <div className="p-2">
-                  <div className="truncate text-[12px] font-medium text-foreground">{template.manifest.title}</div>
-                  <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                    <span className="truncate">{template.sourceType === "local" ? t("new_conversation.templates.local") : template.manifest.source.name}</span>
-                    <span className="shrink-0 font-medium text-primary">{busy ? "…" : label}</span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+        <div>
+          <div ref={scrollerRef} className="-mx-0.5 flex snap-x snap-mandatory gap-2 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {categoryTemplates.map((template) => {
+              const busy = busyId === template.manifest.id;
+              const canUse = template.installed && Boolean(onUseTemplate);
+              const label = template.installed ? t("new_conversation.templates.use") : t("new_conversation.templates.install");
+              return (
+                <button
+                  key={template.manifest.id}
+                  type="button"
+                  disabled={busy || (!canUse && !onInstallTemplate)}
+                  aria-label={`${label}: ${template.manifest.title}`}
+                  data-busy={busy ? "true" : undefined}
+                  className="group relative h-[106px] min-w-[172px] snap-start overflow-hidden rounded-lg border border-border/80 bg-background text-left shadow-sm transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-md disabled:cursor-not-allowed disabled:opacity-55 data-[busy=true]:shadow-md"
+                  onClick={() => {
+                    if (template.installed) onUseTemplate?.(template.manifest.id, template.manifest.surface);
+                    else onInstallTemplate?.(template.manifest.id);
+                  }}
+                >
+                  <TemplateThumbnail template={template} getTemplateCover={getTemplateCover} />
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-active:opacity-100 group-data-[busy=true]:opacity-100"
+                  >
+                    <span className="flex h-6 items-center rounded-md bg-white px-2 py-0.5 text-[12px] font-medium leading-none text-black shadow-sm">
+                      {busy ? "…" : label}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {scrollable ? (
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={scrollProgress}
+              aria-label={t("new_conversation.templates.loading")}
+              className="template-preview-slider mt-2 block w-full"
+              onChange={handleSliderChange}
+            />
+          ) : null}
         </div>
       ) : (
         <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-[12px] text-muted-foreground">
@@ -555,7 +603,7 @@ export function NewConversationStarter({
                 setShortcutEditorOpen((open) => !open);
               }}
             >
-              <span className="text-[16px] font-light leading-none">+</span>
+              <Plus className="size-4 text-[#999]" strokeWidth={1.8} aria-hidden />
             </button>
             {shortcutEditorOpen ? (
               <ShortcutEditor
