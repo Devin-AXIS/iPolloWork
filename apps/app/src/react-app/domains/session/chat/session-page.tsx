@@ -1114,7 +1114,7 @@ export function SessionPage(props: SessionPageProps) {
       id: "web",
       label: "网页",
       shortcut: "⌘T",
-      iconSrc: "/sidebar-entry-web.svg",
+      iconSrc: publicAssetUrl("sidebar-entry-web.svg"),
       active: panelRailActive,
       onClick: addBrowserPanelTab,
       disabled: !isElectronRuntime(),
@@ -1122,7 +1122,7 @@ export function SessionPage(props: SessionPageProps) {
     {
       id: "code",
       label: "代码",
-      iconSrc: "/sidebar-entry-code.svg",
+      iconSrc: publicAssetUrl("sidebar-entry-code.svg"),
       active: designRailActive,
       onClick: showDesignRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
@@ -1131,7 +1131,7 @@ export function SessionPage(props: SessionPageProps) {
       id: "files",
       label: "文件",
       shortcut: "⌘P",
-      iconSrc: "/sidebar-entry-file.svg",
+      iconSrc: publicAssetUrl("sidebar-entry-file.svg"),
       active: panelRailActive && activePanelTab?.type === "artifact",
       onClick: showArtifactRailPane,
       disabled: !hasArtifactTargets,
@@ -1139,7 +1139,7 @@ export function SessionPage(props: SessionPageProps) {
     {
       id: "video",
       label: "视频",
-      iconSrc: "/sidebar-entry-video.svg",
+      iconSrc: publicAssetUrl("sidebar-entry-video.svg"),
       active: videoRailActive,
       onClick: showVideoRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
@@ -1520,7 +1520,7 @@ export function SessionPage(props: SessionPageProps) {
                       onClick={toggleRightPanel}
                     >
                       <img
-                        src={sidePanelOpen ? "/sidebar-right-open.svg" : "/sidebar-right-closed.svg"}
+                        src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
                         alt=""
                         className="h-3 w-4 shrink-0"
                       />

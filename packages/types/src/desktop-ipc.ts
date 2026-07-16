@@ -516,6 +516,7 @@ export type DesktopCommandMap = {
   __openPath: { args: [target: string]; result: unknown };
   __revealItemInDir: { args: [target: string]; result: unknown };
   __getFileIcon: { args: [target: string, size?: "small" | "normal" | "large"]; result: string | null };
+  __readLocalImageAsDataUrl: { args: [target: string]; result: string | null };
   __applyBrandAppName: { args: [appName: string | null]; result: { ok: true; appName: string } };
   __applyBrandIcon: { args: [url: string | null]; result: BrandIconApplyResult };
   __getBrandIconState: { args: []; result: BrandIconState };

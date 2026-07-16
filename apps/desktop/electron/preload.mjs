@@ -170,6 +170,8 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
     },
   },
   hyperframes: {
+    start(options) { return ipcRenderer.invoke("ipollowork:hyperframes:start", options); },
+    stop(sessionId) { return ipcRenderer.invoke("ipollowork:hyperframes:stop", sessionId); },
     setSimpleMode(enabled) { return ipcRenderer.invoke("ipollowork:hyperframes:set-simple-mode", Boolean(enabled)); },
   },
   meta: {

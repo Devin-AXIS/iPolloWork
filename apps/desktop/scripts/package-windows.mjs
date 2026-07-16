@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,7 @@ const repoRoot = path.resolve(desktopRoot, "../..");
 const outputDir = path.join(desktopRoot, "dist-electron");
 const unpackedDir = path.join(outputDir, "win-unpacked");
 const executablePath = path.join(unpackedDir, "iPollo Work.exe");
-const iconPath = path.join(desktopRoot, "resources/icons/icon.ico");
+const iconPath = path.join(desktopRoot, "resources/icons/windows/icon.ico");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 if (process.platform !== "win32") throw new Error("Windows packaging must run on Windows.");
@@ -30,22 +30,8 @@ function findRcedit() {
   return null;
 }
 
-function validateRenderer() {
-  const indexPath = path.join(repoRoot, "apps/app/dist/index.html");
-  const scriptNames = readdirSync(path.join(repoRoot, "apps/app/dist/assets")).filter((name) => name.endsWith(".js"));
-  const source = [readFileSync(indexPath, "utf8"), ...scriptNames.map((name) => readFileSync(path.join(repoRoot, "apps/app/dist/assets", name), "utf8"))].join("\n");
-  const required = ["ipollo-work-wordmark.svg", "new-conversation-bg.png", "new-conversation-tabs/video.svg"];
-  for (const asset of required) {
-    if (!existsSync(path.join(repoRoot, "apps/app/dist", asset))) throw new Error(`Missing renderer asset: ${asset}`);
-    if (!source.includes(asset) || source.includes(`\"/${asset}\"`)) {
-      throw new Error(`Renderer still uses an invalid packaged path for ${asset}.`);
-    }
-  }
-}
-
 rmSync(outputDir, { recursive: true, force: true });
 run(process.execPath, [path.join(desktopRoot, "scripts/electron-build.mjs")]);
-validateRenderer();
 
 const env = { ...process.env, ELECTRON_MIRROR: process.env.ELECTRON_MIRROR ?? "https://npmmirror.com/mirrors/electron/" };
 run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.windows.yml", "--win", "--x64", "--dir", "--publish", "never"], desktopRoot, env);

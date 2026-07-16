@@ -43,7 +43,7 @@ publish:
     repo: ipollowork
     releaseType: release
 mac:
-  icon: resources/icons/icon.icns
+  icon: resources/icons/mac/icon.icns
   category: public.app-category.developer-tools
   hardenedRuntime: true
   gatekeeperAssess: false
@@ -53,6 +53,10 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: iPolloWork uses the microphone when you start Voice Mode so you can speak commands to your agent.
   extraResources:
+    - from: resources/icons/mac
+      to: icons/mac
+      filter:
+        - icon.icns
     - from: resources/sidecars
       to: sidecars
       filter:
@@ -91,13 +95,14 @@ linux:
     - AppImage
     - tar.gz
 win:
-  icon: resources/icons/icon.ico
+  icon: resources/icons/windows/icon.ico
   extraResources:
     - from: resources/icons
       to: icons
       filter:
         - icon.png
         - icon.ico
+        - windows/icon.ico
     - from: resources/sidecars
       to: sidecars
       filter:

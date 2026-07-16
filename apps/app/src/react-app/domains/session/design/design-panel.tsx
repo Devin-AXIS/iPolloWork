@@ -1,9 +1,10 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Download, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +48,11 @@ type LoadedHtml = {
 
 const COLOR_SWATCHES = ["#111827", "#ffffff", "#7c3aed", "#2563eb", "#059669", "#ea580c", "#dc2626", "#db2777"];
 const PUBLISHABLE_DESIGN_FILE = /\.(?:avif|css|gif|html?|ico|jpe?g|js|json|map|mjs|png|svg|webp|woff2?|ttf|otf)$/i;
+const PDF_SLIDE_WIDTH = 1600;
+const PDF_SLIDE_HEIGHT = 900;
+const PDF_PAGE_WIDTH_MM = 297;
+const PDF_PAGE_HEIGHT_MM = 167.0625;
+const LOCAL_IMAGE_ACCEPT = "image/*";
 
 const TYPE_PRESETS = [
   { label: "Display", sample: "Aa", styles: { fontSize: "48px", fontWeight: "700", lineHeight: "1.05", letterSpacing: "-0.025em" } },
@@ -103,6 +109,65 @@ function isPublishableDesignFile(path: string) {
     && !path.includes("/.ipollowork/");
 }
 
+function sanitizePdfFileBaseName(value: string) {
+  return value
+    .replace(/[\u0000-\u001f<>:"/\\|?*]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s.]+|[\s.]+$/g, "")
+    .slice(0, 96);
+}
+
+function isGenericPdfTitle(value: string) {
+  return /^(?:cover|overview|summary|presentation|slides?|pitch deck|deck|untitled|index|entry|ipollowork(?: slide editing demo)?|pitch deck - ipollowork)$/i.test(value.trim());
+}
+
+function deckPdfFileName(document: Document, path: string) {
+  const cleanCandidate = (value: string | null | undefined) => {
+    const cleaned = sanitizePdfFileBaseName(value ?? "");
+    return cleaned && !isGenericPdfTitle(cleaned) ? cleaned : "";
+  };
+  const firstSlide = document.querySelector<HTMLElement>("[data-ipw-slide], section.slide, .slide");
+  const candidates = [
+    document.querySelector<HTMLMetaElement>("meta[property='og:title'],meta[name='title'],meta[name='ipw-title']")?.content,
+    document.title,
+    firstSlide?.querySelector<HTMLElement>("h1,h2,[data-ipw-title],[data-title]")?.textContent,
+    document.querySelector<HTMLElement>("h1,h2,[data-ipw-title],[data-title]")?.textContent,
+    fileName(path).replace(/\.[^.]+$/, ""),
+  ];
+  const base = candidates.map(cleanCandidate).find(Boolean) || "presentation";
+  return `${base}.pdf`;
+}
+
+async function waitForExportFrame(frame: any) {
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error("Timed out preparing the presentation.")), 10_000);
+    frame.addEventListener("load", () => {
+      window.clearTimeout(timeout);
+      resolve();
+    }, { once: true });
+  });
+  const document = frame.contentDocument;
+  if (!document) throw new Error("Could not prepare the presentation.");
+  await document.fonts?.ready;
+  await Promise.all(Array.from(document.images as HTMLCollectionOf<HTMLImageElement>).map((image) => image.complete
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+      })));
+}
+
+async function yieldForExportWork() {
+  await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+  await new Promise<void>((resolve) => {
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(() => resolve(), { timeout: 180 });
+    } else {
+      globalThis.setTimeout(resolve, 0);
+    }
+  });
+}
+
 function normalizeHexColor(value: string) {
   const trimmed = value.trim();
   if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed;
@@ -149,7 +214,7 @@ export function DesignPanel({
   onClose,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
-  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+  const iframeRef = React.useRef<any>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
   const templateQuery = useQuery({
     queryKey: ["design-session-template", workspaceId, sessionId] as const,
@@ -207,6 +272,7 @@ export function DesignPanel({
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
+  const [exportingPdf, setExportingPdf] = React.useState(false);
 
   React.useEffect(() => {
     if (!lockedPath) {
@@ -412,6 +478,84 @@ export function DesignPanel({
     });
   }, [editing, quickEdit, selection]);
 
+  const exportDeckToPdf = React.useCallback(async () => {
+    if (!deck || exportingPdf) return;
+    setExportingPdf(true);
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;visibility:hidden;pointer-events:none`;
+    document.body.append(frame);
+    try {
+      const exportLibraries = Promise.all([import("html2canvas"), import("jspdf")]);
+      const content = editing ? await readLatestCanvasHtml() : draftRef.current;
+      frame.srcdoc = buildDesignPreviewDocument(content, false, templateTokenQuery.data ?? "", false);
+      await waitForExportFrame(frame);
+      const frameDocument = frame.contentDocument;
+      if (!frameDocument) throw new Error("Could not prepare the presentation.");
+      frameDocument.querySelectorAll("script,[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next']").forEach((node) => node.remove());
+      frameDocument.documentElement.style.width = `${PDF_SLIDE_WIDTH}px`;
+      frameDocument.documentElement.style.height = `${PDF_SLIDE_HEIGHT}px`;
+      frameDocument.documentElement.style.overflow = "hidden";
+      frameDocument.body.style.width = `${PDF_SLIDE_WIDTH}px`;
+      frameDocument.body.style.height = `${PDF_SLIDE_HEIGHT}px`;
+      frameDocument.body.style.overflow = "hidden";
+      frameDocument.querySelectorAll<HTMLElement>(".deck,[data-ipw-template-kind='slides']").forEach((container) => {
+        container.style.width = `${PDF_SLIDE_WIDTH}px`;
+        container.style.height = `${PDF_SLIDE_HEIGHT}px`;
+        container.style.maxWidth = `${PDF_SLIDE_WIDTH}px`;
+        container.style.maxHeight = `${PDF_SLIDE_HEIGHT}px`;
+        container.style.aspectRatio = "16 / 9";
+        container.style.overflow = "hidden";
+      });
+      const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>("[data-ipw-slide], section.slide, .slide"))
+        .filter((slide, index, entries) => entries.indexOf(slide) === index);
+      if (!slides.length) throw new Error("No slides were found in this presentation.");
+      const [{ default: html2canvas }, { jsPDF }] = await exportLibraries;
+      const pdf = new jsPDF({ unit: "mm", format: [PDF_PAGE_WIDTH_MM, PDF_PAGE_HEIGHT_MM], orientation: "landscape", compress: true });
+      for (let index = 0; index < slides.length; index += 1) {
+        const slide = slides[index];
+        slides.forEach((entry) => {
+          entry.classList.toggle("is-active", entry === slide);
+          entry.classList.toggle("active", entry === slide);
+          entry.hidden = entry !== slide;
+          entry.style.transform = "none";
+          entry.style.opacity = entry === slide ? "1" : "0";
+          entry.style.visibility = entry === slide ? "visible" : "hidden";
+          entry.style.pointerEvents = "none";
+        });
+        slide.removeAttribute("hidden");
+        slide.setAttribute("aria-hidden", "false");
+        slide.style.width = `${PDF_SLIDE_WIDTH}px`;
+        slide.style.height = `${PDF_SLIDE_HEIGHT}px`;
+        slide.style.maxWidth = `${PDF_SLIDE_WIDTH}px`;
+        slide.style.maxHeight = `${PDF_SLIDE_HEIGHT}px`;
+        slide.style.margin = "0";
+        slide.style.overflow = "hidden";
+        await yieldForExportWork();
+        const canvas = await html2canvas(slide, {
+          backgroundColor: "#ffffff",
+          scale: 1,
+          useCORS: true,
+          logging: false,
+          width: PDF_SLIDE_WIDTH,
+          height: PDF_SLIDE_HEIGHT,
+          windowWidth: PDF_SLIDE_WIDTH,
+          windowHeight: PDF_SLIDE_HEIGHT,
+        });
+        if (index > 0) pdf.addPage([PDF_PAGE_WIDTH_MM, PDF_PAGE_HEIGHT_MM], "landscape");
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, PDF_PAGE_WIDTH_MM, PDF_PAGE_HEIGHT_MM, undefined, "FAST");
+        await yieldForExportWork();
+      }
+      pdf.save(deckPdfFileName(frameDocument, activePagePath));
+      toast.success("Presentation exported as PDF.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not export this presentation.");
+    } finally {
+      frame.remove();
+      setExportingPdf(false);
+    }
+  }, [activePagePath, deck, editing, exportingPdf, readLatestCanvasHtml, templateTokenQuery.data]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!client || !workspaceId || !activePagePath || !fileQuery.data) {
@@ -560,6 +704,24 @@ export function DesignPanel({
     }
   };
 
+  const chooseReplacementImage = async () => {
+    if (!selection || selection.tag !== "img") return;
+    const pickedPath = await pickLocalImageFile("选择替换图片");
+    if (pickedPath) {
+      const dataUrl = await readLocalImageAsDataUrl(pickedPath);
+      if (!dataUrl) {
+        toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
+        return;
+      }
+      setHistory((current) => [...current, draft]);
+      applyField("src", dataUrl, false);
+      toast.success("Image replaced in the design.");
+      return;
+    }
+    if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+    imageInputRef.current?.click();
+  };
+
   const undo = () => {
     const previous = history[history.length - 1];
     if (previous === undefined) return;
@@ -648,7 +810,7 @@ export function DesignPanel({
       <input
         ref={imageInputRef}
         type="file"
-        accept="image/*"
+        accept={LOCAL_IMAGE_ACCEPT}
         className="sr-only"
         aria-label="Choose replacement image"
         onChange={(event) => {
@@ -734,7 +896,7 @@ export function DesignPanel({
               <Button
                 variant={designSystemOpen ? "secondary" : "ghost"}
                 size="icon-sm"
-                className="ml-auto rounded-lg"
+                className={cn("rounded-lg", !deck && "ml-auto")}
                 onClick={() => {
                   setDesignSystemOpen((current) => !current);
                   setAdvancedOpen(false);
@@ -784,6 +946,20 @@ export function DesignPanel({
                 <Smartphone className="size-3.5" />
               </ToggleGroupItem>
             </ToggleGroup>
+            {deck ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={() => void exportDeckToPdf()}
+                disabled={exportingPdf}
+                aria-label="Export presentation to PDF"
+                title="Export PDF"
+              >
+                {exportingPdf ? <Loader2 className="animate-spin" /> : <Download />}
+                Export PDF
+              </Button>
+            ) : null}
           </div>
 
           {fileQuery.isLoading || !sourceHydrated ? (
@@ -936,7 +1112,7 @@ export function DesignPanel({
                             <Button
                               variant="ghost"
                               size="xs"
-                              onClick={() => imageInputRef.current?.click()}
+                              onClick={() => void chooseReplacementImage()}
                               aria-label="Upload replacement image"
                             >
                               <Upload />
@@ -1018,7 +1194,7 @@ export function DesignPanel({
                         <div className="rounded-2xl border border-border/70 bg-background p-3 shadow-xs">
                           <div className="mb-2 flex items-center justify-between">
                             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Image</p>
-                            <Button variant="secondary" size="xs" onClick={() => imageInputRef.current?.click()}><Upload /> Replace</Button>
+                            <Button variant="secondary" size="xs" onClick={() => void chooseReplacementImage()}><Upload /> Replace</Button>
                           </div>
                           <div className="space-y-2">
                             <Input aria-label="Design image source" className="h-7 rounded-lg border-0 bg-muted/55 px-2 text-[11px] shadow-none" value={selection.src} onChange={(event) => applyField("src", event.currentTarget.value)} />

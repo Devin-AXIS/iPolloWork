@@ -100,6 +100,19 @@ describe("markdown rich content", () => {
     expect(findMarkdownImages(replacement)[0]?.alt).toBe("New ] preview");
   });
 
+  test("keeps local image data URLs intact for live preview widgets", () => {
+    const dataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lFTkSuQmCC";
+    const markdown = formatMarkdownImage("捕获", dataUrl);
+    expect(findMarkdownImages(markdown)).toEqual([{ from: 0, to: markdown.length, alt: "捕获", url: dataUrl }]);
+  });
+
+  test("wraps image paths with spaces so live preview parses the full target", () => {
+    const localPath = "C:\\Users\\31939\\Pictures\\deep sea cover.png";
+    const markdown = formatMarkdownImage("深海世界的奥秘", localPath);
+    expect(markdown).toBe("![深海世界的奥秘](<C:\\Users\\31939\\Pictures\\deep sea cover.png>)");
+    expect(findMarkdownImages(markdown)).toEqual([{ from: 0, to: markdown.length, alt: "深海世界的奥秘", url: localPath }]);
+  });
+
   test("parses a GFM table into headers and rows", () => {
     const document = "| Name | Status |\n| --- | :---: |\n| Editor | Ready |\n| Save | Testing |\n";
     expect(findMarkdownTables(document)).toEqual([

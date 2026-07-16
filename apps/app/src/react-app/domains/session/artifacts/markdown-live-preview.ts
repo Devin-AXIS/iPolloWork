@@ -47,6 +47,35 @@ const QUOTE = Decoration.line({ class: "cm-md-quote" });
 const CODE_BLOCK = Decoration.line({ class: "cm-md-codeblock" });
 const TABLE_BORDER_COLOR = "rgba(100, 116, 139, 0.85)";
 
+function normalizeImagePreviewUrl(url: string) {
+  const trimmed = url.trim();
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("/") || trimmed.startsWith("./") || trimmed.startsWith("../")) {
+    return trimmed;
+  }
+  if (/^[a-z]:[\\/]/i.test(trimmed)) {
+    return `file:///${trimmed.replace(/\\/g, "/").replace(/^([a-z]):/i, (_, drive: string) => `${drive.toUpperCase()}:`)}`;
+  }
+  if (trimmed.startsWith("\\\\")) {
+    return `file:${trimmed.replace(/\\/g, "/")}`;
+  }
+  return trimmed;
+}
+
+function dataImageToObjectUrl(url: string) {
+  const match = url.match(/^data:(image\/(?:avif|bmp|gif|jpeg|jpg|png|svg\+xml|webp|x-icon));base64,([\s\S]+)$/i);
+  if (!match) return null;
+  try {
+    const binary = atob(match[2].replace(/\s+/g, ""));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return URL.createObjectURL(new Blob([bytes], { type: match[1] }));
+  } catch {
+    return null;
+  }
+}
+
 type RichPreviewRange = {
   from: number;
   to: number;
@@ -93,7 +122,12 @@ class ImageWidget extends WidgetType {
     suppressPreviewSelection(figure);
 
     const image = document.createElement("img");
-    image.src = this.image.url;
+    const objectUrl = dataImageToObjectUrl(this.image.url);
+    if (objectUrl) {
+      image.addEventListener("load", () => window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000), { once: true });
+      image.addEventListener("error", () => URL.revokeObjectURL(objectUrl), { once: true });
+    }
+    image.src = objectUrl ?? normalizeImagePreviewUrl(this.image.url);
     image.alt = this.image.alt;
     image.loading = "lazy";
     image.addEventListener("error", () => figure.classList.add("cm-md-image-error"));

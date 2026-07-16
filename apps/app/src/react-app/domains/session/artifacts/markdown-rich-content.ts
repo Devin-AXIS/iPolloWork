@@ -19,7 +19,7 @@ export type MarkdownCodeBlock = {
   code: string;
 };
 
-const IMAGE_LINE = /^\s*!\[((?:\\.|[^\]])*)\]\((\S+?)(?:\s+["'][^"']*["'])?\)\s*$/;
+const IMAGE_LINE = /^\s*!\[((?:\\.|[^\]])*)\]\((?:<([^>\n]+)>|(\S+?))(?:\s+["'][^"']*["'])?\)\s*$/;
 const TABLE_DIVIDER_CELL = /^:?-{3,}:?$/;
 
 function documentLines(document: string) {
@@ -44,7 +44,7 @@ export function findMarkdownImages(document: string): MarkdownImage[] {
   return documentLines(document).flatMap((line) => {
     const match = line.text.match(IMAGE_LINE);
     if (!match) return [];
-    return [{ from: line.from, to: line.to, alt: match[1].replace(/\\\]/g, "]"), url: match[2] }];
+    return [{ from: line.from, to: line.to, alt: match[1].replace(/\\\]/g, "]"), url: match[2] ?? match[3] ?? "" }];
   });
 }
 
@@ -101,5 +101,7 @@ export function findMarkdownCodeBlocks(document: string): MarkdownCodeBlock[] {
 }
 
 export function formatMarkdownImage(alt: string, url: string) {
-  return `![${alt.replace(/\]/g, "\\]")}](${url.trim()})`;
+  const trimmed = url.trim();
+  const href = /[\s()]/.test(trimmed) ? `<${trimmed.replace(/>/g, "%3E")}>` : trimmed;
+  return `![${alt.replace(/\]/g, "\\]")}](${href})`;
 }
