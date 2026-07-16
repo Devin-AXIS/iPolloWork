@@ -9,7 +9,7 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   AppWindow,
-  BriefcaseBusiness,
+  Brain,
   FileChartColumnIncreasing,
   FileText,
   Film,
@@ -18,9 +18,10 @@ import {
   Image,
   Bug,
   Code2,
+  MonitorCog,
   PanelsTopLeft,
   Presentation,
-  MoreHorizontal,
+  Table2,
   Wrench,
 } from "lucide-react";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
@@ -85,10 +86,11 @@ const TEMPLATE_CATEGORY_ICONS: Record<TemplateCategory, Icon> = {
 
 const MODE_ACTIONS: Record<NewConversationMode, ReadonlyArray<StarterAction>> = {
   work: [
+    { id: "auto_computer", label: "new_conversation.action.auto_computer", icon: MonitorCog, prompt: "new_conversation.prompt.auto_computer" },
     { id: "document", label: "new_conversation.action.document", icon: FileText, prompt: "new_conversation.prompt.document" },
-    { id: "finance", label: "new_conversation.action.finance", icon: BriefcaseBusiness, prompt: "new_conversation.prompt.finance" },
-    { id: "data_visualization", label: "new_conversation.action.data_visualization", icon: FileChartColumnIncreasing, prompt: "new_conversation.prompt.data_visualization" },
-    { id: "more", label: "new_conversation.action.more", icon: MoreHorizontal, prompt: "new_conversation.prompt.more" },
+    { id: "data", label: "new_conversation.action.data", icon: Table2, prompt: "new_conversation.prompt.data" },
+    { id: "deep_research", label: "new_conversation.action.deep_research", icon: Brain, prompt: "new_conversation.prompt.deep_research" },
+    { id: "browser", label: "new_conversation.action.browser", icon: Globe2, prompt: "new_conversation.prompt.browser" },
   ],
   code: [
     { id: "understand_code", label: "new_conversation.action.understand_code", icon: Code2, prompt: "new_conversation.prompt.understand_code" },
@@ -109,13 +111,13 @@ const MODE_ACTIONS: Record<NewConversationMode, ReadonlyArray<StarterAction>> = 
 };
 
 const DEFAULT_SHORTCUT_IDS: Record<NewConversationMode, string[]> = {
-  work: ["document", "finance", "data_visualization", "more"],
+  work: ["auto_computer", "document", "data", "deep_research", "browser"],
   code: ["understand_code", "build_feature", "debug"],
   design: ["site", "slides", "cards", "poster"],
   video: [],
 };
 
-const SHORTCUT_STORAGE_KEY = "ipollowork.new-conversation-shortcuts.v4";
+const SHORTCUT_STORAGE_KEY = "ipollowork.new-conversation-shortcuts.v5";
 
 function TemplateThumbnail({ template, getTemplateCover }: { template: TemplateCatalogItem; getTemplateCover?: TemplateCoverLoader }) {
   const [src, setSrc] = useState<string | null>(null);
