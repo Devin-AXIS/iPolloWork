@@ -170,7 +170,7 @@ export function ShareWorkspaceModal(props: ShareWorkspaceModalProps) {
         if (!open) props.onClose();
       }}
     >
-      <DialogContent className="flex max-h-[78vh] min-h-0 w-full max-w-2xl flex-col overflow-hidden sm:max-w-2xl">
+      <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-2xl flex-col overflow-hidden sm:max-w-2xl">
         <DialogHeader className="flex-row">
           {activeView !== "chooser" ? (
             <Button

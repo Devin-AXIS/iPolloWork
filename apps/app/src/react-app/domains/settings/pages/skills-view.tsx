@@ -1135,7 +1135,7 @@ export function SkillsView(props: SkillsViewProps) {
           }
         }}
       >
-        <DialogContent className="flex max-h-[90vh] min-h-0 w-full max-w-4xl flex-col overflow-hidden sm:max-w-4xl">
+        <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-4xl flex-col overflow-hidden sm:max-w-4xl">
             <DialogHeader>
               <div className="flex min-w-0 items-center gap-3">
                 <DialogTitle className="min-w-0 flex-1 truncate">{selectedSkill?.name}</DialogTitle>
@@ -1192,7 +1192,7 @@ export function SkillsView(props: SkillsViewProps) {
           if (!open) closeShareLink();
         }}
       >
-        <DialogContent className="flex max-h-[78vh] min-h-0 w-full max-w-md flex-col overflow-hidden sm:max-w-md">
+        <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-md flex-col overflow-hidden sm:max-w-md">
           <DialogHeader>
             <div className="min-w-0 flex flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-2">

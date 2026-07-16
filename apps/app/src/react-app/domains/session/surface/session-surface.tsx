@@ -1457,10 +1457,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
       ) : null}
 
       {isEmptyConversation ? (
-        <div className="flex min-h-0 flex-1 justify-center overflow-hidden px-5">
-          <div className="flex min-h-0 w-full max-w-[720px] flex-col">
-            <div className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto">
-              <NewConversationStarter
+        <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-5">
+          <div className="flex min-h-full w-full max-w-[720px] flex-col justify-center pb-12 pt-8">
+            <NewConversationStarter
               selectedMode={newConversationMode}
               onSelectMode={(mode) => {
                 setNewConversationMode(mode);
@@ -1477,9 +1476,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
               onUseTemplate={props.onCreateSession ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId) : undefined}
               onInstallTemplate={props.onInstallDesignTemplate}
               onRequestTemplates={props.onRequestDesignTemplates}
-              />
-            </div>
-            <div ref={composerShellRef} className="mt-[72px] shrink-0 pb-12">
+            />
+            <div ref={composerShellRef} className="mt-12 shrink-0">
               {renderComposer("inline")}
             </div>
           </div>

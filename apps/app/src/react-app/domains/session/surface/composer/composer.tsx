@@ -1,14 +1,13 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent } from "@opencode-ai/sdk/v2/client";
-import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, FileText, ListPlus, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Check, ChevronRight, FileText, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
-import { formatBytes, isMacPlatform } from "@/app/utils";
+import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
 import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
 import { useDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
@@ -1329,8 +1328,8 @@ export function ReactSessionComposer(props: ComposerProps) {
             />
 
             {/* Action row — attachments, quick actions, model controls, and send */}
-            <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            <div className="mt-2 flex min-w-0 items-end justify-between gap-2">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 overflow-hidden">
                 <input
                   ref={(element) => {
                     fileInput = element ?? undefined;
@@ -1685,72 +1684,37 @@ export function ReactSessionComposer(props: ComposerProps) {
                   on the chevron shows how many messages are queued.
                   Escape arms a "Hit Escape again to stop the agent" prompt.
               */}
-              <div className="ml-auto flex shrink-0 items-end gap-1.5">
+              <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5">
                 {props.busy ? (
                   <>
                     {escapeArmed ? (
-                      <span className="self-center pr-1 text-[12px] font-medium text-gray-10">
+                      <span className="hidden self-center truncate pr-1 text-[12px] font-medium text-gray-10 sm:inline">
                         {t("composer.escape_to_stop")}
                       </span>
                     ) : null}
                     <button
                       type="button"
                       onClick={props.onStop}
-                      className="mr-2 inline-flex h-9 max-h-9 items-center gap-2 rounded-full border border-dls-border bg-transparent px-4 text-[13px] font-medium text-gray-11 transition-colors hover:bg-gray-3"
+                      className="mr-1 inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] transition-colors hover:bg-[var(--dls-accent-hover)]"
+                      aria-label={t("composer.stop")}
                       title={t("composer.stop")}
                     >
                       <Square size={12} fill="currentColor" />
-                      <span>{t("composer.stop")}</span>
                     </button>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={canSend ? props.onQueue : undefined}
-                        disabled={!canSend}
-                        className={`inline-flex h-9 max-h-9 items-center gap-2 rounded-l-full pl-4 pr-3 text-[13px] font-medium transition-colors ${
-                          canSend
-                            ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                            : "bg-gray-4 text-gray-10"
-                        }`}
-                        title={t("composer.queue_hint")}
-                      >
-                        <ListPlus size={14} />
-                        <span>{t("composer.queue")}</span>
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <button
-                              type="button"
-                              aria-label={t("composer.send_options")}
-                              className={`relative inline-flex h-9 max-h-9 items-center rounded-r-full border-l pl-1.5 pr-2.5 transition-colors ${
-                                canSend
-                                  ? "border-[color-mix(in_srgb,var(--dls-accent-fg)_25%,transparent)] bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                                  : "border-gray-6 bg-gray-4 text-gray-10"
-                              }`}
-                            >
-                              <ChevronDown size={14} />
-                              {props.queuedCount > 0 ? (
-                                <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gray-12 px-1 text-[10px] font-semibold text-gray-1">
-                                  {props.queuedCount}
-                                </span>
-                              ) : null}
-                            </button>
-                          }
-                        />
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={!canSend}
-                            onClick={() => void props.onSteer()}
-                            title={t("composer.steer_hint")}
-                          >
-                            <Zap size={14} />
-                            <span>{t("composer.steer")}</span>
-                            <DropdownMenuShortcut>{isMacPlatform() ? "⌘⏎" : "Ctrl+⏎"}</DropdownMenuShortcut>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={canSend ? props.onSteer : undefined}
+                      disabled={!canSend}
+                      aria-label={t("composer.steer")}
+                      className={`inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
+                        canSend
+                          ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
+                          : "bg-gray-4 text-gray-10"
+                      }`}
+                      title={t("composer.steer_hint")}
+                    >
+                      <ArrowUp size={15} />
+                    </button>
                   </>
                 ) : (
                   <button

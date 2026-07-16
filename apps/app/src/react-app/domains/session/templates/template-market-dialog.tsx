@@ -145,7 +145,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   return (
     <>
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent showCloseButton className="flex h-[min(780px,calc(100vh-2rem))] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100%-3rem)] sm:max-w-6xl">
+      <DialogContent showCloseButton className="flex h-[min(650px,calc(100dvh-160px))] max-w-[960px] flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100%-160px)] sm:max-w-[960px] max-[720px]:h-[calc(100dvh-32px)] max-[720px]:w-[calc(100%-32px)]">
         <DialogHeader className="border-b border-border px-6 py-5 pr-14">
           <div className="flex items-center gap-3">
             <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary"><LayoutTemplate className="size-4" /></span>
@@ -182,7 +182,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
       </DialogContent>
     </Dialog>
     <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}>
-      <DialogContent showCloseButton className="max-w-5xl gap-0 overflow-hidden p-0 sm:max-w-5xl">
+      <DialogContent showCloseButton className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">
         {previewTemplate ? <>
           <div className="aspect-video overflow-hidden bg-muted"><TemplateCover template={previewTemplate} getCover={props.getCover} alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} /></div>
           <div className="flex flex-col gap-4 border-t border-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between">
