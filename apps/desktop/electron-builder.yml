@@ -15,6 +15,11 @@ files:
   - "!server/dist/opencode-plugins/**"
   - package.json
 extraResources:
+  # Templates are installed by copying their full directory into the local
+  # library. Electron's virtual ASAR filesystem can read them but Node cannot
+  # recursively copy an ASAR directory on macOS, so keep these assets real.
+  - from: ../server/dist/bundled-templates
+    to: server/dist/bundled-templates
   - from: ../app/dist
     to: app-dist
   - from: server/dist/opencode-plugins
@@ -47,7 +52,11 @@ mac:
   category: public.app-category.developer-tools
   hardenedRuntime: true
   gatekeeperAssess: false
+  # Notarization is performed by scripts/electron-after-sign.cjs so it can use
+  # the App Store Connect API-key flow consistently for local releases and CI.
   notarize: false
+  signIgnore:
+    - "\\.(?:png|jpe?g|webp|gif|svg|ico|icns|pak|html?|css|mjs|js|cjs|json|map|txt|mdx?|woff2?|ttf|otf|pdf|ipwt)$"
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

@@ -17,6 +17,7 @@ import {
   FolderOpen,
   Globe2,
   Image,
+  LoaderCircle,
   Bug,
   Code2,
   MonitorCog,
@@ -213,8 +214,13 @@ function TemplateStrip({
       </div>
 
       {loading ? (
-        <div className="flex gap-2 overflow-hidden" aria-label={t("new_conversation.templates.loading")}>
-          {[0, 1, 2].map((index) => <div key={index} className="h-[106px] min-w-[172px] animate-pulse rounded-lg bg-muted" />)}
+        <div className="flex h-[106px] items-center justify-center rounded-lg border border-dashed border-border/70 bg-background/55" aria-label={t("new_conversation.templates.loading")}>
+          <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+            </span>
+            <span>{t("new_conversation.templates.loading")}</span>
+          </div>
         </div>
       ) : categoryTemplates.length ? (
         <div>
