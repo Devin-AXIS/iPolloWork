@@ -12,21 +12,14 @@ import {
   Pin,
   PinOff,
   Plus,
-  Search,
   Share2,
   Trash2,
   RefreshCw,
   RotateCcw,
   Settings,
-  SquarePen,
   FolderOpen,
   Tag,
-  BriefcaseBusiness,
-  Code2,
-  Palette,
-  Video,
   UserRound,
-  LayoutTemplate,
 } from "lucide-react";
 import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
@@ -60,6 +53,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
   Collapsible,
@@ -90,7 +84,6 @@ import { Button } from "@/components/ui/button";
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
 import type { SidebarContextValue, iPolloWorkSessionType, iPolloWorkTemplateId } from "./app-sidebar-provider";
-import { readSessionType, subscribeToSessionType } from "./session-type";
 import {
   MAX_SESSIONS_PREVIEW,
   buildSessionTreeState,
@@ -601,9 +594,11 @@ export type AppSidebarProps = {
     name: string | null;
     email: string | null;
   };
+  activePrimaryItem?: "template-market" | "extensions" | null;
   onOpenAccount: () => void;
   onOpenSettings: () => void;
   onOpenTemplateMarket: () => void;
+  onOpenExtensions: () => void;
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
@@ -757,55 +752,79 @@ export function AppSidebar(props: AppSidebarProps) {
     <SidebarContext.Provider value={contextValue}>
       <Sidebar
         collapsible="offcanvas"
-        className="mac:**:data-[sidebar=sidebar]:bg-transparent"
+        className="bg-sidebar mac:**:data-[sidebar=sidebar]:bg-transparent"
       >
-        <div className="hidden h-14 mac:block mac:titlebar-drag"/>
-        {hasManagedBrand ? (
-          <div
-            data-testid="brand-logo"
-            className="flex h-14 shrink-0 items-center px-3 pb-3 pt-2 mac:pt-0"
-          >
-            {brandLogoUrl ? (
+        <div className="hidden h-0 mac:block mac:titlebar-drag"/>
+        <SidebarHeader className="gap-4 px-2 pb-6 pt-1">
+          <div className="flex w-full justify-end px-3">
+            <SidebarTrigger
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
+              icon={<img src="/sidebar-left-expand.svg" alt="" className="h-3 w-4 shrink-0" />}
+              aria-label={t("sidebar.collapse")}
+              title={t("sidebar.collapse")}
+            />
+          </div>
+          <div className="flex w-full items-center justify-between gap-3 px-3">
+            {hasManagedBrand && brandLogoUrl ? (
               <img
                 src={brandLogoUrl}
                 alt={`${brandAppName} logo`}
-                className="max-h-9 w-auto max-w-[140px] object-contain object-left"
+                className="h-3.5 w-auto max-w-[140px] object-contain object-left"
+                data-testid="brand-logo"
               />
             ) : (
-              <span className="truncate text-sm font-semibold" data-testid="brand-app-name">{brandAppName}</span>
+              <img
+                src="/sidebar-icon/ipollo-work.svg"
+                alt="iPollo Work"
+                className="h-3.5 w-auto max-w-[140px] object-contain object-left"
+                data-testid="brand-logo"
+              />
             )}
+            {props.onOpenSessionSearch ? (
+              <button
+                type="button"
+                onClick={props.onOpenSessionSearch}
+                aria-label={t("workspace_list.search_sessions")}
+                aria-keyshortcuts={isMacPlatform() ? "Meta+Shift+F" : "Control+Shift+F"}
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
+              >
+                <img src="/sidebar-icon/search.svg" alt="" className="size-6" />
+              </button>
+            ) : null}
           </div>
-        ) : null}
-        <SidebarHeader className="gap-1.5 pb-2">
-          <SidebarMenu>
+          <SidebarMenu className="gap-[6px]">
             <SidebarMenuItem>
               <SidebarMenuButton
-                className="h-8 rounded-lg px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
                 aria-label={t("session.new_task")}
                 aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
                 onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")}
               >
-                <SquarePen className="size-3.5" />
-                <span className="flex-1 truncate text-xs font-medium">{t("session.new_task")}</span>
-                <kbd className="font-sans text-[10px] tracking-wide text-sidebar-foreground/40">{isMacPlatform() ? "⌘N" : "Ctrl N"}</kbd>
+                <img src="/sidebar-icon/edit.svg" alt="" className="size-[22px] shrink-0 -me-1.5" />
+                <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("session.new_task")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            {props.onOpenSessionSearch ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={props.onOpenSessionSearch}
-                  aria-keyshortcuts={isMacPlatform() ? "Meta+Shift+F" : "Control+Shift+F"}
-                  className="text-sidebar-foreground/70"
-                >
-                  <Search className="size-4" />
-                  <span className="flex-1 truncate">{t("workspace_list.search_sessions")}</span>
-                  <kbd className="ml-auto font-sans text-[11px] tracking-wide text-sidebar-foreground/50">
-                    {isMacPlatform() ? "⌘⇧F" : "Ctrl+Shift+F"}
-                  </kbd>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={props.onOpenTemplateMarket}
+                isActive={props.activePrimaryItem === "template-market"}
+                className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <img src="/sidebar-icon/doc-plus.svg" alt="" className="size-[22px] shrink-0 -translate-x-0.5 -me-1.5" />
+                <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("extensions.marketplace_tab")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={props.onOpenExtensions}
+                isActive={props.activePrimaryItem === "extensions"}
+                className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <img src="/sidebar-icon/plugin.svg" alt="" className="size-[22px] shrink-0 -translate-x-0.5 -me-1.5" />
+                <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("settings.tab_extensions")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
         <LazyMotion features={domMax}>
@@ -846,65 +865,35 @@ export function AppSidebar(props: AppSidebarProps) {
                   <span className="truncate text-xs">{t("den.checking_session")}</span>
                 </SidebarMenuButton>
               ) : props.account.signedIn ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <SidebarMenuButton className="group/account h-9 gap-2 rounded-lg px-2" aria-label={props.account.name || props.account.email || t("settings.tab_cloud_account")} />
-                    }
-                  >
-                    <MarbleAvatar seed={props.account.email || props.account.name || "ipollowork"} className="size-5 shrink-0 rounded-full" />
-                    <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">{props.account.name || props.account.email}</span>
-                    <MoreHorizontal className="size-3.5 text-sidebar-foreground/45 opacity-0 transition-opacity group-hover/account:opacity-100 group-focus-visible/account:opacity-100" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" side="top" className="w-60">
-                    <div className="px-3 py-2">
-                      <p className="truncate text-xs font-medium">{props.account.name || props.account.email}</p>
-                      {props.account.name && props.account.email ? <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{props.account.email}</p> : null}
-                    </div>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={props.onOpenSettings}>
-                      <Settings className="size-4 text-muted-foreground" />
-                      {t("status.settings")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={props.onOpenAccount}>
-                      <UserRound className="size-4 text-muted-foreground" />
-                      {t("settings.tab_cloud_account")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={props.onOpenTemplateMarket}>
-                      <LayoutTemplate className="size-4 text-muted-foreground" />
-                      模板市场
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <SidebarMenuButton
+                  onClick={props.onOpenAccount}
+                  className="h-9 gap-2 rounded-lg px-2"
+                  aria-label={props.account.name || props.account.email || t("settings.tab_cloud_account")}
+                >
+                  <MarbleAvatar seed={props.account.email || props.account.name || "ipollowork"} className="size-5 shrink-0 rounded-full" />
+                  <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">{props.account.name || props.account.email}</span>
+                </SidebarMenuButton>
               ) : (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={<SidebarMenuButton className="h-9 gap-2 rounded-lg px-2" aria-label={t("den.signin_title")} />}
-                  >
-                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground">
-                      <UserRound className="size-3" />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">{t("den.signin_button")}</span>
-                    <MoreHorizontal className="size-3.5 text-sidebar-foreground/45" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" side="top" className="w-60">
-                    <DropdownMenuItem onClick={props.onOpenTemplateMarket}>
-                      <LayoutTemplate className="size-4 text-muted-foreground" />
-                      模板市场
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={props.onOpenSettings}>
-                      <Settings className="size-4 text-muted-foreground" />
-                      {t("status.settings")}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={props.onSignIn}>
-                      <UserRound className="size-4 text-muted-foreground" />
-                      {t("den.signin_button")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <SidebarMenuButton
+                  onClick={props.onSignIn}
+                  className="h-9 gap-2 rounded-lg px-2"
+                  aria-label={t("den.signin_title")}
+                >
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground">
+                    <UserRound className="size-3" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">{t("den.signin_button")}</span>
+                </SidebarMenuButton>
               )}
               </div>
+              <button
+                type="button"
+                onClick={props.onOpenSettings}
+                aria-label={t("status.settings")}
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/65 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-hidden mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
+              >
+                <Settings className="size-4" />
+              </button>
               <NotificationBell className="shrink-0 rounded-lg text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             </SidebarMenuItem>
           </SidebarMenu>
@@ -1130,7 +1119,7 @@ function WorkspaceSidebarGroup({
             onOpenChange={() => ctx.toggleWorkspaceExpanded(workspace.id)}
             className="group/collapsible"
           >
-            <div className="group/workspace-header relative max-md:hidden">
+            <div className="group/workspace-header relative">
               <WorkspaceHeader
                 workspace={workspace}
                 statusLabel={statusLabel}
@@ -1172,7 +1161,7 @@ function WorkspaceSidebarGroup({
               </Button>
             </div>
 
-            <CollapsibleContent className="pt-px">
+            <CollapsibleContent className="pt-[6px]">
               <SidebarMenuSub>
                 {showRemoteConnectionIssue ? (
                   <RemoteConnectionIssueCard
@@ -1220,7 +1209,7 @@ function WorkspaceSidebarGroup({
                           const full = [...ids, ...allRootIds.filter((id) => !visible.has(id))];
                           store.getState().reorderSessions(workspace.id, full);
                         }}
-                        className="flex flex-col"
+                        className="flex flex-col gap-[6px]"
                       >
                         {sessionRows.map((row) => (
                           <SessionMenuItem
@@ -1535,7 +1524,7 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
                   const full = allRootIds.map((id) => ungroupedSet.has(id) ? fullUngrouped[ui++] : id);
                   store.getState().reorderSessions(workspaceId, full);
                 }}
-                className="flex flex-col"
+                className="flex flex-col gap-[6px]"
               >
                 {visibleUngroupedRows.map((row) => (
                   <React.Fragment key={row.session.id}>
@@ -1654,19 +1643,6 @@ function PinnedIndicator({ isPinned }: { isPinned: boolean }) {
   );
 }
 
-function SessionTypeIcon({ sessionId }: { sessionId: string }) {
-  const [type, setType] = React.useState(() => readSessionType(sessionId));
-  React.useEffect(() => {
-    setType(readSessionType(sessionId));
-    return subscribeToSessionType((changedSessionId, changedType) => {
-      if (changedSessionId === sessionId) setType(changedType);
-    });
-  }, [sessionId]);
-  const Icon = type === "design" ? Palette : type === "code" ? Code2 : type === "video" ? Video : BriefcaseBusiness;
-  const label = type[0].toUpperCase() + type.slice(1);
-  return <Icon className="size-3 shrink-0 text-muted-foreground/70" aria-label={label} />;
-}
-
 type SessionMenuItemProps = {
   session: SessionListItem;
   depth: number;
@@ -1727,14 +1703,13 @@ function SessionMenuItem({
           <CollapsibleTrigger
             render={
               <SidebarMenuSubButton
-                className={cn("relative", depth > 0 && "ps-13")}
+                className={cn("relative ps-8", depth > 0 && "ps-12")}
                 isActive={isSelected}
                 onClick={openSession}
                 onPointerEnter={prefetchSession}
                 onFocus={prefetchSession}
               >
                 <PinnedIndicator isPinned={isPinned} />
-                <SessionTypeIcon sessionId={session.id} />
                 <span
                   className={cn("min-w-0 flex-1 truncate transition-[padding] duration-75 group-hover/menu-sub-item:pe-12 group-has-data-popup-open/menu-sub-item:pe-12 pe-4", isSessionStreaming || isSessionActive && "pe-12")}
                   title={displayTitle}
@@ -1766,11 +1741,15 @@ function SessionMenuItem({
           onClick={openSession}
           onPointerEnter={prefetchSession}
           onFocus={prefetchSession}
-          className={cn("transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", depth > 0 && "ps-13", isSessionStreaming || isSessionActive && "pe-8")}
+          className={cn("ps-8 transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", depth > 0 && "ps-12")}
         >
           <PinnedIndicator isPinned={isPinned} />
-          <SessionTypeIcon sessionId={session.id} />
-          <span className="truncate" title={displayTitle}>{displayTitle}</span>
+          <span
+            className={cn("min-w-0 flex-1 truncate pe-4 transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", isSessionStreaming || isSessionActive && "pe-8")}
+            title={displayTitle}
+          >
+            {displayTitle}
+          </span>
         </SidebarMenuSubButton>
       </SessionContextMenu>
       <SessionActions

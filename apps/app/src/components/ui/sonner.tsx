@@ -6,6 +6,13 @@ import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+type ToasterStyle = React.CSSProperties & {
+  "--normal-bg": string
+  "--normal-text": string
+  "--normal-border": string
+  "--border-radius": string
+}
+
 function useTheme() {
   return React.useSyncExternalStore(
     subscribeToTheme,
@@ -16,6 +23,12 @@ function useTheme() {
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const theme = useTheme()
+  const toasterStyle: ToasterStyle = {
+    "--normal-bg": "var(--popover)",
+    "--normal-text": "var(--popover-foreground)",
+    "--normal-border": "var(--border)",
+    "--border-radius": "var(--radius)",
+  }
 
   return (
     <Sonner
@@ -38,12 +51,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           <Loader2Icon className="size-4 animate-spin" />
         ),
       }}
-      style={{
-        "--normal-bg": "var(--popover)",
-        "--normal-text": "var(--popover-foreground)",
-        "--normal-border": "var(--border)",
-        "--border-radius": "var(--radius)",
-      }}
+      style={toasterStyle}
       toastOptions={{
         classNames: {
           toast: "cn-toast",

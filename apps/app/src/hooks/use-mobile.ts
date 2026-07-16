@@ -1,5 +1,7 @@
 import * as React from "react";
 
+import { isElectronRuntime } from "@/app/lib/runtime-env";
+
 const MOBILE_BREAKPOINT = 768
 
 export function useIsMobile() {
@@ -15,5 +17,5 @@ export function useIsMobile() {
     return () => mql.removeEventListener("change", onChange)
   }, [])
 
-  return !!isMobile
+  return !isElectronRuntime() && !!isMobile
 }

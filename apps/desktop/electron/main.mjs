@@ -62,6 +62,8 @@ const APP_IDENTIFIER =
 const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
 const RELEASE_PAGE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest";
 const DOCS_PAGE_URL = "https://ipolloworklabs.com/docs";
+const MAIN_WINDOW_MIN_WIDTH = 720;
+const MAIN_WINDOW_MIN_HEIGHT = 640;
 const applicationMenu = createApplicationMenu({
   appName: APP_NAME,
   docsUrl: DOCS_PAGE_URL,
@@ -524,6 +526,16 @@ async function focusMainWindowFromNotification() {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+}
+
+function enforceMainWindowMinimumSize(win) {
+  if (!win || win.isDestroyed()) return;
+  const [width, height] = win.getSize();
+  const nextWidth = Math.max(width, MAIN_WINDOW_MIN_WIDTH);
+  const nextHeight = Math.max(height, MAIN_WINDOW_MIN_HEIGHT);
+  if (nextWidth !== width || nextHeight !== height) {
+    win.setSize(nextWidth, nextHeight);
+  }
 }
 
 /**
@@ -2066,6 +2078,8 @@ async function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 820,
+    minWidth: MAIN_WINDOW_MIN_WIDTH,
+    minHeight: MAIN_WINDOW_MIN_HEIGHT,
     title: currentDisplayAppName,
     show: false,
     ...(process.platform === "win32" ? { skipTaskbar: true } : {}),
@@ -2084,6 +2098,8 @@ async function createMainWindow() {
       plugins: true,
     },
   });
+  mainWindow.setMinimumSize(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT);
+  mainWindow.on("resize", () => enforceMainWindowMinimumSize(mainWindow));
   if (cachedBrandImage && bootSourceUrl) {
     await applyCachedBrandIcon(cachedBrandImage, bootSourceUrl);
   }

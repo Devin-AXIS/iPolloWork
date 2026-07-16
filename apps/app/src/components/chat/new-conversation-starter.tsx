@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -23,6 +23,7 @@ import {
   Presentation,
   Table2,
   Wrench,
+  type LucideIcon,
 } from "lucide-react";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
 
@@ -32,7 +33,7 @@ import { cn } from "@/lib/utils";
 
 export type NewConversationMode = "work" | "code" | "design" | "video";
 
-type Icon = ComponentType<SVGProps<SVGSVGElement>>;
+type Icon = LucideIcon;
 type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
 
 type NewConversationStarterProps = {
@@ -434,16 +435,16 @@ export function NewConversationStarter({
         className="pointer-events-none absolute left-[calc(50%-280px)] -top-[18px] h-[243px] w-[243px] max-w-none"
       />
       <div className="relative">
-        <header className="max-w-4xl">
+        <div className="max-w-4xl">
           <img src="/ipollo-work-wordmark.svg" alt="iPollo Work" className="h-[25px] w-[144px]" />
-          <h1 className="mt-3 font-['PingFang_SC',_'PingFang_SC'] text-[48px] font-semibold leading-normal tracking-[-1.92px] text-black">
+          <h1 className="mt-3 font-sans text-[48px] font-semibold leading-none tracking-[-1.92px] text-black">
             {t("new_conversation.title")}
           </h1>
-          <p className="mt-8 font-['PingFang_SC',_'PingFang_SC'] text-[16px] font-light leading-normal tracking-[-0.8px] text-[#666]">{t("new_conversation.subtitle")}</p>
-        </header>
+          <p className="mt-8 font-sans text-[16px] font-light leading-normal tracking-[-0.8px] text-[#666]">{t("new_conversation.subtitle")}</p>
+        </div>
 
         <div
-          className="mt-8 flex h-[46px] w-full max-w-[394px] items-center gap-1.5 overflow-x-auto rounded-[12px] bg-[#F5F5F5] p-1 [scrollbar-width:none] sm:inline-flex sm:w-[394px] sm:max-w-[394px] [&::-webkit-scrollbar]:hidden"
+          className="mt-8 grid h-[46px] w-full max-w-[394px] grid-cols-4 items-center gap-1.5 rounded-[12px] bg-[#F5F5F5] p-1"
           role="tablist"
           aria-label={t("new_conversation.mode_label")}
         >
@@ -456,7 +457,7 @@ export function NewConversationStarter({
               role="tab"
               aria-selected={selected}
               className={cn(
-                "inline-flex h-[38px] w-[92px] shrink-0 items-center justify-center gap-1.5 rounded-[8px] px-2 font-['PingFang_SC'] text-[12px] font-medium leading-normal transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "inline-flex h-[38px] min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-1.5 font-sans text-[12px] font-medium leading-normal transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 selected
                   ? "bg-white text-black"
                   : "text-[#999] hover:bg-white/70 hover:text-black",
@@ -471,7 +472,7 @@ export function NewConversationStarter({
                 aria-hidden
                 className={cn("shrink-0 object-contain", id === "video" ? "h-[14px] w-[18px]" : "size-4", (selected || hoveredMode === id) && "brightness-0")}
               />
-              <span>{t(label)}</span>
+              <span className="min-w-0 truncate">{t(label)}</span>
             </button>
           );
         })}
