@@ -91,6 +91,21 @@ describe("ipollowork runtime config file", () => {
     expect(prompt).toMatch(/secret|credential|API key|token|PII/i);
   });
 
+  test("ipollowork prompt requires plain-text Markdown tables of contents", async () => {
+    const { config } = await setup();
+    await writeiPolloWorkRuntimeConfigFile(config, "ws_1");
+
+    const parsed = await readConfigFile(config);
+    const agent = parsed.agent as Record<string, { prompt?: string }>;
+    const prompt = agent.ipollowork?.prompt ?? "";
+
+    expect(prompt).toContain("table of contents");
+    expect(prompt).toContain("plain text");
+    expect(prompt).toContain("Never use Markdown links");
+    expect(prompt).toContain("HTML anchors");
+    expect(prompt).toContain("fragment URLs");
+  });
+
   test("keepiPolloWorkRuntimeConfigFileFresh rewrites the file on runtime-DB writes", async () => {
     const { config } = await setup();
     await writeiPolloWorkRuntimeConfigFile(config, "ws_1");

@@ -7,6 +7,7 @@ import { Ellipsis, Eye, Globe, Image, LoaderCircle, Mic2, Palette, Pencil, Prese
 import type { TemplateCatalogItem, TemplateManifestV1, TemplateSessionState, TemplateStyle } from "@ipollowork/types/templates";
 
 import { t } from "../../../../i18n";
+import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
 import { buildDenAuthUrl, readDenBootstrapConfig } from "../../../../app/lib/den";
 import { type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
@@ -1664,7 +1665,7 @@ export function SessionPage(props: SessionPageProps) {
                               );
                             }}
                           >
-                            <img src="/ipollowork-mark.svg" alt="" width={20} height={20} className="mt-0.5 shrink-0" />
+                            <img src={publicAssetUrl("ipollowork-mark.svg")} alt="" width={20} height={20} className="mt-0.5 shrink-0" />
                             <div>
                               <div className="text-[13px] font-medium text-dls-text">Browse the web</div>
                               <div className="mt-0.5 text-[11px] text-dls-secondary">Search Craigslist for couches and list the results</div>

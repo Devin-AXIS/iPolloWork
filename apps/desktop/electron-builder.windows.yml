@@ -1,0 +1,3 @@
+extends: electron-builder.yml
+win:
+  signAndEditExecutable: false

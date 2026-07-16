@@ -314,7 +314,10 @@ function brandIconWindowsPath() {
 }
 
 function defaultAppWindowsIconPath() {
-  return path.join(app.getPath("userData"), "ipollowork-stock.ico");
+  // Keep the filename versioned. Windows Explorer caches taskbar icons by
+  // shortcut/AppUserModelID and icon path, so overwriting the same ICO can
+  // continue showing an older brand indefinitely during development.
+  return path.join(app.getPath("userData"), "ipollowork-stock-v2.ico");
 }
 
 let cachedWindowsProgramsPath = null;
