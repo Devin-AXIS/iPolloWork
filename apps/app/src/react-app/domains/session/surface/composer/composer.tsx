@@ -1,14 +1,13 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent } from "@opencode-ai/sdk/v2/client";
-import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, FileText, ListPlus, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Check, ChevronRight, FileText, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
-import { formatBytes, isMacPlatform } from "@/app/utils";
+import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
 import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
 import { useDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
@@ -51,11 +50,8 @@ type ComposerProps = {
   mentions: Record<string, ComposerMentionKind>;
   onDraftChange: (value: string) => void;
   onSend: () => void | Promise<void>;
-  onSteer: () => void | Promise<void>;
-  onQueue: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
   busy: boolean;
-  queuedCount: number;
   disabled: boolean;
   modelUnavailable?: boolean;
   statusLabel: string;
@@ -338,9 +334,9 @@ export function ReactSessionComposer(props: ComposerProps) {
     draftRef.current = props.draft;
   }, [props.draft]);
 
-  // Follow-up message UX (only relevant while the agent is busy):
-  // - Enter sends immediately (the agent adjusts mid-task, aka "steer").
-  // - Cmd/Ctrl+Enter queues the message to send once the agent finishes.
+  // Running-state UX matches Codex: the action area exposes Stop only.
+  // The editor remains writable so a typed follow-up stays as a draft and
+  // can be sent normally after the current run finishes.
   // - Escape arms a "Hit Escape again to stop the agent" prompt for 3s;
   //   a second Escape within that window stops the agent.
   const [escapeArmed, setEscapeArmed] = useState(false);
@@ -379,19 +375,14 @@ export function ReactSessionComposer(props: ComposerProps) {
     if (escapeTimerRef.current) clearTimeout(escapeTimerRef.current);
   }, []);
 
-  // Editor submit (Enter). While idle this sends normally; while busy
-  // Enter sends immediately (steer) and Cmd/Ctrl+Enter queues the
-  // message to send once the agent finishes the current task.
-  const handleEditorSubmit = useCallback((options: { queue: boolean }) => {
+  // Editor submit (Enter). While idle this sends normally; while busy it
+  // leaves the draft untouched so the user can send after the run finishes.
+  const handleEditorSubmit = useCallback((_options: { queue: boolean }) => {
     const hasContent = props.draft.trim().length > 0 || props.attachments.length > 0;
     if (!hasContent) return;
-    if (props.busy) {
-      if (options.queue) void props.onQueue();
-      else void props.onSteer();
-      return;
-    }
+    if (props.busy) return;
     void props.onSend();
-  }, [props.busy, props.draft, props.attachments, props.onSend, props.onSteer, props.onQueue]);
+  }, [props.busy, props.draft, props.attachments, props.onSend]);
 
   const slashCommandQuery = getSlashCommandQuery(props.draft);
   const slashOpenNext = slashCommandQuery !== null;
@@ -1697,15 +1688,9 @@ export function ReactSessionComposer(props: ComposerProps) {
               </div>
 
               {/*
-                Action area.
-                - Idle: single "Run task" button (sends immediately).
-                - Busy: an outline "Stop" on the left (kept apart from the
-                  send cluster), then a split send button — the primary
-                  segment sends now (the agent adjusts mid-task, aka
-                  "steer"; Enter does the same), and the chevron opens a
-                  menu with "Send when agent finishes" (queue, ⌘⏎). A badge
-                  on the chevron shows how many messages are queued.
-                  Escape arms a "Hit Escape again to stop the agent" prompt.
+                Action area. Idle sends normally; busy exposes Stop only.
+                The draft remains editable while running and can be sent
+                after the current task finishes.
               */}
               <div className="ml-auto flex shrink-0 items-end gap-1.5">
                 {props.busy ? (
@@ -1718,65 +1703,12 @@ export function ReactSessionComposer(props: ComposerProps) {
                     <button
                       type="button"
                       onClick={props.onStop}
-                      className="mr-2 inline-flex h-9 max-h-9 items-center gap-2 rounded-full border border-dls-border bg-transparent px-4 text-[13px] font-medium text-gray-11 transition-colors hover:bg-gray-3"
+                      className="inline-flex h-9 max-h-9 items-center gap-2 rounded-full border border-dls-border bg-transparent px-4 text-[13px] font-medium text-gray-11 transition-colors hover:bg-gray-3"
                       title={t("composer.stop")}
                     >
                       <Square size={12} fill="currentColor" />
                       <span>{t("composer.stop")}</span>
                     </button>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={canSend ? props.onSteer : undefined}
-                        disabled={!canSend}
-                        className={`inline-flex h-9 max-h-9 items-center gap-2 rounded-l-full pl-4 pr-3 text-[13px] font-medium transition-colors ${
-                          canSend
-                            ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                            : "bg-gray-4 text-gray-10"
-                        }`}
-                        title={t("composer.steer_hint")}
-                      >
-                        <Zap size={14} />
-                        <span>{t("composer.steer")}</span>
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <button
-                              type="button"
-                              aria-label={t("composer.send_options")}
-                              className={`relative inline-flex h-9 max-h-9 items-center rounded-r-full border-l pl-1.5 pr-2.5 transition-colors ${
-                                canSend
-                                  ? "border-[color-mix(in_srgb,var(--dls-accent-fg)_25%,transparent)] bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                                  : "border-gray-6 bg-gray-4 text-gray-10"
-                              }`}
-                            >
-                              <ChevronDown size={14} />
-                              {props.queuedCount > 0 ? (
-                                <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gray-12 px-1 text-[10px] font-semibold text-gray-1">
-                                  {props.queuedCount}
-                                </span>
-                              ) : null}
-                            </button>
-                          }
-                        />
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={!canSend}
-                            onClick={() => void props.onQueue()}
-                            title={t("composer.queue_hint")}
-                          >
-                            <ListPlus size={14} />
-                            <span>
-                              {props.queuedCount > 0
-                                ? `${t("composer.queue")} · ${t("composer.queued_count", { count: props.queuedCount })}`
-                                : t("composer.queue")}
-                            </span>
-                            <DropdownMenuShortcut>{isMacPlatform() ? "⌘⏎" : "Ctrl+⏎"}</DropdownMenuShortcut>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
                   </>
                 ) : (
                   <button
