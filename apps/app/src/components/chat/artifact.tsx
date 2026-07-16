@@ -34,7 +34,7 @@ interface ArtifactButtonProps {
   compact?: boolean
 }
 
-const MAX_ARTIFACT_TITLE_LENGTH = 20;
+const MAX_ARTIFACT_TITLE_LENGTH = 32;
 
 function compactArtifactTitle(name: string) {
   return name.length > MAX_ARTIFACT_TITLE_LENGTH
@@ -57,7 +57,7 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
         <ArtifactIcon className="size-4 shrink-0" type={artifact.type} />
       </DescriptiveButtonIcon>
       <DescriptiveButtonContent className="min-w-0 flex-none">
-        <DescriptiveButtonTitle className={cn("text-xs font-medium", compact ? "max-w-56" : "max-w-32")} title={artifact.name}>{title}</DescriptiveButtonTitle>
+        <DescriptiveButtonTitle className={cn("text-xs font-medium", compact ? "max-w-56" : "max-w-[172px]")} title={artifact.name}>{title}</DescriptiveButtonTitle>
         {!compact && canActivate ? (
           <DescriptiveButtonDescription className="text-[10px] leading-3">
             {canOpenVideoStudio ? t("session.outputs.action_video_studio") : t("session.outputs.action_browse_edit")}
@@ -82,7 +82,7 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
 
   return (
     <DescriptiveButton
-      className={cn("max-w-full flex-none items-center gap-1.5 rounded-xl px-2 py-1.5 whitespace-nowrap", compact ? "w-full justify-start hover:bg-muted/70" : "w-fit")}
+      className={cn("max-w-full flex-none items-center gap-1.5 rounded-xl px-2.5 py-2 whitespace-nowrap", compact ? "w-full justify-start px-2 py-1.5 hover:bg-muted/70" : "min-w-[220px]")}
       onClick={() => {
         if (canOpenVideoStudio) {
           onOpenVideoStudio?.();
