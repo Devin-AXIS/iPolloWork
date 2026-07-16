@@ -176,6 +176,35 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     return getActiveBrowserView()?.webContents ?? null;
   }
 
+  const BROWSER_SCROLLBAR_CSS = `
+    *::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    *::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    *::-webkit-scrollbar-thumb {
+      background-color: #E4E4E5;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background-clip: content-box;
+      min-height: 56px;
+      min-width: 56px;
+    }
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: #D8D8DA;
+    }
+    *::-webkit-scrollbar-thumb:active {
+      background-color: #C7C7CA;
+    }
+  `;
+
+  function injectBrowserScrollbarCss(webContents) {
+    if (!webContents || webContents.isDestroyed()) return;
+    void webContents.insertCSS(BROWSER_SCROLLBAR_CSS).catch(() => undefined);
+  }
+
   function getBrowserTabLabel(title, url) {
     if (title) {
       return title;
@@ -527,6 +556,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
       }
       sendToRenderer("ipollowork:browser:panel-opened");
     });
+    view.webContents.on("dom-ready", () => injectBrowserScrollbarCss(view.webContents));
     view.webContents.on("did-navigate", () => sendBrowserState());
     view.webContents.on("did-navigate-in-page", () => sendBrowserState());
     view.webContents.on("page-title-updated", () => sendBrowserState());

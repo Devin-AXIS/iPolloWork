@@ -1740,7 +1740,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                     type="button"
                     onClick={canSend ? props.onSend : undefined}
                     disabled={props.disabled || !canSend}
-                    className={`inline-flex h-9 max-h-9 w-9 items-center justify-center rounded-full transition-colors ${
+                    className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
                       !canSend || props.disabled
                         ? "bg-gray-4 text-gray-10"
                         : "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
