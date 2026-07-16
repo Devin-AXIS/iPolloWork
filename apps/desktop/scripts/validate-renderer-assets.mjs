@@ -14,6 +14,11 @@ const requiredAssets = [
   "sidebar-entry-code.svg",
   "sidebar-entry-file.svg",
   "sidebar-entry-video.svg",
+  "sidebar-icon/ipollo-work.svg",
+  "sidebar-icon/search.svg",
+  "sidebar-icon/edit.svg",
+  "sidebar-icon/doc-plus.svg",
+  "sidebar-icon/plugin.svg",
   "sidebar-left-expand.svg",
   "sidebar-right-open.svg",
   "sidebar-right-closed.svg",
@@ -31,6 +36,12 @@ function readRendererSource() {
 }
 
 const source = readRendererSource();
+if (!source.includes("Presentation exported as PDF.")) {
+  throw new Error("Renderer is missing the current presentation PDF export implementation.");
+}
+if (!source.includes("ipwPdfCompatibleColors")) {
+  throw new Error("Renderer is missing packaged PDF color compatibility handling.");
+}
 for (const asset of requiredAssets) {
   if (!existsSync(path.join(rendererDist, asset))) {
     throw new Error(`Missing renderer asset: ${asset}`);

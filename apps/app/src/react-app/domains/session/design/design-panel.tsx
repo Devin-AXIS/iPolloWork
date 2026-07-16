@@ -32,6 +32,10 @@ import {
   type DesignStyleField,
 } from "./design-html-runtime";
 import { DesignSystemDrawer, type DesignTokenValues } from "./design-system-drawer";
+import {
+  downgradeUnsupportedPdfExportColors,
+  downgradeUnsupportedPdfExportColorText,
+} from "./pdf-export-colors";
 
 type DesignPanelProps = {
   sessionId: string;
@@ -486,12 +490,18 @@ export function DesignPanel({
     frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;visibility:hidden;pointer-events:none`;
     document.body.append(frame);
     try {
-      const exportLibraries = Promise.all([import("html2canvas"), import("jspdf")]);
+      const exportLibraries = Promise.all([import("html2canvas-pro"), import("jspdf")]);
       const content = editing ? await readLatestCanvasHtml() : draftRef.current;
-      frame.srcdoc = buildDesignPreviewDocument(content, false, templateTokenQuery.data ?? "", false);
+      frame.srcdoc = buildDesignPreviewDocument(
+        downgradeUnsupportedPdfExportColorText(content),
+        false,
+        downgradeUnsupportedPdfExportColorText(templateTokenQuery.data ?? ""),
+        false,
+      );
       await waitForExportFrame(frame);
       const frameDocument = frame.contentDocument;
       if (!frameDocument) throw new Error("Could not prepare the presentation.");
+      downgradeUnsupportedPdfExportColors(frameDocument);
       frameDocument.querySelectorAll("script,[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next']").forEach((node) => node.remove());
       frameDocument.documentElement.style.width = `${PDF_SLIDE_WIDTH}px`;
       frameDocument.documentElement.style.height = `${PDF_SLIDE_HEIGHT}px`;
@@ -536,6 +546,7 @@ export function DesignPanel({
           backgroundColor: "#ffffff",
           scale: 1,
           useCORS: true,
+          onclone: (clonedDocument) => downgradeUnsupportedPdfExportColors(clonedDocument),
           logging: false,
           width: PDF_SLIDE_WIDTH,
           height: PDF_SLIDE_HEIGHT,
