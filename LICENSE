@@ -14,40 +14,64 @@ use, copy, modify, and distribute the Software solely as permitted below.
 
 2. Permitted Uses
 
-You may use and modify the Software without a commercial license for:
+You may use and modify the Software without prior written authorization only
+for the limited uses below:
 
-  a. personal use;
-  b. non-commercial education, research, evaluation, or testing; and
-  c. Internal Business Use by You and Your Company.
+  a. Individual Personal Use by one natural person for that person's own
+     non-commercial work, learning, research, evaluation, or testing; and
+  b. Small Internal Use by fewer than three total Users solely for internal,
+     non-commercial evaluation, testing, or operations.
 
-Internal Business Use includes use by employees and contractors solely on
-behalf of Your Company, provided that the Software or its functionality is not
-made available to customers or other external third parties. Internal use is
-permitted even when Your Company is a for-profit organization.
+Small Internal Use is permitted only when the Software and its functionality
+are not sold, hosted for, provided to, or otherwise made available to
+customers, clients, or other external third parties. The three-User threshold
+is measured across all people who access, operate, deploy, administer, or
+benefit from a shared deployment of the Software, whether they are employees,
+contractors, founders, collaborators, or other personnel.
 
-3. Commercial License Required
+3. Prior Written Authorization Required
 
 You must obtain prior written authorization from the Licensor before You do
 any of the following:
 
-  a. provide the Software or its functionality to any external third party as
+  a. use the Software with three or more total Users, regardless of whether
+     the use is personal, internal, commercial, non-commercial, individual,
+     organizational, hosted, local, private, or public;
+  b. provide the Software or its functionality to any external third party as
      a hosted, managed, cloud, SaaS, single-tenant, or multi-tenant service;
-  b. sell, rent, lease, sublicense, resell, or distribute the Software for a
-     fee or other commercial advantage;
-  c. incorporate the Software as a material component of a product or service
+  c. sell, rent, lease, sublicense, resell, or distribute the Software for a
+     fee or other commercial advantage, whether by an individual or an
+     organization;
+  d. incorporate the Software as a material component of a product or service
      offered to external third parties for revenue or other commercial
      advantage;
-  d. use the Software to provide paid customer delivery, implementation,
-     customization, operation, or outsourcing services; or
-  e. white-label the Software, or remove, alter, or obscure the iPolloWork
-     name, logo, copyright notice, or license notice in a version distributed
-     or made available to external third parties.
+  e. use the Software to provide paid customer delivery, implementation,
+     customization, operation, consulting, or outsourcing services;
+  f. use the Software in any paid, revenue-generating, resale, white-label,
+     agency, marketplace, or customer-facing context; or
+  g. remove, alter, obscure, hide, or replace the iPolloWork brand attribution
+     required by Section 4.
 
-A commercial license may grant some or all of these rights under separate
+Written authorization may grant some or all of these rights under separate
 terms. To request authorization, contact the repository owner through
 https://github.com/Devin-AXIS/iPolloWork.
 
-4. Non-Commercial Redistribution
+4. Required Brand Attribution
+
+All copies, deployments, and modified versions of the Software must preserve
+the iPolloWork name, logo, product attribution, copyright notice, and license
+notice in the source code, documentation, about screens, settings screens, and
+other user-facing frontend displays where the Software identifies itself or is
+presented to users. You may not remove, hide, obscure, replace, or make the
+iPolloWork brand attribution materially less visible without the Licensor's
+prior written authorization.
+
+This brand attribution requirement applies to all permitted and authorized
+uses, including Individual Personal Use, Small Internal Use, internal
+deployments, modified versions, and any separately authorized commercial use,
+unless the written authorization expressly permits different branding.
+
+5. Non-Commercial Redistribution
 
 You may distribute unmodified or modified copies of the Software only free of
 charge and for non-commercial purposes. Every copy must include this License
@@ -55,7 +79,7 @@ and all copyright, attribution, trademark, and third-party notices. Modified
 copies must prominently state that You changed the Software. You may not
 impose terms that weaken or bypass this License.
 
-5. Third-Party and Previously Licensed Code
+6. Third-Party and Previously Licensed Code
 
 Third-party components, templates, dependencies, and other portions identified
 by a separate license remain governed by that license. Nothing in this License
@@ -67,27 +91,27 @@ notice is included in LICENSES/MIT-legacy.txt.
 This License applies only to portions for which the Licensor owns or controls
 the necessary rights and that are first released under this License.
 
-6. Patents
+7. Patents
 
 The Licensor grants You a patent license only to the extent necessary for the
 Permitted Uses. If You or Your Company assert in writing that the Software
 infringes a patent, any patent license granted under this License terminates
 immediately.
 
-7. No Trademark License
+8. No Trademark License
 
 This License does not grant permission to use the Licensor's names, logos, or
 trademarks except as required to preserve notices and accurately describe the
 origin of the Software.
 
-8. Termination
+9. Termination
 
 Any use outside this License is unlicensed and automatically terminates Your
 rights. If this is Your first violation and You cure it within 30 days after
 written notice, the Licensor may reinstate Your rights. A later violation
 terminates them permanently unless the Licensor agrees otherwise in writing.
 
-9. No Warranty and Limitation of Liability
+10. No Warranty and Limitation of Liability
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
@@ -95,7 +119,7 @@ PURPOSE, TITLE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT PERMITTED BY LAW,
 THE LICENSOR AND CONTRIBUTORS WILL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR
 OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
 
-10. Definitions
+11. Definitions
 
 "Licensor" means Different AI, Inc. or a successor authorized to license the
 applicable Software.
@@ -107,9 +131,15 @@ licensed portions.
 "You" means the individual or legal entity exercising rights under this
 License.
 
-"Your Company" means the legal entity for which You act, together with
-entities that control, are controlled by, or are under common control with it.
+"Individual Personal Use" means use by one natural person for that person's
+own purposes, without selling, hosting, sublicensing, reselling, providing
+services, or making the Software or its functionality available to any external
+third party.
 
-"Internal Business Use" means use solely for Your Company's internal
-operations and not to provide the Software or its functionality to external
-third parties.
+"Small Internal Use" means use by fewer than three total Users solely for
+internal purposes and not to provide the Software or its functionality to
+external third parties.
+
+"User" means any individual who accesses, operates, deploys, administers,
+modifies, receives output from, or otherwise benefits from a shared deployment
+or coordinated use of the Software.

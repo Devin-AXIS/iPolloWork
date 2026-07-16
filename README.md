@@ -183,8 +183,10 @@ See `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md` for contribution,
 
 iPolloWork uses the **iPolloWork Source Available License 1.0**:
 
-- Free for personal, non-commercial, evaluation, and company-internal use.
-- A commercial license is required for customer-facing SaaS or hosting, paid delivery or deployment, resale, white-label distribution, or use as a material part of an external commercial product or service.
+- Free only for individual personal self-use and for small internal use by fewer than three total users.
+- Prior written authorization is required for any use by three or more users, regardless of whether the use is personal, internal, commercial, non-commercial, individual, or organizational.
+- Prior written authorization is required for any sale, resale, paid service, SaaS, hosting, white-label distribution, marketplace use, or customer-facing use, regardless of whether it is done by an individual or a company.
+- The iPolloWork name, logo, and product attribution must remain visible in user-facing frontend displays unless prior written authorization expressly permits different branding.
 - Separately licensed third-party components and code previously released under MIT retain their original licenses and existing rights.
 
 See `LICENSE` for the controlling terms and `LICENSES/MIT-legacy.txt` for the historical MIT notice. This is a source-available license, not an OSI-approved open-source license.
