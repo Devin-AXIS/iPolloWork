@@ -26,8 +26,6 @@ import {
  */
 
 const HIDE = Decoration.replace({});
-const HIDDEN_LINE = Decoration.line({ class: "cm-md-hidden-line" });
-const HIDDEN_MARK = Decoration.mark({ class: "cm-md-hidden-mark" });
 
 const HEADING_MARK = [
   Decoration.mark({ class: "cm-md-h1" }),
@@ -45,16 +43,6 @@ const INLINE_CODE = Decoration.mark({ class: "cm-md-code" });
 const LINK_TEXT = Decoration.mark({ class: "cm-md-link" });
 const QUOTE = Decoration.line({ class: "cm-md-quote" });
 const CODE_BLOCK = Decoration.line({ class: "cm-md-codeblock" });
-const TABLE_BORDER_COLOR = "rgba(100, 116, 139, 0.85)";
-
-type RichPreviewRange = {
-  from: number;
-  to: number;
-};
-
-function styleTableCell(cell: HTMLTableCellElement) {
-  cell.style.border = `1px solid ${TABLE_BORDER_COLOR}`;
-}
 
 class BulletWidget extends WidgetType {
   eq() {
@@ -67,7 +55,7 @@ class BulletWidget extends WidgetType {
     return span;
   }
   ignoreEvent() {
-    return true;
+    return false;
   }
 }
 
@@ -90,7 +78,6 @@ class ImageWidget extends WidgetType {
     figure.dataset.markdownImageTo = String(this.image.to);
     figure.dataset.markdownImageAlt = this.image.alt;
     figure.dataset.markdownImageUrl = this.image.url;
-    suppressPreviewSelection(figure);
 
     const image = document.createElement("img");
     image.src = this.image.url;
@@ -116,7 +103,7 @@ class ImageWidget extends WidgetType {
   }
 
   ignoreEvent() {
-    return true;
+    return false;
   }
 }
 
@@ -136,7 +123,6 @@ class TableWidget extends WidgetType {
     const wrapper = document.createElement("div");
     wrapper.className = "cm-md-table-wrap";
     wrapper.dataset.markdownTable = "";
-    suppressPreviewSelection(wrapper);
 
     const table = document.createElement("table");
     table.className = "cm-md-table";
@@ -145,7 +131,6 @@ class TableWidget extends WidgetType {
     for (const value of this.table.headers) {
       const cell = document.createElement("th");
       cell.textContent = value;
-      styleTableCell(cell);
       headRow.appendChild(cell);
     }
     head.appendChild(headRow);
@@ -157,13 +142,11 @@ class TableWidget extends WidgetType {
       for (const value of row) {
         const cell = document.createElement("td");
         cell.textContent = value;
-        styleTableCell(cell);
         tableRow.appendChild(cell);
       }
       body.appendChild(tableRow);
     }
     table.appendChild(body);
-    table.style.borderCollapse = "collapse";
     wrapper.appendChild(table);
 
     const edit = document.createElement("button");
@@ -173,8 +156,7 @@ class TableWidget extends WidgetType {
     edit.setAttribute("aria-label", "Edit Markdown table");
     edit.addEventListener("mousedown", (event) => event.preventDefault());
     edit.addEventListener("click", () => {
-      const firstLine = view.state.doc.lineAt(this.table.from);
-      view.dispatch({ selection: { anchor: firstLine.from, head: firstLine.to }, scrollIntoView: true });
+      view.dispatch({ selection: { anchor: this.table.from }, scrollIntoView: true });
       view.focus();
     });
     wrapper.appendChild(edit);
@@ -183,7 +165,7 @@ class TableWidget extends WidgetType {
   }
 
   ignoreEvent() {
-    return true;
+    return false;
   }
 }
 
@@ -203,7 +185,6 @@ class CodeBlockWidget extends WidgetType {
     const wrapper = document.createElement("div");
     wrapper.className = "cm-md-code-wrap";
     wrapper.dataset.markdownCodeBlock = "";
-    suppressPreviewSelection(wrapper);
 
     const header = document.createElement("div");
     header.className = "cm-md-code-header";
@@ -223,8 +204,7 @@ class CodeBlockWidget extends WidgetType {
     edit.setAttribute("aria-label", "Edit Markdown code block");
     edit.addEventListener("mousedown", (event) => event.preventDefault());
     edit.addEventListener("click", () => {
-      const firstLine = view.state.doc.lineAt(this.block.from);
-      view.dispatch({ selection: { anchor: firstLine.from, head: firstLine.to }, scrollIntoView: true });
+      view.dispatch({ selection: { anchor: this.block.from }, scrollIntoView: true });
       view.focus();
     });
     wrapper.appendChild(edit);
@@ -232,90 +212,22 @@ class CodeBlockWidget extends WidgetType {
   }
 
   ignoreEvent() {
-    return true;
+    return false;
   }
-}
-
-function suppressPreviewSelection(element: HTMLElement) {
-  element.addEventListener("pointerdown", (event) => {
-    if (event.detail > 1) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }, true);
-  element.addEventListener("mousedown", (event) => {
-    if (event.detail > 1) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }, true);
-  element.addEventListener("selectstart", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-  }, true);
-  element.addEventListener("dblclick", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-  }, true);
 }
 
 function selectionTouchesRange(view: EditorView, from: number, to: number) {
   for (const range of view.state.selection.ranges) {
-    if (range.from === range.to && range.from >= from && range.from <= to) {
-      return true;
-    }
-    if (range.from < to && range.to > from) {
+    if (range.from <= to && range.to >= from) {
       return true;
     }
   }
   return false;
 }
 
-function getRichPreviewRanges(document: string): RichPreviewRange[] {
-  return [
-    ...findMarkdownTables(document),
-    ...findMarkdownCodeBlocks(document),
-    ...findMarkdownImages(document),
-  ];
-}
-
-function getRichPreviewRangeAtBoundaryPosition(view: EditorView, position: number) {
-  const line = view.state.doc.lineAt(position);
-  const document = view.state.doc.toString();
-  const ranges = getRichPreviewRanges(document);
-
-  for (const range of ranges) {
-    const firstLine = view.state.doc.lineAt(range.from);
-    if (position >= firstLine.from && position <= firstLine.to) {
-      return range;
-    }
-  }
-
-  if (line.text.trim()) return null;
-
-  const previousLine = line.number > 1 ? view.state.doc.line(line.number - 1) : null;
-  const nextLine = line.number < view.state.doc.lines ? view.state.doc.line(line.number + 1) : null;
-
-  return ranges.find((range) => previousLine?.to === range.to || nextLine?.from === range.from) ?? null;
-}
-
-function isInsideRichPreviewWidget(event: MouseEvent | PointerEvent) {
-  return event.target instanceof Element
-    && event.target.closest(".cm-md-image, .cm-md-table-wrap, .cm-md-code-wrap") !== null;
-}
-
-function suppressPointerBesidePreview(event: MouseEvent | PointerEvent, view: EditorView) {
-  if (isInsideRichPreviewWidget(event)) return false;
-
-  const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
-  if (position === null) return false;
-
-  const range = getRichPreviewRangeAtBoundaryPosition(view, position);
-  if (!range || selectionTouchesRange(view, range.from, range.to)) return false;
-
-  event.preventDefault();
-  event.stopPropagation();
-  return true;
+function lineHasSelection(view: EditorView, pos: number) {
+  const line = view.state.doc.lineAt(pos);
+  return selectionTouchesRange(view, line.from, line.to);
 }
 
 function buildDecorations(view: EditorView): DecorationSet {
@@ -343,8 +255,11 @@ function buildDecorations(view: EditorView): DecorationSet {
         }
 
         if (name === "HeaderMark") {
-          const after = view.state.doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
-          widgets.push(HIDDEN_MARK.range(node.from, after));
+          // `#` markers and the trailing space; hide unless editing the line.
+          if (!lineHasSelection(view, node.from)) {
+            const after = view.state.doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
+            widgets.push(HIDE.range(node.from, after));
+          }
           return;
         }
 
@@ -366,31 +281,40 @@ function buildDecorations(view: EditorView): DecorationSet {
         }
 
         if (name === "EmphasisMark" || name === "CodeMark" || name === "StrikethroughMark") {
-          widgets.push(HIDDEN_MARK.range(node.from, node.to));
+          if (!lineHasSelection(view, node.from)) {
+            widgets.push(HIDE.range(node.from, node.to));
+          }
           return;
         }
 
         if (name === "QuoteMark") {
-          const after = view.state.doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
-          widgets.push(HIDDEN_MARK.range(node.from, after));
+          if (!lineHasSelection(view, node.from)) {
+            const after = view.state.doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
+            widgets.push(HIDE.range(node.from, after));
+          }
           return;
         }
 
         if (name === "ListMark") {
           const lineText = view.state.doc.lineAt(node.from).text;
           const isBullet = /^\s*[-*+]\s/.test(lineText);
-          if (isBullet) {
+          if (isBullet && !lineHasSelection(view, node.from)) {
             widgets.push(BULLET.range(node.from, node.to));
           }
           return;
         }
 
         if (name === "LinkMark") {
-          widgets.push(HIDDEN_MARK.range(node.from, node.to));
+          if (!lineHasSelection(view, node.from)) {
+            widgets.push(HIDE.range(node.from, node.to));
+          }
           return;
         }
         if (name === "URL") {
-          widgets.push(HIDDEN_MARK.range(node.from, node.to));
+          // Hide the (target) part of a link unless editing it.
+          if (!lineHasSelection(view, node.from)) {
+            widgets.push(HIDE.range(node.from, node.to));
+          }
           return;
         }
       },
@@ -410,7 +334,6 @@ function buildDecorations(view: EditorView): DecorationSet {
       for (let lineNumber = firstLine.number + 1; lineNumber <= view.state.doc.lines; lineNumber += 1) {
         const line = view.state.doc.line(lineNumber);
         if (line.from > table.to) break;
-        widgets.push(HIDDEN_LINE.range(line.from));
         if (line.from !== line.to) widgets.push(HIDE.range(line.from, line.to));
       }
     }
@@ -423,7 +346,6 @@ function buildDecorations(view: EditorView): DecorationSet {
     for (let lineNumber = firstLine.number + 1; lineNumber <= view.state.doc.lines; lineNumber += 1) {
       const line = view.state.doc.line(lineNumber);
       if (line.from > block.to) break;
-      widgets.push(HIDDEN_LINE.range(line.from));
       if (line.from !== line.to) widgets.push(HIDE.range(line.from, line.to));
     }
   }
@@ -493,24 +415,6 @@ const livePreviewPlugin = ViewPlugin.fromClass(
   },
 );
 
-const protectRichPreviewBoundaries = EditorView.domEventHandlers({
-  pointerdown: suppressPointerBesidePreview,
-  mousedown: suppressPointerBesidePreview,
-  dblclick(event, view) {
-    if (isInsideRichPreviewWidget(event)) return false;
-
-    const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
-    if (position === null) return false;
-
-    const range = getRichPreviewRangeAtBoundaryPosition(view, position);
-    if (!range || selectionTouchesRange(view, range.from, range.to)) return false;
-
-    event.preventDefault();
-    event.stopPropagation();
-    return true;
-  },
-});
-
 const livePreviewTheme = EditorView.baseTheme({
   ".cm-md-h1": { fontSize: "1.6em", fontWeight: "700", lineHeight: "1.3" },
   ".cm-md-h2": { fontSize: "1.4em", fontWeight: "700", lineHeight: "1.3" },
@@ -518,9 +422,6 @@ const livePreviewTheme = EditorView.baseTheme({
   ".cm-md-h4": { fontSize: "1.1em", fontWeight: "600" },
   ".cm-md-h5": { fontSize: "1.05em", fontWeight: "600" },
   ".cm-md-h6": { fontSize: "1em", fontWeight: "600" },
-  ".cm-md-hidden-line": { display: "none", height: "0", margin: "0", padding: "0" },
-  ".cm-md-hidden-line *": { display: "none" },
-  ".cm-md-hidden-mark": { display: "none" },
   ".cm-md-strong": { fontWeight: "700" },
   ".cm-md-emphasis": { fontStyle: "italic" },
   ".cm-md-strike": { textDecoration: "line-through" },
@@ -554,7 +455,6 @@ const livePreviewTheme = EditorView.baseTheme({
     border: "1px solid hsl(var(--border))",
     borderRadius: "0.85rem",
     backgroundColor: "hsl(var(--muted) / 0.25)",
-    userSelect: "none",
   },
   ".cm-md-image img": { display: "block", maxWidth: "100%", maxHeight: "28rem", margin: "0 auto", objectFit: "contain" },
   ".cm-md-image-fallback": { display: "none", padding: "3rem 1rem", textAlign: "center", color: "hsl(var(--muted-foreground))" },
@@ -575,22 +475,16 @@ const livePreviewTheme = EditorView.baseTheme({
     transition: "opacity 120ms ease",
   },
   ".cm-md-image:hover .cm-md-image-edit, .cm-md-image-edit:focus-visible": { opacity: "1" },
-  ".cm-md-table-wrap": {
-    position: "relative",
-    display: "block",
-    margin: "0.75rem 0",
-    overflowX: "auto",
-    border: "1px solid rgba(100, 116, 139, 0.72)",
-    borderRadius: "0.5rem",
-    backgroundColor: "hsl(var(--background))",
-    color: "hsl(var(--foreground))",
-    userSelect: "none",
-  },
+  ".cm-md-table-wrap": { position: "relative", display: "block", margin: "0.75rem 0", overflowX: "auto" },
   ".cm-md-table": { width: "100%", borderCollapse: "separate", borderSpacing: "0", fontSize: "0.9em" },
-  ".cm-md-table th, .cm-md-table td": { minWidth: "7rem", padding: "0.6rem 0.75rem", borderRight: "1px solid rgba(100, 116, 139, 0.72)", borderBottom: "1px solid rgba(100, 116, 139, 0.72)", textAlign: "left", verticalAlign: "top" },
-  ".cm-md-table th": { backgroundColor: "rgba(148, 163, 184, 0.2)", fontWeight: "650" },
-  ".cm-md-table tr > :last-child": { borderRight: "0" },
-  ".cm-md-table tbody tr:last-child > *": { borderBottom: "0" },
+  ".cm-md-table th, .cm-md-table td": { minWidth: "7rem", padding: "0.6rem 0.75rem", borderRight: "1px solid hsl(var(--border))", borderBottom: "1px solid hsl(var(--border))", textAlign: "left" },
+  ".cm-md-table th": { backgroundColor: "hsl(var(--muted) / 0.55)", fontWeight: "650" },
+  ".cm-md-table tr > :first-child": { borderLeft: "1px solid hsl(var(--border))" },
+  ".cm-md-table thead tr:first-child > *": { borderTop: "1px solid hsl(var(--border))" },
+  ".cm-md-table thead tr:first-child > :first-child": { borderTopLeftRadius: "0.65rem" },
+  ".cm-md-table thead tr:first-child > :last-child": { borderTopRightRadius: "0.65rem" },
+  ".cm-md-table tbody tr:last-child > :first-child": { borderBottomLeftRadius: "0.65rem" },
+  ".cm-md-table tbody tr:last-child > :last-child": { borderBottomRightRadius: "0.65rem" },
   ".cm-md-table-edit": {
     position: "absolute",
     top: "0.4rem",
@@ -612,7 +506,6 @@ const livePreviewTheme = EditorView.baseTheme({
     border: "1px solid color-mix(in srgb, currentColor 14%, transparent)",
     borderRadius: "0.75rem",
     backgroundColor: "color-mix(in srgb, currentColor 5%, transparent)",
-    userSelect: "none",
   },
   ".cm-md-code-header": { padding: "0.45rem 0.8rem", borderBottom: "1px solid color-mix(in srgb, currentColor 12%, transparent)", color: "hsl(var(--muted-foreground))", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.04em" },
   ".cm-md-code-wrap pre": { margin: "0", overflowX: "auto", padding: "0.85rem", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: "0.84em", lineHeight: "1.65" },
@@ -632,5 +525,5 @@ const livePreviewTheme = EditorView.baseTheme({
 });
 
 export function markdownLivePreview(): Extension {
-  return [livePreviewPlugin, protectRichPreviewBoundaries, livePreviewTheme];
+  return [livePreviewPlugin, livePreviewTheme];
 }

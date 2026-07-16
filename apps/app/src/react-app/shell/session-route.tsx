@@ -114,8 +114,8 @@ import { useSessionProviderAuth } from "@/react-app/domains/connections/provider
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
-import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
-import { shouldInjectVideoTaskContext, videoTaskSystemContext } from "@/react-app/domains/session/video/video-project";
+import { sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
+import { videoTaskSystemContext } from "@/react-app/domains/session/video/video-project";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -916,20 +916,14 @@ export function SessionRoute() {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
         });
-        // Template-session metadata is authoritative. The in-memory surface
-        // cache is used only for legacy sessions created before that record
-        // existed, so an already-open Video Studio still gets its contract.
-        let sessionTemplate = selectedWorkspaceEndpoint
+        // Template-session metadata is the single source of truth for the
+        // editing surface and agent contract. A normal chat simply has no
+        // record; it is never inferred from a browser-side task type.
+        const sessionTemplate = selectedWorkspaceEndpoint
           ? await selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
           : null;
-        // Claim a pre-template Studio project before the prompt is sent. This
-        // is the one-time migration that makes the persisted session record,
-        // the agent contract, and the right-side Studio point at one path.
-        if (!sessionTemplate && selectedWorkspaceEndpoint && readSessionType(targetSessionId) === "video") {
-          sessionTemplate = await selectedWorkspaceEndpoint.client.adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null);
-        }
         const isDesignTask = sessionTemplate?.surface === "design";
-        const isVideoTask = shouldInjectVideoTaskContext(sessionTemplate?.surface, readSessionType(targetSessionId));
+        const isVideoTask = sessionTemplate?.surface === "video";
         const designSessionTemplate = isDesignTask ? sessionTemplate : null;
         const videoTemplate = isVideoTask ? sessionTemplate?.manifest ?? null : null;
         const designPath = designSessionTemplate?.state.entry ?? null;

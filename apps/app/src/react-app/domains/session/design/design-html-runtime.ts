@@ -55,44 +55,6 @@ export type DesignRuntimeMessage =
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "navigate"; href: string }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "deck"; deck: DesignDeckState };
 
-export type DesignDeckRuntimeInfo = {
-  slideCount: number;
-  dataSlideCount: number;
-  topLevelSectionSlideCount?: number;
-  explicitDeckContainer: boolean;
-  deckControlCount: number;
-  templateDeck?: boolean;
-};
-
-export function shouldRunDesignDeckRuntime(info: DesignDeckRuntimeInfo) {
-  return info.slideCount >= 2
-    && (info.dataSlideCount >= 2 || (info.topLevelSectionSlideCount ?? 0) >= 2 || info.explicitDeckContainer || info.deckControlCount > 0 || Boolean(info.templateDeck));
-}
-
-export function designDeckDirectionForKey(key: string): "previous" | "next" | null {
-  if (key === "ArrowLeft" || key === "ArrowUp" || key === "PageUp") return "previous";
-  if (key === "ArrowRight" || key === "ArrowDown" || key === "PageDown" || key === " ") return "next";
-  return null;
-}
-
-export function designDeckFitScale(viewportWidth: number, contentWidth: number, viewportHeight?: number, contentHeight?: number) {
-  if (!Number.isFinite(viewportWidth) || !Number.isFinite(contentWidth) || contentWidth <= 0) return 1;
-  const widthScale = contentWidth > viewportWidth ? (Math.max(0, viewportWidth) - 16) / contentWidth : 1;
-  const heightScale = viewportHeight !== undefined && contentHeight !== undefined && Number.isFinite(viewportHeight) && Number.isFinite(contentHeight) && contentHeight > 0
-    ? contentHeight > viewportHeight ? (Math.max(0, viewportHeight) - 16) / contentHeight : 1
-    : 1;
-  return Math.max(0.1, Math.min(1, widthScale, heightScale));
-}
-
-export function designPreviewFitScale(viewportWidth: number, contentWidth: number, viewportHeight?: number, contentHeight?: number, mode: "fluid" | "artboard" = "fluid") {
-  if (!Number.isFinite(viewportWidth) || !Number.isFinite(contentWidth) || contentWidth <= 0) return 1;
-  const widthScale = contentWidth > viewportWidth ? (Math.max(0, viewportWidth) - 16) / contentWidth : 1;
-  const heightScale = mode === "artboard" && viewportHeight !== undefined && contentHeight !== undefined && Number.isFinite(viewportHeight) && Number.isFinite(contentHeight) && contentHeight > 0
-    ? contentHeight > viewportHeight ? (Math.max(0, viewportHeight) - 16) / contentHeight : 1
-    : 1;
-  return Math.max(0.1, Math.min(1, widthScale, heightScale));
-}
-
 export function isLocalHtmlPath(path: string) {
   return /\.html?$/i.test(path.trim());
 }
@@ -125,157 +87,17 @@ export function buildDesignPreviewDocument(source: string, includeEditor: boolea
   const tokenStyle = templateTokenCss.trim()
     ? `<style id="ipollowork-design-template-token-style">${templateTokenCss.replace(/<\/style/gi, "<\\/style")}</style>`
     : "";
-  const deckRuntimeDetector = shouldRunDesignDeckRuntime.toString();
-  const previewFitRuntime = `<script id="ipollowork-design-preview-fit-runtime">(${designPreviewFitRuntime.toString()})(${deckRuntimeDetector});<\/script>`;
   const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"});<\/script>`;
-  const deckRuntime = `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${deckRuntimeDetector});<\/script>`;
+  const deckRuntime = `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)});<\/script>`;
   const editingRuntime = includeEditor
     ? `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"});<\/script>`
     : "";
-  const runtime = `${tokenStyle}${previewFitRuntime}${navigationRuntime}${deckRuntime}${editingRuntime}`;
+  const runtime = `${tokenStyle}${navigationRuntime}${deckRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
   if (bodyEnd >= 0) {
     return `${source.slice(0, bodyEnd)}${runtime}${source.slice(bodyEnd)}`;
   }
   return `${source}${runtime}`;
-}
-
-function designPreviewFitRuntime(shouldRunDeckRuntime: (info: DesignDeckRuntimeInfo) => boolean) {
-  const deckSlideSelector = "[data-ipw-slide], body > section.slide, [data-ipw-deck] .slide, .deck .slide, #deck .slide, .stage .slide";
-  const deckControlSelector = "[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next'],button[aria-label^='Go to slide']";
-  const templateDeck = () => /\b(deck|ppt|slide|slides|present|weekly-update)\b/i.test(
-    document.documentElement.getAttribute("data-ipw-template") || document.body.getAttribute("data-ipw-template") || "",
-  );
-  const deckInfo = () => ({
-    slideCount: document.querySelectorAll(deckSlideSelector).length,
-    dataSlideCount: document.querySelectorAll("[data-ipw-slide]").length,
-    topLevelSectionSlideCount: document.querySelectorAll("body > section.slide").length,
-    explicitDeckContainer: Boolean(document.querySelector("[data-ipw-deck],.deck,#deck")),
-    deckControlCount: document.querySelectorAll(deckControlSelector).length,
-    templateDeck: templateDeck(),
-  });
-  if (shouldRunDeckRuntime(deckInfo())) return;
-
-  const fitStyleId = "ipollowork-design-preview-fit-style";
-  const fitTargetAttribute = "data-ipw-design-preview-fit-target";
-  const fitModeAttribute = "data-ipw-design-preview-fit";
-  const runtimeIds = new Set([
-    "ipollowork-design-preview-fit-runtime",
-    "ipollowork-design-navigation-runtime",
-    "ipollowork-design-deck-runtime",
-    "ipollowork-design-runtime",
-    "ipollowork-design-runtime-style",
-    "ipollowork-design-template-token-style",
-    "ipollowork-design-transform-overlay",
-  ]);
-  const style = document.createElement("style");
-  style.id = fitStyleId;
-  document.head.appendChild(style);
-
-  const fitScale = (viewportWidth: number, contentWidth: number, viewportHeight?: number, contentHeight?: number, mode: "fluid" | "artboard" = "fluid") => {
-    if (!Number.isFinite(viewportWidth) || !Number.isFinite(contentWidth) || contentWidth <= 0) return 1;
-    const widthScale = contentWidth > viewportWidth ? (Math.max(0, viewportWidth) - 16) / contentWidth : 1;
-    const heightScale = mode === "artboard" && viewportHeight !== undefined && contentHeight !== undefined && Number.isFinite(viewportHeight) && Number.isFinite(contentHeight) && contentHeight > 0
-      ? contentHeight > viewportHeight ? (Math.max(0, viewportHeight) - 16) / contentHeight : 1
-      : 1;
-    return Math.max(0.1, Math.min(1, widthScale, heightScale));
-  };
-
-  const ignored = (element: Element) => runtimeIds.has(element.id) || element.hasAttribute("data-ipw-brand-slot") || element.tagName === "SCRIPT" || element.tagName === "STYLE";
-  const explicitTarget = () => document.querySelector<HTMLElement>("[data-ipw-frame='artboard'],[data-ipw-frame='fluid'],[data-ipw-artboard]");
-  const bodyChildren = () => Array.from(document.body.children).filter((element): element is HTMLElement => element instanceof HTMLElement && !ignored(element));
-  const widestChild = () => bodyChildren().reduce<HTMLElement | null>((best, child) => {
-    const rect = child.getBoundingClientRect();
-    const width = Math.max(child.scrollWidth, rect.width);
-    if (!best) return child;
-    const bestRect = best.getBoundingClientRect();
-    const bestWidth = Math.max(best.scrollWidth, bestRect.width);
-    return width > bestWidth ? child : best;
-  }, null);
-  const targetElement = () => {
-    const explicit = explicitTarget();
-    if (explicit) return explicit;
-    const children = bodyChildren();
-    if (children.length === 1) return children[0];
-    return document.body;
-  };
-  const frameMode = (target: HTMLElement): "fluid" | "artboard" => (
-    target.getAttribute("data-ipw-frame") === "artboard" || target.hasAttribute("data-ipw-artboard") || document.body.getAttribute("data-ipw-frame") === "artboard"
-      ? "artboard"
-      : "fluid"
-  );
-  const measure = (target: HTMLElement) => {
-    style.textContent = "";
-    target.removeAttribute(fitTargetAttribute);
-    document.documentElement.removeAttribute(fitModeAttribute);
-    const widest = widestChild();
-    const targetRect = target.getBoundingClientRect();
-    const widestRect = widest?.getBoundingClientRect();
-    const contentWidth = Math.ceil(Math.max(
-      document.documentElement.scrollWidth,
-      document.body.scrollWidth,
-      target.scrollWidth,
-      targetRect.width,
-      widest?.scrollWidth || 0,
-      widestRect?.width || 0,
-      window.innerWidth,
-    ));
-    const contentHeight = Math.ceil(Math.max(
-      target.scrollHeight,
-      targetRect.height,
-      document.body.scrollHeight,
-      document.documentElement.scrollHeight,
-      window.innerHeight,
-    ));
-    return { contentWidth, contentHeight };
-  };
-
-  let pending = false;
-  let fallbackTimer: number | null = null;
-  const fit = () => {
-    pending = false;
-    if (fallbackTimer !== null) {
-      window.clearTimeout(fallbackTimer);
-      fallbackTimer = null;
-    }
-    const target = targetElement();
-    const { contentWidth, contentHeight } = measure(target);
-    const mode = frameMode(target);
-    const scale = fitScale(window.innerWidth, contentWidth, window.innerHeight, contentHeight, mode);
-    if (scale >= 0.999) return;
-    target.setAttribute(fitTargetAttribute, "true");
-    document.documentElement.setAttribute(fitModeAttribute, mode);
-    style.textContent = `
-      html[${fitModeAttribute}] {
-        overflow-x: hidden !important;
-      }
-      [${fitTargetAttribute}="true"] {
-        --ipw-design-preview-fit-scale: ${scale};
-        --ipw-design-preview-fit-width: ${contentWidth}px;
-        min-width: var(--ipw-design-preview-fit-width) !important;
-        max-width: none !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
-        transform-origin: top center !important;
-        zoom: var(--ipw-design-preview-fit-scale);
-      }
-    `;
-  };
-  const scheduleFit = () => {
-    if (pending) return;
-    pending = true;
-    const runFit = () => {
-      if (!pending) return;
-      fit();
-    };
-    window.requestAnimationFrame(runFit);
-    fallbackTimer = window.setTimeout(runFit, 80);
-  };
-  window.addEventListener("resize", scheduleFit);
-  window.addEventListener("load", scheduleFit);
-  new MutationObserver(scheduleFit).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style", "data-ipw-frame"] });
-  scheduleFit();
-  window.setTimeout(scheduleFit, 180);
 }
 
 function designNavigationRuntime(channel: string, editing: boolean) {
@@ -332,42 +154,15 @@ function designNavigationRuntime(channel: string, editing: boolean) {
   });
 }
 
-function designDeckRuntime(channel: string, shouldRunDeckRuntime: (info: DesignDeckRuntimeInfo) => boolean) {
-  const directionForKey = (key: string): "previous" | "next" | null => {
-    if (key === "ArrowLeft" || key === "ArrowUp" || key === "PageUp") return "previous";
-    if (key === "ArrowRight" || key === "ArrowDown" || key === "PageDown" || key === " ") return "next";
-    return null;
-  };
-  const fitScale = (viewportWidth: number, contentWidth: number, viewportHeight?: number, contentHeight?: number) => {
-    if (!Number.isFinite(viewportWidth) || !Number.isFinite(contentWidth) || contentWidth <= 0) return 1;
-    const widthScale = contentWidth > viewportWidth ? (Math.max(0, viewportWidth) - 16) / contentWidth : 1;
-    const heightScale = viewportHeight !== undefined && contentHeight !== undefined && Number.isFinite(viewportHeight) && Number.isFinite(contentHeight) && contentHeight > 0
-      ? contentHeight > viewportHeight ? (Math.max(0, viewportHeight) - 16) / contentHeight : 1
-      : 1;
-    return Math.max(0.1, Math.min(1, widthScale, heightScale));
-  };
-  const slideSelector = "[data-ipw-slide], body > section.slide, [data-ipw-deck] section.slide, .deck section.slide, #deck section.slide";
-  const deckControlSelector = "[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next'],button[aria-label^='Go to slide']";
+function designDeckRuntime(channel: string) {
+  const slideSelector = "[data-ipw-slide], section.slide, .slide";
   const slides = Array.from(document.querySelectorAll<HTMLElement>(slideSelector))
     .filter((element, index, list) => list.indexOf(element) === index);
-  if (!shouldRunDeckRuntime({
-    slideCount: slides.length,
-    dataSlideCount: document.querySelectorAll("[data-ipw-slide]").length,
-    topLevelSectionSlideCount: document.querySelectorAll("body > section.slide").length,
-    explicitDeckContainer: Boolean(document.querySelector("[data-ipw-deck],.deck,#deck")),
-    deckControlCount: document.querySelectorAll(deckControlSelector).length,
-  })) return;
+  if (slides.length < 2) return;
 
   slides.forEach((slide, index) => {
     if (!slide.hasAttribute("data-ipw-slide")) slide.setAttribute("data-ipw-slide", String(index + 1));
   });
-  const fitTargetAttribute = "data-ipw-design-deck-fit-target";
-  const fitStyleId = "ipollowork-design-deck-fit-style";
-  const fitTarget = slides[0]?.closest<HTMLElement>("[data-ipw-deck],.deck,#deck") || slides[0]?.parentElement || document.body;
-  fitTarget.setAttribute(fitTargetAttribute, "true");
-  const fitStyle = document.createElement("style");
-  fitStyle.id = fitStyleId;
-  document.head.appendChild(fitStyle);
 
   const deckControl = (direction: "previous" | "next") => {
     const aliases = direction === "previous"
@@ -400,36 +195,8 @@ function designDeckRuntime(channel: string, shouldRunDeckRuntime: (info: DesignD
     return 0;
   };
 
-  const fitDeck = () => {
-    const active = slides[activeIndex()] || slides[0];
-    const contentWidth = Math.max(
-      active?.scrollWidth || 0,
-      active?.getBoundingClientRect().width || 0,
-      window.innerWidth,
-    );
-    const contentHeight = Math.max(
-      active?.scrollHeight || 0,
-      active?.getBoundingClientRect().height || 0,
-      window.innerHeight,
-    );
-    const scale = fitScale(window.innerWidth, contentWidth, window.innerHeight, contentHeight);
-    fitStyle.textContent = `
-      [${fitTargetAttribute}="true"] {
-        --ipw-design-deck-fit-scale: ${scale};
-        --ipw-design-deck-fit-width: ${Math.ceil(contentWidth)}px;
-        min-width: var(--ipw-design-deck-fit-width) !important;
-        max-width: none !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
-        transform-origin: top center !important;
-        zoom: var(--ipw-design-deck-fit-scale);
-      }
-    `;
-  };
-
   let lastState = "";
   const report = () => {
-    fitDeck();
     const index = activeIndex();
     const title = slides[index]?.getAttribute("data-title") || slides[index]?.querySelector("h1,h2,h3")?.textContent?.trim() || "";
     const key = `${index}:${title}`;
@@ -469,23 +236,8 @@ function designDeckRuntime(channel: string, shouldRunDeckRuntime: (info: DesignD
   };
 
   document.addEventListener("click", () => window.setTimeout(report, 0), true);
-  window.addEventListener("keydown", (event) => {
-    const direction = directionForKey(event.key);
-    if (!direction) {
-      window.setTimeout(report, 0);
-      return;
-    }
-    const target = event.target;
-    if (target instanceof HTMLElement && target.closest("input,textarea,select,[contenteditable='true']")) return;
-    const before = activeIndex();
-    event.preventDefault();
-    window.setTimeout(() => {
-      if (activeIndex() === before) navigate(direction);
-      else report();
-    }, 0);
-  }, true);
+  document.addEventListener("keydown", () => window.setTimeout(report, 0), true);
   document.addEventListener("scroll", () => window.setTimeout(report, 0), true);
-  window.addEventListener("resize", () => window.setTimeout(report, 0));
   window.addEventListener("hashchange", report);
   new MutationObserver(report).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class", "aria-hidden"] });
   window.addEventListener("message", (event) => {
@@ -501,11 +253,6 @@ function designDeckRuntime(channel: string, shouldRunDeckRuntime: (info: DesignD
 function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean) {
   const runtimeId = "ipollowork-design-runtime";
   const styleId = "ipollowork-design-runtime-style";
-  const fitStyleId = "ipollowork-design-deck-fit-style";
-  const fitTargetAttribute = "data-ipw-design-deck-fit-target";
-  const previewFitStyleId = "ipollowork-design-preview-fit-style";
-  const previewFitTargetAttribute = "data-ipw-design-preview-fit-target";
-  const previewFitAttribute = "data-ipw-design-preview-fit";
   const selectedAttribute = "data-ipollowork-design-selected";
   const editingAttribute = "data-ipollowork-design-editing";
   const idAttribute = "data-ipollowork-design-id";
@@ -584,26 +331,19 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     const clone = document.documentElement.cloneNode(true);
     if (!(clone instanceof HTMLElement)) return "";
     clone.querySelector(`#${runtimeId}`)?.remove();
-    clone.querySelector("#ipollowork-design-preview-fit-runtime")?.remove();
     clone.querySelector("#ipollowork-design-navigation-runtime")?.remove();
     clone.querySelector("#ipollowork-design-deck-runtime")?.remove();
     clone.querySelector(`#${styleId}`)?.remove();
-    clone.querySelector(`#${fitStyleId}`)?.remove();
-    clone.querySelector(`#${previewFitStyleId}`)?.remove();
     clone.querySelector("#ipollowork-design-template-token-style")?.remove();
     clone.querySelector(`#${overlayId}`)?.remove();
     clone.querySelectorAll(`[${textNodeAttribute}]`).forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
     clone.querySelectorAll(`[${idAttribute}]`).forEach((element) => element.removeAttribute(idAttribute));
-    clone.querySelectorAll(`[${fitTargetAttribute}]`).forEach((element) => element.removeAttribute(fitTargetAttribute));
-    clone.querySelectorAll(`[${previewFitTargetAttribute}]`).forEach((element) => element.removeAttribute(previewFitTargetAttribute));
-    clone.querySelectorAll(`[${previewFitAttribute}]`).forEach((element) => element.removeAttribute(previewFitAttribute));
     clone.querySelectorAll(`[${selectedAttribute}]`).forEach((element) => element.removeAttribute(selectedAttribute));
     clone.querySelectorAll(`[${editingAttribute}]`).forEach((element) => {
       element.removeAttribute(editingAttribute);
       element.removeAttribute("contenteditable");
     });
     clone.removeAttribute(modeAttribute);
-    clone.removeAttribute(previewFitAttribute);
     const doctype = document.doctype
       ? `<!DOCTYPE ${document.doctype.name}${document.doctype.publicId ? ` PUBLIC \"${document.doctype.publicId}\"` : ""}${document.doctype.systemId ? ` \"${document.doctype.systemId}\"` : ""}>\n`
       : "";
