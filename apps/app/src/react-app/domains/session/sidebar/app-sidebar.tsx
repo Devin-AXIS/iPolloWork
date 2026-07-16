@@ -24,6 +24,7 @@ import {
 import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
+import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import type { WorkspaceInfo } from "../../../../app/lib/desktop";
 import { IPolloWorkDenHelpLink } from "../../workspace/ipollowork-den-help-link";
 import type {
@@ -759,7 +760,7 @@ export function AppSidebar(props: AppSidebarProps) {
           <div className="flex w-full justify-end px-3">
             <SidebarTrigger
               className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
-              icon={<img src="/sidebar-left-expand.svg" alt="" className="h-3 w-4 shrink-0" />}
+              icon={<img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0" />}
               aria-label={t("sidebar.collapse")}
               title={t("sidebar.collapse")}
             />

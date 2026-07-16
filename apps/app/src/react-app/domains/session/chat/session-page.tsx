@@ -1433,7 +1433,7 @@ export function SessionPage(props: SessionPageProps) {
                 onClick={() => setSidebarOpen(true)}
                 style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
               >
-                <img src="/sidebar-left-expand.svg" alt="" className="h-3 w-4 shrink-0" />
+                <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0" />
               </Button>
             ) : null}
             <div className="flex min-w-0 items-center gap-1">
