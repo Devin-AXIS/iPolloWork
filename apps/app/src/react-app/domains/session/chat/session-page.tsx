@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import type { TemplateCatalogItem, TemplateManifestV1, TemplateSessionSnapshot, TemplateSessionState, TemplateStyle } from "@ipollowork/types/templates";
 
-import { t } from "../../../../i18n";
+import { currentLocale, t } from "../../../../i18n";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
 import { buildDenAuthUrl, readDenBootstrapConfig } from "../../../../app/lib/den";
@@ -73,7 +73,7 @@ import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
 import { VideoPanel } from "../video/video-panel";
-import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
+import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, templateColorPaletteLabel, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
@@ -313,37 +313,38 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   const [previewTemplate, setPreviewTemplate] = useState<TemplateCatalogItem | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const categories = [
-    { id: "website" as const, label: "网站", detail: "落地页、产品页、个人主页", Icon: Globe },
-    { id: "slides" as const, label: "幻灯片", detail: "演示、提案和报告", Icon: Presentation },
-    { id: "poster" as const, label: "宣传海报", detail: "社媒图和活动视觉", Icon: Image },
+    { id: "website" as const, labelKey: "templates.starter.category.website", detailKey: "templates.starter.category.website_detail", Icon: Globe },
+    { id: "slides" as const, labelKey: "templates.starter.category.slides", detailKey: "templates.starter.category.slides_detail", Icon: Presentation },
+    { id: "poster" as const, labelKey: "templates.starter.category.poster", detailKey: "templates.starter.category.poster_detail", Icon: Image },
   ];
   return (<>
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12">
       <div className="w-full max-w-3xl">
-        <div className="mb-7 text-center"><div className="mx-auto mb-3 grid size-11 place-items-center rounded-2xl bg-primary/10 text-primary"><Palette className="size-5" /></div><h2 className="text-lg font-semibold">开始设计</h2><p className="mt-1 text-sm text-dls-secondary">先选择类别，再选择一个模板。</p></div>
-        {loading ? <div className="flex items-center justify-center py-14 text-sm text-dls-secondary"><LoaderCircle className="mr-2 size-4 animate-spin" />正在读取模板</div> : error ? <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5 text-center text-sm"><p>{error}</p><button type="button" onClick={onRefresh} className="mt-3 text-xs font-medium text-primary">重试</button></div> : !category ? (
+        <div className="mb-7 text-center"><div className="mx-auto mb-3 grid size-11 place-items-center rounded-2xl bg-primary/10 text-primary"><Palette className="size-5" /></div><h2 className="text-lg font-semibold">{t("templates.starter.title")}</h2><p className="mt-1 text-sm text-dls-secondary">{t("templates.starter.subtitle")}</p></div>
+        {loading ? <div className="flex items-center justify-center py-14 text-sm text-dls-secondary"><LoaderCircle className="mr-2 size-4 animate-spin" />{t("templates.starter.loading")}</div> : error ? <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5 text-center text-sm"><p>{error}</p><button type="button" onClick={onRefresh} className="mt-3 text-xs font-medium text-primary">{t("template_market.retry")}</button></div> : !category ? (
           <div className="grid gap-3 sm:grid-cols-3">
-            {categories.map(({ id, label, detail, Icon }) => <button key={id} type="button" onClick={() => setCategory(id)} className="group rounded-2xl border border-dls-border bg-dls-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><Icon className="mb-7 size-4 text-dls-secondary group-hover:text-primary" /><div className="text-sm font-semibold">{label}</div><div className="mt-1 text-xs leading-5 text-dls-secondary">{detail}</div></button>)}
+            {categories.map(({ id, labelKey, detailKey, Icon }) => <button key={id} type="button" onClick={() => setCategory(id)} className="group rounded-2xl border border-dls-border bg-dls-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><Icon className="mb-7 size-4 text-dls-secondary group-hover:text-primary" /><div className="text-sm font-semibold">{t(labelKey)}</div><div className="mt-1 text-xs leading-5 text-dls-secondary">{t(detailKey)}</div></button>)}
           </div>
         ) : (() => {
           const serverCategory = category === "website" ? "site" : category;
           const visible = templates.filter((item) => item.manifest.category === serverCategory);
+          const selectedCategory = categories.find((item) => item.id === category);
           return <div>
-            <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← 返回类别</button><button type="button" onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text"><Upload className="size-3" />导入 .ipwt</button><input ref={importRef} type="file" accept=".ipwt,application/zip" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
-            {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB · 类型：{categories.find((item) => item.id === category)?.label}</div></div><button type="button" onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text">取消</button><button type="button" onClick={() => { onImport(pendingImport, serverCategory); setPendingImport(null); }} className="h-7 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground">安装</button></div> : null}
-            {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><button type="button" className="block w-full text-left" onClick={() => setPreviewTemplate(item)} aria-label={`预览 ${item.manifest.title}`}><TemplateCover client={client} workspaceId={workspaceId} template={item} alt={`${item.manifest.title} 模板封面`} /></button><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2 text-sm font-semibold">{item.manifest.title}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">Local</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">更新</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">卸载</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">更新</button> : null}</div></details></div><div className="mt-4 flex items-center gap-2"><button type="button" onClick={() => setPreviewTemplate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dls-border px-3 text-xs font-medium text-dls-text transition hover:bg-dls-hover"><Eye className="size-3.5" />预览</button><button type="button" disabled={busyId === item.manifest.id} onClick={() => item.updateAvailable || !item.installed ? onInstall(item.manifest.id) : onChoose(item.manifest.id)} className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.updateAvailable ? "更新" : item.installed ? "使用模板" : "安装"}</button></div></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">这个分类还没有模板</p><p className="mt-1 text-xs text-dls-secondary">可导入标准 .ipwt 模板包。</p></div>}
+            <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← {t("templates.starter.back_to_categories")}</button><button type="button" onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text"><Upload className="size-3" />{t("template_market.import_ipwt")}</button><input ref={importRef} type="file" accept=".ipwt,application/zip" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
+            {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB · {t("templates.starter.file_type", { type: selectedCategory ? t(selectedCategory.labelKey) : "" })}</div></div><button type="button" onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text">{t("common.cancel")}</button><button type="button" onClick={() => { onImport(pendingImport, serverCategory); setPendingImport(null); }} className="h-7 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground">{t("template_market.install")}</button></div> : null}
+            {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><button type="button" className="block w-full text-left" onClick={() => setPreviewTemplate(item)} aria-label={t("template_market.preview_aria", { title: item.manifest.title })}><TemplateCover client={client} workspaceId={workspaceId} template={item} alt={t("template_market.cover_alt", { title: item.manifest.title })} /></button><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2 text-sm font-semibold">{item.manifest.title}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">{t("new_conversation.templates.local")}</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.update")}</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.uninstall_template")}</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.update_template")}</button> : null}</div></details></div><div className="mt-4 flex items-center gap-2"><button type="button" onClick={() => setPreviewTemplate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dls-border px-3 text-xs font-medium text-dls-text transition hover:bg-dls-hover"><Eye className="size-3.5" />{t("template_market.preview")}</button><button type="button" disabled={busyId === item.manifest.id} onClick={() => item.updateAvailable || !item.installed ? onInstall(item.manifest.id) : onChoose(item.manifest.id)} className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.updateAvailable ? t("template_market.update") : item.installed ? t("template_market.use_template") : t("template_market.install")}</button></div></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">{t("templates.starter.empty_title")}</p><p className="mt-1 text-xs text-dls-secondary">{t("templates.starter.empty_description")}</p></div>}
           </div>;
         })()}
       </div>
     </div>
-    <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}><DialogContent className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">{previewTemplate ? <><div className="aspect-video overflow-hidden bg-dls-hover"><TemplateCover client={client} workspaceId={workspaceId} template={previewTemplate} className="h-full" alt={`${previewTemplate.manifest.title} 模板预览`} /></div><div className="flex flex-col gap-4 border-t border-dls-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle><DialogDescription className="mt-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-dls-secondary">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>返回</Button><Button size="sm" className="rounded-xl" disabled={busyId === previewTemplate.manifest.id} onClick={() => { setPreviewTemplate(null); if (previewTemplate.updateAvailable || !previewTemplate.installed) onInstall(previewTemplate.manifest.id); else onChoose(previewTemplate.manifest.id); }}>{busyId === previewTemplate.manifest.id ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? "更新模板" : previewTemplate.installed ? "使用模板" : "安装模板"}</Button></div></div></> : null}</DialogContent></Dialog>
+    <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}><DialogContent className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">{previewTemplate ? <><div className="aspect-video overflow-hidden bg-dls-hover"><TemplateCover client={client} workspaceId={workspaceId} template={previewTemplate} className="h-full" alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} /></div><div className="flex flex-col gap-4 border-t border-dls-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle><DialogDescription className="mt-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-dls-secondary">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>{t("common.back")}</Button><Button size="sm" className="rounded-xl" disabled={busyId === previewTemplate.manifest.id} onClick={() => { setPreviewTemplate(null); if (previewTemplate.updateAvailable || !previewTemplate.installed) onInstall(previewTemplate.manifest.id); else onChoose(previewTemplate.manifest.id); }}>{busyId === previewTemplate.manifest.id ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? t("template_market.update_template") : previewTemplate.installed ? t("template_market.use_template") : t("template_market.install_template")}</Button></div></div></> : null}</DialogContent></Dialog>
   </>);
 }
 
 const TEMPLATE_PALETTE_FIELDS = [
-  { key: "canvas", label: "底色" },
-  { key: "text", label: "文字" },
-  { key: "accent", label: "强调" },
+  { key: "canvas", labelKey: "templates.palette_field.canvas" },
+  { key: "text", labelKey: "templates.palette_field.text" },
+  { key: "accent", labelKey: "templates.palette_field.accent" },
 ] as const;
 
 function TemplatePalettePreview({ palette }: { palette: TemplateColorPalette }) {
@@ -359,14 +360,17 @@ function TemplatePalettePicker({ selectedId, customPalette, onSelect, onCustomCo
   const selectedClass = "border-primary ring-2 ring-primary/20";
   const unselectedClass = "border-dls-border hover:border-dls-secondary";
   return <div>
-    <div className="flex items-baseline justify-between gap-3"><p className="text-sm font-medium">色组</p><p className="text-[11px] text-dls-secondary">底色 · 文字 · 强调</p></div>
+    <div className="flex items-baseline justify-between gap-3"><p className="text-sm font-medium">{t("templates.palette.title")}</p><p className="text-[11px] text-dls-secondary">{t("templates.palette.summary")}</p></div>
     <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-      {TEMPLATE_COLOR_PRESETS.map((palette) => <button key={palette.id} type="button" aria-pressed={selectedId === palette.id} onClick={() => onSelect(palette.id)} className={cn("rounded-xl border p-2 text-left transition", selectedId === palette.id ? selectedClass : unselectedClass)}><span className="mb-2 block"><TemplatePalettePreview palette={palette} /></span><span className="text-xs font-medium">{palette.label}</span></button>)}
+      {TEMPLATE_COLOR_PRESETS.map((palette) => <button key={palette.id} type="button" aria-pressed={selectedId === palette.id} onClick={() => onSelect(palette.id)} className={cn("rounded-xl border p-2 text-left transition", selectedId === palette.id ? selectedClass : unselectedClass)}><span className="mb-2 block"><TemplatePalettePreview palette={palette} /></span><span className="text-xs font-medium">{templateColorPaletteLabel(palette.id)}</span></button>)}
       <div className={cn("rounded-xl border p-2 transition", selectedId === "custom" ? selectedClass : unselectedClass)}>
-        <span className="mb-2 flex gap-1" aria-label="自定义色组">
-          {TEMPLATE_PALETTE_FIELDS.map((field) => <label key={field.key} title={`选择${field.label}颜色`} className="relative size-4 cursor-pointer overflow-hidden rounded-full border border-black/10" style={{ backgroundColor: customPalette[field.key] }} onPointerDown={() => onSelect("custom")}><input type="color" value={customPalette[field.key]} onChange={(event) => onCustomColorChange(field.key, event.currentTarget.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label={`自定义${field.label}颜色`} /></label>)}
+        <span className="mb-2 flex gap-1" aria-label={t("templates.palette.custom_group")}>
+          {TEMPLATE_PALETTE_FIELDS.map((field) => {
+            const label = t(field.labelKey);
+            return <label key={field.key} title={t("templates.palette.choose_color", { field: label })} className="relative size-4 cursor-pointer overflow-hidden rounded-full border border-black/10" style={{ backgroundColor: customPalette[field.key] }} onPointerDown={() => onSelect("custom")}><input type="color" value={customPalette[field.key]} onChange={(event) => onCustomColorChange(field.key, event.currentTarget.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label={t("templates.palette.custom_color_aria", { field: label })} /></label>;
+          })}
         </span>
-        <button type="button" aria-pressed={selectedId === "custom"} onClick={() => onSelect("custom")} className="w-full text-left text-xs font-medium">自定义</button>
+        <button type="button" aria-pressed={selectedId === "custom"} onClick={() => onSelect("custom")} className="w-full text-left text-xs font-medium">{templateColorPaletteLabel("custom")}</button>
       </div>
     </div>
   </div>;
@@ -380,10 +384,11 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
   const colorPalette = selectedPaletteId === "custom"
     ? customPalette
     : TEMPLATE_COLOR_PRESETS.find((palette) => palette.id === selectedPaletteId) ?? DEFAULT_TEMPLATE_COLOR_PALETTE;
-  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("relative p-5 pr-14", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><Button type="button" variant="ghost" size="icon-sm" className={cn("absolute right-4 top-4 rounded-full", template.surface === "video" ? "text-white/70 hover:text-white" : "text-dls-secondary hover:text-dls-text")} aria-label={t("common.close")} onClick={() => void onClose()}><X className="size-4" /></Button><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">（可选）</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<TemplatePalettePicker selectedId={selectedPaletteId} customPalette={customPalette} onSelect={setSelectedPaletteId} onCustomColorChange={(key, value) => setCustomPalette((current) => ({ ...current, [key]: value }))} /><Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim()} onClick={() => onSubmit({ ...brief, title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim(), colorPalette })}>{config.submitLabel}</Button></div></div></div>;
+  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("relative p-5 pr-14", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><Button type="button" variant="ghost" size="icon-sm" className={cn("absolute right-4 top-4 rounded-full", template.surface === "video" ? "text-white/70 hover:text-white" : "text-dls-secondary hover:text-dls-text")} aria-label={t("common.close")} onClick={() => void onClose()}><X className="size-4" /></Button><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<TemplatePalettePicker selectedId={selectedPaletteId} customPalette={customPalette} onSelect={setSelectedPaletteId} onCustomColorChange={(key, value) => setCustomPalette((current) => ({ ...current, [key]: value }))} /><Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim()} onClick={() => onSubmit({ ...brief, title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim(), colorPalette })}>{config.submitLabel}</Button></div></div></div>;
 }
 
 export function SessionPage(props: SessionPageProps) {
+  const locale = currentLocale();
   const { config: shellConfig } = useShellConfig();
   const platform = usePlatform();
   const navigate = useNavigate();
@@ -471,7 +476,7 @@ export function SessionPage(props: SessionPageProps) {
     setTemplateCatalogLoading(true);
     setTemplateCatalogError(null);
     try { setTemplateCatalog((await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId)).items); }
-    catch (error) { setTemplateCatalogError(error instanceof Error ? error.message : "无法读取模板"); }
+    catch (error) { setTemplateCatalogError(error instanceof Error ? error.message : t("templates.error_load")); }
     finally { setTemplateCatalogLoading(false); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   const getTemplateCover = useCallback((templateId: string) => {
@@ -544,22 +549,22 @@ export function SessionPage(props: SessionPageProps) {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateBusyId(templateId);
     try { await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, templateId); await refreshTemplateCatalog(); }
-    catch (error) { toast.error(error instanceof Error ? error.message : "安装模板失败"); }
+    catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_install")); }
     finally { setTemplateBusyId(null); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
   const uninstallDesignTemplate = useCallback(async (templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
-    if (!window.confirm("卸载后，已有作品不会被删除。确定卸载这个模板吗？")) return;
+    if (!window.confirm(t("templates.confirm_uninstall"))) return;
     setTemplateBusyId(templateId);
     try { await props.ipolloworkServerClient.uninstallTemplate(props.runtimeWorkspaceId, templateId); await refreshTemplateCatalog(); }
-    catch (error) { toast.error(error instanceof Error ? error.message : "卸载模板失败"); }
+    catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_uninstall")); }
     finally { setTemplateBusyId(null); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
   const importDesignTemplate = useCallback(async (file: File, category: TemplateManifestV1["category"]) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateBusyId("import");
-    try { const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file, category); toast.success(`已安装 ${result.item.manifest.title}`); await refreshTemplateCatalog(); }
-    catch (error) { toast.error(error instanceof Error ? error.message : "模板包无效"); }
+    try { const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file, category); toast.success(t("templates.toast_installed", { title: result.item.manifest.title })); await refreshTemplateCatalog(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_invalid_package")); }
     finally { setTemplateBusyId(null); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
   const saveCurrentAsTemplate = useCallback(async (input: { title: string; category: TemplateManifestV1["category"]; style: TemplateStyle }) => {
@@ -572,10 +577,10 @@ export function SessionPage(props: SessionPageProps) {
         title: input.title,
         style: input.style,
       });
-      toast.success(`已保存 ${result.item.manifest.title}`);
+      toast.success(t("templates.toast_saved", { title: result.item.manifest.title }));
       await refreshTemplateCatalog();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "保存模板失败");
+      toast.error(error instanceof Error ? error.message : t("templates.error_save"));
     } finally {
       setTemplateBusyId(null);
     }
@@ -1144,7 +1149,7 @@ export function SessionPage(props: SessionPageProps) {
   const sidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
     {
       id: "web",
-      label: "网页",
+      label: t("session.side_panel.web"),
       shortcut: "⌘T",
       iconSrc: publicAssetUrl("sidebar-entry-web.svg"),
       active: panelRailActive,
@@ -1153,7 +1158,7 @@ export function SessionPage(props: SessionPageProps) {
     },
     {
       id: "code",
-      label: "代码",
+      label: t("session.side_panel.code"),
       iconSrc: publicAssetUrl("sidebar-entry-code.svg"),
       active: designRailActive,
       onClick: showDesignRailPane,
@@ -1161,7 +1166,7 @@ export function SessionPage(props: SessionPageProps) {
     },
     {
       id: "files",
-      label: "文件",
+      label: t("session.side_panel.files"),
       shortcut: "⌘P",
       iconSrc: publicAssetUrl("sidebar-entry-file.svg"),
       active: panelRailActive && activePanelTab?.type === "artifact",
@@ -1170,13 +1175,13 @@ export function SessionPage(props: SessionPageProps) {
     },
     {
       id: "video",
-      label: "视频",
+      label: t("session.side_panel.video"),
       iconSrc: publicAssetUrl("sidebar-entry-video.svg"),
       active: videoRailActive,
       onClick: showVideoRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
     },
-  ], [activePanelTab?.type, addBrowserPanelTab, designRailActive, hasArtifactTargets, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive]);
+  ], [activePanelTab?.type, addBrowserPanelTab, designRailActive, hasArtifactTargets, locale, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive]);
   const removeAccessibleTarget = useCallback((target: OpenTarget) => {
     const nextHiddenIds = new Set(hiddenAccessibleTargetIds);
     nextHiddenIds.add(target.id);
@@ -1618,7 +1623,7 @@ export function SessionPage(props: SessionPageProps) {
                 <div className="flex h-full min-h-0 flex-col lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1">
                       {isDesignSession && templateSessionLoading ? (
-                        <div className="flex h-full items-center justify-center gap-2 text-sm text-dls-secondary"><LoaderCircle className="size-4 animate-spin" />正在准备模板</div>
+                        <div className="flex h-full items-center justify-center gap-2 text-sm text-dls-secondary"><LoaderCircle className="size-4 animate-spin" />{t("templates.preparing")}</div>
                       ) : isDesignSession && !hasTemplateSession && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
                         <DesignStarter
                           client={props.ipolloworkServerClient}
@@ -1941,7 +1946,7 @@ export function SessionPage(props: SessionPageProps) {
         onSaveCurrent={(input) => void saveCurrentAsTemplate(input)}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {
-            toast.error("视频模板仅支持本地工作站。");
+            toast.error(t("templates.video_local_only"));
             return;
           }
           setTemplateMarketOpen(false);

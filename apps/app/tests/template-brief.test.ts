@@ -1,40 +1,45 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
+import { setLocale } from "../src/i18n";
 import { customTemplateColorPalette, isVideoStudioReady, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt } from "../src/react-app/domains/session/templates/template-brief";
 
 describe("template brief", () => {
+  beforeEach(() => {
+    setLocale("en");
+  });
+
   test("asks website creators for a site-specific brief", () => {
     const config = templateBriefConfigFor({ category: "site" });
 
     expect(config.fields.map((field) => field.label)).toEqual([
-      "网站名称",
-      "网站是做什么的、给谁用",
-      "核心页面或功能",
+      "Website name",
+      "What the website does and who it is for",
+      "Core pages or features",
     ]);
-    expect(config.submitLabel).toBe("生成网站");
+    expect(config.submitLabel).toBe("Generate website");
   });
 
   test("asks video creators for a purpose and audience without a narration question", () => {
     const config = templateBriefConfigFor({ category: "video" });
 
     expect(config.fields.map((field) => field.label)).toEqual([
-      "视频主题",
-      "面向谁",
-      "想传达或促成什么",
+      "Video topic",
+      "Who it is for",
+      "What it should communicate or drive",
     ]);
-    expect(config.description).toContain("旁白、节奏与分镜由 AI");
-    expect(config.fields.some((field) => field.label.includes("旁白"))).toBe(false);
+    expect(config.description).toContain("AI will decide the narration");
+    expect(config.fields.some((field) => field.label.includes("narration"))).toBe(false);
   });
 
   test("uses a resume-specific brief for templates filed under other", () => {
     const config = templateBriefConfigFor({ category: "other", subcategory: "resume", title: "Minimal CV" });
 
     expect(config.fields.map((field) => field.label)).toEqual([
-      "姓名与目标岗位",
-      "面向什么职位或公司",
-      "经历、技能或成果亮点",
+      "Name and target role",
+      "Target role or company",
+      "Experience, skills, or outcome highlights",
     ]);
-    expect(config.submitLabel).toBe("生成简历");
+    expect(config.submitLabel).toBe("Generate resume");
     expect(templateBriefPrompt({
       template: { category: "other", subcategory: "resume", title: "Minimal CV", applyChecklist: ["Keep layout"] },
       entryPath: "design/ses_resume/index.html",
