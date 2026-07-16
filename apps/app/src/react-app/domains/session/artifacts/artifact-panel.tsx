@@ -1,12 +1,18 @@
 /** @jsxImportSource react */
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, FolderOpen, X } from "lucide-react";
+import { Download, ExternalLink, FolderOpen, Loader2, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getDesktopFileIcon, openDesktopPath, revealDesktopItemInDir } from "@/app/lib/desktop";
 import { isElectronRuntime } from "@/app/utils";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatFileSize } from "@/lib/utils";
@@ -59,6 +65,263 @@ function isTextContent(target: OpenTarget): boolean {
   return ["markdown", "text", "sheet", "html"].includes(target.preview) && !/\.(xlsx|xls|ods)$/i.test(target.value);
 }
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = "none";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function preparePdfExportContent(source: HTMLElement) {
+  const content = source.cloneNode(true);
+
+  if (!(content instanceof HTMLElement)) {
+    return null;
+  }
+
+  for (const element of [content, ...Array.from(content.querySelectorAll<HTMLElement>("*"))]) {
+    const tagName = element.tagName.toLowerCase();
+
+    element.removeAttribute("class");
+    element.removeAttribute("style");
+    element.style.boxSizing = "border-box";
+    element.style.color = "#111827";
+    element.style.borderColor = "#d1d5db";
+    element.style.textDecorationColor = "currentColor";
+
+    if (tagName === "h1") {
+      element.style.margin = "20px 0 12px";
+      element.style.fontSize = "24px";
+      element.style.fontWeight = "700";
+      element.style.lineHeight = "1.3";
+    }
+    else if (tagName === "h2") {
+      element.style.margin = "18px 0 10px";
+      element.style.fontSize = "20px";
+      element.style.fontWeight = "700";
+      element.style.lineHeight = "1.35";
+    }
+    else if (tagName === "h3" || tagName === "h4" || tagName === "h5" || tagName === "h6") {
+      element.style.margin = "16px 0 8px";
+      element.style.fontSize = "16px";
+      element.style.fontWeight = "700";
+      element.style.lineHeight = "1.4";
+    }
+    else if (tagName === "p") {
+      element.style.margin = "10px 0";
+    }
+    else if (tagName === "ul" || tagName === "ol") {
+      element.style.margin = "10px 0";
+      element.style.paddingLeft = "24px";
+    }
+    else if (tagName === "li") {
+      element.style.margin = "4px 0";
+    }
+    else if (tagName === "a") {
+      element.style.color = "#4f46e5";
+      element.style.textDecoration = "underline";
+    }
+    else if (tagName === "blockquote") {
+      element.style.margin = "16px 0";
+      element.style.padding = "10px 14px";
+      element.style.borderLeft = "4px solid #d1d5db";
+      element.style.backgroundColor = "#f9fafb";
+      element.style.color = "#4b5563";
+    }
+    else if (tagName === "pre") {
+      element.style.margin = "16px 0";
+      element.style.padding = "12px";
+      element.style.overflow = "visible";
+      element.style.whiteSpace = "pre-wrap";
+      element.style.border = "1px solid #d1d5db";
+      element.style.borderRadius = "8px";
+      element.style.backgroundColor = "#f9fafb";
+      element.style.color = "#4b5563";
+      element.style.fontFamily = "Consolas, monospace";
+      element.style.fontSize = "12px";
+    }
+    else if (tagName === "code") {
+      element.style.borderRadius = "4px";
+      element.style.backgroundColor = element.closest("pre") ? "transparent" : "#f3f4f6";
+      element.style.fontFamily = "Consolas, monospace";
+      element.style.fontSize = "12px";
+      element.style.padding = element.closest("pre") ? "0" : "2px 4px";
+    }
+    else if (tagName === "table") {
+      element.style.width = "100%";
+      element.style.margin = "16px 0";
+      element.style.borderCollapse = "collapse";
+    }
+    else if (tagName === "th" || tagName === "td") {
+      element.style.padding = "8px";
+      element.style.border = "1px solid #d1d5db";
+      element.style.textAlign = "left";
+      element.style.verticalAlign = "top";
+      if (tagName === "th") element.style.backgroundColor = "#f3f4f6";
+    }
+    else if (tagName === "hr") {
+      element.style.margin = "24px 0";
+      element.style.border = "0";
+      element.style.height = "1px";
+      element.style.backgroundColor = "#d1d5db";
+    }
+    else if (tagName === "img") {
+      element.style.maxWidth = "100%";
+      element.style.height = "auto";
+      element.style.borderRadius = "8px";
+    }
+  }
+
+  return content;
+}
+
+function waitForNextFrame() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+function canvasHasVisibleContent(canvas: HTMLCanvasElement) {
+  if (canvas.width === 0 || canvas.height === 0) return false;
+
+  const context = canvas.getContext("2d");
+
+  if (!context) return false;
+
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+
+  for (let index = 0; index < data.length; index += 16) {
+    const red = data[index];
+    const green = data[index + 1];
+    const blue = data[index + 2];
+    const alpha = data[index + 3];
+
+    if (alpha > 0 && (red < 245 || green < 245 || blue < 245)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function createPdfExportFrame(content: HTMLElement) {
+  const frame = document.createElement("iframe");
+
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.position = "fixed";
+  frame.style.left = "0";
+  frame.style.top = "0";
+  frame.style.width = "794px";
+  frame.style.height = "1123px";
+  frame.style.border = "0";
+  frame.style.opacity = "0";
+  frame.style.pointerEvents = "none";
+  document.body.append(frame);
+
+  const frameDocument = frame.contentDocument;
+
+  if (!frameDocument) {
+    frame.remove();
+
+    return null;
+  }
+
+  frameDocument.documentElement.style.backgroundColor = "#ffffff";
+  frameDocument.body.style.margin = "0";
+  frameDocument.body.style.backgroundColor = "#ffffff";
+
+  const root = frameDocument.createElement("div");
+
+  root.style.boxSizing = "border-box";
+  root.style.width = "794px";
+  root.style.minHeight = "1123px";
+  root.style.padding = "32px";
+  root.style.overflow = "visible";
+  root.style.backgroundColor = "#ffffff";
+  root.style.color = "#111827";
+  root.style.fontFamily = "Arial, sans-serif";
+  root.style.fontSize = "14px";
+  root.style.lineHeight = "1.65";
+  root.append(frameDocument.importNode(content, true));
+  frameDocument.body.append(root);
+
+  return { frame, root };
+}
+
+async function createMarkdownPdf(source: HTMLElement) {
+  const content = preparePdfExportContent(source);
+
+  if (!content) throw new Error("Could not prepare this PDF.");
+
+  const exportFrame = createPdfExportFrame(content);
+
+  if (!exportFrame) throw new Error("Could not prepare this PDF.");
+
+  try {
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
+
+    await waitForNextFrame();
+
+    const captureHeight = Math.max(exportFrame.root.scrollHeight, exportFrame.root.offsetHeight, 1);
+    const canvas = await html2canvas(exportFrame.root, {
+      backgroundColor: "#ffffff",
+      scale: 1.5,
+      useCORS: true,
+      width: 794,
+      height: captureHeight,
+      windowWidth: 794,
+      windowHeight: captureHeight,
+    });
+
+    if (!canvasHasVisibleContent(canvas)) {
+      throw new Error("PDF capture was blank. Please try again after the preview finishes rendering.");
+    }
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 12;
+    const imageWidth = pageWidth - margin * 2;
+    const imageHeight = pageHeight - margin * 2;
+    const pageHeightPixels = Math.max(1, Math.floor(canvas.width * imageHeight / imageWidth));
+
+    for (let top = 0, page = 0; top < canvas.height; top += pageHeightPixels, page += 1) {
+      const sliceHeight = Math.min(pageHeightPixels, canvas.height - top);
+      const pageCanvas = document.createElement("canvas");
+      const pageContext = pageCanvas.getContext("2d");
+
+      if (!pageContext) throw new Error("Could not prepare this PDF.");
+
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sliceHeight;
+      pageContext.fillStyle = "#ffffff";
+      pageContext.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      pageContext.drawImage(canvas, 0, top, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+
+      if (page > 0) pdf.addPage();
+
+      const pageHeightMm = sliceHeight * imageWidth / canvas.width;
+      const pageImage = pageCanvas.toDataURL("image/jpeg", 0.88);
+
+      pdf.addImage(pageImage, "JPEG", margin, margin, imageWidth, pageHeightMm, undefined, "FAST");
+    }
+
+    return pdf.output("blob");
+  } finally {
+    exportFrame.frame.remove();
+  }
+}
+
 export function ArtifactPanel({ sessionId, tab, client, workspaceId, workspaceRoot, isRemoteWorkspace = false, onClose }: ArtifactPanelProps) {
   const transcriptTargets = usePanelTabStore((state) => state.transcriptArtifactTargets[sessionId] ?? EMPTY_TRANSCRIPT_TARGETS);
   const artifactTargets = useMemo(() => transcriptTargets.filter(isCollectibleArtifactTarget), [transcriptTargets]);
@@ -85,6 +348,9 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [autoSaveBlockedDraft, setAutoSaveBlockedDraft] = useState<string | null>(null);
+  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
+  const visibleMarkdownRef = useRef<HTMLDivElement | null>(null);
+  const pdfContentRef = useRef<HTMLDivElement | null>(null);
   const isDirectTextEdit = isTextContent(target) && target.preview === "markdown";
   const externalPath = useMemo(() => target.kind === "file" ? absoluteWorkspacePath(workspaceRoot, target.value) : target.value, [target.kind, target.value, workspaceRoot]);
 
@@ -204,14 +470,45 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
     }
 
     const result = await client.downloadWorkspaceFile(workspaceId, target.value);
-    const url = URL.createObjectURL(new Blob([result.data], { type: result.contentType ?? "application/octet-stream" }));
-    const anchor = document.createElement("a");
 
-    anchor.href = url;
-    anchor.download = target.name;
-    anchor.click();
+    downloadBlob(new Blob([result.data], { type: result.contentType ?? "application/octet-stream" }), target.name);
+  };
 
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const downloadMarkdown = () => {
+    if (target.kind !== "file" || target.preview !== "markdown" || data?.kind !== "text") {
+      return;
+    }
+
+    downloadBlob(new Blob([draft], { type: "text/markdown;charset=utf-8" }), target.name);
+  };
+
+  const downloadPdf = async () => {
+    if (target.kind !== "file" || target.preview !== "markdown" || data?.kind !== "text" || isPdfGenerating) {
+      return;
+    }
+
+    const content = pdfContentRef.current ?? visibleMarkdownRef.current;
+
+    if (!content) {
+      toast.error("Could not prepare this PDF.");
+
+      return;
+    }
+
+    setIsPdfGenerating(true);
+
+    try {
+      const filename = target.name.replace(/\.(md|markdown|mdx)$/i, ".pdf");
+      const pdf = await createMarkdownPdf(content);
+
+      downloadBlob(pdf, filename);
+
+      toast.success("PDF downloaded.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Could not download this PDF.");
+    } finally {
+      setIsPdfGenerating(false);
+    }
   };
 
   const openExternal = async () => {
@@ -288,8 +585,14 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="shrink-0 border-b border-[#EAEAEA] bg-background [border-bottom-width:0.5px] mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
+    <div className="relative flex h-full min-h-0 flex-col bg-background">
+      {isPdfGenerating ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-50 inline-flex -translate-x-1/2 items-center gap-2 rounded-md border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+          <Loader2 className="size-3.5 animate-spin" />
+          <span>正在生成PDF~</span>
+        </div>
+      ) : null}
+      <div className="shrink-0 border-b border-border bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
         <div className="flex h-10 items-center gap-2 pe-2 ps-4">
           <div className="min-w-0 flex-1 flex items-center gap-1.5">
             {fileIcon ? (
@@ -363,7 +666,25 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
               </Tooltip>
             )
           ) : null}
-          {target.kind === "file" ? (
+          {target.kind === "file" && target.preview === "markdown" ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={(
+                  <Button variant="ghost" size="icon-sm" aria-label="Download options">
+                    <Download />
+                  </Button>
+                )}
+              />
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={downloadMarkdown}>
+                  下载MarkDown文件
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={isPdfGenerating} onClick={() => void downloadPdf()}>
+                  下载PDF文件
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : target.kind === "file" ? (
             <Tooltip>
               <TooltipTrigger
                 render={(
@@ -418,7 +739,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
         ) : data?.kind === "text" && (editing || isDirectTextEdit) ? (
           <TextEditor value={draft} language={target.preview === "markdown" ? "markdown" : "text"} onChange={setDraft} />
         ) : target.preview === "markdown" && data?.kind === "text" ? (
-          <MarkdownPreview content={data.data} />
+          <MarkdownPreview ref={visibleMarkdownRef} content={data.data} />
         ) : target.preview === "sheet" ? (
           <SheetEditor
             name={target.name}
@@ -440,6 +761,11 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
           <PreviewUnavailable />
         )}
       </div>
+      {target.preview === "markdown" && data?.kind === "text" ? (
+        <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0 w-[794px]" style={{ backgroundColor: "#ffffff", color: "#111827" }}>
+          <MarkdownPreview ref={pdfContentRef} content={draft} data-pdf-export-root="" className="h-auto min-h-0 overflow-visible" />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,12 +1,14 @@
 /** @jsxImportSource react */
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { UIMessage } from "ai";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
-import { Ellipsis, Eye, Globe, Image, LoaderCircle, Mic2, Palette, Pencil, Presentation, Search, Settings2, Trash2, Upload, Zap } from "lucide-react";
-import type { TemplateCatalogItem, TemplateManifestV1, TemplateSessionState, TemplateStyle } from "@ipollowork/types/templates";
+import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, Zap } from "lucide-react";
+import type { TemplateCatalogItem, TemplateManifestV1, TemplateSessionSnapshot, TemplateSessionState, TemplateStyle } from "@ipollowork/types/templates";
 
 import { t } from "../../../../i18n";
+import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
 import { buildDenAuthUrl, readDenBootstrapConfig } from "../../../../app/lib/den";
 import { type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
@@ -23,6 +25,7 @@ import type {
   WorkspaceSessionGroup,
 } from "../../../../app/types";
 import type { ShareWorkspaceModalProps } from "../../workspace/types";
+import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -70,6 +73,7 @@ import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
 import { VideoPanel } from "../video/video-panel";
+import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, isVideoStudioReady, templateBriefConfigFor, templateBriefPrompt, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
@@ -334,24 +338,51 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
         })()}
       </div>
     </div>
-    <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}><DialogContent className="max-w-5xl gap-0 overflow-hidden p-0 sm:max-w-5xl">{previewTemplate ? <><div className="aspect-video overflow-hidden bg-dls-hover"><TemplateCover client={client} workspaceId={workspaceId} template={previewTemplate} className="h-full" alt={`${previewTemplate.manifest.title} 模板预览`} /></div><div className="flex flex-col gap-4 border-t border-dls-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle><DialogDescription className="mt-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-dls-secondary">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>返回</Button><Button size="sm" className="rounded-xl" disabled={busyId === previewTemplate.manifest.id} onClick={() => previewTemplate.updateAvailable || !previewTemplate.installed ? onInstall(previewTemplate.manifest.id) : onChoose(previewTemplate.manifest.id)}>{busyId === previewTemplate.manifest.id ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? "更新模板" : previewTemplate.installed ? "使用模板" : "安装模板"}</Button></div></div></> : null}</DialogContent></Dialog>
+    <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}><DialogContent className="max-w-5xl gap-0 overflow-hidden p-0 sm:max-w-5xl">{previewTemplate ? <><div className="aspect-video overflow-hidden bg-dls-hover"><TemplateCover client={client} workspaceId={workspaceId} template={previewTemplate} className="h-full" alt={`${previewTemplate.manifest.title} 模板预览`} /></div><div className="flex flex-col gap-4 border-t border-dls-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle><DialogDescription className="mt-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-dls-secondary">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>返回</Button><Button size="sm" className="rounded-xl" disabled={busyId === previewTemplate.manifest.id} onClick={() => { setPreviewTemplate(null); if (previewTemplate.updateAvailable || !previewTemplate.installed) onInstall(previewTemplate.manifest.id); else onChoose(previewTemplate.manifest.id); }}>{busyId === previewTemplate.manifest.id ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? "更新模板" : previewTemplate.installed ? "使用模板" : "安装模板"}</Button></div></div></> : null}</DialogContent></Dialog>
   </>);
 }
 
-const DESIGN_THEME_PRESETS = [
-  { id: "ember", label: "暖橙", primary: "#c96442", colors: ["#fafaf9", "#1c1b1a", "#c96442"] },
-  { id: "ocean", label: "深海蓝", primary: "#2563eb", colors: ["#f8fafc", "#172554", "#2563eb"] },
-  { id: "violet", label: "紫罗兰", primary: "#7c3aed", colors: ["#faf5ff", "#2e1065", "#7c3aed"] },
-  { id: "forest", label: "森林绿", primary: "#059669", colors: ["#f0fdf4", "#064e3b", "#059669"] },
+const TEMPLATE_PALETTE_FIELDS = [
+  { key: "canvas", label: "底色" },
+  { key: "text", label: "文字" },
+  { key: "accent", label: "强调" },
 ] as const;
 
-function DesignBriefCard({ template, onSubmit }: { template: TemplateManifestV1; onSubmit: (brief: { name: string; purpose: string; features: string; color: string }) => void }) {
-  const isSlides = template.category === "slides";
-  const [name, setName] = useState("");
-  const [purpose, setPurpose] = useState("");
-  const [features, setFeatures] = useState("");
-  const [color, setColor] = useState<string>(isSlides ? DESIGN_THEME_PRESETS[2].primary : DESIGN_THEME_PRESETS[0].primary);
-  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("p-5", isSlides ? "bg-gradient-to-br from-slate-950 via-violet-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><p className={cn("text-xs font-medium", isSlides ? "text-violet-200" : "text-dls-secondary")}>{template.title} · Design brief</p><h2 className="mt-1 text-lg font-semibold">{isSlides ? "定义这份演示" : "告诉我你要做什么"}</h2><p className={cn("mt-1 text-sm", isSlides ? "text-white/65" : "text-dls-secondary")}>这会直接应用到当前模板，之后仍可在画布中修改。</p></div><div className="space-y-4 p-5"><label className="block text-sm font-medium">{isSlides ? "演示标题" : "名称"}<Input value={name} onChange={(event) => setName(event.currentTarget.value)} placeholder={isSlides ? "例如：iPolloWork 融资路演" : "例如：iPollo Studio"} className="mt-2" /></label><label className="block text-sm font-medium">{isSlides ? "这份演示要说服谁、做什么决定" : "网站是做什么的"}<Input value={purpose} onChange={(event) => setPurpose(event.currentTarget.value)} placeholder={isSlides ? "例如：面向投资人，说明市场机会与融资计划" : "例如：帮助团队用 AI 完成创意工作"} className="mt-2" /></label><label className="block text-sm font-medium">{isSlides ? "必须包含的内容与数据" : "主要功能"}<Input value={features} onChange={(event) => setFeatures(event.currentTarget.value)} placeholder={isSlides ? "例如：问题、方案、增长数据、商业模式、融资用途" : "例如：项目协作、作品展示、预约咨询"} className="mt-2" /></label><div><p className="text-sm font-medium">主题色</p><div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">{DESIGN_THEME_PRESETS.map((theme) => <button key={theme.id} type="button" onClick={() => setColor(theme.primary)} className={cn("rounded-xl border p-2 text-left transition", color === theme.primary ? "border-primary ring-2 ring-primary/20" : "border-dls-border hover:border-dls-secondary")}><span className="mb-2 flex gap-1">{theme.colors.map((tone) => <span key={tone} className="size-4 rounded-full border border-black/10" style={{ backgroundColor: tone }} />)}</span><span className="text-xs font-medium">{theme.label}</span></button>)}</div><label className="mt-3 flex items-center gap-2 text-xs text-dls-secondary">自定义颜色<input type="color" value={color} onChange={(event) => setColor(event.currentTarget.value)} className="size-7 cursor-pointer rounded border-0 bg-transparent p-0" /></label></div><Button className="w-full" disabled={!name.trim() || !purpose.trim()} onClick={() => onSubmit({ name: name.trim(), purpose: purpose.trim(), features: features.trim(), color })}>{isSlides ? "生成幻灯片" : "生成我的网站"}</Button></div></div></div>;
+function TemplatePalettePreview({ palette }: { palette: TemplateColorPalette }) {
+  return <span className="flex gap-1" aria-hidden="true">{paletteColors(palette).map((color) => <span key={color} className="size-4 rounded-full border border-black/10" style={{ backgroundColor: color }} />)}</span>;
+}
+
+function TemplatePalettePicker({ selectedId, customPalette, onSelect, onCustomColorChange }: {
+  selectedId: string;
+  customPalette: TemplateColorPalette;
+  onSelect: (id: string) => void;
+  onCustomColorChange: (key: (typeof TEMPLATE_PALETTE_FIELDS)[number]["key"], value: string) => void;
+}) {
+  const selectedClass = "border-primary ring-2 ring-primary/20";
+  const unselectedClass = "border-dls-border hover:border-dls-secondary";
+  return <div>
+    <div className="flex items-baseline justify-between gap-3"><p className="text-sm font-medium">色组</p><p className="text-[11px] text-dls-secondary">底色 · 文字 · 强调</p></div>
+    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {TEMPLATE_COLOR_PRESETS.map((palette) => <button key={palette.id} type="button" aria-pressed={selectedId === palette.id} onClick={() => onSelect(palette.id)} className={cn("rounded-xl border p-2 text-left transition", selectedId === palette.id ? selectedClass : unselectedClass)}><span className="mb-2 block"><TemplatePalettePreview palette={palette} /></span><span className="text-xs font-medium">{palette.label}</span></button>)}
+      <div className={cn("rounded-xl border p-2 transition", selectedId === "custom" ? selectedClass : unselectedClass)}>
+        <span className="mb-2 flex gap-1" aria-label="自定义色组">
+          {TEMPLATE_PALETTE_FIELDS.map((field) => <label key={field.key} title={`选择${field.label}颜色`} className="relative size-4 cursor-pointer overflow-hidden rounded-full border border-black/10" style={{ backgroundColor: customPalette[field.key] }} onPointerDown={() => onSelect("custom")}><input type="color" value={customPalette[field.key]} onChange={(event) => onCustomColorChange(field.key, event.currentTarget.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label={`自定义${field.label}颜色`} /></label>)}
+        </span>
+        <button type="button" aria-pressed={selectedId === "custom"} onClick={() => onSelect("custom")} className="w-full text-left text-xs font-medium">自定义</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function TemplateBriefCard({ template, onSubmit }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief) => void }) {
+  const config = templateBriefConfigFor(template);
+  const [brief, setBrief] = useState<Omit<TemplateBrief, "colorPalette">>({ title: "", audience: "", details: "" });
+  const [selectedPaletteId, setSelectedPaletteId] = useState(DEFAULT_TEMPLATE_COLOR_PALETTE.id);
+  const [customPalette, setCustomPalette] = useState(() => customTemplateColorPalette(paletteColors(DEFAULT_TEMPLATE_COLOR_PALETTE)));
+  const colorPalette = selectedPaletteId === "custom"
+    ? customPalette
+    : TEMPLATE_COLOR_PRESETS.find((palette) => palette.id === selectedPaletteId) ?? DEFAULT_TEMPLATE_COLOR_PALETTE;
+  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("p-5", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">（可选）</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<TemplatePalettePicker selectedId={selectedPaletteId} customPalette={customPalette} onSelect={setSelectedPaletteId} onCustomColorChange={(key, value) => setCustomPalette((current) => ({ ...current, [key]: value }))} /><Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim()} onClick={() => onSubmit({ ...brief, title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim(), colorPalette })}>{config.submitLabel}</Button></div></div></div>;
 }
 
 export function SessionPage(props: SessionPageProps) {
@@ -389,13 +420,14 @@ export function SessionPage(props: SessionPageProps) {
   const artifactTargetCount = artifactFileTargets.length;
   const hasArtifactTargets = artifactTargetCount > 0;
   const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
-  const [designTemplateRevision, setDesignTemplateRevision] = useState(0);
+  const [templateSessionRevision, setTemplateSessionRevision] = useState(0);
   const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
   const [templateCatalogLoading, setTemplateCatalogLoading] = useState(false);
   const [templateCatalogError, setTemplateCatalogError] = useState<string | null>(null);
   const [templateBusyId, setTemplateBusyId] = useState<string | null>(null);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
-  const [designTemplateData, setDesignTemplateData] = useState<{ state: TemplateSessionState; manifest: TemplateManifestV1; hasBrief: boolean } | null>(null);
+  const [templateSessionData, setTemplateSessionData] = useState<{ state: TemplateSessionState; manifest: TemplateManifestV1; hasBrief: boolean } | null>(null);
+  const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
   const [sessionTypeRevision, setSessionTypeRevision] = useState(0);
   const [videoPanelVisibilityRevision, setVideoPanelVisibilityRevision] = useState(0);
   const selectedSessionType = useMemo(() => (
@@ -408,14 +440,28 @@ export function SessionPage(props: SessionPageProps) {
   const isVideoPanelCollapsed = useMemo(() => (
     Boolean(props.selectedSessionId && typeof window !== "undefined" && window.localStorage.getItem(videoPanelCollapsedStorageKey(props.selectedSessionId)) === "true")
   ), [props.selectedSessionId, videoPanelVisibilityRevision]);
-  const hasDesignTemplate = Boolean(designTemplateData);
-  const hasDesignBrief = designTemplateData?.hasBrief === true;
-  const selectedDesignTemplate = designTemplateData?.manifest ?? null;
+  const hasTemplateSession = Boolean(templateSessionData);
+  const hasTemplateBrief = templateSessionData?.hasBrief === true;
+  const selectedTemplate = templateSessionData?.manifest ?? null;
+  const [conversationMessageState, setConversationMessageState] = useState<{ sessionId: string | null; messages: UIMessage[] }>({
+    sessionId: null,
+    messages: [],
+  });
+  const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
+    setConversationMessageState({ sessionId, messages });
+  }, []);
+  const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
+    ? conversationMessageState.messages
+    : [];
   const activateVideoStudio = useCallback(() => {
     // Video creation always begins with a selected video template. This keeps
     // the right studio and the agent on the same canonical session snapshot.
     setTemplateMarketOpen(true);
   }, []);
+  const openCurrentVideoStudio = useCallback(() => {
+    if (!props.selectedSessionId) return;
+    setSidePanelState(props.selectedSessionId, "video");
+  }, [props.selectedSessionId, setSidePanelState]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateCatalogLoading(true);
@@ -431,41 +477,56 @@ export function SessionPage(props: SessionPageProps) {
     return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   useEffect(() => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) { setDesignTemplateData(null); return; }
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || (selectedSessionType !== "design" && selectedSessionType !== "video")) {
+      setTemplateSessionData(null);
+      setTemplateSessionLoading(false);
+      return;
+    }
     let active = true;
     const client = props.ipolloworkServerClient;
     const workspaceId = props.runtimeWorkspaceId;
     const sessionId = props.selectedSessionId;
+    setTemplateSessionLoading(true);
     void (async () => {
       try {
-        const result = await client.getTemplateSession(workspaceId, sessionId);
+        let result: TemplateSessionSnapshot;
+        try {
+          result = await client.getTemplateSession(workspaceId, sessionId);
+        } catch (error) {
+          // Sessions created before template persistence already have exactly
+          // one Studio project at video/<session>. Claim that project once so
+          // future app launches and agent prompts use its stored binding.
+          if (selectedSessionType !== "video") throw error;
+          result = await client.adoptLegacyVideoSession(workspaceId, sessionId);
+        }
         const materializedType = sessionTypeForTemplate(result.manifest);
         if (materializedType !== selectedSessionType) {
           setSessionType(sessionId, materializedType);
           setSessionTypeRevision((value) => value + 1);
           if (materializedType === "video") setVideoPanelVisibilityRevision((value) => value + 1);
         }
-        if (materializedType !== "design") {
-          if (active) setDesignTemplateData(null);
+        if (materializedType !== "design" && materializedType !== "video") {
+          if (active) setTemplateSessionData(null);
           return;
         }
         let hasBrief = false;
         try { const brief = JSON.parse((await client.readWorkspaceFile(workspaceId, result.state.briefPath)).content); hasBrief = Boolean(brief && typeof brief === "object" && Object.keys(brief).length); } catch { hasBrief = false; }
-        if (active) setDesignTemplateData({ ...result, hasBrief });
-      } catch { if (active) setDesignTemplateData(null); }
+        if (active) setTemplateSessionData({ ...result, hasBrief });
+      } catch { if (active) setTemplateSessionData(null); }
+      finally { if (active) setTemplateSessionLoading(false); }
     })();
     void refreshTemplateCatalog();
     return () => { active = false; };
-  }, [designTemplateRevision, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog, selectedSessionType]);
+  }, [templateSessionRevision, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog, selectedSessionType]);
   const chooseDesignTemplate = useCallback(async (templateId: iPolloWorkTemplateId) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     try {
       setTemplateBusyId(templateId);
       const result = await props.ipolloworkServerClient.materializeTemplate(props.runtimeWorkspaceId, templateId, props.selectedSessionId);
       setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
-      setDesignTemplateData({ ...result, hasBrief: false });
+      setTemplateSessionData({ ...result, hasBrief: false });
       setSessionTypeRevision((value) => value + 1);
-      setDesignTemplateRevision((value) => value + 1);
+      setTemplateSessionRevision((value) => value + 1);
       setSidePanelState(props.selectedSessionId, "design");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create this template.");
@@ -511,39 +572,29 @@ export function SessionPage(props: SessionPageProps) {
       setTemplateBusyId(null);
     }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog]);
-  const submitDesignBrief = useCallback(async (brief: { name: string; purpose: string; features: string; color: string }) => {
+  const submitTemplateBrief = useCallback(async (brief: TemplateBrief) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
-    const template = designTemplateData?.manifest;
-    if (!template) return;
-    const path = designTemplateData.state.entry;
-    const current = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, path);
-    const content = current.content.replace(/--ipw-color-primary:\s*#[0-9a-fA-F]{6}/, `--ipw-color-primary: ${brief.color}`);
-    await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, { path, content, baseUpdatedAt: current.updatedAt ?? null });
-    if (content === current.content) {
-      const tokenPath = `${path.slice(0, path.lastIndexOf("/"))}/design-tokens.css`;
-      try {
-        const tokens = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, tokenPath);
-        await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
-          path: tokenPath,
-          content: tokens.content.replace(/--ipw-color-primary:\s*#[0-9a-fA-F]{6}/, `--ipw-color-primary: ${brief.color}`),
-          baseUpdatedAt: tokens.updatedAt ?? null,
-        });
-      } catch {
-        // Templates without a separate token stylesheet keep their inline theme.
-      }
-    }
+    const templateSession = templateSessionData;
+    if (!templateSession) return;
+    const { manifest: template, state } = templateSession;
     await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
-      path: designTemplateData.state.briefPath,
-      content: JSON.stringify({ templateId: template.id, template: template.title, sourcePath: path, applyChecklist: template.applyChecklist, ...brief }, null, 2),
+      path: state.briefPath,
+      content: JSON.stringify({
+        templateId: template.id,
+        template: template.title,
+        category: template.category,
+        surface: template.surface,
+        sourcePath: state.entry,
+        applyChecklist: template.applyChecklist,
+        ...brief,
+      }, null, 2),
       baseUpdatedAt: null,
     });
-    setDesignTemplateData((current) => current ? { ...current, hasBrief: true } : current);
-    setDesignTemplateRevision((value) => value + 1);
-    const prompt = template.category === "slides"
-      ? `Apply ${designTemplateData.state.briefPath} to the selected ${template.title} at ${path}. Rewrite the complete deck, not one slide. Keep the 16:9 slide system, keyboard navigation, controls, theme tokens, and separate speaker notes. Update every applicable item in this checklist: ${template.applyChecklist.join("; ")}. Build a coherent decision-oriented narrative from the brief. Never invent metrics; clearly mark missing evidence for the user to replace. Keep 6 to 10 slides, audience-facing content concise, and work only in ${path}. Keep every slide editable in the Design panel.`
-      : `Apply ${designTemplateData.state.briefPath} to the selected ${template.title} template at ${path}. This is a whole-page update, not a partial copy edit. Keep the template's layout and visual language, but update every applicable item in this required checklist: ${template.applyChecklist.join("; ")}. Replace all inherited Filebase/original-template names, navigation labels, links, headings, calls to action, cards, section copy, metadata, and footer content with information consistent with this brief. Do not create a new page or leave placeholders. Work only in ${path}. Keep the result editable in the Design panel.`;
+    setTemplateSessionData((current) => current ? { ...current, hasBrief: true } : current);
+    setTemplateSessionRevision((value) => value + 1);
+    const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
     props.surface?.onSendDraft({ mode: "prompt", parts: [{ type: "text", text: prompt }], attachments: [], text: prompt }, props.selectedSessionId);
-  }, [designTemplateData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface, templateSessionData]);
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
@@ -556,13 +607,17 @@ export function SessionPage(props: SessionPageProps) {
     if (!props.selectedSessionId) return;
     if (isVideoSession) {
       setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
+      if (!isVideoStudioReady(hasTemplateSession, hasTemplateBrief)) {
+        if (activeSidePanel === "video") setSidePanelState(props.selectedSessionId, null);
+        return;
+      }
       if (!isVideoPanelCollapsed && activeSidePanel !== "video") setSidePanelState(props.selectedSessionId, "video");
       return;
     }
     if (isDesignSession && (activeSidePanel === "video" || activeSidePanel === "panel")) {
       setSidePanelState(props.selectedSessionId, "design");
     }
-  }, [activeSidePanel, isDesignSession, isVideoPanelCollapsed, isVideoSession, props.selectedSessionId, setSidePanelState]);
+  }, [activeSidePanel, hasTemplateBrief, hasTemplateSession, isDesignSession, isVideoPanelCollapsed, isVideoSession, props.selectedSessionId, setSidePanelState]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
@@ -842,9 +897,9 @@ export function SessionPage(props: SessionPageProps) {
           baseUpdatedAt: existing?.updatedAt ?? null,
         });
         setSessionType(props.selectedSessionId, sessionTypeForTemplate(materialized.manifest));
-        setDesignTemplateData({ ...materialized, hasBrief: false });
+        setTemplateSessionData({ ...materialized, hasBrief: false });
         setSessionTypeRevision((value) => value + 1);
-        setDesignTemplateRevision((value) => value + 1);
+        setTemplateSessionRevision((value) => value + 1);
         setCurrentSidePanel("design");
         return { ok: true, path };
       },
@@ -928,9 +983,9 @@ export function SessionPage(props: SessionPageProps) {
           baseUpdatedAt: existing?.updatedAt ?? null,
         });
         setSessionType(props.selectedSessionId, sessionTypeForTemplate(materialized.manifest));
-        setDesignTemplateData({ ...materialized, hasBrief: false });
+        setTemplateSessionData({ ...materialized, hasBrief: false });
         setSessionTypeRevision((value) => value + 1);
-        setDesignTemplateRevision((value) => value + 1);
+        setTemplateSessionRevision((value) => value + 1);
         setCurrentSidePanel("design");
         return { ok: true, path };
       },
@@ -1412,6 +1467,11 @@ export function SessionPage(props: SessionPageProps) {
             </div>
 
             <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
+              <ConversationOutputTrigger
+                active={activeSidePanel === "outputs"}
+                disabled={!conversationMessages.length}
+                onClick={() => toggleCurrentSidePanel("outputs")}
+              />
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -1487,7 +1547,9 @@ export function SessionPage(props: SessionPageProps) {
               {!showDelayedSessionLoadingState && canRenderReactSurface ? (
                 <div className="flex h-full min-h-0 flex-col lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1">
-                      {isDesignSession && !hasDesignTemplate && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
+                      {(isDesignSession || isVideoSession) && templateSessionLoading ? (
+                        <div className="flex h-full items-center justify-center gap-2 text-sm text-dls-secondary"><LoaderCircle className="size-4 animate-spin" />正在准备模板</div>
+                      ) : isDesignSession && !hasTemplateSession && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
                         <DesignStarter
                           client={props.ipolloworkServerClient}
                           workspaceId={props.runtimeWorkspaceId}
@@ -1501,8 +1563,8 @@ export function SessionPage(props: SessionPageProps) {
                           onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
                           onImport={(file, category) => void importDesignTemplate(file, category)}
                         />
-                      ) : isDesignSession && !hasDesignBrief ? (
-                        selectedDesignTemplate ? <DesignBriefCard template={selectedDesignTemplate} onSubmit={(brief) => void submitDesignBrief(brief)} /> : null
+                      ) : templateSessionData && !hasTemplateBrief ? (
+                        <TemplateBriefCard template={templateSessionData.manifest} onSubmit={(brief) => void submitTemplateBrief(brief)} />
                       ) : <SessionSurface
                         // Spread `surface` first so the explicit per-workspace
                         // routing props below CAN'T be silently overridden by
@@ -1526,6 +1588,7 @@ export function SessionPage(props: SessionPageProps) {
                         respondQuestion={props.respondQuestion}
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
+                        onConversationMessagesChange={handleConversationMessagesChange}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type, templateId)}
                         onActivateVideoStudio={activateVideoStudio}
                         designTemplates={templateCatalog}
@@ -1664,7 +1727,7 @@ export function SessionPage(props: SessionPageProps) {
                               );
                             }}
                           >
-                            <img src="/ipollowork-mark.svg" alt="" width={20} height={20} className="mt-0.5 shrink-0" />
+                            <img src={publicAssetUrl("ipollowork-mark.svg")} alt="" width={20} height={20} className="mt-0.5 shrink-0" />
                             <div>
                               <div className="text-[13px] font-medium text-dls-text">Browse the web</div>
                               <div className="mt-0.5 text-[11px] text-dls-secondary">Search Craigslist for couches and list the results</div>
@@ -1712,8 +1775,8 @@ export function SessionPage(props: SessionPageProps) {
                 <ResizableHandle withHandle className="hidden lg:flex" />
                 <ResizablePanel
                   panelRef={browserPanelRef}
-                  defaultSize={`${effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
-                  minSize={effectiveSidePanelView === "video" ? "760px" : effectiveSidePanelView === "launcher" ? "280px" : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? "420px" : "320px"}
+                  defaultSize={`${effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "outputs" ? Math.max(browserPanelDefaultWidth, 360) : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
+                  minSize={effectiveSidePanelView === "video" ? "760px" : effectiveSidePanelView === "launcher" ? "280px" : effectiveSidePanelView === "outputs" ? "320px" : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? "420px" : "320px"}
                   maxSize={effectiveSidePanelView === "video" ? "82%" : "70%"}
                   className="min-h-0 overflow-hidden lg:flex lg:flex-col"
                 >
@@ -1763,8 +1826,17 @@ export function SessionPage(props: SessionPageProps) {
                       key={`${props.selectedWorkspaceId}:${props.selectedSessionId}`}
                       sessionId={props.selectedSessionId}
                       workspaceRoot={props.selectedWorkspaceRoot}
+                      client={props.ipolloworkServerClient}
+                      workspaceId={props.runtimeWorkspaceId}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
                       onClose={closeRightPane}
+                    />
+                  ) : activeSidePanel === "outputs" ? (
+                    <ConversationOutputPanel
+                      messages={conversationMessages}
+                      openTargets={accessibleTargets}
+                      onOpenTarget={openTarget}
+                      onOpenVideoStudio={openCurrentVideoStudio}
                     />
                   ) : activeSidePanel === "panel" && props.selectedSessionId ? (
                     <SidePanel
@@ -1795,7 +1867,7 @@ export function SessionPage(props: SessionPageProps) {
         getCover={getTemplateCover}
         canSaveCurrent={Boolean(props.selectedSessionId && (isDesignSession || isVideoSession))}
         currentSurface={isVideoSession ? "video" : isDesignSession ? "design" : null}
-        currentCategory={isVideoSession ? "video" : selectedDesignTemplate?.category ?? "site"}
+        currentCategory={isVideoSession ? "video" : selectedTemplate?.category ?? "site"}
         onRefresh={refreshTemplateCatalog}
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}

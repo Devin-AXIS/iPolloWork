@@ -114,8 +114,8 @@ import { useSessionProviderAuth } from "@/react-app/domains/connections/provider
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
-import { sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
-import { videoTaskSystemContext } from "@/react-app/domains/session/video/video-project";
+import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
+import { shouldInjectVideoTaskContext, videoTaskSystemContext } from "@/react-app/domains/session/video/video-project";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -181,8 +181,7 @@ import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-targ
 import { SettingsSurface } from "./settings-route";
 import {
   ensureProviderListQuery,
-  getConnectedProviderItems,
-  isModelAvailableInConnectedProviders,
+  isModelAvailableInSelectableChatProviders,
   refreshProviderListQueries,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
@@ -642,7 +641,7 @@ export function SessionRoute() {
         ) ||
         (
           providerListQuery.data &&
-          !isModelAvailableInConnectedProviders(providerListQuery.data, local.prefs.defaultModel)
+          !isModelAvailableInSelectableChatProviders(providerListQuery.data, local.prefs.defaultModel)
         )
       ),
   );
@@ -846,6 +845,9 @@ export function SessionRoute() {
         }));
         modelPicker.setCompactOpen(false);
       },
+      onConfigureModels: () => {
+        void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
+      },
       providerConnectedCount: hasUsableModel ? 1 : providerConnectedIds.length,
       onOpenSettingsSection: (section: "commands" | "skills" | "mcps" | "plugins" | "providers") => {
         handleOpenSettings(section === "skills" ? "/settings/skills" : section === "mcps" ? "/settings/extensions/mcp" : section === "plugins" ? "/settings/extensions/plugins" : section === "providers" ? "/settings/ai" : "/settings/general");
@@ -916,14 +918,24 @@ export function SessionRoute() {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
         });
-        // Template-session metadata is the single source of truth for the
-        // editing surface and agent contract. A normal chat simply has no
-        // record; it is never inferred from a browser-side task type.
-        const sessionTemplate = selectedWorkspaceEndpoint
+        const capabilitySystemContext = draft.capability?.instruction ?? null;
+        const systemContext = [envSystemContext, capabilitySystemContext]
+          .filter((value): value is string => Boolean(value?.trim()))
+          .join("\n\n");
+        // Template-session metadata is authoritative. The in-memory surface
+        // cache is used only for legacy sessions created before that record
+        // existed, so an already-open Video Studio still gets its contract.
+        let sessionTemplate = selectedWorkspaceEndpoint
           ? await selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
           : null;
+        // Claim a pre-template Studio project before the prompt is sent. This
+        // is the one-time migration that makes the persisted session record,
+        // the agent contract, and the right-side Studio point at one path.
+        if (!sessionTemplate && selectedWorkspaceEndpoint && readSessionType(targetSessionId) === "video") {
+          sessionTemplate = await selectedWorkspaceEndpoint.client.adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null);
+        }
         const isDesignTask = sessionTemplate?.surface === "design";
-        const isVideoTask = sessionTemplate?.surface === "video";
+        const isVideoTask = shouldInjectVideoTaskContext(sessionTemplate?.surface, readSessionType(targetSessionId));
         const designSessionTemplate = isDesignTask ? sessionTemplate : null;
         const videoTemplate = isVideoTask ? sessionTemplate?.manifest ?? null : null;
         const designPath = designSessionTemplate?.state.entry ?? null;
@@ -964,7 +976,15 @@ export function SessionRoute() {
         const designContract = designTemplate?.category === "slides"
           ? "Design slide contract: preserve a fixed 16:9 stage, one .slide section per page, safe margins, concise audience-facing content, separate hidden speaker notes, keyboard navigation, slide counter, and presentation controls. Keep a coherent narrative across 6 to 10 slides. Never turn the deck into a scrolling website, never place presenter instructions on the visible slide, and never invent metrics."
           : "Design site contract: every site must be responsive at desktop and mobile widths. On mobile, collapse dense desktop navigation into a compact accessible menu toggle and a polished glass-style menu; never allow navigation to overflow or disappear. Keep same-page navigation as real #section links with matching element ids. When the requested experience implies a child page such as login, signup, docs, product detail, or checkout, create the sibling HTML file inside the same Design task directory and use a real relative href (for example ./login.html) or data-href. Never leave navigation as a plain button with no destination, and do not use placeholder href=\"#\" for an action that should open a page.";
+        const capabilityPromptPart = draft.capability
+          ? [{
+              type: "text" as const,
+              text: draft.capability.instruction,
+              synthetic: true,
+            }]
+          : [];
         const promptParts = [
+          ...capabilityPromptPart,
           ...(isVideoTask ? [{
             type: "text" as const,
             text: videoTaskSystemContext(targetSessionId, selectedWorkspaceRoot, videoTemplate),
@@ -981,7 +1001,7 @@ export function SessionRoute() {
           model: local.prefs.defaultModel ?? undefined,
           agent: selectedAgent ?? undefined,
           ...(modelVariantValue ? { variant: modelVariantValue } : {}),
-          ...(envSystemContext ? { system: envSystemContext } : {}),
+          ...(systemContext ? { system: systemContext } : {}),
         });
         if (result.error) {
           throw new Error(serializeSDKError(result.error));

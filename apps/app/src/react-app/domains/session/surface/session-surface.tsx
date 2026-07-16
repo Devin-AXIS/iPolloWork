@@ -4,7 +4,7 @@ import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
-import { Check, Minimize2 } from "lucide-react";
+import { Check, Minimize2, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
@@ -74,7 +74,7 @@ import {
   useComposerStateStore,
 } from "./composer-state-store";
 import { MessageList } from "@/components/chat/message-list";
-import { NewConversationStarter, newConversationPlaceholder, type NewConversationMode } from "@/components/chat/new-conversation-starter";
+import { NewConversationStarter, newConversationPlaceholder, type NewConversationMode, type StarterCapability } from "@/components/chat/new-conversation-starter";
 import { MessageListProvider, type DispatchAction } from "@/components/chat/message-list-provider";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import type { ThreadStatus } from "@/lib/messages";
@@ -139,6 +139,7 @@ export type SessionSurfaceProps = {
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   safeStringify?: (value: unknown) => string;
   onChangeModel?: (model: { providerID: string; modelID: string }) => void;
+  onConfigureModels?: () => void;
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
@@ -153,6 +154,7 @@ export type SessionSurfaceProps = {
   onRevertToMessage?: (messageId: string, sessionId: string) => Promise<boolean>;
   onForkAtMessage?: (messageId: string | null, sessionId: string) => void;
   onOpenTarget?: (target: OpenTarget, options?: OpenTargetOptions, sessionId?: string) => void;
+  onConversationMessagesChange?: (sessionId: string, messages: UIMessage[]) => void;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
 };
@@ -407,32 +409,22 @@ function revokeAttachmentPreview(attachment: { previewUrl?: string | undefined }
   URL.revokeObjectURL(attachment.previewUrl);
 }
 
-// Combine multiple queued follow-up drafts into a single send. Their text and
-// parts are concatenated with blank-line separators and attachments are
-// merged, so the whole queue is delivered to the agent as one message.
-function mergeDrafts(drafts: ComposerDraft[]): ComposerDraft | null {
-  if (drafts.length === 0) return null;
-  if (drafts.length === 1) return drafts[0] ?? null;
-  const separator: ComposerPart = { type: "text", text: "\n\n" };
-  const parts: ComposerPart[] = [];
-  const attachments: ComposerAttachment[] = [];
-  const texts: string[] = [];
-  const resolvedTexts: string[] = [];
-  drafts.forEach((draft, index) => {
-    if (index > 0) parts.push(separator);
-    parts.push(...draft.parts);
-    attachments.push(...draft.attachments);
-    texts.push(draft.text);
-    resolvedTexts.push(draft.resolvedText ?? draft.text);
-  });
-  return {
-    mode: "prompt",
-    parts,
-    attachments,
-    text: texts.join("\n\n"),
-    resolvedText: resolvedTexts.join("\n\n"),
-    command: undefined,
-  };
+function StarterCapabilityChip({ capability, onClear }: { capability: StarterCapability; onClear: () => void }) {
+  const CapabilityIcon = capability.icon;
+  return (
+    <div className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-dls-border bg-dls-hover/70 px-2.5 text-[11px] text-dls-text shadow-sm">
+      <CapabilityIcon className="size-3.5 shrink-0 text-dls-secondary" aria-hidden />
+      <span className="max-w-[13rem] truncate font-medium">{capability.label}</span>
+      <button
+        type="button"
+        className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-dls-secondary transition-colors hover:bg-dls-border hover:text-dls-text"
+        aria-label={t("new_conversation.capability.clear")}
+        onClick={onClear}
+      >
+        <X className="size-3" aria-hidden />
+      </button>
+    </div>
+  );
 }
 
 export function SessionSurface(props: SessionSurfaceProps) {
@@ -480,6 +472,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [toolImportedPlugins, setToolImportedPlugins] = useState<CloudImportedPlugin[]>([]);
   const [verifiedOpenTargets, setVerifiedOpenTargets] = useState<OpenTarget[]>([]);
   const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
+  const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const composerShellRef = useRef<HTMLDivElement>(null);
   const hydratedKeyRef = useRef<string | null>(null);
   const autoOpenedTargetRef = useRef<string | null>(null);
@@ -528,6 +521,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     initializedAutoOpenSessionRef.current = null;
     setVerifiedOpenTargets([]);
     setNewConversationMode("work");
+    setStarterCapability(null);
   }, [props.sessionId]);
 
   // Publish a composer inspector slice so external drivers can read draft
@@ -612,6 +606,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
   );
+  useEffect(() => {
+    props.onConversationMessagesChange?.(props.sessionId, renderedMessages);
+  }, [props.onConversationMessagesChange, props.sessionId, renderedMessages]);
   const openTargets = useMemo(() => deriveOpenTargets(renderedMessages), [renderedMessages]);
   const openTargetsFingerprint = useMemo(
     () => openTargets.map((target) => `${target.kind}:${target.value}:${target.confidence}`).join("|"),
@@ -764,9 +761,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
       attachments: nextAttachments,
       text,
       resolvedText: resolved,
+      capability: starterCapability
+        ? { id: starterCapability.id, instruction: starterCapability.instruction }
+        : undefined,
       command: slashCommand ?? undefined,
     };
-  }, [mentions, pasteParts]);
+  }, [mentions, pasteParts, starterCapability]);
 
   const handleComposerDraftChange = useCallback((value: string) => {
     setComposerDraft(props.sessionId, value);
@@ -793,6 +793,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     try {
       await props.onSendDraft(nextDraft, props.sessionId);
       draftAttachments.forEach(revokeAttachmentPreview);
+      setStarterCapability(null);
       setSending(false);
     } catch (nextError) {
       const parsed = parseSessionError(nextError);
@@ -841,6 +842,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (!text && attachments.length === 0) return;
     appendQueuedDraft(props.sessionId, buildDraft(text, attachments));
     clearComposer();
+    setStarterCapability(null);
   }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId]);
 
   const removeQueuedDraft = useCallback((index: number) => {
@@ -895,30 +897,28 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
   }, [liveStatus.type]);
 
-  // Drain the queued follow-ups once the session goes idle. OpenCode has no
-  // server-side queue, so we send everything that's queued as a single merged
-  // message. The ref guards against re-entrancy while the send is in flight.
+  // Drain one queued follow-up each time the session goes idle. The ref guards
+  // against re-entrancy while the send is in flight.
   const drainingQueueRef = useRef(false);
   useEffect(() => {
     if (drainingQueueRef.current) return;
     if (queuedDrafts.length === 0) return;
     if (chatStreaming || liveStatus.type !== "idle") return;
-    const merged = mergeDrafts(queuedDrafts);
-    if (!merged) return;
-    const drained = queuedDrafts;
+    const next = queuedDrafts[0];
+    if (!next) return;
     drainingQueueRef.current = true;
-    clearQueuedDrafts(props.sessionId);
+    removeQueuedDraftFromStore(props.sessionId, 0);
     void (async () => {
       try {
-        await sendDraft(merged, merged.attachments);
+        await sendDraft(next, next.attachments);
       } catch {
         // Restore the queue so the user can retry / edit on failure.
-        prependQueuedDrafts(props.sessionId, drained);
+        prependQueuedDrafts(props.sessionId, [next]);
       } finally {
         drainingQueueRef.current = false;
       }
     })();
-  }, [chatStreaming, clearQueuedDrafts, liveStatus.type, prependQueuedDrafts, props.sessionId, queuedDrafts, sendDraft]);
+  }, [chatStreaming, liveStatus.type, prependQueuedDrafts, props.sessionId, queuedDrafts, removeQueuedDraftFromStore, sendDraft]);
 
   useEffect(() => {
     props.onDraftChange(buildDraft(draft, attachments));
@@ -1363,6 +1363,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           selectedModel={props.selectedModel}
           onModelPickerOpenChange={props.onModelPickerOpenChange}
           onModelChange={props.onModelChange}
+          onConfigureModels={props.onConfigureModels}
           attachments={attachments}
           onAttachFiles={handleAttachFiles}
           onRemoveAttachment={handleRemoveAttachment}
@@ -1400,10 +1401,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
           layout={layout}
           placeholder={isEmptyConversation ? newConversationPlaceholder(newConversationMode) : undefined}
-          compactTopSpacing={Boolean(props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
+          compactTopSpacing={Boolean(starterCapability || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
           topAccessory={
-            props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
+            starterCapability || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
               <div>
+                {starterCapability ? (
+                  <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
+                    <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} />
+                  </div>
+                ) : null}
                 {queuedMessages.length > 0 ? (
                   <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} />
                 ) : null}
@@ -1455,16 +1461,21 @@ export function SessionSurface(props: SessionSurfaceProps) {
           <div className="flex w-full max-w-[720px] flex-col justify-center py-10 pl-8 sm:py-16">
             <NewConversationStarter
               selectedMode={newConversationMode}
-              onSelectMode={setNewConversationMode}
-              onSelectPrompt={(prompt) => void typeComposerText(prompt)}
-              onCreateVideoSession={props.onCreateSession ? () => props.onCreateSession?.("video") : undefined}
-              websiteTemplates={props.designTemplates}
-              websiteTemplatesLoading={props.designTemplatesLoading}
-              websiteTemplateBusyId={props.designTemplateBusyId}
+              onSelectMode={(mode) => {
+                setNewConversationMode(mode);
+                setStarterCapability(null);
+              }}
+              onSelectPrompt={(_prompt, capability) => {
+                setStarterCapability(capability ?? null);
+                window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+              }}
+              templates={props.designTemplates}
+              templatesLoading={props.designTemplatesLoading}
+              templateBusyId={props.designTemplateBusyId}
               getTemplateCover={getDesignTemplateCover}
-              onUseWebsiteTemplate={props.onCreateSession ? (templateId) => props.onCreateSession?.("design", templateId) : undefined}
-              onInstallWebsiteTemplate={props.onInstallDesignTemplate}
-              onRequestWebsiteTemplates={props.onRequestDesignTemplates}
+              onUseTemplate={props.onCreateSession ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId) : undefined}
+              onInstallTemplate={props.onInstallDesignTemplate}
+              onRequestTemplates={props.onRequestDesignTemplates}
             />
             <div ref={composerShellRef} className="mt-14">
               {renderComposer("inline")}

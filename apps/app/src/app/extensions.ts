@@ -1,3 +1,5 @@
+import { publicAssetUrl } from "./lib/public-asset";
+
 // Owned here: reload vocabulary is part of the extension manifest contract.
 // types.ts re-exports it for the rest of the app.
 export type ReloadReason = "plugins" | "skills" | "mcp" | "config" | "agents" | "commands";
@@ -156,7 +158,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     name: "iPolloWork Browser",
     description: "Automate the built-in browser panel that stays visible inside iPolloWork.",
     source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
-    icon: { src: "/ipollowork-mark.svg" },
+    icon: { src: publicAssetUrl("ipollowork-mark.svg") },
     composer: { prompt: "Use the iPolloWork Browser extension to " },
     setup: {
       instructions: "iPolloWork Browser is ready by default in desktop workspaces.",
@@ -187,7 +189,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     description: "Mac only: control Mac apps through semantic accessibility refs, screenshots, background-safe clicks, keyboard input, and strict mode.",
     preview: true,
     source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
-    icon: { src: "/ipollowork-mark.svg" },
+    icon: { src: publicAssetUrl("ipollowork-mark.svg") },
     composer: { prompt: "Use Computer Use to " },
     setup: {
       instructions: "Computer Use is Mac only. It runs as a local MCP server backed by the macOS accessibility runtime. Grant Accessibility and Screen Recording permissions when macOS asks, then connect the MCP server in this workspace.",
@@ -233,7 +235,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     name: "OpenAI Image Gen",
     description: "Generate image artifacts with gpt-image-2.",
     source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
-    icon: { src: "/ext-openai.svg" },
+    icon: { src: publicAssetUrl("ext-openai.svg") },
     composer: { prompt: "Use the OpenAI Image Gen extension to " },
     setup: {
       instructions: "Add an OpenAI API key, then agents can generate image artifacts through iPolloWork extension actions.",
@@ -264,7 +266,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     description: "Talk to iPolloWork through a Realtime voice panel that drives the same semantic UI controls as iPolloWork UI MCP.",
     preview: true,
     source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
-    icon: { src: "/ipollowork-mark.svg" },
+    icon: { src: publicAssetUrl("ipollowork-mark.svg") },
     composer: { prompt: "Use Voice Mode to " },
     setup: {
       instructions: "Voice Mode uses OpenAI Realtime. Save an OpenAI API key in iPolloWork env vars, then open the session rail panel and speak or send a typed voice command.",
@@ -332,7 +334,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     name: "Ollama",
     description: "Local model provider at http://localhost:11434.",
     source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
-    icon: { src: "/ext-ollama.svg" },
+    icon: { src: publicAssetUrl("ext-ollama.svg") },
     composer: { prompt: "Use the Ollama extension to " },
     setup: {
       instructions: "Run Ollama locally, choose or pull a model, then add it as an OpenCode provider.",
