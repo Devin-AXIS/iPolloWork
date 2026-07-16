@@ -7,12 +7,24 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   commandMatchesPackagedSidecar,
+  devModeHomeDirectoryPaths,
   embeddedServerImportUrl,
   prioritizeWorkspacePaths,
   resolveiPolloWorkServerConfigPath,
   seedWorkspacePathsForEmbeddedServer,
   selectStickyiPolloWorkPortWorkspace,
 } from "./runtime.mjs";
+
+describe("devModeHomeDirectoryPaths", () => {
+  it("includes common shell folders used by Windows file pickers", () => {
+    const homeDir = path.join("tmp", "home");
+    assert.deepEqual(devModeHomeDirectoryPaths(homeDir), [
+      path.join(homeDir, "Desktop"),
+      path.join(homeDir, "Downloads"),
+      path.join(homeDir, "Documents"),
+    ]);
+  });
+});
 
 describe("prioritizeWorkspacePaths", () => {
   it("keeps the active runtime workspace first", () => {

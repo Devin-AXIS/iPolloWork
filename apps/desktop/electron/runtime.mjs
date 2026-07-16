@@ -65,6 +65,10 @@ export function seedWorkspacePathsForEmbeddedServer(workspacePaths, serverConfig
   return serverConfigExists ? [] : workspacePaths;
 }
 
+export function devModeHomeDirectoryPaths(homeDir) {
+  return ["Desktop", "Downloads", "Documents"].map((name) => path.join(homeDir, name));
+}
+
 export function selectStickyiPolloWorkPortWorkspace(requestedWorkspacePaths = [], serverWorkspacePaths = []) {
   for (const value of [...requestedWorkspacePaths, ...serverWorkspacePaths]) {
     const workspacePath = String(value ?? "").trim();
@@ -760,6 +764,9 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     };
 
     for (const dir of Object.values(paths)) {
+      await mkdir(dir, { recursive: true });
+    }
+    for (const dir of devModeHomeDirectoryPaths(paths.homeDir)) {
       await mkdir(dir, { recursive: true });
     }
     await mkdir(path.join(paths.xdgDataHome, "opencode"), { recursive: true });
