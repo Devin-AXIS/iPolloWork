@@ -132,6 +132,11 @@ export type ComposerDraft = {
    * this includes the full pasted text instead.
    */
   resolvedText?: string;
+  /** A selected built-in capability. It is sent as system context, not visible prompt text. */
+  capability?: {
+    id: string;
+    instruction: string;
+  };
   /** When set, draft is a slash command invocation */
   command?: { name: string; arguments: string } | undefined;
 };

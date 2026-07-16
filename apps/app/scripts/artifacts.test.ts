@@ -2,7 +2,14 @@ import { describe, expect, it } from "bun:test";
 import type { UIMessage } from "ai";
 
 import type { OpenTarget } from "../src/react-app/domains/session/artifacts/open-target";
-import { canOpenArtifact, canPreviewArtifact, getArtifactsFromMessages } from "../src/lib/artifacts";
+import {
+  canOpenArtifact,
+  canPreviewArtifact,
+  getArtifactsFromMessages,
+  groupConversationOutputArtifacts,
+  isConversationOutputArtifact,
+  isVideoHtmlArtifact,
+} from "../src/lib/artifacts";
 
 describe("getArtifactsFromMessages", () => {
   it("includes verified slide deck targets mentioned in assistant summaries", () => {
@@ -133,5 +140,50 @@ describe("getArtifactsFromMessages", () => {
     expect(artifact).toMatchObject({ path: "src/widget.tsx", legacy_target: { exists: true, preview: "text" } });
     expect(artifact ? canPreviewArtifact(artifact) : true).toBe(false);
     expect(artifact ? canOpenArtifact(artifact) : false).toBe(true);
+  });
+
+  it("keeps internal skill files out of the user-facing output list", () => {
+    const messages: UIMessage[] = [{
+      id: "msg_outputs",
+      role: "assistant",
+      parts: [{
+        type: "text",
+        text: "Created reports/trends.md, sheets/summary.csv, video/scene.html, .opencode/skills/deep-research/SKILL.md, and sources/references.md",
+        state: "done",
+      }],
+    }];
+
+    const outputs = getArtifactsFromMessages(messages, [], { includeTargetFallbacks: false })
+      .filter(isConversationOutputArtifact);
+
+    expect(outputs.map((artifact) => artifact.path)).toEqual([
+      "video/scene.html",
+      "sheets/summary.csv",
+      "reports/trends.md",
+    ]);
+    expect(outputs.some((artifact) => artifact.name === "SKILL.md")).toBe(false);
+    expect(isVideoHtmlArtifact(outputs.find((artifact) => artifact.path === "video/scene.html")!)).toBe(true);
+  });
+
+  it("bundles multi-file outputs around the final entry file", () => {
+    const messages: UIMessage[] = [{
+      id: "msg_hyperframes",
+      role: "assistant",
+      parts: [{
+        type: "text",
+        text: "Created hyperframes/launch/index.html, hyperframes/launch/src/scene.tsx, hyperframes/launch/package.json, hyperframes/launch/public/logo.png, and hyperframes/recap/index.html",
+        state: "done",
+      }],
+    }];
+
+    const outputs = getArtifactsFromMessages(messages, [], { includeTargetFallbacks: false })
+      .filter(isConversationOutputArtifact);
+    const groups = groupConversationOutputArtifacts(outputs);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.bundled).toBe(true);
+    expect(groups[0]?.primary.path).toBe("hyperframes/launch/index.html");
+    expect(groups[0]?.artifacts.map((artifact) => artifact.path)).toContain("hyperframes/launch/src/scene.tsx");
+    expect(groups[1]?.primary.path).toBe("hyperframes/recap/index.html");
   });
 });

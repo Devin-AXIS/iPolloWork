@@ -916,6 +916,10 @@ export function SessionRoute() {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
         });
+        const capabilitySystemContext = draft.capability?.instruction ?? null;
+        const systemContext = [envSystemContext, capabilitySystemContext]
+          .filter((value): value is string => Boolean(value?.trim()))
+          .join("\n\n");
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
@@ -970,7 +974,15 @@ export function SessionRoute() {
         const designContract = designTemplate?.category === "slides"
           ? "Design slide contract: preserve a fixed 16:9 stage, one .slide section per page, safe margins, concise audience-facing content, separate hidden speaker notes, keyboard navigation, slide counter, and presentation controls. Keep a coherent narrative across 6 to 10 slides. Never turn the deck into a scrolling website, never place presenter instructions on the visible slide, and never invent metrics."
           : "Design site contract: every site must be responsive at desktop and mobile widths. On mobile, collapse dense desktop navigation into a compact accessible menu toggle and a polished glass-style menu; never allow navigation to overflow or disappear. Keep same-page navigation as real #section links with matching element ids. When the requested experience implies a child page such as login, signup, docs, product detail, or checkout, create the sibling HTML file inside the same Design task directory and use a real relative href (for example ./login.html) or data-href. Never leave navigation as a plain button with no destination, and do not use placeholder href=\"#\" for an action that should open a page.";
+        const capabilityPromptPart = draft.capability
+          ? [{
+              type: "text" as const,
+              text: draft.capability.instruction,
+              synthetic: true,
+            }]
+          : [];
         const promptParts = [
+          ...capabilityPromptPart,
           ...(isVideoTask ? [{
             type: "text" as const,
             text: videoTaskSystemContext(targetSessionId, selectedWorkspaceRoot, videoTemplate),
@@ -987,7 +999,7 @@ export function SessionRoute() {
           model: local.prefs.defaultModel ?? undefined,
           agent: selectedAgent ?? undefined,
           ...(modelVariantValue ? { variant: modelVariantValue } : {}),
-          ...(envSystemContext ? { system: envSystemContext } : {}),
+          ...(systemContext ? { system: systemContext } : {}),
         });
         if (result.error) {
           throw new Error(serializeSDKError(result.error));

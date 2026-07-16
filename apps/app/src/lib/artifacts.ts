@@ -22,6 +22,13 @@ export type ArtifactItem = {
   legacy_target: OpenTarget
 }
 
+export type ConversationOutputGroup = {
+  id: string
+  primary: ArtifactItem
+  artifacts: ArtifactItem[]
+  bundled: boolean
+}
+
 type ArtifactEntry = ArtifactItem & {
   sequence: number
 }
@@ -148,6 +155,119 @@ function getArtifactName(path: string) {
   return segments[segments.length - 1] ?? path;
 }
 
+const INTERNAL_OUTPUT_PATH_PATTERN = /(?:^|\/)(?:\.opencode|\.claude|node_modules|skills|references?|sources?|citations?|plans?|sub[-_]?agents?)(?:\/|$)/i;
+const INTERNAL_OUTPUT_NAME_PATTERN = /^(?:SKILL|AGENTS|CLAUDE|brief|template|manifest|plan|todo|source|references?|citations?)\.(?:md|mdx|json)$/i;
+
+/** Only user-facing files belong in the conversation output list. */
+export function isConversationOutputArtifact(artifact: ArtifactItem) {
+  if (artifact.type === "unknown") return false;
+  if (INTERNAL_OUTPUT_PATH_PATTERN.test(artifact.path)) return false;
+  if (INTERNAL_OUTPUT_NAME_PATTERN.test(artifact.name)) return false;
+  return true;
+}
+
+/** HTML compositions under the video workspace open the session's Video Studio. */
+export function isVideoHtmlArtifact(artifact: ArtifactItem) {
+  return artifact.type === "html" && /(?:^|\/)video(?:\/|$)/i.test(artifact.path);
+}
+
+const BUNDLE_PRIMARY_TYPES = new Set<ArtifactType>(["website", "html", "video", "slides", "document", "pdf"]);
+const PRIMARY_NAME_PATTERN = /(?:^|[-_.\s])(index|main|final|output|preview|composition|render)(?:[-_.\s]|$)/i;
+const BROAD_OUTPUT_CONTAINER_NAMES = new Set(["artifacts", "build", "design", "dist", "exports", "hyperframes", "output", "outputs", "projects", "renders", "video", "videos"]);
+
+function getArtifactBundleDirectory(path: string) {
+  const segments = normalizeArtifactPath(path).split("/").filter(Boolean);
+  if (segments.length <= 1) return undefined;
+  if (segments.length > 2 && BROAD_OUTPUT_CONTAINER_NAMES.has(segments[0]?.toLowerCase() ?? "")) {
+    return `${segments[0]}/${segments[1]}`;
+  }
+  return segments[0];
+}
+
+function artifactPrimaryScore(artifact: ArtifactItem) {
+  const typeScore: Record<ArtifactType, number> = {
+    video: 100,
+    html: 90,
+    website: 85,
+    slides: 80,
+    pdf: 78,
+    document: 74,
+    markdown: 64,
+    sheet: 62,
+    image: 50,
+    audio: 44,
+    text: 10,
+    unknown: 0,
+  };
+
+  return typeScore[artifact.type] + (PRIMARY_NAME_PATTERN.test(artifact.name) ? 8 : 0);
+}
+
+function compareArtifactsForPrimary(left: ArtifactItem, right: ArtifactItem) {
+  const scoreDelta = artifactPrimaryScore(right) - artifactPrimaryScore(left);
+  if (scoreDelta !== 0) return scoreDelta;
+
+  const updatedAtDelta = (right.updatedAt ?? 0) - (left.updatedAt ?? 0);
+  if (updatedAtDelta !== 0) return updatedAtDelta;
+
+  const messageDelta = right.messageIndex - left.messageIndex;
+  if (messageDelta !== 0) return messageDelta;
+
+  return right.path.localeCompare(left.path);
+}
+
+function shouldBundleOutputArtifacts(artifacts: ArtifactItem[]) {
+  if (artifacts.length <= 1) return false;
+  if (artifacts.some((artifact) => BUNDLE_PRIMARY_TYPES.has(artifact.type))) return true;
+  return artifacts.length >= 4;
+}
+
+export function groupConversationOutputArtifacts(artifacts: ArtifactItem[]): ConversationOutputGroup[] {
+  const standalone: ConversationOutputGroup[] = [];
+  const byDirectory = new Map<string, ArtifactItem[]>();
+
+  for (const artifact of artifacts) {
+    const directory = getArtifactBundleDirectory(artifact.path);
+    if (!directory) {
+      standalone.push({ id: artifact.id, primary: artifact, artifacts: [artifact], bundled: false });
+      continue;
+    }
+
+    const existing = byDirectory.get(directory) ?? [];
+    existing.push(artifact);
+    byDirectory.set(directory, existing);
+  }
+
+  for (const [directory, directoryArtifacts] of byDirectory) {
+    if (!shouldBundleOutputArtifacts(directoryArtifacts)) {
+      for (const artifact of directoryArtifacts) {
+        standalone.push({ id: artifact.id, primary: artifact, artifacts: [artifact], bundled: false });
+      }
+      continue;
+    }
+
+    const primary = [...directoryArtifacts].sort(compareArtifactsForPrimary)[0];
+    if (!primary) continue;
+
+    standalone.push({
+      id: `bundle:${directory}`,
+      primary,
+      artifacts: [primary, ...directoryArtifacts.filter((artifact) => artifact.id !== primary.id)],
+      bundled: true,
+    });
+  }
+
+  return standalone.sort((left, right) => {
+    const updatedAtDelta = (right.primary.updatedAt ?? 0) - (left.primary.updatedAt ?? 0);
+    if (updatedAtDelta !== 0) return updatedAtDelta;
+
+    const messageDelta = right.primary.messageIndex - left.primary.messageIndex;
+    if (messageDelta !== 0) return messageDelta;
+
+    return left.primary.path.localeCompare(right.primary.path);
+  });
+}
+
 function normalizeArtifactPath(path: string) {
   return path
     .trim()
@@ -243,15 +363,6 @@ function getArtifactPathsFromMessage(message: UIMessage) {
   for (const part of message.parts) {
     if (part.type === "text" && message.role === "assistant") {
       paths.push(...getArtifactPathsFromText(part.text));
-      continue;
-    }
-
-    if (part.type === "source-document") {
-      if (part.filename) {
-        paths.push(part.filename);
-      } else {
-        paths.push(part.title);
-      }
       continue;
     }
 

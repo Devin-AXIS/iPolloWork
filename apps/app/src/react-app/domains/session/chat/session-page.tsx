@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { UIMessage } from "ai";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
 import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, Zap } from "lucide-react";
@@ -24,6 +25,7 @@ import type {
   WorkspaceSessionGroup,
 } from "../../../../app/types";
 import type { ShareWorkspaceModalProps } from "../../workspace/types";
+import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -441,11 +443,25 @@ export function SessionPage(props: SessionPageProps) {
   const hasTemplateSession = Boolean(templateSessionData);
   const hasTemplateBrief = templateSessionData?.hasBrief === true;
   const selectedTemplate = templateSessionData?.manifest ?? null;
+  const [conversationMessageState, setConversationMessageState] = useState<{ sessionId: string | null; messages: UIMessage[] }>({
+    sessionId: null,
+    messages: [],
+  });
+  const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
+    setConversationMessageState({ sessionId, messages });
+  }, []);
+  const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
+    ? conversationMessageState.messages
+    : [];
   const activateVideoStudio = useCallback(() => {
     // Video creation always begins with a selected video template. This keeps
     // the right studio and the agent on the same canonical session snapshot.
     setTemplateMarketOpen(true);
   }, []);
+  const openCurrentVideoStudio = useCallback(() => {
+    if (!props.selectedSessionId) return;
+    setSidePanelState(props.selectedSessionId, "video");
+  }, [props.selectedSessionId, setSidePanelState]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateCatalogLoading(true);
@@ -1451,6 +1467,11 @@ export function SessionPage(props: SessionPageProps) {
             </div>
 
             <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
+              <ConversationOutputTrigger
+                active={activeSidePanel === "outputs"}
+                disabled={!conversationMessages.length}
+                onClick={() => toggleCurrentSidePanel("outputs")}
+              />
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -1567,6 +1588,7 @@ export function SessionPage(props: SessionPageProps) {
                         respondQuestion={props.respondQuestion}
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
+                        onConversationMessagesChange={handleConversationMessagesChange}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type, templateId)}
                         onActivateVideoStudio={activateVideoStudio}
                         designTemplates={templateCatalog}
@@ -1753,8 +1775,8 @@ export function SessionPage(props: SessionPageProps) {
                 <ResizableHandle withHandle className="hidden lg:flex" />
                 <ResizablePanel
                   panelRef={browserPanelRef}
-                  defaultSize={`${effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
-                  minSize={effectiveSidePanelView === "video" ? "760px" : effectiveSidePanelView === "launcher" ? "280px" : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? "420px" : "320px"}
+                  defaultSize={`${effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "outputs" ? Math.max(browserPanelDefaultWidth, 360) : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
+                  minSize={effectiveSidePanelView === "video" ? "760px" : effectiveSidePanelView === "launcher" ? "280px" : effectiveSidePanelView === "outputs" ? "320px" : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? "420px" : "320px"}
                   maxSize={effectiveSidePanelView === "video" ? "82%" : "70%"}
                   className="min-h-0 overflow-hidden lg:flex lg:flex-col"
                 >
@@ -1808,6 +1830,13 @@ export function SessionPage(props: SessionPageProps) {
                       workspaceId={props.runtimeWorkspaceId}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
                       onClose={closeRightPane}
+                    />
+                  ) : activeSidePanel === "outputs" ? (
+                    <ConversationOutputPanel
+                      messages={conversationMessages}
+                      openTargets={accessibleTargets}
+                      onOpenTarget={openTarget}
+                      onOpenVideoStudio={openCurrentVideoStudio}
                     />
                   ) : activeSidePanel === "panel" && props.selectedSessionId ? (
                     <SidePanel
