@@ -28,6 +28,7 @@ import {
   replaceLinePrefix,
   replaceSlashCommand,
   wrapMarkdownSelection,
+  wrapMarkdownSelectionByLine,
   type MarkdownEdit,
   type SlashCommandMatch,
 } from "./markdown-editor-commands";
@@ -71,7 +72,7 @@ function applyEdit(view: EditorView, edit: MarkdownEdit) {
 
 function formatSelection(view: EditorView, before: string, after: string, placeholder: string) {
   const range = view.state.selection.main;
-  applyEdit(view, wrapMarkdownSelection(view.state.doc.toString(), range.from, range.to, before, after, placeholder));
+  applyEdit(view, wrapMarkdownSelectionByLine(view.state.doc.toString(), range.from, range.to, before, after, placeholder));
 }
 
 function applyBlock(view: EditorView, command: BlockCommand, slash: SlashCommandMatch | null) {
@@ -99,6 +100,17 @@ function commandMatches(command: BlockCommand, query: string) {
   if (!query) return true;
   const normalized = query.toLowerCase();
   return command.label.toLowerCase().includes(normalized) || command.aliases.some((alias) => alias.includes(normalized));
+}
+
+function getSelectionBoundaryCoords(view: EditorView, position: number, direction: "start" | "end") {
+  const coords = view.coordsAtPos(position);
+  if (coords) return coords;
+
+  const fallbackPosition = direction === "start"
+    ? Math.min(view.state.doc.length, position + 1)
+    : Math.max(0, position - 1);
+
+  return view.coordsAtPos(fallbackPosition);
 }
 
 export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlaysProps) {
@@ -178,8 +190,8 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
 
   const editorRect = view.dom.getBoundingClientRect();
   const slashCoords = visibleSlash ? view.coordsAtPos(visibleSlash.to) : null;
-  const selectionStart = !selection.empty ? view.coordsAtPos(selection.from) : null;
-  const selectionEnd = !selection.empty ? view.coordsAtPos(selection.to) : null;
+  const selectionStart = !selection.empty ? getSelectionBoundaryCoords(view, selection.from, "start") : null;
+  const selectionEnd = !selection.empty ? getSelectionBoundaryCoords(view, selection.to, "end") : null;
   const selectionToolbarLeft = selectionStart && selectionEnd
     ? Math.max(152, Math.min(editorRect.width - 152, ((selectionStart.left + selectionEnd.right) / 2) - editorRect.left))
     : 0;
