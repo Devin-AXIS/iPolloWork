@@ -64,6 +64,16 @@ function safeHref(href: string) {
   return "#";
 }
 
+function safeImageHref(href: string) {
+  const trimmed = href.trim();
+
+  if (/^data:image\/(?:avif|bmp|gif|jpeg|jpg|png|svg\+xml|webp|x-icon);base64,[a-z0-9+/=\s]+$/i.test(trimmed)) {
+    return trimmed.replace(/\s+/g, "");
+  }
+
+  return safeHref(trimmed);
+}
+
 function localPathFromHref(href: string) {
   const trimmed = href.trim();
 
@@ -190,8 +200,9 @@ function syncMarkdownImagePreviews(root: HTMLElement) {
   }
 }
 
-function sanitizeMarkdownHtml(value: string) {
+export function sanitizeMarkdownHtml(value: string) {
   return DOMPurify.sanitize(value, {
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$)|data:image\/(?:avif|bmp|gif|jpeg|jpg|png|svg\+xml|webp|x-icon);base64,)/i,
     ADD_ATTR: [
       "checked",
       "class",
@@ -286,7 +297,7 @@ const baseMarkedOptions = {
       return `<a href="${safe}" data-ipollowork-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="text-indigo-10 underline underline-offset-2 transition-colors hover:text-indigo-8">${this.parser.parseInline(tokens)}</a>`;
     },
     image({ href, title, text }) {
-      const safe = escapeAttribute(safeHref(href));
+      const safe = escapeAttribute(safeImageHref(href));
       const titleAttr = title ? ` title="${escapeAttribute(title)}"` : "";
 
       return `<span data-ipollowork-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img src="${safe}" alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowork-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowork-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">Show full image</span></button></span>`;

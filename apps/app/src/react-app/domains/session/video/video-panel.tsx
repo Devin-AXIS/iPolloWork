@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   HYPERFRAMES_VERSION,
-  hyperframesPreviewCommand,
   hyperframesStudioPort,
   hyperframesStudioUrl,
   videoProjectDirectory,
@@ -36,7 +35,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const terminalIdRef = React.useRef<string | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
-  const [detail, setDetail] = React.useState(`Starting HyperFrames ${HYPERFRAMES_VERSION}…`);
+  const [detail, setDetail] = React.useState(`Starting HyperFrames ${HYPERFRAMES_VERSION}...`);
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [simpleMode, setSimpleMode] = React.useState(true);
@@ -68,7 +67,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
 
   React.useEffect(() => {
     setStatus("starting");
-    setDetail(`Starting HyperFrames ${HYPERFRAMES_VERSION}…`);
+    setDetail(`Starting HyperFrames ${HYPERFRAMES_VERSION}...`);
     setStudioFrameLoaded(false);
     setStudioChromeReady(false);
     if (isRemoteWorkspace) {
@@ -76,55 +75,37 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       setDetail("Video Studio is available for local workspaces.");
       return;
     }
-    const bridge = window.__IPOLLOWORK_ELECTRON__?.terminal;
-    if (!bridge?.create || !bridge.write || !bridge.kill || !bridge.onData || !bridge.onExit) {
+    const bridge = window.__IPOLLOWORK_ELECTRON__?.hyperframes;
+    if (!bridge?.start || !bridge.stop) {
       setStatus("failed");
       setDetail("HyperFrames requires the iPolloWork desktop app.");
       return;
     }
-    const createTerminal = bridge.create;
-    const writeTerminal = bridge.write;
-    const killTerminal = bridge.kill;
-    const onTerminalData = bridge.onData;
-    const onTerminalExit = bridge.onExit;
+    const startHyperframes = bridge.start;
+    const stopHyperframes = bridge.stop;
 
     let disposed = false;
-    const removeData = onTerminalData(({ terminalId, data }) => {
-      if (terminalIdRef.current !== terminalId) return;
-      const plain = data.replace(/\x1b\[[0-9;]*m/g, "");
-      if (new RegExp(`localhost:${studioPort}|127\\.0\\.0\\.1:${studioPort}|studio.*ready|server.*running`, "i").test(plain)) {
-        setStatus("ready");
-        setDetail("Studio ready · click any canvas element to edit");
-        setStudioFrameLoaded(false);
-        setRevision((value) => value + 1);
-      }
-    });
-    const removeExit = onTerminalExit(({ terminalId, exitCode }) => {
-      if (terminalIdRef.current !== terminalId || disposed) return;
-      terminalIdRef.current = null;
-      setStatus("failed");
-      setDetail(`HyperFrames stopped${exitCode == null ? "" : ` (${exitCode})`}.`);
-    });
-
-    void createTerminal({ cwd: workspaceRoot, cols: 100, rows: 24 }).then(({ terminalId }) => {
-      if (disposed) {
-        void killTerminal(terminalId);
-        return;
-      }
-      terminalIdRef.current = terminalId;
-      void writeTerminal(terminalId, hyperframesPreviewCommand(sessionId));
+    void startHyperframes({
+      workspaceRoot,
+      sessionId,
+      projectDirectory,
+      port: studioPort,
+    }).then((result) => {
+      if (disposed) return;
+      if (!result?.ok) throw new Error("Could not start HyperFrames.");
+      setStatus("ready");
+      setDetail("Studio ready - click any canvas element to edit");
+      setStudioFrameLoaded(false);
+      setRevision((value) => value + 1);
     }).catch((cause) => {
+      if (disposed) return;
       setStatus("failed");
       setDetail(cause instanceof Error ? cause.message : "Could not start HyperFrames.");
     });
 
     return () => {
       disposed = true;
-      removeData();
-      removeExit();
-      const terminalId = terminalIdRef.current;
-      terminalIdRef.current = null;
-      if (terminalId) void killTerminal(terminalId);
+      void stopHyperframes(sessionId);
     };
   }, [isRemoteWorkspace, projectDirectory, sessionId, studioPort, workspaceRoot]);
 
@@ -152,7 +133,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">Video Studio is available for local workspaces only.</div>
       ) : (
         <div className="relative min-h-0 flex-1 bg-[#0c0c0d]">
-          {status === "starting" || (status === "ready" && !studioChromeReady) ? <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"><div className="text-center"><Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /><p className="text-xs text-muted-foreground">{status === "starting" ? "Starting the native HyperFrames workspace…" : "Preparing the Video Studio…"}</p></div></div> : null}
+          {status === "starting" || (status === "ready" && !studioChromeReady) ? <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"><div className="text-center"><Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /><p className="text-xs text-muted-foreground">{status === "starting" ? "Starting the native HyperFrames workspace..." : "Preparing the Video Studio..."}</p></div></div> : null}
           {status === "ready" ? <iframe key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
             setStudioFrameLoaded(true);
             // Do not reveal the embedded Studio while it still has its own

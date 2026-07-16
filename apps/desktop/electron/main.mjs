@@ -77,7 +77,10 @@ const uiControlServer = createUiControlServer({
 });
 
 const terminalProcesses = new Map();
+const hyperframesProcesses = new Map();
 let nextTerminalId = 1;
+const HYPERFRAMES_VERSION = "0.7.52";
+const HYPERFRAMES_START_TIMEOUT_MS = 90_000;
 
 function defaultTerminalShell() {
   if (process.platform === "win32") return process.env.COMSPEC || "powershell.exe";
@@ -118,6 +121,157 @@ function killTerminalsForWebContents(webContentsId) {
   }
 }
 
+function killProcessTree(child) {
+  if (!child?.pid) return;
+  if (process.platform === "win32") {
+    try { execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" }); } catch { /* already gone */ }
+    return;
+  }
+  try { process.kill(-child.pid, "SIGTERM"); } catch {
+    try { child.kill("SIGTERM"); } catch { /* already gone */ }
+  }
+}
+
+function hyperframesKey(webContentsId, sessionId) {
+  return `${webContentsId}:${String(sessionId ?? "").trim()}`;
+}
+
+function npxCommand() {
+  return process.platform === "win32" ? "npx.cmd" : "npx";
+}
+
+function npxPathEnv() {
+  const currentPath = process.env.PATH || "";
+  if (process.platform !== "darwin") return currentPath;
+  const fallbackPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+  return [...new Set([...currentPath.split(path.delimiter).filter(Boolean), ...fallbackPaths])].join(path.delimiter);
+}
+
+function spawnNpx(args, cwd) {
+  return spawn(npxCommand(), args, {
+    cwd,
+    shell: process.platform === "win32",
+    detached: process.platform !== "win32",
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      PATH: npxPathEnv(),
+      BROWSER: "none",
+      NO_COLOR: "1",
+    },
+  });
+}
+
+function resolveWorkspaceChild(root, childPath) {
+  const workspaceRoot = path.resolve(String(root ?? "").trim());
+  const relative = String(childPath ?? "").replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!relative || relative.split("/").some((part) => !part || part === "." || part === "..")) {
+    throw new Error("Invalid HyperFrames project path.");
+  }
+  const resolved = path.resolve(workspaceRoot, relative);
+  const relativeBack = path.relative(workspaceRoot, resolved);
+  if (relativeBack.startsWith("..") || path.isAbsolute(relativeBack)) {
+    throw new Error("HyperFrames project must stay inside the workspace.");
+  }
+  return { workspaceRoot, projectPath: resolved, projectDirectory: relative };
+}
+
+async function runHyperframesInit(workspaceRoot, projectDirectory, projectPath) {
+  if (existsSync(path.join(projectPath, "index.html"))) return;
+  await mkdir(path.dirname(projectPath), { recursive: true });
+  const child = spawnNpx(["--yes", `hyperframes@${HYPERFRAMES_VERSION}`, "init", projectDirectory, "--example", "blank", "--non-interactive"], workspaceRoot);
+  let output = "";
+  await new Promise((resolve, reject) => {
+    child.stdout?.on("data", (data) => { output += String(data); });
+    child.stderr?.on("data", (data) => { output += String(data); });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) resolve(undefined);
+      else reject(new Error(output.trim() || `HyperFrames init failed (${code ?? "unknown"}).`));
+    });
+  });
+}
+
+function stopHyperframesForKey(key) {
+  const running = hyperframesProcesses.get(key);
+  if (!running) return;
+  hyperframesProcesses.delete(key);
+  clearTimeout(running.timeout);
+  killProcessTree(running.process);
+}
+
+function stopHyperframesForWebContents(webContentsId) {
+  for (const [key, running] of hyperframesProcesses.entries()) {
+    if (running.webContentsId === webContentsId) stopHyperframesForKey(key);
+  }
+}
+
+async function startHyperframesPreview(event, options = {}) {
+  const sessionId = String(options.sessionId ?? "").trim();
+  if (!sessionId) throw new Error("sessionId is required.");
+  const port = Number(options.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error("Valid HyperFrames port is required.");
+  const { workspaceRoot, projectPath, projectDirectory } = resolveWorkspaceChild(options.workspaceRoot, options.projectDirectory);
+  const key = hyperframesKey(event.sender.id, sessionId);
+  const current = hyperframesProcesses.get(key);
+  if (current?.process && current.process.exitCode === null && current.port === port) {
+    return { ok: true, port, reused: true };
+  }
+  stopHyperframesForKey(key);
+  await runHyperframesInit(workspaceRoot, projectDirectory, projectPath);
+
+  const child = spawnNpx(["--yes", `hyperframes@${HYPERFRAMES_VERSION}`, "preview", "--port", String(port), "--no-open"], projectPath);
+  let output = "";
+  return await new Promise((resolve, reject) => {
+    let ready = false;
+    const cleanup = () => {
+      clearTimeout(timeout);
+      child.stdout?.off("data", onData);
+      child.stderr?.off("data", onData);
+      child.off("error", onError);
+      child.off("exit", onExit);
+    };
+    const finishReady = () => {
+      if (ready) return;
+      ready = true;
+      clearTimeout(timeout);
+      child.stdout?.off("data", onData);
+      child.stderr?.off("data", onData);
+      child.off("error", onError);
+      hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, timeout: null });
+      event.sender.once("destroyed", () => stopHyperframesForWebContents(event.sender.id));
+      resolve({ ok: true, port, reused: false });
+    };
+    const onData = (data) => {
+      output += String(data);
+      if (new RegExp(`localhost:${port}|127\\.0\\.0\\.1:${port}|studio.*ready|server.*running`, "i").test(output)) {
+        finishReady();
+      }
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onExit = (code) => {
+      cleanup();
+      hyperframesProcesses.delete(key);
+      if (ready) return;
+      reject(new Error(output.trim() || `HyperFrames stopped before Studio was ready (${code ?? "unknown"}).`));
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      killProcessTree(child);
+      reject(new Error("Timed out starting HyperFrames Studio."));
+    }, HYPERFRAMES_START_TIMEOUT_MS);
+    hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, timeout });
+    child.stdout?.on("data", onData);
+    child.stderr?.on("data", onData);
+    child.once("error", onError);
+    child.once("exit", onExit);
+  });
+}
+
 // Production Electron shares the same on-disk state folder as the Tauri shell
 // so in-place migration is a no-op for almost every file. Dev mode uses the
 // separate dev identifier so it can run beside the production app.
@@ -143,15 +297,32 @@ if (userDataOverride) {
 // Packaged builds ship icons via electron-builder config, but for `dev:electron`
 // the Electron default icon is shown without this.
 function resolveAppIconPath() {
+  if (process.platform === "darwin") {
+    const candidates = [
+      path.resolve(__dirname, "../resources/icons/mac/icon.icns"),
+      path.join(process.resourcesPath ?? "", "icons", "mac", "icon.icns"),
+      path.resolve(__dirname, "../resources/icons/icon.icns"),
+    ];
+    for (const candidate of candidates) {
+      if (candidate && existsSync(candidate)) return candidate;
+    }
+  }
+
+  if (process.platform === "win32") {
+    const candidates = [
+      path.resolve(__dirname, "../resources/icons/windows/icon.ico"),
+      path.join(process.resourcesPath ?? "", "icons", "windows", "icon.ico"),
+      path.resolve(__dirname, "../resources/icons/icon.ico"),
+      path.join(process.resourcesPath ?? "", "icons", "icon.ico"),
+      path.resolve(__dirname, "../resources/icons/icon.png"),
+      path.join(process.resourcesPath ?? "", "icons", "icon.png"),
+    ];
+    for (const candidate of candidates) {
+      if (candidate && existsSync(candidate)) return candidate;
+    }
+  }
+
   const candidates = [
-    // Dev: match Tauri's separate dev icon so the dev app is visibly distinct.
-    ...(isDevMode
-      ? [
-          path.resolve(__dirname, "../resources/icons/dev/icon.png"),
-          path.resolve(__dirname, "../resources/icons/dev/128x128@2x.png"),
-          path.resolve(__dirname, "../resources/icons/dev/icon-dev.icns"),
-        ]
-      : []),
     // Repo-relative path to the Electron resource icon set.
     path.resolve(__dirname, "../resources/icons/icon.png"),
     // Packaged: electron-builder copies extraResources but we fall back to this
@@ -1431,6 +1602,31 @@ function activeWindowFromEvent(event) {
   return BrowserWindow.fromWebContents(event.sender) ?? mainWindow ?? undefined;
 }
 
+const LOCAL_IMAGE_DATA_URL_MAX_BYTES = 10 * 1024 * 1024;
+const LOCAL_IMAGE_MIME_TYPES = new Map([
+  [".avif", "image/avif"],
+  [".bmp", "image/bmp"],
+  [".gif", "image/gif"],
+  [".ico", "image/x-icon"],
+  [".jpeg", "image/jpeg"],
+  [".jpg", "image/jpeg"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".webp", "image/webp"],
+]);
+
+async function readLocalImageAsDataUrl(target) {
+  const imagePath = String(target ?? "").trim();
+  if (!imagePath) return null;
+  const extension = path.extname(imagePath).toLowerCase();
+  const mimeType = LOCAL_IMAGE_MIME_TYPES.get(extension);
+  if (!mimeType) return null;
+  const stats = await stat(imagePath).catch(() => null);
+  if (!stats?.isFile() || stats.size > LOCAL_IMAGE_DATA_URL_MAX_BYTES) return null;
+  const bytes = await readFile(imagePath);
+  return `data:${mimeType};base64,${bytes.toString("base64")}`;
+}
+
 function macosVibrancyForCurrentTheme() {
   return nativeTheme.shouldUseDarkColors ? "under-window" : "sidebar";
 }
@@ -1817,6 +2013,9 @@ const desktopCommandHandlers = {
       } catch {
         return null;
       }
+  },
+  "__readLocalImageAsDataUrl": async (event, ...args) => {
+      return readLocalImageAsDataUrl(args[0]);
   },
   "__applyBrandAppName": async (event, ...args) => {
       const requested = args[0] === null ? "" : String(args[0] ?? "").trim();
@@ -2251,6 +2450,12 @@ ipcMain.handle("ipollowork:terminal:kill", (event, terminalId) => {
   const terminal = terminalForSender(event, terminalId);
   if (!terminal) return;
   killTerminal(String(terminalId));
+});
+
+ipcMain.handle("ipollowork:hyperframes:start", (event, options = {}) => startHyperframesPreview(event, options));
+ipcMain.handle("ipollowork:hyperframes:stop", (event, sessionId) => {
+  stopHyperframesForKey(hyperframesKey(event.sender.id, sessionId));
+  return { ok: true };
 });
 
 ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) => {

@@ -40,6 +40,7 @@ run(pnpmCmd, ["--filter", "ipollowork-server", "build"], repoRoot);
 run(pnpmCmd, ["--filter", "@ipollowork/app", "build"], repoRoot, {
   IPOLLOWORK_ELECTRON_BUILD: "1",
 });
+run(nodeCmd, [resolve(__dirname, "validate-renderer-assets.mjs")], repoRoot);
 // Copy constants.json next to server dist so the packaged asar can resolve it.
 // Also patch the compiled import path so it works from both dev and packaged layouts.
 const serverDistDir = resolve(repoRoot, "apps", "server", "dist");

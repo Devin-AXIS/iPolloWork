@@ -39,6 +39,9 @@ import type {
 } from "./desktop-types";
 import type { BrowserPanelTab } from "./desktop-types";
 
+export const LOCAL_IMAGE_FILE_EXTENSIONS = ["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"];
+export const LOCAL_IMAGE_FILE_FILTERS = [{ name: "图片文件", extensions: LOCAL_IMAGE_FILE_EXTENSIONS }];
+
 export type BrowserStatePayload = {
   activeTabId?: string | null;
   tabs?: BrowserPanelTab[];
@@ -161,6 +164,8 @@ declare global {
         onExit?: (callback: (payload: { terminalId: string; exitCode: number | null; signal?: number }) => void) => () => void;
       };
       hyperframes?: {
+        start?: (options: { workspaceRoot: string; sessionId: string; projectDirectory: string; port: number }) => Promise<{ ok: boolean; port?: number; reused?: boolean }>;
+        stop?: (sessionId: string) => Promise<{ ok: boolean }>;
         setSimpleMode?: (enabled: boolean) => Promise<{ ok: boolean; reason?: string; chromeClean?: boolean; sidebarToggled?: boolean; inspectorEnabled?: boolean }>;
       };
       meta?: {
@@ -381,6 +386,16 @@ export async function revealDesktopItemInDir(target: string): Promise<void> {
 
 export async function getDesktopFileIcon(target: string, size?: "small" | "normal" | "large"): Promise<string | null> {
   return invokeElectronHelper("__getFileIcon", target, size);
+}
+
+export async function readLocalImageAsDataUrl(target: string): Promise<string | null> {
+  return invokeElectronHelper("__readLocalImageAsDataUrl", target);
+}
+
+export async function pickLocalImageFile(title = "选择图片"): Promise<string | null> {
+  if (typeof window === "undefined" || !window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return null;
+  const target = await pickFile({ title, multiple: false, filters: LOCAL_IMAGE_FILE_FILTERS });
+  return typeof target === "string" ? target : null;
 }
 
 export async function applyBrandAppName(appName: string | null): Promise<string> {

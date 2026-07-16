@@ -14,6 +14,7 @@
     "dev:electron": "node ./scripts/electron-dev.mjs",
     "build": "node ./scripts/electron-build.mjs",
     "build:electron": "node ./scripts/electron-build.mjs",
+    "icons": "node ./scripts/generate-icons.mjs",
     "package:electron": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --publish never",
     "package:electron:dir": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --dir --publish never",
     "package:windows": "node ./scripts/package-windows.mjs",

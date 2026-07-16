@@ -464,7 +464,7 @@ export function NewConversationStarter({
       />
       <div className="relative">
         <div className="max-w-4xl">
-          <img src="/ipollo-work-wordmark.svg" alt="iPollo Work" className="h-[25px] w-[144px]" />
+          <img src={publicAssetUrl("ipollo-work-wordmark.svg")} alt="iPollo Work" className="h-[25px] w-[144px]" />
           <h1 className="mt-3 font-sans text-[48px] font-semibold leading-none tracking-[-1.92px] text-black">
             {t("new_conversation.title")}
           </h1>
