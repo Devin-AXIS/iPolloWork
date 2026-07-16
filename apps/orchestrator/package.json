@@ -1,6 +1,6 @@
 {
   "name": "ipollowork-orchestrator",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "iPolloWork host orchestrator for opencode + iPolloWork server",
   "private": true,
   "type": "module",
@@ -46,7 +46,7 @@
     "@opencode-ai/sdk": "^1.17.11",
     "@opentui/core": "0.1.77",
     "@opentui/solid": "0.1.77",
-    "ipollowork-server": "0.0.0",
+    "ipollowork-server": "0.1.0",
     "solid-js": "1.9.9"
   },
   "devDependencies": {

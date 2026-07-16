@@ -1,7 +1,8 @@
 /** @jsxImportSource react */
 
-import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { XIcon } from "lucide-react";
 
 import { captureAnalyticsEvent, initAnalytics } from "../../app/lib/analytics";
 import {
@@ -97,6 +98,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
   const denAuth = useDenAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [cloudUnavailableDismissed, setCloudUnavailableDismissed] = useState(false);
   const requireSignin = useSyncExternalStore(
     subscribeToRequireSignin,
     readRequireSigninSnapshot,
@@ -165,6 +167,12 @@ function DenSigninGate({ children }: DenSigninGateProps) {
     return () => window.removeEventListener(denSessionUpdatedEvent, handler);
   }, [navigate]);
 
+  useEffect(() => {
+    if (denAuth.status !== "unavailable") {
+      setCloudUnavailableDismissed(false);
+    }
+  }, [denAuth.status]);
+
   if (requireSignin && denAuth.status === "checking") {
     return <ForcedSigninPage developerMode={false} />;
   }
@@ -172,7 +180,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
   return (
     <>
       <CloudWorkspaceRouteSync />
-      {denAuth.status === "unavailable" ? (
+      {denAuth.status === "unavailable" && !cloudUnavailableDismissed ? (
         <div className="pointer-events-none fixed inset-x-0 top-3 z-[100] flex justify-center px-4">
           <div
             role="status"
@@ -190,6 +198,16 @@ function DenSigninGate({ children }: DenSigninGateProps) {
               onClick={() => void denAuth.refresh()}
             >
               {t("den.refresh")}
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+              aria-label={t("common.close")}
+              onClick={() => setCloudUnavailableDismissed(true)}
+            >
+              <XIcon className="size-4" />
             </Button>
           </div>
         </div>

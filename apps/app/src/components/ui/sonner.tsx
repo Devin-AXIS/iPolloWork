@@ -140,6 +140,12 @@ interface ToastCardProps {
 }
 
 function ToastCard({ id, type, title, description, action, cancel, notification }: ToastCardProps) {
+  const dismiss = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    sonnerToast.dismiss(id)
+  }
+
   if (notification) {
     return (
       <div className={cn("flex w-full gap-3 rounded-2xl border border-border bg-popover/95 backdrop-blur-sm p-4 text-popover-foreground shadow-md md:max-w-sm ring-1 ring-popover-border/20 items-center")}>
@@ -147,7 +153,7 @@ function ToastCard({ id, type, title, description, action, cancel, notification 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">{title}</p>
-            <Button variant="ghost" size="sm" onClick={() => sonnerToast.dismiss(id)}>
+            <Button type="button" variant="ghost" size="sm" aria-label="Close notification" onClick={dismiss}>
               <XIcon className="size-4" />
             </Button>
           </div>
@@ -163,7 +169,7 @@ function ToastCard({ id, type, title, description, action, cancel, notification 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
          <p className="text-sm font-medium">{title}</p>
-         <Button variant="ghost" size="sm" onClick={() => sonnerToast.dismiss(id)}>
+         <Button type="button" variant="ghost" size="sm" aria-label="Close notification" onClick={dismiss}>
           <XIcon className="size-4" />
           </Button>
         </div>

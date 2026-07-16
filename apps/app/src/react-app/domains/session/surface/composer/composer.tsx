@@ -1329,7 +1329,7 @@ export function ReactSessionComposer(props: ComposerProps) {
 
             {/* Action row — attachments, quick actions, model controls, and send */}
             <div className="mt-2 flex min-w-0 items-end justify-between gap-2">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 overflow-hidden">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 overflow-visible">
                 <input
                   ref={(element) => {
                     fileInput = element ?? undefined;
