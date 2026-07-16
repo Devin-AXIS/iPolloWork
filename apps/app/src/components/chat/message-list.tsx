@@ -36,6 +36,7 @@ import { TodoWriteTool } from "@/components/tools/todowrite"
 import { WebfetchTool } from "@/components/tools/webfetch"
 import { WebsearchTool } from "@/components/tools/websearch"
 import { useMessageList, useSessionErrorMessage } from "@/components/chat/message-list-provider"
+import { ArtifactList } from "@/components/chat/artifact"
 import {
   DescriptiveButtonContent,
   DescriptiveButtonDescription,
@@ -362,6 +363,7 @@ const AssistantMessage = React.memo(
               </div>
             )
           })}
+          <ArtifactList messages={[message]} />
         </div>
       </Message>
     )

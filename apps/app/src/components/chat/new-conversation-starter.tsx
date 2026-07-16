@@ -3,24 +3,26 @@
 import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
 import {
   CheckIcon,
-  ChartBarIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import {
   AppWindow,
+  Brain,
   FileChartColumnIncreasing,
   FileText,
   Film,
   FolderOpen,
   Globe2,
   Image,
-  Brain,
+  Bug,
+  Code2,
   MonitorCog,
   PanelsTopLeft,
   Presentation,
   Table2,
+  Wrench,
 } from "lucide-react";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
 
@@ -48,9 +50,9 @@ type NewConversationStarterProps = {
 
 const MODES = [
   { id: "work", iconSrc: publicAssetUrl("new-conversation-tabs/work.svg"), label: "new_conversation.mode.work" },
+  { id: "code", iconSrc: publicAssetUrl("new-conversation-tabs/code.svg"), label: "new_conversation.mode.code" },
   { id: "design", iconSrc: publicAssetUrl("new-conversation-tabs/design.svg"), label: "new_conversation.mode.design" },
   { id: "video", iconSrc: publicAssetUrl("new-conversation-tabs/video.svg"), label: "new_conversation.mode.video" },
-  { id: "code", iconSrc: publicAssetUrl("new-conversation-tabs/code.svg"), label: "new_conversation.mode.code" },
 ] as const satisfies ReadonlyArray<{ id: NewConversationMode; iconSrc: string; label: string }>;
 
 type StarterAction = {
@@ -89,30 +91,33 @@ const MODE_ACTIONS: Record<NewConversationMode, ReadonlyArray<StarterAction>> = 
     { id: "data", label: "new_conversation.action.data", icon: Table2, prompt: "new_conversation.prompt.data" },
     { id: "deep_research", label: "new_conversation.action.deep_research", icon: Brain, prompt: "new_conversation.prompt.deep_research" },
     { id: "browser", label: "new_conversation.action.browser", icon: Globe2, prompt: "new_conversation.prompt.browser" },
-    { id: "plan", label: "new_conversation.action.plan", icon: ChartBarIcon, prompt: "new_conversation.prompt.plan" },
   ],
-  code: [],
+  code: [
+    { id: "understand_code", label: "new_conversation.action.understand_code", icon: Code2, prompt: "new_conversation.prompt.understand_code" },
+    { id: "build_feature", label: "new_conversation.action.build_feature", icon: Wrench, prompt: "new_conversation.prompt.build_feature" },
+    { id: "debug", label: "new_conversation.action.debug", icon: Bug, prompt: "new_conversation.prompt.debug" },
+  ],
   design: [
-    { id: "slides", label: "new_conversation.action.presentation", icon: TEMPLATE_CATEGORY_ICONS.slides, templateCategory: "slides" },
-    { id: "article", label: "new_conversation.action.article", icon: TEMPLATE_CATEGORY_ICONS.article, templateCategory: "article" },
-    { id: "cards", label: "new_conversation.action.info_card", icon: TEMPLATE_CATEGORY_ICONS.cards, templateCategory: "cards" },
     { id: "site", label: "new_conversation.action.website", icon: TEMPLATE_CATEGORY_ICONS.site, templateCategory: "site" },
-    { id: "report", label: "new_conversation.action.report", icon: TEMPLATE_CATEGORY_ICONS.report, templateCategory: "report" },
-    { id: "other", label: "new_conversation.action.other", icon: TEMPLATE_CATEGORY_ICONS.other, templateCategory: "other" },
+    { id: "slides", label: "new_conversation.action.presentation", icon: TEMPLATE_CATEGORY_ICONS.slides, templateCategory: "slides" },
+    { id: "cards", label: "new_conversation.action.info_card", icon: TEMPLATE_CATEGORY_ICONS.cards, templateCategory: "cards" },
     { id: "poster", label: "new_conversation.action.poster", icon: TEMPLATE_CATEGORY_ICONS.poster, templateCategory: "poster" },
     { id: "app", label: "new_conversation.action.app", icon: TEMPLATE_CATEGORY_ICONS.app, templateCategory: "app" },
+    { id: "article", label: "new_conversation.action.article", icon: TEMPLATE_CATEGORY_ICONS.article, templateCategory: "article" },
+    { id: "report", label: "new_conversation.action.report", icon: TEMPLATE_CATEGORY_ICONS.report, templateCategory: "report" },
+    { id: "other", label: "new_conversation.action.other", icon: TEMPLATE_CATEGORY_ICONS.other, templateCategory: "other" },
   ],
   video: [],
 };
 
 const DEFAULT_SHORTCUT_IDS: Record<NewConversationMode, string[]> = {
   work: ["auto_computer", "document", "data", "deep_research", "browser"],
-  code: [],
-  design: ["slides", "article", "cards", "site", "report", "other"],
+  code: ["understand_code", "build_feature", "debug"],
+  design: ["site", "slides", "cards", "poster"],
   video: [],
 };
 
-const SHORTCUT_STORAGE_KEY = "ipollowork.new-conversation-shortcuts.v2";
+const SHORTCUT_STORAGE_KEY = "ipollowork.new-conversation-shortcuts.v5";
 
 function TemplateThumbnail({ template, getTemplateCover }: { template: TemplateCatalogItem; getTemplateCover?: TemplateCoverLoader }) {
   const [src, setSrc] = useState<string | null>(null);

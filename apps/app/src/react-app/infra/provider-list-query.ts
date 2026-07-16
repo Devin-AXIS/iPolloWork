@@ -63,6 +63,16 @@ export function getConnectedProviderItems(value: ProviderListResponse | null | u
   );
 }
 
+export function getSelectableChatProviderItems(value: ProviderListResponse | null | undefined) {
+  return getConnectedProviderItems(value).filter((provider) => {
+    // The OpenCode provider is the built-in default chat path. Env-sourced
+    // providers can be present because the runtime inherited shell variables,
+    // but that does not mean the user intentionally configured them for chat.
+    if (provider.id.trim().toLowerCase() === "opencode") return true;
+    return provider.source !== "env";
+  });
+}
+
 export function getConnectedProviderSnapshot(value: ProviderListResponse | null | undefined): ConnectedProviderSnapshot {
   return getConnectedProviderItems(value)
     .map((provider) => ({
@@ -82,6 +92,16 @@ export function isModelAvailableInConnectedProviders(
 ) {
   if (!model?.providerID || !model.modelID) return true;
   return getConnectedProviderItems(value).some(
+    (provider) => provider.id === model.providerID && Boolean(provider.models?.[model.modelID]),
+  );
+}
+
+export function isModelAvailableInSelectableChatProviders(
+  value: ProviderListResponse | null | undefined,
+  model: ModelRef | null | undefined,
+) {
+  if (!model?.providerID || !model.modelID) return true;
+  return getSelectableChatProviderItems(value).some(
     (provider) => provider.id === model.providerID && Boolean(provider.models?.[model.modelID]),
   );
 }

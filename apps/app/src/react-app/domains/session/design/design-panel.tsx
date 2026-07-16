@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,7 @@ type LoadedHtml = {
 };
 
 const COLOR_SWATCHES = ["#111827", "#ffffff", "#7c3aed", "#2563eb", "#059669", "#ea580c", "#dc2626", "#db2777"];
+const PUBLISHABLE_DESIGN_FILE = /\.(?:avif|css|gif|html?|ico|jpe?g|js|json|map|mjs|png|svg|webp|woff2?|ttf|otf)$/i;
 
 const TYPE_PRESETS = [
   { label: "Display", sample: "Aa", styles: { fontSize: "48px", fontWeight: "700", lineHeight: "1.05", letterSpacing: "-0.025em" } },
@@ -85,6 +86,21 @@ function linkedDesignTokenPath(source: string | undefined): string {
 
 function fileName(path: string) {
   return path.split(/[\\/]/).pop() || path;
+}
+
+function directoryPath(path: string) {
+  const boundary = path.lastIndexOf("/");
+  return boundary < 0 ? "" : path.slice(0, boundary + 1);
+}
+
+function publicationPathSegment(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
+}
+
+function isPublishableDesignFile(path: string) {
+  return PUBLISHABLE_DESIGN_FILE.test(path)
+    && !path.includes("/.versions/")
+    && !path.includes("/.ipollowork/");
 }
 
 function normalizeHexColor(value: string) {
@@ -559,6 +575,58 @@ export function DesignPanel({
   };
 
   const dirty = pendingCanvasChange || draft !== savedSource;
+  const publishMutation = useMutation({
+    mutationFn: async () => {
+      if (!client || !workspaceId || !lockedPath) throw new Error("This design is not ready to publish.");
+      const status = await client.callStorage("status", {}, { workspaceId });
+      if (!status.ok || !status.result || typeof status.result !== "object") {
+        throw new Error("Storage Center is unavailable.");
+      }
+      const storage = status.result as { defaultProvider?: unknown };
+      if (typeof storage.defaultProvider !== "string" || !storage.defaultProvider) {
+        throw new Error("Configure a default OSS or Wasabi provider in Authorization Center first.");
+      }
+      if (dirty) await saveMutation.mutateAsync();
+
+      const root = directoryPath(lockedPath);
+      const catalog = await client.listWorkspaceFiles(workspaceId);
+      const paths = new Set<string>([lockedPath]);
+      for (const item of catalog) {
+        if (item.kind !== "file" || !isPublishableDesignFile(item.path)) continue;
+        if (root ? item.path.startsWith(root) : item.path === lockedPath) paths.add(item.path);
+      }
+      if (templateTokenPath && isPublishableDesignFile(templateTokenPath)) paths.add(templateTokenPath);
+      const sourcePaths = [...paths].sort();
+      if (sourcePaths.length > 100) throw new Error("This design has more than 100 publishable files. Reduce its asset folder before publishing.");
+
+      const objectPrefix = `ipollowork/published/${publicationPathSegment(workspaceId)}/${publicationPathSegment(sessionId)}`;
+      let publicUrl = "";
+      for (const sourcePath of sourcePaths) {
+        const uploaded = await client.callStorage("upload_workspace_file", {
+          sourcePath,
+          provider: "auto",
+          objectKey: `${objectPrefix}/${sourcePath}`,
+        }, { workspaceId });
+        if (!uploaded.ok || !uploaded.result || typeof uploaded.result !== "object") {
+          throw new Error(`Could not publish ${fileName(sourcePath)}.`);
+        }
+        if (sourcePath === lockedPath) {
+          const output = uploaded.result as { url?: unknown; downloadUrl?: unknown };
+          publicUrl = typeof output.downloadUrl === "string" ? output.downloadUrl : typeof output.url === "string" ? output.url : "";
+        }
+      }
+      if (!publicUrl) throw new Error("The published design did not return a browser link.");
+      return { publicUrl, files: sourcePaths.length };
+    },
+    onSuccess: ({ publicUrl, files }) => {
+      void navigator.clipboard?.writeText(publicUrl).catch(() => undefined);
+      window.open(publicUrl, "_blank", "noopener,noreferrer");
+      toast.success(`Published ${files} file${files === 1 ? "" : "s"} to object storage. Link copied.`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Could not publish this design.");
+    },
+  });
   const designTokenValues = React.useMemo(
     () => readDesignTokenValues(templateTokenQuery.data ?? "", draft),
     [draft, templateTokenQuery.data],
@@ -683,6 +751,16 @@ export function DesignPanel({
             <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || (!editing && !dirty)}>
               {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
               Save
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => publishMutation.mutate()}
+              disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
+              aria-label="Publish to object storage"
+              title="Publish to object storage"
+            >
+              {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
             </Button>
             <ToggleGroup
               value={[previewDevice]}

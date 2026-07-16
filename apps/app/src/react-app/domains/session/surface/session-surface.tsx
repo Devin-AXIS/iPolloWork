@@ -139,6 +139,7 @@ export type SessionSurfaceProps = {
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   safeStringify?: (value: unknown) => string;
   onChangeModel?: (model: { providerID: string; modelID: string }) => void;
+  onConfigureModels?: () => void;
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
@@ -1362,6 +1363,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           selectedModel={props.selectedModel}
           onModelPickerOpenChange={props.onModelPickerOpenChange}
           onModelChange={props.onModelChange}
+          onConfigureModels={props.onConfigureModels}
           attachments={attachments}
           onAttachFiles={handleAttachFiles}
           onRemoveAttachment={handleRemoveAttachment}

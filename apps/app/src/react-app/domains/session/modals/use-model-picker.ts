@@ -10,7 +10,7 @@ import type { Client, ModelOption } from "@/app/types";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
   ensureProviderListQuery,
-  getConnectedProviderItems,
+  getSelectableChatProviderItems,
 } from "@/react-app/infra/provider-list-query";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import {
@@ -97,7 +97,7 @@ export function useModelPicker(input: UseModelPickerInput) {
           seenIds = new Set();
         }
         const options: ModelOption[] = [];
-        for (const provider of getConnectedProviderItems(data)) {
+        for (const provider of getSelectableChatProviderItems(data)) {
           const modelIds = Object.keys(provider.models);
           const isNew = !seenIds.has(provider.id) || recentProviderIds.has(provider.id);
           for (const id of modelIds) {

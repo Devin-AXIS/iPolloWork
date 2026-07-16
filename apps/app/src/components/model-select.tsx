@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, Settings2, Sparkles } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { ChevronDown, Settings2 } from "lucide-react";
 
 import type { ModelOption, ModelRef } from "@/app/types";
+import { t } from "@/i18n";
 import { ProviderIcon } from "@/react-app/design-system/provider-icon";
 import {
   Popover,
@@ -17,20 +17,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/react-app/shell/workspace-provider";
-import { usePlatform } from "@/react-app/kernel/platform";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
-import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
-import {
-  getiPolloWorkModelsActionUrl,
-  hasiPolloWorkModelsProvider,
-  hideiPolloWorkModelsPromo,
-  isiPolloWorkModelsPromoHidden,
-  IPOLLOWORK_MODEL_PREVIEWS,
-  IPOLLOWORK_MODELS_PROVIDER_ID,
-  IPOLLOWORK_MODELS_PROVIDER_NAME,
-  iPolloWorkModelsPromoChangedEvent,
-} from "@/react-app/domains/cloud/ipollowork-models-promo";
-import { getConnectedProviderItems, useProviderListQuery } from "@/react-app/infra/provider-list-query";
+import { getSelectableChatProviderItems, useProviderListQuery } from "@/react-app/infra/provider-list-query";
 import {
   Command,
   CommandCollection,
@@ -89,7 +77,7 @@ function useModelOptions(open: boolean) {
       restriction: "allowCustomProviders",
     });
 
-    const options = getConnectedProviderItems(data)
+    const options = getSelectableChatProviderItems(data)
       .flatMap((provider) =>
         Object.entries(provider.models).map(([id, model]) => ({
           providerID: provider.id,
@@ -130,19 +118,9 @@ type ModelSelectModelItem = {
   option: ModelOption;
 };
 
-type ModelSelectiPolloWorkItem = {
-  kind: "ipollowork";
-  id: string;
-  title: string;
-  subtitle: string;
-};
-
-type ModelSelectItem = ModelSelectModelItem | ModelSelectiPolloWorkItem;
-
 type ModelSelectGroup = {
   value: string;
-  items: ModelSelectItem[];
-  promo: boolean;
+  items: ModelSelectModelItem[];
 };
 
 function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
@@ -169,22 +147,8 @@ function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
     .map(([providerLabel, options]) => ({
       value: providerLabel,
       items: [...options].sort((a, b) => a.option.title.localeCompare(b.option.title)),
-      promo: false,
     }))
     .sort((a, b) => a.value.localeCompare(b.value));
-}
-
-function iPolloWorkModelsGroup(): ModelSelectGroup {
-  return {
-    value: IPOLLOWORK_MODELS_PROVIDER_NAME,
-    promo: true,
-    items: IPOLLOWORK_MODEL_PREVIEWS.map((model) => ({
-      kind: "ipollowork",
-      id: model.id,
-      title: model.title,
-      subtitle: model.subtitle,
-    })),
-  };
 }
 
 function isSameModel(a: ModelRef, b: ModelRef) {
@@ -196,6 +160,7 @@ interface ModelSelectProps {
   value: ModelRef;
   onOpenChange: (open: boolean) => void;
   onChange: (model: ModelRef) => void;
+  onConfigureModels?: () => void;
   disabled?: boolean;
 }
 
@@ -204,21 +169,12 @@ export function ModelSelect({
   value,
   onOpenChange,
   onChange,
+  onConfigureModels,
   disabled = false,
 }: ModelSelectProps) {
   const [search, setSearch] = React.useState("");
-  const [promoHidden, setPromoHidden] = React.useState(isiPolloWorkModelsPromoHidden);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const modelOptions = useModelOptions(open);
-  const denAuth = useDenAuth();
-  const navigate = useNavigate();
-  const platform = usePlatform();
-
-  React.useEffect(() => {
-    const handlePromoChanged = () => setPromoHidden(isiPolloWorkModelsPromoHidden());
-    window.addEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
-    return () => window.removeEventListener(iPolloWorkModelsPromoChangedEvent, handlePromoChanged);
-  }, []);
 
   const focusSearchInput = React.useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -248,39 +204,15 @@ export function ModelSelect({
     }),
   );
 
-  const showiPolloWorkModelsPromo = React.useMemo(
-    () => !promoHidden && !hasiPolloWorkModelsProvider(modelOptions.map((option) => option.providerID)),
-    [modelOptions, promoHidden],
-  );
-
   const groups = React.useMemo(() => {
-    const providerGroups = groupByProvider(modelOptions);
-    return showiPolloWorkModelsPromo
-      ? [iPolloWorkModelsGroup(), ...providerGroups]
-      : providerGroups;
-  }, [modelOptions, showiPolloWorkModelsPromo]);
+    return groupByProvider(modelOptions);
+  }, [modelOptions]);
 
   const handleSelect = (option: ModelOption) => {
     onChange({ providerID: option.providerID, modelID: option.modelID });
     setSearch("");
     onOpenChange(false);
   };
-
-  const handleiPolloWorkModels = React.useCallback(() => {
-    onOpenChange(false);
-    setSearch("");
-    if (!denAuth.isSignedIn) {
-      navigate("/settings/cloud-account");
-    }
-    window.setTimeout(() => {
-      platform.openLink(getiPolloWorkModelsActionUrl(denAuth.isSignedIn));
-    }, 0);
-  }, [denAuth.isSignedIn, navigate, onOpenChange, platform]);
-
-  const handleHideiPolloWorkModels = React.useCallback(() => {
-    hideiPolloWorkModelsPromo();
-    setPromoHidden(true);
-  }, []);
 
   return (
     <Popover
@@ -333,42 +265,9 @@ export function ModelSelect({
                 key={group.value}
                 items={group.items}
               >
-                <CommandGroupLabel className={group.promo ? "flex items-center gap-1.5 text-foreground" : undefined}>
-                  {group.promo ? <Sparkles className="size-3 text-blue-11" /> : null}
-                  {group.value}
-                </CommandGroupLabel>
+                <CommandGroupLabel>{group.value}</CommandGroupLabel>
                 <CommandCollection>
-                  {(item: ModelSelectItem) => {
-                    if (item.kind === "ipollowork") {
-                      return (
-                        <CommandItem
-                          className="gap-2 border border-blue-6/50 bg-blue-2/40 data-highlighted:bg-blue-3"
-                          key={item.id}
-                          value={`${IPOLLOWORK_MODELS_PROVIDER_NAME} ${item.title} ${item.id} sign in subscribe`}
-                          onClick={handleiPolloWorkModels}
-                        >
-                          <ProviderIcon
-                            providerId={IPOLLOWORK_MODELS_PROVIDER_ID}
-                            providerName={IPOLLOWORK_MODELS_PROVIDER_NAME}
-                            className="size-3.5 text-blue-11"
-                            size={14}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-foreground">
-                              {item.title}
-                            </span>
-                            <span className="block truncate text-xs text-muted-foreground">
-                              {item.subtitle} - {denAuth.isSignedIn ? "Subscribe to add this model" : "Sign in to unlock"}
-                            </span>
-                          </span>
-                          <span className="shrink-0 rounded-full border border-blue-6 bg-blue-3 px-1.5 py-0.5 text-[10px] font-medium text-blue-11">
-                            {denAuth.isSignedIn ? "Subscribe" : "Sign in"}
-                          </span>
-                          <ChevronRight className="size-3.5 text-blue-11" />
-                        </CommandItem>
-                      );
-                    }
-
+                  {(item: ModelSelectModelItem) => {
                     const option = item.option;
                     return (
                       <CommandItem
@@ -400,31 +299,24 @@ export function ModelSelect({
               </CommandGroup>
             )}
           </CommandList>
-          {/* Link to full model picker */}
+          {/* Link to model configuration */}
           <div className="border-t border-border px-2 py-1.5">
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                onClick={() => {
-                  onOpenChange(false);
-                  setSearch("");
-                  window.dispatchEvent(new CustomEvent(openModelPickerEvent));
-                }}
-              >
-                <Settings2 className="size-3.5" />
-                All models
-              </button>
-              {showiPolloWorkModelsPromo ? (
-                <button
-                  type="button"
-                  className="shrink-0 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                  onClick={handleHideiPolloWorkModels}
-                >
-                  Hide
-                </button>
-              ) : null}
-            </div>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              onClick={() => {
+                onOpenChange(false);
+                setSearch("");
+                if (onConfigureModels) {
+                  onConfigureModels();
+                  return;
+                }
+                window.dispatchEvent(new CustomEvent(openModelPickerEvent));
+              }}
+            >
+              <Settings2 className="size-3.5" />
+              {t("model_picker.configure_models")}
+            </button>
           </div>
         </Command>
       </PopoverContent>
