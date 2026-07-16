@@ -206,7 +206,7 @@ function Sidebar({
     <div
       className={cn(
         "group peer text-sidebar-foreground",
-        collapsible === "none" ? "block" : "hidden md:block"
+        "block"
       )}
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
@@ -230,7 +230,7 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          "fixed inset-y-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
           collapsible === "none" && "flex",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
@@ -480,7 +480,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden relative rounded-md px-3 py-2 text-start text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pe-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate mac:hover:bg-black/5 mac:active:bg-black/5 mac:data-active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10 dark:mac:data-active:bg-white/10 ",
+  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden relative rounded-md px-3 py-2 text-start text-sm font-medium ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pe-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate mac:hover:bg-black/5 mac:active:bg-black/5 mac:data-active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10 dark:mac:data-active:bg-white/10 ",
   {
     variants: {
       variant: {
@@ -644,7 +644,7 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
       data-slot="sidebar-menu-sub"
       data-sidebar="menu-sub"
       className={cn(
-        "flex min-w-0 translate-x-px rtl:-translate-x-px flex-col gap-px group-data-[collapsible=icon]:hidden",
+        "flex min-w-0 translate-x-px rtl:-translate-x-px flex-col gap-[6px] group-data-[collapsible=icon]:hidden",
         className
       )}
       {...props}
@@ -682,7 +682,7 @@ function SidebarMenuSubButton({
     props: mergeProps<"a">(
       {
         className: cn(
-          "flex h-7 ps-9 min-w-0 -translate-x-px rtl:translate-x-px items-center gap-2 overflow-hidden relative rounded-md px-3 text-sidebar-foreground ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-hover/menu-sub-item:bg-sidebar-accent group-hover/menu-sub-item:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-sm data-[size=sm]:text-xs data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground mac:hover:bg-black/5 mac:group-hover/menu-sub-item:bg-black/5 mac:active:bg-black/5 mac:data-active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:group-hover/menu-sub-item:bg-white/10 dark:mac:active:bg-white/10 dark:mac:data-active:bg-white/10",
+          "flex h-7 ps-9 min-w-0 -translate-x-px rtl:translate-x-px items-center gap-2 overflow-hidden relative rounded-md px-3 font-medium text-sidebar-foreground ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-hover/menu-sub-item:bg-sidebar-accent group-hover/menu-sub-item:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-sm data-[size=sm]:text-xs data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground mac:hover:bg-black/5 mac:group-hover/menu-sub-item:bg-black/5 mac:active:bg-black/5 mac:data-active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:group-hover/menu-sub-item:bg-white/10 dark:mac:active:bg-white/10 dark:mac:data-active:bg-white/10",
           className
         ),
       },

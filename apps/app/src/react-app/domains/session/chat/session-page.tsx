@@ -53,7 +53,6 @@ import { SessionSurface, type SessionSurfaceProps } from "../surface/session-sur
 import {
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
   ResizableHandle,
@@ -90,6 +89,8 @@ const STARTUP_SKELETON_ROWS = [
 ];
 const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowork_voice__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
+const MAIN_WORKSPACE_MIN_WIDTH = 520;
+const MAIN_WORKSPACE_FALLBACK_MIN_WIDTH = 480;
 type SessionPanelView = SidePanelItem | "launcher";
 
 function videoPanelCollapsedStorageKey(sessionId: string) {
@@ -652,10 +653,12 @@ export function SessionPage(props: SessionPageProps) {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createGroupLabel, setCreateGroupLabel] = useState("");
   const [createGroupWorkspaceId, setCreateGroupWorkspaceId] = useState<string | null>(null);
+  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | null>(null);
   const browserPanelRef = usePanelRef();
   const preserveSidePanelOnPanelOpenRef = useRef(false);
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
+    if (panel) setMainWorkspaceView(null);
     setSessionPanelView(null);
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, panel === "voice" ? "voice" : null);
     if (panel === "voice") return;
@@ -663,6 +666,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [props.selectedSessionId, setSidePanelState]);
 
   const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {
+    setMainWorkspaceView(null);
     setSessionPanelView(null);
     if (panel === "voice") {
       toggleSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, "voice");
@@ -701,9 +705,22 @@ export function SessionPage(props: SessionPageProps) {
     minRightWidth: 320,
   });
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
+  const [viewportWidth, setViewportWidth] = useState(() => (
+    typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
+  ));
   const sidebarProviderStyle: CSSProperties & Record<"--sidebar-width", string> = {
     "--sidebar-width": `${leftSidebarWidth}px`,
   };
+  const mainWorkspaceMinWidth = viewportWidth >= leftSidebarWidth + browserPanelDefaultWidth + MAIN_WORKSPACE_MIN_WIDTH
+    ? MAIN_WORKSPACE_MIN_WIDTH
+    : MAIN_WORKSPACE_FALLBACK_MIN_WIDTH;
+  const sidebarVisuallyCollapsed = !sidebarOpen;
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   useEffect(() => {
     if (sidePanelOpen) return;
     setBrowserPanelDefaultWidth(browserPanelWidth);
@@ -1086,8 +1103,9 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel("panel");
   }, [artifactFileTargets, hasArtifactTargets, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
   const openExtensionsRailPane = useCallback(() => {
-    toggleCurrentSidePanel("extensions");
-  }, [toggleCurrentSidePanel]);
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("extensions");
+  }, [setCurrentSidePanel]);
   const openVoiceRailPane = useCallback(() => {
     toggleCurrentSidePanel("voice");
   }, [toggleCurrentSidePanel]);
@@ -1268,6 +1286,11 @@ export function SessionPage(props: SessionPageProps) {
   const showHeaderMenu = Boolean(
     (props.selectedSessionId && (props.onRenameSession || props.onDeleteSession)) || props.developerMode,
   );
+  const selectedSessionIsDefaultTitle = selectedSessionTitle === t("session.default_title");
+  const showMainHeaderTitle = Boolean(
+    showWorkspaceSetupEmptyState || (props.selectedSessionId && !selectedSessionIsDefaultTitle),
+  );
+  const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
 
   useEffect(() => {
     if (!showSessionLoadingState) {
@@ -1286,6 +1309,7 @@ export function SessionPage(props: SessionPageProps) {
     setRenameBusy(false);
     setDeleteBusy(false);
     setSessionActionId(null);
+    setMainWorkspaceView(null);
   }, [props.selectedSessionId]);
 
   const openRenameModal = (sessionId: string) => {
@@ -1375,42 +1399,52 @@ export function SessionPage(props: SessionPageProps) {
             name: denAuth.user?.name ?? null,
             email: denAuth.user?.email ?? null,
           }}
+          activePrimaryItem={templateMarketOpen ? "template-market" : mainWorkspaceView === "extensions" ? "extensions" : null}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
           onOpenTemplateMarket={() => setTemplateMarketOpen(true)}
+          onOpenExtensions={openExtensionsRailPane}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch}
           onReorderWorkspaces={props.sidebar.onReorderWorkspaces}
           onStartResize={startLeftSidebarResize}
         />
-        <SidebarInset className="min-h-0 overflow-hidden bg-background mac:bg-background/80 mac:[&_header]:transition-[padding-left] mac:[&_header]:duration-200 mac:[&_header]:ease-linear mac:peer-data-[state=collapsed]:[&_header]:pl-28 mac:max-md:[&_header]:pl-28">
+        <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80 mac:[&_header]:transition-[padding-left] mac:[&_header]:duration-200 mac:[&_header]:ease-linear mac:peer-data-[state=collapsed]:[&_header]:pl-28 mac:max-md:[&_header]:pl-28">
           <div className="flex min-h-0 flex-1">
           <ResizablePanelGroup
             orientation="horizontal"
             onLayoutChanged={sidePanelOpen ? commitBrowserPanelWidth : undefined}
             className="min-h-0 flex-1"
           >
-            <ResizablePanel minSize="360px" className="min-w-0">
+            <ResizablePanel minSize={`${mainWorkspaceMinWidth}px`} className="min-w-0">
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
           <header className={cn(
-            "z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
-            showNewConversationChrome ? "hidden" : "flex",
+            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
+            mainWorkspaceView === "extensions" || (showNewConversationChrome && !sidebarVisuallyCollapsed) ? "hidden" : "flex",
           )}>
+            {shellConfig.sidebar && sidebarVisuallyCollapsed ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="absolute left-6 top-1/2 z-20 size-8 -translate-y-1/2 rounded-lg border-none text-muted-foreground hover:bg-muted hover:text-foreground mac:left-20 mac:titlebar-no-drag"
+                aria-label={t("sidebar.expand")}
+                title={t("sidebar.expand")}
+                onClick={() => setSidebarOpen(true)}
+                style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
+              >
+                <img src="/sidebar-left-expand.svg" alt="" className="h-3 w-4 shrink-0" />
+              </Button>
+            ) : null}
             <div className="flex min-w-0 items-center gap-1">
-              {shellConfig.sidebar ? (
-                <SidebarTrigger
-                  className="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
-                  icon={<img src="/sidebar-left-expand.svg" alt="" className="h-3 w-4 shrink-0" />}
-                  aria-label={sidebarOpen ? t("sidebar.collapse") : t("sidebar.expand")}
-                  title={sidebarOpen ? t("sidebar.collapse") : t("sidebar.expand")}
-                />
+              {showMainHeaderTitle ? (
+                <h1 className="truncate text-[14px] font-medium text-dls-text">
+                  {showWorkspaceSetupEmptyState
+                    ? t("session.create_or_connect_workspace")
+                    : selectedSessionTitle || t("session.default_title")}
+                </h1>
               ) : null}
-              <h1 className="truncate text-[14px] font-medium text-dls-text">
-                {showWorkspaceSetupEmptyState
-                  ? t("session.create_or_connect_workspace")
-                  : selectedSessionTitle || t("session.default_title")}
-              </h1>
-              {showHeaderMenu ? (
+              {showMainHeaderMenu ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
@@ -1501,7 +1535,11 @@ export function SessionPage(props: SessionPageProps) {
           <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1 overflow-hidden">
             <ResizablePanel minSize="180px" className="min-h-0">
             <div className="relative h-full min-w-0 overflow-hidden bg-dls-surface mac:bg-dls-surface/85 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
-              {showStartupSkeleton ? (
+              {mainWorkspaceView === "extensions" && props.settingsSlot ? (
+                <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
+                  {props.settingsSlot}
+                </div>
+              ) : showStartupSkeleton ? (
                 <div className="px-6 py-14" role="status" aria-live="polite">
                   <div className="mx-auto max-w-2xl space-y-6">
                     <div className="space-y-2">
@@ -1529,7 +1567,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {showDelayedSessionLoadingState ? (
+              {mainWorkspaceView === null && showDelayedSessionLoadingState ? (
                 <div className="px-6 py-16">
                   <div
                     className="mx-auto flex max-w-[320px] flex-col items-center gap-3 text-center"
@@ -1544,7 +1582,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {!showDelayedSessionLoadingState && canRenderReactSurface ? (
+              {mainWorkspaceView === null && !showDelayedSessionLoadingState && canRenderReactSurface ? (
                 <div className="flex h-full min-h-0 flex-col lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1">
                       {(isDesignSession || isVideoSession) && templateSessionLoading ? (
@@ -1601,7 +1639,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {!showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (
+              {mainWorkspaceView === null && !showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (
                 <div className={`mx-auto max-w-[800px] px-6 ${showWorkspaceSetupEmptyState ? "pt-20" : "pt-10"}`}>
                   {props.notFoundMessage ? (
                     <div className="px-6 py-16 text-center">
@@ -1801,10 +1839,6 @@ export function SessionPage(props: SessionPageProps) {
                           );
                         })}
                       </div>
-                    </div>
-                  ) : activeSidePanel === "extensions" && props.settingsSlot ? (
-                    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
-                      {props.settingsSlot}
                     </div>
                   ) : activeSidePanel === "voice" ? (
                     <VoicePanel

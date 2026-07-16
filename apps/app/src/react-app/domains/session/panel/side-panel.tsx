@@ -21,6 +21,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { t } from "@/i18n";
 
 import { ArtifactIcon } from "../artifacts/artifact-icon";
 import { ArtifactPanel } from "../artifacts/artifact-panel";
@@ -622,7 +623,7 @@ export function SidePanel({
                       className="h-11 rounded-xl px-2 text-[20px] font-normal tracking-[-0.8px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424]"
                     >
                       <Globe className="size-6 stroke-[1.8] text-[#666666]" />
-                      <span className="flex-1">浏览器</span>
+                      <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
                     </DropdownMenuItem>
                   ) : null}
                 </DropdownMenuContent>

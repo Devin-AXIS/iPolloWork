@@ -536,11 +536,15 @@ const LOG_LEVEL_NUMBERS: Record<LogLevel, number> = {
   error: 17,
 };
 
+let stdoutErrorHandlerInstalled = false;
+let stdoutUnavailable = false;
+
 function toUnixNano(): string {
   return (BigInt(Date.now()) * 1_000_000n).toString();
 }
 
 export function createServerLogger(config: ServerConfig): ServerLogger {
+  installStdoutErrorHandler();
   const runId = process.env.IPOLLOWORK_RUN_ID ?? shortId();
   const host = hostname().trim();
   const resource: Record<string, string> = {
@@ -555,6 +559,21 @@ export function createServerLogger(config: ServerConfig): ServerLogger {
     "run.id": runId,
     "process.pid": process.pid,
   };
+  const writeStdoutLine = (line: string) => {
+    if (stdoutUnavailable) return;
+    try {
+      const canContinue = process.stdout.write(`${line}\n`);
+      if (!canContinue) {
+        process.stdout.once("drain", () => {});
+      }
+    } catch (error) {
+      if (isIgnorableStdoutWriteError(error)) {
+        stdoutUnavailable = true;
+        return;
+      }
+      throw error;
+    }
+  };
 
   const emit = (level: LogLevel, message: string, attributes?: LogAttributes) => {
     const merged = { ...baseAttributes, ...(attributes ?? {}) };
@@ -567,13 +586,38 @@ export function createServerLogger(config: ServerConfig): ServerLogger {
         attributes: merged,
         resource,
       };
-      process.stdout.write(`${JSON.stringify(record)}\n`);
+      writeStdoutLine(JSON.stringify(record));
       return;
     }
-    process.stdout.write(`${message}\n`);
+    writeStdoutLine(message);
   };
 
   return { log: emit };
+}
+
+function isIgnorableStdoutWriteError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error ? error.code : undefined;
+  return code === "EPIPE" || code === "ERR_STREAM_DESTROYED";
+}
+
+function installStdoutErrorHandler() {
+  if (stdoutErrorHandlerInstalled) return;
+  stdoutErrorHandlerInstalled = true;
+  process.stdout.on("error", (error) => {
+    if (isIgnorableStdoutWriteError(error)) {
+      stdoutUnavailable = true;
+      return;
+    }
+    throw error;
+  });
+  process.on("uncaughtException", (error) => {
+    if (isIgnorableStdoutWriteError(error)) {
+      stdoutUnavailable = true;
+      return;
+    }
+    throw error;
+  });
 }
 
 function logRequest(input: {
