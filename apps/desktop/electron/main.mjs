@@ -81,6 +81,19 @@ const hyperframesProcesses = new Map();
 let nextTerminalId = 1;
 const HYPERFRAMES_VERSION = "0.7.52";
 const HYPERFRAMES_START_TIMEOUT_MS = 90_000;
+const HYPERFRAMES_PORT_BASE = 3_100;
+const HYPERFRAMES_PORT_RANGE = 800;
+
+function isHyperframesStudioUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const isLocal = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+    const port = Number(parsed.port);
+    return isLocal && port >= HYPERFRAMES_PORT_BASE && port < HYPERFRAMES_PORT_BASE + HYPERFRAMES_PORT_RANGE;
+  } catch {
+    return false;
+  }
+}
 
 function defaultTerminalShell() {
   if (process.platform === "win32") return process.env.COMSPEC || "powershell.exe";
@@ -2323,6 +2336,11 @@ async function createMainWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // HyperFrames is rendered by the session-owned right-side iframe. Its
+    // Studio may still call window.open in packaged Electron builds; allowing
+    // that local URL would create a second standalone editor window.
+    if (isHyperframesStudioUrl(url)) return { action: "deny" };
+
     if (url.startsWith("file://")) {
       try {
         void shell.openPath(fileURLToPath(url));

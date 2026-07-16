@@ -1461,6 +1461,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           <div className="flex min-h-full w-full max-w-[720px] flex-col justify-center pb-12 pt-8">
             <NewConversationStarter
               selectedMode={newConversationMode}
+              selectedCapabilityId={starterCapability?.id}
               onSelectMode={(mode) => {
                 setNewConversationMode(mode);
                 setStarterCapability(null);

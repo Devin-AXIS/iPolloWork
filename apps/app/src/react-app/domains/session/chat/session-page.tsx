@@ -72,7 +72,7 @@ import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
 import { VideoPanel } from "../video/video-panel";
-import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, isVideoStudioReady, templateBriefConfigFor, templateBriefPrompt, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
+import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
@@ -458,11 +458,18 @@ export function SessionPage(props: SessionPageProps) {
   const templateBriefDismissed = Boolean(
     props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
   );
-  const activateVideoStudio = useCallback(() => {
-    // Video creation always begins with a selected video template. This keeps
-    // the right studio and the agent on the same canonical session snapshot.
-    setTemplateMarketOpen(true);
-  }, []);
+  const activateVideoStudio = useCallback((sessionId: string) => {
+    // A prompt can start a blank video project. Template selection remains an
+    // explicit action in the composer or template library, never a surprise
+    // modal that interrupts the user's first request.
+    setSessionType(sessionId, "video");
+    setSessionTypeRevision((value) => value + 1);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(videoPanelCollapsedStorageKey(sessionId));
+    }
+    setVideoPanelVisibilityRevision((value) => value + 1);
+    setSidePanelState(sessionId, "video");
+  }, [setSidePanelState]);
   const openCurrentVideoStudio = useCallback(() => {
     if (!props.selectedSessionId) return;
     setSidePanelState(props.selectedSessionId, "video");
@@ -647,17 +654,13 @@ export function SessionPage(props: SessionPageProps) {
     if (!props.selectedSessionId) return;
     if (isVideoSession) {
       setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
-      if (!isVideoStudioReady(hasTemplateSession, hasTemplateBrief)) {
-        if (activeSidePanel === "video") setSidePanelState(props.selectedSessionId, null);
-        return;
-      }
       if (!isVideoPanelCollapsed && activeSidePanel !== "video") setSidePanelState(props.selectedSessionId, "video");
       return;
     }
     if (isDesignSession && (activeSidePanel === "video" || activeSidePanel === "panel")) {
       setSidePanelState(props.selectedSessionId, "design");
     }
-  }, [activeSidePanel, hasTemplateBrief, hasTemplateSession, isDesignSession, isVideoPanelCollapsed, isVideoSession, props.selectedSessionId, setSidePanelState]);
+  }, [activeSidePanel, isDesignSession, isVideoPanelCollapsed, isVideoSession, props.selectedSessionId, setSidePanelState]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
@@ -1624,7 +1627,7 @@ export function SessionPage(props: SessionPageProps) {
               {mainWorkspaceView === null && !showDelayedSessionLoadingState && canRenderReactSurface ? (
                 <div className="flex h-full min-h-0 flex-col lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1">
-                      {(isDesignSession || isVideoSession) && templateSessionLoading ? (
+                      {isDesignSession && templateSessionLoading ? (
                         <div className="flex h-full items-center justify-center gap-2 text-sm text-dls-secondary"><LoaderCircle className="size-4 animate-spin" />正在准备模板</div>
                       ) : isDesignSession && !hasTemplateSession && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
                         <DesignStarter
