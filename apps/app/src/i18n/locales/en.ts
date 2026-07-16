@@ -898,6 +898,8 @@ export default {
   "session.outputs.open": "Show conversation outputs",
   "session.outputs.empty": "No files yet",
   "session.outputs.empty_hint": "Files created in this conversation will appear here.",
+  "session.outputs.action_browse_edit": "Browse / edit",
+  "session.outputs.action_video_studio": "Edit in Video Studio",
   "session.outputs.open_video_studio": "Open Video Studio",
   "session.outputs.bundle_count": "{count} files",
   "session.outputs.expand_bundle": "Show included files",

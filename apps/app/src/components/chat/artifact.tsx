@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 
 import type { UIMessage } from "ai";
-import { ArrowUpRightIcon, ChevronRightIcon, ListChecks } from "lucide-react";
+import { ArrowUpRightIcon, ChevronRightIcon, ListChecks, MoreHorizontalIcon } from "lucide-react";
 import { useState } from "react";
 
 import { ArtifactIcon } from "@/components/chat/artifact-icon";
@@ -11,6 +11,7 @@ import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-targ
 import {
   DescriptiveButton,
   DescriptiveButtonContent,
+  DescriptiveButtonDescription,
   DescriptiveButtonIcon,
   DescriptiveButtonTitle,
 } from "@/components/descriptive-button";
@@ -57,8 +58,17 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
       </DescriptiveButtonIcon>
       <DescriptiveButtonContent className="min-w-0 flex-none">
         <DescriptiveButtonTitle className={cn("text-xs font-medium", compact ? "max-w-56" : "max-w-32")} title={artifact.name}>{title}</DescriptiveButtonTitle>
+        {!compact && canActivate ? (
+          <DescriptiveButtonDescription className="text-[10px] leading-3">
+            {canOpenVideoStudio ? t("session.outputs.action_video_studio") : t("session.outputs.action_browse_edit")}
+          </DescriptiveButtonDescription>
+        ) : null}
       </DescriptiveButtonContent>
-      {canActivate ? <ArrowUpRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+      {canActivate ? (
+        <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors group-hover/button:bg-background group-hover/button:text-foreground">
+          {compact ? <ArrowUpRightIcon className="size-3.5" /> : <MoreHorizontalIcon className="size-3.5" />}
+        </span>
+      ) : null}
     </>
   );
 
