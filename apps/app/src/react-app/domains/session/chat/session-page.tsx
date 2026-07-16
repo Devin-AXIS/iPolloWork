@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
-import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, Zap } from "lucide-react";
+import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import type { TemplateCatalogItem, TemplateManifestV1, TemplateSessionSnapshot, TemplateSessionState, TemplateStyle } from "@ipollowork/types/templates";
 
 import { t } from "../../../../i18n";
@@ -171,7 +171,7 @@ export type SessionPageProps = {
   hasUsableModel?: boolean;
   providers?: ProviderListItem[];
   mcpConnectedCount: number;
-  onOpenSettings: () => void;
+  onOpenSettings: (route?: string) => void;
   sidebar: SessionPageSidebarProps;
   surface?: SessionPageSurfaceProps | null;
   history?: SessionPageHistoryControls | null;
@@ -375,7 +375,7 @@ function TemplatePalettePicker({ selectedId, customPalette, onSelect, onCustomCo
   </div>;
 }
 
-function TemplateBriefCard({ template, onSubmit }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief) => void }) {
+function TemplateBriefCard({ template, onSubmit, onClose }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief) => void; onClose: () => void | Promise<void> }) {
   const config = templateBriefConfigFor(template);
   const [brief, setBrief] = useState<Omit<TemplateBrief, "colorPalette">>({ title: "", audience: "", details: "" });
   const [selectedPaletteId, setSelectedPaletteId] = useState(DEFAULT_TEMPLATE_COLOR_PALETTE.id);
@@ -383,7 +383,7 @@ function TemplateBriefCard({ template, onSubmit }: { template: TemplateManifestV
   const colorPalette = selectedPaletteId === "custom"
     ? customPalette
     : TEMPLATE_COLOR_PRESETS.find((palette) => palette.id === selectedPaletteId) ?? DEFAULT_TEMPLATE_COLOR_PALETTE;
-  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("p-5", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">（可选）</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<TemplatePalettePicker selectedId={selectedPaletteId} customPalette={customPalette} onSelect={setSelectedPaletteId} onCustomColorChange={(key, value) => setCustomPalette((current) => ({ ...current, [key]: value }))} /><Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim()} onClick={() => onSubmit({ ...brief, title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim(), colorPalette })}>{config.submitLabel}</Button></div></div></div>;
+  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("relative p-5 pr-14", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><Button type="button" variant="ghost" size="icon-sm" className={cn("absolute right-4 top-4 rounded-full", template.surface === "video" ? "text-white/70 hover:text-white" : "text-dls-secondary hover:text-dls-text")} aria-label={t("common.close")} onClick={() => void onClose()}><X className="size-4" /></Button><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">（可选）</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<TemplatePalettePicker selectedId={selectedPaletteId} customPalette={customPalette} onSelect={setSelectedPaletteId} onCustomColorChange={(key, value) => setCustomPalette((current) => ({ ...current, [key]: value }))} /><Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim()} onClick={() => onSubmit({ ...brief, title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim(), colorPalette })}>{config.submitLabel}</Button></div></div></div>;
 }
 
 export function SessionPage(props: SessionPageProps) {
@@ -448,12 +448,16 @@ export function SessionPage(props: SessionPageProps) {
     sessionId: null,
     messages: [],
   });
+  const [dismissedTemplateBriefSessionIds, setDismissedTemplateBriefSessionIds] = useState<Set<string>>(() => new Set());
   const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
     setConversationMessageState({ sessionId, messages });
   }, []);
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
     : [];
+  const templateBriefDismissed = Boolean(
+    props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
+  );
   const activateVideoStudio = useCallback(() => {
     // Video creation always begins with a selected video template. This keeps
     // the right studio and the agent on the same canonical session snapshot.
@@ -526,6 +530,11 @@ export function SessionPage(props: SessionPageProps) {
       const result = await props.ipolloworkServerClient.materializeTemplate(props.runtimeWorkspaceId, templateId, props.selectedSessionId);
       setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
       setTemplateSessionData({ ...result, hasBrief: false });
+      setDismissedTemplateBriefSessionIds((current) => {
+        const next = new Set(current);
+        next.delete(props.selectedSessionId!);
+        return next;
+      });
       setSessionTypeRevision((value) => value + 1);
       setTemplateSessionRevision((value) => value + 1);
       setSidePanelState(props.selectedSessionId, "design");
@@ -593,9 +602,39 @@ export function SessionPage(props: SessionPageProps) {
     });
     setTemplateSessionData((current) => current ? { ...current, hasBrief: true } : current);
     setTemplateSessionRevision((value) => value + 1);
+    setDismissedTemplateBriefSessionIds((current) => {
+      if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
+      const next = new Set(current);
+      next.delete(props.selectedSessionId);
+      return next;
+    });
     const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
     props.surface?.onSendDraft({ mode: "prompt", parts: [{ type: "text", text: prompt }], attachments: [], text: prompt }, props.selectedSessionId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface, templateSessionData]);
+  const closeTemplateBrief = useCallback(async () => {
+    const sessionId = props.selectedSessionId;
+    if (!sessionId) return;
+    const emptyGeneratedTemplateSession = !templateSessionData?.hasBrief && conversationMessages.length === 0;
+    if (emptyGeneratedTemplateSession && props.onDeleteSession) {
+      try {
+        await props.onDeleteSession(sessionId);
+        setTemplateSessionData(null);
+        setDismissedTemplateBriefSessionIds((current) => {
+          const next = new Set(current);
+          next.delete(sessionId);
+          return next;
+        });
+        return;
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not delete this empty session.");
+      }
+    }
+    setDismissedTemplateBriefSessionIds((current) => {
+      const next = new Set(current);
+      next.add(sessionId);
+      return next;
+    });
+  }, [conversationMessages.length, props.onDeleteSession, props.selectedSessionId, templateSessionData?.hasBrief]);
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
@@ -1601,8 +1640,8 @@ export function SessionPage(props: SessionPageProps) {
                           onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
                           onImport={(file, category) => void importDesignTemplate(file, category)}
                         />
-                      ) : templateSessionData && !hasTemplateBrief ? (
-                        <TemplateBriefCard template={templateSessionData.manifest} onSubmit={(brief) => void submitTemplateBrief(brief)} />
+                      ) : templateSessionData && !hasTemplateBrief && !templateBriefDismissed ? (
+                        <TemplateBriefCard template={templateSessionData.manifest} onSubmit={(brief) => void submitTemplateBrief(brief)} onClose={() => void closeTemplateBrief()} />
                       ) : <SessionSurface
                         // Spread `surface` first so the explicit per-workspace
                         // routing props below CAN'T be silently overridden by

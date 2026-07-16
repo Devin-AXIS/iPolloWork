@@ -9,6 +9,7 @@ import ca from "./locales/ca";
 import es from "./locales/es";
 import ru from "./locales/ru";
 export const LANGUAGE_PREF_KEY = "ipollowork.language";
+export const localeChangedEvent = "ipollowork:locale-changed";
 
 /**
  * Supported languages
@@ -108,6 +109,7 @@ export const setLocale = (newLocale: Language) => {
     } catch (e) {
       console.warn("Failed to persist language preference:", e);
     }
+    window.dispatchEvent(new CustomEvent(localeChangedEvent, { detail: { locale: newLocale } }));
   }
 };
 

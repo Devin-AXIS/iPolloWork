@@ -20,7 +20,7 @@ import {
 } from "../../app/lib/den-session-events";
 import { evalRelaunchDesktopApp } from "../../app/lib/desktop";
 import { Button } from "../../components/ui/button";
-import { t } from "../../i18n";
+import { localeChangedEvent, t } from "../../i18n";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { ForcedSigninPage } from "../domains/cloud/forced-signin-page";
 import { OrgOnboardingPage } from "../domains/cloud/org-onboarding-page";
@@ -347,6 +347,7 @@ let appOpenedCaptured = false;
 
 export function AppRoot() {
   useDesktopFontZoomBehavior();
+  const [, setLocaleVersion] = useState(0);
 
   // Module-level dedupe keeps StrictMode double-mounts from double-counting.
   useEffect(() => {
@@ -354,6 +355,12 @@ export function AppRoot() {
     appOpenedCaptured = true;
     initAnalytics();
     captureAnalyticsEvent("app_opened", {});
+  }, []);
+
+  useEffect(() => {
+    const refreshLocale = () => setLocaleVersion((version) => version + 1);
+    window.addEventListener(localeChangedEvent, refreshLocale);
+    return () => window.removeEventListener(localeChangedEvent, refreshLocale);
   }, []);
 
   return (

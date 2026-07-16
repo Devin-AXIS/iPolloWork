@@ -4,9 +4,11 @@ import {
   AlertCircle,
   Archive,
   ArchiveRestore,
+  Check,
   ChevronRight,
   FolderPlus,
   Loader2,
+  Languages,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -38,7 +40,7 @@ import {
   isMacPlatform,
   isWindowsPlatform,
 } from "../../../../app/utils";
-import { t } from "../../../../i18n";
+import { currentLocale, setLocale, t, type Language } from "../../../../i18n";
 import { useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
 
 import {
@@ -597,7 +599,7 @@ export type AppSidebarProps = {
   };
   activePrimaryItem?: "template-market" | "extensions" | null;
   onOpenAccount: () => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (route?: string) => void;
   onOpenTemplateMarket: () => void;
   onOpenExtensions: () => void;
   onSignIn: () => void;
@@ -629,6 +631,12 @@ export function AppSidebar(props: AppSidebarProps) {
   const [expandedSessionIds, setExpandedSessionIds] = React.useState<Set<string>>(
     () => new Set(),
   );
+  const [language, setLanguage] = React.useState<Language>(() => currentLocale());
+
+  const switchLanguage = React.useCallback((nextLanguage: Language) => {
+    setLanguage(nextLanguage);
+    setLocale(nextLanguage);
+  }, []);
 
   const expandWorkspace = React.useCallback((workspaceId: string) => {
     const id = workspaceId.trim();
@@ -887,14 +895,32 @@ export function AppSidebar(props: AppSidebarProps) {
                 </SidebarMenuButton>
               )}
               </div>
-              <button
-                type="button"
-                onClick={props.onOpenSettings}
-                aria-label={t("status.settings")}
-                className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/65 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-hidden mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
-              >
-                <Settings className="size-4" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/65 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-hidden mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
+                  aria-label={t("status.settings")}
+                  title={t("status.settings")}
+                >
+                  <Settings className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="end" className="w-36 min-w-36">
+                  <DropdownMenuItem onClick={() => props.onOpenSettings("/settings/general")}>
+                    <Settings className="size-4" />
+                    {t("status.settings")}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => switchLanguage("zh")}>
+                    <Languages className="size-4" />
+                    中文
+                    {language === "zh" ? <Check className="ml-auto size-3.5" /> : null}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => switchLanguage("en")}>
+                    <Languages className="size-4" />
+                    English
+                    {language === "en" ? <Check className="ml-auto size-3.5" /> : null}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <NotificationBell className="shrink-0 rounded-lg text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             </SidebarMenuItem>
           </SidebarMenu>
