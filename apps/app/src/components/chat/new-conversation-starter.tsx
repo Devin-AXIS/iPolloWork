@@ -18,6 +18,7 @@ import {
 } from "@heroicons/react/24/outline";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
 
+import { publicAssetUrl } from "@/app/lib/public-asset";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -41,10 +42,10 @@ type NewConversationStarterProps = {
 };
 
 const MODES = [
-  { id: "work", iconSrc: "/new-conversation-tabs/work.svg", label: "new_conversation.mode.work" },
-  { id: "code", iconSrc: "/new-conversation-tabs/code.svg", label: "new_conversation.mode.code" },
-  { id: "design", iconSrc: "/new-conversation-tabs/design.svg", label: "new_conversation.mode.design" },
-  { id: "video", iconSrc: "/new-conversation-tabs/video.svg", label: "new_conversation.mode.video" },
+  { id: "work", iconSrc: publicAssetUrl("new-conversation-tabs/work.svg"), label: "new_conversation.mode.work" },
+  { id: "code", iconSrc: publicAssetUrl("new-conversation-tabs/code.svg"), label: "new_conversation.mode.code" },
+  { id: "design", iconSrc: publicAssetUrl("new-conversation-tabs/design.svg"), label: "new_conversation.mode.design" },
+  { id: "video", iconSrc: publicAssetUrl("new-conversation-tabs/video.svg"), label: "new_conversation.mode.video" },
 ] as const satisfies ReadonlyArray<{ id: NewConversationMode; iconSrc: string; label: string }>;
 
 type StarterAction = {
@@ -201,14 +202,14 @@ export function NewConversationStarter({
   return (
     <div className="relative w-full overflow-hidden px-6 py-8 sm:px-0 sm:pb-0 sm:pt-12">
       <img
-        src="/new-conversation-bg.png"
+        src={publicAssetUrl("new-conversation-bg.png")}
         alt=""
         aria-hidden
         className="pointer-events-none absolute left-[calc(50%-280px)] -top-[18px] h-[243px] w-[243px] max-w-none"
       />
       <div className="relative">
         <header className="max-w-4xl">
-          <img src="/ipollo-work-wordmark.svg" alt="iPollo Work" className="h-[25px] w-[144px]" />
+          <img src={publicAssetUrl("ipollo-work-wordmark.svg")} alt="iPollo Work" className="h-[25px] w-[144px]" />
           <h1 className="mt-3 font-['PingFang_SC',_'PingFang_SC'] text-[48px] font-semibold leading-normal tracking-[-1.92px] text-black">
             {t("new_conversation.title")}
           </h1>

@@ -1,6 +1,7 @@
 import type { ModelRef, SuggestedPlugin } from "./types";
 import { t } from "../i18n";
 import { getDenMcpUrl } from "./lib/den";
+import { publicAssetUrl } from "./lib/public-asset";
 import {
   BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS,
   extensionContribution,
@@ -104,7 +105,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     oauth: true,
     kind: "mcp",
     iconSlug: "notion",
-    iconSrc: "/ext-notion.svg",
+    iconSrc: publicAssetUrl("ext-notion.svg"),
   },
   {
     get name() { return t("mcp.quick_connect_linear_title"); },
@@ -115,7 +116,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     oauth: true,
     kind: "mcp",
     iconSlug: "linear",
-    iconSrc: "/ext-linear.svg",
+    iconSrc: publicAssetUrl("ext-linear.svg"),
   },
   {
     get name() { return t("mcp.quick_connect_sentry_title"); },
@@ -126,7 +127,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     oauth: true,
     kind: "mcp",
     iconSlug: "sentry",
-    iconSrc: "/ext-sentry.svg",
+    iconSrc: publicAssetUrl("ext-sentry.svg"),
   },
   {
     get name() { return t("mcp.quick_connect_stripe_title"); },
@@ -137,7 +138,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     oauth: true,
     kind: "mcp",
     iconSlug: "stripe",
-    iconSrc: "/ext-stripe.svg",
+    iconSrc: publicAssetUrl("ext-stripe.svg"),
   },
   {
     get name() { return t("mcp.quick_connect_context7_title"); },
@@ -148,7 +149,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     oauth: false,
     kind: "mcp",
     iconSlug: "semanticscholar",
-    iconSrc: "/ext-context7.svg",
+    iconSrc: publicAssetUrl("ext-context7.svg"),
   },
   {
     get name() { return t("mcp.quick_connect_ipollowork_cloud_title"); },
@@ -169,7 +170,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     type: "remote",
     oauth: true,
     kind: "mcp",
-    iconSrc: "/ipollowork-mark.svg",
+    iconSrc: publicAssetUrl("ipollowork-mark.svg"),
     // Auto-managed by the signed-in cloud reconciler (syncCloudControlMcp):
     // configured + enabled while signed in to iPolloWork Cloud. Hidden from the
     // default catalog; "Show hidden" reveals it.
@@ -184,7 +185,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     command: ["npx", "-y", "ipollowork-ui-mcp"],
     oauth: false,
     kind: "ui-control",
-    iconSrc: "/ipollowork-mark.svg",
+    iconSrc: publicAssetUrl("ipollowork-mark.svg"),
     // Internal UI-control surface for agents driving the desktop app. Hidden
     // from the default catalog; "Show hidden" reveals it.
     defaultHidden: true,

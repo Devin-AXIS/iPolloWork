@@ -93,6 +93,11 @@ linux:
 win:
   icon: resources/icons/icon.ico
   extraResources:
+    - from: resources/icons
+      to: icons
+      filter:
+        - icon.png
+        - icon.ico
     - from: resources/sidecars
       to: sidecars
       filter:
