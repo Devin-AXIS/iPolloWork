@@ -71,12 +71,6 @@ function isStorageProvider(value: string): value is StorageProviderId {
 }
 
 function workspaceForContext(config: ServerConfig, context: JsonRecord): WorkspaceInfo {
-  const requestedWorkspaceId = readStringField(context, "workspaceId");
-  if (requestedWorkspaceId) {
-    const workspace = config.workspaces.find((entry) => entry.id === requestedWorkspaceId);
-    if (workspace) return { ...workspace, path: resolve(workspace.path) };
-  }
-
   const candidates = [readStringField(context, "directory"), readStringField(context, "worktree")]
     .filter(Boolean)
     .map((value) => resolve(value));
@@ -118,39 +112,21 @@ function normalizeObjectKey(value: string): string {
 function contentTypeForPath(value: string): string {
   switch (extname(value).toLowerCase()) {
     case ".aac": return "audio/aac";
-    case ".avif": return "image/avif";
-    case ".css": return "text/css; charset=utf-8";
-    case ".csv": return "text/csv; charset=utf-8";
     case ".gif": return "image/gif";
-    case ".htm":
-    case ".html": return "text/html; charset=utf-8";
-    case ".ico": return "image/x-icon";
     case ".jpg":
     case ".jpeg": return "image/jpeg";
-    case ".js":
-    case ".mjs": return "text/javascript; charset=utf-8";
     case ".json": return "application/json";
     case ".m4a": return "audio/mp4";
-    case ".map": return "application/json";
     case ".md": return "text/markdown; charset=utf-8";
     case ".mov": return "video/quicktime";
     case ".mp3": return "audio/mpeg";
     case ".mp4": return "video/mp4";
     case ".pdf": return "application/pdf";
     case ".png": return "image/png";
-    case ".svg": return "image/svg+xml";
-    case ".ts": return "text/plain; charset=utf-8";
-    case ".ttf": return "font/ttf";
     case ".txt": return "text/plain; charset=utf-8";
-    case ".otf": return "font/otf";
-    case ".woff": return "font/woff";
-    case ".woff2": return "font/woff2";
     case ".wav": return "audio/wav";
     case ".webm": return "video/webm";
     case ".webp": return "image/webp";
-    case ".xml": return "application/xml";
-    case ".yaml":
-    case ".yml": return "text/yaml; charset=utf-8";
     default: return "application/octet-stream";
   }
 }
@@ -255,7 +231,6 @@ async function uploadToProvider(input: {
   objectKey: string;
   bytes: Buffer;
   contentType: string;
-  contentDisposition?: string;
 }): Promise<{ url: string; downloadUrl?: string }> {
   if (input.provider === "aliyun-oss") {
     const request = createAliyunOssV4Request({
@@ -266,7 +241,6 @@ async function uploadToProvider(input: {
       method: "PUT",
       objectKey: input.objectKey,
       contentType: input.contentType,
-      contentDisposition: input.contentDisposition,
     });
     await fetchStorage({ ...request, method: "PUT", body: input.bytes });
     const downloadUrl = publicObjectUrl(input.values.ALIYUN_OSS_PUBLIC_BASE_URL, input.objectKey);
@@ -286,7 +260,6 @@ async function uploadToProvider(input: {
         objectKey: input.objectKey,
         payloadHash: sha256(input.bytes),
         contentType: input.contentType,
-        contentDisposition: input.contentDisposition,
       });
     } catch (error) {
       throw new ApiError(400, "invalid_wasabi_endpoint", error instanceof Error ? error.message : "Wasabi endpoint is invalid.");
@@ -437,14 +410,7 @@ async function uploadWorkspaceFile(config: ServerConfig, env: EnvService, args: 
   const objectKey = normalizeObjectKey(readStringField(args, "objectKey") || `ipollowork/${workspace.id}/${source.relativePath}`);
   const contentType = readStringField(args, "contentType") || contentTypeForPath(source.relativePath);
   const bytes = await readFile(source.absolutePath);
-  const uploaded = await uploadToProvider({
-    provider,
-    values: credentials,
-    objectKey,
-    bytes,
-    contentType,
-    contentDisposition: "inline",
-  });
+  const uploaded = await uploadToProvider({ provider, values: credentials, objectKey, bytes, contentType });
 
   return {
     provider,

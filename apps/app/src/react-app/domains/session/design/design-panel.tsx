@@ -1,11 +1,10 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -46,22 +45,7 @@ type LoadedHtml = {
   updatedAt: number | null;
 };
 
-type DesignPublication = {
-  version: 1;
-  entryPath: string;
-  objectPrefix: string;
-  publicUrl: string;
-  revision: number;
-  publishedAt: number;
-};
-
-type LoadedDesignPublication = {
-  publication: DesignPublication;
-  updatedAt: number | null;
-};
-
 const COLOR_SWATCHES = ["#111827", "#ffffff", "#7c3aed", "#2563eb", "#059669", "#ea580c", "#dc2626", "#db2777"];
-const PUBLISHABLE_DESIGN_FILE = /\.(?:avif|css|gif|html?|ico|jpe?g|js|json|map|mjs|png|svg|webp|woff2?|ttf|otf)$/i;
 
 const TYPE_PRESETS = [
   { label: "Display", sample: "Aa", styles: { fontSize: "48px", fontWeight: "700", lineHeight: "1.05", letterSpacing: "-0.025em" } },
@@ -101,40 +85,6 @@ function linkedDesignTokenPath(source: string | undefined): string {
 
 function fileName(path: string) {
   return path.split(/[\\/]/).pop() || path;
-}
-
-function directoryPath(path: string) {
-  const boundary = path.lastIndexOf("/");
-  return boundary < 0 ? "" : path.slice(0, boundary + 1);
-}
-
-function publicationManifestPath(sessionId: string) {
-  return `.ipollowork/publications/${sessionId.replace(/[^a-zA-Z0-9_-]/g, "-")}.json`;
-}
-
-function publicationPathSegment(value: string) {
-  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
-}
-
-function parsePublication(value: string): DesignPublication | null {
-  try {
-    const parsed = JSON.parse(value) as Partial<DesignPublication>;
-    if (parsed.version !== 1
-      || typeof parsed.entryPath !== "string"
-      || typeof parsed.objectPrefix !== "string"
-      || typeof parsed.publicUrl !== "string"
-      || typeof parsed.revision !== "number"
-      || typeof parsed.publishedAt !== "number") return null;
-    return parsed as DesignPublication;
-  } catch {
-    return null;
-  }
-}
-
-function isPublishableDesignFile(path: string) {
-  return PUBLISHABLE_DESIGN_FILE.test(path)
-    && !path.includes("/.versions/")
-    && !path.includes("/.ipollowork/");
 }
 
 function normalizeHexColor(value: string) {
@@ -285,38 +235,6 @@ export function DesignPanel({
     },
     enabled: Boolean(client && workspaceId && templateTokenPath && !isRemoteWorkspace),
     staleTime: 30_000,
-    refetchOnWindowFocus: false,
-  });
-  const [publishOpen, setPublishOpen] = React.useState(false);
-  const publicationQuery = useQuery<LoadedDesignPublication | null>({
-    queryKey: ["design-publication", workspaceId, sessionId] as const,
-    queryFn: async () => {
-      if (!client || !workspaceId) return null;
-      try {
-        const saved = await client.readWorkspaceFile(workspaceId, publicationManifestPath(sessionId));
-        const publication = parsePublication(saved.content);
-        return publication ? { publication, updatedAt: saved.updatedAt ?? null } : null;
-      } catch {
-        return null;
-      }
-    },
-    enabled: Boolean(client && workspaceId && !isRemoteWorkspace),
-    staleTime: 10_000,
-    refetchOnWindowFocus: false,
-  });
-  const storageStatusQuery = useQuery({
-    queryKey: ["design-publication-storage", workspaceId] as const,
-    queryFn: async () => {
-      if (!client) throw new Error("Storage is unavailable.");
-      const result = await client.callStorage("status", {}, workspaceId ? { workspaceId } : undefined);
-      if (!result.ok || !result.result || typeof result.result !== "object") {
-        throw new Error("Storage Center is unavailable.");
-      }
-      const status = result.result as { defaultProvider?: string | null };
-      return { defaultProvider: status.defaultProvider ?? null };
-    },
-    enabled: Boolean(publishOpen && client && workspaceId && !isRemoteWorkspace),
-    staleTime: 5_000,
     refetchOnWindowFocus: false,
   });
 
@@ -641,73 +559,6 @@ export function DesignPanel({
   };
 
   const dirty = pendingCanvasChange || draft !== savedSource;
-  const publishMutation = useMutation({
-    mutationFn: async () => {
-      if (!client || !workspaceId || !lockedPath) throw new Error("This design is not ready to publish.");
-      if (!storageStatusQuery.data?.defaultProvider) throw new Error("Configure a default object-storage provider before publishing.");
-      if (dirty) await saveMutation.mutateAsync();
-
-      const root = directoryPath(lockedPath);
-      const catalog = await client.listWorkspaceFiles(workspaceId);
-      const paths = new Set<string>([lockedPath]);
-      for (const item of catalog) {
-        if (item.kind !== "file" || !isPublishableDesignFile(item.path)) continue;
-        if (root ? item.path.startsWith(root) : item.path === lockedPath) paths.add(item.path);
-      }
-      if (templateTokenPath && isPublishableDesignFile(templateTokenPath)) paths.add(templateTokenPath);
-      const sourcePaths = [...paths].sort();
-      if (sourcePaths.length > 100) throw new Error("This design has more than 100 publishable files. Reduce its asset folder before publishing.");
-
-      const previous = publicationQuery.data?.publication ?? null;
-      const objectPrefix = previous?.objectPrefix
-        ?? `ipollowork/published/${publicationPathSegment(workspaceId)}/${publicationPathSegment(sessionId)}`;
-      let publicUrl = "";
-      for (const sourcePath of sourcePaths) {
-        const uploaded = await client.callStorage("upload_workspace_file", {
-          sourcePath,
-          provider: "auto",
-          objectKey: `${objectPrefix}/${sourcePath}`,
-        }, { workspaceId });
-        if (!uploaded.ok || !uploaded.result || typeof uploaded.result !== "object") {
-          throw new Error(`Could not publish ${fileName(sourcePath)}.`);
-        }
-        if (sourcePath === lockedPath) {
-          const output = uploaded.result as { url?: unknown; downloadUrl?: unknown };
-          publicUrl = typeof output.downloadUrl === "string" ? output.downloadUrl : typeof output.url === "string" ? output.url : "";
-        }
-      }
-      if (!publicUrl) throw new Error("The published design did not return a share link.");
-
-      const publication: DesignPublication = {
-        version: 1,
-        entryPath: lockedPath,
-        objectPrefix,
-        publicUrl,
-        revision: (previous?.revision ?? 0) + 1,
-        publishedAt: Date.now(),
-      };
-      const saved = await client.writeWorkspaceFile(workspaceId, {
-        path: publicationManifestPath(sessionId),
-        content: `${JSON.stringify(publication, null, 2)}\n`,
-        baseUpdatedAt: publicationQuery.data?.updatedAt ?? null,
-      });
-      return { publication, updatedAt: saved.updatedAt ?? null, files: sourcePaths.length };
-    },
-    onSuccess: ({ publication, updatedAt, files }) => {
-      queryClient.setQueryData<LoadedDesignPublication | null>(
-        ["design-publication", workspaceId, sessionId] as const,
-        { publication, updatedAt },
-      );
-      toast.success(`Published ${files} file${files === 1 ? "" : "s"} to OSS.`);
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Could not publish this design.");
-    },
-  });
-  const publishDesign = () => {
-    if (publicationQuery.data?.publication && !window.confirm("Update the existing live page with this local design?")) return;
-    void publishMutation.mutateAsync();
-  };
   const designTokenValues = React.useMemo(
     () => readDesignTokenValues(templateTokenQuery.data ?? "", draft),
     [draft, templateTokenQuery.data],
@@ -737,75 +588,11 @@ export function DesignPanel({
           event.currentTarget.value = "";
         }}
       />
-      <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{publicationQuery.data?.publication ? "Update live design" : "Publish design"}</DialogTitle>
-            <DialogDescription>
-              Publish this local HTML design and its static assets to your configured object storage. The original workspace files remain local and editable.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="rounded-xl border border-border/70 bg-muted/25 px-3 py-2.5">
-              <p className="text-[11px] font-medium text-foreground">Storage</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {storageStatusQuery.isLoading
-                  ? "Checking your local storage authorization…"
-                  : storageStatusQuery.data?.defaultProvider
-                    ? `Uploads use your local default: ${storageStatusQuery.data.defaultProvider}.`
-                    : "Configure a default storage provider in Settings → Authorizations first."}
-              </p>
-            </div>
-            {publicationQuery.data?.publication ? (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
-                <p className="text-[11px] font-medium text-foreground">Live version {publicationQuery.data.publication.revision}</p>
-                <a
-                  className="mt-1 block truncate text-xs text-primary underline-offset-2 hover:underline"
-                  href={publicationQuery.data.publication.publicUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={publicationQuery.data.publication.publicUrl}
-                >
-                  {publicationQuery.data.publication.publicUrl}
-                </a>
-                <div className="mt-2 flex gap-1.5">
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(publicationQuery.data?.publication?.publicUrl ?? "");
-                      toast.success("Share link copied.");
-                    }}
-                  >
-                    <Link2 /> Copy link
-                  </Button>
-                  <Button variant="outline" size="xs" onClick={() => window.open(publicationQuery.data?.publication?.publicUrl, "_blank", "noopener,noreferrer")}>
-                    <ExternalLink /> Open
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-            {publishMutation.error ? <p className="text-xs leading-5 text-destructive">{publishMutation.error instanceof Error ? publishMutation.error.message : "Could not publish this design."}</p> : null}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setPublishOpen(false)} disabled={publishMutation.isPending}>Cancel</Button>
-            <Button size="sm" onClick={publishDesign} disabled={publishMutation.isPending || storageStatusQuery.isLoading || !storageStatusQuery.data?.defaultProvider}>
-              {publishMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Share2 className="size-3.5" />}
-              {publicationQuery.data?.publication ? "Update live" : "Publish"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px]">
         <Code2 className="size-4 text-primary" />
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center">
           <p className="truncate text-sm font-medium">Design</p>
-          <p className="truncate text-[11px] text-muted-foreground">Local HTML only</p>
         </div>
-        <Button variant="ghost" size="sm" className="gap-1.5 rounded-lg" onClick={() => setPublishOpen(true)} disabled={!lockedPath || isRemoteWorkspace}>
-          <Share2 className="size-3.5" />
-          Share
-        </Button>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close Design">
           <X />
         </Button>
@@ -829,7 +616,7 @@ export function DesignPanel({
         </div>
       ) : (
         <>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#EAEAEA] px-3 py-2 [border-bottom-width:0.5px]">
             {hasSiteVersioning ? (
               <div className="min-w-0 flex flex-1 items-center gap-2">
                 <div className="min-w-0 flex-1">
@@ -1118,10 +905,10 @@ export function DesignPanel({
                 }}
               />
               {editing && advancedOpen ? (
-                <aside className="w-64 shrink-0 overflow-y-auto border-l border-border/70 bg-background" aria-label="Design inspector">
+                <aside className="w-64 shrink-0 overflow-y-auto border-l border-[#EAEAEA] bg-background [border-left-width:0.5px]" aria-label="Design inspector">
                   {selection ? (
                     <div className="space-y-1 p-2">
-                      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border/60 bg-background/95 px-1 py-2 backdrop-blur-xl">
+                      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[#EAEAEA] bg-background/95 px-1 py-2 [border-bottom-width:0.5px] backdrop-blur-xl">
                         <div className="grid size-6 place-items-center rounded-lg bg-primary/10 text-primary"><SlidersHorizontal className="size-3" /></div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-semibold">Design properties</p>
@@ -1143,7 +930,7 @@ export function DesignPanel({
                       ) : null}
 
                       {selection.href ? (
-                        <div className="border-b border-border/60 px-2 py-2.5">
+                        <div className="border-b border-[#EAEAEA] px-2 py-2.5 [border-bottom-width:0.5px]">
                           <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Link</p>
                           <Input aria-label="Design link destination" className="h-9 rounded-xl bg-muted/40 px-3 text-xs" value={selection.href} onChange={(event) => applyField("href", event.currentTarget.value)} />
                         </div>
@@ -1272,7 +1059,7 @@ function InspectorField({ label, value, onChange }: { label: string; value: stri
 
 function InspectorSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <section className="border-b border-border/60 px-2 py-2.5 last:border-b-0">
+    <section className="border-b border-[#EAEAEA] px-2 py-2.5 [border-bottom-width:0.5px] last:border-b-0">
       <div className="mb-2 flex items-center gap-1.5 text-muted-foreground [&_svg]:size-3">
         {icon}
         <h3 className="text-[9px] font-semibold uppercase tracking-[0.12em]">{title}</h3>

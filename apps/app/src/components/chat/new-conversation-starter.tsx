@@ -216,7 +216,7 @@ export function NewConversationStarter({
         </header>
 
         <div
-          className="mt-8 flex w-full max-w-[502px] items-center gap-1.5 overflow-x-auto rounded-[12px] bg-[#F5F5F5] p-1 [scrollbar-width:none] sm:inline-flex sm:w-auto sm:max-w-full [&::-webkit-scrollbar]:hidden"
+          className="mt-8 flex h-[46px] w-full max-w-[394px] items-center gap-1.5 overflow-x-auto rounded-[12px] bg-[#F5F5F5] p-1 [scrollbar-width:none] sm:inline-flex sm:w-[394px] sm:max-w-[394px] [&::-webkit-scrollbar]:hidden"
           role="tablist"
           aria-label={t("new_conversation.mode_label")}
         >
@@ -229,7 +229,7 @@ export function NewConversationStarter({
               role="tab"
               aria-selected={selected}
               className={cn(
-                "inline-flex h-[42px] w-[119px] shrink-0 items-center justify-center gap-2 rounded-[8px] px-3 font-['PingFang_SC'] text-[14px] font-medium leading-normal transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "inline-flex h-[38px] w-[92px] shrink-0 items-center justify-center gap-1.5 rounded-[8px] px-2 font-['PingFang_SC'] text-[12px] font-medium leading-normal transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 selected
                   ? "bg-white text-black"
                   : "text-[#999] hover:bg-white/70 hover:text-black",
@@ -250,7 +250,7 @@ export function NewConversationStarter({
         })}
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-1.5" aria-label={t("new_conversation.quick_actions_label")}>
+        <div className="mt-5 flex flex-wrap gap-2" aria-label={t("new_conversation.quick_actions_label")}>
         {actions.map(({ label, prompt, action }) => {
           const selectedWebsiteAction = action === "website" && websiteTemplatesOpen;
           return (
@@ -259,10 +259,10 @@ export function NewConversationStarter({
               type="button"
               aria-pressed={action === "website" ? websiteTemplatesOpen : undefined}
               className={cn(
-                "inline-flex h-8 items-center rounded-[18px] border border-[#CBCBCB] px-4 text-[13px] font-medium transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "inline-flex h-[24px] min-w-[50px] items-center justify-center rounded-[18px] border px-2 text-[12px] font-medium transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 selectedWebsiteAction
-                  ? "bg-primary/10 text-primary"
-                  : "bg-background text-foreground hover:bg-muted",
+                  ? "border-[#CCC] bg-[#F5F5F5] text-[#999]"
+                  : "border-[#CBCBCB] bg-white text-[#999] hover:border-[#CCC] hover:bg-[#F5F5F5]",
               )}
               onClick={() => {
                 if (action === "video") onCreateVideoSession?.();
@@ -274,7 +274,7 @@ export function NewConversationStarter({
               }}
               disabled={action === "video" && !onCreateVideoSession}
             >
-              <span>{t(label)}</span>
+              <span className="whitespace-nowrap">{t(label)}</span>
             </button>
           );
         })}

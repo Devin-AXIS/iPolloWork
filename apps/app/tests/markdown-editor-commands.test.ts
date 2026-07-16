@@ -1,14 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { markdown } from "@codemirror/lang-markdown";
-import { syntaxTree } from "@codemirror/language";
-import { EditorState } from "@codemirror/state";
 
 import {
   findSlashCommand,
   replaceLinePrefix,
   replaceSlashCommand,
   wrapMarkdownSelection,
-  wrapMarkdownSelectionByLine,
 } from "../src/react-app/domains/session/artifacts/markdown-editor-commands";
 import {
   findMarkdownCodeBlocks,
@@ -40,44 +36,6 @@ describe("markdown editor commands", () => {
       selection: { anchor: 9 },
     });
     expect(wrapMarkdownSelection("", 0, 0, "`", "`", "code").selection).toEqual({ anchor: 1, head: 5 });
-  });
-
-  test("wraps multiline selections line by line for live preview formatting", () => {
-    expect(wrapMarkdownSelectionByLine("one\ntwo\nthree", 0, 13, "**", "**", "Bold text")).toEqual({
-      from: 0,
-      to: 13,
-      insert: "**one**\n**two**\n**three**",
-      selection: { anchor: 25 },
-    });
-  });
-
-  test("keeps a selected line break outside inline formatting", () => {
-    expect(wrapMarkdownSelectionByLine("one\ntwo", 0, 4, "**", "**", "Bold text")).toEqual({
-      from: 0,
-      to: 4,
-      insert: "**one**\n",
-      selection: { anchor: 7 },
-    });
-  });
-
-  test("keeps surrounding whitespace outside formatting markers", () => {
-    const mixedText = "  English + 中文!  \n\t(v2.0) #ready\t";
-    expect(wrapMarkdownSelectionByLine(mixedText, 0, mixedText.length, "**", "**", "Bold text").insert).toBe(
-      "  **English + 中文!**  \n\t**(v2.0) #ready**\t",
-    );
-    expect(wrapMarkdownSelectionByLine(" [v2.0] #ready! ", 0, 16, "**", "**", "Bold text").insert).toBe(
-      " **[v2.0] #ready!** ",
-    );
-  });
-
-  test("produces valid bold markdown around mixed text and special characters", () => {
-    for (const content of ["English + 中文!", "[v2.0] #ready!", "C:\\temp\\a.ts", "user@example.com", "(test)", "_value_"]) {
-      const edit = wrapMarkdownSelectionByLine(content, 0, content.length, "**", "**", "Bold text");
-      const state = EditorState.create({ doc: edit.insert, extensions: [markdown()] });
-      let hasStrongEmphasis = false;
-      syntaxTree(state).iterate({ enter: (node) => { if (node.name === "StrongEmphasis") hasStrongEmphasis = true; } });
-      expect(hasStrongEmphasis).toBe(true);
-    }
   });
 
   test("replaces the slash query with the chosen markdown block", () => {

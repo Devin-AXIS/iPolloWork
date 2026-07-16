@@ -18,6 +18,7 @@ import {
   RefreshCw,
   RotateCcw,
   Settings,
+  SquarePen,
   FolderOpen,
   Tag,
   BriefcaseBusiness,
@@ -59,7 +60,6 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
   Collapsible,
@@ -752,10 +752,6 @@ export function AppSidebar(props: AppSidebarProps) {
   const brandLogoUrl = useBrandLogoUrl();
   const brandAppName = useBrandAppName();
   const hasManagedBrand = brandLogoUrl || brandAppName !== "iPolloWork";
-  const selectedWorkspace = React.useMemo(
-    () => props.workspaceSessionGroups.find((group) => group.workspace.id === props.selectedWorkspaceId)?.workspace ?? null,
-    [props.selectedWorkspaceId, props.workspaceSessionGroups],
-  );
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -780,44 +776,36 @@ export function AppSidebar(props: AppSidebarProps) {
             )}
           </div>
         ) : null}
-        <SidebarHeader className="gap-2 pb-2">
-          <div className="flex h-10 items-center gap-2 px-2">
-            <SidebarTrigger
-              className="size-9 shrink-0 rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              aria-label={t("sidebar.collapse")}
-              title={t("sidebar.collapse")}
-            />
-            <h2 className="min-w-0 flex-1 truncate text-[22px] font-semibold leading-none tracking-normal text-sidebar-foreground">
-              {selectedWorkspace ? workspaceLabel(selectedWorkspace) : brandAppName}
-            </h2>
-            {props.onOpenSessionSearch ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="size-9 shrink-0 rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                aria-label={t("workspace_list.search_sessions")}
-                aria-keyshortcuts={isMacPlatform() ? "Meta+Shift+F" : "Control+Shift+F"}
-                title={t("workspace_list.search_sessions")}
-                onClick={props.onOpenSessionSearch}
-              >
-                <Search className="size-5" />
-              </Button>
-            ) : null}
-          </div>
+        <SidebarHeader className="gap-1.5 pb-2">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                className="h-9 rounded-lg px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="h-8 rounded-lg px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
                 aria-label={t("session.new_task")}
                 aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
                 onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")}
               >
-                <Plus className="size-4" />
-                <span className="flex-1 truncate text-sm font-medium">{t("session.new_task")}</span>
+                <SquarePen className="size-3.5" />
+                <span className="flex-1 truncate text-xs font-medium">{t("session.new_task")}</span>
+                <kbd className="font-sans text-[10px] tracking-wide text-sidebar-foreground/40">{isMacPlatform() ? "⌘N" : "Ctrl N"}</kbd>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            {props.onOpenSessionSearch ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={props.onOpenSessionSearch}
+                  aria-keyshortcuts={isMacPlatform() ? "Meta+Shift+F" : "Control+Shift+F"}
+                  className="text-sidebar-foreground/70"
+                >
+                  <Search className="size-4" />
+                  <span className="flex-1 truncate">{t("workspace_list.search_sessions")}</span>
+                  <kbd className="ml-auto font-sans text-[11px] tracking-wide text-sidebar-foreground/50">
+                    {isMacPlatform() ? "⌘⇧F" : "Ctrl+Shift+F"}
+                  </kbd>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
           </SidebarMenu>
         </SidebarHeader>
         <LazyMotion features={domMax}>

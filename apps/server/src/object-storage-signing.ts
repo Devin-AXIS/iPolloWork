@@ -63,34 +63,24 @@ export function createAliyunOssV4Request(input: {
   objectKey?: string;
   query?: string;
   contentType?: string;
-  contentDisposition?: string;
   now?: Date;
 }): SigningRequest {
   const date = iso8601Basic(input.now ?? new Date());
   const day = date.slice(0, 8);
   const host = `${input.bucket}.oss-${input.region}.aliyuncs.com`;
-  const requestPath = input.objectKey ? `/${encodeObjectKey(input.objectKey)}` : "/";
-  // OSS V4 keeps the Bucket in the canonical resource even when the actual
-  // request uses a virtual-hosted Bucket endpoint.
-  const canonicalPath = `/${encodeURIComponent(input.bucket)}${requestPath}`;
+  const path = input.objectKey ? `/${encodeObjectKey(input.objectKey)}` : "/";
   const query = canonicalQuery(input.query ?? "");
   const canonicalHeaders = [
-    ...(input.contentDisposition ? [`content-disposition:${input.contentDisposition.trim()}`] : []),
-    ...(input.contentType ? [`content-type:${input.contentType.trim()}`] : []),
     `host:${host}`,
     "x-oss-content-sha256:UNSIGNED-PAYLOAD",
     `x-oss-date:${date}`,
-  ].sort().join("\n") + "\n";
-  const additionalHeaders = [
-    ...(input.contentDisposition ? ["content-disposition"] : []),
-    "host",
-  ].sort().join(";");
+  ].join("\n") + "\n";
   const canonicalRequest = [
     input.method,
-    canonicalPath,
+    path,
     query,
     canonicalHeaders,
-    additionalHeaders,
+    "host",
     "UNSIGNED-PAYLOAD",
   ].join("\n");
   const scope = `${day}/${input.region}/oss/aliyun_v4_request`;
@@ -102,18 +92,17 @@ export function createAliyunOssV4Request(input: {
   const signature = hmac(signingKey, stringToSign, "hex");
   const authorization = [
     `Credential=${input.accessKeyId}/${scope}`,
-    `AdditionalHeaders=${additionalHeaders}`,
+    "AdditionalHeaders=host",
     `Signature=${signature}`,
   ].join(",");
 
   return {
-    endpoint: `https://${host}${requestPath}${query ? `?${query}` : ""}`,
+    endpoint: `https://${host}${path}${query ? `?${query}` : ""}`,
     headers: {
       Authorization: `OSS4-HMAC-SHA256 ${authorization}`,
       "x-oss-content-sha256": "UNSIGNED-PAYLOAD",
       "x-oss-date": date,
       ...(input.contentType ? { "Content-Type": input.contentType } : {}),
-      ...(input.contentDisposition ? { "Content-Disposition": input.contentDisposition } : {}),
     },
   };
 }
@@ -134,8 +123,7 @@ export function createAliyunOssV4PresignedGetUrl(input: {
   const date = iso8601Basic(input.now ?? new Date());
   const day = date.slice(0, 8);
   const host = `${input.bucket}.oss-${input.region}.aliyuncs.com`;
-  const requestPath = `/${encodeObjectKey(input.objectKey)}`;
-  const canonicalPath = `/${encodeURIComponent(input.bucket)}${requestPath}`;
+  const path = `/${encodeObjectKey(input.objectKey)}`;
   const scope = `${day}/${input.region}/oss/aliyun_v4_request`;
   const query = canonicalQuery(new URLSearchParams({
     "x-oss-additional-headers": "host",
@@ -146,7 +134,7 @@ export function createAliyunOssV4PresignedGetUrl(input: {
   }).toString());
   const canonicalRequest = [
     "GET",
-    canonicalPath,
+    path,
     query,
     `host:${host}\n`,
     "host",
@@ -158,7 +146,7 @@ export function createAliyunOssV4PresignedGetUrl(input: {
   const serviceKey = hmac(regionKey, "oss");
   const signingKey = hmac(serviceKey, "aliyun_v4_request");
   const signature = hmac(signingKey, stringToSign, "hex");
-  return `https://${host}${requestPath}?${query}&x-oss-signature=${signature}`;
+  return `https://${host}${path}?${query}&x-oss-signature=${signature}`;
 }
 
 export function createS3V4Request(input: {
@@ -172,7 +160,6 @@ export function createS3V4Request(input: {
   query?: string;
   payloadHash?: string;
   contentType?: string;
-  contentDisposition?: string;
   now?: Date;
 }): SigningRequest {
   const origin = normalizeS3Endpoint(input.endpoint ?? "", input.region);
@@ -183,15 +170,12 @@ export function createS3V4Request(input: {
   const path = `/${encodeURIComponent(input.bucket)}${input.objectKey ? `/${encodeObjectKey(input.objectKey)}` : ""}`;
   const query = canonicalQuery(input.query ?? "");
   const payloadHash = input.payloadHash ?? sha256("");
-  const canonicalHeaderEntries = [
-    ...(input.contentDisposition ? [`content-disposition:${input.contentDisposition.trim()}`] : []),
-    ...(input.contentType ? [`content-type:${input.contentType.trim()}`] : []),
+  const canonicalHeaders = [
     `host:${host}`,
     `x-amz-content-sha256:${payloadHash}`,
     `x-amz-date:${date}`,
-  ].sort();
-  const canonicalHeaders = `${canonicalHeaderEntries.join("\n")}\n`;
-  const signedHeaders = canonicalHeaderEntries.map((entry) => entry.slice(0, entry.indexOf(":"))).join(";");
+  ].join("\n") + "\n";
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
   const canonicalRequest = [input.method, path, query, canonicalHeaders, signedHeaders, payloadHash].join("\n");
   const scope = `${day}/${input.region}/s3/aws4_request`;
   const stringToSign = ["AWS4-HMAC-SHA256", date, scope, sha256(canonicalRequest)].join("\n");
@@ -208,7 +192,6 @@ export function createS3V4Request(input: {
       "x-amz-content-sha256": payloadHash,
       "x-amz-date": date,
       ...(input.contentType ? { "Content-Type": input.contentType } : {}),
-      ...(input.contentDisposition ? { "Content-Disposition": input.contentDisposition } : {}),
     },
   };
 }

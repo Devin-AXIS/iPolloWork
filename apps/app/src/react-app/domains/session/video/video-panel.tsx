@@ -1,11 +1,8 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, CheckCircle2, Film, Layers3, Loader2, PanelRightClose, Play, RefreshCw, Unplug } from "lucide-react";
+import { CheckCircle2, Film, Layers3, Loader2, RefreshCw, Unplug, X } from "lucide-react";
 
-import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { t } from "@/i18n";
 import {
   HYPERFRAMES_VERSION,
   hyperframesPreviewCommand,
@@ -14,7 +11,6 @@ import {
   videoProjectDirectory,
   videoProjectId,
 } from "./video-project";
-import { VideoVoicePanel } from "./video-voice-panel";
 
 export {
   hyperframesPreviewCommand,
@@ -27,13 +23,11 @@ export {
 type VideoPanelProps = {
   sessionId: string;
   workspaceRoot: string;
-  client: iPolloWorkServerClient | null;
-  workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   onClose: () => void;
 };
 
-export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
+export function VideoPanel({ sessionId, workspaceRoot, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
@@ -41,8 +35,6 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [simpleMode, setSimpleMode] = React.useState(true);
-  const [voicePanelOpen, setVoicePanelOpen] = React.useState(false);
-  const [voicePreviewRequest, setVoicePreviewRequest] = React.useState(0);
   const studioPort = hyperframesStudioPort(sessionId);
   const studioUrl = hyperframesStudioUrl(studioPort, videoProjectId(sessionId));
   const projectDirectory = videoProjectDirectory(sessionId);
@@ -131,26 +123,14 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px]">
         <Film className="size-4 text-primary" />
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center">
           <p className="truncate text-sm font-medium">Video Studio</p>
-          <p className="flex items-center gap-1 truncate text-[10px] text-muted-foreground">
-            {status === "ready" ? <CheckCircle2 className="size-2.5 text-emerald-500" /> : status === "starting" ? <Loader2 className="size-2.5 animate-spin" /> : <Unplug className="size-2.5 text-amber-500" />}
-            {detail}
-          </p>
         </div>
-        <Tooltip>
-          <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => setVoicePanelOpen((open) => !open)} disabled={isRemoteWorkspace} aria-label="打开配音设置"><AudioLines /></Button>} />
-          <TooltipContent>配音设置</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="xs" onClick={() => { setVoicePanelOpen(true); setVoicePreviewRequest((value) => value + 1); }} disabled={isRemoteWorkspace} aria-label="试听当前配音"><Play />Preview</Button>} />
-          <TooltipContent>试听当前已选音色</TooltipContent>
-        </Tooltip>
         <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setDetail("Reloading Studio…"); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
         <Button variant={simpleMode ? "ghost" : "secondary"} size="xs" onClick={() => void applySimpleMode(!simpleMode)} aria-label="Toggle advanced Video Studio"><Layers3 />{simpleMode ? "Advanced" : "Simple"}</Button>
-        <Button variant="ghost" size="xs" onClick={onClose} aria-label={t("session.right_panel_close")} title={t("session.right_panel_close")}><PanelRightClose />{t("session.right_panel_close")}</Button>
+        <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close Video Studio" title="Close Video Studio"><X /></Button>
       </header>
 
       {isRemoteWorkspace ? (
@@ -175,14 +155,6 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
               setDetail("Video Studio is still preparing. Reload to try again.");
             })();
           }} /> : null}
-          {voicePanelOpen ? <VideoVoicePanel
-            sessionId={sessionId}
-            workspaceRoot={workspaceRoot}
-            client={client}
-            workspaceId={workspaceId}
-            previewRequest={voicePreviewRequest}
-            onClose={() => setVoicePanelOpen(false)}
-          /> : null}
         </div>
       )}
     </div>

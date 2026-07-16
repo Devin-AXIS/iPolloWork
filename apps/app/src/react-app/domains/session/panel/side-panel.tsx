@@ -14,6 +14,7 @@ import { useDragControls } from "motion/react";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { PanelTab, PanelTabClose, PanelTabItem, PanelTabList } from "@/components/panel-tabs";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   InputGroup,
   InputGroupAddon,
@@ -47,7 +48,18 @@ type SidePanelProps = {
   workspaceId: string | null;
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;
+  launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
+};
+
+export type SidePanelLauncherItem = {
+  id: string;
+  label: string;
+  shortcut?: string;
+  iconSrc: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
 };
 
 // HMR can remount this module without unmounting BrowserPanelContent, leaving
@@ -291,7 +303,7 @@ function BrowserPanelContent({
 
   return (
     <>
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-background px-2 mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#EAEAEA] bg-background px-2 [border-bottom-width:0.5px] mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
         {isAvailable ? (
           <>
             <Tooltip>
@@ -393,6 +405,7 @@ export function SidePanel({
   workspaceId,
   workspaceRoot,
   isRemoteWorkspace = false,
+  launcherItems = [],
   onClose,
 }: SidePanelProps) {
   const { tabs } = useSessionPanelState(sessionId);
@@ -542,8 +555,8 @@ export function SidePanel({
   return (
     <TooltipProvider delay={1000}>
       <div className="flex h-full flex-col">
-        <div className="shrink-0 border-b border-border bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
-          <div className="flex h-10 items-center gap-1 border-b border-border/60 px-2">
+        <div className="shrink-0 bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
+          <div className="flex h-10 items-center gap-1 px-2">
             <div className="no-scrollbar min-w-0 flex-1 overflow-x-auto">
               <PanelTabList
                 values={tabs.map((tab) => tab.id)}
@@ -560,22 +573,60 @@ export function SidePanel({
                 ))}
               </PanelTabList>
             </div>
-            {isBrowserAvailable ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={(
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
+            {isBrowserAvailable || launcherItems.length > 0 ? (
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={(
+                      <DropdownMenuTrigger
+                        render={(
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Add side panel entry"
+                          >
+                            <Plus />
+                          </Button>
+                        )}
+                      />
+                    )}
+                  />
+                  <TooltipContent>Add side panel entry</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-[296px] rounded-[18px] border border-[#E5E5E5] bg-white p-3 text-[#242424] shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
+                >
+                  {launcherItems.map((item) => {
+                    return (
+                      <DropdownMenuItem
+                        key={item.id}
+                        disabled={item.disabled}
+                        onClick={item.onClick}
+                        className={[
+                          "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424] data-disabled:opacity-40",
+                          item.active ? "bg-[#F5F5F5]" : "",
+                        ].join(" ")}
+                      >
+                        <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
+                        <span className="flex-1">{item.label}</span>
+                        {item.shortcut ? (
+                          <span className="text-[12px] tracking-[-0.24px] text-[#8A8A8A]">{item.shortcut}</span>
+                        ) : null}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                  {launcherItems.length === 0 && isBrowserAvailable ? (
+                    <DropdownMenuItem
                       onClick={() => createTab()}
-                      aria-label="New tab"
+                      className="h-11 rounded-xl px-2 text-[20px] font-normal tracking-[-0.8px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424]"
                     >
-                      <Plus />
-                    </Button>
-                  )}
-                />
-                <TooltipContent>New tab</TooltipContent>
-              </Tooltip>
+                      <Globe className="size-6 stroke-[1.8] text-[#666666]" />
+                      <span className="flex-1">浏览器</span>
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
           </div>
         </div>
