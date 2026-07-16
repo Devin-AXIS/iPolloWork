@@ -459,6 +459,8 @@ export type iPolloWorkMediaAction =
   | "status"
   | "speech_synthesize"
   | "voice_clone"
+  | "voice_list"
+  | "voice_clone_workspace_file"
   | "speech_transcribe"
   | "speech_recognize_realtime"
   | "speech_translate"
@@ -1231,6 +1233,8 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       requestJson<{ state: TemplateSessionState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/materialize`, { token, hostToken, method: "POST", body: { sessionId, brief }, timeoutMs: timeouts.workspaceImport }),
     getTemplateSession: (workspaceId: string, sessionId: string) =>
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}`, { token, hostToken }),
+    adoptLegacyVideoSession: (workspaceId: string, sessionId: string) =>
+      requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}/adopt-video`, { token, hostToken, method: "POST", body: {}, timeoutMs: timeouts.workspaceImport }),
     listTemplateSessions: (workspaceId: string) =>
       requestJson<{ items: TemplateSessionSnapshot[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions`, { token, hostToken }),
     listSessions: (

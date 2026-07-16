@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, readTemplateSession, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
+import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, readTemplateSession, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 afterEach(() => {
@@ -117,6 +117,28 @@ function videoPackage(id = "local.product-video", entry = "<!doctype html><html 
 }
 
 describe("template installations", () => {
+  test("claims one legacy Video Studio folder as its persisted session source", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-legacy-video-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const sessionId = "legacy_video_session";
+    const source = "<!doctype html><div data-composition-id=\"legacy\" data-duration=\"12\"></div>";
+    await mkdir(join(ws.path, "video", sessionId), { recursive: true });
+    await writeFile(join(ws.path, "video", sessionId, "index.html"), source, "utf8");
+
+    const adopted = await adoptLegacyVideoSession(serverConfig, ws, sessionId);
+    expect(adopted.surface).toBe("video");
+    expect(adopted.state.entry).toBe(`video/${sessionId}/index.html`);
+    expect(adopted.manifest.id).toBe("ipollowork.html-anything.video-hyperframes");
+    expect(await readFile(join(ws.path, adopted.state.entry), "utf8")).toBe(source);
+    expect(JSON.parse(await readFile(join(ws.path, adopted.state.briefPath), "utf8"))).toEqual({ source: "legacy-video-session" });
+
+    const again = await adoptLegacyVideoSession(serverConfig, ws, sessionId);
+    expect(again.state.createdAt).toBe(adopted.state.createdAt);
+    expect(await readTemplateSession(serverConfig, ws, sessionId)).toEqual(adopted);
+  });
+
   for (const templateId of [
     "ipollowork.app-calm-mobile",
     "ipollowork.app-creator-studio",

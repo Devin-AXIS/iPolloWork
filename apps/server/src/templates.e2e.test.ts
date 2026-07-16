@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "./server.js";
@@ -55,6 +55,16 @@ describe("template API", () => {
     const videoTemplate = await fetch(`${base}/workspace/ws/template-sessions/session_video`, { headers }).then((response) => response.json());
     expect(videoTemplate.manifest.surface).toBe("video");
     expect((await fetch(`${base}/workspace/ws/design-sessions/session_video/template`, { headers })).status).toBe(404);
+
+    await mkdir(join(root, "video", "legacy_video"), { recursive: true });
+    await writeFile(join(root, "video", "legacy_video", "index.html"), "<!doctype html><div data-composition-id=\"legacy-video\" data-duration=\"8\"></div>", "utf8");
+    const adoptedResponse = await fetch(`${base}/workspace/ws/template-sessions/legacy_video/adopt-video`, { method: "POST", headers, body: "{}" });
+    expect(adoptedResponse.status).toBe(200);
+    const adopted = await adoptedResponse.json();
+    expect(adopted.state.entry).toBe("video/legacy_video/index.html");
+    expect(adopted.manifest.surface).toBe("video");
+    expect(await readFile(join(root, adopted.state.entry), "utf8")).toContain("legacy-video");
+    expect(JSON.parse(await readFile(join(root, adopted.state.briefPath), "utf8"))).toEqual({ source: "legacy-video-session" });
 
     const uninstallResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.saas-landing`, { method: "DELETE", headers });
     expect(uninstallResponse.status).toBe(200);

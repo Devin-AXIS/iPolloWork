@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { EnvService } from "../env-file.js";
 import type { ServerConfig } from "../types.js";
@@ -8,6 +11,7 @@ import {
 } from "./media-center.js";
 
 const nativeFetch = globalThis.fetch;
+const directories: string[] = [];
 
 const config = {
   workspaces: [],
@@ -19,9 +23,25 @@ function env(values: Record<string, string>): EnvService {
   } as unknown as EnvService;
 }
 
-afterEach(() => {
+afterEach(async () => {
   globalThis.fetch = nativeFetch;
+  while (directories.length) {
+    const directory = directories.pop();
+    if (directory) await rm(directory, { recursive: true, force: true });
+  }
 });
+
+async function workspaceConfig() {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-media-"));
+  directories.push(root);
+  await writeFile(join(root, "sample.wav"), "voice sample");
+  return {
+    root,
+    config: {
+      workspaces: [{ id: "workspace-voice", path: root, name: "Voice test" }],
+    } as unknown as ServerConfig,
+  };
+}
 
 describe("Media Center extension", () => {
   test("keeps the Model Studio key server-side while synthesizing speech", async () => {
@@ -30,7 +50,7 @@ describe("Media Center extension", () => {
       expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-bailian-secret" });
       expect(String(init?.body)).toContain("cosyvoice-v3-flash");
       expect(String(init?.body)).toContain("hello");
-      return Promise.resolve(new Response(JSON.stringify({ output: { audio_url: "https://audio.example.test/a.wav" } }), {
+      return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://audio.example.test/a.wav" } } }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }));
@@ -47,10 +67,32 @@ describe("Media Center extension", () => {
       result: {
         provider: "aliyun-bailian",
         operation: "speech_synthesize",
-        output: { output: { audio_url: "https://audio.example.test/a.wav" } },
+        output: { output: { audio: { url: "https://audio.example.test/a.wav" } } },
       },
     });
     expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+  });
+
+  test("explains CosyVoice 418 responses without exposing provider internals", async () => {
+    globalThis.fetch = ((_input, init) => {
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        model: "cosyvoice-v3-flash",
+        input: { voice: "longyingmu_v3" },
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        message: "[cosyvoice:]Engine return error code: 418",
+      }), { status: 418, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize", {
+      text: "hello",
+      voice: "longwan",
+      model: "cosyvoice-v3-flash",
+    }, {})).rejects.toMatchObject({
+      status: 422,
+      code: "bailian_voice_incompatible",
+      message: expect.stringContaining("compatible v3 voice"),
+    });
   });
 
   test("uses the asynchronous task endpoint for a digital human", async () => {
@@ -80,6 +122,72 @@ describe("Media Center extension", () => {
         taskId: "task_123",
       },
     });
+  });
+
+  test("lists only reusable custom voice metadata", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        model: "voice-enrollment",
+        input: { action: "list_voice", page_index: 0, page_size: 100 },
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        output: {
+          voice_list: [{ voice_id: "ipw-voice-a", target_model: "cosyvoice-v3-flash", status: "OK" }],
+          total_count: 1,
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "voice_list", {}, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        output: {
+          items: [{ id: "ipw-voice-a", model: "cosyvoice-v3-flash", status: "OK" }],
+          totalCount: 1,
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+  });
+
+  test("clones a workspace sample through a private temporary OSS object and always removes it", async () => {
+    const { root, config: workspace } = await workspaceConfig();
+    const requests: Array<{ url: string; method: string; body: string }> = [];
+    globalThis.fetch = ((input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      requests.push({ url, method, body: String(init?.body ?? "") });
+      if (url.includes("dashscope.aliyuncs.com")) {
+        const body = JSON.parse(String(init?.body));
+        expect(body.input.prefix).toMatch(/^ipw[a-z0-9]{1,7}$/);
+        expect(body.input.url).toContain("x-oss-signature=");
+        expect(body.input.url).not.toContain("oss-secret");
+        return Promise.resolve(new Response(JSON.stringify({ output: { voice_id: "ipw-new-voice" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }
+      return Promise.resolve(new Response(null, { status: 200 }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(workspace, env({
+      DASHSCOPE_API_KEY: "sk-bailian-secret",
+      ALIYUN_OSS_ACCESS_KEY_ID: "LTAIvoice",
+      ALIYUN_OSS_ACCESS_KEY_SECRET: "oss-secret",
+      ALIYUN_OSS_BUCKET: "private-assets",
+      ALIYUN_OSS_REGION: "cn-hangzhou",
+    }), "voice_clone_workspace_file", { sourcePath: "sample.wav" }, { directory: root });
+
+    expect(result).toMatchObject({ ok: true, result: { output: { voiceId: "ipw-new-voice", model: "cosyvoice-v3-flash" } } });
+    expect(requests.map((request) => request.method)).toEqual(["PUT", "POST", "DELETE"]);
+    expect(requests[0]?.url).toContain("/ipollowork/temp/voice-clone/");
+    expect(requests[2]?.url).toContain("/ipollowork/temp/voice-clone/");
+    expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+    expect(JSON.stringify(result)).not.toContain("oss-secret");
+    expect(JSON.stringify(result)).not.toContain("x-oss-signature=");
   });
 
   test("collects the documented streaming file-translation response without exposing the key", async () => {

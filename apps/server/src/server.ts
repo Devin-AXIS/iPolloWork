@@ -79,6 +79,7 @@ import {
 } from "./ipollowork-workspace-config-store.js";
 import { buildiPolloWorkRuntimeConfigObject } from "./ipollowork-runtime-config.js";
 import {
+  adoptLegacyVideoSession,
   importTemplate,
   installBundledTemplate,
   listTemplateSessions,
@@ -1441,6 +1442,13 @@ function createRoutes(
     const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
     if (!sessionId) throw new ApiError(400, "invalid_payload", "sessionId is required");
     return jsonResponse(await materializeTemplate(config, workspace, ctx.params.templateId, sessionId, body.brief));
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/template-sessions/:sessionId/adopt-video", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse(await adoptLegacyVideoSession(config, workspace, ctx.params.sessionId));
   });
 
   addRoute(routes, "GET", "/workspace/:id/template-sessions", "client", async (ctx) => {
