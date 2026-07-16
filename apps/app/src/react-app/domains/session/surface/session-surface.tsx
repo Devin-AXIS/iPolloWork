@@ -407,34 +407,6 @@ function revokeAttachmentPreview(attachment: { previewUrl?: string | undefined }
   URL.revokeObjectURL(attachment.previewUrl);
 }
 
-// Combine multiple queued follow-up drafts into a single send. Their text and
-// parts are concatenated with blank-line separators and attachments are
-// merged, so the whole queue is delivered to the agent as one message.
-function mergeDrafts(drafts: ComposerDraft[]): ComposerDraft | null {
-  if (drafts.length === 0) return null;
-  if (drafts.length === 1) return drafts[0] ?? null;
-  const separator: ComposerPart = { type: "text", text: "\n\n" };
-  const parts: ComposerPart[] = [];
-  const attachments: ComposerAttachment[] = [];
-  const texts: string[] = [];
-  const resolvedTexts: string[] = [];
-  drafts.forEach((draft, index) => {
-    if (index > 0) parts.push(separator);
-    parts.push(...draft.parts);
-    attachments.push(...draft.attachments);
-    texts.push(draft.text);
-    resolvedTexts.push(draft.resolvedText ?? draft.text);
-  });
-  return {
-    mode: "prompt",
-    parts,
-    attachments,
-    text: texts.join("\n\n"),
-    resolvedText: resolvedTexts.join("\n\n"),
-    command: undefined,
-  };
-}
-
 export function SessionSurface(props: SessionSurfaceProps) {
   const local = useLocal();
   const { config: shellConfig } = useShellConfig();
@@ -895,30 +867,28 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
   }, [liveStatus.type]);
 
-  // Drain the queued follow-ups once the session goes idle. OpenCode has no
-  // server-side queue, so we send everything that's queued as a single merged
-  // message. The ref guards against re-entrancy while the send is in flight.
+  // Drain one queued follow-up each time the session goes idle. The ref guards
+  // against re-entrancy while the send is in flight.
   const drainingQueueRef = useRef(false);
   useEffect(() => {
     if (drainingQueueRef.current) return;
     if (queuedDrafts.length === 0) return;
     if (chatStreaming || liveStatus.type !== "idle") return;
-    const merged = mergeDrafts(queuedDrafts);
-    if (!merged) return;
-    const drained = queuedDrafts;
+    const next = queuedDrafts[0];
+    if (!next) return;
     drainingQueueRef.current = true;
-    clearQueuedDrafts(props.sessionId);
+    removeQueuedDraftFromStore(props.sessionId, 0);
     void (async () => {
       try {
-        await sendDraft(merged, merged.attachments);
+        await sendDraft(next, next.attachments);
       } catch {
         // Restore the queue so the user can retry / edit on failure.
-        prependQueuedDrafts(props.sessionId, drained);
+        prependQueuedDrafts(props.sessionId, [next]);
       } finally {
         drainingQueueRef.current = false;
       }
     })();
-  }, [chatStreaming, clearQueuedDrafts, liveStatus.type, prependQueuedDrafts, props.sessionId, queuedDrafts, sendDraft]);
+  }, [chatStreaming, liveStatus.type, prependQueuedDrafts, props.sessionId, queuedDrafts, removeQueuedDraftFromStore, sendDraft]);
 
   useEffect(() => {
     props.onDraftChange(buildDraft(draft, attachments));

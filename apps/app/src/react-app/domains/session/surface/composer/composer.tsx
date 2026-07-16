@@ -335,8 +335,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.draft]);
 
   // Follow-up message UX (only relevant while the agent is busy):
-  // - Enter sends immediately (the agent adjusts mid-task, aka "steer").
-  // - Cmd/Ctrl+Enter queues the message to send once the agent finishes.
+  // - Enter queues the message to send once the agent finishes.
+  // - Cmd/Ctrl+Enter sends immediately (the agent adjusts mid-task).
   // - Escape arms a "Hit Escape again to stop the agent" prompt for 3s;
   //   a second Escape within that window stops the agent.
   const [escapeArmed, setEscapeArmed] = useState(false);
@@ -376,8 +376,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, []);
 
   // Editor submit (Enter). While idle this sends normally; while busy
-  // Enter sends immediately (steer) and Cmd/Ctrl+Enter queues the
-  // message to send once the agent finishes the current task.
+  // Enter queues and Cmd/Ctrl+Enter sends immediately (steer).
   const handleEditorSubmit = useCallback((options: { queue: boolean }) => {
     const hasContent = props.draft.trim().length > 0 || props.attachments.length > 0;
     if (!hasContent) return;
@@ -1704,17 +1703,17 @@ export function ReactSessionComposer(props: ComposerProps) {
                     <div className="flex items-end">
                       <button
                         type="button"
-                        onClick={canSend ? props.onSteer : undefined}
+                        onClick={canSend ? props.onQueue : undefined}
                         disabled={!canSend}
                         className={`inline-flex h-9 max-h-9 items-center gap-2 rounded-l-full pl-4 pr-3 text-[13px] font-medium transition-colors ${
                           canSend
                             ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
                             : "bg-gray-4 text-gray-10"
                         }`}
-                        title={t("composer.steer_hint")}
+                        title={t("composer.queue_hint")}
                       >
-                        <Zap size={14} />
-                        <span>{t("composer.steer")}</span>
+                        <ListPlus size={14} />
+                        <span>{t("composer.queue")}</span>
                       </button>
                       <DropdownMenu>
                         <DropdownMenuTrigger
@@ -1740,15 +1739,11 @@ export function ReactSessionComposer(props: ComposerProps) {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             disabled={!canSend}
-                            onClick={() => void props.onQueue()}
-                            title={t("composer.queue_hint")}
+                            onClick={() => void props.onSteer()}
+                            title={t("composer.steer_hint")}
                           >
-                            <ListPlus size={14} />
-                            <span>
-                              {props.queuedCount > 0
-                                ? `${t("composer.queue")} · ${t("composer.queued_count", { count: props.queuedCount })}`
-                                : t("composer.queue")}
-                            </span>
+                            <Zap size={14} />
+                            <span>{t("composer.steer")}</span>
                             <DropdownMenuShortcut>{isMacPlatform() ? "⌘⏎" : "Ctrl+⏎"}</DropdownMenuShortcut>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
