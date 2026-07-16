@@ -54,7 +54,7 @@ const DESKTOP_PROTOCOL_SCHEME = "ipollowork";
 const isDevMode = process.env.IPOLLOWORK_DEV_MODE === "1";
 const APP_NAME =
   process.env.IPOLLOWORK_ELECTRON_APP_NAME?.trim() ||
-  (isDevMode ? "iPolloWork - Dev" : "iPolloWork");
+  (isDevMode ? "iPollo - Dev" : "iPollo");
 let currentDisplayAppName = APP_NAME;
 const APP_IDENTIFIER =
   process.env.IPOLLOWORK_ELECTRON_APP_IDENTIFIER?.trim() ||

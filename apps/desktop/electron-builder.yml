@@ -2,7 +2,7 @@
 # the same macOS bundle identifier, keychain entries, Launchpad slot, and TCC
 # permissions. In-place migration from Tauri to Electron depends on this.
 appId: com.differentai.ipollowork
-productName: iPollo Work
+productName: iPollo
 protocols:
   - name: iPolloWork
     schemes:

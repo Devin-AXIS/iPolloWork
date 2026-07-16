@@ -39,7 +39,7 @@ for (const [arch, triple] of [
         electronPlatformName: "win32",
         arch,
         appOutDir,
-        packager: { appInfo: { productFilename: "iPollo Work" } },
+        packager: { appInfo: { productFilename: "iPollo" } },
       });
 
       assert.deepEqual((await readdir(sidecarsDir)).sort(), [

@@ -506,6 +506,7 @@ export function NewConversationStarter({
   const selectMode = (mode: NewConversationMode) => {
     setActiveTemplateCategory(null);
     setShortcutEditorOpen(false);
+    if (mode === "design" || mode === "video") onRequestTemplates?.();
     onSelectMode(mode);
   };
 
@@ -637,6 +638,17 @@ export function NewConversationStarter({
             loading={templatesLoading}
             busyId={templateBusyId}
             category={activeTemplateCategory}
+            getTemplateCover={getTemplateCover}
+            onUseTemplate={onUseTemplate}
+            onInstallTemplate={onInstallTemplate}
+          />
+        ) : null}
+        {selectedMode === "video" ? (
+          <TemplateStrip
+            templates={templates}
+            loading={templatesLoading}
+            busyId={templateBusyId}
+            category="video"
             getTemplateCover={getTemplateCover}
             onUseTemplate={onUseTemplate}
             onInstallTemplate={onInstallTemplate}

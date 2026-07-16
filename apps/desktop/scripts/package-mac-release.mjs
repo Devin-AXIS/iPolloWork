@@ -107,7 +107,7 @@ try {
   run(process.execPath, [path.join(desktopRoot, "scripts/electron-build.mjs")], repoRoot, env);
   run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.yml", "--mac", "--arm64", "--publish", "never"], desktopRoot, env);
 
-  const appPath = path.join(outputDir, "mac-arm64", "iPollo Work.app");
+  const appPath = path.join(outputDir, "mac-arm64", "iPollo.app");
   if (!existsSync(appPath)) throw new Error(`Packaged app not found: ${appPath}`);
   validateGatekeeper(appPath);
   const dmgName = readdirSync(outputDir).find((name) => name.endsWith(".dmg") && name.includes("mac-arm64"));
