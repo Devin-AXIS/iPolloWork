@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -227,6 +228,7 @@ function ShortcutEditor({
   selectedIds,
   templates,
   templatesLoading,
+  position,
   onToggle,
   onMove,
   onClose,
@@ -236,6 +238,7 @@ function ShortcutEditor({
   selectedIds: string[];
   templates: TemplateCatalogItem[];
   templatesLoading: boolean;
+  position: CSSProperties;
   onToggle: (id: string) => void;
   onMove: (id: string, direction: -1 | 1) => void;
   onClose: () => void;
@@ -243,7 +246,8 @@ function ShortcutEditor({
   const creativeMode = mode === "design";
   return (
     <div
-      className="absolute left-0 top-full z-30 mt-2 w-[min(340px,calc(100vw-2rem))] rounded-xl border border-border/80 bg-background/95 p-3 shadow-xl backdrop-blur"
+      className="fixed z-[80] max-h-[min(420px,calc(100vh-2rem))] w-[min(340px,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border/80 bg-background/95 p-3 shadow-xl backdrop-blur"
+      style={position}
       role="dialog"
       aria-label={t("new_conversation.shortcuts.title")}
     >
@@ -345,8 +349,10 @@ export function NewConversationStarter({
   const [activeTemplateCategory, setActiveTemplateCategory] = useState<TemplateCategory | null>(null);
   const [hoveredMode, setHoveredMode] = useState<NewConversationMode | null>(null);
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
+  const [shortcutEditorPosition, setShortcutEditorPosition] = useState<CSSProperties>({});
   const [shortcutIds, setShortcutIds] = useState<Record<NewConversationMode, string[]>>(DEFAULT_SHORTCUT_IDS);
   const shortcutEditorRef = useRef<HTMLDivElement>(null);
+  const shortcutButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -386,6 +392,28 @@ export function NewConversationStarter({
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsidePress);
       document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [shortcutEditorOpen]);
+
+  const updateShortcutEditorPosition = () => {
+    const button = shortcutButtonRef.current;
+    if (!button || typeof window === "undefined") return;
+    const rect = button.getBoundingClientRect();
+    const right = Math.max(16, window.innerWidth - rect.right);
+    const opensAbove = rect.bottom > window.innerHeight * 0.58;
+    setShortcutEditorPosition(opensAbove
+      ? { right, bottom: Math.max(16, window.innerHeight - rect.top + 8) }
+      : { right, top: Math.max(16, rect.bottom + 8) });
+  };
+
+  useEffect(() => {
+    if (!shortcutEditorOpen) return;
+    updateShortcutEditorPosition();
+    window.addEventListener("resize", updateShortcutEditorPosition);
+    window.addEventListener("scroll", updateShortcutEditorPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateShortcutEditorPosition);
+      window.removeEventListener("scroll", updateShortcutEditorPosition, true);
     };
   }, [shortcutEditorOpen]);
 
@@ -514,6 +542,7 @@ export function NewConversationStarter({
         {selectedMode !== "video" && selectedMode !== "code" ? (
           <div ref={shortcutEditorRef} className="relative">
             <button
+              ref={shortcutButtonRef}
               type="button"
               className={cn(
                 "inline-flex size-[24px] items-center justify-center rounded-full border text-muted-foreground transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -521,7 +550,10 @@ export function NewConversationStarter({
               )}
               aria-label={t("new_conversation.shortcuts.add")}
               aria-expanded={shortcutEditorOpen}
-              onClick={() => setShortcutEditorOpen((open) => !open)}
+              onClick={() => {
+                updateShortcutEditorPosition();
+                setShortcutEditorOpen((open) => !open);
+              }}
             >
               <span className="text-[16px] font-light leading-none">+</span>
             </button>
@@ -532,6 +564,7 @@ export function NewConversationStarter({
                 selectedIds={shortcutIds[selectedMode]}
                 templates={templates}
                 templatesLoading={templatesLoading}
+                position={shortcutEditorPosition}
                 onToggle={toggleShortcut}
                 onMove={moveShortcut}
                 onClose={() => setShortcutEditorOpen(false)}

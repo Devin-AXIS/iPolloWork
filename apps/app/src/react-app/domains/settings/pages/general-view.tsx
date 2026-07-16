@@ -26,7 +26,6 @@ export type GeneralSettingsViewProps = {
   onNavigateTab: (tab: SettingsTab) => void;
   developerMode: boolean;
   onSendFeedback: () => void;
-  onJoinDiscord: () => void;
   onReportIssue: () => void;
 };
 
@@ -146,14 +145,6 @@ export function GeneralSettingsView(props: GeneralSettingsViewProps) {
               >
                 <MessageCircle size={12} />
                 {t("settings.send_feedback")}
-                <ArrowUpRight size={11} />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={props.onJoinDiscord}
-              >
-                {t("settings.join_discord")}
                 <ArrowUpRight size={11} />
               </Button>
               <Button

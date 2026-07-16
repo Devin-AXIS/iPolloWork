@@ -1952,7 +1952,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             onNavigateTab={(tab) => navigateSettingsPath(tab)}
             developerMode={developerMode}
             onSendFeedback={() => platform.openLink(buildFeedbackUrl({ entrypoint: "settings" }))}
-            onJoinDiscord={() => platform.openLink("https://discord.gg/VEhNQXxYMB")}
             onReportIssue={() => platform.openLink("https://github.com/Devin-AXIS/iPolloWork/issues/new?template=bug.yml")}
           />
         );

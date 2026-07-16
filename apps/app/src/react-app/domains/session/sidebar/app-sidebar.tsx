@@ -812,7 +812,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               >
                 <img src="/sidebar-icon/doc-plus.svg" alt="" className="size-[22px] shrink-0 -translate-x-0.5 -me-1.5" />
-                <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("extensions.marketplace_tab")}</span>
+                <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("template_market.title")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

@@ -17,6 +17,7 @@ import {
   openModelPickerEvent,
   pendingModelPickerProviderIdsKey,
 } from "@/react-app/shell/new-providers-listener";
+import { t } from "@/i18n";
 
 export type UseModelPickerInput = {
   client: Client | null;
@@ -107,8 +108,8 @@ export function useModelPicker(input: UseModelPickerInput) {
               modelID: id,
               title: model.name || id,
               description: provider.name,
-              behaviorTitle: "Reasoning",
-              behaviorLabel: "Default",
+              behaviorTitle: t("model_behavior.title_reasoning_effort"),
+              behaviorLabel: t("settings.provider_default_label"),
               behaviorDescription: "",
               behaviorValue: null,
               isFree: false,

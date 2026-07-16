@@ -84,8 +84,8 @@ function useModelOptions(open: boolean) {
           modelID: id,
           title: model.name,
           description: provider.name,
-          behaviorTitle: "Reasoning",
-          behaviorLabel: "Default",
+          behaviorTitle: t("model_behavior.title_reasoning_effort"),
+          behaviorLabel: t("settings.provider_default_label"),
           behaviorDescription: "",
           behaviorValue: null,
           isFree: false,
@@ -231,19 +231,19 @@ export function ModelSelect({
             <PopoverTrigger
               type="button"
               disabled={disabled}
-              aria-label="Change model"
+              aria-label={t("model_picker.change_model")}
               aria-keyshortcuts="Meta+Alt+/"
               className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
             />
           }
         >
           <span className="max-w-48 truncate">
-            {selectedOption?.title ?? value.modelID ?? "Select model"}
+            {selectedOption?.title ?? value.modelID ?? t("model_picker.select_model")}
           </span>
           <ChevronDown className="h-3 w-3" />
         </TooltipTrigger>
         <TooltipContent>
-          Change model
+          {t("model_picker.change_model")}
         </TooltipContent>
       </Tooltip>
       <PopoverContent
@@ -255,10 +255,10 @@ export function ModelSelect({
           <CommandHeader>
             <CommandInput
               ref={searchInputRef}
-              placeholder="Search models..."
+              placeholder={t("model_picker.search_models")}
             />
           </CommandHeader>
-          <CommandEmpty>No models found.</CommandEmpty>
+          <CommandEmpty>{t("model_picker.no_results")}</CommandEmpty>
           <CommandList>
             {(group: ModelSelectGroup) => (
               <CommandGroup
