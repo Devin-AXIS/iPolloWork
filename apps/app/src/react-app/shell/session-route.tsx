@@ -181,8 +181,7 @@ import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-targ
 import { SettingsSurface } from "./settings-route";
 import {
   ensureProviderListQuery,
-  getConnectedProviderItems,
-  isModelAvailableInConnectedProviders,
+  isModelAvailableInSelectableChatProviders,
   refreshProviderListQueries,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
@@ -642,7 +641,7 @@ export function SessionRoute() {
         ) ||
         (
           providerListQuery.data &&
-          !isModelAvailableInConnectedProviders(providerListQuery.data, local.prefs.defaultModel)
+          !isModelAvailableInSelectableChatProviders(providerListQuery.data, local.prefs.defaultModel)
         )
       ),
   );
@@ -845,6 +844,9 @@ export function SessionRoute() {
             : null,
         }));
         modelPicker.setCompactOpen(false);
+      },
+      onConfigureModels: () => {
+        void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
       },
       providerConnectedCount: hasUsableModel ? 1 : providerConnectedIds.length,
       onOpenSettingsSection: (section: "commands" | "skills" | "mcps" | "plugins" | "providers") => {

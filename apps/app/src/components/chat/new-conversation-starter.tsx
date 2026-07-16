@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
 import {
   CheckIcon,
-  ChartBarIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import {
   AppWindow,
+  BriefcaseBusiness,
   FileChartColumnIncreasing,
   FileText,
   Film,
@@ -20,7 +20,7 @@ import {
   Code2,
   PanelsTopLeft,
   Presentation,
-  Table2,
+  MoreHorizontal,
   Wrench,
 } from "lucide-react";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
@@ -86,8 +86,9 @@ const TEMPLATE_CATEGORY_ICONS: Record<TemplateCategory, Icon> = {
 const MODE_ACTIONS: Record<NewConversationMode, ReadonlyArray<StarterAction>> = {
   work: [
     { id: "document", label: "new_conversation.action.document", icon: FileText, prompt: "new_conversation.prompt.document" },
-    { id: "data", label: "new_conversation.action.data", icon: Table2, prompt: "new_conversation.prompt.data" },
-    { id: "plan", label: "new_conversation.action.plan", icon: ChartBarIcon, prompt: "new_conversation.prompt.plan" },
+    { id: "finance", label: "new_conversation.action.finance", icon: BriefcaseBusiness, prompt: "new_conversation.prompt.finance" },
+    { id: "data_visualization", label: "new_conversation.action.data_visualization", icon: FileChartColumnIncreasing, prompt: "new_conversation.prompt.data_visualization" },
+    { id: "more", label: "new_conversation.action.more", icon: MoreHorizontal, prompt: "new_conversation.prompt.more" },
   ],
   code: [
     { id: "understand_code", label: "new_conversation.action.understand_code", icon: Code2, prompt: "new_conversation.prompt.understand_code" },
@@ -104,21 +105,17 @@ const MODE_ACTIONS: Record<NewConversationMode, ReadonlyArray<StarterAction>> = 
     { id: "report", label: "new_conversation.action.report", icon: TEMPLATE_CATEGORY_ICONS.report, templateCategory: "report" },
     { id: "other", label: "new_conversation.action.other", icon: TEMPLATE_CATEGORY_ICONS.other, templateCategory: "other" },
   ],
-  video: [
-    { id: "video_script", label: "new_conversation.action.video_script", icon: FileText, prompt: "new_conversation.prompt.video_script" },
-    { id: "storyboard", label: "new_conversation.action.storyboard", icon: PanelsTopLeft, prompt: "new_conversation.prompt.storyboard" },
-    { id: "video_template", label: "new_conversation.action.video_template", icon: TEMPLATE_CATEGORY_ICONS.video, templateCategory: "video" },
-  ],
+  video: [],
 };
 
 const DEFAULT_SHORTCUT_IDS: Record<NewConversationMode, string[]> = {
-  work: ["document", "data", "plan"],
+  work: ["document", "finance", "data_visualization", "more"],
   code: ["understand_code", "build_feature", "debug"],
   design: ["site", "slides", "cards", "poster"],
-  video: ["video_script", "storyboard", "video_template"],
+  video: [],
 };
 
-const SHORTCUT_STORAGE_KEY = "ipollowork.new-conversation-shortcuts.v2";
+const SHORTCUT_STORAGE_KEY = "ipollowork.new-conversation-shortcuts.v4";
 
 function TemplateThumbnail({ template, getTemplateCover }: { template: TemplateCatalogItem; getTemplateCover?: TemplateCoverLoader }) {
   const [src, setSrc] = useState<string | null>(null);
