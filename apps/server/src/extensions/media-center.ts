@@ -12,15 +12,6 @@ export const MEDIA_EXTENSION_ID = "media";
 const DEFAULT_ALIYUN_MEDIA_BASE_URL = "https://dashscope.aliyuncs.com";
 const BAILIAN_REQUEST_TIMEOUT_MS = 90_000;
 const MAX_TRANSLATION_AUDIO_CHARS = 16 * 1024 * 1024;
-const COSYVOICE_V3_FLASH = "cosyvoice-v3-flash";
-const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
-  longxiaochun: "longyingmu_v3",
-  longxiaoxia: "longyingmu_v3",
-  longwan: "longyingmu_v3",
-  longwanwan: "longanhuan_v3",
-  longlaotie: "longanlang_v3",
-  longfei: "longanlang_v3",
-};
 
 type JsonRecord = Record<string, unknown>;
 
@@ -270,15 +261,6 @@ function providerMessage(payload: unknown): string | null {
   return nestedMessage || null;
 }
 
-function isCosyVoiceCompatibilityError(status: number, message: string | null) {
-  return status === 418 && /(?:cosyvoice|tts).*engine return error code:\s*418/i.test(message ?? "");
-}
-
-function compatibleCosyVoiceVoice(model: string, voice: string) {
-  if (model !== COSYVOICE_V3_FLASH) return voice;
-  return LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS[voice] ?? voice;
-}
-
 function taskIdFromPayload(payload: unknown): string | null {
   if (!isRecord(payload) || !isRecord(payload.output)) return null;
   const taskId = payload.output.task_id;
@@ -370,11 +352,7 @@ async function requestProviderJson(input: {
 
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const message = providerMessage(payload);
-    if (isCosyVoiceCompatibilityError(response.status, message)) {
-      throw new ApiError(422, "bailian_voice_incompatible", "The selected CosyVoice voice is incompatible with its model or is not ready. Select a compatible v3 voice, or wait for a cloned voice to reach OK status.");
-    }
-    throw new ApiError(response.status, "bailian_request_failed", message || `Alibaba Model Studio request failed (HTTP ${response.status}).`);
+    throw new ApiError(response.status, "bailian_request_failed", providerMessage(payload) || `Alibaba Model Studio request failed (HTTP ${response.status}).`);
   }
   return payload;
 }
@@ -526,18 +504,16 @@ export async function callMediaExtensionAction(
   switch (action) {
     case "speech_synthesize": {
       const text = requireString(args, "text");
-      const model = readStringField(args, "model") || COSYVOICE_V3_FLASH;
-      const voice = readStringField(args, "voice");
       const input: JsonRecord = {
         text,
-        ...(voice ? { voice: compatibleCosyVoiceVoice(model, voice) } : {}),
+        ...(readStringField(args, "voice") ? { voice: readStringField(args, "voice") } : {}),
         ...(readStringField(args, "format") ? { format: readStringField(args, "format") } : {}),
         ...(readOptionalNumber(args, "sampleRate") ? { sample_rate: readOptionalNumber(args, "sampleRate") } : {}),
       };
       result = await requestProviderJson({
         apiKey,
         url: endpoint(baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
-        body: { model, input },
+        body: { model: readStringField(args, "model") || "cosyvoice-v3-flash", input },
       });
       break;
     }

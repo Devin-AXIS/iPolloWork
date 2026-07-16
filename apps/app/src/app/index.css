@@ -204,6 +204,32 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #e4e4e5;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+  min-height: 56px;
+  min-width: 56px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #d8d8da;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: #c7c7ca;
+}
+
 .ow-soft-shell {
   border: 1px solid var(--dls-border);
   background: var(--dls-surface);
