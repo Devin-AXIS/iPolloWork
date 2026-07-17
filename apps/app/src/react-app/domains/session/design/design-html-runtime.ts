@@ -83,21 +83,84 @@ export function resolveDesignNavigationPath(currentPath: string, rootPath: strin
   return { path, hash };
 }
 
-export function buildDesignPreviewDocument(source: string, includeEditor: boolean, templateTokenCss = "", editing = includeEditor) {
+export function buildDesignPreviewDocument(
+  source: string,
+  includeEditor: boolean,
+  templateTokenCss = "",
+  editing = includeEditor,
+  fixedSlideStage = false,
+) {
   const tokenStyle = templateTokenCss.trim()
     ? `<style id="ipollowork-design-template-token-style">${templateTokenCss.replace(/<\/style/gi, "<\\/style")}</style>`
     : "";
   const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"});<\/script>`;
-  const deckRuntime = `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)});<\/script>`;
-  const editingRuntime = includeEditor
-    ? `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"});<\/script>`
+  const deckRuntime = `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${fixedSlideStage ? "true" : "false"});<\/script>`;
+  const fixedSlideRuntime = fixedSlideStage
+    ? `<script id="ipollowork-design-fixed-slide-runtime">(${designFixedSlideRuntime.toString()})();<\/script>`
     : "";
-  const runtime = `${tokenStyle}${navigationRuntime}${deckRuntime}${editingRuntime}`;
+  const editingRuntime = includeEditor
+    ? `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"});<\/script>`
+    : "";
+  const runtime = `${tokenStyle}${navigationRuntime}${deckRuntime}${fixedSlideRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
   if (bodyEnd >= 0) {
     return `${source.slice(0, bodyEnd)}${runtime}${source.slice(bodyEnd)}`;
   }
   return `${source}${runtime}`;
+}
+
+function designFixedSlideRuntime() {
+  const stage = document.querySelector<HTMLElement>("[data-ipw-template-kind='slides'],.deck");
+  if (!stage) return;
+
+  const stageWidth = 1600;
+  const stageHeight = 900;
+  const style = document.createElement("style");
+  style.id = "ipollowork-design-fixed-slide-runtime-style";
+  document.head.appendChild(style);
+
+  // PPTX-compatible templates keep a single slide canvas. Remove only viewport
+  // media queries so a narrow preview scales the same page instead of reflowing it.
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      for (let index = sheet.cssRules.length - 1; index >= 0; index -= 1) {
+        const rule = sheet.cssRules[index];
+        if (rule instanceof CSSMediaRule && /(?:max-width|max-height|orientation)/i.test(rule.conditionText)) {
+          sheet.deleteRule(index);
+        }
+      }
+    } catch {
+      // Cross-origin style sheets are not readable, but compatible templates use local styles.
+    }
+  }
+
+  const applyScale = () => {
+    const scale = Math.min(window.innerWidth / stageWidth, window.innerHeight / stageHeight);
+    style.textContent = `
+      html, body { width: 100% !important; height: 100% !important; min-width: 0 !important; min-height: 0 !important; overflow: hidden !important; }
+      body { display: grid !important; place-items: center !important; }
+      [data-ipw-template-kind='slides'], .deck {
+        width: 1600px !important;
+        min-width: 1600px !important;
+        max-width: none !important;
+        height: 900px !important;
+        min-height: 900px !important;
+        max-height: none !important;
+        aspect-ratio: 16 / 9 !important;
+        flex: none !important;
+        zoom: ${scale} !important;
+        transform: none !important;
+        transform-origin: initial !important;
+      }
+      .slide-counter, .controls, .deck-chrome, .deck-controls, .dots, .counter,
+      [data-ipw-deck-control], [data-ipw-prev], [data-ipw-next], [data-action='prev'], [data-action='previous'], [data-action='next'] {
+        display: none !important;
+      }
+    `;
+  };
+
+  window.requestAnimationFrame(applyScale);
+  window.addEventListener("resize", () => window.requestAnimationFrame(applyScale));
 }
 
 function designNavigationRuntime(channel: string, editing: boolean) {
@@ -154,7 +217,7 @@ function designNavigationRuntime(channel: string, editing: boolean) {
   });
 }
 
-function designDeckRuntime(channel: string) {
+function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
   const slideSelector = "[data-ipw-slide], section.slide, .slide";
   const slides = Array.from(document.querySelectorAll<HTMLElement>(slideSelector))
     .filter((element, index, list) => list.indexOf(element) === index);
@@ -163,6 +226,18 @@ function designDeckRuntime(channel: string) {
   slides.forEach((slide, index) => {
     if (!slide.hasAttribute("data-ipw-slide")) slide.setAttribute("data-ipw-slide", String(index + 1));
   });
+  const slideWrappers = slides.map((slide) => slide.closest<HTMLElement>(".slide-wrap"));
+  const usesSlideWrappers = slideWrappers.every(Boolean);
+
+  // Some templates include a static, vertically stacked preview fallback.
+  // The deck runtime owns aria-hidden so only the active page is laid out.
+  const visibilityStyle = document.createElement("style");
+  visibilityStyle.id = "ipollowork-design-deck-runtime-style";
+  visibilityStyle.textContent = `
+    [data-ipw-slide][aria-hidden="true"] { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+    [data-ipw-slide][aria-hidden="false"] { opacity: 1 !important; pointer-events: auto !important; }
+  `;
+  document.head.appendChild(visibilityStyle);
 
   const deckControl = (direction: "previous" | "next") => {
     const aliases = direction === "previous"
@@ -172,13 +247,17 @@ function designDeckRuntime(channel: string) {
   };
 
   const activeIndex = () => {
+    if (usesSlideWrappers) {
+      const wrapperIndex = slideWrappers.findIndex((wrapper) => wrapper && !wrapper.classList.contains("hidden"));
+      if (wrapperIndex >= 0) return wrapperIndex;
+    }
+    const active = slides.findIndex((slide) => slide.classList.contains("is-active") || slide.classList.contains("active"));
+    if (active >= 0) return active;
+    const visible = slides.findIndex((slide) => slide.getAttribute("aria-hidden") === "false");
+    if (visible >= 0) return visible;
     const hash = window.location.hash.slice(1);
     const hashIndex = Number.parseInt(hash, 10);
     if (String(hashIndex) === hash && hashIndex >= 1 && hashIndex <= slides.length) return hashIndex - 1;
-    const visible = slides.findIndex((slide) => slide.getAttribute("aria-hidden") === "false");
-    if (visible >= 0) return visible;
-    const active = slides.findIndex((slide) => slide.classList.contains("is-active") || slide.classList.contains("active"));
-    if (active >= 0) return active;
     const scroller = document.body.scrollWidth > document.body.clientWidth + 1 || document.body.scrollHeight > document.body.clientHeight + 1
       ? document.body
       : document.scrollingElement || document.documentElement;
@@ -195,6 +274,15 @@ function designDeckRuntime(channel: string) {
     return 0;
   };
 
+  const setSlideVisibility = (index: number) => {
+    const visibleIndex = Math.max(0, Math.min(slides.length - 1, index));
+    slides.forEach((slide, slideIndex) => {
+      const hidden = String(slideIndex !== visibleIndex);
+      if (slide.getAttribute("aria-hidden") !== hidden) slide.setAttribute("aria-hidden", hidden);
+      if (usesSlideWrappers) slideWrappers[slideIndex]?.classList.toggle("hidden", slideIndex !== visibleIndex);
+    });
+  };
+
   let lastState = "";
   const report = () => {
     const index = activeIndex();
@@ -209,24 +297,30 @@ function designDeckRuntime(channel: string) {
     const next = Math.max(0, Math.min(slides.length - 1, index));
     const hasIsActive = slides.some((slide) => slide.classList.contains("is-active"));
     const hasActive = !hasIsActive && slides.some((slide) => slide.classList.contains("active"));
-    if (hasIsActive || hasActive) {
+    if (usesSlideWrappers) {
+      setSlideVisibility(next);
+    } else if (hasIsActive || hasActive) {
       const className = hasIsActive ? "is-active" : "active";
       slides.forEach((slide, slideIndex) => {
         slide.classList.toggle(className, slideIndex === next);
-        slide.setAttribute("aria-hidden", String(slideIndex !== next));
       });
+      setSlideVisibility(next);
     } else {
       slides[next]?.scrollIntoView({ block: "nearest", inline: "start", behavior: "smooth" });
+      setSlideVisibility(next);
     }
     window.setTimeout(report, 0);
   };
 
   const navigate = (direction: "previous" | "next" | "index", requestedIndex?: number) => {
     if (direction === "previous" || direction === "next") {
-      const control = deckControl(direction);
+      const control = runtimeOwnsNavigation ? null : deckControl(direction);
       if (control) {
         control.click();
-        window.setTimeout(report, 0);
+        window.setTimeout(() => {
+          setSlideVisibility(activeIndex());
+          report();
+        }, 0);
         return;
       }
       showFallback(activeIndex() + (direction === "next" ? 1 : -1));
@@ -235,11 +329,38 @@ function designDeckRuntime(channel: string) {
     if (typeof requestedIndex === "number") showFallback(requestedIndex);
   };
 
-  document.addEventListener("click", () => window.setTimeout(report, 0), true);
-  document.addEventListener("keydown", () => window.setTimeout(report, 0), true);
+  const isEditableTarget = (target: EventTarget | null) => target instanceof Element
+    && Boolean(target.closest("input,textarea,select,[contenteditable]"));
+  const keyboardDirection = (event: KeyboardEvent) => {
+    if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === "PageDown" || event.key === " ") return "next";
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "PageUp") return "previous";
+    return null;
+  };
+
+  setSlideVisibility(activeIndex());
+
+  document.addEventListener("click", () => window.setTimeout(() => {
+    setSlideVisibility(activeIndex());
+    report();
+  }, 0), true);
+  document.addEventListener("keydown", (event) => {
+    const direction = !event.defaultPrevented && !event.altKey && !event.ctrlKey && !event.metaKey && !isEditableTarget(event.target)
+      ? keyboardDirection(event)
+      : null;
+    if (direction) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      navigate(direction);
+      return;
+    }
+    window.setTimeout(report, 0);
+  }, true);
   document.addEventListener("scroll", () => window.setTimeout(report, 0), true);
   window.addEventListener("hashchange", report);
-  new MutationObserver(report).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class", "aria-hidden"] });
+  new MutationObserver(() => {
+    setSlideVisibility(activeIndex());
+    report();
+  }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class", "aria-hidden"] });
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent) return;
     const data = event.data;
@@ -250,7 +371,7 @@ function designDeckRuntime(channel: string) {
   report();
 }
 
-function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean) {
+function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, strictPptx = false) {
   const runtimeId = "ipollowork-design-runtime";
   const styleId = "ipollowork-design-runtime-style";
   const selectedAttribute = "data-ipollowork-design-selected";
@@ -333,6 +454,8 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     clone.querySelector(`#${runtimeId}`)?.remove();
     clone.querySelector("#ipollowork-design-navigation-runtime")?.remove();
     clone.querySelector("#ipollowork-design-deck-runtime")?.remove();
+    clone.querySelector("#ipollowork-design-fixed-slide-runtime")?.remove();
+    clone.querySelector("#ipollowork-design-fixed-slide-runtime-style")?.remove();
     clone.querySelector(`#${styleId}`)?.remove();
     clone.querySelector("#ipollowork-design-template-token-style")?.remove();
     clone.querySelector(`#${overlayId}`)?.remove();
@@ -343,6 +466,10 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       element.removeAttribute(editingAttribute);
       element.removeAttribute("contenteditable");
     });
+    if (strictPptx) {
+      clone.querySelectorAll("script,[data-ipw-notes],.ipw-notes,.slide-counter,.controls,.deck-chrome,.deck-controls,.dots,.counter,[data-ipw-deck-control],[data-ipw-prev],[data-ipw-next],[data-action='prev'],[data-action='previous'],[data-action='next']")
+        .forEach((element) => element.remove());
+    }
     clone.removeAttribute(modeAttribute);
     const doctype = document.doctype
       ? `<!DOCTYPE ${document.doctype.name}${document.doctype.publicId ? ` PUBLIC \"${document.doctype.publicId}\"` : ""}${document.doctype.systemId ? ` \"${document.doctype.systemId}\"` : ""}>\n`

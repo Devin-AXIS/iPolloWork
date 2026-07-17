@@ -60,6 +60,11 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
 }
 
 const bundledTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "bundled-templates");
+const pptxCompatibleTemplateIds = [
+  "ipollowork.pptx-compatible-brief",
+  "ipollowork.pptx-compatible-pitch",
+  "ipollowork.pptx-compatible-report",
+];
 
 function importedTemplateId(id: string) {
   return `test.${id.replace(/^ipollowork\./, "")}`;
@@ -225,7 +230,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(65);
+    expect(directories).toHaveLength(68);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -238,7 +243,27 @@ describe("template installations", () => {
       expect(cover.byteLength).toBeGreaterThan(15_000);
       hashes.add(Bun.hash(cover).toString());
     }
-    expect(hashes.size).toBe(65);
+    expect(hashes.size).toBe(68);
+  });
+
+  test("ships strict PPTX-compatible slide templates with explicit editable object markers", async () => {
+    for (const templateId of pptxCompatibleTemplateIds) {
+      const root = join(bundledTemplatesRoot, templateId);
+      const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
+      const entry = await readFile(join(root, manifest.entry), "utf8");
+      expect(manifest.category).toBe("slides");
+      expect(manifest.pptxCompatibility).toBe("native-editable");
+      expect(entry).toContain("data-pptx-text");
+      expect(entry).toContain("data-pptx-shape");
+      expect(entry).not.toMatch(/(?:linear|radial)-gradient|\bfilter\s*:/i);
+    }
+  });
+
+  test("build copies strict PPTX-compatible templates into the embedded server catalog", async () => {
+    const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
+    for (const templateId of pptxCompatibleTemplateIds) {
+      expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+    }
   });
 
   test("seeds the full personal template market and keeps its install state global", async () => {
@@ -246,7 +271,7 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(65);
+    expect(first.filter((item) => item.installed)).toHaveLength(68);
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);

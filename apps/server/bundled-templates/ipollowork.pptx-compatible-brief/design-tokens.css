@@ -1,0 +1,12 @@
+:root {
+  --ipw-color-primary: #123b4a;
+  --ipw-color-accent: #d97706;
+  --ipw-color-bg: #f6f8f7;
+  --ipw-color-surface: #ffffff;
+  --ipw-color-text: #13242b;
+  --ipw-color-muted: #52707b;
+  --ipw-color-border: #c8d5d8;
+  --ipw-font-display: Arial, sans-serif;
+  --ipw-font-body: Arial, sans-serif;
+  --ipw-card-radius: 18px;
+}

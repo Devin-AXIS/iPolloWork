@@ -236,7 +236,7 @@ export function templateBriefConfigFor(template: Pick<TemplateManifestV1, "categ
 }
 
 export function templateBriefPrompt(input: {
-  template: Pick<TemplateManifestV1, "category" | "title" | "applyChecklist"> & Partial<Pick<TemplateManifestV1, "subcategory">>;
+  template: Pick<TemplateManifestV1, "category" | "title" | "applyChecklist"> & Partial<Pick<TemplateManifestV1, "subcategory" | "pptxCompatibility">>;
   entryPath: string;
   briefPath: string;
 }): string {
@@ -246,6 +246,9 @@ export function templateBriefPrompt(input: {
     case "video":
       return `${base} ${colorInstruction} Build this exact video template, not a blank or unrelated project. Decide whether narration materially helps the stated goal; do not ask a separate narration question. Preserve the editable composition, variables, and scene structure while making the content fit the brief.`;
     case "slides":
+      if (input.template.pptxCompatibility === "native-editable") {
+        return `${base} ${colorInstruction} Rewrite the complete deck, not one slide. Preserve the existing fixed 16:9 stage and every data-pptx-text, data-pptx-shape, and data-pptx-image marker. The Design panel owns slide navigation: do not add <script> tags, custom keyboard handlers, slide counters, navigation buttons, or speaker notes. Do not add responsive slide reflow or breakpoint-specific slide layouts; narrow previews scale the same 16:9 stage. Build a coherent decision-oriented narrative from the brief. Never invent metrics; clearly mark missing evidence for the user to replace. Keep 6 to 10 slides and keep every visible slide element within the native PPTX marker contract.`;
+      }
       return `${base} ${colorInstruction} Rewrite the complete deck, not one slide. Keep the 16:9 slide system, keyboard navigation, controls, theme tokens, and separate speaker notes. Build a coherent decision-oriented narrative from the brief. Never invent metrics; clearly mark missing evidence for the user to replace. Keep 6 to 10 slides and every slide editable in the Design panel.`;
     case "site":
       return `${base} ${colorInstruction} Update the complete website, not a partial copy edit. Replace inherited names, navigation labels, links, headings, calls to action, cards, metadata, and footer content with information consistent with the brief. Keep it responsive on desktop and mobile, and keep every part editable in the Design panel.`;
