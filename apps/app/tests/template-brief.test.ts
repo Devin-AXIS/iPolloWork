@@ -80,4 +80,21 @@ describe("template brief", () => {
     expect(app).toContain("complete App prototype");
     expect(app).toContain("do not turn it into a marketing website");
   });
+
+  test("assigns compatible slide navigation and responsive scaling to the Design panel", () => {
+    const prompt = templateBriefPrompt({
+      template: {
+        category: "slides",
+        title: "Native Pitch",
+        applyChecklist: ["Preserve markers"],
+        pptxCompatibility: "native-editable",
+      },
+      entryPath: "design/ses_native/entry.html",
+      briefPath: "design/ses_native/brief.json",
+    });
+
+    expect(prompt).toContain("do not add <script> tags");
+    expect(prompt).toContain("The Design panel owns slide navigation");
+    expect(prompt).toContain("responsive slide reflow");
+  });
 });

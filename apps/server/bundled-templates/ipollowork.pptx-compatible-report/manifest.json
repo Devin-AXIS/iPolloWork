@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.pptx-compatible-report",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "slides",
+  "subcategory": "business-report",
+  "style": "data",
+  "tags": ["pptx-compatible", "editable", "report", "metrics"],
+  "pptxCompatibility": "native-editable",
+  "surface": "design",
+  "title": "Quarterly Report",
+  "description": "A metrics report that stays editable as native PowerPoint text and shapes.",
+  "cover": "cover.png",
+  "entry": "entry.html",
+  "source": {
+    "name": "iPolloWork",
+    "license": "MIT"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "tokens": "design-tokens.css",
+    "variables": [
+      { "id": "--ipw-color-primary", "label": "Primary", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-accent", "label": "Accent", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-bg", "label": "Page background", "type": "color", "group": "background" },
+      { "id": "--ipw-color-surface", "label": "Surface", "type": "color", "group": "background" },
+      { "id": "--ipw-color-text", "label": "Text", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-muted", "label": "Muted text", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-border", "label": "Border", "type": "color", "group": "components" },
+      { "id": "--ipw-font-display", "label": "Display font", "type": "font", "group": "typography" },
+      { "id": "--ipw-font-body", "label": "Body font", "type": "font", "group": "typography" },
+      { "id": "--ipw-card-radius", "label": "Card radius", "type": "number", "group": "components" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace all sample figures with source-backed data.",
+    "Use one key message per metric slide.",
+    "Keep comparison labels short enough to remain readable in PowerPoint.",
+    "Preserve native PPTX markers when editing HTML."
+  ],
+  "minimumAppVersion": "0.17.21"
+}

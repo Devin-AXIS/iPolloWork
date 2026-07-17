@@ -13,6 +13,7 @@ export const templateCategorySchema = z.enum([
 ]);
 export const templateSourceTypeSchema = z.enum(["bundled", "local", "market"]);
 export const templateSurfaceSchema = z.enum(["design", "video"]);
+export const pptxCompatibilitySchema = z.enum(["native-editable"]);
 export const templateStyleSchema = z.enum([
   "minimal",
   "editorial",
@@ -71,6 +72,7 @@ export const templateManifestV1Schema = z.object({
   subcategory: z.string().trim().min(1).max(64),
   style: templateStyleSchema.default("minimal"),
   tags: z.array(z.string().trim().min(1).max(32)).max(12).default([]),
+  pptxCompatibility: pptxCompatibilitySchema.optional(),
   surface: templateSurfaceSchema.default("design"),
   title: z.string().trim().min(1).max(96),
   description: z.string().trim().min(1).max(240),
@@ -110,6 +112,24 @@ export type TemplateSourceType = z.infer<typeof templateSourceTypeSchema>;
 export type TemplateSurface = z.infer<typeof templateSurfaceSchema>;
 export type TemplateStyle = z.infer<typeof templateStyleSchema>;
 export type TemplateVariable = z.infer<typeof templateVariableSchema>;
+export type PptxCompatibility = z.infer<typeof pptxCompatibilitySchema>;
+
+type PptxCompatibilityTemplate = Pick<TemplateManifestV1, "category" | "pptxCompatibility">;
+type CatalogSortTemplate = Pick<TemplateManifestV1, "category" | "title" | "pptxCompatibility">;
+
+export function isPptxCompatibleTemplate(template: PptxCompatibilityTemplate): boolean {
+  return template.category === "slides" && template.pptxCompatibility === "native-editable";
+}
+
+export function sortTemplatesForCatalog<T extends CatalogSortTemplate>(templates: readonly T[]): T[] {
+  return [...templates].sort((left, right) => {
+    const compatibility = Number(isPptxCompatibleTemplate(right)) - Number(isPptxCompatibleTemplate(left));
+    if (compatibility !== 0) return compatibility;
+    const category = left.category.localeCompare(right.category);
+    if (category !== 0) return category;
+    return left.title.localeCompare(right.title);
+  });
+}
 
 export type TemplateCatalogItem = {
   manifest: TemplateManifestV1;
