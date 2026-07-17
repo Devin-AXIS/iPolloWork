@@ -1268,7 +1268,6 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.workspaceSessionGroups, sessionActionId),
     [props.sidebar.workspaceSessionGroups, sessionActionId],
   );
-  const providerCount = props.hasUsableModel ? 1 : props.providerConnectedIds.length;
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !props.selectedSessionId;
   const showNewConversationChrome = !props.selectedSessionId && !showWorkspaceSetupEmptyState;
   const showStartupSkeleton =
@@ -1746,83 +1745,8 @@ export function SessionPage(props: SessionPageProps) {
                       {t("session.loading_detail")}
                     </div>
                   ) : (
-                    <div className="flex flex-1 items-center justify-center px-6 py-16">
-                      <div className="w-full max-w-md space-y-6">
-                        <div className="space-y-1 text-center">
-                          <h2 className="text-lg font-semibold text-dls-text">
-                            {providerCount === 0
-                              ? t("session.connect_model_to_start")
-                              : t("session.select_or_create_session")}
-                          </h2>
-                          <p className="text-xs text-dls-secondary">
-                            {providerCount === 0
-                              ? "Add an AI model provider so your tasks can run."
-                              : "Try one of these to get started:"}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          {providerCount === 0 ? (
-                            <button
-                              type="button"
-                              className="flex w-full items-start gap-3 rounded-xl border border-blue-7/50 bg-blue-2/40 p-3.5 text-left transition-colors hover:bg-blue-3/50"
-                              onClick={() => props.onOpenProviderAuth?.()}
-                            >
-                              <Zap className="mt-0.5 size-5 shrink-0 text-blue-10" />
-                              <div>
-                                <div className="text-[13px] font-medium text-dls-text">Connect a model provider</div>
-                                <div className="mt-0.5 text-[11px] text-dls-secondary">
-                                  Add an API key for Anthropic, OpenAI, Google, or other providers
-                                </div>
-                              </div>
-                            </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            className="flex w-full items-start gap-3 rounded-xl border border-dls-border bg-dls-surface p-3.5 text-left transition-colors hover:bg-dls-hover"
-                            onClick={() => {
-                              props.sidebar.onCreateTaskWithPrompt?.(
-                                props.selectedWorkspaceId,
-                                "Create a sample CSV file with 20 rows of fake customer data (name, email, company, revenue). Then show me a summary of the data.",
-                              );
-                            }}
-                          >
-                            <img src="https://cdn.simpleicons.org/googlesheets" alt="" width={20} height={20} className="mt-0.5 shrink-0" />
-                            <div>
-                              <div className="text-[13px] font-medium text-dls-text">Edit a CSV</div>
-                              <div className="mt-0.5 text-[11px] text-dls-secondary">Create a sample spreadsheet with customer data</div>
-                            </div>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-start gap-3 rounded-xl border border-dls-border bg-dls-surface p-3.5 text-left transition-colors hover:bg-dls-hover"
-                            onClick={() => {
-                              props.sidebar.onCreateTaskWithPrompt?.(
-                                props.selectedWorkspaceId,
-                                "Open craigslist.org in the browser and search for couches for sale. Show me the top 5 results with prices.",
-                              );
-                            }}
-                          >
-                            <img src={publicAssetUrl("ipollowork-mark.svg")} alt="" width={20} height={20} className="mt-0.5 shrink-0" />
-                            <div>
-                              <div className="text-[13px] font-medium text-dls-text">Browse the web</div>
-                              <div className="mt-0.5 text-[11px] text-dls-secondary">Search Craigslist for couches and list the results</div>
-                            </div>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-start gap-3 rounded-xl border border-dls-border bg-dls-surface p-3.5 text-left transition-colors hover:bg-dls-hover"
-                            onClick={() => {
-                              props.onOpenSettings?.();
-                            }}
-                          >
-                            <img src="https://cdn.simpleicons.org/hackthebox" alt="" width={20} height={20} className="mt-0.5 shrink-0" />
-                            <div>
-                              <div className="text-[13px] font-medium text-dls-text">Connect an extension</div>
-                              <div className="mt-0.5 text-[11px] text-dls-secondary">Add MCP servers, plugins, and integrations</div>
-                            </div>
-                          </button>
-                        </div>
-                      </div>
+                    <div className="flex flex-1 items-center justify-center" aria-live="polite">
+                      <OwDotTicker size="md" />
                     </div>
                   )}
                 </div>

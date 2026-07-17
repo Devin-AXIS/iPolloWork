@@ -66,6 +66,7 @@ export async function createManagedOpencodeServer(options: {
 }): Promise<ManagedOpencodeServer> {
   const hostname = options.hostname ?? "127.0.0.1";
   const port = options.port ?? await findFreePort(hostname, options.excludedPorts);
+  const expectedUrl = `http://${hostname}:${port}`;
   const username = randomSecret();
   const password = randomSecret();
   const args = ["serve", "--hostname", hostname, "--port", String(port), "--cors", "*"];
@@ -100,15 +101,53 @@ export async function createManagedOpencodeServer(options: {
   });
 
   const url = await new Promise<string>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`Timeout waiting for OpenCode server after ${options.timeoutMs ?? 15000}ms`)), options.timeoutMs ?? 15000);
+    const timeoutMs = options.timeoutMs ?? 60_000;
+    const timeout = setTimeout(() => fail(new Error(`Timeout waiting for OpenCode server after ${timeoutMs}ms`)), timeoutMs);
     let output = "";
+    let settled = false;
+    let probeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const outputSuffix = () => {
+      const text = output.trim();
+      return text ? `\n${text.slice(-8_000)}` : "";
+    };
+    const stopProbe = () => {
+      if (probeTimer !== null) clearTimeout(probeTimer);
+      probeTimer = null;
+    };
     const done = (value: string) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
+      stopProbe();
       resolve(value);
     };
     const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
-      reject(error);
+      stopProbe();
+      if (child.exitCode === null && !child.killed) child.kill("SIGTERM");
+      reject(new Error(`${error.message}${outputSuffix()}`));
+    };
+    const probeHealth = async () => {
+      if (settled) return;
+      const controller = new AbortController();
+      const requestTimeout = setTimeout(() => controller.abort(), 1_000);
+      try {
+        // A response of any status proves the child owns the expected local
+        // listener. This is deliberately independent from OpenCode's log text,
+        // which has changed across upstream releases.
+        await fetch(`${expectedUrl}/health`, { signal: controller.signal });
+        done(expectedUrl);
+        return;
+      } catch {
+        // The listener is still coming up; retry until the bounded startup
+        // timeout fires or the process exits.
+      } finally {
+        clearTimeout(requestTimeout);
+      }
+      if (!settled) probeTimer = setTimeout(() => void probeHealth(), 250);
     };
     child.stdout?.on("data", (chunk) => {
       output += chunk.toString();
@@ -123,7 +162,8 @@ export async function createManagedOpencodeServer(options: {
       output += chunk.toString();
     });
     child.once("error", fail);
-    child.once("exit", (code) => fail(new Error(`OpenCode server exited with code ${code}${output.trim() ? `\n${output}` : ""}`)));
+    child.once("exit", (code) => fail(new Error(`OpenCode server exited with code ${code}`)));
+    void probeHealth();
   });
 
   return {

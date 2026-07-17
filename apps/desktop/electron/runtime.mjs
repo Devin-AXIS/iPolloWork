@@ -1503,27 +1503,39 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     );
     const runtime = DIRECT_RUNTIME;
 
-    try {
-      lifecycleState = "starting";
-      engineState.runtime = runtime;
-      engineState.projectDir = safeProjectDir;
-      engineState.child = null;
-      engineState.childExited = true;
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        lifecycleState = "starting";
+        engineState.runtime = runtime;
+        engineState.projectDir = safeProjectDir;
+        engineState.child = null;
+        engineState.childExited = true;
 
-      await ensureiPolloWork({
-        projectDir: safeProjectDir,
-        workspacePaths,
-        remoteAccessEnabled: options.ipolloworkRemoteAccess === true,
-        manageOpencode: true,
-        opencodeBinPath: options.opencodeBinPath,
-      });
+        await ensureiPolloWork({
+          projectDir: safeProjectDir,
+          workspacePaths,
+          remoteAccessEnabled: options.ipolloworkRemoteAccess === true,
+          manageOpencode: true,
+          opencodeBinPath: options.opencodeBinPath,
+        });
 
-      lifecycleState = "healthy";
-      return snapshotEngineState(engineState);
-    } catch (error) {
-      lifecycleState = "error";
-      throw error;
+        lifecycleState = "healthy";
+        return snapshotEngineState(engineState);
+      } catch (error) {
+        lastError = error;
+        appendOutput(engineState, "lastStderr", `Startup attempt ${attempt + 1}: ${error instanceof Error ? error.message : String(error)}\n`);
+        if (attempt === 0) {
+          // A just-exited sidecar or a port released a fraction too late is
+          // common on slower user machines. Clean every child and retry once
+          // before exposing a startup failure to the UI.
+          await new Promise((resolve) => setTimeout(resolve, 750));
+          await prepareFreshRuntime();
+        }
+      }
     }
+    lifecycleState = "error";
+    throw lastError;
   }
 
   async function engineStop() {
