@@ -44,11 +44,13 @@ import {
   PPTX_BACKGROUND_IMAGE_FORMAT,
   PPTX_CAPTURE_SCALE,
 } from "./pptx-export";
-import { activateDeckExportSlide } from "./deck-export";
+import { activateDeckExportSlide, PRESENTATION_SLIDE_SELECTOR } from "./deck-export";
 import {
   collectPptxBackgroundPlan,
   collectPptxElementPlans,
   pptxExportSummary,
+  slideHasVisiblePptxContent,
+  validatePptxElementPlanCoverage,
 } from "./pptx-element-export";
 import {
   collectPptxCompatibleObjects,
@@ -151,7 +153,7 @@ function deckPdfFileName(document: Document, path: string) {
     const cleaned = sanitizePdfFileBaseName(value ?? "");
     return cleaned && !isGenericPdfTitle(cleaned) ? cleaned : "";
   };
-  const firstSlide = document.querySelector<HTMLElement>("[data-ipw-slide], section.slide, .slide");
+  const firstSlide = document.querySelector<HTMLElement>(PRESENTATION_SLIDE_SELECTOR);
   const candidates = [
     document.querySelector<HTMLMetaElement>("meta[property='og:title'],meta[name='title'],meta[name='ipw-title']")?.content,
     document.title,
@@ -545,7 +547,7 @@ export function DesignPanel({
         container.style.aspectRatio = "16 / 9";
         container.style.overflow = "hidden";
       });
-      const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>("[data-ipw-slide], section.slide, .slide"))
+      const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>(PRESENTATION_SLIDE_SELECTOR))
         .filter((slide, index, entries) => entries.indexOf(slide) === index);
       if (!slides.length) throw new Error("No slides were found in this presentation.");
       const [{ default: html2canvas }, { jsPDF }] = await exportLibraries;
@@ -628,7 +630,7 @@ export function DesignPanel({
         container.style.aspectRatio = "16 / 9";
         container.style.overflow = "hidden";
       });
-      const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>("[data-ipw-slide], section.slide, .slide"))
+      const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>(PRESENTATION_SLIDE_SELECTOR))
         .filter((slide, index, entries) => entries.indexOf(slide) === index);
       if (!slides.length) throw new Error("No slides were found in this presentation.");
 
@@ -654,7 +656,7 @@ export function DesignPanel({
               downgradeUnsupportedPdfExportColors(clonedDocument);
               if (!captureBackground) return;
               const root = clonedDocument.querySelector<HTMLElement>(`[${marker}]`);
-              root?.querySelectorAll<HTMLElement>("[data-ipw-slide], section.slide, .slide, .deck-chrome, .deck-controls, .dots, .counter, [data-ipw-deck-control], [data-action='prev'], [data-action='previous'], [data-action='next']")
+              root?.querySelectorAll<HTMLElement>(`${PRESENTATION_SLIDE_SELECTOR},.deck-chrome,.deck-controls,.dots,.counter,[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next']`)
                 .forEach((node) => { node.style.visibility = "hidden"; });
             },
           });
@@ -721,6 +723,13 @@ export function DesignPanel({
           fallbackCount += 1;
         }
         const plans = collectPptxElementPlans(slide);
+        const planCoverage = validatePptxElementPlanCoverage({
+          hasVisibleContent: slideHasVisiblePptxContent(slide),
+          planCount: plans.length,
+        });
+        if (!planCoverage.valid) {
+          throw new Error("PPTX export stopped because visible slide content could not be collected. No blank presentation was created.");
+        }
         const summary = pptxExportSummary(plans);
         nativeObjectCount += summary.nativeObjectCount;
         fallbackCount += summary.fallbackCount;
@@ -919,7 +928,7 @@ export function DesignPanel({
 
   const chooseReplacementImage = async () => {
     if (!selection || selection.tag !== "img") return;
-    const pickedPath = await pickLocalImageFile("选择替换图片");
+    const pickedPath = await pickLocalImageFile("??????");
     if (pickedPath) {
       const dataUrl = await readLocalImageAsDataUrl(pickedPath);
       if (!dataUrl) {
@@ -1098,7 +1107,7 @@ export function DesignPanel({
                   <ChevronLeft className="size-3.5" />
                 </Button>
                 <span className="min-w-0 max-w-40 truncate px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground" aria-live="polite">
-                  {deck.index + 1} / {deck.total}{deck.title ? ` · ${deck.title}` : ""}
+                  {deck.index + 1} / {deck.total}{deck.title ? ` ? ${deck.title}` : ""}
                 </span>
                 <Button variant="ghost" size="icon-sm" className="size-7 rounded-md" onClick={() => navigateDeck("next")} disabled={deck.index >= deck.total - 1} aria-label="Next slide" title="Next slide">
                   <ChevronRight className="size-3.5" />
@@ -1283,7 +1292,7 @@ export function DesignPanel({
                             aria-label={quickEdit === "text" ? "Quick edit text" : quickEdit === "href" ? "Quick edit link" : "Quick edit image URL"}
                             className="h-7 w-52 rounded-xl border-0 bg-muted/70 px-2.5 text-xs shadow-none focus-visible:ring-2"
                             value={quickEdit === "text" ? selection.text : quickEdit === "href" ? selection.href : selection.src}
-                            placeholder={quickEdit === "src" ? "Paste an image URL…" : undefined}
+                            placeholder={quickEdit === "src" ? "Paste an image URL?" : undefined}
                             onChange={(event) => applyField(quickEdit, event.currentTarget.value, false)}
                             onKeyDown={(event) => {
                               if (event.key === "Escape" || event.key === "Enter") setQuickEdit(null);
@@ -1391,14 +1400,14 @@ export function DesignPanel({
                         <div className="grid size-6 place-items-center rounded-lg bg-primary/10 text-primary"><SlidersHorizontal className="size-3" /></div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-semibold">Design properties</p>
-                          <p className="truncate text-[10px] text-muted-foreground">{selection.tag.toUpperCase()} · element {selection.id}</p>
+                          <p className="truncate text-[10px] text-muted-foreground">{selection.tag.toUpperCase()} ? element {selection.id}</p>
                         </div>
                         <Button variant="ghost" size="icon-xs" onClick={() => setAdvancedOpen(false)} aria-label="Close advanced design settings"><X /></Button>
                       </div>
 
                       {selection.rangeText ? (
                         <div className="rounded-lg border border-primary/15 bg-primary/5 px-2 py-1.5 text-[9px] text-primary">
-                          Formatting selection: “{selection.rangeText.slice(0, 48)}{selection.rangeText.length > 48 ? "…" : ""}”
+                          Formatting selection: ?{selection.rangeText.slice(0, 48)}{selection.rangeText.length > 48 ? "?" : ""}?
                         </div>
                       ) : null}
 

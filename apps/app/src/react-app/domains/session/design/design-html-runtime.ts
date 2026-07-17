@@ -176,7 +176,7 @@ function designNavigationRuntime(channel: string, editing: boolean) {
       || inlineAction.match(/window\.open\(\s*['\"]([^'\"]+)['\"]/i)?.[1]
       || "";
     const label = control?.textContent?.trim().toLowerCase() || "";
-    const conventionalHref = /^(?:登录|登陆|sign\s*in|log\s*in)$/.test(label) ? "login.html" : "";
+    const conventionalHref = /^(?:??|??|sign\s*in|log\s*in)$/.test(label) ? "login.html" : "";
     const href = anchor?.getAttribute("href")?.trim()
       || control?.getAttribute("data-href")?.trim()
       || control?.getAttribute("data-url")?.trim()
@@ -189,7 +189,7 @@ function designNavigationRuntime(channel: string, editing: boolean) {
       mobileHeader.dataset.menuOpen = "false";
       const mobileToggle = mobileHeader.querySelector<HTMLElement>(".mobile-nav-toggle");
       mobileToggle?.setAttribute("aria-expanded", "false");
-      if (mobileToggle) mobileToggle.setAttribute("aria-label", mobileToggle.getAttribute("aria-label")?.includes("关闭") ? "打开导航" : "Open navigation");
+      if (mobileToggle) mobileToggle.setAttribute("aria-label", mobileToggle.getAttribute("aria-label")?.includes("??") ? "????" : "Open navigation");
     }
     event.stopPropagation();
     if (href.startsWith("#")) {
@@ -218,7 +218,7 @@ function designNavigationRuntime(channel: string, editing: boolean) {
 }
 
 function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
-  const slideSelector = "[data-ipw-slide], section.slide, .slide";
+  const slideSelector = "[data-ipw-slide],section.slide,.slide,.slide-frame";
   const slides = Array.from(document.querySelectorAll<HTMLElement>(slideSelector))
     .filter((element, index, list) => list.indexOf(element) === index);
   if (slides.length < 2) return;
@@ -241,8 +241,8 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
 
   const deckControl = (direction: "previous" | "next") => {
     const aliases = direction === "previous"
-      ? ["[data-ipw-deck-control='previous']", "[data-action='prev']", "[data-action='previous']", "[aria-label*='Previous' i]", "[aria-label*='上一页']"]
-      : ["[data-ipw-deck-control='next']", "[data-action='next']", "[aria-label*='Next' i]", "[aria-label*='下一页']"];
+      ? ["[data-ipw-deck-control='previous']", "[data-action='prev']", "[data-action='previous']", "[aria-label*='Previous' i]", "[aria-label*='???']"]
+      : ["[data-ipw-deck-control='next']", "[data-action='next']", "[aria-label*='Next' i]", "[aria-label*='???']"];
     return document.querySelector<HTMLElement>(aliases.join(","));
   };
 

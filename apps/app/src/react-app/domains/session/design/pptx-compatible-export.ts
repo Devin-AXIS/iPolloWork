@@ -2,6 +2,7 @@ import {
   PPTX_SLIDE_HEIGHT_INCHES,
   PPTX_SLIDE_WIDTH_INCHES,
 } from "./pptx-export";
+import { isPptxExportImage } from "./pptx-dom";
 
 export type PptxCompatibleTextRun = {
   text: string;
@@ -352,7 +353,7 @@ export function collectPptxCompatibleObjects(slide: HTMLElement): PptxCompatible
     if (isPptxCompatibleRuntimeElement(runtimeElementFor(element))) return false;
     if (element.closest(ignoredSelector) || element.matches(markedSelector) || element.closest("[data-pptx-shape],[data-pptx-text],[data-pptx-image]")) return false;
     const style = view.getComputedStyle(element);
-    return visible(element.getBoundingClientRect(), slideBox, style) && (element.children.length === 0 || element instanceof HTMLImageElement);
+    return visible(element.getBoundingClientRect(), slideBox, style) && (element.children.length === 0 || isPptxExportImage(element));
   });
   const unsupportedVisual = elements.some((element) => unsupported(view.getComputedStyle(element)));
   const validation = validatePptxCompatibleMarkup({ hasUnsupportedVisual: unsupportedVisual, hasUnmarkedVisibleElement: unmarkedVisibleElement });
@@ -366,7 +367,7 @@ export function collectPptxCompatibleObjects(slide: HTMLElement): PptxCompatible
     if (element.hasAttribute("data-pptx-shape")) objects.push({ kind: "shape", value: shapeFor(element, slide, slideBox, style) });
     else if (element.hasAttribute("data-pptx-text")) objects.push({ kind: "text", value: textFor(element, slide, slideBox, style) });
     else if (element.hasAttribute("data-pptx-image")) {
-      if (!(element instanceof HTMLImageElement)) throw new Error("PPTX image marker must be on an image element.");
+      if (!isPptxExportImage(element)) throw new Error("PPTX image marker must be on an image element.");
       objects.push({ kind: "image", value: imageFor(element, slideBox) });
     }
   }

@@ -7,6 +7,7 @@ import {
   type PptxShapeOverlay,
   type PptxTextOverlay,
 } from "./pptx-export";
+import { isPptxExportElement } from "./pptx-dom";
 
 export type PptxElementKind = "shape" | "text" | "image" | "fallback";
 
@@ -126,13 +127,20 @@ function hasVisiblePseudoElement(element: HTMLElement) {
   });
 }
 
+export function intersectsPptxSlide(
+  box: Pick<DOMRect, "left" | "top" | "right" | "bottom" | "width" | "height">,
+  slideBox: Pick<DOMRect, "left" | "top" | "right" | "bottom">,
+) {
+  return box.right > slideBox.left
+    && box.left < slideBox.right
+    && box.bottom > slideBox.top
+    && box.top < slideBox.bottom;
+}
+
 function isVisibleInsideSlide(box: DOMRect, slideBox: DOMRect) {
   return box.width > 1
     && box.height > 1
-    && box.left >= slideBox.left
-    && box.top >= slideBox.top
-    && box.right <= slideBox.right
-    && box.bottom <= slideBox.bottom;
+    && intersectsPptxSlide(box, slideBox);
 }
 
 function elementFrame(slideBox: DOMRect, box: DOMRect): PptxFrame {
@@ -155,6 +163,14 @@ function hasSimpleShapePaint(style: CSSStyleDeclaration) {
 
 function hasDirectText(element: HTMLElement) {
   return Array.from(element.childNodes).some((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
+}
+
+export function requiresPptxInlineTextFallback(input: {
+  tag: string;
+  hasDirectText: boolean;
+  hasElementChildren: boolean;
+}) {
+  return !textTags.has(input.tag.toLowerCase()) && input.hasDirectText && input.hasElementChildren;
 }
 
 function createTextPlan(element: HTMLElement, slide: HTMLElement, slideBox: DOMRect, box: DOMRect, style: CSSStyleDeclaration): PptxElementPlan {
@@ -208,6 +224,11 @@ function shouldFallbackElement(element: HTMLElement, style: CSSStyleDeclaration)
   if (element.matches("h1,h2,h3,h4,h5,h6,p,li")) {
     return element.children.length > 0 || isUnsupportedTextStyle(style);
   }
+  if (requiresPptxInlineTextFallback({
+    tag: element.tagName,
+    hasDirectText: hasDirectText(element),
+    hasElementChildren: element.children.length > 0,
+  })) return true;
   if (shapeTags.has(element.tagName.toLowerCase())) {
     return hasSimpleShapePaint(style) && isUnsupportedVisualStyle(style);
   }
@@ -245,14 +266,10 @@ export function collectPptxElementPlans(slide: HTMLElement): PptxElementPlan[] {
       plans.push(createShapePlan(element, slide, slideBox, box, style));
     }
 
-    for (const child of Array.from(element.children)) {
-      if (child instanceof HTMLElement) visit(child);
-    }
+    for (const child of Array.from(element.children)) if (isPptxExportElement(child)) visit(child);
   };
 
-  for (const child of Array.from(slide.children)) {
-    if (child instanceof HTMLElement) visit(child);
-  }
+  for (const child of Array.from(slide.children)) if (isPptxExportElement(child)) visit(child);
   return plans;
 }
 
@@ -261,6 +278,29 @@ export function pptxExportSummary(plans: readonly Pick<PptxElementPlan, "kind">[
     nativeObjectCount: summary.nativeObjectCount + (plan.kind === "fallback" ? 0 : 1),
     fallbackCount: summary.fallbackCount + (plan.kind === "fallback" ? 1 : 0),
   }), { nativeObjectCount: 0, fallbackCount: 0 });
+}
+
+export function validatePptxElementPlanCoverage(input: { hasVisibleContent: boolean; planCount: number }) {
+  if (input.hasVisibleContent && input.planCount === 0) {
+    return { valid: false as const, reason: "visible-content-not-planned" as const };
+  }
+  return { valid: true as const };
+}
+
+export function slideHasVisiblePptxContent(slide: HTMLElement) {
+  const view = slide.ownerDocument.defaultView;
+  if (!view) return false;
+  const slideBox = slide.getBoundingClientRect();
+  return Array.from(slide.querySelectorAll<HTMLElement>("*")).some((element) => {
+    if (element.matches(skippedSelector)) return false;
+    const style = view.getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    return style.display !== "none"
+      && style.visibility !== "hidden"
+      && Number(style.opacity) > 0
+      && isVisibleInsideSlide(box, slideBox)
+      && (element.children.length === 0 || element.matches("img,svg,canvas,video"));
+  });
 }
 
 export function needsPptxBackgroundFallback(style: Pick<PptxElementStyle, "backgroundImage" | "filter">) {
