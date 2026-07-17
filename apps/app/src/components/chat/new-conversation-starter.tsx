@@ -17,6 +17,7 @@ import {
   FolderOpen,
   Globe2,
   Image,
+  LoaderCircle,
   Bug,
   Code2,
   MonitorCog,
@@ -40,6 +41,7 @@ type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; 
 
 type NewConversationStarterProps = {
   selectedMode: NewConversationMode;
+  selectedCapabilityId?: string | null;
   onSelectMode: (mode: NewConversationMode) => void;
   onSelectPrompt: (prompt: string, capability?: StarterCapability) => void;
   templates?: TemplateCatalogItem[];
@@ -213,8 +215,13 @@ function TemplateStrip({
       </div>
 
       {loading ? (
-        <div className="flex gap-2 overflow-hidden" aria-label={t("new_conversation.templates.loading")}>
-          {[0, 1, 2].map((index) => <div key={index} className="h-[106px] min-w-[172px] animate-pulse rounded-lg bg-muted" />)}
+        <div className="flex h-[106px] items-center justify-center rounded-lg border border-dashed border-border/70 bg-background/55" aria-label={t("new_conversation.templates.loading")}>
+          <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+            </span>
+            <span>{t("new_conversation.templates.loading")}</span>
+          </div>
         </div>
       ) : categoryTemplates.length ? (
         <div>
@@ -384,6 +391,7 @@ export function newConversationPlaceholder(mode: NewConversationMode) {
 
 export function NewConversationStarter({
   selectedMode,
+  selectedCapabilityId,
   onSelectMode,
   onSelectPrompt,
   templates = [],
@@ -496,7 +504,7 @@ export function NewConversationStarter({
   };
 
   const selectMode = (mode: NewConversationMode) => {
-    setActiveTemplateCategory(mode === "video" ? "video" : null);
+    setActiveTemplateCategory(null);
     setShortcutEditorOpen(false);
     if (mode === "design" || mode === "video") onRequestTemplates?.();
     onSelectMode(mode);
@@ -557,14 +565,15 @@ export function NewConversationStarter({
         <div className="mt-5 flex flex-wrap gap-2" aria-label={t("new_conversation.quick_actions_label")}>
         {actions.map(({ id, label, prompt, templateCategory, icon: ActionIcon }) => {
           const selectedTemplateAction = templateCategory !== undefined && templateCategory === activeTemplateCategory;
+          const selectedCapabilityAction = !templateCategory && selectedCapabilityId === id;
           return (
             <button
               key={id}
               type="button"
-              aria-pressed={templateCategory !== undefined ? selectedTemplateAction : undefined}
+              aria-pressed={templateCategory !== undefined ? selectedTemplateAction : selectedCapabilityAction}
               className={cn(
                 "inline-flex h-[24px] min-w-[50px] items-center justify-center rounded-[18px] border px-2 text-[12px] font-medium transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                selectedTemplateAction
+                selectedTemplateAction || selectedCapabilityAction
                   ? "border-[#CCC] bg-[#F5F5F5] text-[#999]"
                   : "border-[#CBCBCB] bg-white text-[#999] hover:border-[#CCC] hover:bg-[#F5F5F5]",
               )}
@@ -573,7 +582,7 @@ export function NewConversationStarter({
                   onRequestTemplates?.();
                   setActiveTemplateCategory((current) => current === templateCategory ? null : templateCategory);
                 } else if (prompt) {
-                  onSelectPrompt("", {
+                  onSelectPrompt("", selectedCapabilityAction ? undefined : {
                     id,
                     label: t(label),
                     icon: ActionIcon,
@@ -599,6 +608,7 @@ export function NewConversationStarter({
               aria-label={t("new_conversation.shortcuts.add")}
               aria-expanded={shortcutEditorOpen}
               onClick={() => {
+                if (selectedMode === "design") onRequestTemplates?.();
                 updateShortcutEditorPosition();
                 setShortcutEditorOpen((open) => !open);
               }}

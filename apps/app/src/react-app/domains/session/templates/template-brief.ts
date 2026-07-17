@@ -1,4 +1,5 @@
 import type { TemplateCategory, TemplateManifestV1 } from "@ipollowork/types/templates";
+import { t } from "@/i18n";
 
 export type TemplateBrief = {
   title: string;
@@ -18,10 +19,10 @@ export type TemplateColorPalette = {
 };
 
 export const TEMPLATE_COLOR_PRESETS: readonly TemplateColorPalette[] = [
-  { id: "ember", label: "暖橙", canvas: "#fafaf9", text: "#1c1b1a", accent: "#c96442" },
-  { id: "ocean", label: "深海蓝", canvas: "#f8fafc", text: "#172554", accent: "#2563eb" },
-  { id: "violet", label: "紫罗兰", canvas: "#faf5ff", text: "#2e1065", accent: "#7c3aed" },
-  { id: "forest", label: "森林绿", canvas: "#f0fdf4", text: "#064e3b", accent: "#059669" },
+  { id: "ember", label: "Warm Ember", canvas: "#fafaf9", text: "#1c1b1a", accent: "#c96442" },
+  { id: "ocean", label: "Deep Ocean", canvas: "#f8fafc", text: "#172554", accent: "#2563eb" },
+  { id: "violet", label: "Violet", canvas: "#faf5ff", text: "#2e1065", accent: "#7c3aed" },
+  { id: "forest", label: "Forest", canvas: "#f0fdf4", text: "#064e3b", accent: "#059669" },
 ];
 
 export const DEFAULT_TEMPLATE_COLOR_PALETTE = TEMPLATE_COLOR_PRESETS[0];
@@ -31,7 +32,24 @@ export function paletteColors(palette: TemplateColorPalette): [string, string, s
 }
 
 export function customTemplateColorPalette(colors: [string, string, string]): TemplateColorPalette {
-  return { id: "custom", label: "自定义", canvas: colors[0], text: colors[1], accent: colors[2] };
+  return { id: "custom", label: "Custom", canvas: colors[0], text: colors[1], accent: colors[2] };
+}
+
+export function templateColorPaletteLabel(id: string): string {
+  switch (id) {
+    case "ember":
+      return t("templates.palette.ember");
+    case "ocean":
+      return t("templates.palette.ocean");
+    case "violet":
+      return t("templates.palette.violet");
+    case "forest":
+      return t("templates.palette.forest");
+    case "custom":
+      return t("templates.palette.custom");
+    default:
+      return id;
+  }
 }
 
 type TemplateBriefField = {
@@ -53,119 +71,159 @@ export function isVideoStudioReady(hasTemplateSession: boolean, hasBrief: boolea
   return hasTemplateSession && hasBrief;
 }
 
-const BRIEF_CONFIGS = {
+function briefField(key: keyof TemplateBriefFields, label: string, placeholder: string, optional = false): TemplateBriefField {
+  return { key, label, placeholder, optional };
+}
+
+type TemplateBriefConfigKeys = {
+  label: string;
+  heading: string;
+  description: string;
+  submit: string;
+  titleLabel: string;
+  titlePlaceholder: string;
+  audienceLabel: string;
+  audiencePlaceholder: string;
+  detailsLabel: string;
+  detailsPlaceholder: string;
+};
+
+const BRIEF_CONFIG_KEYS: Record<TemplateCategory | "resume", TemplateBriefConfigKeys> = {
   site: {
-    label: "网站项目",
-    heading: "告诉我这个网站要做什么",
-    description: "名称和用途会直接替换模板内容；具体文案与视觉细节会保留模板风格继续完成。",
-    submitLabel: "生成网站",
-    fields: [
-      { key: "title", label: "网站名称", placeholder: "例如：Muse Studio" },
-      { key: "audience", label: "网站是做什么的、给谁用", placeholder: "例如：帮助创意团队用 AI 完成内容生产" },
-      { key: "details", label: "核心页面或功能", placeholder: "例如：作品展示、案例、预约咨询", optional: true },
-    ],
+    label: "templates.brief.site.label",
+    heading: "templates.brief.site.heading",
+    description: "templates.brief.site.description",
+    submit: "templates.brief.site.submit",
+    titleLabel: "templates.brief.site.title_label",
+    titlePlaceholder: "templates.brief.site.title_placeholder",
+    audienceLabel: "templates.brief.site.audience_label",
+    audiencePlaceholder: "templates.brief.site.audience_placeholder",
+    detailsLabel: "templates.brief.site.details_label",
+    detailsPlaceholder: "templates.brief.site.details_placeholder",
   },
   app: {
-    label: "App 原型",
-    heading: "定义这个 App 原型",
-    description: "先确定产品目标与核心流程，AI 会把它落实为可点击、可继续编辑的界面。",
-    submitLabel: "生成 App 原型",
-    fields: [
-      { key: "title", label: "App 名称", placeholder: "例如：Flowmate" },
-      { key: "audience", label: "App 给谁用、解决什么", placeholder: "例如：帮助自由职业者安排客户与项目" },
-      { key: "details", label: "核心功能或页面", placeholder: "例如：今日任务、客户列表、项目进度", optional: true },
-    ],
+    label: "templates.brief.app.label",
+    heading: "templates.brief.app.heading",
+    description: "templates.brief.app.description",
+    submit: "templates.brief.app.submit",
+    titleLabel: "templates.brief.app.title_label",
+    titlePlaceholder: "templates.brief.app.title_placeholder",
+    audienceLabel: "templates.brief.app.audience_label",
+    audiencePlaceholder: "templates.brief.app.audience_placeholder",
+    detailsLabel: "templates.brief.app.details_label",
+    detailsPlaceholder: "templates.brief.app.details_placeholder",
   },
   slides: {
-    label: "演示文稿",
-    heading: "定义这份幻灯片",
-    description: "明确标题、受众和要推动的决定，AI 会组织成完整、可编辑的演示叙事。",
-    submitLabel: "生成幻灯片",
-    fields: [
-      { key: "title", label: "演示标题", placeholder: "例如：iPolloWork 融资路演" },
-      { key: "audience", label: "面向谁、希望推动什么决定", placeholder: "例如：面向投资人，说明市场机会与融资计划" },
-      { key: "details", label: "需要包含的信息或数据", placeholder: "例如：问题、方案、增长数据、商业模式", optional: true },
-    ],
+    label: "templates.brief.slides.label",
+    heading: "templates.brief.slides.heading",
+    description: "templates.brief.slides.description",
+    submit: "templates.brief.slides.submit",
+    titleLabel: "templates.brief.slides.title_label",
+    titlePlaceholder: "templates.brief.slides.title_placeholder",
+    audienceLabel: "templates.brief.slides.audience_label",
+    audiencePlaceholder: "templates.brief.slides.audience_placeholder",
+    detailsLabel: "templates.brief.slides.details_label",
+    detailsPlaceholder: "templates.brief.slides.details_placeholder",
   },
   poster: {
-    label: "海报",
-    heading: "定义这张海报",
-    description: "只给出主题与受众，模板的版式、风格和视觉节奏会继续保留。",
-    submitLabel: "生成海报",
-    fields: [
-      { key: "title", label: "海报主题", placeholder: "例如：2026 夏季新品发布" },
-      { key: "audience", label: "面向谁", placeholder: "例如：城市里的年轻设计爱好者" },
-      { key: "details", label: "活动信息或核心文案", placeholder: "例如：日期、地点、主张、行动按钮", optional: true },
-    ],
+    label: "templates.brief.poster.label",
+    heading: "templates.brief.poster.heading",
+    description: "templates.brief.poster.description",
+    submit: "templates.brief.poster.submit",
+    titleLabel: "templates.brief.poster.title_label",
+    titlePlaceholder: "templates.brief.poster.title_placeholder",
+    audienceLabel: "templates.brief.poster.audience_label",
+    audiencePlaceholder: "templates.brief.poster.audience_placeholder",
+    detailsLabel: "templates.brief.poster.details_label",
+    detailsPlaceholder: "templates.brief.poster.details_placeholder",
   },
   cards: {
-    label: "海报卡片",
-    heading: "定义这组卡片",
-    description: "告诉我使用场景和关键信息，AI 会让每张卡片保持一致又各有重点。",
-    submitLabel: "生成卡片",
-    fields: [
-      { key: "title", label: "卡片主题", placeholder: "例如：新品功能速览" },
-      { key: "audience", label: "使用场景或受众", placeholder: "例如：用于社媒发布，面向产品设计师" },
-      { key: "details", label: "需要呈现的关键信息", placeholder: "例如：三项功能、价格或行动按钮", optional: true },
-    ],
+    label: "templates.brief.cards.label",
+    heading: "templates.brief.cards.heading",
+    description: "templates.brief.cards.description",
+    submit: "templates.brief.cards.submit",
+    titleLabel: "templates.brief.cards.title_label",
+    titlePlaceholder: "templates.brief.cards.title_placeholder",
+    audienceLabel: "templates.brief.cards.audience_label",
+    audiencePlaceholder: "templates.brief.cards.audience_placeholder",
+    detailsLabel: "templates.brief.cards.details_label",
+    detailsPlaceholder: "templates.brief.cards.details_placeholder",
   },
   report: {
-    label: "数据报告",
-    heading: "定义这份报告",
-    description: "明确报告对象与要支持的判断，AI 会组织清晰的结论、指标和可视化结构。",
-    submitLabel: "生成报告",
-    fields: [
-      { key: "title", label: "报告名称", placeholder: "例如：Q3 增长复盘" },
-      { key: "audience", label: "面向谁、用于什么决策", placeholder: "例如：面向管理层，决定下一季度增长重点" },
-      { key: "details", label: "要覆盖的数据或结论", placeholder: "例如：渠道、转化、留存和建议", optional: true },
-    ],
+    label: "templates.brief.report.label",
+    heading: "templates.brief.report.heading",
+    description: "templates.brief.report.description",
+    submit: "templates.brief.report.submit",
+    titleLabel: "templates.brief.report.title_label",
+    titlePlaceholder: "templates.brief.report.title_placeholder",
+    audienceLabel: "templates.brief.report.audience_label",
+    audiencePlaceholder: "templates.brief.report.audience_placeholder",
+    detailsLabel: "templates.brief.report.details_label",
+    detailsPlaceholder: "templates.brief.report.details_placeholder",
   },
   article: {
-    label: "杂志文章",
-    heading: "定义这篇文章",
-    description: "给出主题与读者，AI 会按模板的编辑风格组织标题、正文与视觉层次。",
-    submitLabel: "生成文章",
-    fields: [
-      { key: "title", label: "文章标题或主题", placeholder: "例如：重新理解 AI 时代的创作" },
-      { key: "audience", label: "写给谁", placeholder: "例如：关注设计与科技的创意从业者" },
-      { key: "details", label: "核心观点或已有素材", placeholder: "例如：三个观点、采访内容或引用", optional: true },
-    ],
+    label: "templates.brief.article.label",
+    heading: "templates.brief.article.heading",
+    description: "templates.brief.article.description",
+    submit: "templates.brief.article.submit",
+    titleLabel: "templates.brief.article.title_label",
+    titlePlaceholder: "templates.brief.article.title_placeholder",
+    audienceLabel: "templates.brief.article.audience_label",
+    audiencePlaceholder: "templates.brief.article.audience_placeholder",
+    detailsLabel: "templates.brief.article.details_label",
+    detailsPlaceholder: "templates.brief.article.details_placeholder",
   },
   video: {
-    label: "视频项目",
-    heading: "定义这支视频",
-    description: "先说明内容目标与受众；旁白、节奏与分镜由 AI 结合模板自行决定。",
-    submitLabel: "开始制作视频",
-    fields: [
-      { key: "title", label: "视频主题", placeholder: "例如：新品发布预告" },
-      { key: "audience", label: "面向谁", placeholder: "例如：正在评估创意工具的产品团队" },
-      { key: "details", label: "想传达或促成什么", placeholder: "例如：介绍核心卖点，引导预约体验", optional: true },
-    ],
+    label: "templates.brief.video.label",
+    heading: "templates.brief.video.heading",
+    description: "templates.brief.video.description",
+    submit: "templates.brief.video.submit",
+    titleLabel: "templates.brief.video.title_label",
+    titlePlaceholder: "templates.brief.video.title_placeholder",
+    audienceLabel: "templates.brief.video.audience_label",
+    audiencePlaceholder: "templates.brief.video.audience_placeholder",
+    detailsLabel: "templates.brief.video.details_label",
+    detailsPlaceholder: "templates.brief.video.details_placeholder",
   },
   other: {
-    label: "创作项目",
-    heading: "告诉我你要做什么",
-    description: "给出名称与用途，AI 会在选定模板的结构和风格内完成内容。",
-    submitLabel: "开始创作",
-    fields: [
-      { key: "title", label: "作品名称", placeholder: "例如：春季创意提案" },
-      { key: "audience", label: "要完成什么、给谁看", placeholder: "例如：向客户说明品牌活动方案" },
-      { key: "details", label: "关键信息", placeholder: "例如：需要强调的观点、素材或行动", optional: true },
-    ],
+    label: "templates.brief.other.label",
+    heading: "templates.brief.other.heading",
+    description: "templates.brief.other.description",
+    submit: "templates.brief.other.submit",
+    titleLabel: "templates.brief.other.title_label",
+    titlePlaceholder: "templates.brief.other.title_placeholder",
+    audienceLabel: "templates.brief.other.audience_label",
+    audiencePlaceholder: "templates.brief.other.audience_placeholder",
+    detailsLabel: "templates.brief.other.details_label",
+    detailsPlaceholder: "templates.brief.other.details_placeholder",
   },
-} satisfies Record<TemplateCategory, TemplateBriefConfig>;
-
-const RESUME_BRIEF_CONFIG: TemplateBriefConfig = {
-  label: "简历",
-  heading: "定义这份简历",
-  description: "填写求职目标与经历重点，AI 会在当前模板的版式里整理出专业、可继续编辑的内容。",
-  submitLabel: "生成简历",
-  fields: [
-    { key: "title", label: "姓名与目标岗位", placeholder: "例如：陈晓 · 产品设计师" },
-    { key: "audience", label: "面向什么职位或公司", placeholder: "例如：消费互联网公司的高级产品设计岗位" },
-    { key: "details", label: "经历、技能或成果亮点", placeholder: "例如：5 年 B 端产品经验，主导过 0 到 1 项目", optional: true },
-  ],
+  resume: {
+    label: "templates.brief.resume.label",
+    heading: "templates.brief.resume.heading",
+    description: "templates.brief.resume.description",
+    submit: "templates.brief.resume.submit",
+    titleLabel: "templates.brief.resume.title_label",
+    titlePlaceholder: "templates.brief.resume.title_placeholder",
+    audienceLabel: "templates.brief.resume.audience_label",
+    audiencePlaceholder: "templates.brief.resume.audience_placeholder",
+    detailsLabel: "templates.brief.resume.details_label",
+    detailsPlaceholder: "templates.brief.resume.details_placeholder",
+  },
 };
+
+function briefConfig(keys: TemplateBriefConfigKeys): TemplateBriefConfig {
+  return {
+    label: t(keys.label),
+    heading: t(keys.heading),
+    description: t(keys.description),
+    submitLabel: t(keys.submit),
+    fields: [
+      briefField("title", t(keys.titleLabel), t(keys.titlePlaceholder)),
+      briefField("audience", t(keys.audienceLabel), t(keys.audiencePlaceholder)),
+      briefField("details", t(keys.detailsLabel), t(keys.detailsPlaceholder), true),
+    ],
+  };
+}
 
 export function isResumeTemplate(template: Pick<TemplateManifestV1, "category"> & Partial<Pick<TemplateManifestV1, "subcategory" | "title">>): boolean {
   const identity = `${template.subcategory ?? ""} ${template.title ?? ""}`.toLowerCase();
@@ -173,8 +231,8 @@ export function isResumeTemplate(template: Pick<TemplateManifestV1, "category"> 
 }
 
 export function templateBriefConfigFor(template: Pick<TemplateManifestV1, "category"> & Partial<Pick<TemplateManifestV1, "subcategory" | "title">>): TemplateBriefConfig {
-  if (isResumeTemplate(template)) return RESUME_BRIEF_CONFIG;
-  return BRIEF_CONFIGS[template.category];
+  if (isResumeTemplate(template)) return briefConfig(BRIEF_CONFIG_KEYS.resume);
+  return briefConfig(BRIEF_CONFIG_KEYS[template.category]);
 }
 
 export function templateBriefPrompt(input: {

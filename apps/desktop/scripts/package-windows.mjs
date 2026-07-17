@@ -10,7 +10,7 @@ const appPackagePath = path.join(repoRoot, "apps/app/package.json");
 const desktopPackagePath = path.join(desktopRoot, "package.json");
 const outputDir = path.join(desktopRoot, "dist-electron");
 const unpackedDir = path.join(outputDir, "win-unpacked");
-const executablePath = path.join(unpackedDir, "iPollo Work.exe");
+const executablePath = path.join(unpackedDir, "iPollo.exe");
 const iconPath = path.join(desktopRoot, "resources/icons/windows/icon.ico");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 

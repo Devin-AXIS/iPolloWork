@@ -92,7 +92,14 @@ function templatesRoot(config: ServerConfig): string {
 
 function bundledRoot(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const candidates = [join(moduleDir, "bundled-templates"), join(moduleDir, "..", "bundled-templates")];
+  const resourcesPath = typeof process.resourcesPath === "string" && process.resourcesPath.trim()
+    ? process.resourcesPath.trim()
+    : "";
+  const candidates = [
+    ...(resourcesPath ? [join(resourcesPath, "server", "dist", "bundled-templates")] : []),
+    join(moduleDir, "bundled-templates"),
+    join(moduleDir, "..", "bundled-templates"),
+  ];
   const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) throw new ApiError(500, "bundled_templates_missing", "Bundled templates are missing from this iPolloWork build");
   return found;

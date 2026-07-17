@@ -58,9 +58,9 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
       </DescriptiveButtonIcon>
       <DescriptiveButtonContent className="min-w-0 flex-none">
         <DescriptiveButtonTitle className={cn("text-xs font-medium", compact ? "max-w-56" : "max-w-[172px]")} title={artifact.name}>{title}</DescriptiveButtonTitle>
-        {!compact && canActivate ? (
+        {(!compact || canOpenVideoStudio) && canActivate ? (
           <DescriptiveButtonDescription className="text-[10px] leading-3">
-            {canOpenVideoStudio ? t("session.outputs.action_video_studio") : t("session.outputs.action_browse_edit")}
+            {canOpenVideoStudio ? t("session.outputs.action_video_preview_edit") : t("session.outputs.action_browse_edit")}
           </DescriptiveButtonDescription>
         ) : null}
       </DescriptiveButtonContent>

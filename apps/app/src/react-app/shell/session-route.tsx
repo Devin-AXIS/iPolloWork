@@ -654,10 +654,9 @@ export function SessionRoute() {
     clientReady: Boolean(opencodeClient),
     workspaceId: selectedWorkspaceId,
     providerConnectedIds,
-    // First-run users get the iPolloWork Models pitch from the provider
-    // selection step on their first send, not a startup popup. Completing
-    // the step marks the promo as shown, so it never auto-pops for them.
-    suppressed: providerStepOpen || !local.prefs.providerStepCompleted,
+    // Cloud sign-in is always an explicit user action. New local installs
+    // enter the workspace directly instead of receiving a login promotion.
+    suppressed: true,
   });
 
   const { store: sessionProviderAuthStore, snapshot: sessionProviderAuthSnapshot } =
@@ -1406,16 +1405,16 @@ export function SessionRoute() {
     }
   }, [firstRunLoaderActive, dismissFirstRunLoader, selectedSessionId, routeError, selectedWorkspaceError, errorsByWorkspaceId, loading, selectedWorkspaceId, sessionsByWorkspaceId]);
 
-  // Drop the user straight into a chat-ready session when they arrive at a
-  // workspace they have never used (no sessions, no last-session memory),
-  // instead of the "select or create a session" page. Retries on the next
-  // state change until a session is actually created — the create call bails
-  // silently while the workspace endpoint/token is still resolving at boot.
+  // A workspace without sessions always lands on a fresh chat. This covers
+  // first launch and deleting the final conversation; there is no separate
+  // setup/empty page in the iPolloWork flow.
   useEffect(() => {
     if (!canCreateTask || !isDesktopRuntime()) return;
-    if (selectedSessionId || firstRunSessionRef.current) return;
-    if ((sessionsByWorkspaceId[selectedWorkspaceId] ?? []).length > 0) return;
-    if (readLastSessionFor(selectedWorkspaceId)) return;
+    if (selectedSessionId || (sessionsByWorkspaceId[selectedWorkspaceId] ?? []).length > 0) {
+      firstRunSessionRef.current = false;
+      return;
+    }
+    if (firstRunSessionRef.current) return;
     firstRunSessionRef.current = true;
     void handleCreateTaskInWorkspace(selectedWorkspaceId).then((createdSessionId) => {
       if (!createdSessionId) firstRunSessionRef.current = false;
@@ -2201,6 +2200,7 @@ export function SessionRoute() {
               if (!endpoint) return;
               await endpoint.client.deleteSession(endpoint.workspaceId, sessionId);
               if (selectedSessionId === sessionId) {
+                writeLastSessionFor(selectedWorkspaceId, null);
                 navigateToWorkspaceSession(selectedWorkspaceId);
               }
               await refreshRouteState();
