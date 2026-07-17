@@ -3,7 +3,7 @@
  * Builds a distributable desktop client from a single release sequence.
  *
  * Source checkouts use 0.0.0 as the unshipped baseline. Each `package` call
- * advances to the next client release: 0.1.0 … 0.99.0, then 1.0.0.
+ * advances to the next patch release.
  * The flow deliberately does not commit, tag, push, or publish remotely.
  */
 import { spawnSync } from "node:child_process";
@@ -21,25 +21,20 @@ const versionFiles = [
   "pnpm-lock.yaml",
 ];
 const packageFiles = versionFiles.slice(0, -1);
-const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.0$/;
+const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 export function nextClientVersion(version) {
   const match = versionPattern.exec(version);
   if (!match) {
     throw new Error(
-      `Client version must use the X.Y.0 release sequence, got "${version}".`,
+      `Client version must use semantic versioning (X.Y.Z), got "${version}".`,
     );
   }
 
   const major = Number(match[1]);
   const minor = Number(match[2]);
-  if (minor > 99) {
-    throw new Error(
-      `Client version minor must be between 0 and 99, got "${version}".`,
-    );
-  }
-
-  return minor === 99 ? `${major + 1}.0.0` : `${major}.${minor + 1}.0`;
+  const patch = Number(match[3]);
+  return `${major}.${minor}.${patch + 1}`;
 }
 
 function parseArgs(argv) {

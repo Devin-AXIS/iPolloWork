@@ -1,6 +1,6 @@
 {
   "name": "ipollowork-orchestrator",
-  "version": "0.1.0",
+  "version": "0.17.23",
   "description": "iPolloWork host orchestrator for opencode + iPolloWork server",
   "private": true,
   "type": "module",
