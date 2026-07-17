@@ -45,20 +45,6 @@ var __dirname = __hf_dirname(__filename);`,
     "esbuild",
     "giget",
     "postcss",
-    // aws-lambda transitively pulls @aws-sdk/* + @smithy/* which include
-    // .browser.js conditional exports esbuild can't bundle cleanly into
-    // a node binary. Keep it external; the lambda subverb files dynamic-
-    // import it only when the user runs `hyperframes lambda *`, so the
-    // CLI's cold start doesn't load it. Runtime resolution comes from
-    // @hyperframes/aws-lambda being a `dependencies` entry in package.json.
-    "@hyperframes/aws-lambda",
-    "@hyperframes/aws-lambda/sdk",
-    // Same treatment for the GCP adapter: the cloudrun subverb files
-    // dynamic-import `@hyperframes/gcp-cloud-run/sdk` only when the user runs
-    // `hyperframes cloudrun *`. Keep it external; runtime resolution comes
-    // from the `dependencies`/workspace entry, not the bundled CLI.
-    "@hyperframes/gcp-cloud-run",
-    "@hyperframes/gcp-cloud-run/sdk",
   ],
   noExternal: [
     "@hyperframes/core",
@@ -87,12 +73,6 @@ var __dirname = __hf_dirname(__filename);`,
       // directory). Adding an explicit alias for every subpath we import
       // avoids the prefix-substitution misfire.
       "@hyperframes/producer/distributed": resolve(__dirname, "../producer/src/distributed.ts"),
-      // Same reason: the lambda CLI imports `@hyperframes/aws-lambda/sdk`,
-      // which would resolve to `../aws-lambda/src/index.ts/sdk` without
-      // an explicit subpath alias. The SDK subpath has its own barrel.
-      "@hyperframes/aws-lambda/sdk": resolve(__dirname, "../aws-lambda/src/sdk/index.ts"),
-      // Same for the GCP adapter's SDK subpath barrel.
-      "@hyperframes/gcp-cloud-run/sdk": resolve(__dirname, "../gcp-cloud-run/src/sdk/index.ts"),
       // hf#677 follow-up: the shader-blend worker imports from
       // `@hyperframes/engine/shader-transitions` (subpath export) — a
       // standalone TS file with zero internal imports that survives the

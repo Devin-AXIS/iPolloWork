@@ -125,17 +125,18 @@ function ensureHyperframesBuild() {
   run(bunCmd, ["install", "--frozen-lockfile", "--ignore-scripts"], hyperframesRoot);
   ensureHyperframesFfmpegBinary();
 
-  const key = currentHyperframesBuildKey();
+  const beforeBuildKey = currentHyperframesBuildKey();
   const stamp = readHyperframesBuildStamp();
-  if (stamp?.key === key && hasHyperframesBuildOutputs()) {
+  if (stamp?.key === beforeBuildKey && hasHyperframesBuildOutputs()) {
     console.log("HyperFrames build is up to date; skipping build:local-studio.");
     return;
   }
 
   run(bunCmd, ["run", "build:local-studio"], hyperframesRoot);
+  const afterBuildKey = currentHyperframesBuildKey();
   writeFileSync(
     hyperframesBuildStamp,
-    `${JSON.stringify({ key, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+    `${JSON.stringify({ key: afterBuildKey, updatedAt: new Date().toISOString() }, null, 2)}\n`,
   );
 }
 

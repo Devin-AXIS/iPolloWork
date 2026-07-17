@@ -25,7 +25,6 @@ const GROUPS: Group[] = [
       ["catalog", "Browse and install blocks and components"],
       ["preview", "Start the studio for previewing compositions"],
       ["present", "Open a slideshow deck in presenter mode (with audience sync)"],
-      ["publish", "Upload a project and get a stable public URL"],
       ["render", "Render a composition to MP4 or WebM"],
     ],
   },
@@ -65,14 +64,6 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    title: "Deploy",
-    commands: [
-      ["cloud", "Render compositions on HeyGen's cloud (no local Chrome/ffmpeg)"],
-      ["lambda", "Deploy and drive distributed renders on AWS Lambda"],
-      ["cloudrun", "Deploy and drive distributed renders on Google Cloud Run"],
-    ],
-  },
-  {
     title: "AI & Integrations",
     commands: [
       ["skills", "Install HyperFrames and GSAP skills for AI coding tools"],
@@ -90,10 +81,7 @@ const GROUPS: Group[] = [
   },
   {
     title: "Settings",
-    commands: [
-      ["feedback", "Submit anonymous feedback about your experience"],
-      ["telemetry", "Manage anonymous usage telemetry"],
-    ],
+    commands: [["telemetry", "Manage anonymous usage telemetry"]],
   },
 ];
 
@@ -103,7 +91,6 @@ import type { Example } from "./commands/_examples.js";
 const ROOT_EXAMPLES: Example[] = [
   ["Create a new project", "hyperframes init my-video"],
   ["Start the live preview studio", "hyperframes preview"],
-  ["Publish to hyperframes.dev", "hyperframes publish"],
   ["Render to MP4", "hyperframes render -o out.mp4"],
   ["Transparent WebM overlay", "hyperframes render --format webm -o out.webm"],
   ["Validate your composition", "hyperframes lint"],

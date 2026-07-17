@@ -13,6 +13,7 @@ const unpackedDir = path.join(outputDir, "win-unpacked");
 const executablePath = path.join(unpackedDir, "iPollo.exe");
 const iconPath = path.join(desktopRoot, "resources/icons/windows/icon.ico");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const shouldBuildInstaller = process.env.IPOLLOWORK_WINDOWS_INSTALLER === "1";
 
 if (process.platform !== "win32") throw new Error("Windows packaging must run on Windows.");
 
@@ -74,6 +75,12 @@ run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.windows.yml
 const rcedit = findRcedit();
 if (!rcedit) throw new Error("rcedit-x64.exe is missing from the electron-builder cache.");
 execFileSync(rcedit, [executablePath, "--set-icon", iconPath], { stdio: "inherit" });
+
+if (!shouldBuildInstaller) {
+  console.log(`Windows unpacked app ready: ${executablePath}`);
+  console.log("Set IPOLLOWORK_WINDOWS_INSTALLER=1 to also build the NSIS installer.");
+  process.exit(0);
+}
 
 run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.windows.yml", "--win", "--x64", "--prepackaged", unpackedDir, "--publish", "never"], desktopRoot, env);
 

@@ -7,8 +7,7 @@
     "paths": {
       "@hyperframes/producer": ["../producer/src/index.ts"],
       "@hyperframes/producer/distributed": ["../producer/src/distributed.ts"],
-      "@hyperframes/aws-lambda/sdk": ["../aws-lambda/src/sdk/index.ts"],
-      "@hyperframes/gcp-cloud-run/sdk": ["../gcp-cloud-run/src/sdk/index.ts"]
+      "@hyperframes/core": ["../core/src/index.ts"]
     },
     "strict": true,
     "noUncheckedIndexedAccess": true,

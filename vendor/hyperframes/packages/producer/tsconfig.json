@@ -24,7 +24,6 @@
     "node_modules",
     "dist",
     "src/**/*.test.ts",
-    "src/**/__test_utils__/**",
-    "src/regression-harness-lambda-local.ts"
+    "src/**/__test_utils__/**"
   ]
 }

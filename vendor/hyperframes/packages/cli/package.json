@@ -24,9 +24,7 @@
     "build:runtime": "tsx scripts/build-runtime.ts",
     "build:beat-analyzer": "node scripts/build-beat-analyzer.mjs",
     "build:copy": "node scripts/build-copy.mjs",
-    "typecheck": "tsc --noEmit",
-    "gen:skills-manifest": "tsx scripts/gen-skills-manifest.ts",
-    "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",
@@ -48,10 +46,8 @@
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
-    "@hyperframes/aws-lambda": "workspace:*",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
-    "@hyperframes/gcp-cloud-run": "workspace:*",
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/producer": "workspace:*",

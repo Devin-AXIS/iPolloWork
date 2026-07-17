@@ -57,7 +57,7 @@ function copyMdFiles(srcDir, destDir) {
 
 // fallow-ignore-next-line complexity
 async function main() {
-  for (const sub of ["studio", "docs", "templates", "skills", "docker"]) {
+  for (const sub of ["studio", "docs", "templates", "docker"]) {
     mkdirSync(join(DIST, sub), { recursive: true });
   }
   mkdirSync(join(DIST, "commands"), { recursive: true });
@@ -75,18 +75,6 @@ async function main() {
   const warmGrainSrc = join(REPO_ROOT, "registry", "examples", "warm-grain");
   if (existsSync(warmGrainSrc)) {
     copyDir(warmGrainSrc, join(DIST, "templates", "warm-grain"));
-  }
-
-  // Skills bundled into the published CLI. Branches don't all carry the same
-  // skills/ tree (it gets restructured), so each entry is existsSync-guarded:
-  // a missing skill dir warns + skips instead of crashing the build.
-  for (const skill of ["hyperframes", "hyperframes-cli", "gsap"]) {
-    const src = join(REPO_ROOT, "skills", skill);
-    if (!existsSync(src)) {
-      console.warn(`[build-copy] skill not found, skipping: skills/${skill}`);
-      continue;
-    }
-    copyDir(src, join(DIST, "skills", skill));
   }
 
   const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");
