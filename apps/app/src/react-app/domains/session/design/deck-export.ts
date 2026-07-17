@@ -1,3 +1,5 @@
+export const PRESENTATION_SLIDE_SELECTOR = "[data-ipw-slide],section.slide,.slide,.slide-frame";
+
 export function deckExportContainer(slide: HTMLElement) {
   return slide.closest<HTMLElement>(".slide-wrap") ?? slide;
 }

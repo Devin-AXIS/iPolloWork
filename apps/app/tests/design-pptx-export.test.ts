@@ -10,7 +10,11 @@ import {
   deckPptxFileName,
   isPptxTextStyleCompatible,
 } from "../src/react-app/domains/session/design/pptx-export";
-import { activateDeckExportSlide, deckExportContainer } from "../src/react-app/domains/session/design/deck-export";
+import {
+  activateDeckExportSlide,
+  deckExportContainer,
+  PRESENTATION_SLIDE_SELECTOR,
+} from "../src/react-app/domains/session/design/deck-export";
 
 const panelUrl = new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url);
 
@@ -18,8 +22,8 @@ describe("PPTX deck export", () => {
   test("uses a PowerPoint filename and editable-first confirmation copy", () => {
     expect(deckPptxFileName("Q2 launch")).toBe("Q2 launch.pptx");
     expect(deckPptxFileName("Q2 launch.pdf")).toBe("Q2 launch.pptx");
-    expect(PPTX_EXPORT_CONFIRMATION.title).toBe("可编辑优先导出 PPTX");
-    expect(PPTX_EXPORT_CONFIRMATION.message).toContain("局部图片");
+    expect(PPTX_EXPORT_CONFIRMATION.title).toBe("??????? PPTX");
+    expect(PPTX_EXPORT_CONFIRMATION.message).toContain("????");
   });
 
   test("maps slide-relative browser text geometry to editable PPTX text", () => {
@@ -56,7 +60,7 @@ describe("PPTX deck export", () => {
 
   test("uses installed CJK fonts and exact spacing for Chinese editable text", () => {
     expect(createPptxTextOverlay({
-      text: "学术出版物\n视觉系统设计",
+      text: "?????\n??????",
       slide: { left: 0, top: 0, width: 1600, height: 900 },
       box: { left: 160, top: 90, width: 800, height: 180 },
       style: {
@@ -90,6 +94,14 @@ describe("PPTX deck export", () => {
     expect(pptxExport).toContain("collectPptxElementPlans(slide)");
     expect(pptxExport).toContain("capturePptxElement(plan.element");
     expect(pptxExport).not.toContain("html2canvas(slide");
+  });
+
+  test("stops a legacy deck export instead of creating a background-only slide", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const pptxExport = source.slice(source.indexOf("const exportDeckToPptx"), source.indexOf("const saveMutation"));
+
+    expect(pptxExport).toContain("validatePptxElementPlanCoverage");
+    expect(pptxExport).toContain("No blank presentation was created.");
   });
 
   test("keeps native-editable exports separate from PDF color conversion", async () => {
@@ -250,6 +262,10 @@ describe("PPTX deck export", () => {
     };
 
     expect(deckExportContainer(slide as unknown as HTMLElement)).toBe(wrapper);
+  });
+
+  test("recognizes fixed canvas frames as legacy presentation pages", () => {
+    expect(PRESENTATION_SLIDE_SELECTOR).toContain(".slide-frame");
   });
 
   test("unhides a slide wrapper before capturing an export page", () => {
