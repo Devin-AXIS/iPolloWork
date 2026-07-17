@@ -1746,8 +1746,16 @@ export function SessionPage(props: SessionPageProps) {
                       {t("session.loading_detail")}
                     </div>
                   ) : (
-                    <div className="flex flex-1 items-center justify-center" aria-live="polite">
-                      <OwDotTicker size="md" />
+                    <div className="px-6 py-24" role="status" aria-live="polite">
+                      <div className="mx-auto flex max-w-xs flex-col items-center gap-3 text-center">
+                        <OwDotTicker size="md" />
+                        <div className="text-sm font-medium text-dls-text">
+                          {t("session.preparing_workspace")}
+                        </div>
+                        <p className="text-xs leading-5 text-dls-secondary">
+                          {t("session.loading_detail")}
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>

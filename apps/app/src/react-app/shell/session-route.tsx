@@ -646,8 +646,15 @@ export function SessionRoute() {
       ),
   );
   const hasUsableModel = Boolean(local.prefs.defaultModel && !selectedModelUnavailable);
+  // Creating and opening a conversation does not require a usable model.
+  // Keeping this separate from `canCreateTask` prevents a first-run workspace
+  // from landing on an empty pane when its model setup is still incomplete or
+  // an old saved model is no longer available.
+  const canCreateSession = Boolean(
+    opencodeClient && selectedWorkspaceId && !loading && !selectedWorkspaceError,
+  );
   const canCreateTask = Boolean(
-    opencodeClient && selectedWorkspaceId && !loading && !selectedWorkspaceError && !selectedModelUnavailable,
+    canCreateSession && !selectedModelUnavailable,
   );
 
   const iPolloWorkModelsPromo = useiPolloWorkModelsStartupPromo({
@@ -1409,7 +1416,7 @@ export function SessionRoute() {
   // first launch and deleting the final conversation; there is no separate
   // setup/empty page in the iPolloWork flow.
   useEffect(() => {
-    if (!canCreateTask || !isDesktopRuntime()) return;
+    if (!canCreateSession || !isDesktopRuntime()) return;
     if (selectedSessionId || (sessionsByWorkspaceId[selectedWorkspaceId] ?? []).length > 0) {
       firstRunSessionRef.current = false;
       return;
@@ -1419,7 +1426,7 @@ export function SessionRoute() {
     void handleCreateTaskInWorkspace(selectedWorkspaceId).then((createdSessionId) => {
       if (!createdSessionId) firstRunSessionRef.current = false;
     });
-  }, [canCreateTask, selectedSessionId, selectedWorkspaceId, sessionsByWorkspaceId, handleCreateTaskInWorkspace]);
+  }, [canCreateSession, selectedSessionId, selectedWorkspaceId, sessionsByWorkspaceId, handleCreateTaskInWorkspace]);
 
   const {
     commandPaletteOpen,
@@ -1959,7 +1966,7 @@ export function SessionRoute() {
       runtimeWorkspaceId={selectedWorkspaceEndpoint?.workspaceId || null}
       opencodeBaseUrl={opencodeBaseUrl}
       workspaces={workspaces}
-      clientConnected={canCreateTask}
+      clientConnected={canCreateSession}
       ipolloworkServerStatus={client ? "connected" : "disconnected"}
       ipolloworkServerClient={selectedWorkspaceEndpoint?.client ?? client}
       environmentClient={client}
@@ -2033,7 +2040,7 @@ export function SessionRoute() {
         sessionStatusById: sidebarSessionStatusById,
         connectingWorkspaceId: null,
         workspaceConnectionStateById,
-        newTaskDisabled: !canCreateTask,
+        newTaskDisabled: !canCreateSession,
         sidebarHydratedFromCache: Object.values(sessionsByWorkspaceId).some((list) => list.length > 0),
         startupPhase: effectiveLoading ? "nativeInit" : "ready",
         onSelectWorkspace: async (workspaceId) => {
