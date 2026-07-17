@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,10 @@ const desktopRoot = resolve(__dirname, "..");
 const repoRoot = resolve(desktopRoot, "../..");
 const electronSidecarDir = resolve(desktopRoot, "resources", "sidecars");
 const electronHelperDir = resolve(desktopRoot, "resources", "helpers");
+const hyperframesRoot = resolve(repoRoot, "vendor", "hyperframes");
+const hyperframesCli = resolve(hyperframesRoot, "packages", "cli", "bin", "hyperframes.mjs");
+const hyperframesDevProjectDir = resolve(repoRoot, ".ipollowork-dev", "hyperframes-preview");
+const hyperframesDevProjectName = ".ipollowork-dev/hyperframes-preview";
 const defaultDevDataDir = resolve(
   process.env.HOME ?? process.env.USERPROFILE ?? repoRoot,
   ".ipollowork",
@@ -18,6 +23,11 @@ const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const nodeCmd = process.execPath;
 const portValue = Number.parseInt(process.env.PORT ?? "", 10);
 const devPort = Number.isFinite(portValue) && portValue > 0 ? portValue : 5173;
+const hyperframesPortValue = Number.parseInt(process.env.IPOLLOWORK_HYPERFRAMES_DEV_PORT ?? "", 10);
+const hyperframesDevPort = Number.isFinite(hyperframesPortValue) && hyperframesPortValue > 0
+  ? hyperframesPortValue
+  : 3002;
+const shouldStartHyperframes = process.env.IPOLLOWORK_DEV_HYPERFRAMES !== "0";
 const explicitStartUrl = process.env.IPOLLOWORK_ELECTRON_START_URL?.trim() || "";
 const startUrl = explicitStartUrl || `http://localhost:${devPort}`;
 const viteProbeUrls = explicitStartUrl
@@ -49,6 +59,39 @@ function runSync(command, args, options = {}) {
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
+}
+
+function ensureHyperframesDevProject() {
+  if (existsSync(resolve(hyperframesDevProjectDir, "index.html"))) return;
+  if (!existsSync(hyperframesCli)) {
+    throw new Error(`HyperFrames CLI was not found at ${hyperframesCli}`);
+  }
+  mkdirSync(resolve(repoRoot, ".ipollowork-dev"), { recursive: true });
+  runSync(nodeCmd, [hyperframesCli, "init", hyperframesDevProjectName, "--example", "blank", "--non-interactive"], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      BROWSER: "none",
+      ELECTRON_RUN_AS_NODE: "1",
+      HYPERFRAMES_SKIP_SKILLS: "1",
+      NO_COLOR: "1",
+    },
+  });
+}
+
+function startHyperframesDevServer() {
+  if (!shouldStartHyperframes) return null;
+  ensureHyperframesDevProject();
+  console.log(`[electron-dev] Starting HyperFrames Studio at http://localhost:${hyperframesDevPort}`);
+  return run(nodeCmd, [hyperframesCli, "preview", "--port", String(hyperframesDevPort), "--no-open"], {
+    cwd: hyperframesDevProjectDir,
+    env: {
+      ...process.env,
+      BROWSER: "none",
+      ELECTRON_RUN_AS_NODE: "1",
+      NO_COLOR: "1",
+    },
+  });
 }
 
 async function fetchWithTimeout(url, timeoutMs = 4000) {
@@ -193,6 +236,7 @@ async function waitForChildren(children, timeoutMs) {
 
 let uiChild = null;
 let electronChild = null;
+let hyperframesChild = null;
 let stopping = false;
 
 async function stopAll(exitCode = 0) {
@@ -200,7 +244,7 @@ async function stopAll(exitCode = 0) {
   stopping = true;
   restoreTerminal();
 
-  const children = [electronChild, uiChild].filter(Boolean);
+  const children = [electronChild, uiChild, hyperframesChild].filter(Boolean);
   for (const child of children) signalTree(child, "SIGINT");
 
   const stoppedCleanly = await waitForChildren(children, 2_000);
@@ -222,6 +266,8 @@ if (process.env.IPOLLOWORK_ELECTRON_SKIP_SHARED_PREPARE !== "1") {
 }
 
 // Build the server TS → JS so Electron can import it in-process
+hyperframesChild = startHyperframesDevServer();
+
 console.log("[electron-dev] Building ipollowork-server (tsc)...");
 runSync(pnpmCmd, ["--filter", "ipollowork-server", "build"], { cwd: repoRoot });
 

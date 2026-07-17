@@ -17,6 +17,10 @@ _worktrees/
 # Desktop sidecars
 apps/desktop/resources/sidecars/
 apps/desktop/server/
+apps/desktop/.hyperframes-build-stamp.json
+apps/desktop/dist-electron-test-filter/
+apps/desktop/hyperframes-runtime/
+apps/desktop/video/
 
 # Env
 .env

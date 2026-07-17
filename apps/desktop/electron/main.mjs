@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -79,7 +79,6 @@ const uiControlServer = createUiControlServer({
 const terminalProcesses = new Map();
 const hyperframesProcesses = new Map();
 let nextTerminalId = 1;
-const HYPERFRAMES_VERSION = "0.7.52";
 const HYPERFRAMES_START_TIMEOUT_MS = 90_000;
 const HYPERFRAMES_PORT_BASE = 3_100;
 const HYPERFRAMES_PORT_RANGE = 800;
@@ -149,31 +148,202 @@ function hyperframesKey(webContentsId, sessionId) {
   return `${webContentsId}:${String(sessionId ?? "").trim()}`;
 }
 
-function npxCommand() {
-  return process.platform === "win32" ? "npx.cmd" : "npx";
+function desktopRepoRoot() {
+  return path.resolve(__dirname, "..", "..", "..");
 }
 
-function npxPathEnv() {
+function resolveLocalHyperframesCli() {
+  const candidates = [
+    path.resolve(desktopRepoRoot(), "vendor", "hyperframes", "packages", "cli", "bin", "hyperframes.mjs"),
+    process.resourcesPath
+      ? path.join(process.resourcesPath, "hyperframes", "packages", "cli", "bin", "hyperframes.mjs")
+      : null,
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  throw new Error("Local HyperFrames Studio is missing. Run `bun install` and `bun run build:local-studio` in `vendor/hyperframes`.");
+}
+
+function localHyperframesVersion() {
+  try {
+    const packagePath = path.join(path.dirname(resolveLocalHyperframesCli()), "..", "package.json");
+    return require(packagePath).version || "";
+  } catch {
+    return "";
+  }
+}
+
+function resolveLocalHyperframesRoot() {
+  return path.resolve(path.dirname(resolveLocalHyperframesCli()), "..", "..", "..");
+}
+
+function findFirstExistingPath(candidates) {
+  for (const candidate of candidates.filter(Boolean)) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function isRunnableBinary(candidate) {
+  if (!candidate || !existsSync(candidate)) return false;
+  try {
+    execFileSync(candidate, ["-version"], {
+      stdio: "ignore",
+      timeout: 5_000,
+      windowsHide: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findFirstRunnablePath(candidates) {
+  for (const candidate of candidates.filter(Boolean)) {
+    if (isRunnableBinary(candidate)) return candidate;
+  }
+  return null;
+}
+
+function resolveBundledFfBinary(name) {
+  const extension = process.platform === "win32" ? ".exe" : "";
+  const executable = `${name}${extension}`;
+  const hyperframesRoot = resolveLocalHyperframesRoot();
+  const packageName = name === "ffprobe" ? "ffprobe-static" : "ffmpeg-static";
+  const packageGlobPrefix = name === "ffprobe" ? "ffprobe-static@" : "ffmpeg-static@";
+  const nodeModulesRoot = path.join(hyperframesRoot, "node_modules");
+  const directPackage = path.join(nodeModulesRoot, packageName);
+  const bunRoot = path.join(nodeModulesRoot, ".bun");
+  const bunPackageRoot = existsSync(bunRoot)
+    ? readdirSync(bunRoot, { withFileTypes: true })
+      .find((entry) => entry.isDirectory() && entry.name.startsWith(packageGlobPrefix))?.name
+    : null;
+  return findFirstRunnablePath([
+    path.join(directPackage, executable),
+    path.join(directPackage, "bin", process.platform, process.arch, executable),
+    path.join(directPackage, "bin", executable),
+    bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, executable) : null,
+    bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, "bin", process.platform, process.arch, executable) : null,
+    bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, "bin", executable) : null,
+  ]);
+}
+
+function resolveInstallerFfBinary(name) {
+  const packageName = name === "ffprobe" ? "@ffprobe-installer/ffprobe" : "@ffmpeg-installer/ffmpeg";
+  try {
+    const installer = require(packageName);
+    const installerPath = typeof installer?.path === "string" ? installer.path : "";
+    return findFirstRunnablePath([installerPath]);
+  } catch {
+    return null;
+  }
+}
+
+function resolveSystemFfBinary(name) {
+  const command = process.platform === "win32" ? "where.exe" : "which";
+  try {
+    const output = execFileSync(command, [name], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 3_000,
+      windowsHide: true,
+    });
+    const resolved = findFirstRunnablePath(
+      output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+    );
+    if (resolved) return resolved;
+  } catch {
+    /* fall through to local fallbacks */
+  }
+  if (process.platform !== "win32" || name !== "ffmpeg") return null;
+  return findFirstRunnablePath(["C:\\LenovoSoftstore\\Install\\EVluping\\ffmpeg.exe"]);
+}
+
+function resolveFfBinary(name) {
+  return resolveInstallerFfBinary(name) ?? resolveBundledFfBinary(name) ?? resolveSystemFfBinary(name);
+}
+
+function inheritedPathEnv() {
   const currentPath = process.env.PATH || "";
   if (process.platform !== "darwin") return currentPath;
   const fallbackPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
   return [...new Set([...currentPath.split(path.delimiter).filter(Boolean), ...fallbackPaths])].join(path.delimiter);
 }
 
-function spawnNpx(args, cwd) {
-  return spawn(npxCommand(), args, {
+function spawnLocalHyperframes(args, cwd) {
+  const isInit = args[0] === "init";
+  const ffmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH || resolveFfBinary("ffmpeg");
+  const ffprobePath = process.env.HYPERFRAMES_FFPROBE_PATH || resolveFfBinary("ffprobe");
+  return spawn(process.execPath, [resolveLocalHyperframesCli(), ...args], {
     cwd,
-    shell: process.platform === "win32",
     detached: process.platform !== "win32",
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
-      PATH: npxPathEnv(),
+      PATH: inheritedPathEnv(),
       BROWSER: "none",
+      ELECTRON_RUN_AS_NODE: "1",
       NO_COLOR: "1",
+      ...(ffmpegPath ? { HYPERFRAMES_FFMPEG_PATH: ffmpegPath } : {}),
+      ...(ffprobePath ? { HYPERFRAMES_FFPROBE_PATH: ffprobePath } : {}),
+      ...(isInit ? { HYPERFRAMES_SKIP_SKILLS: "1" } : {}),
     },
   });
+}
+
+async function readHyperframesServerConfig(port) {
+  return await new Promise((resolve) => {
+    const request = createServerProbeRequest(port, (config) => resolve(config));
+    request.on("error", () => resolve(null));
+    request.setTimeout(1_500, () => {
+      request.destroy();
+      resolve(null);
+    });
+    request.end();
+  });
+}
+
+function createServerProbeRequest(port, onConfig) {
+  const http = require("node:http");
+  const request = http.request({
+    host: "127.0.0.1",
+    port,
+    path: "/__hyperframes_config",
+    method: "GET",
+  }, (response) => {
+    let body = "";
+    response.setEncoding("utf8");
+    response.on("data", (chunk) => { body += chunk; });
+    response.on("end", () => {
+      try {
+        const parsed = JSON.parse(body);
+        onConfig(parsed?.isHyperframes ? parsed : null);
+      } catch {
+        onConfig(null);
+      }
+    });
+  });
+  return request;
+}
+
+async function stopStaleHyperframesPort(port, expectedProjectPath) {
+  const config = await readHyperframesServerConfig(port);
+  if (!config?.pid) return;
+  const runningProject = typeof config.projectDir === "string" ? path.resolve(config.projectDir) : "";
+  const runningVersion = typeof config.version === "string" ? config.version : "";
+  const expectedVersion = localHyperframesVersion();
+  if (runningProject === path.resolve(expectedProjectPath) && runningVersion === expectedVersion) return;
+  try {
+    if (process.platform === "win32") {
+      execFileSync("taskkill", ["/pid", String(config.pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      process.kill(Number(config.pid), "SIGTERM");
+    }
+  } catch {
+    /* stale process may already be gone */
+  }
 }
 
 function resolveWorkspaceChild(root, childPath) {
@@ -193,7 +363,7 @@ function resolveWorkspaceChild(root, childPath) {
 async function runHyperframesInit(workspaceRoot, projectDirectory, projectPath) {
   if (existsSync(path.join(projectPath, "index.html"))) return;
   await mkdir(path.dirname(projectPath), { recursive: true });
-  const child = spawnNpx(["--yes", `hyperframes@${HYPERFRAMES_VERSION}`, "init", projectDirectory, "--example", "blank", "--non-interactive"], workspaceRoot);
+  const child = spawnLocalHyperframes(["init", projectDirectory, "--example", "blank", "--non-interactive"], workspaceRoot);
   let output = "";
   await new Promise((resolve, reject) => {
     child.stdout?.on("data", (data) => { output += String(data); });
@@ -233,8 +403,9 @@ async function startHyperframesPreview(event, options = {}) {
   }
   stopHyperframesForKey(key);
   await runHyperframesInit(workspaceRoot, projectDirectory, projectPath);
+  await stopStaleHyperframesPort(port, projectPath);
 
-  const child = spawnNpx(["--yes", `hyperframes@${HYPERFRAMES_VERSION}`, "preview", "--port", String(port), "--no-open"], projectPath);
+  const child = spawnLocalHyperframes(["preview", "--port", String(port), "--no-open"], projectPath);
   let output = "";
   return await new Promise((resolve, reject) => {
     let ready = false;
@@ -2608,6 +2779,18 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       // text-and-image group, not as the old labelled SVG. Remove its direct
       // header group, the generated session id and its separator structurally
       // so a later Studio re-render cannot surface them again.
+      if (!document.querySelector('[data-ipollowork-studio-hide-style]')) {
+        const style = document.createElement('style');
+        style.dataset.ipolloworkStudioHideStyle = 'true';
+        style.textContent = '[data-ipollowork-studio-hidden]{display:none!important}';
+        document.head.appendChild(style);
+      }
+      const hideIdentityNode = (node) => {
+        if (!node || !header.contains(node)) return;
+        const rect = node.getBoundingClientRect();
+        if (rect.width > 260 || rect.height > 56 || rect.top > 80) return;
+        node.setAttribute('data-ipollowork-studio-hidden', 'true');
+      };
       const identityRoots = new Set();
       for (const brand of brandNodes) {
         const root = [...header.children].find((child) => child.contains(brand));
@@ -2622,7 +2805,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const text = compactText(child);
         if (isBrandText(text) || isSessionIdentity(text) || /^[|｜]$/.test(text)) identityRoots.add(child);
       }
-      for (const identity of identityRoots) identity.remove();
+      for (const identity of identityRoots) hideIdentityNode(identity);
 
       for (const button of [...header.querySelectorAll('button')]) {
         if (compactText(button) === 'Storyboard') button.remove();

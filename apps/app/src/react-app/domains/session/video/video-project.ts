@@ -1,6 +1,6 @@
 import type { TemplateManifestV1 } from "@ipollowork/types/templates";
 
-export const HYPERFRAMES_VERSION = "0.7.52";
+export const HYPERFRAMES_STUDIO_LABEL = "Local HyperFrames Studio";
 
 const HYPERFRAMES_PORT_BASE = 3_100;
 const HYPERFRAMES_PORT_RANGE = 800;
@@ -54,15 +54,6 @@ export function videoProjectPath(sessionId: string, workspaceRoot?: string) {
   const root = rawRoot.replace(/[\\/]+$/, "") || separator;
   const suffix = projectDirectory.replace(/\//g, separator);
   return root === separator ? `${separator}${suffix}` : `${root}${separator}${suffix}`;
-}
-
-export function hyperframesPreviewCommand(sessionId: string) {
-  const projectDirectory = videoProjectDirectory(sessionId);
-  const studioPort = hyperframesStudioPort(sessionId);
-  // `init` also installs HyperFrames' agent skills the first time it is run.
-  // Do not opt out: a video task needs both an empty, session-owned timeline
-  // and an agent that understands how to edit that timeline.
-  return `if [ ! -f ${projectDirectory}/index.html ]; then npx --yes hyperframes@${HYPERFRAMES_VERSION} init ${projectDirectory} --example blank --non-interactive; fi && cd ${projectDirectory} && npx --yes hyperframes@${HYPERFRAMES_VERSION} preview --port ${studioPort} --no-open\n`;
 }
 
 /**

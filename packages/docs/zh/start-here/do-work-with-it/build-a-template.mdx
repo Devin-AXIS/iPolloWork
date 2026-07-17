@@ -132,7 +132,7 @@ acme-product-reveal.ipwt
 不要从模板或 Agent 指令启动第二个预览服务器，内置视频工作室负责预览。导入前请运行与内置视频模板相同的严格校验：
 
 ```bash
-npx --yes hyperframes@0.7.52 check . --strict --at-transitions
+npx hyperframes check . --strict --at-transitions
 ```
 
 视频素材应放在包内，避免依赖外部浏览器窗口。整个工程被复制到独立会话后也应能独立理解和编辑。网站、App 原型、幻灯片、海报、卡片、数据报告与杂志文章不应加入 `data-composition-variables` 或 HyperFrames 运行时；它们按内置设计模板的方式编写为普通静态 HTML/CSS/资源包即可。

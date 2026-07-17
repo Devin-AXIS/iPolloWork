@@ -5,8 +5,9 @@ import { AudioLines, Film, Layers3, Loader2, Play, RefreshCw, X } from "lucide-r
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { currentLocale, localeChangedEvent } from "@/i18n";
 import {
-  HYPERFRAMES_VERSION,
+  HYPERFRAMES_STUDIO_LABEL,
   hyperframesStudioPort,
   hyperframesStudioUrl,
   videoProjectDirectory,
@@ -15,7 +16,6 @@ import {
 import { VideoVoicePanel } from "./video-voice-panel";
 
 export {
-  hyperframesPreviewCommand,
   hyperframesStudioPort,
   hyperframesStudioUrl,
   videoProjectDirectory,
@@ -33,17 +33,28 @@ type VideoPanelProps = {
 
 export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
+  const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
-  const [detail, setDetail] = React.useState(`Starting HyperFrames ${HYPERFRAMES_VERSION}...`);
+  const [detail, setDetail] = React.useState(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`);
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
-  const [simpleMode, setSimpleMode] = React.useState(true);
+  const [simpleMode, setSimpleMode] = React.useState(false);
   const [voicePanelOpen, setVoicePanelOpen] = React.useState(false);
   const [voicePreviewRequest, setVoicePreviewRequest] = React.useState(0);
   const studioPort = hyperframesStudioPort(sessionId);
   const studioUrl = hyperframesStudioUrl(studioPort, videoProjectId(sessionId));
   const projectDirectory = videoProjectDirectory(sessionId);
+
+  const syncStudioLocale = React.useCallback(() => {
+    const frameWindow = studioFrameRef.current?.contentWindow;
+    if (!frameWindow) return;
+    const targetOrigin = new URL(studioUrl).origin;
+    frameWindow.postMessage(
+      { type: "ipollowork:studio-locale", locale: currentLocale() },
+      targetOrigin,
+    );
+  }, [studioUrl]);
 
   const applySimpleMode = React.useCallback(async (enabled: boolean) => {
     try {
@@ -56,18 +67,8 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   }, []);
 
   React.useEffect(() => {
-    if (status !== "ready" || !studioFrameLoaded) return;
-    // HyperFrames replaces its preview iframe when the playhead crosses into a
-    // different composition. Re-apply the selected mode so the iPolloWork
-    // chrome cleanup survives those native iframe navigations in both Simple
-    // and Advanced modes.
-    const interval = window.setInterval(() => void applySimpleMode(simpleMode), 1_000);
-    return () => window.clearInterval(interval);
-  }, [applySimpleMode, simpleMode, status, studioFrameLoaded]);
-
-  React.useEffect(() => {
     setStatus("starting");
-    setDetail(`Starting HyperFrames ${HYPERFRAMES_VERSION}...`);
+    setDetail(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`);
     setStudioFrameLoaded(false);
     setStudioChromeReady(false);
     if (isRemoteWorkspace) {
@@ -109,6 +110,12 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     };
   }, [isRemoteWorkspace, projectDirectory, sessionId, studioPort, workspaceRoot]);
 
+  React.useEffect(() => {
+    window.addEventListener(localeChangedEvent, syncStudioLocale);
+    syncStudioLocale();
+    return () => window.removeEventListener(localeChangedEvent, syncStudioLocale);
+  }, [syncStudioLocale]);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px]">
@@ -133,23 +140,11 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">Video Studio is available for local workspaces only.</div>
       ) : (
         <div className="relative min-h-0 flex-1 bg-[#0c0c0d]">
-          {status === "starting" || (status === "ready" && !studioChromeReady) ? <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"><div className="text-center"><Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /><p className="text-xs text-muted-foreground">{status === "starting" ? "Starting the native HyperFrames workspace..." : "Preparing the Video Studio..."}</p></div></div> : null}
-          {status === "ready" ? <iframe key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
+          {status === "starting" || (status === "ready" && !studioChromeReady) ? <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"><div className="text-center"><Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /><p className="text-xs text-muted-foreground">{status === "starting" ? "Starting the local HyperFrames workspace..." : "Preparing the Video Studio..."}</p></div></div> : null}
+          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
             setStudioFrameLoaded(true);
-            // Do not reveal the embedded Studio while it still has its own
-            // product header. HyperFrames renders that header after the first
-            // iframe load, so confirm the native cleanup before exposing the
-            // canvas rather than relying on a timing-only delay.
-            void (async () => {
-              for (const delay of [0, 120, 420, 1_200, 2_800]) {
-                if (delay) await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
-                if (await applySimpleMode(simpleMode)) {
-                  setStudioChromeReady(true);
-                  return;
-                }
-              }
-              setDetail("Video Studio is still preparing. Reload to try again.");
-            })();
+            setStudioChromeReady(true);
+            syncStudioLocale();
           }} /> : null}
           {voicePanelOpen ? <VideoVoicePanel
             sessionId={sessionId}
