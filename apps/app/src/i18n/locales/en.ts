@@ -1352,6 +1352,7 @@ export default {
   "settings.feedback_title": "Help shape iPolloWork",
   "settings.group_cloud": "Cloud",
   "settings.group_global": "Global",
+  "settings.group_help": "Help",
   "settings.group_workspace": "Workspace",
   "settings.hide_titlebar": "Hide titlebar",
   "settings.hide_titlebar_desc": "Hide the window titlebar. Useful for tiling window",
