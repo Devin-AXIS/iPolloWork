@@ -95,7 +95,7 @@ export type MessageGroup =
 export type PromptMode = "prompt" | "shell";
 
 export type ComposerPart =
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; synthetic?: boolean }
   | { type: "agent"; name: string }
   | { type: "skill"; name: string }
   | { type: "file"; path: string; label?: string }

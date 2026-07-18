@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { unwrap } from "@/app/lib/opencode";
 import type { Client, PendingPermission, PendingQuestion, TodoItem } from "@/app/types";
 import { t } from "@/i18n";
@@ -28,10 +29,19 @@ export type UseSessionInteractionsInput = {
   workspaceId: string;
   sessionId: string | null;
   workspaceRoot: string;
+  ipolloworkServerClient?: iPolloWorkServerClient | null;
+  runtimeWorkspaceId?: string | null;
 };
 
 export function useSessionInteractions(input: UseSessionInteractionsInput) {
-  const { client, workspaceId, sessionId, workspaceRoot } = input;
+  const {
+    client,
+    workspaceId,
+    sessionId,
+    workspaceRoot,
+    ipolloworkServerClient,
+    runtimeWorkspaceId,
+  } = input;
 
   const [permissionReplyBusy, setPermissionReplyBusy] = useState(false);
   const permissionReplyBusyRef = useRef(false);
@@ -125,6 +135,21 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
       setPermissionReplyBusy(true);
       try {
         const pendingPermission = pendingPermissions.find((permission) => permission.id === requestID);
+        if (
+          reply === "always" &&
+          pendingPermission?.permission === "external_directory" &&
+          ipolloworkServerClient &&
+          runtimeWorkspaceId
+        ) {
+          const requestedFolders = pendingPermission.patterns.filter((pattern) => pattern.trim().length > 0);
+          if (requestedFolders.length > 0) {
+            const current = await ipolloworkServerClient.listAuthorizedFolders(runtimeWorkspaceId);
+            await ipolloworkServerClient.setAuthorizedFolders(runtimeWorkspaceId, [
+              ...current.folders,
+              ...requestedFolders,
+            ]);
+          }
+        }
         if (pendingPermission?.protocol === "v2") {
           const result = await client.v2.session.permission.reply({
             sessionID: pendingPermission.sessionID,
@@ -154,7 +179,15 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
         setPermissionReplyBusy(false);
       }
     },
-    [client, pendingPermissions, sessionId, workspaceId, workspaceRoot],
+    [
+      client,
+      ipolloworkServerClient,
+      pendingPermissions,
+      runtimeWorkspaceId,
+      sessionId,
+      workspaceId,
+      workspaceRoot,
+    ],
   );
 
   const activeQuestion = pendingQuestions[0] ?? null;

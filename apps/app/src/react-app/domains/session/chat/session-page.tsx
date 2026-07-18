@@ -613,7 +613,17 @@ export function SessionPage(props: SessionPageProps) {
       return next;
     });
     const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
-    props.surface?.onSendDraft({ mode: "prompt", parts: [{ type: "text", text: prompt }], attachments: [], text: prompt }, props.selectedSessionId);
+    const visibleTemplateMessage = t("templates.applied", { title: template.title });
+    props.surface?.onSendDraft({
+      mode: "prompt",
+      parts: [
+        { type: "text", text: visibleTemplateMessage },
+        { type: "text", text: prompt, synthetic: true },
+      ],
+      attachments: [],
+      text: visibleTemplateMessage,
+      resolvedText: visibleTemplateMessage,
+    }, props.selectedSessionId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface, templateSessionData]);
   const closeTemplateBrief = useCallback(async () => {
     const sessionId = props.selectedSessionId;
