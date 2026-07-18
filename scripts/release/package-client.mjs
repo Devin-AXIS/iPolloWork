@@ -7,12 +7,13 @@
  * The flow deliberately does not commit, tag, push, or publish remotely.
  */
 import { spawnSync } from "node:child_process";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const outputDir = resolve(root, "apps", "desktop", "dist-electron");
 const versionFiles = [
   "apps/app/package.json",
   "apps/desktop/package.json",
@@ -150,10 +151,13 @@ async function main() {
     versionsChanged = true;
     run(pnpm, ["--filter", "@ipollowork/app", "bump:set", "--", nextVersion]);
     run(process.execPath, [resolve(root, "scripts", "release", "review.mjs"), "--strict"]);
+    // electron-builder reuses its output directory. Remove prior installers so
+    // a local package directory always represents the one package just built.
+    await rm(outputDir, { recursive: true, force: true });
     run(pnpm, ["--filter", "@ipollowork/desktop", "package:electron", ...options.electronArgs]);
 
     const artifacts = await findArtifacts(
-      resolve(root, "apps", "desktop", "dist-electron"),
+      outputDir,
       nextVersion,
     );
     console.log(`\nClient package ${nextVersion} completed.`);
