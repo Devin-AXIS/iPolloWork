@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en" data-ipw-template="code-explainer" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"The smallest useful abstraction"},{"id":"brandName","type":"string","label":"Brand name","default":"Build Notes"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg"},{"id":"accent","type":"color","label":"Accent","default":"#7ce7ff"},{"id":"question","type":"string","label":"Question","default":"What changed?"},{"id":"codeLabel","type":"string","label":"Code label","default":"composeSignal()"},{"id":"result","type":"string","label":"Result","default":"One predictable handoff"},{"id":"metric","type":"string","label":"Metric","default":"42ms"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Code Explainer</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      :root { --accent: #7ce7ff; --bg: #091116; --panel: #101d24; --ink: #eaf7fa; --muted: #8298a0; --green: #91edb0; --orange: #ffb87c; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: radial-gradient(circle at 82% 40%, rgba(124,231,255,.11), transparent 36%), var(--bg); }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .grid { position: absolute; inset: 0; opacity: .14; background-image: linear-gradient(rgba(124,231,255,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(124,231,255,.09) 1px, transparent 1px); background-size: 72px 72px; mask-image: linear-gradient(to bottom, #000, transparent 82%); }
+      .nav { position: absolute; left: 84px; right: 84px; top: 60px; z-index: 20; display: flex; align-items: center; justify-content: space-between; color: rgba(234,247,250,.82); font: 600 16px/1.2 ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; }
+      .brand { display: flex; gap: 12px; align-items: center; color: var(--ink); font: 800 23px/1 Inter, sans-serif; letter-spacing: -.04em; text-transform: none; }
+      .brand img { width: 30px; height: 30px; object-fit: contain; }
+      .copy { position: absolute; left: 124px; top: 204px; z-index: 15; width: 580px; }
+      .kicker { color: var(--accent); font: 700 17px/1.2 ui-monospace, monospace; letter-spacing: .2em; text-transform: uppercase; }
+      h1 { margin: 24px 0 24px; font-size: 98px; line-height: .93; letter-spacing: -.075em; }
+      .copy p { margin: 0; max-width: 490px; color: var(--muted); font-size: 27px; line-height: 1.32; }
+      .code-window { position: absolute; right: 112px; top: 170px; width: 920px; height: 610px; padding: 72px 48px 42px; border: 1px solid rgba(124,231,255,.24); border-radius: 24px; background: rgba(16,29,36,.92); box-shadow: 0 35px 100px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.07); z-index: 10; font: 22px/1.62 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .code-window::before { content: '●  ●  ●'; position: absolute; left: 36px; top: 26px; color: rgba(234,247,250,.3); font-size: 14px; letter-spacing: 7px; }
+      .code-window::after { content: attr(data-label); position: absolute; right: 38px; top: 25px; color: rgba(234,247,250,.42); font-size: 14px; letter-spacing: .1em; }
+      .line { display: block; min-height: 35px; padding: 0 14px; border-left: 3px solid transparent; white-space: nowrap; }
+      .line .kw { color: #cf9cff; }.line .fn { color: var(--accent); }.line .str { color: var(--green); }.line .num { color: var(--orange); }.line .comment { color: #b3cbd1; }
+      .line.hot { border-left-color: var(--accent); background: rgba(124,231,255,.1); }
+      .diff { position: absolute; right: 134px; bottom: 154px; width: 360px; padding: 22px 24px; border: 1px solid rgba(145,237,176,.35); background: rgba(14,42,35,.86); color: var(--green); z-index: 20; font: 700 18px/1.35 ui-monospace, monospace; }
+      .diff small { display: block; margin-bottom: 9px; color: rgba(145,237,176,.6); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; }
+      .result-card { position: absolute; right: 132px; bottom: 128px; z-index: 20; width: 520px; padding: 32px; border: 1px solid rgba(124,231,255,.3); background: rgba(9,17,22,.9); box-shadow: 16px 18px 0 rgba(124,231,255,.1); }
+      .result-card small { color: var(--accent); font: 700 15px/1.2 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+      .result-card h2 { margin: 18px 0 7px; font-size: 50px; line-height: .98; letter-spacing: -.07em; }
+      .result-card p { margin: 0; color: var(--muted); font-size: 20px; }
+      .decode { position: absolute; left: 760px; top: 826px; color: rgba(124,231,255,.64); font: 850 150px/.75 Inter, sans-serif; letter-spacing: -.15em; z-index: 20; }
+      .takeaway { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; z-index: 10; }
+      .takeaway-inner { width: 1180px; }
+      .takeaway h2 { margin: 26px 0; font-size: 112px; line-height: .9; letter-spacing: -.08em; }
+      .takeaway p { margin: 0; color: var(--muted); font-size: 28px; }
+      .accent { color: var(--accent); }
+      .footer { position: absolute; left: 124px; right: 124px; bottom: 60px; display: flex; justify-content: space-between; z-index: 20; color: rgba(234,247,250,.72); font: 600 15px/1.2 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="18">
+      <div id="background-layer" class="clip" data-start="0" data-duration="18" data-track-index="0"><div class="grid"></div></div>
+      <div class="nav"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg" alt="Brand logo" /><span data-var-text="brandName">Build Notes</span></div><span>Technical explainer / 04</span></div>
+      <section class="scene clip" id="s-question" data-start="0" data-duration="3.2" data-track-index="1"><div class="copy"><div class="kicker">The question</div><h1 data-var-text="question">What changed?</h1><p>Start with the tension, then let the code earn the answer.</p></div><div class="decode">?</div><div class="code-window" data-label="before.ts"><span class="line"><span class="kw">const</span> context = <span class="str">'scattered'</span>;</span><span class="line"><span class="kw">const</span> handoff = <span class="str">'slow'</span>;</span><span class="line"> </span><span class="line"><span class="comment">// find the useful abstraction</span></span></div></section>
+      <section class="scene clip" id="s-code" data-start="3.2" data-duration="4" data-track-index="2"><div class="copy"><div class="kicker">The move</div><h1 data-var-text="title">The smallest useful abstraction</h1><p>One function. One promise. One place to change the story.</p></div><div class="code-window" data-label="after.ts"><span class="line"><span class="kw">function</span> <span class="fn" data-var-text="codeLabel">composeSignal()</span> {</span><span class="line">  <span class="kw">return</span> context</span><span class="line hot">    .filter(<span class="fn">isUseful</span>)</span><span class="line">    .map(<span class="fn">makeVisible</span>)</span><span class="line">    .join(<span class="str">' → '</span>);</span><span class="line">}</span></div></section>
+      <section class="scene clip" id="s-diff" data-start="7.2" data-duration="3.6" data-track-index="3"><div class="copy"><div class="kicker">The difference</div><h1>Make the handoff <span class="accent">legible.</span></h1><p>When the change is visible, the team can move without guessing.</p></div><div class="code-window" data-label="diff"><span class="line"><span class="comment">- await Promise.all(tasks)</span></span><span class="line hot"><span class="kw">+</span> await sequence(tasks)</span><span class="line"><span class="comment">- hidden context</span></span><span class="line hot"><span class="kw">+</span> visible next step</span></div><div class="diff"><small>changed / 02 lines</small>+ context → action</div></section>
+      <section class="scene clip" id="s-result" data-start="10.8" data-duration="3.2" data-track-index="4"><div class="copy"><div class="kicker">The result</div><h1>Now the system has a <span class="accent">shape.</span></h1><p>Close with the result the viewer can remember and reuse.</p></div><div class="result-card"><small>measured outcome</small><h2 data-var-text="result">One predictable handoff</h2><p><span data-var-text="metric">42ms</span> from intent to action.</p></div></section>
+      <section class="scene clip takeaway" id="s-takeaway" data-start="14" data-duration="4" data-track-index="5"><div class="takeaway-inner"><div class="kicker">The takeaway</div><h2>Good systems make good work <span class="accent">obvious.</span></h2><p>Explain the change. Show the proof. Leave a reusable idea.</p></div></section>
+      <div class="footer"><span>Build Notes / 04</span><span>seek-safe composition</span></div>
+    </main>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#s-question .copy', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .72, ease: 'power3.out' }, .15);
+      tl.fromTo('#s-question .code-window', { opacity: 0, x: 70, rotationY: -8 }, { opacity: 1, x: 0, rotationY: 0, duration: .86, ease: 'power3.out' }, .45);
+      tl.fromTo('#s-question .line', { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: .4, stagger: .14, ease: 'power2.out' }, .85);
+      tl.fromTo('#s-code .copy', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .72, ease: 'power3.out' }, 3.35);
+      tl.fromTo('#s-code .code-window', { opacity: 0, y: 58, rotationY: 8 }, { opacity: 1, y: 0, rotationY: 0, duration: .84, ease: 'expo.out' }, 3.7);
+      tl.fromTo('#s-code .line', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: .42, stagger: .16, ease: 'power3.out' }, 4.2);
+      tl.fromTo('#s-diff .copy', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .72, ease: 'power3.out' }, 7.35);
+      tl.fromTo('#s-diff .code-window', { opacity: 0, scale: .88 }, { opacity: 1, scale: 1, duration: .8, ease: 'power3.out' }, 7.7);
+      tl.fromTo('#s-diff .diff', { opacity: 0, y: 38, scale: .88 }, { opacity: 1, y: 0, scale: 1, duration: .7, ease: 'power3.out' }, 8.5);
+      tl.fromTo('#s-result .copy', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .72, ease: 'power3.out' }, 10.95);
+      tl.fromTo('.result-card', { opacity: 0, x: 60, rotation: 3 }, { opacity: 1, x: 0, rotation: 0, duration: .82, ease: 'expo.out' }, 11.35);
+      tl.fromTo('#s-takeaway .takeaway-inner', { opacity: 0, scale: .86, y: 30 }, { opacity: 1, scale: 1, y: 0, duration: .94, ease: 'power3.out' }, 14.2);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

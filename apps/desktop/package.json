@@ -26,7 +26,7 @@
     "test": "node --test electron/brand-icon-windows.test.mjs electron/open-external.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "^1.17.11",
+    "@opencode-ai/sdk": "^1.18.3",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.1",
     "electron-updater": "^6.3.9",
