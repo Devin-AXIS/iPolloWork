@@ -12,7 +12,7 @@ import { exportExtensions } from "./extensions-export.js";
 import { deleteSkill, listSkills, upsertSkill } from "./skills.js";
 import { installHubSkill, listHubSkills } from "./skill-hub.js";
 import { deleteCommand, listCommands, repairCommands, upsertCommand } from "./commands.js";
-import { ApiError, formatError } from "./errors.js";
+import { ApiError, formatError, isApiError } from "./errors.js";
 import { readJsoncFile, updateJsoncTopLevel, writeJsoncFile } from "./jsonc.js";
 import { recordAudit, readAuditEntries, readLastAudit } from "./audit.js";
 import { ReloadEventStore } from "./events.js";
@@ -777,7 +777,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
           const response = await proxyOpencodeRequest({ config, request, url, workspace, proxyPath: mount.restPath });
           return finalize(response);
         } catch (error) {
-          const apiError = error instanceof ApiError
+          const apiError = isApiError(error)
             ? error
             : new ApiError(500, "internal_error", "Unexpected server error");
           errorMessage = apiError.message;
@@ -826,7 +826,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
           const response = await proxyOpencodeRequest({ config, request, url, workspace: config.workspaces[0] });
           return finalize(response);
         } catch (error) {
-          const apiError = error instanceof ApiError
+          const apiError = isApiError(error)
             ? error
             : new ApiError(500, "internal_error", "Unexpected server error");
           errorMessage = apiError.message;
@@ -862,10 +862,10 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
         });
         return finalize(response);
       } catch (error) {
-        if (!(error instanceof ApiError)) {
+        if (!isApiError(error)) {
           console.error("[ipollowork-server] Unhandled error:", error);
         }
-        const apiError = error instanceof ApiError
+        const apiError = isApiError(error)
           ? error
           : new ApiError(500, "internal_error", "Unexpected server error");
         errorMessage = apiError.message;

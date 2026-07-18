@@ -34,6 +34,7 @@ const PERSONAL_TEMPLATE_LIBRARY = "__ipollowork_personal__";
 const ALLOWED_EXTENSIONS = new Set([
   ".html", ".css", ".js", ".mjs", ".json", ".svg", ".png", ".jpg", ".jpeg",
   ".webp", ".gif", ".avif", ".woff", ".woff2", ".ttf", ".otf", ".txt", ".md",
+  ".glb", ".gltf", ".bin",
 ]);
 const EXECUTABLE_EXTENSIONS = new Set([".exe", ".dll", ".com", ".bat", ".cmd", ".sh", ".ps1", ".app", ".dmg", ".pkg"]);
 const HYPERFRAMES_VARIABLE_TYPES = new Set(["string", "number", "color", "boolean", "enum"]);
