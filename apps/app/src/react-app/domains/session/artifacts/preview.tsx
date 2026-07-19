@@ -3,6 +3,7 @@ import type * as React from "react";
 import { Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 import { MarkdownBlock } from "../surface/markdown";
 
 interface PreviewLoadingProps extends React.ComponentProps<"div"> {}
@@ -94,5 +95,5 @@ export function ImagePreview({ src, alt, className, ...props }: ImagePreviewProp
 interface PreviewUnavailableProps extends React.ComponentProps<"div"> {}
 
 export function PreviewUnavailable({ className, ...props }: PreviewUnavailableProps) {
-  return <div className={cn("p-4 text-sm text-muted-foreground", className)} {...props}>Preview unavailable. Open externally to view this file.</div>;
+  return <div className={cn("p-4 text-sm text-muted-foreground", className)} {...props}>{t("artifact.preview_unavailable")}</div>;
 }

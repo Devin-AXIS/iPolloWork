@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { t } from "@/i18n";
 import { cn, formatFileSize } from "@/lib/utils";
 import { type ArtifactPanelTab, usePanelTabStore } from "../panel/panel-tab-store";
 import { isCollectibleArtifactTarget, type BinaryData, type Data, type OpenTarget, type TextData } from "./open-target";
@@ -443,7 +444,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
     },
     onError: (cause, input) => {
       if (input.kind === "text") setAutoSaveBlockedDraft(input.data);
-      toast.error(cause instanceof Error ? cause.message : "Could not save this file.");
+      toast.error(cause instanceof Error ? cause.message : t("artifact.could_not_save_file"));
     },
   });
 
@@ -566,12 +567,12 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   };
 
   const saveStatus = isSaving
-    ? "Saving…"
+    ? t("artifact.status_saving")
     : data?.kind === "text" && draft === data.data
-      ? "Saved"
+      ? t("artifact.status_saved")
       : draft === autoSaveBlockedDraft
-        ? "Save failed"
-        : "Unsaved";
+        ? t("artifact.status_save_failed")
+        : t("artifact.status_unsaved");
 
   const saveSpreadsheetContent = async (payload: Data) => {
     if (target.kind !== "file") {
@@ -602,7 +603,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
               {target.name}
             </h3>
             <span className="shrink-0 text-xs text-muted-foreground">
-              {target.exists === false ? "missing" : target.size !== undefined ? `${formatFileSize(target.size)}` : ""}
+              {target.exists === false ? t("artifact.missing") : target.size !== undefined ? `${formatFileSize(target.size)}` : ""}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -612,10 +613,10 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
                 type="button"
                 className={cn(
                   "rounded-lg px-2 py-1 text-[11px] transition-colors",
-                  saveStatus === "Save failed" ? "text-destructive hover:bg-destructive/10" : "text-muted-foreground",
+                  saveStatus === t("artifact.status_save_failed") ? "text-destructive hover:bg-destructive/10" : "text-muted-foreground",
                 )}
-                disabled={saveStatus !== "Save failed"}
-                title={saveStatus === "Save failed" ? "Retry save" : saveStatus}
+                disabled={saveStatus !== t("artifact.status_save_failed")}
+                title={saveStatus === t("artifact.status_save_failed") ? t("artifact.retry_save") : saveStatus}
                 onClick={() => {
                   if (target.kind !== "file") return;
                   setAutoSaveBlockedDraft(null);
@@ -640,29 +641,29 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
                         }}
                         disabled={isSaving}
                       >
-                        Discard
+                        {t("artifact.discard")}
                       </Button>
                     )}
                   />
-                  <TooltipContent>Discard changes</TooltipContent>
+                  <TooltipContent>{t("artifact.discard_changes")}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger
                     render={(
-                      <Button variant="default" size="sm" onClick={() => void save()} disabled={isSaving || draft === data.data}>{isSaving ? "Saving" : "Save"}</Button>
+                    <Button variant="default" size="sm" onClick={() => void save()} disabled={isSaving || draft === data.data}>{isSaving ? t("artifact.saving") : t("common.save")}</Button>
                     )}
                   />
-                  <TooltipContent>Save changes</TooltipContent>
+                  <TooltipContent>{t("artifact.save_changes")}</TooltipContent>
                 </Tooltip>
               </>
             ) : (
               <Tooltip>
                 <TooltipTrigger
                   render={(
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>Edit</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>{t("common.edit")}</Button>
                   )}
                 />
-                <TooltipContent>Edit artifact</TooltipContent>
+                <TooltipContent>{t("artifact.edit_artifact")}</TooltipContent>
               </Tooltip>
             )
           ) : null}
@@ -670,7 +671,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={(
-                  <Button variant="ghost" size="icon-sm" aria-label="Download options">
+                  <Button variant="ghost" size="icon-sm" aria-label={t("artifact.download_options")}>
                     <Download />
                   </Button>
                 )}
@@ -688,45 +689,45 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
             <Tooltip>
               <TooltipTrigger
                 render={(
-                  <Button variant="ghost" size="icon-sm" onClick={() => void download()} aria-label="Download artifact">
+                  <Button variant="ghost" size="icon-sm" onClick={() => void download()} aria-label={t("artifact.download_artifact")}>
                     <Download />
                   </Button>
                 )}
               />
-              <TooltipContent>Download artifact</TooltipContent>
+              <TooltipContent>{t("artifact.download_artifact")}</TooltipContent>
             </Tooltip>
           ) : null}
           {target.kind === "file" && !isRemoteWorkspace ? (
             <Tooltip>
               <TooltipTrigger
                 render={(
-                  <Button variant="ghost" size="icon-sm" onClick={() => void revealExternal()} aria-label="Show in folder">
+                  <Button variant="ghost" size="icon-sm" onClick={() => void revealExternal()} aria-label={t("artifact.show_in_folder")}>
                     <FolderOpen />
                   </Button>
                 )}
               />
-              <TooltipContent>Show in folder</TooltipContent>
+              <TooltipContent>{t("artifact.show_in_folder")}</TooltipContent>
             </Tooltip>
           ) : null}
           <Tooltip>
             <TooltipTrigger
               render={(
-                <Button variant="ghost" size="icon-sm" onClick={() => void openExternal()} aria-label={isRemoteWorkspace ? "Download artifact" : "Open externally"}>
+                <Button variant="ghost" size="icon-sm" onClick={() => void openExternal()} aria-label={isRemoteWorkspace ? t("artifact.download_artifact") : t("artifact.open_externally")}>
                   <ExternalLink />
                 </Button>
               )}
             />
-            <TooltipContent>{isRemoteWorkspace ? "Download artifact" : "Open externally"}</TooltipContent>
+            <TooltipContent>{isRemoteWorkspace ? t("artifact.download_artifact") : t("artifact.open_externally")}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
               render={(
-                <Button variant="ghost" size="icon-sm" onClick={() => void close()} aria-label="Close artifact">
+                <Button variant="ghost" size="icon-sm" onClick={() => void close()} aria-label={t("artifact.close_artifact")}>
                   <X />
                 </Button>
               )}
             />
-            <TooltipContent>Close artifact</TooltipContent>
+            <TooltipContent>{t("artifact.close_artifact")}</TooltipContent>
           </Tooltip>
           </div>
         </div>
@@ -735,7 +736,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
         {isLoading || (data?.kind === "binary" && !binaryObjectUrl) ? (
           <PreviewLoading />
         ) : isError ? (
-          <PreviewError message={error instanceof Error ? error.message : "Failed to load artifact" } />
+          <PreviewError message={error instanceof Error ? error.message : t("artifact.failed_to_load")} />
         ) : data?.kind === "text" && (editing || isDirectTextEdit) ? (
           <TextEditor value={draft} language={target.preview === "markdown" ? "markdown" : "text"} onChange={setDraft} />
         ) : target.preview === "markdown" && data?.kind === "text" ? (

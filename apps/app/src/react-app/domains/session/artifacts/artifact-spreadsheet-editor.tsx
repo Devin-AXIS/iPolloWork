@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { t } from "@/i18n";
 import { parseSpreadsheet, serializeSpreadsheet, type SpreadsheetRows } from "./artifact-spreadsheet-model";
 import { cn } from "@/lib/utils";
 import type { Data } from "./open-target";
@@ -98,7 +99,7 @@ export function ArtifactSpreadsheetEditor(props: ArtifactSpreadsheetEditorProps)
   if (error) {
     return (
       <div className="p-4 text-sm text-muted-foreground">
-        {error instanceof Error ? error.message : "Failed to parse spreadsheet"}
+        {error instanceof Error ? error.message : t("artifact.failed_to_parse_spreadsheet")}
       </div>
     );
   }
@@ -106,11 +107,11 @@ export function ArtifactSpreadsheetEditor(props: ArtifactSpreadsheetEditorProps)
   return (
     <div className={cn("flex h-full min-h-0 flex-col", props.className)}>
       <div className="flex shrink-0 items-center gap-2 px-3 py-2 border-b border-border">
-        <Button variant="ghost" size="xs" onClick={addRow}><Plus className="size-3" /> Row</Button>
-        <Button variant="ghost" size="xs" onClick={addColumn}><Plus className="size-3" /> Column</Button>
+        <Button variant="ghost" size="xs" onClick={addRow}><Plus className="size-3" /> {t("artifact.row")}</Button>
+        <Button variant="ghost" size="xs" onClick={addColumn}><Plus className="size-3" /> {t("artifact.column")}</Button>
         <div className="min-w-0 flex-1" />
-        <Button variant="ghost" size="xs" onClick={discard} disabled={!isDirty || saving}>Discard</Button>
-        <Button variant="default" size="xs" onClick={() => save()} disabled={!isDirty || saving}>{saving ? "Saving" : "Save"}</Button>
+        <Button variant="ghost" size="xs" onClick={discard} disabled={!isDirty || saving}>{t("artifact.discard")}</Button>
+        <Button variant="default" size="xs" onClick={() => save()} disabled={!isDirty || saving}>{saving ? t("artifact.saving") : t("common.save")}</Button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-xs">

@@ -21,6 +21,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { formatRelativeTime } from "@/app/utils";
+import { t } from "@/i18n";
 import {
   createSessionSearcher,
   type SearchableSession,
@@ -90,7 +91,7 @@ function SnippetLine(props: { item: ResultItem }) {
   if (item.snippet) {
     return (
       <div className="truncate text-muted-foreground text-xs">
-        {item.role === "user" ? "You: " : item.role === "assistant" ? "Agent: " : null}
+        {item.role === "user" ? t("session_search.you_prefix") : item.role === "assistant" ? t("session_search.agent_prefix") : null}
         {item.snippet.before}
         <span className="rounded-[3px] bg-primary/15 font-medium text-foreground">
           {item.snippet.match}
@@ -162,7 +163,7 @@ export function SessionSearchDialog(props: SessionSearchDialogProps) {
           session,
         }));
       return recent.length > 0
-        ? [{ value: "Recent sessions", kind: "recent", items: recent }]
+        ? [{ value: "recent", kind: "recent", items: recent }]
         : [];
     }
 
@@ -203,10 +204,10 @@ export function SessionSearchDialog(props: SessionSearchDialogProps) {
 
     const out: ResultGroup[] = [];
     if (titleItems.length > 0) {
-      out.push({ value: "Session titles", kind: "title", items: titleItems });
+      out.push({ value: "titles", kind: "title", items: titleItems });
     }
     if (messageItems.length > 0) {
-      out.push({ value: "Messages", kind: "message", items: messageItems });
+      out.push({ value: "messages", kind: "message", items: messageItems });
     }
     return out;
   }, [matches, props.sessions, query]);
@@ -219,18 +220,24 @@ export function SessionSearchDialog(props: SessionSearchDialogProps) {
   const trimmedQuery = query.trim();
   const searching = Boolean(deepQuery) && progress !== null && !progress.done;
   const emptyText = !trimmedQuery
-    ? "No sessions yet."
+    ? t("session_search.no_sessions_yet")
     : trimmedQuery.length < MIN_QUERY_LENGTH
-      ? "Keep typing to search message content…"
+      ? t("session_search.keep_typing")
       : searching
-        ? "Searching messages…"
-        : "No sessions or messages match your search.";
+        ? t("session_search.searching_messages")
+        : t("session_search.no_matches");
 
   const statusText = !trimmedQuery
-    ? "Recent sessions"
+    ? t("session_search.recent_sessions")
     : searching
-      ? `Searching messages… ${progress.scanned}/${progress.total}`
-      : `${resultCount.toLocaleString()} ${resultCount === 1 ? "result" : "results"}`;
+      ? `${t("session_search.searching_messages")} ${progress.scanned}/${progress.total}`
+      : t("session_search.results", { count: resultCount });
+
+  const groupLabel = (kind: ResultItem["kind"]) => {
+    if (kind === "recent") return t("session_search.recent_sessions");
+    if (kind === "title") return t("session_search.session_titles");
+    return t("session_search.messages");
+  };
 
   return (
     <CommandDialog
@@ -240,7 +247,7 @@ export function SessionSearchDialog(props: SessionSearchDialogProps) {
       }}
     >
       <CommandDialogPopup>
-        <CommandDialogTitle>Search sessions</CommandDialogTitle>
+        <CommandDialogTitle>{t("session_search.search_sessions")}</CommandDialogTitle>
         <Command
           items={groups}
           filter={null}
@@ -250,7 +257,7 @@ export function SessionSearchDialog(props: SessionSearchDialogProps) {
           <CommandHeader>
             <CommandInput
               className="w-full"
-              placeholder="Search all sessions and messages…"
+              placeholder={t("session_search.search_all_placeholder")}
             />
           </CommandHeader>
           <CommandPanel>
@@ -259,7 +266,7 @@ export function SessionSearchDialog(props: SessionSearchDialogProps) {
               {(group: ResultGroup) => (
                 <CommandGroup key={group.value} items={group.items}>
                   <CommandGroupLabel className="flex items-center gap-1.5">
-                    {group.value}
+                    {groupLabel(group.kind)}
                     <span className="font-normal text-muted-foreground/72 tabular-nums">
                       {group.items.length.toLocaleString()}
                     </span>
@@ -310,7 +317,7 @@ export function SessionSearchDialog(props: SessionSearchDialogProps) {
               {searching ? <Loader2Icon className="size-3 animate-spin" /> : null}
               {statusText}
             </span>
-            <span>↑↓ to navigate · ↵ to open</span>
+            <span>{t("session_search.keyboard_hint")}</span>
           </CommandFooter>
         </Command>
       </CommandDialogPopup>

@@ -80,7 +80,7 @@ export function ModelBehaviorSelect({
       </Tooltip>
       <SelectContent side="top" sideOffset={8} align="start" className="min-w-48">
         <SelectGroup>
-          <SelectLabel>Thinking</SelectLabel>
+          <SelectLabel>{t("composer.thinking")}</SelectLabel>
           {items.map((option) => (
             <SelectItem key={option.value} value={option.value} className="text-xs">
               {option.label}
