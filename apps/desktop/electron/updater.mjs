@@ -1,10 +1,11 @@
-import { readFile, mkdir, writeFile, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ELECTRON_UPDATER_CHANNEL_FILENAME = "electron-updater-channel.v1.json";
+const LEGACY_ELECTRON_UPDATER_CHANNEL_FILENAME = "electron-updater-channel.v1.json";
+const OFFICIAL_ELECTRON_UPDATER_FEED = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
 
 // In dev mode, app.getVersion() returns the Electron framework version
 // (e.g. "35.7.5") instead of the iPolloWork app version. Read from
@@ -29,44 +30,24 @@ function resolveAppVersion(app) {
   }
   return _cachedAppVersion;
 }
-const ELECTRON_UPDATER_FEEDS = Object.freeze({
-  stable: "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download",
-  alpha: "https://github.com/Devin-AXIS/iPolloWork/releases/download/alpha-macos-latest",
-});
-
-function normalizeElectronUpdaterChannel(value) {
-  if (value === "alpha" && process.platform === "darwin") return "alpha";
+export function normalizeElectronUpdaterChannel(_value) {
   return "stable";
 }
 
-function electronUpdaterChannelPath(app) {
-  return path.join(app.getPath("userData"), ELECTRON_UPDATER_CHANNEL_FILENAME);
+function legacyElectronUpdaterChannelPath(app) {
+  return path.join(app.getPath("userData"), LEGACY_ELECTRON_UPDATER_CHANNEL_FILENAME);
 }
 
-async function readElectronUpdaterChannel(app) {
+export async function clearLegacyElectronUpdaterChannel(app) {
   try {
-    const raw = await readFile(electronUpdaterChannelPath(app), "utf8");
-    const parsed = JSON.parse(raw);
-    return normalizeElectronUpdaterChannel(parsed?.channel);
-  } catch {
-    return "stable";
+    await rm(legacyElectronUpdaterChannelPath(app), { force: true });
+  } catch (error) {
+    console.warn("[updater] failed to clear retired update-channel preference", error?.message ?? error);
   }
 }
 
-async function writeElectronUpdaterChannel(app, channel) {
-  const normalized = normalizeElectronUpdaterChannel(channel);
-  const outputPath = electronUpdaterChannelPath(app);
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(
-    outputPath,
-    `${JSON.stringify({ channel: normalized, writtenAt: new Date().toISOString() }, null, 2)}\n`,
-    "utf8",
-  );
-  return normalized;
-}
-
-function electronUpdaterFeedUrl(channel) {
-  return ELECTRON_UPDATER_FEEDS[normalizeElectronUpdaterChannel(channel)];
+export function electronUpdaterFeedUrl(_channel) {
+  return OFFICIAL_ELECTRON_UPDATER_FEED;
 }
 
 function parseComparableVersion(value) {
@@ -141,8 +122,8 @@ function isVersionNewer(candidate, current) {
   return comparison === null ? candidate !== current : comparison > 0;
 }
 
-function updaterChannelState(app, channel) {
-  const normalized = normalizeElectronUpdaterChannel(channel);
+function updaterChannelState(app) {
+  const normalized = normalizeElectronUpdaterChannel();
   return {
     channel: normalized,
     feedUrl: electronUpdaterFeedUrl(normalized),
@@ -151,12 +132,10 @@ function updaterChannelState(app, channel) {
 }
 
 async function applyElectronUpdaterFeed(app, updater) {
-  const channel = await readElectronUpdaterChannel(app);
-  const state = updaterChannelState(app, channel);
-  updater.allowPrerelease = state.channel === "alpha";
-  // Moving from alpha back to stable can be a semver downgrade; still show
-  // the latest stable so users can return to the stable channel deliberately.
-  updater.allowDowngrade = state.channel === "stable";
+  await clearLegacyElectronUpdaterChannel(app);
+  const state = updaterChannelState(app);
+  updater.allowPrerelease = false;
+  updater.allowDowngrade = false;
   if (updater?.setFeedURL) {
     updater.setFeedURL({ provider: "generic", url: state.feedUrl });
   }
@@ -245,7 +224,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
         // installed app + a diff. On macOS that reconstructed bundle is what
         // feeds Squirrel's fragile move-based install, and is a common trigger
         // for the "Failed to copy bundle … no such file" abort. Download the
-        // full zip instead — alpha builds are swapped wholesale anyway.
+        // full zip instead — desktop releases are swapped wholesale anyway.
         autoUpdaterInstance.disableDifferentialDownload = true;
         // Make Squirrel.Mac write contents in place rather than moving whole
         // bundles (see enableSquirrelDirectContentsWrite for why).
@@ -273,29 +252,16 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
     return autoUpdaterInstance;
   }
 
-  ipcMain.handle("ipollowork:updater:getChannel", async () => {
-    const channel = await readElectronUpdaterChannel(app);
-    return updaterChannelState(app, channel);
+  ipcMain.handle("ipollowork:updater:getState", async () => {
+    await clearLegacyElectronUpdaterChannel(app);
+    return updaterChannelState(app);
   });
 
-  ipcMain.handle("ipollowork:updater:setChannel", async (_event, rawChannel) => {
-    const channel = await writeElectronUpdaterChannel(app, rawChannel);
-    checkedUpdateVersion = null;
-    const updater = await ensureAutoUpdater();
-    if (updater) {
-      return applyElectronUpdaterFeed(app, updater);
-    }
-    return updaterChannelState(app, channel);
-  });
-
-  ipcMain.handle("ipollowork:updater:check", async (_event, rawChannel) => {
-    if (rawChannel !== undefined) {
-      await writeElectronUpdaterChannel(app, rawChannel);
-    }
+  ipcMain.handle("ipollowork:updater:check", async () => {
     const updater = await ensureAutoUpdater();
     const channelState = updater
       ? await applyElectronUpdaterFeed(app, updater)
-      : updaterChannelState(app, await readElectronUpdaterChannel(app));
+      : updaterChannelState(app);
     if (!updater) return { available: false, reason: "unavailable", ...channelState };
     try {
       const result = await updater.checkForUpdates();
