@@ -4,6 +4,10 @@
   English · <a href="./translated_readmes/README_ZH.md">简体中文</a> · <a href="./translated_readmes/README_ZH_hk.md">繁體中文</a> · <a href="./translated_readmes/README_JA.md">日本語</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/Devin-AXIS/iPolloWork/releases/download/v0.17.29/ipollowork-demo.mp4">▶ Watch the iPolloWork demo</a>
+</p>
+
 > **An AI workbench that builds, runs, and keeps results editable.**
 
 **The source-available, local-first alternative to Codex and Claude Code for work beyond the terminal.**

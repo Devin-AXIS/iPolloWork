@@ -4,6 +4,10 @@
   <a href="../README.md">English</a> · 简体中文 · <a href="./README_ZH_hk.md">繁體中文</a> · <a href="./README_JA.md">日本語</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/Devin-AXIS/iPolloWork/releases/download/v0.17.29/ipollowork-demo.mp4">▶ 观看 iPolloWork 演示</a>
+</p>
+
 > **让 AI 执行，让结果始终可编辑。**
 
 **面向终端之外真实工作的源码可用、本地优先 Codex 平替。**

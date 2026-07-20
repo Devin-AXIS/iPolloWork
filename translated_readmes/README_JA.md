@@ -4,6 +4,10 @@
   <a href="../README.md">English</a> · <a href="./README_ZH.md">简体中文</a> · <a href="./README_ZH_hk.md">繁體中文</a> · 日本語
 </p>
 
+<p align="center">
+  <a href="https://github.com/Devin-AXIS/iPolloWork/releases/download/v0.17.29/ipollowork-demo.mp4">▶ iPolloWork のデモを見る</a>
+</p>
+
 > **AI がつくり、動かし、成果物を編集可能なままにする。**
 
 **ターミナルの外にある仕事のための、ソースアベイラブルでローカルファーストな Codex 代替です。**
