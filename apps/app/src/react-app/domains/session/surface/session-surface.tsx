@@ -349,7 +349,7 @@ function SessionErrorCard({ error, onDismiss, onChangeModel, onOpenModelPicker }
   onOpenModelPicker?: () => void;
 }) {
   return (
-    <div className="mx-auto max-w-[720px] px-3 py-3 sm:px-5">
+    <div className="mx-auto max-w-[800px] px-3 py-3 sm:px-5">
       <div className="rounded-2xl border border-red-6/30 bg-red-3/15 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -1452,7 +1452,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
       {isEmptyConversation ? (
         <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-5">
-          <div className="flex min-h-full w-full max-w-[720px] flex-col justify-center pb-12 pt-8">
+          <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-12 pt-8">
             <NewConversationStarter
               selectedMode={newConversationMode}
               selectedCapabilityId={starterCapability?.id}
@@ -1504,7 +1504,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         >
           {/* Chat column: tighter than the composer (800px) so messages
                keep a comfortable reading width and don't feel "too big". */}
-          <div ref={contentRef} className="mx-auto w-full max-w-[720px]">
+          <div ref={contentRef} className="mx-auto w-full max-w-[800px]">
             {showDelayedLoading && pendingSessionLoad ? (
               <div className="px-6 py-16">
                 <div className="mx-auto max-w-sm rounded-3xl border border-dls-border bg-dls-hover/60 px-8 py-10 text-center">

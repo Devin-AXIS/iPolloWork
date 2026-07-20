@@ -671,7 +671,7 @@ export function SessionPage(props: SessionPageProps) {
       setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
       return;
     }
-    if (isDesignSession && (activeSidePanel === "video" || activeSidePanel === "panel")) {
+    if (isDesignSession && activeSidePanel === "video") {
       setSidePanelState(props.selectedSessionId, "design");
     }
   }, [activeSidePanel, isDesignSession, isVideoSession, props.selectedSessionId, setSidePanelState]);
@@ -1985,6 +1985,7 @@ export function SessionPage(props: SessionPageProps) {
                       client={props.ipolloworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
+                      launcherItems={sidePanelLauncherItems}
                       onClose={closeRightPane}
                     />
                   ) : activeSidePanel === "video" && props.selectedSessionId ? (
@@ -1995,6 +1996,7 @@ export function SessionPage(props: SessionPageProps) {
                       client={props.ipolloworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
+                      launcherItems={sidePanelLauncherItems}
                       onClose={closeRightPane}
                     />
                   ) : activeSidePanel === "outputs" ? (

@@ -1,11 +1,14 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Film, Layers3, Loader2, Play, RefreshCw, X } from "lucide-react";
+import { AudioLines, Film, Layers3, Loader2, Play, Plus, RefreshCw, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { t } from "@/i18n";
+import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
   HYPERFRAMES_VERSION,
   hyperframesStudioPort,
@@ -29,10 +32,11 @@ type VideoPanelProps = {
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
+  launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
 };
 
-export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, onClose }: VideoPanelProps) {
+export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
@@ -127,6 +131,39 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         </Tooltip>
         <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setDetail(t("video.reload")); setRevision((value) => value + 1); }} aria-label={t("video.reload")}><RefreshCw /></Button>
         <Button variant={simpleMode ? "ghost" : "secondary"} size="xs" onClick={() => void applySimpleMode(!simpleMode)} aria-label={t("video.toggle_advanced")}><Layers3 />{simpleMode ? t("video.advanced") : t("video.simple")}</Button>
+        {launcherItems.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={(
+                <Button variant="ghost" size="icon-xs" aria-label="Add panel">
+                  <Plus />
+                </Button>
+              )}
+            />
+            <DropdownMenuContent
+              align="end"
+              className="w-[296px] rounded-[18px] border border-[#E5E5E5] bg-white p-3 text-[#242424] shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
+            >
+              {launcherItems.map((item) => (
+                <DropdownMenuItem
+                  key={item.id}
+                  disabled={item.disabled}
+                  onClick={item.onClick}
+                  className={cn(
+                    "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424] data-disabled:opacity-40",
+                    item.active && "bg-[#F5F5F5]",
+                  )}
+                >
+                  <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
+                  <span className="flex-1">{item.label}</span>
+                  {item.shortcut ? (
+                    <span className="text-[12px] tracking-[-0.24px] text-[#8A8A8A]">{item.shortcut}</span>
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label={t("video.close")} title={t("video.close")}><X /></Button>
       </header>
 
