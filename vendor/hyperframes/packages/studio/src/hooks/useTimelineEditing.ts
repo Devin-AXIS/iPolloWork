@@ -410,6 +410,20 @@ export function useTimelineEditing({
         if (!removeResponse.ok) {
           const data = (await removeResponse.json().catch(() => ({}))) as { error?: unknown };
           const detail = typeof data.error === "string" ? `: ${data.error}` : "";
+          // DOM-only media rows can outlive the source element after another
+          // edit or a preview reload. Treat that stale row as already removed
+          // so Delete remains idempotent instead of showing a misleading 404.
+          if (removeResponse.status === 404 && data.error === "element not found in source file") {
+            usePlayerStore
+              .getState()
+              .setElements(
+                timelineElements.filter((te) => (te.key ?? te.id) !== (element.key ?? element.id)),
+              );
+            usePlayerStore.getState().setSelectedElementId(null);
+            reloadPreview();
+            showToast(`${label} 已经从源文件移除，时间轴已同步。`, "info");
+            return;
+          }
           throw new Error(`Failed to delete ${element.id} from ${targetPath}${detail}`);
         }
 

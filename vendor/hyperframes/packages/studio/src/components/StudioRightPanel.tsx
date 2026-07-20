@@ -36,6 +36,7 @@ import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
 import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
 import { useStudioI18n } from "../i18n";
+import { X } from "../icons/SystemIcons";
 
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
@@ -94,6 +95,7 @@ export function StudioRightPanel({
   const {
     rightWidth,
     setRightWidth,
+    setRightCollapsed,
     rightPanelTab,
     setRightPanelTab,
     rightInspectorPanes,
@@ -520,6 +522,15 @@ export function StudioRightPanel({
                 active={rightPanelTab === "variables"}
                 onClick={() => setRightPanelTab("variables")}
               />
+              <button
+                type="button"
+                onClick={() => setRightCollapsed(true)}
+                className="ml-auto flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 active:scale-[0.96]"
+                aria-label="Close right panel"
+                title="Close right panel"
+              >
+                <X size={14} weight="bold" />
+              </button>
             </div>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
               {rightPanelTab === "block-params" && activeBlockParams ? (

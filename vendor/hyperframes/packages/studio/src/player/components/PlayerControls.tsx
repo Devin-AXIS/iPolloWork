@@ -50,7 +50,13 @@ function PlayPauseMorphIcon({ playing }: { playing: boolean }) {
   }, [playing]);
   return (
     <span className="relative inline-flex h-3 w-3 items-center justify-center" aria-hidden="true">
-      <svg width="12" height="12" viewBox="46 21 54 56" fill="#FAFAFA">
+      <svg
+        width="15"
+        height="15"
+        viewBox="46 21 54 56"
+        fill="currentColor"
+        className="hf-studio-play-icon"
+      >
         <path ref={pathRef} d={playing ? PAUSE_BARS_D : PLAY_BLADE_D} />
       </svg>
     </span>
@@ -450,8 +456,12 @@ export const PlayerControls = memo(function PlayerControls({
             onTogglePlay();
           }}
           disabled={controlsDisabled}
-          className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-30 disabled:pointer-events-none transition-colors"
-          style={{ background: "rgba(255,255,255,0.06)" }}
+          className="hf-studio-play-control flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border disabled:opacity-30 disabled:pointer-events-none transition-colors"
+          style={{
+            background: "var(--hf-panel-input)",
+            borderColor: "var(--hf-panel-border-input)",
+            color: "var(--hf-panel-text-1)",
+          }}
         >
           <PlayPauseMorphIcon playing={isPlaying} />
         </button>

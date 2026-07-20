@@ -183,8 +183,10 @@ function buildChildElements(
       stackingContextId: base.stackingContextId,
       expandedParentStart: editBasis.start,
       domId,
-      selector,
-      sourceFile: editBasis.sourceFile,
+      hfId: child.hfId ?? base.hfId,
+      selector: child.selector ?? selector,
+      selectorIndex: child.selectorIndex ?? base.selectorIndex,
+      sourceFile: child.sourceFile ?? editBasis.sourceFile,
       timingSource: "authored",
     });
   }
@@ -205,12 +207,16 @@ function domSiblingClips(
     .map(
       (c): ClipManifestClip => ({
         id: c.id,
+        hfId: c.hfId,
+        selector: c.selector,
+        selectorIndex: c.selectorIndex,
+        sourceFile: c.sourceFile,
         label: c.label,
         start: host.start,
         duration: host.duration,
         track: host.track,
         kind: "element",
-        tagName: null,
+        tagName: c.tagName ?? null,
         compositionId: null,
         parentCompositionId: host.id ?? null,
         compositionSrc: host.compositionSrc ?? null,

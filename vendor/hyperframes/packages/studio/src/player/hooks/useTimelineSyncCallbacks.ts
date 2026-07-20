@@ -20,6 +20,8 @@ import {
   createImplicitTimelineLayersFromDOM,
   buildStandaloneRootTimelineElement,
   getTimelineElementSelector,
+  getTimelineElementSelectorIndex,
+  getTimelineElementSourceFile,
   readTimelineDurationFromDocument,
 } from "../lib/timelineDOM";
 import {
@@ -195,11 +197,19 @@ export function useTimelineSyncCallbacks({
                   continue;
                 }
                 const isGroup = child.hasAttribute("data-hf-group");
+                const selector = getTimelineElementSelector(child);
                 domClipChildren.push({
                   id: child.id,
+                  hfId: child.getAttribute("data-hf-id") || undefined,
+                  selector,
+                  selectorIndex: selector
+                    ? getTimelineElementSelectorIndex(iframeDoc, child, selector)
+                    : undefined,
+                  sourceFile: getTimelineElementSourceFile(child),
                   parentId,
                   hostId,
                   label: isGroup ? child.getAttribute("data-hf-group") || child.id : child.id,
+                  tagName: child.tagName.toLowerCase(),
                   stackingContextId: resolveCssStackingContextId(child),
                 });
                 parentMap.set(child.id, parentId);

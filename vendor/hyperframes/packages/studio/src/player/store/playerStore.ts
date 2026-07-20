@@ -278,10 +278,15 @@ interface PlayerState {
 /** A sub-comp DOM-only timeline child (no data-start) and its nesting context. */
 export interface DomClipChild {
   id: string;
+  hfId?: string;
+  selector?: string;
+  selectorIndex?: number;
+  sourceFile?: string;
   parentId: string;
   /** The manifest sub-comp host clip id this descendant ultimately lives under. */
   hostId: string;
   label: string;
+  tagName?: string | null;
   stackingContextId: string;
 }
 

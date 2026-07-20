@@ -206,6 +206,11 @@ function findFirstRunnablePath(candidates) {
   return null;
 }
 
+function asarUnpackedPath(candidate) {
+  if (!candidate || !candidate.includes("app.asar")) return null;
+  return candidate.replace(/app\.asar(?=([\\/]|$))/, "app.asar.unpacked");
+}
+
 function resolveBundledFfBinary(name) {
   const extension = process.platform === "win32" ? ".exe" : "";
   const executable = `${name}${extension}`;
@@ -231,12 +236,32 @@ function resolveBundledFfBinary(name) {
 
 function resolveInstallerFfBinary(name) {
   const packageName = name === "ffprobe" ? "@ffprobe-installer/ffprobe" : "@ffmpeg-installer/ffmpeg";
+  const platformPackageName = name === "ffprobe" ? "@ffprobe-installer" : "@ffmpeg-installer";
+  const platformPackageDir = process.platform === "win32" ? "win32-x64" : null;
+  const executable = process.platform === "win32" ? `${name}.exe` : name;
   try {
     const installer = require(packageName);
     const installerPath = typeof installer?.path === "string" ? installer.path : "";
-    return findFirstRunnablePath([installerPath]);
+    const unpackedInstallerPath = asarUnpackedPath(installerPath);
+    const resourcesNodeModules = process.resourcesPath
+      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
+      : null;
+    return findFirstRunnablePath([
+      unpackedInstallerPath,
+      installerPath,
+      resourcesNodeModules && platformPackageDir
+        ? path.join(resourcesNodeModules, platformPackageName, platformPackageDir, executable)
+        : null,
+    ]);
   } catch {
-    return null;
+    const resourcesNodeModules = process.resourcesPath
+      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
+      : null;
+    return findFirstRunnablePath([
+      resourcesNodeModules && platformPackageDir
+        ? path.join(resourcesNodeModules, platformPackageName, platformPackageDir, executable)
+        : null,
+    ]);
   }
 }
 
@@ -264,6 +289,25 @@ function resolveFfBinary(name) {
   return resolveInstallerFfBinary(name) ?? resolveBundledFfBinary(name) ?? resolveSystemFfBinary(name);
 }
 
+function resolveSystemChromiumBinary() {
+  if (process.platform === "win32") {
+    return findFirstExistingPath([
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    ]);
+  }
+  if (process.platform === "darwin") {
+    return findFirstExistingPath([
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ]);
+  }
+  return findFirstRunnablePath(["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]);
+}
+
 function inheritedPathEnv() {
   const currentPath = process.env.PATH || "";
   if (process.platform !== "darwin") return currentPath;
@@ -275,6 +319,10 @@ function spawnLocalHyperframes(args, cwd) {
   const isInit = args[0] === "init";
   const ffmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH || resolveFfBinary("ffmpeg");
   const ffprobePath = process.env.HYPERFRAMES_FFPROBE_PATH || resolveFfBinary("ffprobe");
+  const browserPath =
+    process.env.HYPERFRAMES_BROWSER_PATH ||
+    process.env.PRODUCER_HEADLESS_SHELL_PATH ||
+    resolveSystemChromiumBinary();
   return spawn(process.execPath, [resolveLocalHyperframesCli(), ...args], {
     cwd,
     detached: process.platform !== "win32",
@@ -288,6 +336,12 @@ function spawnLocalHyperframes(args, cwd) {
       NO_COLOR: "1",
       ...(ffmpegPath ? { HYPERFRAMES_FFMPEG_PATH: ffmpegPath } : {}),
       ...(ffprobePath ? { HYPERFRAMES_FFPROBE_PATH: ffprobePath } : {}),
+      ...(browserPath
+        ? {
+            HYPERFRAMES_BROWSER_PATH: browserPath,
+            PRODUCER_HEADLESS_SHELL_PATH: browserPath,
+          }
+        : {}),
       ...(isInit ? { HYPERFRAMES_SKIP_SKILLS: "1" } : {}),
     },
   });
@@ -654,10 +708,17 @@ function selectDownloadFile(files, arch) {
 }
 
 async function resolveCorrectArchitectureDownloadUrl(arch) {
+  // The development shell must remain usable when GitHub is unavailable.
+  // Architecture detection is local; the manifest is only needed to offer a
+  // correct-build download in the packaged mismatch flow.
+  if (isDevMode) return null;
   const manifestUrl = `${RELEASE_DOWNLOAD_BASE_URL}/${updaterManifestName(arch)}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3_000);
   try {
     const response = await fetch(manifestUrl, {
       headers: { Accept: "text/yaml, text/plain, */*" },
+      signal: controller.signal,
     });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -669,6 +730,8 @@ async function resolveCorrectArchitectureDownloadUrl(arch) {
   } catch (error) {
     console.warn("[architecture] failed to resolve latest download URL", error);
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

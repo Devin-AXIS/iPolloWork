@@ -179,10 +179,10 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
       </Tooltip>
       {showShortcuts && (
         <div
-          className="absolute bottom-full right-0 mb-2 z-50 rounded-lg shadow-xl min-w-[220px] overflow-y-auto"
+          className="hf-shortcuts-panel absolute bottom-full right-0 mb-2 z-50 rounded-lg shadow-xl min-w-[220px] overflow-y-auto"
           style={{
-            background: "#161618",
-            border: "1px solid rgba(255,255,255,0.08)",
+            background: "var(--hf-shortcuts-bg)",
+            border: "1px solid var(--hf-shortcuts-border)",
             maxHeight: "min(280px, calc(100vh - 80px))",
           }}
         >
@@ -214,7 +214,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
               </Tooltip>
             </form>
           </div>
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
+          <div className="hf-shortcuts-divider" />
           <div className="px-3 pt-2.5 pb-2">
             <p className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mb-1.5">
               Work area

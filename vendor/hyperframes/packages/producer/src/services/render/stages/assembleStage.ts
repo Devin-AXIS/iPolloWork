@@ -17,7 +17,8 @@
  */
 
 import { applyFaststart, muxVideoWithAudio } from "@hyperframes/engine";
-import { extname } from "node:path";
+import { mkdirSync } from "node:fs";
+import { dirname, extname } from "node:path";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { padOrTrimAudioToVideoFrameCount } from "../audioPadTrim.js";
 import { updateJobStatus } from "../shared.js";
@@ -55,6 +56,7 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
 
   const stage6Start = Date.now();
   updateJobStatus(job, "assembling", "Assembling final video", 90, onProgress);
+  mkdirSync(dirname(outputPath), { recursive: true });
 
   if (hasAudio) {
     const audioExtension = extname(audioOutputPath);

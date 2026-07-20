@@ -28,6 +28,9 @@
   --hf-panel-text-3: #71717a;
   --hf-panel-text-4: #52525b;
   --hf-panel-text-5: #3f3f46;
+  --hf-shortcuts-bg: #161618;
+  --hf-shortcuts-border: rgba(255, 255, 255, 0.08);
+  --hf-shortcuts-divider: rgba(255, 255, 255, 0.06);
 }
 
 :root[data-ipollowork-theme="light"] {
@@ -57,6 +60,9 @@
   --hf-workspace-border: #d7dde3;
   --hf-workspace-hairline: #e1e6eb;
   --hf-workspace-muted: #64707d;
+  --hf-shortcuts-bg: #ffffff;
+  --hf-shortcuts-border: #d8dde3;
+  --hf-shortcuts-divider: #e5e7eb;
 }
 
 :root:not([data-ipollowork-theme="light"]) {
@@ -103,6 +109,66 @@ body {
 :root[data-ipollowork-theme="light"] input,
 :root[data-ipollowork-theme="light"] textarea,
 :root[data-ipollowork-theme="light"] select { color: #18181b; }
+
+/* Keep the primary transport control readable against the pale preview
+   surface; the icon inherits this semantic foreground color. */
+:root[data-ipollowork-theme="light"] .hf-studio-play-control {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #18181b;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+:root:not([data-ipollowork-theme="light"]) .hf-studio-play-control {
+  background: #27272a;
+  border-color: #52525b;
+  color: #ffffff;
+}
+
+:root[data-ipollowork-theme="light"] .hf-studio-play-icon {
+  color: #111827 !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel {
+  color: var(--hf-panel-text-1);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .bg-neutral-900 {
+  background-color: #f4f4f5 !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .bg-neutral-800,
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .hover\:bg-neutral-800:hover {
+  background-color: #e9eaec !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-200,
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-300 {
+  color: #18181b !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-400 {
+  color: #52525b !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-500,
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-600 {
+  color: #71717a !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .border-neutral-700,
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .border-neutral-800 {
+  border-color: #d4d4d8 !important;
+}
+
+.hf-shortcuts-divider {
+  border-top: 1px solid var(--hf-shortcuts-divider);
+}
+
+:root:not([data-ipollowork-theme="light"]) .hf-studio-play-icon {
+  color: #ffffff !important;
+}
 
 /* The embedded Studio has a few intentionally dark Tailwind surfaces. Give
    the host light theme one continuous, pale workspace so the preview, timeline,
@@ -204,6 +270,34 @@ body {
 :root[data-ipollowork-theme="light"] .hf-timeline-ruler-pad,
 :root[data-ipollowork-theme="light"] .hf-timeline-ruler-content {
   background-color: var(--hf-workspace-surface) !important;
+}
+
+/* The empty timeline has its own hard-coded dark surface and therefore needs
+   an explicit light-theme bridge, just like the populated timeline lanes. */
+:root[data-ipollowork-theme="light"] .hf-timeline-empty {
+  background-color: var(--hf-workspace-surface) !important;
+  border-top-color: var(--hf-workspace-border) !important;
+  color: var(--hf-panel-text-1);
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty > :first-child {
+  border-bottom-color: var(--hf-workspace-hairline) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty .text-neutral-600 {
+  color: var(--hf-panel-text-3) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty .text-neutral-500 {
+  color: var(--hf-panel-text-2) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty .bg-neutral-700\/40 {
+  background-color: #b8c1ca !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty .border-neutral-700\/50 {
+  border-color: var(--hf-workspace-border) !important;
 }
 
 .hf-color-grading-number::-webkit-outer-spin-button,

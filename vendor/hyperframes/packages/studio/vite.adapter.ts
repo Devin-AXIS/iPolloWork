@@ -248,6 +248,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
             if (systemChrome) process.env.PRODUCER_HEADLESS_SHELL_PATH = systemChrome;
           }
           const { createRenderJob, executeRenderJob } = await getProducerModule();
+          mkdirSync(dirname(opts.outputPath), { recursive: true });
           const renderBodyScripts = createStudioDevRenderBodyScripts(opts.project.dir);
           const job = createRenderJob({
             fps: opts.fps,
@@ -278,6 +279,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
           state.status = "complete";
           state.progress = 100;
           const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
+          mkdirSync(dirname(metaPath), { recursive: true });
           writeFileSync(
             metaPath,
             JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
@@ -291,6 +293,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
           state.error = err instanceof Error ? err.message : String(err);
           try {
             const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
+            mkdirSync(dirname(metaPath), { recursive: true });
             writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
           } catch {
             /* ignore */

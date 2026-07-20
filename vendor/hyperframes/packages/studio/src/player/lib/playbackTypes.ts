@@ -34,6 +34,10 @@ export interface TimelineLike {
 
 export interface ClipManifestClip {
   id: string | null;
+  hfId?: string;
+  selector?: string;
+  selectorIndex?: number;
+  sourceFile?: string;
   label: string;
   start: number;
   duration: number;

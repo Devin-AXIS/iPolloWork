@@ -7,8 +7,8 @@
 
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, writeFileSync, statSync, unlinkSync } from "node:fs";
-import { resolve, join, basename } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, unlinkSync } from "node:fs";
+import { resolve, join, basename, dirname } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
 import {
   hashSignatureParts,
@@ -413,6 +413,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         try {
           const { createRenderJob, executeRenderJob } = await loadStudioProducer();
           const { ensureBrowser } = await import("../browser/manager.js");
+          mkdirSync(dirname(opts.outputPath), { recursive: true });
 
           try {
             const browser = await ensureBrowser({ preferManagedChrome: true });
@@ -457,6 +458,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           state.status = "complete";
           state.progress = 100;
           const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
+          mkdirSync(dirname(metaPath), { recursive: true });
           writeFileSync(
             metaPath,
             JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
@@ -473,6 +475,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           emitStudioRenderError(opts, Date.now() - startTime, state.stage, err, renderJob);
           try {
             const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
+            mkdirSync(dirname(metaPath), { recursive: true });
             writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
           } catch {
             /* ignore */

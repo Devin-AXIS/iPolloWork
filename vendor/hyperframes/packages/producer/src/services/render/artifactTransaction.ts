@@ -27,12 +27,19 @@ const defaultFileSystem: ArtifactTransactionFileSystem = {
 
 function createSiblingTransactionDirectory(destination: string): string {
   const parent = dirname(destination);
-  const extension = extname(destination);
-  const stem = extension ? basename(destination, extension) : basename(destination);
   // mkdtemp reserves the directory atomically and creates it with private
   // permissions. Keeping it beside the destination preserves same-filesystem
   // rename semantics without exposing predictable files in a shared temp dir.
-  return mkdtempSync(join(parent, `.${stem}.hf-transaction-`));
+  // Keep the prefix short: on Windows the final render path can already be
+  // deep under Electron's userData directory, and FFmpeg reports overly long
+  // staging paths as "No such file or directory".
+  return mkdtempSync(join(parent, ".hf-t-"));
+}
+
+function createStagingBasename(destination: string): string {
+  if (process.platform !== "win32") return basename(destination);
+  const extension = extname(destination);
+  return `out${extension || ".tmp"}`;
 }
 
 function assertReadableNonEmptyFile(path: string): void {
@@ -86,7 +93,7 @@ export class ArtifactTransaction {
   ) {
     this.destinationPath = resolve(destinationPath);
     this.transactionDirectory = createSiblingTransactionDirectory(this.destinationPath);
-    this.stagingPath = join(this.transactionDirectory, basename(this.destinationPath));
+    this.stagingPath = join(this.transactionDirectory, createStagingBasename(this.destinationPath));
     this.backupPath = join(this.transactionDirectory, "backup");
   }
 
