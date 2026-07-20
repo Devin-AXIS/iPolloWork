@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.brand-liquid-sizzle",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "brand-sizzle",
+  "style": "cinematic",
+  "tags": ["video", "brand", "sizzle", "webgl", "shader", "liquid", "logo"],
+  "surface": "video",
+  "title": "Brand Liquid Sizzle",
+  "description": "A premium brand opener with a deterministic WebGL liquid field, depth-shifted type, light streaks, grain, and a logo sting.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork · HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition inspired by HyperFrames Liquid Glass, shader transition, grain, and logo outro patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "accent", "label": "Accent", "type": "color", "group": "theme" },
+      { "id": "descriptor", "label": "Descriptor", "type": "text", "group": "content" },
+      { "id": "keyword", "label": "Keyword", "type": "text", "group": "content" },
+      { "id": "cta", "label": "Call to action", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the descriptor, keyword, and call to action with brand-specific copy.",
+    "Keep WebGL effects atmospheric and preserve contrast for the primary title.",
+    "Use the local CSS fallback if the preview environment cannot create a WebGL context.",
+    "Verify the final logo sting and grain remain crisp after H.264 encoding."
+  ],
+  "minimumAppVersion": "0.17.24"
+}

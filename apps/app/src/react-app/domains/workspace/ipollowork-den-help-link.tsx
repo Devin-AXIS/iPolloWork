@@ -2,6 +2,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { t } from "@/i18n";
 import {
   Dialog,
   DialogClose,
@@ -30,44 +31,42 @@ export function IPolloWorkDenHelpLink() {
         className="mt-2 inline-flex items-center text-[11px] font-medium text-blue-11 underline-offset-2 hover:underline"
         onClick={() => setOpen(true)}
       >
-        Using iPolloWork Den Remote Workers? Click here
+        {t("den.remote_worker_help_link")}
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>iPolloWork Den remote workers</DialogTitle>
+            <DialogTitle>{t("den.remote_worker_help_title")}</DialogTitle>
             <DialogDescription>
-              We recently upgraded our servers. If your remote worker was
-              provisioned before that upgrade, it may no longer be compatible
-              with the current iPolloWork app.
+              {t("den.remote_worker_help_description")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 text-[13px] leading-5 text-gray-11">
-            <p>To get back online, you have two options:</p>
+            <p>{t("den.remote_worker_help_options")}</p>
             <ul className="ml-4 list-disc space-y-2">
               <li>
-                Email{" "}
+                {t("den.remote_worker_help_email_prefix")}{" "}
                 <a
                   href={SUPPORT_MAILTO}
                   className="font-medium text-blue-11 hover:underline"
                 >
                   {SUPPORT_EMAIL}
                 </a>{" "}
-                and ask us to upgrade your worker.
+                {t("den.remote_worker_help_email_suffix")}
               </li>
               <li>
-                Use the in-app{" "}
-                <span className="font-medium text-dls-text">Feedback</span>{" "}
-                button to send us a note, and we&apos;ll pick it up from there.
+                {t("den.remote_worker_help_feedback_prefix")}{" "}
+                <span className="font-medium text-dls-text">{t("status.feedback")}</span>{" "}
+                {t("den.remote_worker_help_feedback_suffix")}
               </li>
             </ul>
           </div>
 
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" />}>
-              Close
+              {t("common.close")}
             </DialogClose>
             <Button
               type="button"
@@ -75,7 +74,7 @@ export function IPolloWorkDenHelpLink() {
                 window.location.href = SUPPORT_MAILTO;
               }}
             >
-              Email support
+              {t("den.remote_worker_help_email_support")}
             </Button>
           </DialogFooter>
         </DialogContent>

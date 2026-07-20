@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.feature-orbit",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "product-feature",
+  "style": "glass",
+  "tags": ["video", "app", "saas", "features", "orbit", "ui", "motion"],
+  "surface": "video",
+  "title": "Feature Orbit",
+  "description": "A high-energy product feature reveal with orbiting UI cards, cursor interactions, tactile button feedback, and particle accents.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork · HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition inspired by HyperFrames showcase and motion catalog patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "accent", "label": "Accent", "type": "color", "group": "theme" },
+      { "id": "featureA", "label": "Feature one", "type": "text", "group": "content" },
+      { "id": "featureB", "label": "Feature two", "type": "text", "group": "content" },
+      { "id": "featureC", "label": "Feature three", "type": "text", "group": "content" },
+      { "id": "metric", "label": "Metric", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the feature names and proof point with the complete product brief.",
+    "Keep the three feature cards visually distinct and reveal them in spoken order.",
+    "Use the accent variable for the orbit, click ripple, and key proof point.",
+    "Verify that the cursor interaction and particle burst remain visible at 30 fps."
+  ],
+  "minimumAppVersion": "0.17.24"
+}

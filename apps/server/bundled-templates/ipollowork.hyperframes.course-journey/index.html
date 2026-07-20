@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en" data-ipw-template="course-journey" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Learn the system behind the result"},{"id":"brandName","type":"string","label":"Brand name","default":"Field Notes"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg"},{"id":"accent","type":"color","label":"Accent","default":"#b43f2c"},{"id":"chapter","type":"string","label":"Chapter","default":"Chapter 01 / The idea"},{"id":"definition","type":"string","label":"Definition","default":"A useful model makes the invisible visible."},{"id":"example","type":"string","label":"Example","default":"Start with the smallest repeatable move."},{"id":"takeaway","type":"string","label":"Takeaway","default":"Clarity is a practice, not a personality."}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Course Journey</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      :root { --accent: #b43f2c; --bg: #f4efe8; --ink: #26231f; --muted: #5e5952; --line: rgba(38,35,31,.18); }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .paper { position: absolute; inset: 0; background: radial-gradient(circle at 83% 16%, rgba(240,106,79,.12), transparent 27%), #f4efe8; }
+      .paper::after { content: ''; position: absolute; inset: 0; opacity: .25; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='.12'/%3E%3C/svg%3E"); }
+      .mast { position: absolute; left: 86px; right: 86px; top: 58px; z-index: 20; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--ink); padding-bottom: 22px; }
+      .brand { display: flex; align-items: center; gap: 12px; font-weight: 850; font-size: 23px; letter-spacing: -.04em; }
+      .brand img { width: 30px; height: 30px; object-fit: contain; }
+      .course-meta { color: rgba(38,35,31,.76); font: 700 16px/1.2 ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; }
+      .rail { position: absolute; left: 86px; top: 176px; bottom: 116px; width: 5px; background: rgba(38,35,31,.13); z-index: 20; }
+      .rail-fill { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: top center; transform: scaleY(.08); background: var(--accent); }
+      .chapter-list { position: absolute; left: 122px; top: 180px; z-index: 20; display: grid; gap: 35px; color: rgba(38,35,31,.76); font: 700 16px/1.2 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+      .chapter-list .active { color: var(--ink); }
+      .chapter-list .active::before { content: ''; display: inline-block; width: 13px; height: 13px; margin: 0 12px 0 -23px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+      .copy { position: absolute; left: 330px; top: 212px; width: 710px; z-index: 10; }
+      .kicker { color: var(--accent); font: 800 17px/1.2 ui-monospace, monospace; letter-spacing: .2em; text-transform: uppercase; }
+      h1 { margin: 26px 0 28px; max-width: 720px; font-size: 101px; line-height: .94; letter-spacing: -.075em; }
+      .copy p { max-width: 590px; margin: 0; color: var(--muted); font-size: 29px; line-height: 1.34; }
+      .underline { display: inline-block; border-bottom: 10px solid var(--accent); line-height: .82; }
+      .diagram { position: absolute; right: 112px; top: 218px; width: 660px; height: 570px; z-index: 10; }
+      .diagram::before { content: ''; position: absolute; left: 120px; top: 80px; width: 410px; height: 410px; border: 2px dashed rgba(38,35,31,.2); border-radius: 50%; }
+      .node { position: absolute; display: grid; place-items: center; text-align: center; width: 168px; min-height: 104px; padding: 20px; border: 2px solid var(--ink); border-radius: 18px; background: rgba(244,239,232,.86); font-size: 19px; font-weight: 800; line-height: 1.1; box-shadow: 12px 12px 0 rgba(240,106,79,.18); }
+      .node::after { content: ''; position: absolute; width: 12px; height: 12px; right: -6px; top: -6px; border-radius: 50%; background: var(--accent); }
+      .node-a { left: 0; top: 220px; }
+      .node-b { left: 246px; top: 36px; }
+      .node-c { right: 0; top: 220px; }
+      .node-d { left: 246px; bottom: 0; }
+      .line { position: absolute; height: 2px; background: var(--ink); transform-origin: left center; opacity: .65; }
+      .line-a { left: 150px; top: 265px; width: 210px; transform: rotate(-31deg); }
+      .line-b { left: 390px; top: 128px; width: 210px; transform: rotate(31deg); }
+      .line-c { left: 510px; top: 266px; width: 210px; transform: rotate(149deg); }
+      .line-d { left: 390px; top: 466px; width: 210px; transform: rotate(-149deg); }
+      .definition-card { position: absolute; right: 124px; top: 230px; width: 630px; padding: 34px 38px; border: 2px solid var(--ink); background: rgba(255,255,255,.45); box-shadow: 18px 18px 0 rgba(38,35,31,.08); z-index: 12; }
+      .definition-card small { color: var(--accent); font: 800 16px/1.2 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+      .definition-card h2 { margin: 26px 0 18px; font-size: 54px; line-height: 1; letter-spacing: -.065em; }
+      .definition-card p { margin: 0; color: var(--muted); font-size: 25px; line-height: 1.32; }
+      .example-card { position: absolute; right: 118px; top: 215px; width: 640px; padding: 34px; border-radius: 22px; background: var(--ink); color: var(--bg); z-index: 12; transform: rotate(-2deg); box-shadow: 22px 25px 0 rgba(240,106,79,.25); }
+      .example-card small { color: var(--accent); font: 800 16px/1.2 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+      .example-card h2 { margin: 28px 0; max-width: 480px; font-size: 63px; line-height: .96; letter-spacing: -.07em; }
+      .example-card p { margin: 0; color: rgba(244,239,232,.62); font-size: 22px; line-height: 1.35; }
+      .takeaway { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; z-index: 10; }
+      .takeaway-inner { width: 1200px; }
+      .takeaway h2 { margin: 28px 0; font-size: 108px; line-height: .92; letter-spacing: -.08em; }
+      .takeaway p { margin: 0; color: var(--muted); font-size: 28px; }
+      .page-no { position: absolute; right: 88px; bottom: 56px; z-index: 20; color: rgba(38,35,31,.76); font: 700 16px/1.2 ui-monospace, monospace; letter-spacing: .12em; }
+    </style>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="20">
+      <div id="background-layer" class="clip" data-start="0" data-duration="20" data-track-index="0"><div class="paper"></div></div>
+      <header class="mast"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg" alt="Brand logo" /><span data-var-text="brandName">Field Notes</span></div><div class="course-meta">Lesson / 01 — 05</div></header>
+      <div class="rail"><i class="rail-fill" id="rail-fill"></i></div><div class="chapter-list"><span class="active">01 / Hook</span><span>02 / Define</span><span>03 / Example</span><span>04 / Apply</span><span>05 / Takeaway</span></div>
+      <section class="scene clip" id="s-hook" data-start="0" data-duration="4" data-track-index="1"><div class="copy"><div class="kicker" data-var-text="chapter">Chapter 01 / The idea</div><h1 data-var-text="title">Learn the system behind the result</h1><p>One visual journey from question to useful understanding.</p></div><div class="diagram"><div class="node node-a">Question</div><div class="node node-b">Model</div><div class="node node-c">Practice</div><div class="node node-d">Result</div><i class="line line-a"></i><i class="line line-b"></i><i class="line line-c"></i><i class="line line-d"></i></div></section>
+      <section class="scene clip" id="s-define" data-start="4" data-duration="4" data-track-index="2"><div class="copy"><div class="kicker">02 / Define</div><h1>Make the invisible <span class="underline">visible.</span></h1><p>Give the idea one crisp sentence before adding the detail.</p></div><div class="definition-card"><small>Definition</small><h2 data-var-text="definition">A useful model makes the invisible visible.</h2><p>Start with a mental handle your audience can carry into the next scene.</p></div></section>
+      <section class="scene clip" id="s-example" data-start="8" data-duration="4" data-track-index="3"><div class="copy"><div class="kicker">03 / Example</div><h1>Show the <span class="underline">move.</span></h1><p>Concrete examples turn a concept into something people can repeat.</p></div><div class="example-card"><small>Try this</small><h2 data-var-text="example">Start with the smallest repeatable move.</h2><p>Reduce the idea until the first action feels obvious.</p></div></section>
+      <section class="scene clip" id="s-apply" data-start="12" data-duration="4" data-track-index="4"><div class="copy"><div class="kicker">04 / Apply</div><h1>Practice is where <span class="underline">clarity</span> compounds.</h1><p>Let the audience see how the idea changes a real decision.</p></div><div class="diagram"><div class="node node-a">Observe</div><div class="node node-b">Choose</div><div class="node node-c">Test</div><div class="node node-d">Repeat</div><i class="line line-a"></i><i class="line line-b"></i><i class="line line-c"></i><i class="line line-d"></i></div></section>
+      <section class="scene clip" id="s-takeaway" data-start="16" data-duration="4" data-track-index="5"><div class="takeaway"><div class="takeaway-inner"><div class="kicker">05 / Takeaway</div><h2 data-var-text="takeaway">Clarity is a practice, not a personality.</h2><p>Leave the viewer with one idea they can use today.</p></div></div></section>
+      <div class="page-no">FIELD NOTES / 01</div>
+    </main>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to('#rail-fill', { scaleY: 1, duration: 19.2, ease: 'none' }, .2);
+      tl.fromTo('#s-hook .copy', { opacity: 0, x: -44 }, { opacity: 1, x: 0, duration: .75, ease: 'power3.out' }, .18);
+      tl.fromTo('#s-hook .node', { opacity: 0, scale: .7, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: .55, stagger: .16, ease: 'power3.out' }, .72);
+      tl.fromTo('#s-hook .line', { scaleX: 0 }, { scaleX: 1, duration: .45, stagger: .14, ease: 'power2.out' }, 1.38);
+      tl.fromTo('#s-define .copy', { opacity: 0, x: -44 }, { opacity: 1, x: 0, duration: .7, ease: 'power3.out' }, 4.18);
+      tl.fromTo('.definition-card', { opacity: 0, x: 60, rotation: 3 }, { opacity: 1, x: 0, rotation: 0, duration: .85, ease: 'expo.out' }, 4.65);
+      tl.fromTo('#s-example .copy', { opacity: 0, x: -44 }, { opacity: 1, x: 0, duration: .7, ease: 'power3.out' }, 8.18);
+      tl.fromTo('.example-card', { opacity: 0, y: 56, rotation: 6 }, { opacity: 1, y: 0, rotation: -2, duration: .9, ease: 'power3.out' }, 8.65);
+      tl.fromTo('#s-apply .copy', { opacity: 0, x: -44 }, { opacity: 1, x: 0, duration: .7, ease: 'power3.out' }, 12.18);
+      tl.fromTo('#s-apply .node', { opacity: 0, scale: .72 }, { opacity: 1, scale: 1, duration: .55, stagger: .17, ease: 'power3.out' }, 12.72);
+      tl.fromTo('#s-apply .line', { scaleX: 0 }, { scaleX: 1, duration: .42, stagger: .14, ease: 'power2.out' }, 13.34);
+      tl.fromTo('#s-takeaway .takeaway-inner', { opacity: 0, scale: .88, y: 30 }, { opacity: 1, scale: 1, y: 0, duration: 1, ease: 'power3.out' }, 16.2);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

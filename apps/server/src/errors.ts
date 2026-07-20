@@ -13,6 +13,20 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Keep API errors recognizable when a route and its dependency are loaded by
+ * different Bun module contexts. This can otherwise turn an intended 4xx
+ * response into a misleading 500.
+ */
+export function isApiError(err: unknown): err is ApiError {
+  if (err instanceof ApiError) return true;
+  if (!err || typeof err !== "object") return false;
+  const candidate = err as Record<string, unknown>;
+  return Number.isInteger(candidate.status)
+    && typeof candidate.code === "string"
+    && typeof candidate.message === "string";
+}
+
 export function formatError(err: ApiError): ApiErrorBody {
   return {
     code: err.code,

@@ -315,13 +315,13 @@ function BrowserPanelContent({
                     size="icon-sm"
                     onClick={back}
                     disabled={!tab.canGoBack}
-                    aria-label="Go back"
+                    aria-label={t("side_panel.back")}
                   >
                     <ArrowLeft />
                   </Button>
                 )}
               />
-              <TooltipContent>Back</TooltipContent>
+              <TooltipContent>{t("side_panel.back")}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -331,13 +331,13 @@ function BrowserPanelContent({
                     size="icon-sm"
                     onClick={forward}
                     disabled={!tab.canGoForward}
-                    aria-label="Go forward"
+                    aria-label={t("side_panel.forward")}
                   >
                     <ArrowRight />
                   </Button>
                 )}
               />
-              <TooltipContent>Forward</TooltipContent>
+              <TooltipContent>{t("side_panel.forward")}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -346,13 +346,13 @@ function BrowserPanelContent({
                     variant="ghost"
                     size="icon-sm"
                     onClick={reload}
-                    aria-label="Reload page"
+                    aria-label={t("side_panel.reload_page")}
                   >
                     {tab.status === "loading" ? <Loader2 className="animate-spin" /> : <RotateCw />}
                   </Button>
                 )}
               />
-              <TooltipContent>Reload</TooltipContent>
+              <TooltipContent>{t("side_panel.reload")}</TooltipContent>
             </Tooltip>
             <InputGroup className="mx-1 h-7 flex-1 rounded-md">
               <InputGroupInput
@@ -369,7 +369,7 @@ function BrowserPanelContent({
                 onBlur={() => {
                   urlFocusedRef.current = false;
                 }}
-                placeholder="Enter URL..."
+                placeholder={t("side_panel.enter_url")}
                 spellCheck={false}
                 autoComplete="off"
               />
@@ -380,15 +380,15 @@ function BrowserPanelContent({
           </>
         ) : (
           <p className="px-2 text-sm text-muted-foreground">
-            Browser panel is only available in the desktop app.
+            {t("side_panel.desktop_only")}
           </p>
         )}
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={onClose}
-          title="Close panel"
-          aria-label="Close panel"
+          title={t("side_panel.close_panel")}
+          aria-label={t("side_panel.close_panel")}
         >
           <X />
         </Button>
@@ -584,7 +584,7 @@ export function SidePanel({
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label="Add side panel entry"
+                            aria-label={t("side_panel.add_entry")}
                           >
                             <Plus />
                           </Button>
@@ -592,7 +592,7 @@ export function SidePanel({
                       />
                     )}
                   />
-                  <TooltipContent>Add side panel entry</TooltipContent>
+                  <TooltipContent>{t("side_panel.add_entry")}</TooltipContent>
                 </Tooltip>
                 <DropdownMenuContent
                   align="end"
@@ -657,7 +657,7 @@ export function SidePanel({
 function PanelEmpty() {
   return (
     <div className="flex h-full items-center justify-center p-4 text-center">
-      <p className="text-sm text-muted-foreground">Open an artifact or browser tab to get started.</p>
+      <p className="text-sm text-muted-foreground">{t("side_panel.empty_state")}</p>
     </div>
   );
 }
