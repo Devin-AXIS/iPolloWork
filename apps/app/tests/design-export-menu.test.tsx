@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import * as React from "react";
 
@@ -29,6 +30,18 @@ function findByText(node: React.ReactNode, label: string): React.ReactElement {
   throw new Error(`Could not find element with text: ${label}`);
 }
 
+function findByAriaLabel(node: React.ReactNode, label: string): React.ReactElement {
+  if (React.isValidElement(node) && Reflect.get(node.props, "aria-label") === label) return node;
+  for (const child of childrenOf(node)) {
+    try {
+      return findByAriaLabel(child, label);
+    } catch {
+      // Keep searching sibling branches.
+    }
+  }
+  throw new Error(`Could not find element with aria-label: ${label}`);
+}
+
 function menu(overrides: Partial<React.ComponentProps<typeof DesignExportMenu>> = {}) {
   return DesignExportMenu({
     exportingPdf: false,
@@ -42,16 +55,33 @@ function menu(overrides: Partial<React.ComponentProps<typeof DesignExportMenu>> 
 afterEach(() => setLocale("en"));
 
 describe("design export download menu", () => {
-  test("uses localized labels for the trigger and both formats", () => {
+  test("uses a language-independent icon trigger and localized format labels", () => {
     setLocale("en");
-    expect(textContent(menu())).toContain("Download");
-    expect(textContent(menu())).toContain("Download PDF");
-    expect(textContent(menu())).toContain("Download PPTX");
+    const englishMenu = menu();
+    const englishTrigger = findByAriaLabel(englishMenu, "Download");
+    expect(textContent(englishTrigger).trim()).toBe("");
+    expect(textContent(englishMenu)).toContain("Download PDF");
+    expect(textContent(englishMenu)).toContain("Download PPTX");
 
     setLocale("zh");
-    expect(textContent(menu())).toContain("下载");
-    expect(textContent(menu())).toContain("下载 PDF");
-    expect(textContent(menu())).toContain("下载 PPTX");
+    const chineseMenu = menu();
+    const chineseTrigger = findByAriaLabel(chineseMenu, "下载");
+    expect(textContent(chineseTrigger).trim()).toBe("");
+    expect(textContent(chineseMenu)).toContain("下载 PDF");
+    expect(textContent(chineseMenu)).toContain("下载 PPTX");
+  });
+
+  test("replaces the two toolbar export buttons with the shared menu", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("<DesignExportMenu");
+    expect(panelSource).toContain("onExportPdf={() => void exportDeckToPdf()}");
+    expect(panelSource).toContain("onExportPptx={() => setPptxConfirmationOpen(true)}");
+    expect(panelSource).not.toContain("Export presentation to PDF");
+    expect(panelSource).not.toContain("Export presentation to PPTX");
   });
 
   test("routes each format to its existing export action", () => {
@@ -78,8 +108,8 @@ describe("design export download menu", () => {
   });
 
   test("disables the download trigger only when both formats are busy", () => {
-    expect(Reflect.get(findByText(menu({ exportingPdf: true }), "Download").props, "disabled")).toBe(false);
-    expect(Reflect.get(findByText(menu({ exportingPptx: true }), "Download").props, "disabled")).toBe(false);
-    expect(Reflect.get(findByText(menu({ exportingPdf: true, exportingPptx: true }), "Download").props, "disabled")).toBe(true);
+    expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true }), "Download").props, "disabled")).toBe(false);
+    expect(Reflect.get(findByAriaLabel(menu({ exportingPptx: true }), "Download").props, "disabled")).toBe(false);
+    expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true, exportingPptx: true }), "Download").props, "disabled")).toBe(true);
   });
 });

@@ -31,13 +31,12 @@ export function DesignExportMenu({
         render={(
           <Button
             variant="outline"
-            size="sm"
+            size="icon-sm"
             disabled={exportingPdf && exportingPptx}
             aria-label={downloadLabel}
             title={downloadLabel}
           >
             <Download />
-            {downloadLabel}
           </Button>
         )}
       />
