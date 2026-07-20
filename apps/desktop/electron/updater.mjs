@@ -171,6 +171,32 @@ async function enableSquirrelDirectContentsWrite() {
   await runDefaults(["write", SHIP_IT_DEFAULTS_DOMAIN, "SquirrelMacEnableDirectContentsWrite", "-bool", "YES"]);
 }
 
+export function squirrelShipItLaunchdService(
+  bundleIdentifier,
+  userId,
+  platform = process.platform,
+) {
+  if (platform !== "darwin") return null;
+  if (typeof bundleIdentifier !== "string" || !bundleIdentifier.trim()) return null;
+  if (!Number.isInteger(userId) || userId < 0) return null;
+  return `gui/${userId}/${bundleIdentifier}.ShipIt`;
+}
+
+function kickstartQueuedSquirrelInstall(app) {
+  const userId = typeof process.getuid === "function" ? process.getuid() : null;
+  const service = squirrelShipItLaunchdService(app.getBundleIdentifier?.(), userId);
+  if (!service) return;
+
+  // Electron's native updater writes this launchd job before quitting. On
+  // some macOS sessions the job remains pending instead of being started,
+  // which leaves the verified update staged but the installed app unchanged.
+  // kickstart is idempotent: it only wakes the already-queued ShipIt task.
+  const child = execFile("/bin/launchctl", ["kickstart", "-k", service], { windowsHide: true }, (error) => {
+    if (error) console.warn("[updater] failed to kickstart queued ShipIt install", error.message ?? error);
+  });
+  child.unref();
+}
+
 // Path of the ShipIt cache that, when stuck, keeps aborting future installs.
 // Exported for tests.
 export function staleUpdaterStatePaths(app) {
@@ -317,6 +343,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
       // defaults domain may have been wiped when stale state was cleaned.
       await enableSquirrelDirectContentsWrite();
       updater.quitAndInstall(false, true);
+      kickstartQueuedSquirrelInstall(app);
       return { ok: true };
     } catch (error) {
       return { ok: false, reason: String(error?.message ?? error) };

@@ -8,6 +8,7 @@ import {
   clearLegacyElectronUpdaterChannel,
   electronUpdaterFeedUrl,
   normalizeElectronUpdaterChannel,
+  squirrelShipItLaunchdService,
   staleUpdaterStatePaths,
 } from "./updater.mjs";
 
@@ -22,6 +23,21 @@ describe("staleUpdaterStatePaths", () => {
 
   it("is a no-op off macOS", { skip: process.platform === "darwin" }, () => {
     assert.deepEqual(staleUpdaterStatePaths(fakeApp), []);
+  });
+});
+
+describe("squirrelShipItLaunchdService", () => {
+  it("targets the queued ShipIt launchd job for the active macOS user", () => {
+    assert.equal(
+      squirrelShipItLaunchdService("com.differentai.ipollowork", 501, "darwin"),
+      "gui/501/com.differentai.ipollowork.ShipIt",
+    );
+  });
+
+  it("does not create a launchd target for invalid or non-macOS inputs", () => {
+    assert.equal(squirrelShipItLaunchdService("com.example.app", 501, "linux"), null);
+    assert.equal(squirrelShipItLaunchdService("", 501, "darwin"), null);
+    assert.equal(squirrelShipItLaunchdService("com.example.app", -1, "darwin"), null);
   });
 });
 
