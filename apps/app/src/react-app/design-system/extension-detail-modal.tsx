@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 import type { ExtensionKind } from "@/app/constants";
 import { MarkdownBlock } from "../domains/session/surface/markdown";
 import { resolveExtensionIconUrl } from "./extension-icon-src";
@@ -88,20 +89,20 @@ export type ExtensionDetailModalProps = {
   size?: "default" | "wide";
 };
 
-const kindLabel: Record<ExtensionKind, string> = {
-  mcp: "MCP Server",
-  plugin: "Plugin",
-  skill: "Skill",
-  "ui-control": "UI Control",
-  extension: "iPolloWork Extension",
+const kindLabelKey: Record<ExtensionKind, string> = {
+  mcp: "extension_detail.kind_mcp",
+  plugin: "extension_detail.kind_plugin",
+  skill: "extension_detail.kind_skill",
+  "ui-control": "extension_detail.kind_ui_control",
+  extension: "extension_detail.kind_extension",
 };
 
-const kindDesc: Record<ExtensionKind, string> = {
-  mcp: "Connects as a Model Context Protocol server, giving your agent access to external tools and data.",
-  plugin: "Extends iPolloWork with additional capabilities managed by your organization.",
-  skill: "A reusable workflow that your agent can execute on demand.",
-  "ui-control": "Lets another MCP client inspect and drive this iPolloWork desktop UI through a local stdio wrapper.",
-  extension: "An iPolloWork extension that adds tools, providers, or integrations to your workspace.",
+const kindDescKey: Record<ExtensionKind, string> = {
+  mcp: "extension_detail.desc_mcp",
+  plugin: "extension_detail.desc_plugin",
+  skill: "extension_detail.desc_skill",
+  "ui-control": "extension_detail.desc_ui_control",
+  extension: "extension_detail.desc_extension",
 };
 
 const uiControlClientConfig = `{
@@ -205,8 +206,8 @@ export function ExtensionDetailModal({
   contentPreview,
   onReveal,
   onConnect,
-  connectLabel = "Connect",
-  connectingLabel = "Connecting...",
+  connectLabel,
+  connectingLabel,
   onUninstall,
   uninstallLabel,
   onHide,
@@ -217,6 +218,10 @@ export function ExtensionDetailModal({
 }: ExtensionDetailModalProps) {
   "use memo";
   const resolvedIconSrc = resolveExtensionIconUrl({ iconSrc, iconSlug, serviceUrl: url });
+  const translatedKindLabel = t(kindLabelKey[kind]);
+  const translatedKindDescription = t(kindDescKey[kind]);
+  const resolvedConnectLabel = connectLabel ?? t("extension_detail.connect");
+  const resolvedConnectingLabel = connectingLabel ?? t("extension_detail.connecting");
 
   return (
     <Dialog
@@ -263,15 +268,15 @@ export function ExtensionDetailModal({
             <div className="min-w-0 flex flex-col gap-1 justify-center self-stretch">
               <DialogTitle>{name}</DialogTitle>
               <DialogDescription className="flex flex-wrap items-center gap-2">
-                <span>{kindLabel[kind]}</span>
+                <span>{translatedKindLabel}</span>
                 {preview ? (
                   <span className="rounded-md bg-blue-3 px-1.5 py-0.5 text-[10px] font-medium text-blue-11">
-                    Preview
+                    {t("extension_detail.preview")}
                   </span>
                 ) : null}
                 {beta ? (
                   <span className="rounded-md bg-amber-3 px-1.5 py-0.5 text-[10px] font-medium text-amber-11">
-                    Alpha
+                    {t("extension_detail.alpha")}
                   </span>
                 ) : null}
               </DialogDescription>
@@ -291,7 +296,7 @@ export function ExtensionDetailModal({
             {setupInstructions ? (
               <Card variant="outline" size="sm">
                 <CardHeader>
-                  <CardTitle>Setup</CardTitle>
+                  <CardTitle>{t("extension_detail.setup")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-sm leading-relaxed text-muted-foreground">
@@ -304,13 +309,13 @@ export function ExtensionDetailModal({
             {resourceLabels.length > 0 || contributionLabels.length > 0 ? (
               <Card variant="outline" size="sm">
                 <CardHeader>
-                  <CardTitle>Extension manifest</CardTitle>
+                  <CardTitle>{t("extension_detail.manifest")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3 text-sm">
                     {resourceLabels.length > 0 ? (
                       <div>
-                        <div className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Resources</div>
+                        <div className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("extension_detail.resources")}</div>
                         <div className="flex flex-wrap gap-1.5">
                           {resourceLabels.map((label) => (
                             <span key={label} className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">{label}</span>
@@ -320,7 +325,7 @@ export function ExtensionDetailModal({
                     ) : null}
                     {contributionLabels.length > 0 ? (
                       <div>
-                        <div className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Contributions</div>
+                        <div className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("extension_detail.contributions")}</div>
                         <div className="flex flex-wrap gap-1.5">
                           {contributionLabels.map((label) => (
                             <span key={label} className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">{label}</span>
@@ -336,18 +341,18 @@ export function ExtensionDetailModal({
             {/* Details */}
             <Card variant="outline" size="sm">
               <CardHeader>
-                <CardTitle>Details</CardTitle>
+                <CardTitle>{t("extension_detail.details")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Type</span>
-                    <span className="font-medium text-card-foreground">{kindLabel[kind]}</span>
+                    <span className="text-muted-foreground">{t("extension_detail.type")}</span>
+                    <span className="font-medium text-card-foreground">{translatedKindLabel}</span>
                   </div>
 
                   {url ? (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Endpoint</span>
+                      <span className="text-muted-foreground">{t("extension_detail.endpoint")}</span>
                       <span className="flex items-center gap-1.5 truncate font-mono text-xs text-card-foreground">
                         {url.replace(/^https?:\/\//, "").slice(0, 40)}
                         <ExternalLink size={10} className="shrink-0 text-muted-foreground" />
@@ -357,20 +362,20 @@ export function ExtensionDetailModal({
 
                   {kind === "ui-control" ? (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Launch</span>
+                      <span className="text-muted-foreground">{t("extension_detail.launch")}</span>
                       <span className="max-w-[300px] truncate font-mono text-xs text-card-foreground">{(launchCommand ?? fallbackUiControlCommand).join(" ")}</span>
                     </div>
                   ) : null}
 
                   {path && onReveal ? (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Location</span>
+                      <span className="text-muted-foreground">{t("extension_detail.location")}</span>
                       <Button
                         variant="link"
                         size="xs"
                         onClick={onReveal}
                       >
-                        Reveal in Finder
+                        {t("extension_detail.reveal")}
                         <ExternalLink data-icon="inline-end" />
                       </Button>
                     </div>
@@ -378,44 +383,44 @@ export function ExtensionDetailModal({
 
                   {oauth ? (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Authentication</span>
-                      <span className="font-medium text-card-foreground">OAuth required</span>
+                      <span className="text-muted-foreground">{t("extension_detail.authentication")}</span>
+                      <span className="font-medium text-card-foreground">{t("extension_detail.oauth_required")}</span>
                     </div>
                   ) : null}
 
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Status</span>
+                    <span className="text-muted-foreground">{t("extension_detail.status")}</span>
                     <span className={cn("font-medium", connected ? "text-green-11" : "text-muted-foreground")}>
                       {connected
-                        ? connectedLabel ?? (kind === "skill" || kind === "plugin" ? "Installed" : "Connected")
+                        ? connectedLabel ?? (kind === "skill" || kind === "plugin" ? t("extension_detail.installed") : t("extension_detail.connected"))
                         : connecting
-                          ? connectingLabel
-                          : disconnectedLabel ?? (kind === "skill" || kind === "plugin" ? "Not installed" : "Not connected")}
+                          ? resolvedConnectingLabel
+                          : disconnectedLabel ?? (kind === "skill" || kind === "plugin" ? t("extension_detail.not_installed") : t("extension_detail.not_connected"))}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Visibility</span>
-                    <span className="font-medium text-card-foreground">{hidden ? "Hidden" : "Shown"}</span>
+                    <span className="text-muted-foreground">{t("extension_detail.visibility")}</span>
+                    <span className="font-medium text-card-foreground">{hidden ? t("extension_detail.hidden") : t("extension_detail.shown")}</span>
                   </div>
 
                   {preview ? (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Release stage</span>
-                      <span className="font-medium text-blue-11">Preview</span>
+                      <span className="text-muted-foreground">{t("extension_detail.release_stage")}</span>
+                      <span className="font-medium text-blue-11">{t("extension_detail.preview")}</span>
                     </div>
                   ) : null}
 
                   {beta ? (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Release stage</span>
-                      <span className="font-medium text-amber-11">Alpha</span>
+                      <span className="text-muted-foreground">{t("extension_detail.release_stage")}</span>
+                      <span className="font-medium text-amber-11">{t("extension_detail.alpha")}</span>
                     </div>
                   ) : null}
 
                   {disabledReason ? (
                     <div className="flex items-center justify-between gap-4 text-sm">
-                      <span className="text-muted-foreground">Availability</span>
+                      <span className="text-muted-foreground">{t("extension_detail.availability")}</span>
                       <span className="text-right font-medium text-amber-11">{disabledReason}</span>
                     </div>
                   ) : null}
@@ -429,7 +434,7 @@ export function ExtensionDetailModal({
             {kind === "skill" && trigger ? (
               <Card variant="outline" size="sm">
                 <CardHeader>
-                  <CardTitle>Trigger</CardTitle>
+                  <CardTitle>{t("extension_detail.trigger")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-sm leading-relaxed text-card-foreground">
@@ -449,7 +454,7 @@ export function ExtensionDetailModal({
               return (
                 <div className="flex flex-col gap-2">
                   <div className="text-sm font-medium text-card-foreground">
-                    Skill content
+                    {t("extension_detail.skill_content")}
                   </div>
                   <div className="max-h-[300px] overflow-y-auto rounded-xl border border-border bg-card p-4 text-sm leading-relaxed text-card-foreground">
                     <MarkdownBlock text={body} />
@@ -462,11 +467,11 @@ export function ExtensionDetailModal({
             {showEnablementCard && ((kind !== "skill" && kind !== "ui-control") || (!trigger && !contentPreview && kind !== "ui-control")) ? (
               <Card variant="outline" size="sm">
                 <CardHeader>
-                  <CardTitle>What this enables</CardTitle>
+                  <CardTitle>{t("extension_detail.what_enables")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-sm leading-relaxed text-muted-foreground">
-                    {kindDesc[kind]}
+                    {translatedKindDescription}
                   </div>
                 </CardContent>
               </Card>
@@ -488,7 +493,7 @@ export function ExtensionDetailModal({
                   onClose();
                 }}
               >
-                Show
+                {t("extension_detail.show")}
               </Button>
             ) : !hidden && onHide ? (
               <Button
@@ -499,13 +504,13 @@ export function ExtensionDetailModal({
                   onClose();
                 }}
               >
-                Hide
+                {t("extension_detail.hide")}
               </Button>
             ) : null}
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <DialogClose render={<Button variant="outline" />}>
-              Close
+              {t("extension_detail.close")}
             </DialogClose>
             {connected && onUninstall ? (
               <Button
@@ -516,7 +521,7 @@ export function ExtensionDetailModal({
                   onClose();
                 }}
               >
-                {uninstallLabel ?? (kind === "skill" ? "Uninstall" : "Disconnect")}
+                {uninstallLabel ?? (kind === "skill" ? t("extension_detail.uninstall") : t("extension_detail.disconnect"))}
               </Button>
             ) : null}
             {!connected && onConnect ? (
@@ -527,10 +532,10 @@ export function ExtensionDetailModal({
                 {connecting ? (
                   <>
                     <Loader2 data-icon="inline-start" className="animate-spin" />
-                    {connectingLabel}
+                    {resolvedConnectingLabel}
                   </>
                 ) : (
-                  connectLabel
+                  resolvedConnectLabel
                 )}
               </Button>
             ) : null}
@@ -555,13 +560,13 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
     <div className="space-y-4">
       <Card variant="outline" size="sm">
         <CardHeader>
-          <CardTitle>How to connect another client</CardTitle>
+          <CardTitle>{t("extension_detail.connect_other_client")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-2 text-sm leading-relaxed text-muted-foreground">
-            <div>iPolloWork desktop starts a private localhost bridge automatically.</div>
-            <div>Your MCP client starts <span className="font-mono text-card-foreground">ipollowork-ui-mcp</span> over stdio; the wrapper discovers the bridge and proxies UI tools to it.</div>
-            <div>Do not point clients at the random localhost bridge URL directly.</div>
+            <div>{t("extension_detail.bridge_started")}</div>
+            <div>{t("extension_detail.client_starts").split("ipollowork-ui-mcp")[0]}<span className="font-mono text-card-foreground">ipollowork-ui-mcp</span>{t("extension_detail.client_starts").split("ipollowork-ui-mcp")[1]}</div>
+            <div>{t("extension_detail.do_not_point")}</div>
           </div>
         </CardContent>
       </Card>
@@ -590,7 +595,7 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
 
       <Card variant="outline" size="sm">
         <CardHeader>
-          <CardTitle>Discovery</CardTitle>
+          <CardTitle>{t("extension_detail.discovery")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="relative overflow-hidden rounded-xl bg-clip-padding before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-xl)-1px)] before:border before:border-border">
@@ -598,7 +603,7 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
               <TableBody>
                 <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
                   <TableCell className="bg-muted/50 w-40 py-2 text-xs font-medium">
-                    Production discovery file
+                    {t("extension_detail.production_discovery")}
                   </TableCell>
                   <TableCell className="py-2 whitespace-normal">
                     <span className="font-mono text-xs break-all">~/Library/Application Support/com.differentai.ipollowork/ipollowork-ui-control.json</span>
@@ -606,7 +611,7 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
                 </TableRow>
                 <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
                   <TableCell className="bg-muted/50 py-2 text-xs font-medium">
-                    Dev discovery file
+                    {t("extension_detail.dev_discovery")}
                   </TableCell>
                   <TableCell className="py-2 whitespace-normal">
                     <span className="font-mono text-xs break-all">~/Library/Application Support/com.differentai.ipollowork.dev/ipollowork-ui-control.json</span>
@@ -614,7 +619,7 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
                 </TableRow>
                 <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
                   <TableCell className="bg-muted/50 py-2 text-xs font-medium">
-                    Override
+                    {t("extension_detail.override")}
                   </TableCell>
                   <TableCell className="py-2 whitespace-normal">
                     <span className="font-mono text-xs break-all">IPOLLOWORK_UI_CONTROL_DISCOVERY=/path/to/ipollowork-ui-control.json</span>
@@ -623,7 +628,7 @@ function UiControlConnectionDetails(props: UiControlConnectionDetailsProps) {
                 {props.environment?.IPOLLOWORK_UI_CONTROL_DISCOVERY ? (
                   <TableRow className="*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r">
                     <TableCell className="bg-muted/50 py-2 text-xs font-medium">
-                      Current override
+                      {t("extension_detail.current_override")}
                     </TableCell>
                     <TableCell className="py-2 whitespace-normal">
                       <span className="font-mono text-xs break-all">{props.environment.IPOLLOWORK_UI_CONTROL_DISCOVERY}</span>
