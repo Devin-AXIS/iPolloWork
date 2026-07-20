@@ -45,7 +45,11 @@ import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog"
 import { SessionDebugPanel } from "./debug-panel";
 import { deriveRenderedSessionMessages, resolveRenderedSessionSnapshot } from "./session-render-state";
 import { useLocal } from "@/react-app/kernel/local-provider";
-import { isModelReadableAttachment } from "@/react-app/domains/session/sync/attachment-support";
+import {
+  isModelReadableAttachment,
+  MAX_MODEL_ATTACHMENT_BYTES,
+  resolveModelAttachmentMimeType,
+} from "@/react-app/domains/session/sync/attachment-support";
 import { deriveSessionRenderModel } from "@/react-app/domains/session/sync/transition-controller";
 import { useSessionScrollController } from "./scroll-controller";
 import { SessionScrollOverlay } from "./scroll-overlay";
@@ -923,16 +927,16 @@ export function SessionSurface(props: SessionSurfaceProps) {
       toast.warning(props.attachmentsDisabledReason ?? "Attachments are unavailable.");
       return;
     }
-    const oversized = files.filter((file) => file.size > 25 * 1024 * 1024);
-    const sized = files.filter((file) => file.size <= 25 * 1024 * 1024);
+    const oversized = files.filter((file) => file.size > MAX_MODEL_ATTACHMENT_BYTES);
+    const sized = files.filter((file) => file.size <= MAX_MODEL_ATTACHMENT_BYTES);
     if (oversized.length) {
       toast.warning(
         oversized.length === 1 ? `${oversized[0]?.name ?? "File"} is too large` : `${oversized.length} files are too large`,
         { description: "Files over 25 MB were skipped." },
       );
     }
-    const unreadable = sized.filter((file) => !isModelReadableAttachment(file.type));
-    const accepted = sized.filter((file) => isModelReadableAttachment(file.type));
+    const unreadable = sized.filter((file) => !isModelReadableAttachment(file.type, file.name));
+    const accepted = sized.filter((file) => isModelReadableAttachment(file.type, file.name));
     if (unreadable.length) {
       toast.warning(
         unreadable.length === 1
@@ -942,15 +946,19 @@ export function SessionSurface(props: SessionSurfaceProps) {
       );
     }
     if (!accepted.length) return;
-    const next = accepted.map((file) => ({
-      id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
-      name: file.name,
-      mimeType: file.type || "application/octet-stream",
-      size: file.size,
-      kind: file.type.startsWith("image/") ? "image" as const : "file" as const,
-      file,
-      previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
-    }));
+    const next = accepted.map((file) => {
+      const mimeType = resolveModelAttachmentMimeType(file.name, file.type);
+      const isImage = mimeType.startsWith("image/");
+      return {
+        id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+        name: file.name,
+        mimeType,
+        size: file.size,
+        kind: isImage ? "image" as const : "file" as const,
+        file,
+        previewUrl: isImage ? URL.createObjectURL(file) : undefined,
+      };
+    });
     setComposerAttachments(props.sessionId, [...attachments, ...next]);
   };
 

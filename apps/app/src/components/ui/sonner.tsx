@@ -146,6 +146,13 @@ function ToastCard({ id, type, title, description, action, cancel, notification 
     sonnerToast.dismiss(id)
   }
 
+  const stopToastPointerGesture = (event: React.PointerEvent<HTMLButtonElement>) => {
+    // Sonner listens for pointer gestures on the outer toast to enable swipe
+    // dismissal. A click on the X icon bubbles through its SVG target first,
+    // so stop the gesture before it can compete with the close action.
+    event.stopPropagation()
+  }
+
   if (notification) {
     return (
       <div className={cn("flex w-full gap-3 rounded-2xl border border-border bg-popover/95 backdrop-blur-sm p-4 text-popover-foreground shadow-md md:max-w-sm ring-1 ring-popover-border/20 items-center")}>
@@ -153,7 +160,7 @@ function ToastCard({ id, type, title, description, action, cancel, notification 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">{title}</p>
-            <Button type="button" variant="ghost" size="sm" aria-label="Close notification" onClick={dismiss}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Close notification" onPointerDown={stopToastPointerGesture} onClick={dismiss}>
               <XIcon className="size-4" />
             </Button>
           </div>
@@ -169,7 +176,7 @@ function ToastCard({ id, type, title, description, action, cancel, notification 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
          <p className="text-sm font-medium">{title}</p>
-         <Button type="button" variant="ghost" size="sm" aria-label="Close notification" onClick={dismiss}>
+         <Button type="button" variant="ghost" size="icon-sm" aria-label="Close notification" onPointerDown={stopToastPointerGesture} onClick={dismiss}>
           <XIcon className="size-4" />
           </Button>
         </div>

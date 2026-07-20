@@ -33,6 +33,7 @@ import { addOpencodeCacheHint, safeStringify } from "../../../../app/utils";
 import { clearSessionDraft, saveSessionDraft } from "./draft-store";
 import { firstLineLocalFileParts } from "./prompt-file-parts";
 import { appMentionInstruction } from "../surface/composer/app-mentions";
+import { resolveModelAttachmentMimeType } from "./attachment-support";
 
 type SessionModelConfig = {
   applyPendingSessionChoice: (sessionId: string) => void;
@@ -63,12 +64,7 @@ const fileToDataUrl = (file: File, mimeType: string) =>
   });
 
 function attachmentMime(attachment: ComposerAttachment) {
-  if (attachment.kind === "image") return attachment.mimeType;
-  if (attachment.mimeType === "application/pdf") return attachment.mimeType;
-  // Everything else is sent as text. Unsupported binary mimes (e.g. Keynote)
-  // poison the server-side session history: every later prompt replays the
-  // provider's UnsupportedFunctionalityError and the session cannot recover.
-  return "text/plain";
+  return resolveModelAttachmentMimeType(attachment.name, attachment.mimeType);
 }
 
 export function createSessionActionsStore(options: {

@@ -14,6 +14,7 @@ import { useDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { ModelBehaviorSelect } from "@/components/model-behavior-select";
 import { ModelSelect } from "@/components/model-select";
+import { MAX_MODEL_ATTACHMENT_BYTES } from "@/react-app/domains/session/sync/attachment-support";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
 import { listRunningAppsForMention } from "./app-mentions";
 import type { ComposerMentionKind } from "./mention-encoding";
@@ -108,7 +109,6 @@ type ComposerProps = {
 
 const FLUSH_PROMPT_EVENT = "ipollowork:flushPromptDraft";
 const FOCUS_PROMPT_EVENT = "ipollowork:focusPrompt";
-const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const IMAGE_COMPRESS_MAX_PX = 2048;
 const IMAGE_COMPRESS_QUALITY = 0.82;
 const IMAGE_COMPRESS_TARGET_BYTES = 1_500_000;
@@ -1024,7 +1024,7 @@ export function ReactSessionComposer(props: ComposerProps) {
 
     for (const original of inputFiles) {
       const processed = original.type.startsWith("image/") ? await compressImageFile(original) : original;
-      if (processed.size > MAX_ATTACHMENT_BYTES) {
+      if (processed.size > MAX_MODEL_ATTACHMENT_BYTES) {
         oversize.push(processed.name || original.name);
         continue;
       }
@@ -1039,7 +1039,7 @@ export function ReactSessionComposer(props: ComposerProps) {
       toast.warning(
         oversize.length === 1
           ? t("composer.file_exceeds_limit", { name: oversize[0] })
-          : `${oversize.length} files exceed the 8MB limit.`,
+          : t("composer.files_exceed_limit", { count: oversize.length }),
       );
     }
 

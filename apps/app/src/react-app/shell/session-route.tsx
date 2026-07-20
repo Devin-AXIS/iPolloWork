@@ -92,6 +92,7 @@ import {
 import { useLocal } from "@/react-app/kernel/local-provider";
 import { usePlatform } from "@/react-app/kernel/platform";
 import { SessionPage } from "@/react-app/domains/session/chat/session-page";
+import { resolveModelAttachmentMimeType } from "@/react-app/domains/session/sync/attachment-support";
 import { isDesktopProviderBlocked, DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID } from "@/app/cloud/desktop-app-restrictions";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { useRestrictionNotice } from "@/react-app/domains/cloud/restriction-notice-provider";
@@ -246,11 +247,7 @@ async function fileToDataUrl(file: File, mimeType: string) {
 }
 
 function attachmentMime(attachment: ComposerAttachment) {
-  if (attachment.kind === "image") return attachment.mimeType;
-  if (attachment.mimeType === "application/pdf") return attachment.mimeType;
-  // Everything else is sent as text; unsupported binary mimes poison
-  // server-side session history (see sync/attachment-support.ts).
-  return "text/plain";
+  return resolveModelAttachmentMimeType(attachment.name, attachment.mimeType);
 }
 
 async function draftToParts(draft: ComposerDraft, workspaceRoot: string) {
