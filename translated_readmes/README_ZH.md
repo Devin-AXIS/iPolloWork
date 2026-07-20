@@ -5,6 +5,12 @@
 </p>
 
 <p align="center">
+  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">
+    <img src="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@agent%2Fopencode-1-18-3-video-templates/docs/assets/ipollowork-demo-poster.jpg" alt="观看 iPolloWork 演示" width="900">
+  </a>
+</p>
+
+<p align="center">
   <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">▶ 观看 iPolloWork 演示</a>
 </p>
 
