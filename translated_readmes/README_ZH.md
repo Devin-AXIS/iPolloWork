@@ -4,19 +4,9 @@
   <a href="../README.md">English</a> · 简体中文 · <a href="./README_ZH_hk.md">繁體中文</a> · <a href="./README_JA.md">日本語</a>
 </p>
 
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">
-    <img src="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@7037c3b5/docs/assets/ipollowork-demo-poster.jpg" alt="观看 iPolloWork 演示" width="900">
-  </a>
-</p>
+**一个本地优先的可视化 AI 工作台：从一个目标出发，直接产出可继续编辑的代码、文档、演示稿、网站、设计和视频，也是 Codex 与 Claude Code 的源码可用替代方案。**
 
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">▶ 观看 iPolloWork 演示</a>
-</p>
-
-> **让 AI 执行，让结果始终可编辑。**
-
-**面向终端之外真实工作的源码可用、本地优先 Codex 平替。**
+https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 
 iPolloWork 让 AI 智能体在一个工作空间里处理代码仓库、本地文件、浏览器任务、文档、演示稿、网站、设计和视频。你描述目标，智能体负责规划和执行；你可以检查过程、批准操作，并在同一个地方继续编辑结果。
 
