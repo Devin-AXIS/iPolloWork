@@ -2195,8 +2195,18 @@ export function SessionRoute() {
               if (!endpoint) return;
               await endpoint.client.deleteSession(endpoint.workspaceId, sessionId);
               if (selectedSessionId === sessionId) {
-                writeLastSessionFor(selectedWorkspaceId, null);
-                navigateToWorkspaceSession(selectedWorkspaceId);
+                const nextSession = (sessionsByWorkspaceId[selectedWorkspaceId] ?? [])
+                  .filter((session) => {
+                    if (session.id === sessionId) return false;
+                    return !(typeof session.time?.archived === "number" && session.time.archived > 0);
+                  })
+                  .sort(
+                    (left, right) =>
+                      (right.time?.updated ?? right.time?.created ?? 0) -
+                      (left.time?.updated ?? left.time?.created ?? 0),
+                  )[0];
+                writeLastSessionFor(selectedWorkspaceId, nextSession?.id ?? null);
+                navigateToWorkspaceSession(selectedWorkspaceId, nextSession?.id ?? null);
               }
               await refreshRouteState();
             }
