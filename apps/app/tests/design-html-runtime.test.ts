@@ -47,7 +47,7 @@ describe("Design HTML runtime", () => {
 
   test("keeps a dormant editor bridge and deck adapter in the same preview document", () => {
     const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
-    const preview = buildDesignPreviewDocument(source, true, "", false);
+    const preview = buildDesignPreviewDocument(source, true, "", false, false, true);
 
     expect(preview).toContain('id="ipollowork-design-runtime"');
     expect(preview).toContain('id="ipollowork-design-deck-runtime"');
@@ -62,6 +62,33 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('const slideWrappers = slides.map((slide) => slide.closest(".slide-wrap"))');
     expect(preview).toContain('const wrapperIndex = slideWrappers.findIndex((wrapper) => wrapper && !wrapper.classList.contains("hidden")');
     expect(preview).toContain("event.stopImmediatePropagation();");
+  });
+
+  test("treats a one-page canvas as a presentation so it can be exported", () => {
+    const source = "<!doctype html><html><body><div class=\"slide-frame\"><h1>Only slide</h1></div></body></html>";
+    const preview = buildDesignPreviewDocument(source, true, "", false, false, true);
+
+    expect(preview).toContain('document.querySelectorAll("[data-ipw-slide],section.slide,.slide,.slide-frame")');
+    expect(preview).toContain("if (!slides.length)");
+  });
+
+  test("restores Chinese previous and next control aliases", async () => {
+    const runtimePath = new URL(
+      "../src/react-app/domains/session/design/design-html-runtime.ts",
+      import.meta.url,
+    );
+    const runtimeSource = await Bun.file(runtimePath).text();
+
+    expect(runtimeSource).toContain("[aria-label*='上一页']");
+    expect(runtimeSource).toContain("[aria-label*='下一页']");
+    expect(runtimeSource).not.toContain("[aria-label*='???']");
+  });
+
+  test("does not turn an ordinary one-section web page into a presentation", () => {
+    const source = "<!doctype html><html><body><section class=\"slide\"><h1>Landing page section</h1></section></body></html>";
+    const preview = buildDesignPreviewDocument(source, true);
+
+    expect(preview).not.toContain('id="ipollowork-design-deck-runtime"');
   });
 
   test("scales compatible slide templates as a fixed 16:9 stage instead of triggering mobile reflow", () => {

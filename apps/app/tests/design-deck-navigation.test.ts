@@ -8,4 +8,12 @@ describe("Design deck navigation", () => {
 
     expect(source).toMatch(/\{deck \? \(\s*<div[^>]*data-testid="design-deck-navigation"/);
   });
+
+  test("uses a fixed presentation canvas instead of a mobile document preview", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("h-[900px] w-[1600px] origin-center");
+    expect(source).toContain("presentationCanvasScale(previewViewport.width, previewViewport.height)");
+    expect(source).toContain("!isPresentationTemplate ? (");
+  });
 });
