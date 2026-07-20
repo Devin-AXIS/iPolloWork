@@ -544,7 +544,10 @@ export function DesignPanel({
     setExportingPdf(true);
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
-    frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;visibility:hidden;pointer-events:none`;
+    // Keep the export document laid out and paintable. `visibility:hidden` on
+    // the host iframe can make Chromium/html2canvas skip its rendering tree in
+    // packaged Electron builds, producing a valid but blank PPTX.
+    frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;opacity:0;pointer-events:none`;
     document.body.append(frame);
     try {
       const exportLibraries = Promise.all([import("html2canvas-pro"), import("jspdf")]);
@@ -708,6 +711,13 @@ export function DesignPanel({
         if (usesNativeEditablePptx) {
           pptxSlide.background = { color: pptxCompatibleSlideBackground(slide) };
           const objects = collectPptxCompatibleObjects(slide);
+          const objectCoverage = validatePptxElementPlanCoverage({
+            hasVisibleContent: slideHasVisiblePptxContent(slide),
+            planCount: objects.length,
+          });
+          if (!objectCoverage.valid) {
+            throw new Error("PPTX export stopped because visible slide content could not be collected. No blank presentation was created.");
+          }
           nativeObjectCount += objects.length;
           for (const object of objects) {
             if (object.kind === "shape") {
