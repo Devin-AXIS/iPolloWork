@@ -1,10 +1,6 @@
 # iPolloWork
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/main/apps/app/public/ipollowork-logo-square.svg" alt="iPolloWork" width="88">
-</p>
-
-<p align="center">
   <a href="../README.md">English</a> · 简体中文 · <a href="./README_ZH_hk.md">繁體中文</a> · <a href="./README_JA.md">日本語</a>
 </p>
 
