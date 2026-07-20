@@ -4,19 +4,9 @@
   English · <a href="./translated_readmes/README_ZH.md">简体中文</a> · <a href="./translated_readmes/README_ZH_hk.md">繁體中文</a> · <a href="./translated_readmes/README_JA.md">日本語</a>
 </p>
 
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">
-    <img src="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@7037c3b5/docs/assets/ipollowork-demo-poster.jpg" alt="Watch the iPolloWork demo" width="900">
-  </a>
-</p>
+**A local-first visual AI workbench that turns one goal into editable code, documents, presentations, websites, designs, and videos—an open alternative to Codex and Claude Code.**
 
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">▶ Watch the iPolloWork demo</a>
-</p>
-
-> **An AI workbench that builds, runs, and keeps results editable.**
-
-**The source-available, local-first alternative to Codex and Claude Code for work beyond the terminal.**
+https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 
 iPolloWork gives agents one workspace for repositories, local files, browser tasks, documents, presentations, websites, design, and video. Describe the outcome; the agent plans and executes; you inspect the work, approve actions, and keep editing the result in the same place.
 
