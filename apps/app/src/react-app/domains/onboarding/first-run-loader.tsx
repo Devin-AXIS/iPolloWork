@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 
-import { OwDotTicker } from "../../shell/dot-ticker";
+import { WorkspaceLoadingState } from "../../shell/workspace-loading-state";
 
 /**
  * First-run full-screen loader shown while the first session is created,
@@ -15,10 +15,7 @@ export function FirstRunLoader() {
       role="status"
     >
       <div className="flex w-full max-w-[320px] flex-col items-center gap-4 px-6 text-center">
-        <OwDotTicker size="md" />
-        <div className="text-[12px] leading-5 text-dls-secondary">
-          Preparing workspace
-        </div>
+        <WorkspaceLoadingState message="Preparing workspace" />
       </div>
     </div>
   );

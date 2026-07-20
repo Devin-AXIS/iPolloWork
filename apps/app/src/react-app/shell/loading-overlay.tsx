@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useBootState, useBootOverlayVisible } from "./boot-state";
-import { OwDotTicker } from "./dot-ticker";
+import { WorkspaceLoadingState } from "./workspace-loading-state";
 
 const RELEASES_URL = "https://github.com/Devin-AXIS/iPolloWork/releases";
 
@@ -27,10 +27,7 @@ export function LoadingOverlay() {
       role="status"
     >
       <div className="flex w-full max-w-[320px] flex-col items-center gap-4 px-6 text-center">
-        <OwDotTicker size="md" />
-        <div className="text-[12px] leading-5 text-dls-secondary">
-          {message || "Preparing workspace"}
-        </div>
+        <WorkspaceLoadingState message={message || "Preparing workspace"} />
         {error ? (
           <div className="flex flex-col gap-2 text-[12px] leading-5 text-red-11">
             <div>{error}</div>

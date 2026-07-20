@@ -66,6 +66,7 @@ import { useReactRenderWatchdog } from "../../../shell/react-render-watchdog";
 import { useShellConfig } from "../../../shell/shell-config";
 import { type SidePanelItem, useUiStateStore } from "../../../shell/ui-state-store";
 import { workspaceSettingsRoute } from "../../../shell/workspace-routes";
+import { WorkspaceLoadingState } from "../../../shell/workspace-loading-state";
 
 import { isElectronRuntime } from "../../../../app/utils";
 import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTarget, type OpenTarget } from "../artifacts/open-target";
@@ -92,6 +93,7 @@ const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowork_voice__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
 const MAIN_WORKSPACE_MIN_WIDTH = 520;
 const MAIN_WORKSPACE_FALLBACK_MIN_WIDTH = 480;
+const AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH = 520;
 type SessionPanelView = SidePanelItem | "launcher";
 
 export type SessionPageHistoryControls = {
@@ -652,6 +654,8 @@ export function SessionPage(props: SessionPageProps) {
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
+  const autoCollapsedSidebarRef = useRef(false);
+  const userOpenedSidebarWhileNarrowRef = useRef(false);
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
   const videoRailActive = activeSidePanel === "video";
@@ -771,6 +775,10 @@ export function SessionPage(props: SessionPageProps) {
   const sidebarProviderStyle: CSSProperties & Record<"--sidebar-width", string> = {
     "--sidebar-width": `${leftSidebarWidth}px`,
   };
+  const availableMainWorkspaceWidth = viewportWidth
+    - (shellConfig.sidebar && sidebarOpen ? leftSidebarWidth : 0)
+    - (sidePanelOpen ? browserPanelDefaultWidth : 0);
+  const expandedMainWorkspaceWidth = viewportWidth - (shellConfig.sidebar ? leftSidebarWidth : 0);
   const mainWorkspaceMinWidth = viewportWidth >= leftSidebarWidth + browserPanelDefaultWidth + MAIN_WORKSPACE_MIN_WIDTH
     ? MAIN_WORKSPACE_MIN_WIDTH
     : MAIN_WORKSPACE_FALLBACK_MIN_WIDTH;
@@ -781,6 +789,35 @@ export function SessionPage(props: SessionPageProps) {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+  useEffect(() => {
+    if (!shellConfig.sidebar) return;
+    if (
+      availableMainWorkspaceWidth < AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH &&
+      sidebarOpen &&
+      !sidePanelOpen &&
+      !userOpenedSidebarWhileNarrowRef.current
+    ) {
+      autoCollapsedSidebarRef.current = true;
+      setSidebarOpen(false);
+      return;
+    }
+    if (
+      autoCollapsedSidebarRef.current &&
+      !sidebarOpen &&
+      expandedMainWorkspaceWidth >= AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH
+    ) {
+      autoCollapsedSidebarRef.current = false;
+      userOpenedSidebarWhileNarrowRef.current = false;
+      setSidebarOpen(true);
+    }
+  }, [
+    availableMainWorkspaceWidth,
+    expandedMainWorkspaceWidth,
+    setSidebarOpen,
+    shellConfig.sidebar,
+    sidebarOpen,
+    sidePanelOpen,
+  ]);
   useEffect(() => {
     if (sidePanelOpen) return;
     setBrowserPanelDefaultWidth(browserPanelWidth);
@@ -1477,7 +1514,11 @@ export function SessionPage(props: SessionPageProps) {
                 className="absolute left-6 top-1/2 z-20 size-8 -translate-y-1/2 rounded-lg border-none text-muted-foreground hover:bg-muted hover:text-foreground mac:left-20 mac:titlebar-no-drag"
                 aria-label={t("sidebar.expand")}
                 title={t("sidebar.expand")}
-                onClick={() => setSidebarOpen(true)}
+                onClick={() => {
+                  userOpenedSidebarWhileNarrowRef.current = availableMainWorkspaceWidth < AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH;
+                  autoCollapsedSidebarRef.current = false;
+                  setSidebarOpen(true);
+                }}
                 style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
               >
                 <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0" />
@@ -1757,15 +1798,10 @@ export function SessionPage(props: SessionPageProps) {
                     </div>
                   ) : (
                     <div className="px-6 py-24" role="status" aria-live="polite">
-                      <div className="mx-auto flex max-w-xs flex-col items-center gap-3 text-center">
-                        <OwDotTicker size="md" />
-                        <div className="text-sm font-medium text-dls-text">
-                          {t("session.preparing_workspace")}
-                        </div>
-                        <p className="text-xs leading-5 text-dls-secondary">
-                          {t("session.loading_detail")}
-                        </p>
-                      </div>
+                      <WorkspaceLoadingState
+                        message={t("session.preparing_workspace")}
+                        detail={t("session.loading_detail")}
+                      />
                     </div>
                   )}
                 </div>

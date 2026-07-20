@@ -503,10 +503,76 @@ select:disabled {
   background-color: rgba(var(--dls-secondary-rgb, 120, 120, 120), 0.22);
 }
 
+@keyframes ipollowork-loading-label {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ipollowork-loading-dots {
+  0%,
+  19% {
+    content: "";
+  }
+  20%,
+  39% {
+    content: ".";
+  }
+  40%,
+  59% {
+    content: "..";
+  }
+  60%,
+  100% {
+    content: "...";
+  }
+}
+
+.ipollowork-loading-logo-shell {
+  display: grid;
+  width: 66px;
+  height: 58px;
+  place-items: center;
+}
+
+.ipollowork-loading-logo {
+  width: 66px;
+  height: 58px;
+  object-fit: contain;
+}
+
+.ipollowork-loading-label {
+  animation: ipollowork-loading-label 1.8s ease-in-out infinite;
+}
+
+.ipollowork-loading-dots {
+  display: inline-block;
+  width: 1.2em;
+  text-align: left;
+}
+
+.ipollowork-loading-dots::after {
+  content: "";
+  animation: ipollowork-loading-dots 1.2s steps(1, end) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .ow-dot-ticker {
+  .ow-dot-ticker,
+  .ipollowork-loading-label,
+  .ipollowork-loading-dots::after {
     animation: none;
+  }
+
+  .ow-dot-ticker {
     background-color: rgba(var(--dls-accent-rgb), 0.6);
+  }
+
+  .ipollowork-loading-dots::after {
+    content: "...";
   }
 }
 
