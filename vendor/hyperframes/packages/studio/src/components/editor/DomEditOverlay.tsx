@@ -32,6 +32,16 @@ import { CanvasContextMenu } from "./CanvasContextMenu";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 
+declare global {
+  interface Window {
+    __hfPreviewTextSelectionSuppressUntil?: number;
+  }
+}
+
+function isPreviewTextSelectionSuppressingCanvas(): boolean {
+  return (window.__hfPreviewTextSelectionSuppressUntil ?? 0) > Date.now();
+}
+
 // Re-exports for external consumers — preserving existing import paths.
 export {
   filterNestedDomEditGroupItems,
@@ -316,6 +326,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     groupOverlayItems.every((item) => item.selection.capabilities.canApplyManualOffset);
 
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (isPreviewTextSelectionSuppressingCanvas()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!allowCanvasMovement) return;
     if (suppressNextOverlayMouseDownRef.current) {
       suppressNextOverlayMouseDownRef.current = false;
@@ -339,6 +354,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   // fallow-ignore-next-line complexity
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isPreviewTextSelectionSuppressingCanvas()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!allowCanvasMovement || event.button !== 0) return;
     if (event.shiftKey) {
       // Use the already-updated hover selection rather than re-resolving async
@@ -403,6 +423,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   };
 
   const handleBoxClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (isPreviewTextSelectionSuppressingCanvas()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!allowCanvasMovement) return;
     if (gestureRef.current || groupGestureRef.current) return;
     if (suppressNextBoxClickRef.current) {
@@ -439,6 +464,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       // Cursor follows marquee rect *state* (re-renders), not the mutable ref.
       style={marquee.marqueeRect ? { cursor: "crosshair" } : undefined}
       onPointerDownCapture={(event) => {
+        if (isPreviewTextSelectionSuppressingCanvas()) return;
         // A pointer gesture supersedes a pending nudge burst — commit it first
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();

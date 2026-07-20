@@ -233,7 +233,6 @@ export function StudioHeader({
           <span className="text-neutral-700 select-none" aria-hidden="true">
             |
           </span>
-          <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
         </div>
       ) : (
         <div aria-hidden="true" />

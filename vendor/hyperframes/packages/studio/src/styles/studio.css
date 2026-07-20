@@ -113,20 +113,52 @@ body {
 /* Keep the primary transport control readable against the pale preview
    surface; the icon inherits this semantic foreground color. */
 :root[data-ipollowork-theme="light"] .hf-studio-play-control {
-  background: #ffffff;
-  border-color: #cbd5e1;
-  color: #18181b;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  background: #ffffff !important;
+  border-color: #b8c3cf !important;
+  color: #0f172a !important;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72);
 }
 
 :root:not([data-ipollowork-theme="light"]) .hf-studio-play-control {
-  background: #27272a;
-  border-color: #52525b;
-  color: #ffffff;
+  background: #27272a !important;
+  border-color: #52525b !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.hf-studio-play-control {
+  min-width: 2rem;
+  min-height: 2rem;
+  border-radius: 9999px !important;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+.hf-studio-play-control:hover {
+  transform: translateY(-1px);
+}
+
+.hf-studio-play-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+
+button[aria-label="Enter fullscreen"],
+button[aria-label="Exit fullscreen"],
+button[aria-label="进入全屏"],
+button[aria-label="退出全屏"] {
+  display: none !important;
 }
 
 :root[data-ipollowork-theme="light"] .hf-studio-play-icon {
-  color: #111827 !important;
+  color: #0f172a !important;
 }
 
 :root[data-ipollowork-theme="light"] .hf-shortcuts-panel {
@@ -170,6 +202,51 @@ body {
   color: #ffffff !important;
 }
 
+.hf-preview-text-toolbar {
+  background: var(--hf-shortcuts-bg);
+  border-color: var(--hf-shortcuts-border);
+  color: var(--hf-panel-text-1);
+  backdrop-filter: blur(12px);
+}
+
+.hf-preview-text-toolbar__button {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  color: var(--hf-panel-text-2);
+  font-size: 0.6875rem;
+  line-height: 1;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.hf-preview-text-toolbar__button:hover {
+  background: var(--hf-panel-hover);
+  color: var(--hf-panel-text-0);
+}
+
+.hf-preview-text-toolbar__input {
+  width: min(13rem, 30vw);
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--hf-shortcuts-border);
+  background: var(--hf-panel-bg-1);
+  color: var(--hf-panel-text-0);
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  outline: none;
+}
+
+.hf-preview-text-toolbar__input:focus {
+  border-color: var(--hf-panel-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--hf-panel-accent) 45%, transparent);
+}
+
+html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+}
+
 /* The embedded Studio has a few intentionally dark Tailwind surfaces. Give
    the host light theme one continuous, pale workspace so the preview, timeline,
    and their gutters do not expose black seams between panels. */
@@ -184,6 +261,22 @@ body {
 :root[data-ipollowork-theme="light"] .hf-preview-pane,
 :root[data-ipollowork-theme="light"] .hf-timeline-pane {
   border-color: var(--hf-workspace-border) !important;
+}
+
+.hf-preview-pane--studio-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483000 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #0a0a0a !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-preview-pane--studio-fullscreen {
+  background: var(--hf-workspace-bg) !important;
 }
 
 :root[data-ipollowork-theme="light"] .hf-timeline-pane > :first-child,

@@ -3213,6 +3213,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       let editing = null;
       let selected = null;
       let selectedTarget = null;
+      let selectedTextRange = null;
       let pendingPointer = null;
       let saveTimer = 0;
       const postEditorMessage = (payload) => {
@@ -3252,6 +3253,19 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       }
       document.body.appendChild(toolbar);
 
+      const formatAnchor = toolbar.querySelector('[data-action="text"]');
+      for (const [action, label, tag] of [['bold', 'B', 'strong'], ['italic', 'I', 'em'], ['strike', 'S', 'del'], ['code', '</>', 'code'], ['link', '↗', 'a']]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.action = action;
+        button.dataset.richTag = tag;
+        button.title = action === 'link' ? 'Insert link' : label;
+        button.textContent = label;
+        if (action === 'bold') button.style.fontWeight = '700';
+        if (action === 'italic') button.style.fontStyle = 'italic';
+        formatAnchor?.after(button);
+      }
+
       const sourceTargetFor = (element) => {
         const composition = element.closest('[data-composition-file]') || element.closest('[data-composition-id]');
         const file = composition?.getAttribute('data-composition-file') || 'index.html';
@@ -3287,6 +3301,45 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       };
       const saveText = (element, immediate = false) => {
         saveTextTarget(sourceTargetFor(element), element.textContent || '', immediate);
+      };
+
+      const saveRichTextTarget = (target, html) => {
+        if (!target) return;
+        void fetch('/api/projects/' + encodeURIComponent(projectId) + '/file-mutations/patch-element/' + encodeURI(target.file), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            target: { selector: target.selector, selectorIndex: target.selectorIndex },
+            operations: [{ type: 'inner-html', value: String(html ?? '') }],
+          }),
+        }).catch(() => {});
+      };
+
+      const applyRichTextFormat = (tag, href) => {
+        if (!selected || !selectedTextRange || !selectedTextRange.toString().trim()) return;
+        const selection = window.getSelection();
+        if (!selection) return;
+        selection.removeAllRanges();
+        selection.addRange(selectedTextRange);
+        const range = selection.getRangeAt(0);
+        if (!selected.contains(range.commonAncestorContainer)) return;
+        const wrapper = document.createElement(tag);
+        if (tag === 'a') {
+          const value = href || window.prompt('Link URL', 'https://');
+          if (!value || !/^(https?:|mailto:)/i.test(value)) return;
+          wrapper.setAttribute('href', value);
+        }
+        try {
+          range.surroundContents(wrapper);
+        } catch {
+          const fragment = range.extractContents();
+          wrapper.appendChild(fragment);
+          range.insertNode(wrapper);
+        }
+        selectedTextRange = range.cloneRange();
+        selectedTextRange.selectNodeContents(wrapper);
+        saveRichTextTarget(sourceTargetFor(selected), selected.innerHTML);
+        showToolbar(selected);
       };
 
       const saveStyleTarget = async (target, property, value) => {
@@ -3327,6 +3380,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         toolbar.style.display = 'none';
         colors.style.display = 'none';
         selected = null;
+        selectedTextRange = null;
       };
 
       const showToolbar = (element) => {
@@ -3447,6 +3501,20 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       };
 
       toolbar.addEventListener('pointerdown', (event) => event.stopImmediatePropagation(), true);
+      document.addEventListener('selectionchange', () => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0 || !selection.toString().trim()) return;
+        const range = selection.getRangeAt(0);
+        const container = range.commonAncestorContainer.nodeType === 1
+          ? range.commonAncestorContainer
+          : range.commonAncestorContainer.parentElement;
+        const element = container?.closest?.(textSelector);
+        if (!element || !sourceTargetFor(element) || !element.contains(range.commonAncestorContainer)) return;
+        selected = element;
+        selectedTarget = sourceTargetFor(element);
+        selectedTextRange = range.cloneRange();
+        showToolbar(element);
+      }, true);
       toolbar.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -3454,6 +3522,10 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         if (!button || !selected) return;
         const action = button.dataset.action;
         if (action !== 'advanced') postEditorMessage({ type: 'ipollowork:hyperframes:close-side-panels' });
+        if (button.dataset.richTag) {
+          applyRichTextFormat(button.dataset.richTag);
+          return;
+        }
         if (button.dataset.color) {
           void saveStyle(selected, 'color', button.dataset.color);
           toolbar.querySelector('.ow-color').style.backgroundColor = button.dataset.color;

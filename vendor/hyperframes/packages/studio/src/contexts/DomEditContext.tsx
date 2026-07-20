@@ -24,6 +24,7 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomRotationCommit"
   | "handleDomManualEditsReset"
   | "handleDomTextCommit"
+  | "handleDomInnerHtmlCommit"
   | "handleDomTextFieldStyleCommit"
   | "handleDomAddTextField"
   | "handleDomRemoveTextField"
@@ -148,6 +149,7 @@ export function DomEditProvider({
     handleDomManualEditsReset,
 
     handleDomTextCommit,
+    handleDomInnerHtmlCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
@@ -234,6 +236,7 @@ export function DomEditProvider({
       handleDomRotationCommit,
       handleDomManualEditsReset,
       handleDomTextCommit,
+      handleDomInnerHtmlCommit,
       handleDomTextFieldStyleCommit,
       handleDomAddTextField,
       handleDomRemoveTextField,
@@ -302,6 +305,7 @@ export function DomEditProvider({
       handleDomRotationCommit,
       handleDomManualEditsReset,
       handleDomTextCommit,
+      handleDomInnerHtmlCommit,
       handleDomTextFieldStyleCommit,
       handleDomAddTextField,
       handleDomRemoveTextField,

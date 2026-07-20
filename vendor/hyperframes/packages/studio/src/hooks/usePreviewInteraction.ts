@@ -6,6 +6,16 @@ import { type DomEditSelection } from "../components/editor/domEditing";
 import type { ApplyDomSelectionOptions, ResolveDomSelectionOptions } from "./useDomSelection";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
+declare global {
+  interface Window {
+    __hfPreviewTextSelectionSuppressUntil?: number;
+  }
+}
+
+function isPreviewTextSelectionSuppressingCanvas(): boolean {
+  return (window.__hfPreviewTextSelectionSuppressUntil ?? 0) > Date.now();
+}
+
 // ── Types ──
 
 export interface UsePreviewInteractionParams {
@@ -87,6 +97,12 @@ export function usePreviewInteraction({
   const handlePreviewCanvasMouseDown = useCallback(
     // fallow-ignore-next-line complexity
     async (e: React.MouseEvent<HTMLDivElement>, options?: PreviewMouseDownOptions) => {
+      if (isPreviewTextSelectionSuppressingCanvas()) {
+        e.preventDefault();
+        e.stopPropagation();
+        cycleRef.current = null;
+        return;
+      }
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
 
       // Manual double-click detection (see DOUBLE_CLICK_MS): the first click
@@ -236,6 +252,10 @@ export function usePreviewInteraction({
   const handlePreviewCanvasPointerMove = useCallback(
     // fallow-ignore-next-line complexity
     async (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
+      if (isPreviewTextSelectionSuppressingCanvas()) {
+        updateDomEditHoverSelection(null);
+        return null;
+      }
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) {
         updateDomEditHoverSelection(null);
         return null;

@@ -307,6 +307,64 @@ export function useDomEditTextCommits({
     ],
   );
 
+  const handleDomInnerHtmlCommit = useCallback(
+    async (selection: DomEditSelection, value: string) => {
+      if (!isTextEditableSelection(selection)) return;
+      const isLatestTextCommit = bumpDomEditCommitVersion(domTextCommitVersionRef);
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      let editedElement: HTMLElement | null = null;
+      let previousInnerHtml: string | null = null;
+      const operations: PatchOperation[] = [
+        { type: "inner-html", property: "innerHTML", value },
+      ];
+
+      await runDomEditCommit({
+        capture: () => {
+          if (!doc) return;
+          const el = findElementForSelection(doc, selection, activeCompPath);
+          if (!el) return;
+          editedElement = el;
+          previousInnerHtml = el.innerHTML;
+        },
+        apply: () => {
+          if (!editedElement) return;
+          editedElement.innerHTML = value;
+        },
+        persist: () =>
+          persistDomEditOperations(selection, operations, {
+            label: "Format text",
+            skipRefresh: true,
+            shouldSave: isLatestTextCommit,
+          }),
+        shouldRevert: () => isLatestTextCommit(),
+        revert: () => {
+          if (!editedElement || previousInnerHtml === null) return;
+          editedElement.innerHTML = previousInnerHtml;
+        },
+        onError: (error) =>
+          reportDomEditPersistFailure(selection, operations, error, showToast),
+        shouldResync: isLatestTextCommit,
+        resync: () =>
+          resyncDomTextSelectionFromPreview(
+            doc,
+            selection,
+            activeCompPath,
+            buildDomSelectionFromTarget,
+            applyDomSelection,
+          ),
+      });
+    },
+    [
+      activeCompPath,
+      applyDomSelection,
+      buildDomSelectionFromTarget,
+      persistDomEditOperations,
+      previewIframeRef,
+      showToast,
+    ],
+  );
+
   const commitDomTextFields = useCallback(
     async (
       selection: DomEditSelection,
@@ -477,6 +535,7 @@ export function useDomEditTextCommits({
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
     handleDomTextCommit,
+    handleDomInnerHtmlCommit,
     commitDomTextFields,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,

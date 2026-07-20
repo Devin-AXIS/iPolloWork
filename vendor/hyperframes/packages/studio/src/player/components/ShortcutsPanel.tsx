@@ -14,7 +14,6 @@ const SHORTCUT_SECTIONS = [
       { key: "Shift+L", label: "Toggle loop" },
       { key: "Left/Right", label: "Step 1 frame" },
       { key: "Shift+Left/Right", label: "Step 10 frames" },
-      { key: "F", label: "Toggle fullscreen" },
     ],
   },
   {

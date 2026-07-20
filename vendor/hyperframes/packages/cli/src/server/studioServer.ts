@@ -173,6 +173,28 @@ let _thumbnailBrowserInitializing: Promise<
   import("@hyperframes/engine").BrowserLease | null
 > | null = null;
 
+const THUMBNAIL_BROWSER_TIMEOUT_MS = 8000;
+const THUMBNAIL_PAGE_TIMEOUT_MS = 5000;
+const THUMBNAIL_NAVIGATION_TIMEOUT_MS = 8000;
+const THUMBNAIL_TIMELINE_TIMEOUT_MS = 2000;
+const THUMBNAIL_SCREENSHOT_TIMEOUT_MS = 6000;
+
+function withThumbnailTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise.finally(() => {
+      if (timeout) clearTimeout(timeout);
+    }),
+    new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]);
+}
+
 async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser | null> {
   if (_thumbnailBrowserLease?.browser.connected) return _thumbnailBrowserLease.browser;
   if (_thumbnailBrowserInitializing) {
@@ -497,16 +519,31 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async generateThumbnail(opts): Promise<Buffer | null> {
-      const browser = await getThumbnailBrowser();
+      const browser = await withThumbnailTimeout(
+        getThumbnailBrowser(),
+        THUMBNAIL_BROWSER_TIMEOUT_MS,
+        "Timed out while starting the thumbnail browser",
+      );
       if (!browser) {
         console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
         return null;
       }
       let page: import("puppeteer-core").Page | null = null;
       try {
-        page = await browser.newPage();
+        page = await withThumbnailTimeout(
+          browser.newPage(),
+          THUMBNAIL_PAGE_TIMEOUT_MS,
+          "Timed out while opening the thumbnail page",
+        );
         await page.setViewport({ width: opts.width || 1920, height: opts.height || 1080 });
-        await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+        await withThumbnailTimeout(
+          page.goto(opts.previewUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: THUMBNAIL_NAVIGATION_TIMEOUT_MS,
+          }),
+          THUMBNAIL_NAVIGATION_TIMEOUT_MS + 1000,
+          "Timed out while loading the preview for capture",
+        );
         await page
           .waitForFunction(
             () => {
@@ -515,7 +552,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               };
               return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
             },
-            { timeout: 5000 },
+            { timeout: THUMBNAIL_TIMELINE_TIMEOUT_MS },
           )
           .catch(() => {});
         // fallow-ignore-next-line code-duplication
@@ -549,17 +586,21 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         if (opts.selector) {
           clip = await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex);
         }
-        const screenshot = (await page.screenshot(
-          opts.format === "png"
-            ? {
-                type: "png",
-                ...(clip ? { clip } : {}),
-              }
-            : {
-                type: "jpeg",
-                quality: 80,
-                ...(clip ? { clip } : {}),
-              },
+        const screenshot = (await withThumbnailTimeout(
+          page.screenshot(
+            opts.format === "png"
+              ? {
+                  type: "png",
+                  ...(clip ? { clip } : {}),
+                }
+              : {
+                  type: "jpeg",
+                  quality: 80,
+                  ...(clip ? { clip } : {}),
+                },
+          ),
+          THUMBNAIL_SCREENSHOT_TIMEOUT_MS,
+          "Timed out while taking the screenshot",
         )) as Buffer;
         return screenshot;
       } catch (err) {

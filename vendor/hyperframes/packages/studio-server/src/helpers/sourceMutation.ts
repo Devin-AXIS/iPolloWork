@@ -139,11 +139,42 @@ export function isHTMLElement(el: Node): el is HTMLElement {
 }
 
 export interface PatchOperation {
-  type: "inline-style" | "attribute" | "html-attribute" | "text-content";
+  type: "inline-style" | "attribute" | "html-attribute" | "text-content" | "inner-html";
   property: string;
   value: string | null;
   childSelector?: string;
   childIndex?: number;
+}
+
+const RICH_TEXT_TAGS = new Set(["STRONG", "B", "EM", "I", "DEL", "S"]);
+const RICH_TEXT_LEAF_TAGS = new Set(["CODE", "BR"]);
+
+function escapeHtmlAttributeValue(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function sanitizeRichTextHtml(value: string): string {
+  const parsed = parseHTML(`<!DOCTYPE html><html><body><div id="hf-rich-text-root">${value}</div></body></html>`);
+  const root = parsed.document.getElementById("hf-rich-text-root");
+  if (!root) return "";
+
+  const render = (node: Node): string => {
+    if (node.nodeType === 3) return node.textContent ?? "";
+    if (node.nodeType !== 1) return "";
+    const el = node as Element;
+    const tag = el.tagName.toUpperCase();
+    const children = Array.from(el.childNodes).map(render).join("");
+    if (tag === "A") {
+      const href = el.getAttribute("href") ?? "";
+      if (!/^(https?:|mailto:)/i.test(href)) return children;
+      return `<a href="${escapeHtmlAttributeValue(href)}">${children}</a>`;
+    }
+    if (RICH_TEXT_LEAF_TAGS.has(tag)) return tag === "BR" ? "<br>" : `<code>${children}</code>`;
+    if (RICH_TEXT_TAGS.has(tag)) return `<${tag.toLowerCase()}>${children}</${tag.toLowerCase()}>`;
+    return children;
+  };
+
+  return Array.from(root.childNodes).map(render).join("");
 }
 
 interface ResolvedPatchOperation {
@@ -216,6 +247,11 @@ export function patchElementInHtml(
           const inner = opTarget.children.length === 1 ? opTarget.firstElementChild : null;
           const textTarget = inner && isHTMLElement(inner) ? inner : opTarget;
           textTarget.textContent = op.value;
+        }
+        break;
+      case "inner-html":
+        if (op.value != null) {
+          opTarget.innerHTML = sanitizeRichTextHtml(op.value);
         }
         break;
     }

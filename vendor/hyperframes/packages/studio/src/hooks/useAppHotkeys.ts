@@ -225,10 +225,6 @@ function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallba
 // fallow-ignore-next-line complexity
 function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): void {
   if (key === "f" && !event.shiftKey && !event.altKey) {
-    event.preventDefault();
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else
-      document.querySelector<HTMLElement>("[data-studio-fullscreen-target]")?.requestFullscreen();
     return;
   }
 

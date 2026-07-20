@@ -1,4 +1,11 @@
-import { useCallback, useRef, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { PlayerControls } from "../../player";
 import type { TimelineElement } from "../../player";
 import { NLEPreview } from "./NLEPreview";
@@ -6,6 +13,8 @@ import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
+import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
+import { PreviewTextSelectionToolbar } from "./PreviewTextSelectionToolbar";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -67,6 +76,7 @@ export function PreviewPane({
     previewCompositionSize,
     setPreviewCompositionSize,
   } = useNLEContext();
+  const { domEditSelection } = useDomEditSelectionContext();
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
   const handleStageRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {
@@ -89,17 +99,65 @@ export function PreviewPane({
   // Preview-only fullscreen: fullscreen targets THIS pane's container, so the
   // browser shows only the preview (sidebars + timeline are excluded naturally).
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isStudioFullscreen, setIsStudioFullscreen] = useState(false);
   const fullscreenElement = useSyncExternalStore(subscribeFullscreen, getFullscreenElement);
-  const isFullscreen = fullscreenElement === containerRef.current && fullscreenElement != null;
+  const isNativeFullscreen = fullscreenElement === containerRef.current && fullscreenElement != null;
+  const isFullscreen = isNativeFullscreen || isStudioFullscreen;
+
+  useEffect(() => {
+    if (!isNativeFullscreen && fullscreenElement) setIsStudioFullscreen(false);
+  }, [fullscreenElement, isNativeFullscreen]);
+
+  useEffect(() => {
+    if (!isStudioFullscreen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsStudioFullscreen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isStudioFullscreen]);
 
   const toggleFullscreen = useCallback(() => {
-    if (!containerRef.current) return;
+    const target = containerRef.current;
+    if (!target) return;
+    if (isStudioFullscreen) {
+      setIsStudioFullscreen(false);
+      return;
+    }
     if (document.fullscreenElement) {
       void document.exitFullscreen();
+      setIsStudioFullscreen(false);
     } else {
-      void containerRef.current.requestFullscreen();
+      const fallbackTimer = window.setTimeout(() => {
+        if (document.fullscreenElement !== target) setIsStudioFullscreen(true);
+      }, 350);
+      target.requestFullscreen().then(
+        () => {
+          window.clearTimeout(fallbackTimer);
+          if (document.fullscreenElement !== target) setIsStudioFullscreen(true);
+        },
+        (err) => {
+          window.clearTimeout(fallbackTimer);
+          console.warn(
+            "[Studio] Native fullscreen unavailable; using in-app fullscreen:",
+            err instanceof Error ? err.message : err,
+          );
+          setIsStudioFullscreen(true);
+        },
+      );
     }
-  }, []);
+  }, [isStudioFullscreen]);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    node.addEventListener("studio-toggle-fullscreen", toggleFullscreen);
+    return () => node.removeEventListener("studio-toggle-fullscreen", toggleFullscreen);
+  }, [toggleFullscreen]);
 
   const currentLevel = compositionStack[compositionStack.length - 1];
   const directUrl = compositionStack.length > 1 ? currentLevel.previewUrl : undefined;
@@ -111,8 +169,9 @@ export function PreviewPane({
       // fills the screen edge-to-edge.
       className={`hf-preview-pane flex-1 min-h-0 flex flex-col overflow-hidden bg-neutral-950 ${
         isFullscreen ? "" : "rounded-lg border border-neutral-800/50"
-      }`}
+      } ${isStudioFullscreen ? "hf-preview-pane--studio-fullscreen" : ""}`}
       data-studio-fullscreen-target=""
+      data-studio-fullscreen-active={isFullscreen ? "" : undefined}
     >
       <div
         className="flex-1 min-h-0 relative overflow-hidden"
@@ -143,6 +202,12 @@ export function PreviewPane({
           <AssetPreviewOverlay />
         </div>
         {!isFullscreen && previewOverlay}
+        <PreviewTextSelectionToolbar
+          iframeRef={iframeRef}
+          containerRef={containerRef}
+          activeSelection={domEditSelection}
+          hidden={isFullscreen || timelineDisabled}
+        />
       </div>
       {/* Transport row: no own background or border — the controls sit flat on
           the preview panel's surface (CapCut-style). */}
@@ -155,7 +220,6 @@ export function PreviewPane({
           onSeek={seek}
           disabled={timelineDisabled}
           isFullscreen={isFullscreen}
-          onToggleFullscreen={toggleFullscreen}
         />
       </div>
     </div>
