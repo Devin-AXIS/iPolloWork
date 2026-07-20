@@ -1256,8 +1256,8 @@ export function DesignPanel({
                     isPresentationTemplate
                       ? "absolute left-1/2 top-1/2 h-[900px] w-[1600px] origin-center rounded-lg shadow-sm"
                       : previewDevice === "desktop"
-                      ? "w-full rounded-lg shadow-sm"
-                      : "w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
+                      ? "h-full w-full rounded-lg shadow-sm"
+                      : "h-full w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
                   )}
                   style={isPresentationTemplate
                     ? { transform: `translate(-50%, -50%) scale(${presentationScale})` }
