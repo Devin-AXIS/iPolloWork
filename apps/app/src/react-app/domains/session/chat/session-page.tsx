@@ -91,7 +91,10 @@ const STARTUP_SKELETON_ROWS = [
 const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowork_voice__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
 const MAIN_WORKSPACE_MIN_WIDTH = 520;
-const MAIN_WORKSPACE_FALLBACK_MIN_WIDTH = 480;
+const MAIN_WORKSPACE_FALLBACK_MIN_WIDTH = 240;
+const AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH = 520;
+const AUTO_COLLAPSE_RIGHT_PANEL_WIDTH = 520;
+const NARROW_LAYOUT_WIDTH = 960;
 type SessionPanelView = SidePanelItem | "launcher";
 
 export type SessionPageHistoryControls = {
@@ -652,6 +655,11 @@ export function SessionPage(props: SessionPageProps) {
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
+  const autoCollapsedSidebarRef = useRef(false);
+  const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
+  const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
+  const userOpenedSidebarWhileNarrowRef = useRef(false);
+  const userOpenedSidePanelWhileNarrowRef = useRef(false);
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
   const videoRailActive = activeSidePanel === "video";
@@ -718,6 +726,10 @@ export function SessionPage(props: SessionPageProps) {
   const preserveSidePanelOnPanelOpenRef = useRef(false);
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
+    if (panel) {
+      userOpenedSidePanelWhileNarrowRef.current = true;
+      autoCollapsedSidePanelRef.current = null;
+    }
     if (panel) setMainWorkspaceView(null);
     setSessionPanelView(null);
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, panel === "voice" ? "voice" : null);
@@ -729,9 +741,13 @@ export function SessionPage(props: SessionPageProps) {
     setMainWorkspaceView(null);
     setSessionPanelView(null);
     if (panel === "voice") {
+      userOpenedSidePanelWhileNarrowRef.current = true;
+      autoCollapsedSidePanelRef.current = null;
       toggleSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, "voice");
       return;
     }
+    userOpenedSidePanelWhileNarrowRef.current = true;
+    autoCollapsedSidePanelRef.current = null;
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
     toggleSidePanelState(props.selectedSessionId, panel);
   }, [props.selectedSessionId, setSidePanelState, toggleSidePanelState]);
@@ -762,16 +778,28 @@ export function SessionPage(props: SessionPageProps) {
     startLeftSidebarResize,
   } = useWorkspaceShellLayout({
     expandedRightWidth: 520,
-    minRightWidth: 320,
+    minRightWidth: 160,
   });
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
   ));
+  const narrowLayout = viewportWidth < NARROW_LAYOUT_WIDTH;
+  const effectiveLeftSidebarWidth = narrowLayout ? Math.min(leftSidebarWidth, 200) : leftSidebarWidth;
+  const effectiveBrowserPanelWidth = narrowLayout ? Math.min(browserPanelDefaultWidth, 180) : browserPanelDefaultWidth;
   const sidebarProviderStyle: CSSProperties & Record<"--sidebar-width", string> = {
-    "--sidebar-width": `${leftSidebarWidth}px`,
+    "--sidebar-width": `${effectiveLeftSidebarWidth}px`,
   };
-  const mainWorkspaceMinWidth = viewportWidth >= leftSidebarWidth + browserPanelDefaultWidth + MAIN_WORKSPACE_MIN_WIDTH
+  const availableMainWorkspaceWidth = viewportWidth
+    - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0)
+    - (sidePanelOpen ? effectiveBrowserPanelWidth : 0);
+  const expandedMainWorkspaceWidth = viewportWidth
+    - (shellConfig.sidebar ? effectiveLeftSidebarWidth : 0)
+    - (autoCollapsedSidePanelRef.current ? effectiveBrowserPanelWidth : 0);
+  const expandedRightPanelWorkspaceWidth = viewportWidth
+    - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0)
+    - (autoCollapsedSidePanelRef.current ? effectiveBrowserPanelWidth : 0);
+  const mainWorkspaceMinWidth = viewportWidth >= effectiveLeftSidebarWidth + effectiveBrowserPanelWidth + MAIN_WORKSPACE_MIN_WIDTH
     ? MAIN_WORKSPACE_MIN_WIDTH
     : MAIN_WORKSPACE_FALLBACK_MIN_WIDTH;
   const sidebarVisuallyCollapsed = !sidebarOpen;
@@ -782,9 +810,52 @@ export function SessionPage(props: SessionPageProps) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
   useEffect(() => {
+    if (!shellConfig.sidebar) return;
+    if (
+      availableMainWorkspaceWidth < AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH &&
+      sidebarOpen &&
+      !userOpenedSidebarWhileNarrowRef.current
+    ) {
+      autoCollapsedSidebarRef.current = true;
+      setSidebarOpen(false);
+      return;
+    }
+    if (
+      autoCollapsedSidebarRef.current &&
+      !sidebarOpen &&
+      !sidePanelOpen &&
+      expandedMainWorkspaceWidth >= AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH
+    ) {
+      autoCollapsedSidebarRef.current = false;
+      userOpenedSidebarWhileNarrowRef.current = false;
+      setSidebarOpen(true);
+    }
+  }, [
+    availableMainWorkspaceWidth,
+    expandedMainWorkspaceWidth,
+    setSidebarOpen,
+    shellConfig.sidebar,
+    sidebarOpen,
+    sidePanelOpen,
+  ]);
+  useEffect(() => {
     if (sidePanelOpen) return;
     setBrowserPanelDefaultWidth(browserPanelWidth);
   }, [sidePanelOpen, browserPanelWidth]);
+  useEffect(() => {
+    if (effectiveSidePanelView) {
+      lastRightPanelViewRef.current = effectiveSidePanelView;
+    }
+  }, [effectiveSidePanelView]);
+  const handleSidebarOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      userOpenedSidebarWhileNarrowRef.current = true;
+      autoCollapsedSidebarRef.current = false;
+    } else {
+      userOpenedSidebarWhileNarrowRef.current = false;
+    }
+    setSidebarOpen(open);
+  }, [setSidebarOpen]);
   useEffect(() => {
     props.onAccessibleTargetsChange?.(accessibleTargets);
   }, [accessibleTargets, props.onAccessibleTargetsChange]);
@@ -863,10 +934,46 @@ export function SessionPage(props: SessionPageProps) {
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
   }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel]);
-  const closeRightPane = useCallback(() => {
+  const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
+    if (!options?.preserveAutoCollapse) {
+      userOpenedSidePanelWhileNarrowRef.current = false;
+      autoCollapsedSidePanelRef.current = null;
+    }
     setSessionPanelView(null);
     setCurrentSidePanel(null);
   }, [setCurrentSidePanel]);
+  useEffect(() => {
+    if (
+      availableMainWorkspaceWidth < AUTO_COLLAPSE_RIGHT_PANEL_WIDTH &&
+      sidePanelOpen &&
+      !userOpenedSidePanelWhileNarrowRef.current
+    ) {
+      autoCollapsedSidePanelRef.current = effectiveSidePanelView;
+      closeRightPane({ preserveAutoCollapse: true });
+      return;
+    }
+    const restoredPanel = autoCollapsedSidePanelRef.current;
+    if (
+      restoredPanel &&
+      !sidePanelOpen &&
+      expandedRightPanelWorkspaceWidth >= AUTO_COLLAPSE_RIGHT_PANEL_WIDTH
+    ) {
+      autoCollapsedSidePanelRef.current = null;
+      userOpenedSidePanelWhileNarrowRef.current = false;
+      if (restoredPanel === "launcher") {
+        setSessionPanelView("launcher");
+      } else {
+        setCurrentSidePanel(restoredPanel);
+      }
+    }
+  }, [
+    availableMainWorkspaceWidth,
+    closeRightPane,
+    effectiveSidePanelView,
+    expandedRightPanelWorkspaceWidth,
+    setCurrentSidePanel,
+    sidePanelOpen,
+  ]);
   const openBrowserRailPane = useCallback(() => {
     // Opening the browser pane should land on a usable page, not an empty
     // panel that forces the user to click "+". If no browser tab exists yet,
@@ -889,11 +996,21 @@ export function SessionPage(props: SessionPageProps) {
   }, [setCurrentSidePanel]);
   const toggleRightPanel = useCallback(() => {
     if (sidePanelOpen) {
+      if (effectiveSidePanelView) {
+        lastRightPanelViewRef.current = effectiveSidePanelView;
+      }
       closeRightPane();
       return;
     }
-    setSessionPanelView("launcher");
-  }, [closeRightPane, sidePanelOpen]);
+    userOpenedSidePanelWhileNarrowRef.current = true;
+    autoCollapsedSidePanelRef.current = null;
+    const restoredPanel = lastRightPanelViewRef.current;
+    if (restoredPanel === "launcher") {
+      setSessionPanelView("launcher");
+      return;
+    }
+    setCurrentSidePanel(restoredPanel);
+  }, [closeRightPane, effectiveSidePanelView, setCurrentSidePanel, sidePanelOpen]);
   const openDesignRailPane = useCallback(() => {
     toggleCurrentSidePanel("design");
   }, [toggleCurrentSidePanel]);
@@ -1338,6 +1455,11 @@ export function SessionPage(props: SessionPageProps) {
     showWorkspaceSetupEmptyState || (props.selectedSessionId && !selectedSessionIsDefaultTitle),
   );
   const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
+  const mainHeaderHidden = mainWorkspaceView === "extensions" || (showNewConversationChrome && !sidebarVisuallyCollapsed);
+  const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
+  const floatingRightPanelToggleOffset = sidePanelOpen
+    ? Math.min(effectiveBrowserPanelWidth, Math.max(0, visibleWorkspaceWidth - 40)) + 8
+    : 8;
 
   useEffect(() => {
     if (!showSessionLoadingState) {
@@ -1395,7 +1517,7 @@ export function SessionPage(props: SessionPageProps) {
     <div className="flex h-full min-h-0 flex-col bg-[radial-gradient(circle_at_top,rgba(74,111,255,0.12),transparent_42%),var(--app-bg,#0b1020)] text-dls-text mac:bg-transparent">
       <SidebarProvider
         open={sidebarOpen}
-        onOpenChange={setSidebarOpen}
+        onOpenChange={handleSidebarOpenChange}
         className={cn(
           "relative min-h-0 flex-1 mac:bg-transparent",
           leftSidebarResizing &&
@@ -1461,13 +1583,39 @@ export function SessionPage(props: SessionPageProps) {
           <ResizablePanelGroup
             orientation="horizontal"
             onLayoutChanged={sidePanelOpen ? commitBrowserPanelWidth : undefined}
-            className="min-h-0 flex-1"
+            className="relative min-h-0 flex-1"
           >
+            {mainHeaderHidden ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="absolute top-2 z-50 rounded-lg bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
+                      style={{ right: floatingRightPanelToggleOffset }}
+                      aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                      title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                      aria-pressed={sidePanelOpen}
+                      disabled={!props.selectedSessionId && !sidePanelOpen}
+                      onClick={toggleRightPanel}
+                    >
+                      <img
+                        src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
+                        alt=""
+                        className="h-3 w-4 shrink-0"
+                      />
+                    </Button>
+                  }
+                />
+                <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
+              </Tooltip>
+            ) : null}
             <ResizablePanel minSize={`${mainWorkspaceMinWidth}px`} className="min-w-0">
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
-            mainWorkspaceView === "extensions" || (showNewConversationChrome && !sidebarVisuallyCollapsed) ? "hidden" : "flex",
+            mainHeaderHidden ? "hidden" : "flex",
           )}>
             {shellConfig.sidebar && sidebarVisuallyCollapsed ? (
               <Button
@@ -1477,7 +1625,11 @@ export function SessionPage(props: SessionPageProps) {
                 className="absolute left-6 top-1/2 z-20 size-8 -translate-y-1/2 rounded-lg border-none text-muted-foreground hover:bg-muted hover:text-foreground mac:left-20 mac:titlebar-no-drag"
                 aria-label={t("sidebar.expand")}
                 title={t("sidebar.expand")}
-                onClick={() => setSidebarOpen(true)}
+                onClick={() => {
+                  userOpenedSidebarWhileNarrowRef.current = true;
+                  autoCollapsedSidebarRef.current = false;
+                  setSidebarOpen(true);
+                }}
                 style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
               >
                 <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0" />
@@ -1563,7 +1715,7 @@ export function SessionPage(props: SessionPageProps) {
                       aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                       title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                       aria-pressed={sidePanelOpen}
-                      disabled={!props.selectedSessionId}
+                      disabled={!props.selectedSessionId && !sidePanelOpen}
                       onClick={toggleRightPanel}
                     >
                       <img
@@ -1793,13 +1945,13 @@ export function SessionPage(props: SessionPageProps) {
                 <ResizableHandle withHandle className="hidden lg:flex" />
                 <ResizablePanel
                   panelRef={browserPanelRef}
-                  defaultSize={`${effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "outputs" ? Math.max(browserPanelDefaultWidth, 360) : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
-                  minSize={effectiveSidePanelView === "video" ? "760px" : effectiveSidePanelView === "launcher" ? "280px" : effectiveSidePanelView === "outputs" ? "320px" : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? "420px" : "320px"}
+                  defaultSize={`${narrowLayout ? effectiveBrowserPanelWidth : effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "outputs" ? Math.max(browserPanelDefaultWidth, 360) : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
+                  minSize={narrowLayout ? "160px" : effectiveSidePanelView === "video" ? "760px" : effectiveSidePanelView === "launcher" ? "280px" : effectiveSidePanelView === "outputs" ? "320px" : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? "420px" : "320px"}
                   maxSize={effectiveSidePanelView === "video" ? "82%" : "70%"}
                   className="min-h-0 overflow-hidden lg:flex lg:flex-col"
                 >
                   {effectiveSidePanelView === "launcher" ? (
-                    <div className="flex h-full flex-col bg-background px-10 pt-[44vh] text-[#6B7280]">
+                    <div className="flex h-full flex-col bg-background px-6 pt-16 text-[#6B7280] min-[960px]:px-10 min-[960px]:pt-[44vh]">
                       <div className="w-full max-w-[240px] space-y-5">
                         {sidePanelLauncherItems.map((item) => {
                           return (

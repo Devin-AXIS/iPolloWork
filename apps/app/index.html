@@ -23,8 +23,39 @@
         }
       })();
     </script>
+    <style>
+      #ipollowork-startup-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        place-items: center;
+        background: #ffffff;
+        transition: opacity 160ms ease;
+      }
+
+      #ipollowork-startup-splash[data-hiding="true"] {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #ipollowork-startup-splash img {
+        width: min(288px, 33.6vw);
+        height: auto;
+        display: block;
+      }
+
+      @media (max-width: 640px) {
+        #ipollowork-startup-splash img {
+          width: min(224px, 46.4vw);
+        }
+      }
+    </style>
   </head>
   <body class="bg-dls-surface text-dls-text mac:bg-transparent">
+    <div id="ipollowork-startup-splash" aria-label="Loading" role="status">
+      <img src="/ipollowork-app-loading-v3.gif" alt="" aria-hidden="true" />
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/index.react.tsx"></script>
   </body>

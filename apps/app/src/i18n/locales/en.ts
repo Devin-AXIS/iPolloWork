@@ -4,6 +4,9 @@
  */
 
 export default {
+  "design.export.download": "Download",
+  "design.export.download_pdf": "Download PDF",
+  "design.export.download_pptx": "Download PPTX",
   "app.compact_command_desc": "Summarize this session to reduce context size.",
   "app.error_audit_load": "Failed to load audit log.",
   "app.error_auth_failed": "Authentication failed",
