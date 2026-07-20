@@ -7,6 +7,9 @@
  */
 
 export default {
+  "design.export.download": "下载",
+  "design.export.download_pdf": "下载 PDF",
+  "design.export.download_pptx": "下载 PPTX",
   "app.compact_command_desc": "压缩此会话以减少上下文大小。",
   "app.error_audit_load": "加载审计日志失败。",
   "app.error_auth_failed": "认证失败",

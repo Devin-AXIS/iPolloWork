@@ -3,6 +3,9 @@
  */
 
 export default {
+  "design.export.download": "ダウンロード",
+  "design.export.download_pdf": "PDF をダウンロード",
+  "design.export.download_pptx": "PPTX をダウンロード",
   "new_conversation.mode_label": "会話の目的を選択",
   "new_conversation.mode.work": "日常業務",
   "new_conversation.mode.code": "コード開発",

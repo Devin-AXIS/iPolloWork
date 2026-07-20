@@ -4,6 +4,9 @@
  */
 
 export default {
+  "design.export.download": "Descarregar",
+  "design.export.download_pdf": "Descarregar PDF",
+  "design.export.download_pptx": "Descarregar PPTX",
   "new_conversation.mode_label": "Trieu l'enfocament de la conversa",
   "new_conversation.mode.work": "Feina diària",
   "new_conversation.mode.code": "Crear amb codi",
