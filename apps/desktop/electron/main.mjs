@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, net as electronNet, Notification as ElectronNotification, session, shell, systemPreferences } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, net as electronNet, Notification as ElectronNotification, screen, session, shell, systemPreferences } from "electron";
 import { configureFakeMediaForTests, installMediaPermissionHandlers } from "./media-permissions.mjs";
 import { registerMigrationIpc } from "./migration.mjs";
 import { createRuntimeManager } from "./runtime.mjs";
@@ -62,8 +62,11 @@ const APP_IDENTIFIER =
 const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
 const RELEASE_PAGE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest";
 const DOCS_PAGE_URL = "https://ipolloworklabs.com/docs";
-const MAIN_WINDOW_MIN_WIDTH = 720;
-const MAIN_WINDOW_MIN_HEIGHT = 640;
+const MAIN_WINDOW_DEFAULT_WIDTH = 1440;
+const MAIN_WINDOW_DEFAULT_HEIGHT = 900;
+const MAIN_WINDOW_MIN_WIDTH = 880;
+const MAIN_WINDOW_MIN_HEIGHT = 768;
+const MAIN_WINDOW_STATE_FILE = "main-window-state.json";
 const applicationMenu = createApplicationMenu({
   appName: APP_NAME,
   docsUrl: DOCS_PAGE_URL,
@@ -1088,6 +1091,59 @@ const IDLE_ROUTER_INFO = Object.freeze({
 
 let mainWindow = null;
 const pendingDeepLinks = [];
+
+function mainWindowStatePath() {
+  return path.join(app.getPath("userData"), MAIN_WINDOW_STATE_FILE);
+}
+
+function normalizeMainWindowBounds(value) {
+  if (!value || typeof value !== "object") return null;
+  const x = Number(Reflect.get(value, "x"));
+  const y = Number(Reflect.get(value, "y"));
+  const width = Number(Reflect.get(value, "width"));
+  const height = Number(Reflect.get(value, "height"));
+  if (![x, y, width, height].every(Number.isFinite)) return null;
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.max(MAIN_WINDOW_MIN_WIDTH, Math.round(width)),
+    height: Math.max(MAIN_WINDOW_MIN_HEIGHT, Math.round(height)),
+  };
+}
+
+function mainWindowBoundsAreVisible(bounds) {
+  return screen.getAllDisplays().some((display) => {
+    const area = display.workArea;
+    return (
+      bounds.x < area.x + area.width &&
+      bounds.x + bounds.width > area.x &&
+      bounds.y < area.y + area.height &&
+      bounds.y + bounds.height > area.y
+    );
+  });
+}
+
+async function readMainWindowState() {
+  try {
+    const raw = await readFile(mainWindowStatePath(), "utf8");
+    const bounds = normalizeMainWindowBounds(JSON.parse(raw));
+    if (!bounds || !mainWindowBoundsAreVisible(bounds)) return null;
+    return bounds;
+  } catch {
+    return null;
+  }
+}
+
+async function writeMainWindowState(win) {
+  if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+  const bounds = normalizeMainWindowBounds(win.getBounds());
+  if (!bounds) return;
+  try {
+    await writeFile(mainWindowStatePath(), JSON.stringify(bounds), "utf8");
+  } catch (error) {
+    console.warn("[window-state] failed to persist main window bounds", error);
+  }
+}
 
 const browserPanel = createBrowserPanel({
   remoteDebugPort,
@@ -2260,6 +2316,7 @@ async function createMainWindow() {
   if (mainWindow) return mainWindow;
 
   const preloadPath = path.join(__dirname, "preload.mjs");
+  const savedWindowBounds = await readMainWindowState();
   const windowAppearanceOptions = {};
   if (process.platform === "darwin") {
     Object.assign(windowAppearanceOptions, {
@@ -2289,8 +2346,9 @@ async function createMainWindow() {
   }
 
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 820,
+    width: savedWindowBounds?.width ?? MAIN_WINDOW_DEFAULT_WIDTH,
+    height: savedWindowBounds?.height ?? MAIN_WINDOW_DEFAULT_HEIGHT,
+    ...(savedWindowBounds ? { x: savedWindowBounds.x, y: savedWindowBounds.y } : {}),
     minWidth: MAIN_WINDOW_MIN_WIDTH,
     minHeight: MAIN_WINDOW_MIN_HEIGHT,
     title: currentDisplayAppName,
@@ -2313,6 +2371,15 @@ async function createMainWindow() {
   });
   mainWindow.setMinimumSize(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT);
   mainWindow.on("resize", () => enforceMainWindowMinimumSize(mainWindow));
+  mainWindow.on("resize", () => {
+    void writeMainWindowState(mainWindow);
+  });
+  mainWindow.on("move", () => {
+    void writeMainWindowState(mainWindow);
+  });
+  mainWindow.on("close", () => {
+    void writeMainWindowState(mainWindow);
+  });
   if (cachedBrandImage && bootSourceUrl) {
     await applyCachedBrandIcon(cachedBrandImage, bootSourceUrl);
   }

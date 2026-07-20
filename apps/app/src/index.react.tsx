@@ -61,3 +61,10 @@ ReactDOM.createRoot(root).render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
+
+window.requestAnimationFrame(() => {
+  const splash = document.getElementById("ipollowork-startup-splash");
+  if (!splash) return;
+  splash.dataset.hiding = "true";
+  window.setTimeout(() => splash.remove(), 180);
+});
