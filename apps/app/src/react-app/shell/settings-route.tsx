@@ -116,7 +116,7 @@ import {
   revealDesktopItemInDir,
 } from "@/app/lib/desktop";
 import { isDesktopProviderBlocked } from "@/app/cloud/desktop-app-restrictions";
-import { useCheckDesktopRestriction, useDesktopConfig } from "@/react-app/domains/cloud/desktop-config-provider";
+import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { useRestrictionNotice } from "@/react-app/domains/cloud/restriction-notice-provider";
 import { useCloudProviderAutoSync } from "@/react-app/domains/cloud/use-cloud-provider-auto-sync";
 import {
@@ -355,7 +355,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const platform = usePlatform();
   const checkDesktopRestriction = useCheckDesktopRestriction();
   const restrictionNotice = useRestrictionNotice();
-  const desktopConfig = useDesktopConfig();
   const reloadCoordinator = useReloadCoordinator();
   const [embeddedPath, setEmbeddedPath] = useState(props.initialPath ?? "general");
   const route = props.embedded ? parseSettingsPath(`/settings/${embeddedPath}`) : parseSettingsPath(location.pathname);
@@ -769,7 +768,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const electronUpdaterState = useElectronUpdaterState({
     updateAutoCheck,
     updateAutoDownload,
-    desktopConfig: desktopConfig.config,
     setError: (message) => {
       if (message) {
         // Auto-checks can fail without any user action; alert + log to the
