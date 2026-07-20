@@ -853,7 +853,8 @@ jobs:
       always() &&
       needs.resolve-release.result == 'success' &&
       needs.publish-electron.result == 'success' &&
-      (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
+      (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped') &&
+      vars.AUR_PUBLISH_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
