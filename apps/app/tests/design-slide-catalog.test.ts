@@ -13,6 +13,14 @@ describe("Design slide catalog", () => {
     expect(html).not.toContain("aspect-ratio:3/4");
   });
 
+  test("keeps the Xiaohongshu deck scrollable when opened without runtime", async () => {
+    const html = await Bun.file(xhsDeckUrl).text();
+
+    expect(html).toContain(".tpl-xhs-post .deck{width:100vw;height:auto;min-height:100vh;overflow:visible}");
+    expect(html).toContain(".tpl-xhs-post .slide{position:relative;inset:auto;width:100vw;height:100vh;opacity:1;pointer-events:auto;transform:none;page-break-after:always}");
+    expect(html).not.toContain("ipw-page-controls");
+  });
+
   test("marks dynamic slide materialization so a saved deck does not run it twice", async () => {
     const html = await Bun.file(dynamicDeckUrl).text();
 
