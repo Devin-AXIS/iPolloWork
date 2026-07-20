@@ -457,6 +457,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     clone.querySelector(`#${runtimeId}`)?.remove();
     clone.querySelector("#ipollowork-design-navigation-runtime")?.remove();
     clone.querySelector("#ipollowork-design-deck-runtime")?.remove();
+    clone.querySelector("#ipollowork-design-deck-runtime-style")?.remove();
     clone.querySelector("#ipollowork-design-fixed-slide-runtime")?.remove();
     clone.querySelector("#ipollowork-design-fixed-slide-runtime-style")?.remove();
     clone.querySelector(`#${styleId}`)?.remove();

@@ -56,6 +56,7 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('data-ipw-slide');
     expect(preview).toContain('data-action=\'next\'');
     expect(preview).toContain('visibilityStyle.id = "ipollowork-design-deck-runtime-style"');
+    expect(preview).toContain('clone.querySelector("#ipollowork-design-deck-runtime-style")?.remove()');
     expect(preview).toContain('[data-ipw-slide][aria-hidden="true"] { display: none !important; opacity: 0 !important; pointer-events: none !important; }');
     expect(preview).toContain('event.key === "ArrowRight"');
     expect(preview).toContain("isEditableTarget(event.target)");
