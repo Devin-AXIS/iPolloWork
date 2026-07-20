@@ -4,22 +4,33 @@
   English · <a href="./translated_readmes/README_ZH.md">简体中文</a> · <a href="./translated_readmes/README_ZH_hk.md">繁體中文</a> · <a href="./translated_readmes/README_JA.md">日本語</a>
 </p>
 
-> **Build with agents. Edit everything.**
+<p align="center">
+  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">
+    <img src="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@7037c3b5/docs/assets/ipollowork-demo-poster.jpg" alt="Watch the iPolloWork demo" width="900">
+  </a>
+</p>
 
-**The next-generation, source-available alternative to Codex and Claude Code — built not only for coding, but for getting real work finished.**
+<p align="center">
+  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">▶ Watch the iPolloWork demo</a>
+</p>
 
-iPolloWork turns AI agents into a complete visual workspace for code, office work, websites, presentations, design, and video. Describe the outcome, let the agent build it, then keep editing the result yourself: rewrite text in place, replace images, change colors and typography, move and resize elements, switch between desktop and mobile views, or refine video scenes on a timeline — as naturally as editing a slide in PowerPoint.
+> **An AI workbench that builds, runs, and keeps results editable.**
 
-This is not another chat wrapper. iPolloWork brings conversation, files, browser, editable canvas, design tools, video studio, task history, permissions, Skills, plugins, and MCP into one local-first desktop experience.
+**The source-available, local-first alternative to Codex and Claude Code for work beyond the terminal.**
 
-## One agent workspace. Every kind of work.
+iPolloWork gives agents one workspace for repositories, local files, browser tasks, documents, presentations, websites, design, and video. Describe the outcome; the agent plans and executes; you inspect the work, approve actions, and keep editing the result in the same place.
 
-- **Code** — understand repositories, plan changes, write code, run tools, and review the result with a full agent workflow.
-- **Office** — research, draft documents, work with spreadsheets, and turn ideas into polished presentations instead of stopping at a text response.
-- **Design** — generate websites, slides, and visual assets, then directly edit text, images, colors, typography, layout, and responsive states on the canvas.
-- **Video** — create and refine visual scenes in an integrated studio with editable content and timeline controls.
-- **Extensible agents** — connect any model and expand the workspace with Skills, plugins, MCP servers, and browser automation.
-- **Local-first by default** — work directly with your files on macOS, Windows, or Linux; use the desktop app, browser UI, or headless server, and connect iPolloCloud only when you need team and commercial capabilities.
+Codex-style coding is only the starting point. When the output is a deck, web page, visual design, or video, iPolloWork keeps it editable instead of handing you a finished file or a chat transcript.
+
+## What makes it different
+
+- **Agent-first execution** — plan work, use tools, read and modify files, run commands, and continue from the current state.
+- **Editable results** — move from code to documents, websites, presentations, design, and video; keep changing text, images, layout, and scenes after generation.
+- **Local control** — run on your machine, bring your own model or provider, approve permissions, and extend the workspace with Skills, plugins, MCP servers, and browser automation.
+
+## The short version
+
+iPolloWork is for people who want a Codex-like agent with a visual, local-first workspace around it. It is not a chat-only wrapper and it does not require iPolloCloud for local use.
 
 This source-available repository contains the Work client and its local runtime integration. Accounts, organization administration, hosted worker management, payments, and mobile Apps are separate iPolloCloud capabilities and are not required for local use.
 

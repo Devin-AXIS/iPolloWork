@@ -6,22 +6,33 @@
   <a href="../README.md">English</a> · <a href="./README_ZH.md">简体中文</a> · 繁體中文 · <a href="./README_JA.md">日本語</a>
 </p>
 
-> **讓智能體創造，讓每一個結果都能繼續編輯。**
+<p align="center">
+  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">
+    <img src="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@7037c3b5/docs/assets/ipollowork-demo-poster.jpg" alt="觀看 iPolloWork 演示" width="900">
+  </a>
+</p>
 
-**Codex 與 Claude Code 的下一代源碼開放平替——不只幫你寫代碼，更直接完成真正的工作。**
+<p align="center">
+  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">▶ 觀看 iPolloWork 演示</a>
+</p>
 
-iPolloWork 把 AI 智能體變成一個完整的可視化工作區：代碼、辦公、網站、幻燈片、設計和視頻，都能在同一個任務裏完成。你只需要描述目標，讓智能體先生成，再親手繼續修改——原位改文字、換圖片、調顏色和字體、拖動和縮放元素、切換電腦與手機預覽，或者在時間線上調整視頻畫面，像修改 PowerPoint 一樣直觀。
+> **讓 AI 執行，讓結果始終可編輯。**
 
-它不是又一個套着對話框的 AI 工具。iPolloWork 把對話、文件、瀏覽器、可編輯畫布、設計工具、視頻工作室、任務記錄、權限、Skills、插件和 MCP 真正整合進一個本地優先的桌面工作空間。
+**面向終端之外真實工作的源碼可用、本地優先 Codex 平替。**
 
-## 一個智能體工作區，完成所有類型的工作
+iPolloWork 讓 AI 智能體在一個工作空間裏處理代碼倉庫、本地文件、瀏覽器任務、文檔、演示稿、網站、設計和視頻。你描述目標，智能體負責規劃和執行；你可以檢查過程、批准操作，並在同一個地方繼續編輯結果。
 
-- **Code** — 理解代碼倉庫、規劃修改、編寫代碼、調用工具並檢查結果，擁有完整的智能體開發流程。
-- **辦公** — 調研、撰寫文檔、處理表格並製作精美幻燈片，不再停留在一段文字回答。
-- **設計** — 生成網站、幻燈片和視覺內容，再在畫布上直接修改文字、圖片、顏色、字體、佈局和響應式效果。
-- **視頻** — 在內置 Studio 中生成和調整視覺畫面，直接編輯內容並使用時間線完成剪輯。
-- **自由擴展** — 接入不同模型，通過 Skills、插件、MCP 和瀏覽器自動化擴展智能體能力。
-- **本地優先** — 支持 macOS、Windows 和 Linux，直接處理本地文件；可使用桌面端、瀏覽器 UI 或無界面 Server，需要團隊與商業能力時再連接 iPolloCloud。
+Codex 式編碼只是起點。當結果變成演示稿、網頁、視覺設計或視頻時，iPolloWork 仍然讓它保持可編輯，而不是隻交付一個成品文件或一段聊天記錄。
+
+## 它真正解決的三件事
+
+- **智能體執行** — 規劃工作、調用工具、讀寫文件、運行命令，並從當前狀態繼續推進。
+- **結果可編輯** — 從代碼延伸到文檔、網站、演示稿、設計和視頻；生成之後，文字、圖片、佈局和畫面仍能繼續修改。
+- **本地可控** — 在自己的設備上運行，接入自己的模型或服務商，逐項批准權限，並通過 Skills、插件、MCP 服務和瀏覽器自動化擴展能力。
+
+## 一句話理解
+
+iPolloWork 是一個圍繞 Codex 式智能體構建的可視化、本地優先工作空間。它不是隻會聊天的包裝層，本地使用也不要求 iPolloCloud 賬號。
 
 源碼可用倉庫只包含 Work 客户端及本地運行能力。賬號、組織管理、託管 Worker、支付、管理後台和移動 App 屬於獨立的 iPolloCloud，不影響 Work 單獨使用。
 
