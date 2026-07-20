@@ -56,6 +56,7 @@ type PendingLocalImageTarget =
   | { kind: "insert" }
   | { kind: "slash"; slash: SlashCommandMatch }
   | { kind: "replace"; from: number; to: number; alt: string };
+type RectEdges = Pick<DOMRect, "bottom" | "left" | "right" | "top">;
 
 const BLOCK_COMMANDS: BlockCommand[] = [
   { id: "text", label: "Text", aliases: ["plain", "paragraph"], icon: Type, markdown: "" },
@@ -72,6 +73,13 @@ const BLOCK_COMMANDS: BlockCommand[] = [
   { id: "divider", label: "Divider", aliases: ["line", "rule"], shortcut: "---", icon: Minus, markdown: "---", kind: "insert" },
 ];
 const LOCAL_IMAGE_ACCEPT = "image/*";
+const SLASH_MENU_WIDTH = 288;
+const SLASH_MENU_EDGE_PADDING = 8;
+const SLASH_MENU_GAP = 6;
+const SLASH_MENU_MAX_HEIGHT = 448;
+const SLASH_MENU_HEADER_HEIGHT = 28;
+const SLASH_MENU_ROW_HEIGHT = 49;
+const SLASH_MENU_EMPTY_HEIGHT = 104;
 
 function applyEdit(view: EditorView, edit: MarkdownEdit) {
   view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert }, selection: edit.selection, scrollIntoView: true });
@@ -119,6 +127,35 @@ function getSelectionBoundaryCoords(view: EditorView, position: number, directio
     : Math.max(0, position - 1);
 
   return view.coordsAtPos(fallbackPosition);
+}
+
+function getSlashMenuPosition(editorRect: RectEdges & Pick<DOMRect, "height" | "width">, slashCoords: RectEdges, commandCount: number) {
+  const estimatedHeight = Math.min(
+    SLASH_MENU_MAX_HEIGHT,
+    commandCount > 0
+      ? SLASH_MENU_HEADER_HEIGHT + (commandCount * SLASH_MENU_ROW_HEIGHT)
+      : SLASH_MENU_HEADER_HEIGHT + SLASH_MENU_EMPTY_HEIGHT,
+  );
+  const belowSpace = editorRect.bottom - slashCoords.bottom - SLASH_MENU_GAP - SLASH_MENU_EDGE_PADDING;
+  const aboveSpace = slashCoords.top - editorRect.top - SLASH_MENU_GAP - SLASH_MENU_EDGE_PADDING;
+  const shouldFlipAbove = belowSpace < estimatedHeight && aboveSpace > belowSpace;
+  const availableHeight = Math.max(
+    72,
+    shouldFlipAbove ? aboveSpace : belowSpace,
+  );
+  const maxHeight = Math.min(SLASH_MENU_MAX_HEIGHT, availableHeight);
+  const left = Math.min(
+    Math.max(SLASH_MENU_EDGE_PADDING, slashCoords.left - editorRect.left),
+    Math.max(SLASH_MENU_EDGE_PADDING, editorRect.width - SLASH_MENU_WIDTH - SLASH_MENU_EDGE_PADDING),
+  );
+  const top = shouldFlipAbove
+    ? Math.max(SLASH_MENU_EDGE_PADDING, slashCoords.top - editorRect.top - Math.min(estimatedHeight, maxHeight) - SLASH_MENU_GAP)
+    : Math.min(
+        slashCoords.bottom - editorRect.top + SLASH_MENU_GAP,
+        Math.max(SLASH_MENU_EDGE_PADDING, editorRect.height - maxHeight - SLASH_MENU_EDGE_PADDING),
+      );
+
+  return { left, top, maxHeight };
 }
 
 function inferImageMimeType(file: File) {
@@ -318,6 +355,7 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
 
   const editorRect = view.dom.getBoundingClientRect();
   const slashCoords = visibleSlash ? view.coordsAtPos(visibleSlash.to) : null;
+  const slashMenuPosition = visibleSlash && slashCoords ? getSlashMenuPosition(editorRect, slashCoords, commands.length) : null;
   const selectionStart = !selection.empty ? getSelectionBoundaryCoords(view, selection.from, "start") : null;
   const selectionEnd = !selection.empty ? getSelectionBoundaryCoords(view, selection.to, "end") : null;
   const selectionToolbarLeft = selectionStart && selectionEnd
@@ -341,12 +379,12 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
           event.currentTarget.value = "";
         }}
       />
-      {visibleSlash && slashCoords ? (
+      {visibleSlash && slashMenuPosition ? (
         <div
           role="listbox"
           aria-label="Insert block"
           className="absolute z-40 max-h-[min(28rem,calc(100vh-8rem))] w-72 overflow-y-auto rounded-2xl border border-border bg-popover p-1.5 text-popover-foreground shadow-2xl"
-          style={{ left: Math.min(Math.max(8, slashCoords.left - editorRect.left), Math.max(8, editorRect.width - 296)), top: slashCoords.bottom - editorRect.top + 6 }}
+          style={slashMenuPosition}
           data-markdown-slash-menu
         >
           <div className="px-2.5 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground">Basic blocks</div>

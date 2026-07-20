@@ -10,7 +10,7 @@
     "readme:zh-hant:check": "node scripts/sync-readme-zh-hant.mjs --check",
     "package": "node scripts/ipollowork.mjs package",
     "package:dir": "node scripts/ipollowork.mjs package:dir",
-    "package:windows": "pnpm --filter @ipollowork/desktop package:windows",
+    "package:windows": "cross-env IPOLLOWORK_WINDOWS_INSTALLER=1 pnpm --filter @ipollowork/desktop package:windows",
     "dev": "cross-env IPOLLOWORK_DEV_MODE=1 IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT=9823 pnpm --filter @ipollowork/desktop dev",
     "dev:electron": "cross-env IPOLLOWORK_DEV_MODE=1 pnpm --filter @ipollowork/desktop dev:electron",
     "dev:electron:two": "cross-env IPOLLOWORK_DEV_MODE=1 node scripts/dev-two-electron-demo.mjs",
