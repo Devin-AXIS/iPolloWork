@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { Check, ChevronRight, Clock3, HardDrive, RefreshCcw, ShieldCheck, XCircle } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Clock3, HardDrive, RefreshCcw, ShieldCheck, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 
 import {
@@ -12,8 +12,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { t } from "@/i18n";
 import type { PendingPermission } from "@/app/types";
+import { cn } from "@/lib/utils";
 
 type PermissionPresentation = {
   title: string;
@@ -22,6 +29,7 @@ type PermissionPresentation = {
   scopeLabel: string;
   scopeValue: string;
   isDoomLoop: boolean;
+  isExternalDirectory: boolean;
   note: string | null;
 };
 
@@ -37,6 +45,50 @@ type PermissionApprovalModalProps = {
   respondPermission?: (requestID: string, reply: "once" | "always" | "reject") => void;
   safeStringify?: (value: unknown) => string;
 };
+
+type PermissionAllowMenuProps = {
+  permissionId: string;
+  busy?: boolean;
+  respondPermission?: PermissionApprovalModalProps["respondPermission"];
+  variant?: "default" | "outline";
+  className?: string;
+};
+
+function PermissionAllowMenu(props: PermissionAllowMenuProps) {
+  const disabled = props.busy || !props.respondPermission;
+  const triggerClassName = cn("min-w-0 whitespace-nowrap", props.className);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={(
+          <Button
+            type="button"
+            variant={props.variant}
+            size="sm"
+            className={triggerClassName}
+            disabled={disabled}
+            aria-label={t("session.allow_once")}
+          >
+            <Clock3 data-icon="inline-start" />
+            {t("session.allow_once")}
+            <ChevronDown data-icon="inline-end" className="size-4" />
+          </Button>
+        )}
+      />
+      <DropdownMenuContent align="end" className="min-w-44">
+        <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "once")}>
+          <Clock3 />
+          {t("session.allow_once")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "always")}>
+          <Check />
+          {t("session.allow_for_session")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 const metadataDetailKeys: Array<{ key: string; labelKey: string; multiline?: boolean }> = [
   { key: "command", labelKey: "session.permission_detail_command", multiline: true },
@@ -177,18 +229,21 @@ function describePermissionRequest(permission: PendingPermission): PermissionPre
       scopeLabel: tool ? t("session.doom_loop_tool_label") : t("session.doom_loop_repeated_call_label"),
       scopeValue: tool ?? (patterns.length ? patterns.join(", ") : t("session.doom_loop_repeated_tool_call")),
       isDoomLoop: true,
+      isExternalDirectory: false,
       note: t("session.doom_loop_note"),
     };
   }
 
   const copy = permissionCopy(permission.permission);
+  const isExternalDirectory = permission.permission === "external_directory";
   return {
     title: copy.title,
     message: copy.message,
     permissionLabel: readablePermissionLabel(permission.permission),
-    scopeLabel: t("session.scope_label"),
+    scopeLabel: isExternalDirectory ? t("session.permission_detail_path") : t("session.scope_label"),
     scopeValue: patterns.join(", ") || t("session.permission_scope_empty"),
     isDoomLoop: false,
+    isExternalDirectory,
     note: null,
   };
 }
@@ -337,7 +392,7 @@ export function PermissionApprovalModal(props: PermissionApprovalModalProps) {
           <p className="mb-4 text-[12px] leading-5 text-dls-secondary">
             {t("session.permission_decision_hint")}
           </p>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[1fr_auto_auto]">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[1fr_auto]">
             <AlertDialogAction
               variant="destructive"
               className="justify-center sm:justify-self-start"
@@ -347,21 +402,12 @@ export function PermissionApprovalModal(props: PermissionApprovalModalProps) {
               <XCircle data-icon="inline-start" />
               {t("session.deny")}
             </AlertDialogAction>
-            <AlertDialogAction
-              onClick={() => props.respondPermission?.(props.permission.id, "once")}
-              disabled={props.busy || !props.respondPermission}
-            >
-              <Clock3 data-icon="inline-start" />
-              {t("session.allow_once")}
-            </AlertDialogAction>
-            <AlertDialogAction
-              variant="outline"
-              onClick={() => props.respondPermission?.(props.permission.id, "always")}
-              disabled={props.busy || !props.respondPermission}
-            >
-              <Check data-icon="inline-start" />
-              {t("session.allow_for_session")}
-            </AlertDialogAction>
+            <PermissionAllowMenu
+              permissionId={props.permission.id}
+              busy={props.busy}
+              respondPermission={props.respondPermission}
+              className="justify-center"
+            />
           </div>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -379,57 +425,50 @@ export function PermissionApprovalPanel(props: PermissionApprovalModalProps) {
   const Icon = presentation.isDoomLoop ? RefreshCcw : ShieldCheck;
 
   return (
-    <div className="overflow-hidden border-b border-dls-border bg-transparent">
-        <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-dls-border bg-dls-hover text-dls-secondary">
-              <Icon size={16} strokeWidth={1.9} />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[13px] font-medium leading-5 text-dls-text">{presentation.title}</div>
-              <div className="mt-0.5 text-[12px] leading-5 text-dls-secondary">{presentation.message}</div>
-              {presentation.note ? (
-                <div className="mt-1 text-[12px] leading-5 text-dls-secondary">{presentation.note}</div>
-              ) : null}
-            </div>
+    <div className="@container/permission overflow-hidden border-b border-dls-border bg-transparent">
+      <div className="flex flex-col gap-3 px-4 py-3 @lg/permission:flex-row @lg/permission:items-center @lg/permission:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-dls-border bg-dls-hover text-dls-secondary">
+            <Icon size={16} strokeWidth={1.9} />
           </div>
-
-          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="border-red-7/25 text-red-11 hover:bg-red-1/40"
-              onClick={() => props.respondPermission?.(props.permission.id, "reject")}
-              disabled={props.busy || !props.respondPermission}
-            >
-              <XCircle data-icon="inline-start" />
-              {t("session.deny")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => props.respondPermission?.(props.permission.id, "once")}
-              disabled={props.busy || !props.respondPermission}
-            >
-              <Clock3 data-icon="inline-start" />
-              {t("session.allow_once")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => props.respondPermission?.(props.permission.id, "always")}
-              disabled={props.busy || !props.respondPermission}
-            >
-              <Check data-icon="inline-start" />
-              {t("session.allow_for_session")}
-            </Button>
+          <div className="min-w-0">
+            <div className="text-[13px] font-medium leading-5 text-dls-text">{presentation.title}</div>
+            <div className="mt-0.5 text-[12px] leading-5 text-dls-secondary">{presentation.message}</div>
+            {presentation.note ? (
+              <div className="mt-1 text-[12px] leading-5 text-dls-secondary">{presentation.note}</div>
+            ) : null}
           </div>
         </div>
 
-        <div className="border-t border-dls-border px-4 py-3">
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <div className="grid w-full grid-cols-1 gap-2 @md/permission:grid-cols-2 @lg/permission:flex @lg/permission:w-auto @lg/permission:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-w-0 whitespace-nowrap border-red-7/25 text-red-11 hover:bg-red-1/40 @lg/permission:w-auto"
+            onClick={() => props.respondPermission?.(props.permission.id, "reject")}
+            disabled={props.busy || !props.respondPermission}
+          >
+            <XCircle data-icon="inline-start" />
+            {t("session.deny")}
+          </Button>
+          <PermissionAllowMenu
+            permissionId={props.permission.id}
+            busy={props.busy}
+            respondPermission={props.respondPermission}
+            className="w-full @lg/permission:w-auto"
+          />
+        </div>
+      </div>
+
+      <div className="border-t border-dls-border px-4 py-3">
+        <div
+          className={cn(
+            "grid gap-3",
+            !presentation.isExternalDirectory && "@sm/permission:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]",
+          )}
+        >
+          {!presentation.isExternalDirectory ? (
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-dls-secondary">
                 {t("session.permission_label")}
@@ -438,28 +477,29 @@ export function PermissionApprovalPanel(props: PermissionApprovalModalProps) {
                 {presentation.permissionLabel}
               </div>
             </div>
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-dls-secondary">
-                {presentation.scopeLabel}
-              </div>
-              <div className="mt-1 truncate rounded-lg border border-dls-border bg-dls-hover/55 px-2.5 py-1.5 font-mono text-[12px] leading-5 text-dls-text">
-                {presentation.scopeValue}
-              </div>
+          ) : null}
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-dls-secondary">
+              {presentation.scopeLabel}
+            </div>
+            <div className="mt-1 truncate rounded-lg border border-dls-border bg-dls-hover/55 px-2.5 py-1.5 font-mono text-[12px] leading-5 text-dls-text">
+              {presentation.scopeValue}
             </div>
           </div>
-
-          {hasMetadata ? (
-            <details className="group mt-3 rounded-xl border border-dls-border bg-dls-surface px-3 py-2">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[12px] font-medium text-dls-text">
-                <span>{t("session.details_label")}</span>
-                <ChevronRight size={14} className="text-dls-secondary transition-transform group-open:rotate-90" />
-              </summary>
-              <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-dls-hover/45 px-3 py-2 text-[11px] leading-5 text-dls-secondary">
-                {stringifyMetadata(metadata, props.safeStringify)}
-              </pre>
-            </details>
-          ) : null}
         </div>
+
+        {hasMetadata ? (
+          <details className="group mt-3 rounded-xl border border-dls-border bg-dls-surface px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[12px] font-medium text-dls-text">
+              <span>{t("session.details_label")}</span>
+              <ChevronRight size={14} className="text-dls-secondary transition-transform group-open:rotate-90" />
+            </summary>
+            <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-dls-hover/45 px-3 py-2 text-[11px] leading-5 text-dls-secondary">
+              {stringifyMetadata(metadata, props.safeStringify)}
+            </pre>
+          </details>
+        ) : null}
+      </div>
     </div>
   );
 }

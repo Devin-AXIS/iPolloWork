@@ -447,6 +447,7 @@ async function resolveCorrectArchitectureDownloadUrl(arch) {
     const response = await fetch(manifestUrl, {
       headers: { Accept: "text/yaml, text/plain, */*" },
     });
+    if (response.status === 404) return null;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const selected = selectDownloadFile(parseUpdaterManifestFiles(await response.text()), arch);
     if (!selected?.url) return null;

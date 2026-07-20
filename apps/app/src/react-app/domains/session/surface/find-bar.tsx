@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { useSessionFindStore } from "./find-store";
 import { SEARCH_HIGHLIGHT_SELECTOR } from "./text-highlights";
@@ -285,10 +286,11 @@ export function SessionFindBar({
   }
 
   const totalMatches = matches.length;
+  const noMatches = activeQuery.length >= MIN_QUERY_LENGTH && totalMatches === 0;
   const counterText = activeQuery.length < MIN_QUERY_LENGTH
     ? ""
-    : totalMatches === 0
-      ? "No matches"
+    : noMatches
+      ? t("find.no_matches")
       : `${activeIndex + 1}/${totalMatches}`;
 
   return (
@@ -316,12 +318,12 @@ export function SessionFindBar({
             }
           }}
           className="h-7 w-48 bg-transparent px-1 text-sm text-dls-text outline-none placeholder:text-dls-secondary sm:h-8 sm:w-56"
-          placeholder="Find in conversation"
-          aria-label="Find in conversation"
+          placeholder={t("find.in_conversation")}
+          aria-label={t("find.in_conversation")}
         />
         <span className={cn(
           "min-w-14 text-right text-xs tabular-nums text-muted-foreground",
-          counterText === "No matches" && "min-w-20",
+          noMatches && "min-w-20",
         )} aria-live="polite">
           {counterText}
         </span>
@@ -332,7 +334,7 @@ export function SessionFindBar({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label="Previous match"
+                aria-label={t("find.previous_match")}
                 disabled={totalMatches === 0}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={jumpToPrevious}
@@ -341,7 +343,7 @@ export function SessionFindBar({
               </Button>
             }
           />
-          <TooltipContent>Previous match (⇧↵)</TooltipContent>
+          <TooltipContent>{t("find.previous_match_hint")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -350,7 +352,7 @@ export function SessionFindBar({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label="Next match"
+                aria-label={t("find.next_match")}
                 disabled={totalMatches === 0}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={jumpToNext}
@@ -359,7 +361,7 @@ export function SessionFindBar({
               </Button>
             }
           />
-          <TooltipContent>Next match (↵)</TooltipContent>
+          <TooltipContent>{t("find.next_match_hint")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -368,7 +370,7 @@ export function SessionFindBar({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label="Close find"
+                aria-label={t("find.close")}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={closeFind}
               >
@@ -376,7 +378,7 @@ export function SessionFindBar({
               </Button>
             }
           />
-          <TooltipContent>Close (Esc)</TooltipContent>
+          <TooltipContent>{t("find.close_hint")}</TooltipContent>
         </Tooltip>
       </div>
     </div>

@@ -93,14 +93,11 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
     },
   },
   updater: {
-    getChannel() {
-      return ipcRenderer.invoke("ipollowork:updater:getChannel");
+    getState() {
+      return ipcRenderer.invoke("ipollowork:updater:getState");
     },
-    setChannel(channel) {
-      return ipcRenderer.invoke("ipollowork:updater:setChannel", channel);
-    },
-    check(channel) {
-      return ipcRenderer.invoke("ipollowork:updater:check", channel);
+    check() {
+      return ipcRenderer.invoke("ipollowork:updater:check");
     },
     download() {
       return ipcRenderer.invoke("ipollowork:updater:download");

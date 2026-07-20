@@ -25,9 +25,9 @@ This source-available repository contains the Work client and its local runtime 
 
 ## Install iPolloWork
 
-### Download a desktop build
+### Download the desktop app
 
-When public installers are published, they appear on [GitHub Releases](https://github.com/Devin-AXIS/iPolloWork/releases). This repository does not currently have a public release, so the source workflow below is the available installation path today. For future releases, choose the file that matches both your operating system and CPU:
+Official installers are published on [GitHub Releases](https://github.com/Devin-AXIS/iPolloWork/releases). If you prefer a manual download, choose the file that matches both your operating system and CPU:
 
 | System | CPU | Installer to use |
 | --- | --- | --- |

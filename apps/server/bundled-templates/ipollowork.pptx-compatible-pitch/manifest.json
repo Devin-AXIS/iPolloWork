@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.pptx-compatible-pitch",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "slides",
+  "subcategory": "investor-pitch",
+  "style": "bold",
+  "tags": ["pptx-compatible", "editable", "pitch", "fundraising"],
+  "pptxCompatibility": "native-editable",
+  "surface": "design",
+  "title": "Investor Pitch",
+  "description": "A bold investor narrative built from editable PowerPoint text and shapes.",
+  "cover": "cover.png",
+  "entry": "entry.html",
+  "source": {
+    "name": "iPolloWork",
+    "license": "MIT"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "tokens": "design-tokens.css",
+    "variables": [
+      { "id": "--ipw-color-primary", "label": "Primary", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-accent", "label": "Accent", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-bg", "label": "Page background", "type": "color", "group": "background" },
+      { "id": "--ipw-color-surface", "label": "Surface", "type": "color", "group": "background" },
+      { "id": "--ipw-color-text", "label": "Text", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-muted", "label": "Muted text", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-border", "label": "Border", "type": "color", "group": "components" },
+      { "id": "--ipw-font-display", "label": "Display font", "type": "font", "group": "typography" },
+      { "id": "--ipw-font-body", "label": "Body font", "type": "font", "group": "typography" },
+      { "id": "--ipw-card-radius", "label": "Card radius", "type": "number", "group": "components" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace every sample metric with verified business data.",
+    "Keep the investment thesis to one clear sentence per slide.",
+    "Use native image elements only with embedded data URLs.",
+    "Preserve the PPTX semantic markers when editing HTML."
+  ],
+  "minimumAppVersion": "0.17.21"
+}

@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Download, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Download, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
@@ -19,6 +19,8 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
+import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
+import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import {
   buildDesignPreviewDocument,
   DESIGN_MESSAGE_CHANNEL,
@@ -36,6 +38,32 @@ import {
   downgradeUnsupportedPdfExportColors,
   downgradeUnsupportedPdfExportColorText,
 } from "./pdf-export-colors";
+import {
+  deckPptxFileName,
+  PPTX_EXPORT_CONFIRMATION,
+  PPTX_BACKGROUND_IMAGE_FORMAT,
+  PPTX_CAPTURE_SCALE,
+} from "./pptx-export";
+import { activateDeckExportSlide, PRESENTATION_SLIDE_SELECTOR } from "./deck-export";
+import {
+  PRESENTATION_CANVAS_HEIGHT,
+  PRESENTATION_CANVAS_WIDTH,
+  presentationCanvasScale,
+} from "./presentation-canvas";
+import {
+  collectPptxBackgroundPlan,
+  collectPptxElementPlans,
+  pptxExportSummary,
+  slideHasVisiblePptxContent,
+  validatePptxElementPlanCoverage,
+} from "./pptx-element-export";
+import {
+  collectPptxCompatibleObjects,
+  hasPptxCompatibleObjectMarkers,
+  normalizePptxCompatibleMarkers,
+  pptxCompatibleSlideBackground,
+  removePptxCompatibleRuntimeArtifacts,
+} from "./pptx-compatible-export";
 
 type DesignPanelProps = {
   sessionId: string;
@@ -130,7 +158,7 @@ function deckPdfFileName(document: Document, path: string) {
     const cleaned = sanitizePdfFileBaseName(value ?? "");
     return cleaned && !isGenericPdfTitle(cleaned) ? cleaned : "";
   };
-  const firstSlide = document.querySelector<HTMLElement>("[data-ipw-slide], section.slide, .slide");
+  const firstSlide = document.querySelector<HTMLElement>(PRESENTATION_SLIDE_SELECTOR);
   const candidates = [
     document.querySelector<HTMLMetaElement>("meta[property='og:title'],meta[name='title'],meta[name='ipw-title']")?.content,
     document.title,
@@ -219,6 +247,7 @@ export function DesignPanel({
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
   const iframeRef = React.useRef<any>(null);
+  const previewViewportRef = React.useRef<HTMLDivElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
   const templateQuery = useQuery({
     queryKey: ["design-session-template", workspaceId, sessionId] as const,
@@ -260,6 +289,7 @@ export function DesignPanel({
   const [viewedVersionPath, setViewedVersionPath] = React.useState("current");
   const [viewedVersionUpdatedAt, setViewedVersionUpdatedAt] = React.useState<number | null>(null);
   const [previewDevice, setPreviewDevice] = React.useState<"desktop" | "mobile">("desktop");
+  const [previewViewport, setPreviewViewport] = React.useState({ width: 0, height: 0 });
   const [editing, setEditing] = React.useState(false);
   const [deck, setDeck] = React.useState<DesignDeckState | null>(null);
   const hydratedPageRef = React.useRef("");
@@ -277,6 +307,8 @@ export function DesignPanel({
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
   const [exportingPdf, setExportingPdf] = React.useState(false);
+  const [exportingPptx, setExportingPptx] = React.useState(false);
+  const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!lockedPath) {
@@ -307,6 +339,31 @@ export function DesignPanel({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+  const usesNativeEditablePptx = Boolean(
+    designTemplate
+    && isPptxCompatibleTemplate(designTemplate)
+    && hasPptxCompatibleObjectMarkers(fileQuery.data?.content ?? ""),
+  );
+  const isPresentationTemplate = designTemplate?.category === "slides";
+  const presentationScale = presentationCanvasScale(previewViewport.width, previewViewport.height);
+
+  React.useEffect(() => {
+    if (!isPresentationTemplate) return;
+    setPreviewDevice("desktop");
+  }, [isPresentationTemplate]);
+
+  React.useEffect(() => {
+    const viewport = previewViewportRef.current;
+    if (!viewport || !isPresentationTemplate) return;
+    const sync = () => {
+      const rect = viewport.getBoundingClientRect();
+      setPreviewViewport({ width: rect.width, height: rect.height });
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [isPresentationTemplate]);
   const templateTokenPath = React.useMemo(() => {
     const tokenPath = designTemplate?.designSystem.tokens || linkedDesignTokenPath(fileQuery.data?.content) || "design-tokens.css";
     const briefPath = templateQuery.data?.state.briefPath;
@@ -497,6 +554,8 @@ export function DesignPanel({
         false,
         downgradeUnsupportedPdfExportColorText(templateTokenQuery.data ?? ""),
         false,
+        false,
+        isPresentationTemplate,
       );
       await waitForExportFrame(frame);
       const frameDocument = frame.contentDocument;
@@ -517,24 +576,14 @@ export function DesignPanel({
         container.style.aspectRatio = "16 / 9";
         container.style.overflow = "hidden";
       });
-      const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>("[data-ipw-slide], section.slide, .slide"))
+      const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>(PRESENTATION_SLIDE_SELECTOR))
         .filter((slide, index, entries) => entries.indexOf(slide) === index);
       if (!slides.length) throw new Error("No slides were found in this presentation.");
       const [{ default: html2canvas }, { jsPDF }] = await exportLibraries;
       const pdf = new jsPDF({ unit: "mm", format: [PDF_PAGE_WIDTH_MM, PDF_PAGE_HEIGHT_MM], orientation: "landscape", compress: true });
       for (let index = 0; index < slides.length; index += 1) {
         const slide = slides[index];
-        slides.forEach((entry) => {
-          entry.classList.toggle("is-active", entry === slide);
-          entry.classList.toggle("active", entry === slide);
-          entry.hidden = entry !== slide;
-          entry.style.transform = "none";
-          entry.style.opacity = entry === slide ? "1" : "0";
-          entry.style.visibility = entry === slide ? "visible" : "hidden";
-          entry.style.pointerEvents = "none";
-        });
-        slide.removeAttribute("hidden");
-        slide.setAttribute("aria-hidden", "false");
+        activateDeckExportSlide(slides, slide);
         slide.style.width = `${PDF_SLIDE_WIDTH}px`;
         slide.style.height = `${PDF_SLIDE_HEIGHT}px`;
         slide.style.maxWidth = `${PDF_SLIDE_WIDTH}px`;
@@ -565,7 +614,199 @@ export function DesignPanel({
       frame.remove();
       setExportingPdf(false);
     }
-  }, [activePagePath, deck, editing, exportingPdf, readLatestCanvasHtml, templateTokenQuery.data]);
+  }, [activePagePath, deck, editing, exportingPdf, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data]);
+
+  const exportDeckToPptx = React.useCallback(async () => {
+    if (!deck || exportingPptx) return;
+    setExportingPptx(true);
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;visibility:hidden;pointer-events:none`;
+    document.body.append(frame);
+    try {
+      const content = editing ? await readLatestCanvasHtml() : draftRef.current;
+      const previewContent = usesNativeEditablePptx ? content : downgradeUnsupportedPdfExportColorText(content);
+      const previewTokens = usesNativeEditablePptx
+        ? templateTokenQuery.data ?? ""
+        : downgradeUnsupportedPdfExportColorText(templateTokenQuery.data ?? "");
+      frame.srcdoc = buildDesignPreviewDocument(
+        previewContent,
+        false,
+        previewTokens,
+        false,
+        usesNativeEditablePptx,
+        isPresentationTemplate,
+      );
+      await waitForExportFrame(frame);
+      const frameDocument = frame.contentDocument;
+      if (!frameDocument) throw new Error("Could not prepare the presentation.");
+      if (!usesNativeEditablePptx) downgradeUnsupportedPdfExportColors(frameDocument);
+      if (usesNativeEditablePptx) {
+        normalizePptxCompatibleMarkers(frameDocument);
+        removePptxCompatibleRuntimeArtifacts(frameDocument);
+      }
+      else frameDocument.querySelectorAll("script,[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next']").forEach((node) => node.remove());
+      frameDocument.documentElement.style.width = `${PDF_SLIDE_WIDTH}px`;
+      frameDocument.documentElement.style.height = `${PDF_SLIDE_HEIGHT}px`;
+      frameDocument.documentElement.style.overflow = "hidden";
+      frameDocument.body.style.width = `${PDF_SLIDE_WIDTH}px`;
+      frameDocument.body.style.height = `${PDF_SLIDE_HEIGHT}px`;
+      frameDocument.body.style.overflow = "hidden";
+      frameDocument.querySelectorAll<HTMLElement>(".deck,[data-ipw-template-kind='slides']").forEach((container) => {
+        container.style.width = `${PDF_SLIDE_WIDTH}px`;
+        container.style.height = `${PDF_SLIDE_HEIGHT}px`;
+        container.style.maxWidth = `${PDF_SLIDE_WIDTH}px`;
+        container.style.maxHeight = `${PDF_SLIDE_HEIGHT}px`;
+        container.style.aspectRatio = "16 / 9";
+        container.style.overflow = "hidden";
+      });
+      const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>(PRESENTATION_SLIDE_SELECTOR))
+        .filter((slide, index, entries) => entries.indexOf(slide) === index);
+      if (!slides.length) throw new Error("No slides were found in this presentation.");
+
+      const { default: PptxGenJS } = await import("pptxgenjs");
+      const html2canvas = usesNativeEditablePptx ? null : (await import("html2canvas-pro")).default;
+      const pptx = new PptxGenJS();
+      pptx.layout = "LAYOUT_WIDE";
+      pptx.author = "iPolloWork";
+      pptx.title = deck.title || "Presentation";
+      let nativeObjectCount = 0;
+      let fallbackCount = 0;
+      const capturePptxElement = async (element: HTMLElement, captureBackground = false) => {
+        if (!html2canvas) throw new Error("PPTX-compatible templates cannot use image fallback rendering.");
+        const marker = "data-ipw-pptx-background-root";
+        if (captureBackground) element.setAttribute(marker, "true");
+        try {
+          return await html2canvas(element, {
+            backgroundColor: null,
+            scale: PPTX_CAPTURE_SCALE,
+            useCORS: true,
+            logging: false,
+            onclone: (clonedDocument) => {
+              downgradeUnsupportedPdfExportColors(clonedDocument);
+              if (!captureBackground) return;
+              const root = clonedDocument.querySelector<HTMLElement>(`[${marker}]`);
+              root?.querySelectorAll<HTMLElement>(`${PRESENTATION_SLIDE_SELECTOR},.deck-chrome,.deck-controls,.dots,.counter,[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next']`)
+                .forEach((node) => { node.style.visibility = "hidden"; });
+            },
+          });
+        } finally {
+          if (captureBackground) element.removeAttribute(marker);
+        }
+      };
+      for (const slide of slides) {
+        activateDeckExportSlide(slides, slide);
+        slide.style.width = `${PDF_SLIDE_WIDTH}px`;
+        slide.style.height = `${PDF_SLIDE_HEIGHT}px`;
+        slide.style.maxWidth = `${PDF_SLIDE_WIDTH}px`;
+        slide.style.maxHeight = `${PDF_SLIDE_HEIGHT}px`;
+        slide.style.margin = "0";
+        slide.style.overflow = "hidden";
+        await yieldForExportWork();
+
+        const pptxSlide = pptx.addSlide();
+        if (usesNativeEditablePptx) {
+          pptxSlide.background = { color: pptxCompatibleSlideBackground(slide) };
+          const objects = collectPptxCompatibleObjects(slide);
+          nativeObjectCount += objects.length;
+          for (const object of objects) {
+            if (object.kind === "shape") {
+              pptxSlide.addShape(object.value.type, {
+                ...object.value.frame,
+                fill: object.value.fill,
+                line: object.value.line,
+              });
+              continue;
+            }
+            if (object.kind === "text") {
+              pptxSlide.addText(object.value.runs, {
+                ...object.value.frame,
+                fontFace: object.value.fontFace,
+                fontSize: object.value.fontSize,
+                color: object.value.color,
+                bold: object.value.bold,
+                italic: object.value.italic,
+                align: object.value.align,
+                lineSpacing: object.value.lineSpacing,
+                charSpacing: object.value.charSpacing,
+                margin: 0,
+                valign: "top",
+                fit: "none",
+              });
+              continue;
+            }
+            pptxSlide.addImage({
+              data: object.value.data,
+              ...object.value.frame,
+              altText: object.value.altText,
+            });
+          }
+          await yieldForExportWork();
+          continue;
+        }
+        const backgroundPlan = collectPptxBackgroundPlan(slide);
+        if (backgroundPlan?.kind === "color") {
+          pptxSlide.background = { color: backgroundPlan.color };
+        } else if (backgroundPlan?.kind === "fallback") {
+          const canvas = await capturePptxElement(backgroundPlan.element, true);
+          pptxSlide.addImage({ data: canvas.toDataURL(PPTX_BACKGROUND_IMAGE_FORMAT), ...backgroundPlan.frame });
+          fallbackCount += 1;
+        }
+        const plans = collectPptxElementPlans(slide);
+        const planCoverage = validatePptxElementPlanCoverage({
+          hasVisibleContent: slideHasVisiblePptxContent(slide),
+          planCount: plans.length,
+        });
+        if (!planCoverage.valid) {
+          throw new Error("PPTX export stopped because visible slide content could not be collected. No blank presentation was created.");
+        }
+        const summary = pptxExportSummary(plans);
+        nativeObjectCount += summary.nativeObjectCount;
+        fallbackCount += summary.fallbackCount;
+        for (const plan of plans) {
+          if (plan.kind === "shape" && plan.shape) {
+            pptxSlide.addShape(plan.shape.shape, plan.shape);
+            continue;
+          }
+          if (plan.kind === "text" && plan.text) {
+            pptxSlide.addText(plan.text.text, {
+              x: plan.text.x,
+              y: plan.text.y,
+              w: plan.text.w,
+              h: plan.text.h,
+              fontFace: plan.text.fontFace,
+              fontSize: plan.text.fontSize,
+              lang: plan.text.lang,
+              lineSpacing: plan.text.lineSpacing,
+              charSpacing: plan.text.charSpacing,
+              color: plan.text.color,
+              transparency: plan.text.transparency,
+              bold: plan.text.bold,
+              italic: plan.text.italic,
+              align: plan.text.align,
+              margin: 0,
+              breakLine: false,
+              valign: "top",
+              fit: "none",
+            });
+            continue;
+          }
+          const canvas = await capturePptxElement(plan.element);
+          pptxSlide.addImage({ data: canvas.toDataURL(PPTX_BACKGROUND_IMAGE_FORMAT), ...plan.frame });
+        }
+        await yieldForExportWork();
+      }
+      await pptx.writeFile({ fileName: deckPptxFileName(deckPdfFileName(frameDocument, activePagePath)) });
+      toast.success(fallbackCount
+        ? `Presentation exported: ${nativeObjectCount} editable objects, ${fallbackCount} local visual fallbacks.`
+        : `Presentation exported: ${nativeObjectCount} editable objects.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not export this presentation.");
+    } finally {
+      frame.remove();
+      setExportingPptx(false);
+    }
+  }, [activePagePath, deck, editing, exportingPptx, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -807,12 +1048,20 @@ export function DesignPanel({
   const preview = React.useMemo(
     // The bridge is always present but starts inactive. Toggling Edit page is
     // a message to that bridge, not a new srcDoc, so a deck stays on its slide.
-    () => buildDesignPreviewDocument(previewSource, true, templateTokenQuery.data ?? "", false),
-    [previewSource, templateTokenQuery.data],
+    () => buildDesignPreviewDocument(previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
+    [isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
+  const presentationLeft = Math.max(0, (previewViewport.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
+  const presentationTop = Math.max(0, (previewViewport.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
+  const selectionLeft = isPresentationTemplate
+    ? presentationLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2
+    : (iframeRef.current?.offsetLeft ?? 0) + (selection?.rect.left ?? 0) + (selection?.rect.width ?? 0) / 2;
+  const selectionTop = isPresentationTemplate
+    ? presentationTop + (selection?.rect.top ?? 0) * presentationScale
+    : (iframeRef.current?.offsetTop ?? 0) + (selection?.rect.top ?? 0);
   const floatingStyle = selection ? {
-    left: `clamp(112px, ${(iframeRef.current?.offsetLeft ?? 0) + selection.rect.left + selection.rect.width / 2 + 8}px, calc(100% - 112px))`,
-    top: `${Math.max(8, (iframeRef.current?.offsetTop ?? 0) + selection.rect.top + 8)}px`,
+    left: `clamp(112px, ${selectionLeft + 8}px, calc(100% - 112px))`,
+    top: `${Math.max(8, selectionTop + 8)}px`,
     transform: selection.rect.top > 58 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
   } satisfies React.CSSProperties : undefined;
 
@@ -890,7 +1139,7 @@ export function DesignPanel({
               />
               Edit page
             </Label>
-            {editing && deck ? (
+            {deck ? (
               <div className="flex h-8 min-w-0 items-center rounded-lg border border-border/80 bg-muted/35 p-0.5 shadow-sm" data-testid="design-deck-navigation">
                 <Button variant="ghost" size="icon-sm" className="size-7 rounded-md" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
                   <ChevronLeft className="size-3.5" />
@@ -935,41 +1184,55 @@ export function DesignPanel({
             >
               {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
             </Button>
-            <ToggleGroup
-              value={[previewDevice]}
-              onValueChange={(value) => {
-                const next = value[0];
-                if (next !== "desktop" && next !== "mobile") return;
-                setPreviewDevice(next);
-                setSelection(null);
-                setQuickEdit(null);
-                setAdvancedOpen(false);
-              }}
-              variant="outline"
-              size="sm"
-              aria-label="Preview device"
-              className="rounded-lg"
-            >
-              <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label="Desktop preview" title="Desktop">
-                <Monitor className="size-3.5" />
-              </ToggleGroupItem>
-              <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label="Mobile preview" title="Mobile">
-                <Smartphone className="size-3.5" />
-              </ToggleGroupItem>
-            </ToggleGroup>
-            {deck ? (
-              <Button
+            {!isPresentationTemplate ? (
+              <ToggleGroup
+                value={[previewDevice]}
+                onValueChange={(value) => {
+                  const next = value[0];
+                  if (next !== "desktop" && next !== "mobile") return;
+                  setPreviewDevice(next);
+                  setSelection(null);
+                  setQuickEdit(null);
+                  setAdvancedOpen(false);
+                }}
                 variant="outline"
                 size="sm"
-                className="ml-auto"
-                onClick={() => void exportDeckToPdf()}
-                disabled={exportingPdf}
-                aria-label="Export presentation to PDF"
-                title="Export PDF"
+                aria-label="Preview device"
+                className="rounded-lg"
               >
-                {exportingPdf ? <Loader2 className="animate-spin" /> : <Download />}
-                Export PDF
-              </Button>
+                <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label="Desktop preview" title="Desktop">
+                  <Monitor className="size-3.5" />
+                </ToggleGroupItem>
+                <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label="Mobile preview" title="Mobile">
+                  <Smartphone className="size-3.5" />
+                </ToggleGroupItem>
+              </ToggleGroup>
+            ) : null}
+            {deck ? (
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPptxConfirmationOpen(true)}
+                  disabled={exportingPptx}
+                  aria-label="Export presentation to PPTX"
+                  title="Export PPTX"
+                >
+                  {exportingPptx ? <Loader2 className="animate-spin" /> : <Presentation />}
+                  Export PPTX
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void exportDeckToPdf()}
+                  disabled={exportingPdf}
+                  aria-label="Export presentation to PDF"
+                  title="Export PDF"
+                >
+                  {exportingPdf ? <Loader2 className="animate-spin" /> : <Download />}
+                  Export PDF
+                </Button>
+              </div>
             ) : null}
           </div>
 
@@ -979,18 +1242,26 @@ export function DesignPanel({
             <div className="p-4 text-sm text-destructive">{fileQuery.error.message}</div>
           ) : (
             <div className="flex min-h-0 flex-1">
-              <div className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}>
+              <div
+                ref={previewViewportRef}
+                className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", !isPresentationTemplate && previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}
+              >
                 <iframe
                   ref={iframeRef}
                   key={`${activePagePath}:${previewRevision}`}
                   srcDoc={preview}
                   title={`Design preview: ${fileName(activePagePath)}`}
                   className={cn(
-                    "h-full border border-border bg-white transition-[width,border-radius,box-shadow] duration-200",
-                    previewDevice === "desktop"
+                    "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
+                    isPresentationTemplate
+                      ? "absolute left-1/2 top-1/2 h-[900px] w-[1600px] origin-center rounded-lg shadow-sm"
+                      : previewDevice === "desktop"
                       ? "w-full rounded-lg shadow-sm"
                       : "w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
                   )}
+                  style={isPresentationTemplate
+                    ? { transform: `translate(-50%, -50%) scale(${presentationScale})` }
+                    : undefined}
                   sandbox="allow-scripts"
                   data-preview-loaded={previewLoaded ? "true" : "false"}
                   onLoad={() => {
@@ -1309,6 +1580,21 @@ export function DesignPanel({
           )}
         </>
       )}
+      <ConfirmModal
+        open={pptxConfirmationOpen}
+        title={PPTX_EXPORT_CONFIRMATION.title}
+        message={usesNativeEditablePptx
+          ? "This PPTX-compatible template exports text, shapes, and images as editable PowerPoint objects. Unsupported effects block export instead of being converted to a screenshot."
+          : PPTX_EXPORT_CONFIRMATION.message}
+        confirmLabel={PPTX_EXPORT_CONFIRMATION.confirmLabel}
+        cancelLabel={PPTX_EXPORT_CONFIRMATION.cancelLabel}
+        confirmButtonVariant="secondary"
+        onCancel={() => setPptxConfirmationOpen(false)}
+        onConfirm={() => {
+          setPptxConfirmationOpen(false);
+          void exportDeckToPptx();
+        }}
+      />
     </div>
   );
 }

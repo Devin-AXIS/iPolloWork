@@ -8,7 +8,7 @@ import {
   resetiPolloWorkExtensionDiscoveryInstructionCacheForTests,
   resolveiPolloWorkExtensionDiscoveryInstruction,
   type iPolloWorkExtensionConnectState,
-} from "./ipollowork-extensions-preview.js";
+} from "./ipollowork-extensions-preview-connect-steering.js";
 
 const originalServerUrl = process.env.IPOLLOWORK_SERVER_URL;
 const originalServerToken = process.env.IPOLLOWORK_SERVER_TOKEN;

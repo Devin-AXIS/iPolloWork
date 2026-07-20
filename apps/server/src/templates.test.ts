@@ -60,6 +60,19 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
 }
 
 const bundledTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "bundled-templates");
+const pptxCompatibleTemplateIds = [
+  "ipollowork.pptx-compatible-brief",
+  "ipollowork.pptx-compatible-pitch",
+  "ipollowork.pptx-compatible-report",
+];
+const flagshipVideoTemplateIds = [
+  "ipollowork.hyperframes.app-device-launch",
+  "ipollowork.hyperframes.feature-orbit",
+  "ipollowork.hyperframes.course-journey",
+  "ipollowork.hyperframes.code-explainer",
+  "ipollowork.hyperframes.brand-liquid-sizzle",
+  "ipollowork.hyperframes.data-proof-story",
+];
 
 function importedTemplateId(id: string) {
   return `test.${id.replace(/^ipollowork\./, "")}`;
@@ -201,6 +214,53 @@ describe("template installations", () => {
     expect(categoryCounts).toEqual({ article: 4, cards: 7, other: 4, report: 4, slides: 23, video: 8, poster: 2, site: 8 });
   });
 
+  test("ships six flagship HyperFrames video templates with local deterministic runtimes", async () => {
+    const directories = (await readdir(bundledTemplatesRoot)).filter((name) => name.startsWith("ipollowork.hyperframes."));
+    expect(directories).toHaveLength(flagshipVideoTemplateIds.length);
+    for (const templateId of flagshipVideoTemplateIds) {
+      const root = join(bundledTemplatesRoot, templateId);
+      const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
+      const entry = await readFile(join(root, manifest.entry), "utf8");
+      expect(manifest.category).toBe("video");
+      expect(manifest.surface).toBe("video");
+      expect(manifest.entry).toBe("index.html");
+      expect(manifest.cover).toBe("cover.png");
+      expect(manifest.source.license).toBe("Apache-2.0");
+      expect(entry).toContain('data-composition-id="main"');
+      expect(entry).toContain("data-composition-variables");
+      expect(entry).toContain("gsap.timeline({ paused: true })");
+      expect(entry).toContain("window.__timelines.main");
+      expect(entry).not.toMatch(/(?:src|href)\s*=\s*["']https?:\/\//i);
+      for (const variable of manifest.designSystem.variables) expect(entry).toContain(`"id":"${variable.id}"`);
+      const cover = await readFile(join(root, manifest.cover));
+      expect(cover.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      expect(cover.readUInt32BE(16)).toBe(960);
+      expect(cover.readUInt32BE(20)).toBe(540);
+      expect(cover.byteLength).toBeGreaterThan(15_000);
+      for (const script of entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
+        expect(() => new Function(script[1])).not.toThrow();
+      }
+      expect(existsSync(join(root, "assets", "gsap.min.js"))).toBe(true);
+    }
+    expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "iphone.glb"))).toBe(true);
+    expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "macbook.glb"))).toBe(true);
+  });
+
+  test("materializes every flagship video template as an independent session project", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-flagship-video-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await listTemplates(serverConfig, ws.id);
+    for (const templateId of flagshipVideoTemplateIds) {
+      const sessionId = `session_${templateId.split(".").at(-1)}`;
+      const created = await materializeTemplate(serverConfig, ws, templateId, sessionId);
+      expect(created.state.entry).toBe(`video/${sessionId}/index.html`);
+      expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain("window.__timelines.main");
+      expect(existsSync(join(ws.path, "video", sessionId, "brief.json"))).toBe(true);
+    }
+  });
+
   test("ships every website template with an explicit mobile layout and accessible navigation", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
     const websites: Array<{ manifest: TemplateManifestV1; entry: string }> = [];
@@ -225,7 +285,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(65);
+    expect(directories).toHaveLength(74);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -238,7 +298,27 @@ describe("template installations", () => {
       expect(cover.byteLength).toBeGreaterThan(15_000);
       hashes.add(Bun.hash(cover).toString());
     }
-    expect(hashes.size).toBe(65);
+    expect(hashes.size).toBe(74);
+  });
+
+  test("ships strict PPTX-compatible slide templates with explicit editable object markers", async () => {
+    for (const templateId of pptxCompatibleTemplateIds) {
+      const root = join(bundledTemplatesRoot, templateId);
+      const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
+      const entry = await readFile(join(root, manifest.entry), "utf8");
+      expect(manifest.category).toBe("slides");
+      expect(manifest.pptxCompatibility).toBe("native-editable");
+      expect(entry).toContain("data-pptx-text");
+      expect(entry).toContain("data-pptx-shape");
+      expect(entry).not.toMatch(/(?:linear|radial)-gradient|\bfilter\s*:/i);
+    }
+  });
+
+  test("build copies strict PPTX-compatible templates into the embedded server catalog", async () => {
+    const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
+    for (const templateId of pptxCompatibleTemplateIds) {
+      expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+    }
   });
 
   test("seeds the full personal template market and keeps its install state global", async () => {
@@ -246,7 +326,7 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(65);
+    expect(first.filter((item) => item.installed)).toHaveLength(74);
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);

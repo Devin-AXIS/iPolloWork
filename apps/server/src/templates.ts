@@ -10,6 +10,7 @@ import {
   templateManifestV1Schema,
   templateSourceTypeSchema,
   templateStyleSchema,
+  sortTemplatesForCatalog,
   type TemplateSessionState,
   type TemplateSessionSnapshot,
   type TemplateCategory,
@@ -33,6 +34,7 @@ const PERSONAL_TEMPLATE_LIBRARY = "__ipollowork_personal__";
 const ALLOWED_EXTENSIONS = new Set([
   ".html", ".css", ".js", ".mjs", ".json", ".svg", ".png", ".jpg", ".jpeg",
   ".webp", ".gif", ".avif", ".woff", ".woff2", ".ttf", ".otf", ".txt", ".md",
+  ".glb", ".gltf", ".bin",
 ]);
 const EXECUTABLE_EXTENSIONS = new Set([".exe", ".dll", ".com", ".bat", ".cmd", ".sh", ".ps1", ".app", ".dmg", ".pkg"]);
 const HYPERFRAMES_VARIABLE_TYPES = new Set(["string", "number", "color", "boolean", "enum"]);
@@ -465,7 +467,7 @@ export async function listTemplates(config: ServerConfig, workspaceId: string): 
     const parsed = templateManifestV1Schema.safeParse(JSON.parse(row.manifestJson));
     if (parsed.success) items.push({ manifest: parsed.data, sourceType: row.sourceType, installed: true, installedVersion: row.version, updateAvailable: false, verified: row.sourceType === "market" });
   }
-  return items.sort((left, right) => left.manifest.category.localeCompare(right.manifest.category) || left.manifest.title.localeCompare(right.manifest.title));
+  return sortTemplatesForCatalog(items.map((item) => item.manifest)).map((manifest) => items.find((item) => item.manifest === manifest)!);
 }
 
 export async function installBundledTemplate(config: ServerConfig, workspaceId: string, templateId: string) {

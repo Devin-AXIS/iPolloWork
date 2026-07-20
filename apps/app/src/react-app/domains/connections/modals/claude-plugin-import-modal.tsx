@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { t } from "@/i18n";
 import { TextInput } from "../../../design-system/text-input";
 import type { iPolloWorkClaudePluginPreview } from "../../../../app/lib/ipollowork-server";
 
@@ -58,11 +59,11 @@ function reducer(state: ModalState, action: ModalAction): ModalState {
   return { ...state, ...action };
 }
 
-const COMPONENT_LABELS: Record<string, { singular: string; plural: string }> = {
-  mcp: { singular: "MCP server", plural: "MCP servers" },
-  skill: { singular: "Skill", plural: "Skills" },
-  command: { singular: "Command", plural: "Commands" },
-  agent: { singular: "Agent", plural: "Agents" },
+const COMPONENT_LABEL_KEYS: Record<string, string> = {
+  mcp: "claude_plugin.component_mcp",
+  skill: "claude_plugin.component_skill",
+  command: "claude_plugin.component_command",
+  agent: "claude_plugin.component_agent",
 };
 
 export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
@@ -77,7 +78,7 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
   const handlePreview = async () => {
     const url = state.url.trim();
     if (!url) {
-      dispatch({ error: "Enter a GitHub repository URL." });
+      dispatch({ error: t("claude_plugin.invalid_url") });
       return;
     }
     dispatch({ previewing: true, error: null, preview: null, previewedUrl: null });
@@ -87,7 +88,7 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
     } catch (error) {
       dispatch({
         previewing: false,
-        error: error instanceof Error ? error.message : "Failed to load plugin preview",
+        error: error instanceof Error ? error.message : t("claude_plugin.load_preview_failed"),
       });
     }
   };
@@ -106,7 +107,7 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
     } catch (error) {
       dispatch({
         installing: false,
-        error: error instanceof Error ? error.message : "Failed to install plugin",
+        error: error instanceof Error ? error.message : t("claude_plugin.install_failed"),
       });
       return;
     }
@@ -134,10 +135,9 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
     >
       <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Install a plugin from GitHub</DialogTitle>
+          <DialogTitle>{t("claude_plugin.title")}</DialogTitle>
           <DialogDescription>
-            Works with Claude Code plugins: a repo with .claude-plugin/plugin.json bundling an MCP
-            server, skills, and commands.
+            {t("claude_plugin.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -145,7 +145,7 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
           <div className="flex items-end gap-2">
             <div className="flex-1">
               <TextInput
-                label="GitHub repository"
+                label={t("claude_plugin.repository")}
                 placeholder="https://github.com/slackapi/slack-mcp-plugin"
                 value={state.url}
                 onChange={(event) =>
@@ -163,7 +163,7 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
               ) : (
                 <Search data-icon="inline-start" />
               )}
-              Preview
+              {t("claude_plugin.preview")}
             </Button>
           </div>
 
@@ -186,14 +186,12 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
               </div>
 
               <div>
-                <div className="mb-1.5 text-xs font-medium text-dls-text">Will install</div>
+                <div className="mb-1.5 text-xs font-medium text-dls-text">{t("claude_plugin.will_install")}</div>
                 <div className="space-y-2">
                   {groups.map((group) => (
                     <div key={group.type}>
                       <div className="text-[11px] font-medium uppercase tracking-wide text-dls-secondary">
-                        {group.items.length === 1
-                          ? `1 ${COMPONENT_LABELS[group.type]?.singular}`
-                          : `${group.items.length} ${COMPONENT_LABELS[group.type]?.plural}`}
+                        {t(COMPONENT_LABEL_KEYS[group.type] ?? "claude_plugin.component_skill", { count: group.items.length })}
                       </div>
                       <ul className="mt-0.5 space-y-0.5">
                         {group.items.map((item) => (
@@ -232,7 +230,7 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
             render={<Button variant="outline" disabled={state.previewing || state.installing} />}
             disabled={state.previewing || state.installing}
           >
-            Cancel
+            {t("claude_plugin.cancel")}
           </DialogClose>
           <Button
             onClick={() => void handleInstall()}
@@ -243,7 +241,7 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
             ) : (
               <Download data-icon="inline-start" />
             )}
-            Install
+            {t("claude_plugin.install")}
           </Button>
         </DialogFooter>
       </DialogContent>
