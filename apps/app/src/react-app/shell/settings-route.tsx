@@ -253,7 +253,7 @@ export function parseSettingsPath(pathname: string): {
     .replace(/^\/settings\/?/, "")
     .replace(/^\/+|\/+$/g, "");
   if (!trimmed) {
-    return { tab: "general", redirectPath: "general" };
+    return { tab: "preferences", redirectPath: "preferences" };
   }
 
   const [head, tail] = trimmed.split("/");
@@ -286,7 +286,7 @@ export function parseSettingsPath(pathname: string): {
       if (tail === "plugins") return { tab: "extensions", redirectPath: null, extensionsSection: "plugins" };
       return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
     default:
-      return { tab: "general", redirectPath: "general" };
+      return { tab: "preferences", redirectPath: "preferences" };
   }
 }
 
@@ -357,7 +357,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const restrictionNotice = useRestrictionNotice();
   const desktopConfig = useDesktopConfig();
   const reloadCoordinator = useReloadCoordinator();
-  const [embeddedPath, setEmbeddedPath] = useState(props.initialPath ?? "general");
+  const [embeddedPath, setEmbeddedPath] = useState(props.initialPath ?? "preferences");
   const route = props.embedded ? parseSettingsPath(`/settings/${embeddedPath}`) : parseSettingsPath(location.pathname);
   const navigationWorkspaceId = readNavigationWorkspaceId(location.state);
   const navigationSessionId = readNavigationSessionId(location.state);

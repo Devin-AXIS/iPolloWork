@@ -904,7 +904,7 @@ export function AppSidebar(props: AppSidebarProps) {
                   <Settings className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="end" className="w-36 min-w-36">
-                  <DropdownMenuItem onClick={() => props.onOpenSettings("/settings/general")}>
+                  <DropdownMenuItem onClick={() => props.onOpenSettings("/settings/preferences")}>
                     <Settings className="size-4" />
                     {t("status.settings")}
                   </DropdownMenuItem>

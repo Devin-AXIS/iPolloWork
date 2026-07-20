@@ -235,8 +235,8 @@ export function CommandPalette(props: CommandPaletteProps) {
     ...(props.extraItems ?? []),
     {
       id: "open-settings",
-      title: t("settings.tab_general"),
-      detail: t("settings.tab_description_general"),
+      title: t("settings.tab_preferences"),
+      detail: t("settings.tab_description_preferences"),
       meta: t("session.cmd_settings_meta"),
       action: () => {
         props.onClose();
