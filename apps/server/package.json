@@ -1,6 +1,6 @@
 {
   "name": "ipollowork-server",
-  "version": "0.17.26",
+  "version": "0.17.27",
   "description": "Filesystem-backed API for iPolloWork remote clients",
   "type": "module",
   "bin": {
