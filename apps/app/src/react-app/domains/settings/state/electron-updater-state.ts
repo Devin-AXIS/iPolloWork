@@ -1,8 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
-import type { DenDesktopConfig } from "../../../../app/lib/den";
-import { isUpdateAllowed } from "../../../../app/lib/version-gate";
 import { isElectronRuntime, safeStringify } from "../../../../app/utils";
 import { useUpdateCheckRequestStore } from "./update-check-request";
 
@@ -23,7 +21,6 @@ type ElectronUpdaterBridge = NonNullable<Window["__IPOLLOWORK_ELECTRON__"]>["upd
 type UseElectronUpdaterStateOptions = {
   updateAutoCheck: boolean;
   updateAutoDownload: boolean;
-  desktopConfig: DenDesktopConfig | null | undefined;
   setError: (message: string | null) => void;
 };
 
@@ -35,6 +32,13 @@ type ElectronUpdaterEnvState = {
 type ElectronUpdaterEnvAction =
   | { type: "app-version"; appVersion: string | null }
   | { type: "unsupported"; reason: string };
+
+export function shouldOfferGitHubReleaseUpdate(result: {
+  available: boolean;
+  latestVersion?: string | null;
+}): boolean {
+  return result.available && Boolean(result.latestVersion?.trim());
+}
 
 function electronUpdaterEnvReducer(
   state: ElectronUpdaterEnvState,
@@ -91,7 +95,7 @@ function updateProgress(event: unknown): { downloaded?: number; total?: number }
 }
 
 export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions) {
-  const { updateAutoCheck, updateAutoDownload, desktopConfig, setError } = options;
+  const { updateAutoCheck, updateAutoDownload, setError } = options;
   const [updateStatus, setUpdateStatus] = useState<SettingsUpdateStatus>(null);
   const [envState, dispatchEnvState] = useReducer(electronUpdaterEnvReducer, {
     appVersion: null,
@@ -193,10 +197,11 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
         return;
       }
 
-      const availableAllowed = result.available && result.latestVersion
-        ? await isUpdateAllowed(result.latestVersion, desktopConfig)
-        : result.available;
-      const nextStatus: Exclude<SettingsUpdateStatus, null> = availableAllowed
+      // GitHub's release manifest is the source of truth for desktop updates.
+      // A cloud login or a temporary outage of the cloud version service must
+      // never hide a newer signed GitHub release from a local desktop client.
+      const hasAvailableRelease = shouldOfferGitHubReleaseUpdate(result);
+      const nextStatus: Exclude<SettingsUpdateStatus, null> = hasAvailableRelease
         ? {
             state: "available",
             lastCheckedAt: Date.now(),
@@ -212,13 +217,13 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
             notes: releaseNotesToText(result.releaseNotes),
           };
       setUpdateStatus(nextStatus);
-      if (availableAllowed && updateAutoDownload) {
+      if (hasAvailableRelease && updateAutoDownload) {
         await downloadUpdate();
       }
     } catch (error) {
       setUpdateStatus({ state: "error", message: describeError(error) });
     }
-  }, [desktopConfig, downloadUpdate, setError, updateAutoDownload]);
+  }, [downloadUpdate, setError, updateAutoDownload]);
 
   useEffect(() => {
     if (!updateAutoCheck || updateEnv?.supported === false) return;

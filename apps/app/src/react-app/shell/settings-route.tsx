@@ -769,7 +769,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const electronUpdaterState = useElectronUpdaterState({
     updateAutoCheck,
     updateAutoDownload,
-    desktopConfig: desktopConfig.config,
     setError: (message) => {
       if (message) {
         // Auto-checks can fail without any user action; alert + log to the
