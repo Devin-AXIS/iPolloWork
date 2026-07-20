@@ -647,7 +647,9 @@ jobs:
         id: source-date
         shell: bash
         run: |
-          epoch=$(git show -s --format=%ct "${RELEASE_TAG}")
+          # RELEASE_TAG is annotated for public releases. Dereference it so
+          # git emits the tagged commit's timestamp, not the tag message.
+          epoch=$(git show -s --format=%ct "${RELEASE_TAG}^{}")
           echo "epoch=$epoch" >> "$GITHUB_OUTPUT"
 
       - name: Check ipollowork-orchestrator release
