@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/agent/opencode-1-18-3-video-templates/docs/assets/ipollowork-demo.mp4">▶ iPolloWork のデモを見る</a>
+  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">▶ iPolloWork のデモを見る</a>
 </p>
 
 > **AI がつくり、動かし、成果物を編集可能なままにする。**
