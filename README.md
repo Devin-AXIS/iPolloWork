@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Devin-AXIS/iPolloWork/releases/download/v0.17.29/ipollowork-demo.mp4">▶ Watch the iPolloWork demo</a>
+  <a href="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/agent/opencode-1-18-3-video-templates/docs/assets/ipollowork-demo.mp4">▶ Watch the iPolloWork demo</a>
 </p>
 
 > **An AI workbench that builds, runs, and keeps results editable.**

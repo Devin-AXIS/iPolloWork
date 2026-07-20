@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Devin-AXIS/iPolloWork/releases/download/v0.17.29/ipollowork-demo.mp4">▶ 觀看 iPolloWork 演示</a>
+  <a href="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/agent/opencode-1-18-3-video-templates/docs/assets/ipollowork-demo.mp4">▶ 觀看 iPolloWork 演示</a>
 </p>
 
 > **讓 AI 執行，讓結果始終可編輯。**
