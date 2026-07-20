@@ -166,9 +166,19 @@ export function isConversationOutputArtifact(artifact: ArtifactItem) {
   return true;
 }
 
-/** HTML compositions under the video workspace open the session's Video Studio. */
+/** Design workspace outputs open the session's Design surface. */
+export function isDesignArtifact(artifact: ArtifactItem) {
+  return artifact.type !== "unknown" && /(?:^|\/)design(?:\/|$)/i.test(artifact.path);
+}
+
+/** Video workspace outputs open the session's Video Studio. */
+export function isVideoStudioArtifact(artifact: ArtifactItem) {
+  return ["html", "video"].includes(artifact.type) && /(?:^|\/)video(?:\/|$)/i.test(artifact.path);
+}
+
+/** HTML compositions under the video workspace can auto-open Video Studio. */
 export function isVideoHtmlArtifact(artifact: ArtifactItem) {
-  return artifact.type === "html" && /(?:^|\/)video(?:\/|$)/i.test(artifact.path);
+  return artifact.type === "html" && isVideoStudioArtifact(artifact);
 }
 
 const BUNDLE_PRIMARY_TYPES = new Set<ArtifactType>(["website", "html", "video", "slides", "document", "pdf"]);

@@ -4,6 +4,7 @@ import { createAliyunOssV4Request, createS3V4Request } from "./object-storage-si
 export const AUTHORIZATION_SERVICE_IDS = [
   "openai-images",
   "aliyun-bailian",
+  "baidu-speech",
   "volcengine-video",
   "aliyun-oss",
   "wasabi",
@@ -47,10 +48,10 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
     keys: ["OPENAI_API_KEY"],
     category: "media",
     agent: {
-      capability: "OpenAI image generation",
-      useWhen: "Use when the user asks to create an image asset.",
+      capability: "OpenAI media and realtime voice",
+      useWhen: "Use when the user asks to create an image asset or use OpenAI realtime voice.",
       instruction:
-        "Prefer the iPolloWork openai-image-generation/image_generate extension when it is available so the PNG is saved as a workspace artifact. Otherwise use OPENAI_API_KEY only from trusted runtime code.",
+        "Prefer the iPolloWork openai-image-generation/image_generate extension for image assets. Use OPENAI_API_KEY only from trusted runtime code for image generation or realtime voice; never expose it to the renderer.",
     },
   },
   {
@@ -62,6 +63,17 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
       useWhen: "Use when the user asks for speech, voice cloning, transcription, translation, video generation, video editing, or a digital human.",
       instruction:
         "Use the iPolloWork media extension actions from trusted runtime code. They keep DASHSCOPE_API_KEY on this device and provide the supported media operations without modifying OpenCode.",
+    },
+  },
+  {
+    id: "baidu-speech",
+    keys: ["BAIDU_SPEECH_API_KEY", "BAIDU_SPEECH_SECRET_KEY"],
+    category: "media",
+    agent: {
+      capability: "Baidu Cloud speech media",
+      useWhen: "Use when the user asks for speech recognition or configures Baidu Cloud.",
+      instruction:
+        "Use BAIDU_SPEECH_API_KEY and BAIDU_SPEECH_SECRET_KEY only from trusted runtime code. Keep both credentials on this device and send audio through the server-side speech adapter.",
     },
   },
   {
@@ -218,6 +230,11 @@ export async function testAuthorizationService(
       return fetchAuthorizationTest("https://dashscope.aliyuncs.com/compatible-mode/v1/models", {
         headers: { Authorization: `Bearer ${resolved.values.DASHSCOPE_API_KEY}` },
       });
+    case "baidu-speech":
+      return testBaiduSpeechAuthorization(
+        resolved.values.BAIDU_SPEECH_API_KEY,
+        resolved.values.BAIDU_SPEECH_SECRET_KEY,
+      );
     case "volcengine-video":
       return fetchAuthorizationTest(
         "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks?page_num=1&page_size=1",
@@ -253,6 +270,37 @@ export async function testAuthorizationService(
     }
     case "storage-routing":
       return { ok: true, detail: "Default storage provider saved. Storage Center verifies the provider when it is used." };
+  }
+}
+
+async function testBaiduSpeechAuthorization(apiKey: string, secretKey: string): Promise<AuthorizationServiceTestResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch("https://aip.baidubce.com/oauth/2.0/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: apiKey,
+        client_secret: secretKey,
+      }),
+      signal: controller.signal,
+      redirect: "error",
+    });
+    const payload = await response.json().catch(() => null) as { access_token?: unknown; error_description?: unknown } | null;
+    if (response.ok && typeof payload?.access_token === "string" && payload.access_token.length > 0) {
+      return { ok: true, detail: "Connection verified." };
+    }
+    const detail = typeof payload?.error_description === "string" ? payload.error_description : `The service rejected this authorization (HTTP ${response.status}).`;
+    return { ok: false, detail };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return { ok: false, detail: "The connection test timed out." };
+    }
+    return { ok: false, detail: "Could not reach the service. Check your network and try again." };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

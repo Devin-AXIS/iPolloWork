@@ -524,6 +524,7 @@ export type iPolloWorkUserEnvItem = {
 export type iPolloWorkAuthorizationServiceId =
   | "openai-images"
   | "aliyun-bailian"
+  | "baidu-speech"
   | "volcengine-video"
   | "aliyun-oss"
   | "wasabi"

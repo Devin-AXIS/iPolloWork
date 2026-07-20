@@ -28,14 +28,6 @@ body:
         - label: Susan (non-technical)
         - label: Other team roles
   - type: textarea
-    id: opencode_alignment
-    attributes:
-      label: OpenCode primitive alignment
-      description: Is there an existing OpenCode primitive or API that covers this? If not, why is a thin iPolloWork layer still needed?
-      placeholder: session.*, permission.*, skills/plugins, mcp...
-    validations:
-      required: true
-  - type: textarea
     id: doc_alignment
     attributes:
       label: Alignment with VISION/PRINCIPLES/PRODUCT

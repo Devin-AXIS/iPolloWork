@@ -306,10 +306,12 @@ type AssistantMessageProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  onOpenDesignStudio?: () => void
+  onOpenVideoStudio?: () => void
 }
 
 const AssistantMessage = React.memo(
-  ({ message }: AssistantMessageProps) => {
+  ({ message, onOpenDesignStudio, onOpenVideoStudio }: AssistantMessageProps) => {
     const { showThinking, highlightQuery } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
@@ -363,7 +365,7 @@ const AssistantMessage = React.memo(
               </div>
             )
           })}
-          <ArtifactList messages={[message]} />
+          <ArtifactList messages={[message]} onOpenDesignStudio={onOpenDesignStudio} onOpenVideoStudio={onOpenVideoStudio} />
         </div>
       </Message>
     )
@@ -540,10 +542,12 @@ type MessageComponentProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  onOpenDesignStudio?: () => void
+  onOpenVideoStudio?: () => void
 }
 
 const MessageComponent = React.memo(
-  ({ message, isLastMessage, isStreaming, isLastStep }: MessageComponentProps) => {
+  ({ message, isLastMessage, isStreaming, isLastStep, onOpenDesignStudio, onOpenVideoStudio }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || "Session failed"} />
     }
@@ -564,6 +568,8 @@ const MessageComponent = React.memo(
           isLastMessage={isLastMessage}
           isStreaming={isStreaming}
           isLastStep={isLastStep}
+          onOpenDesignStudio={onOpenDesignStudio}
+          onOpenVideoStudio={onOpenVideoStudio}
         />
       )
     }
@@ -694,12 +700,16 @@ interface AssistantMessageGroupProps {
   items: UIMessageWithIndex[]
   messages: UIMessage[]
   isStreaming: boolean
+  onOpenDesignStudio?: () => void
+  onOpenVideoStudio?: () => void
 }
 
 function MessageGroup({
   items,
   messages,
   isStreaming,
+  onOpenDesignStudio,
+  onOpenVideoStudio,
 }: AssistantMessageGroupProps) {
   const { onRevertToUserMessage, onForkAtMessage } = useMessageList()
   const lastItem = items[items.length - 1]
@@ -749,6 +759,8 @@ function MessageGroup({
           isLastMessage={isLastMessage}
           isStreaming={isLastMessage && isStreaming}
           isLastStep={groupIndex === items.length - 1}
+          onOpenDesignStudio={onOpenDesignStudio}
+          onOpenVideoStudio={onOpenVideoStudio}
         />
       </div>
     )
@@ -804,9 +816,11 @@ interface MessageListProps {
   messages: UIMessage[]
   status: ThreadStatus
   retryStatus?: RetryStatus | null
+  onOpenDesignStudio?: () => void
+  onOpenVideoStudio?: () => void
 }
 
-export function MessageList({ messages, status, retryStatus }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, onOpenDesignStudio, onOpenVideoStudio }: MessageListProps) {
   const isStreaming = status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages, status), [messages, status]);
   const error = useSessionErrorMessage();
@@ -825,6 +839,8 @@ export function MessageList({ messages, status, retryStatus }: MessageListProps)
               items={item.messages}
               messages={messages}
               isStreaming={isStreaming}
+              onOpenDesignStudio={onOpenDesignStudio}
+              onOpenVideoStudio={onOpenVideoStudio}
             />
           )
         }

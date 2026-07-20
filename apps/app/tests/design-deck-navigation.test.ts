@@ -16,4 +16,18 @@ describe("Design deck navigation", () => {
     expect(source).toContain("presentationCanvasScale(previewViewport.width, previewViewport.height)");
     expect(source).toContain("!isPresentationTemplate ? (");
   });
+
+  test("measures the viewport after the async preview has mounted", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("}, [isPresentationTemplate, sourceHydrated]);");
+  });
+
+  test("does not show a redundant current design subtitle", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).not.toContain('"Current design"');
+    expect(source).not.toContain('"Version preview"');
+    expect(source).not.toContain('<p className="truncate text-sm font-medium">{fileName(activePagePath)}</p>');
+  });
 });

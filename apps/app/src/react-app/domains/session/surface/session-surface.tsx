@@ -149,6 +149,9 @@ export type SessionSurfaceProps = {
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
   /** Marks the first prompt as a video task before it reaches the agent. */
   onActivateVideoStudio?: (sessionId: string) => void;
+  /** Opens the current session's Video Studio from an inline video artifact. */
+  onOpenDesignStudio?: () => void;
+  onOpenVideoStudio?: () => void;
   designTemplates?: TemplateCatalogItem[];
   designTemplatesLoading?: boolean;
   designTemplateBusyId?: string | null;
@@ -1574,6 +1577,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         messages={renderedMessages}
                         status={status}
                         retryStatus={liveStatus.type === "retry" ? liveStatus : null}
+                        onOpenDesignStudio={props.onOpenDesignStudio}
+                        onOpenVideoStudio={props.onOpenVideoStudio}
                       />
                     </MessageListProvider>
                   </EnvironmentVariableProvider>

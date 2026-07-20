@@ -264,8 +264,15 @@ describe("env routes", () => {
       configured: true,
       fields: [{ key: "OPENAI_API_KEY", configured: true }],
       agent: {
-        capability: "OpenAI image generation",
+        capability: "OpenAI media and realtime voice",
       },
+    });
+    expect(catalog.items.find((item) => item.id === "baidu-speech")).toMatchObject({
+      configured: false,
+      fields: [
+        { key: "BAIDU_SPEECH_API_KEY", configured: false },
+        { key: "BAIDU_SPEECH_SECRET_KEY", configured: false },
+      ],
     });
     expect(catalog.items.find((item) => item.id === "aliyun-oss")?.configured).toBe(false);
   });
@@ -293,6 +300,36 @@ describe("env routes", () => {
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, detail: "Connection verified." });
+  });
+
+  test("speech input uses the existing Alibaba authorization", async () => {
+    const { base } = await boot();
+    await fetch(`${base}/env`, {
+      method: "PUT",
+      headers: hostAuth(),
+      body: JSON.stringify({
+        entries: [
+          { key: "DASHSCOPE_API_KEY", value: "dashscope-secret" },
+        ],
+      }),
+    });
+
+    globalThis.fetch = ((input, init) => {
+      if (String(input) === "https://dashscope.aliyuncs.com/compatible-mode/v1/models") {
+        expect(init?.headers).toMatchObject({ Authorization: "Bearer dashscope-secret" });
+        return Promise.resolve(new Response(JSON.stringify({ object: "list", data: [] }), { status: 200 }));
+      }
+      return nativeFetch(input, init);
+    }) as typeof fetch;
+
+    const mediaTest = await fetch(`${base}/authorization-services/aliyun-bailian/test`, {
+      method: "POST",
+      headers: hostAuth(),
+      body: "{}",
+    });
+    expect(mediaTest.status).toBe(200);
+    expect(await mediaTest.json()).toEqual({ ok: true, detail: "Connection verified." });
+
   });
 
   test("OSS authorization test signs a read-only bucket listing with V4", async () => {

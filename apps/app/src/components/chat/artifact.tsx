@@ -22,14 +22,16 @@ import {
   canOpenArtifact,
   canPreviewArtifact,
   groupConversationOutputArtifacts,
+  isDesignArtifact,
   isConversationOutputArtifact,
-  isVideoHtmlArtifact,
+  isVideoStudioArtifact,
   useArtifacts,
   usePreviewArtifact,
 } from "@/lib/artifacts";
 
 interface ArtifactButtonProps {
   artifact: ArtifactItem
+  onOpenDesignStudio?: () => void
   onOpenVideoStudio?: () => void
   compact?: boolean
 }
@@ -42,13 +44,13 @@ function compactArtifactTitle(name: string) {
     : name;
 }
 
-function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: ArtifactButtonProps) {
+function ArtifactButton({ artifact, onOpenDesignStudio, onOpenVideoStudio, compact = false }: ArtifactButtonProps) {
   const previewArtifact = usePreviewArtifact();
-  const isVideoHtml = isVideoHtmlArtifact(artifact);
+  const canOpenDesignStudio = isDesignArtifact(artifact) && Boolean(onOpenDesignStudio);
+  const canOpenVideoStudio = isVideoStudioArtifact(artifact) && Boolean(onOpenVideoStudio);
   const canOpen = canOpenArtifact(artifact);
   const canPreview = canPreviewArtifact(artifact);
-  const canOpenVideoStudio = isVideoHtml && Boolean(onOpenVideoStudio);
-  const canActivate = canOpen || canOpenVideoStudio;
+  const canActivate = canOpen || canOpenDesignStudio || canOpenVideoStudio;
   const title = compactArtifactTitle(artifact.name);
 
   const content = (
@@ -58,9 +60,13 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
       </DescriptiveButtonIcon>
       <DescriptiveButtonContent className="min-w-0 flex-none">
         <DescriptiveButtonTitle className={cn("text-xs font-medium", compact ? "max-w-56" : "max-w-[172px]")} title={artifact.name}>{title}</DescriptiveButtonTitle>
-        {(!compact || canOpenVideoStudio) && canActivate ? (
+        {(!compact || canOpenDesignStudio || canOpenVideoStudio) && canActivate ? (
           <DescriptiveButtonDescription className="text-[10px] leading-3">
-            {canOpenVideoStudio ? t("session.outputs.action_video_preview_edit") : t("session.outputs.action_browse_edit")}
+            {canOpenDesignStudio
+              ? t("session.outputs.action_design_studio")
+              : canOpenVideoStudio
+                ? t("session.outputs.action_video_studio")
+                : t("session.outputs.action_browse_edit")}
           </DescriptiveButtonDescription>
         ) : null}
       </DescriptiveButtonContent>
@@ -84,13 +90,23 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
     <DescriptiveButton
       className={cn("max-w-full flex-none items-center gap-1.5 rounded-xl px-2.5 py-2 whitespace-nowrap", compact ? "w-full justify-start px-2 py-1.5 hover:bg-muted/70" : "min-w-[220px]")}
       onClick={() => {
+        if (canOpenDesignStudio) {
+          onOpenDesignStudio?.();
+          return;
+        }
         if (canOpenVideoStudio) {
           onOpenVideoStudio?.();
           return;
         }
         previewArtifact(artifact);
       }}
-      title={canOpenVideoStudio ? t("session.outputs.open_video_studio") : canPreview ? `Preview ${artifact.name}` : `Open ${artifact.name}`}
+      title={canOpenDesignStudio
+        ? t("session.outputs.open_design_studio")
+        : canOpenVideoStudio
+          ? t("session.outputs.open_video_studio")
+          : canPreview
+            ? `Preview ${artifact.name}`
+            : `Open ${artifact.name}`}
     >
       {content}
     </DescriptiveButton>
@@ -99,22 +115,23 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
 
 interface OutputGroupRowProps {
   group: ReturnType<typeof groupConversationOutputArtifacts>[number]
+  onOpenDesignStudio?: () => void
   onOpenVideoStudio?: () => void
 }
 
-function OutputGroupRow({ group, onOpenVideoStudio }: OutputGroupRowProps) {
+function OutputGroupRow({ group, onOpenDesignStudio, onOpenVideoStudio }: OutputGroupRowProps) {
   const [expanded, setExpanded] = useState(false);
   const childArtifacts = group.artifacts.filter((artifact) => artifact.id !== group.primary.id);
 
   if (!group.bundled || childArtifacts.length === 0) {
-    return <ArtifactButton artifact={group.primary} onOpenVideoStudio={onOpenVideoStudio} compact />;
+    return <ArtifactButton artifact={group.primary} onOpenDesignStudio={onOpenDesignStudio} onOpenVideoStudio={onOpenVideoStudio} compact />;
   }
 
   return (
     <div className="rounded-2xl border border-transparent transition-colors hover:border-border/60">
       <div className="flex min-w-0 items-center gap-1">
         <div className="min-w-0 flex-1">
-          <ArtifactButton artifact={group.primary} onOpenVideoStudio={onOpenVideoStudio} compact />
+          <ArtifactButton artifact={group.primary} onOpenDesignStudio={onOpenDesignStudio} onOpenVideoStudio={onOpenVideoStudio} compact />
         </div>
         <Button
           variant="ghost"
@@ -133,7 +150,7 @@ function OutputGroupRow({ group, onOpenVideoStudio }: OutputGroupRowProps) {
       {expanded ? (
         <div className="mb-2 ml-6 mr-2 border-l border-border/60 pl-2">
           {childArtifacts.map((artifact) => (
-            <ArtifactButton key={artifact.id} artifact={artifact} onOpenVideoStudio={onOpenVideoStudio} compact />
+            <ArtifactButton key={artifact.id} artifact={artifact} onOpenDesignStudio={onOpenDesignStudio} onOpenVideoStudio={onOpenVideoStudio} compact />
           ))}
         </div>
       ) : null}
@@ -144,10 +161,11 @@ function OutputGroupRow({ group, onOpenVideoStudio }: OutputGroupRowProps) {
 interface ArtifactListProps {
   messages: UIMessage[]
   includeTargetFallbacks?: boolean
+  onOpenDesignStudio?: () => void
   onOpenVideoStudio?: () => void
 }
 
-export function ArtifactList({ messages, includeTargetFallbacks = false, onOpenVideoStudio }: ArtifactListProps) {
+export function ArtifactList({ messages, includeTargetFallbacks = false, onOpenDesignStudio, onOpenVideoStudio }: ArtifactListProps) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks });
 
   if (artifacts.length === 0) {
@@ -158,7 +176,7 @@ export function ArtifactList({ messages, includeTargetFallbacks = false, onOpenV
     <div className="mx-auto w-full max-w-3xl px-2 md:px-10">
       <div className="no-scrollbar flex min-w-0 flex-nowrap gap-2 overflow-x-auto pb-1">
         {artifacts.map((artifact) => (
-          <ArtifactButton key={artifact.id} artifact={artifact} onOpenVideoStudio={onOpenVideoStudio} />
+          <ArtifactButton key={artifact.id} artifact={artifact} onOpenDesignStudio={onOpenDesignStudio} onOpenVideoStudio={onOpenVideoStudio} />
         ))}
       </div>
     </div>
@@ -169,10 +187,11 @@ interface ConversationOutputPanelProps {
   messages: UIMessage[]
   openTargets?: OpenTarget[]
   onOpenTarget?: (target: OpenTarget, options?: OpenTargetOptions) => void
+  onOpenDesignStudio?: () => void
   onOpenVideoStudio?: () => void
 }
 
-function ConversationOutputPanelContent({ messages, onOpenVideoStudio }: Omit<ConversationOutputPanelProps, "openTargets" | "onOpenTarget">) {
+function ConversationOutputPanelContent({ messages, onOpenDesignStudio, onOpenVideoStudio }: Omit<ConversationOutputPanelProps, "openTargets" | "onOpenTarget">) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks: false });
   const outputs = artifacts.filter(isConversationOutputArtifact);
   const outputGroups = groupConversationOutputArtifacts(outputs);
@@ -188,7 +207,7 @@ function ConversationOutputPanelContent({ messages, onOpenVideoStudio }: Omit<Co
       {outputs.length ? (
         <div className="mt-2 flex flex-col gap-0.5">
           {outputGroups.map((group) => (
-            <OutputGroupRow key={group.id} group={group} onOpenVideoStudio={onOpenVideoStudio} />
+            <OutputGroupRow key={group.id} group={group} onOpenDesignStudio={onOpenDesignStudio} onOpenVideoStudio={onOpenVideoStudio} />
           ))}
         </div>
       ) : (
@@ -217,12 +236,12 @@ export function ConversationOutputTrigger({ active, disabled, onClick }: { activ
 }
 
 /** Right-side conversation output surface. It looks like a floating card but never covers chat content. */
-export function ConversationOutputPanel({ messages, openTargets = [], onOpenTarget, onOpenVideoStudio }: ConversationOutputPanelProps) {
+export function ConversationOutputPanel({ messages, openTargets = [], onOpenTarget, onOpenDesignStudio, onOpenVideoStudio }: ConversationOutputPanelProps) {
   return (
     <OpenTargetProvider openTargets={openTargets} onOpenTarget={onOpenTarget}>
       <div className="h-full min-h-0 bg-background p-3">
         <div className="h-full min-h-0 overflow-hidden rounded-3xl border border-border/80 bg-card shadow-sm">
-          <ConversationOutputPanelContent messages={messages} onOpenVideoStudio={onOpenVideoStudio} />
+          <ConversationOutputPanelContent messages={messages} onOpenDesignStudio={onOpenDesignStudio} onOpenVideoStudio={onOpenVideoStudio} />
         </div>
       </div>
     </OpenTargetProvider>

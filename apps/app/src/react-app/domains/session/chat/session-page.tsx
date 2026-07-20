@@ -470,7 +470,15 @@ export function SessionPage(props: SessionPageProps) {
   }, []);
   const openCurrentVideoStudio = useCallback(() => {
     if (!props.selectedSessionId) return;
+    setSessionType(props.selectedSessionId, "video");
+    setSessionTypeRevision((value) => value + 1);
     setSidePanelState(props.selectedSessionId, "video");
+  }, [props.selectedSessionId, setSidePanelState]);
+  const openCurrentDesignStudio = useCallback(() => {
+    if (!props.selectedSessionId) return;
+    setSessionType(props.selectedSessionId, "design");
+    setSessionTypeRevision((value) => value + 1);
+    setSidePanelState(props.selectedSessionId, "design");
   }, [props.selectedSessionId, setSidePanelState]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
@@ -1712,6 +1720,8 @@ export function SessionPage(props: SessionPageProps) {
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
                         onConversationMessagesChange={handleConversationMessagesChange}
+                        onOpenDesignStudio={openCurrentDesignStudio}
+                        onOpenVideoStudio={openCurrentVideoStudio}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type, templateId)}
                         onActivateVideoStudio={activateVideoStudio}
                         designTemplates={templateCatalog}
@@ -1883,6 +1893,7 @@ export function SessionPage(props: SessionPageProps) {
                       messages={conversationMessages}
                       openTargets={accessibleTargets}
                       onOpenTarget={openTarget}
+                      onOpenDesignStudio={openCurrentDesignStudio}
                       onOpenVideoStudio={openCurrentVideoStudio}
                     />
                   ) : activeSidePanel === "panel" && props.selectedSessionId ? (

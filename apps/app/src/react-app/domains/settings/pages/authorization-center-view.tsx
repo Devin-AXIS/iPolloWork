@@ -10,6 +10,7 @@ import {
   Image,
   KeyRound,
   Loader2,
+  Mic2,
   PlugZap,
   RefreshCw,
   XCircle,
@@ -94,6 +95,15 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     titleKey: "settings.authorization.service.aliyun_bailian.title",
     descriptionKey: "settings.authorization.service.aliyun_bailian.description",
     fields: [{ key: "DASHSCOPE_API_KEY", label: "DashScope API key", placeholder: "sk-..." }],
+  },
+  "baidu-speech": {
+    icon: Mic2,
+    titleKey: "settings.authorization.service.baidu_speech.title",
+    descriptionKey: "settings.authorization.service.baidu_speech.description",
+    fields: [
+      { key: "BAIDU_SPEECH_API_KEY", label: "Baidu API key", placeholder: "API key" },
+      { key: "BAIDU_SPEECH_SECRET_KEY", label: "Baidu Secret key", placeholder: "Secret key" },
+    ],
   },
   "volcengine-video": {
     icon: Clapperboard,

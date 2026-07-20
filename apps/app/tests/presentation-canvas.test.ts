@@ -14,8 +14,9 @@ describe("Presentation canvas", () => {
     expect(presentationCanvasScale(2400, 900)).toBe(1);
   });
 
-  test("waits for a real preview viewport before exposing the canvas", () => {
-    expect(presentationCanvasScale(0, 900)).toBe(0);
-    expect(presentationCanvasScale(1600, 0)).toBe(0);
+  test("keeps the canvas visible while the first viewport measurement is pending", () => {
+    expect(presentationCanvasScale(0, 900)).toBe(1);
+    expect(presentationCanvasScale(1600, 0)).toBe(1);
+    expect(presentationCanvasScale(0, 0)).toBe(1);
   });
 });

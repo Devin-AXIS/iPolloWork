@@ -17,8 +17,10 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import {
@@ -363,7 +365,7 @@ export function DesignPanel({
     const observer = new ResizeObserver(sync);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [isPresentationTemplate]);
+  }, [isPresentationTemplate, sourceHydrated]);
   const templateTokenPath = React.useMemo(() => {
     const tokenPath = designTemplate?.designSystem.tokens || linkedDesignTokenPath(fileQuery.data?.content) || "design-tokens.css";
     const briefPath = templateQuery.data?.state.briefPath;
@@ -1117,13 +1119,8 @@ export function DesignPanel({
       ) : (
         <>
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#EAEAEA] px-3 py-2 [border-bottom-width:0.5px]">
-            {hasSiteVersioning ? (
-              <div className="min-w-0 flex flex-1 items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{fileName(activePagePath)}</p>
-                  <p className="truncate text-[10px] text-muted-foreground">{viewedVersionPath === "current" ? "Current design" : "Version preview"}</p>
-                </div>
-                {versionTargets.length > 0 ? (
+            {hasSiteVersioning && versionTargets.length > 0 ? (
+              <div className="flex items-center">
                 <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}>
                   <SelectTrigger size="sm" className="w-32 rounded-lg" aria-label="Design version"><SelectValue>Versions</SelectValue></SelectTrigger>
                   <SelectContent>
@@ -1131,7 +1128,6 @@ export function DesignPanel({
                     {versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>Version {versionTargets.length - index}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                ) : null}
               </div>
             ) : null}
             <Label className="flex items-center gap-2 text-xs">
@@ -1184,16 +1180,6 @@ export function DesignPanel({
               {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
               Save
             </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => publishMutation.mutate()}
-              disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
-              aria-label="Publish to object storage"
-              title="Publish to object storage"
-            >
-              {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
-            </Button>
             {!isPresentationTemplate ? (
               <ToggleGroup
                 value={[previewDevice]}
@@ -1218,32 +1204,41 @@ export function DesignPanel({
                 </ToggleGroupItem>
               </ToggleGroup>
             ) : null}
-            {deck ? (
-              <div className="ml-auto flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPptxConfirmationOpen(true)}
-                  disabled={exportingPptx}
-                  aria-label="Export presentation to PPTX"
-                  title="Export PPTX"
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={(
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("design.export_actions")}
+                    title={t("design.export_actions")}
+                  >
+                    {publishMutation.isPending || exportingPptx || exportingPdf ? <Loader2 className="animate-spin" /> : <Download />}
+                  </Button>
+                )}
+              />
+              <DropdownMenuContent align="end" className="w-48">
+                {deck ? (
+                  <>
+                    <DropdownMenuItem disabled={exportingPptx} onClick={() => setPptxConfirmationOpen(true)}>
+                      {exportingPptx ? <Loader2 className="animate-spin" /> : <Presentation />}
+                      {t("design.download_pptx")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={exportingPdf} onClick={() => void exportDeckToPdf()}>
+                      {exportingPdf ? <Loader2 className="animate-spin" /> : <Download />}
+                      {t("design.download_pdf")}
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+                <DropdownMenuItem
+                  disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
+                  onClick={() => publishMutation.mutate()}
                 >
-                  {exportingPptx ? <Loader2 className="animate-spin" /> : <Presentation />}
-                  Export PPTX
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void exportDeckToPdf()}
-                  disabled={exportingPdf}
-                  aria-label="Export presentation to PDF"
-                  title="Export PDF"
-                >
-                  {exportingPdf ? <Loader2 className="animate-spin" /> : <Download />}
-                  Export PDF
-                </Button>
-              </div>
-            ) : null}
+                  {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
+                  {t("design.publish_web")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {fileQuery.isLoading || !sourceHydrated ? (
