@@ -1146,7 +1146,7 @@ export function DesignPanel({
                   <ChevronLeft className="size-3.5" />
                 </Button>
                 <span className="min-w-0 max-w-40 truncate px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground" aria-live="polite">
-                  {deck.index + 1} / {deck.total}{deck.title ? ` · ${deck.title}` : ""}
+                  {deck.index + 1} / {deck.total}
                 </span>
                 <Button variant="ghost" size="icon-sm" className="size-7 rounded-md" onClick={() => navigateDeck("next")} disabled={deck.index >= deck.total - 1} aria-label="Next slide" title="Next slide">
                   <ChevronRight className="size-3.5" />
