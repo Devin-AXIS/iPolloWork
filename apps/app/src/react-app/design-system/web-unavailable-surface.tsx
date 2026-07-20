@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import type { ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
+import { t } from "@/i18n";
 
 export type WebUnavailableSurfaceProps = {
   unavailable: boolean;
@@ -9,9 +10,6 @@ export type WebUnavailableSurfaceProps = {
   className?: string;
   contentClassName?: string;
 };
-
-const MESSAGE =
-  "This feature is currently unavailable in iPolloWork Web, check iPolloWork Desktop for full functionality.";
 
 export function WebUnavailableSurface(props: WebUnavailableSurfaceProps) {
   const innerProps = props.unavailable
@@ -35,14 +33,14 @@ export function WebUnavailableSurface(props: WebUnavailableSurfaceProps) {
           }
         >
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>{MESSAGE}</span>
+            <span>{t("web_unavailable.message")}</span>
             <a
               href="https://ipolloworklabs.com"
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 underline underline-offset-2 hover:no-underline"
             >
-              <span>Download iPolloWork Desktop</span>
+              <span>{t("web_unavailable.download_desktop")}</span>
               <ArrowUpRight size={props.compact ? 12 : 14} />
             </a>
           </div>

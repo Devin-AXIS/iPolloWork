@@ -210,10 +210,10 @@ function resolveFindOwnerSessionId() {
 }
 
 function statusLabel(snapshot: iPolloWorkSessionSnapshot | undefined, busy: boolean) {
-  if (busy) return "Running...";
-  if (snapshot?.status.type === "busy") return "Running...";
-  if (snapshot?.status.type === "retry") return `Retrying: ${snapshot.status.message}`;
-  return "Ready";
+  if (busy) return t("session.status_running");
+  if (snapshot?.status.type === "busy") return t("session.status_running");
+  if (snapshot?.status.type === "retry") return t("session.status_retrying", { message: snapshot.status.message });
+  return t("session.status_ready");
 }
 
 function controlTextArgument(args: unknown) {
@@ -385,7 +385,7 @@ function SessionErrorCard({ error, onDismiss, onChangeModel, onOpenModelPicker }
                     onDismiss();
                   }}
                 >
-                  Change model
+                  {t("model_picker.change_model")}
                 </button>
               </div>
             ) : null}
@@ -394,7 +394,7 @@ function SessionErrorCard({ error, onDismiss, onChangeModel, onOpenModelPicker }
             type="button"
             className="shrink-0 rounded-full p-1 text-red-10 transition-colors hover:bg-red-3 hover:text-red-11"
             onClick={onDismiss}
-            aria-label="Dismiss error"
+            aria-label={t("session.dismiss_error")}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
           </button>
@@ -1341,8 +1341,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
           className="mx-3 mb-2 flex w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg border border-amber-7/40 bg-amber-2/30 px-3 py-2 text-left text-xs text-amber-11 transition-colors hover:bg-amber-3/40"
           onClick={() => props.onOpenSettingsSection?.("providers")}
         >
-          <span className="font-medium">No AI model connected.</span>
-          <span className="text-amber-11/70">Add a provider to run tasks.</span>
+          <span className="font-medium">{t("session.no_model_connected")}</span>
+          <span className="text-amber-11/70">{t("session.add_provider_hint")}</span>
         </button>
       ) : null}
       <DevProfiler id="SessionComposer">
@@ -1451,7 +1451,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       {model.transitionState === "switching" && showDelayedLoading ? (
         <div className="flex justify-center px-6 pt-4">
           <div className="rounded-full border border-dls-border bg-dls-hover/80 px-3 py-1 text-xs text-dls-secondary">
-            {model.renderSource === "cache" ? "Switching session from cache..." : "Switching session..."}
+            {model.renderSource === "cache" ? t("session.switching_from_cache") : t("session.switching")}
           </div>
         </div>
       ) : null}
@@ -1514,7 +1514,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
             {showDelayedLoading && pendingSessionLoad ? (
               <div className="px-6 py-16">
                 <div className="mx-auto max-w-sm rounded-3xl border border-dls-border bg-dls-hover/60 px-8 py-10 text-center">
-                  <div className="text-sm text-dls-secondary">Opening session…</div>
+                  <div className="text-sm text-dls-secondary">{t("session.opening")}</div>
                 </div>
               </div>
             ) : (snapshotQuery.isError || error) && !snapshot && renderedMessages.length === 0 ? (
@@ -1528,7 +1528,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                   />
                 ) : (
                   <div className="mx-auto max-w-xl rounded-3xl border border-red-6/40 bg-red-3/20 px-6 py-5 text-sm text-red-11">
-                    {snapshotQuery.error instanceof Error ? snapshotQuery.error.message : "Failed to load session."}
+                    {snapshotQuery.error instanceof Error ? snapshotQuery.error.message : t("session.failed_to_load")}
                   </div>
                 )}
               </div>

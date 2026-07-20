@@ -6,18 +6,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { Button } from "@/components/ui/button";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { formatBytes, formatRelativeTime } from "../../../../app/utils";
 import { t } from "../../../../i18n";
-import type { ReleaseChannel } from "../../../../app/types";
 import type { SettingsUpdateStatus } from "../state/electron-updater-state";
 import {
   LayoutSectionItem,
@@ -29,8 +20,6 @@ import {
 } from "../settings-layout";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "../settings-section";
-
-const RELEASE_CHANNEL_OPTIONS: ReleaseChannel[] = ["stable", "alpha"];
 
 type UpdateDownloadProgressProps = {
   downloadedBytes: number | null;
@@ -70,20 +59,6 @@ export type UpdatesViewProps = {
   checkForUpdates: () => void | Promise<void>;
   downloadUpdate: () => void | Promise<void>;
   installUpdateAndRestart: () => void | Promise<void>;
-  /** Currently selected release channel. Optional; callers may omit. */
-  releaseChannel?: ReleaseChannel;
-  /**
-   * Change the release channel. When not provided, the channel row is
-   * rendered read-only — useful for contexts where the pref can't be
-   * mutated (e.g. web preview).
-   */
-  onReleaseChannelChange?: (next: ReleaseChannel) => void;
-  /**
-   * Whether the alpha channel is available on this platform. Alpha is
-   * macOS-only today; other platforms should receive `false` so the
-   * toggle is hidden.
-   */
-  alphaChannelSupported?: boolean;
 };
 
 export function UpdatesView(props: UpdatesViewProps) {
@@ -225,45 +200,6 @@ export function UpdatesView(props: UpdatesViewProps) {
       ) : (
         <>
         <Separator />
-          {props.alphaChannelSupported && props.releaseChannel ? (
-            <LayoutSectionItem>
-              <LayoutSectionItemHeader>
-                <LayoutSectionItemTitle>{t("settings.update_release_channel")}</LayoutSectionItemTitle>
-                <LayoutSectionItemDescription>
-                  {t("settings.update_release_channel_description")}
-                </LayoutSectionItemDescription>
-                <LayoutSectionItemHeaderActions>
-                  <Select
-                    value={props.releaseChannel}
-                    items={RELEASE_CHANNEL_OPTIONS.map((value) => ({
-                      value,
-                      label: t(`settings.update_channel_${value}`),
-                    }))}
-                    onValueChange={(value) => {
-                      if (value === "stable" || value === "alpha") {
-                        props.onReleaseChannelChange?.(value);
-                      }
-                    }}
-                    disabled={!props.onReleaseChannelChange}
-                  >
-                    <SelectTrigger aria-label={t("settings.update_release_channel")} className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {RELEASE_CHANNEL_OPTIONS.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {t(`settings.update_channel_${option}`)}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </LayoutSectionItemHeaderActions>
-              </LayoutSectionItemHeader>
-            </LayoutSectionItem>
-          ) : null}
-
             <LayoutSectionItem>
               <LayoutSectionItemHeader>
                 <LayoutSectionItemTitle>{t("settings.background_checks_title")}</LayoutSectionItemTitle>

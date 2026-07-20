@@ -1,0 +1,34 @@
+{
+  "name": "ipollowork",
+  "version": "0.1.0",
+  "description": "Official one-command installer for iPolloWork desktop",
+  "type": "module",
+  "bin": {
+    "ipollowork": "bin/ipollowork.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "node --check bin/ipollowork.mjs",
+    "test": "node --test test/ipollowork.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Devin-AXIS/iPolloWork.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Devin-AXIS/iPolloWork/issues"
+  },
+  "homepage": "https://github.com/Devin-AXIS/iPolloWork#readme",
+  "keywords": [
+    "ipollowork",
+    "ai-agent",
+    "desktop",
+    "installer"
+  ]
+}

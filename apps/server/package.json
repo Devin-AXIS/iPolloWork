@@ -1,6 +1,6 @@
 {
   "name": "ipollowork-server",
-  "version": "0.17.21",
+  "version": "0.17.27",
   "description": "Filesystem-backed API for iPolloWork remote clients",
   "type": "module",
   "bin": {
@@ -46,7 +46,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "^1.17.11",
+    "@opencode-ai/sdk": "^1.18.3",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.1",
     "jsonc-parser": "^3.2.1",

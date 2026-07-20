@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Executive Brief</title>
+  <link rel="stylesheet" href="design-tokens.css" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { display: grid; place-items: center; background: #dfe8e8; font-family: var(--ipw-font-body); }
+    .deck { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; overflow: hidden; background: var(--ipw-color-bg); }
+    .slide { position: absolute; inset: 0; display: none; flex-direction: column; padding: 68px 88px; background: var(--ipw-color-bg); color: var(--ipw-color-text); }
+    .slide.is-active { display: flex; }
+    .slide.cover { background: var(--ipw-color-primary); color: #ffffff; }
+    .eyebrow { margin: 0 0 20px; color: var(--ipw-color-accent); font-size: 17px; font-weight: 700; letter-spacing: 2.4px; text-transform: uppercase; }
+    .cover .eyebrow { color: #f7c873; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { max-width: 980px; font-family: var(--ipw-font-display); font-size: 78px; line-height: 1.02; letter-spacing: -2px; }
+    h2 { max-width: 970px; font-family: var(--ipw-font-display); font-size: 54px; line-height: 1.08; letter-spacing: -1.3px; }
+    h3 { font-size: 24px; line-height: 1.2; }
+    .lede { max-width: 860px; margin-top: 24px; color: var(--ipw-color-muted); font-size: 25px; line-height: 1.42; }
+    .cover .lede { color: #d6e4e5; }
+    .accent { color: var(--ipw-color-accent); }
+    .cover .accent { color: #f7c873; }
+    .meta { display: flex; gap: 14px; margin-top: auto; }
+    .meta-item { padding: 12px 16px; border: 1px solid #7d9aa1; border-radius: var(--ipw-card-radius); color: #d6e4e5; font-size: 17px; }
+    .grid { display: grid; gap: 22px; margin-top: 38px; }
+    .grid.three { grid-template-columns: repeat(3, 1fr); }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .card { min-width: 0; padding: 26px 28px; border: 1px solid var(--ipw-color-border); border-radius: var(--ipw-card-radius); background: var(--ipw-color-surface); }
+    .card p { margin-top: 12px; color: var(--ipw-color-muted); font-size: 20px; line-height: 1.38; }
+    .metric { margin-top: 20px; color: var(--ipw-color-primary); font-size: 58px; font-weight: 700; letter-spacing: -2px; }
+    .metric-label { margin-top: 8px; color: var(--ipw-color-muted); font-size: 18px; }
+    .rule { width: 112px; height: 8px; margin: 28px 0 0; background: var(--ipw-color-accent); }
+    .step-row { position: relative; display: grid; grid-template-columns: 110px 1fr; gap: 22px; padding: 20px 0; }
+    .step-rule { position: absolute; top: 0; left: 0; width: 100%; height: 1px; border-top: 1px solid var(--ipw-color-border); }
+    .step-index { color: var(--ipw-color-accent); font-size: 22px; font-weight: 700; }
+    .step-copy { color: var(--ipw-color-muted); font-size: 22px; line-height: 1.4; }
+    .footer { margin-top: auto; color: var(--ipw-color-muted); font-size: 16px; }
+    @media (max-width: 720px) { .slide { padding: 34px 40px; } h1 { font-size: 42px; } h2 { font-size: 32px; } .lede { font-size: 17px; } .card { padding: 16px; } .card p, .step-copy { font-size: 14px; } .metric { font-size: 36px; } }
+  </style>
+</head>
+<body>
+  <main class="deck" data-ipw-template-kind="slides" aria-label="Executive brief">
+    <section class="slide cover is-active" data-ipw-slide="1" data-title="Decision brief">
+      <p class="eyebrow" data-pptx-text>Decision Brief / Q3</p>
+      <h1 data-pptx-text>Make the next <span class="accent">decision</span> with confidence.</h1>
+      <p class="lede" data-pptx-text>One focused narrative for a team that needs to choose a direction, align owners, and move without ambiguity.</p>
+      <div class="meta"><span class="meta-item" data-pptx-shape="roundRect"><span data-pptx-text>Prepared for: Leadership</span></span><span class="meta-item" data-pptx-shape="roundRect"><span data-pptx-text>Owner: Strategy Team</span></span></div>
+    </section>
+
+    <section class="slide" data-ipw-slide="2" data-title="Decision">
+      <p class="eyebrow" data-pptx-text>01 / Decision</p>
+      <h2 data-pptx-text>Approve the <span class="accent">focused path</span>, not the broadest path.</h2>
+      <div class="rule" data-pptx-shape="rect"></div>
+      <div class="grid two">
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Recommended action</h3><p data-pptx-text>Concentrate the next two quarters on the highest-retention segment and delay adjacent expansion.</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Decision owner</h3><p data-pptx-text>Assign one executive owner, one metric owner, and a weekly review cadence.</p></article>
+      </div>
+      <p class="footer" data-pptx-text>Replace this sample recommendation with the actual decision required from the audience.</p>
+    </section>
+
+    <section class="slide" data-ipw-slide="3" data-title="Evidence">
+      <p class="eyebrow" data-pptx-text>02 / Evidence</p>
+      <h2 data-pptx-text>Evidence should make the <span class="accent">trade-off</span> visible.</h2>
+      <div class="grid three">
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Signal</h3><div class="metric" data-pptx-text>42%</div><p class="metric-label" data-pptx-text>Retention in the focused segment</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Opportunity</h3><div class="metric" data-pptx-text>3.1x</div><p class="metric-label" data-pptx-text>Higher conversion than the baseline</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Constraint</h3><div class="metric" data-pptx-text>8 wk</div><p class="metric-label" data-pptx-text>Time to validate the next release</p></article>
+      </div>
+      <p class="footer" data-pptx-text>All metrics are sample content. Replace with verified source data.</p>
+    </section>
+
+    <section class="slide" data-ipw-slide="4" data-title="Plan">
+      <p class="eyebrow" data-pptx-text>03 / Plan</p>
+      <h2 data-pptx-text>Commit to a small number of <span class="accent">measurable moves.</span></h2>
+      <div class="grid">
+        <div class="step-row"><div class="step-rule" data-pptx-shape="line"></div><div class="step-index" data-pptx-text>01</div><div class="step-copy" data-pptx-text>Ship the focused experience with an explicit success threshold and one accountable owner.</div></div>
+        <div class="step-row"><div class="step-rule" data-pptx-shape="line"></div><div class="step-index" data-pptx-text>02</div><div class="step-copy" data-pptx-text>Review the leading indicator weekly, then decide whether to scale or stop.</div></div>
+        <div class="step-row"><div class="step-rule" data-pptx-shape="line"></div><div class="step-index" data-pptx-text>03</div><div class="step-copy" data-pptx-text>Document what changed so the next decision starts with evidence rather than memory.</div></div>
+      </div>
+    </section>
+
+    <section class="slide cover" data-ipw-slide="5" data-title="Close">
+      <p class="eyebrow" data-pptx-text>Close</p>
+      <h1 data-pptx-text>Choose the next move, name the owner, and <span class="accent">start now.</span></h1>
+      <p class="lede" data-pptx-text>Use the final slide for the decision, the commitment, and the next review date.</p>
+      <p class="footer" data-pptx-text>Executive Brief / Native Editable PPTX</p>
+    </section>
+  </main>
+</body>
+</html>

@@ -98,13 +98,13 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     setActiveStudioPort(studioPort);
     if (isRemoteWorkspace) {
       setStatus("failed");
-      setDetail("Video Studio is available for local workspaces.");
+      setDetail(t("video.local_workspaces"));
       return;
     }
     const bridge = window.__IPOLLOWORK_ELECTRON__?.hyperframes;
     if (!bridge?.start || !bridge.stop) {
       setStatus("failed");
-      setDetail("HyperFrames requires the iPolloWork desktop app.");
+      setDetail(t("video.requires_desktop"));
       return;
     }
     const startHyperframes = bridge.start;
@@ -129,7 +129,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     }).catch((cause) => {
       if (disposed) return;
       setStatus("failed");
-      setDetail(cause instanceof Error ? cause.message : "Could not start HyperFrames.");
+      setDetail(cause instanceof Error ? cause.message : t("video.could_not_start"));
     });
 
     return () => {
@@ -156,22 +156,22 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px]">
         <Film className="size-4 text-primary" />
         <div className="flex min-w-0 flex-1 items-center">
-          <p className="truncate text-sm font-medium">Video Studio</p>
+          <p className="truncate text-sm font-medium">{t("video.title")}</p>
         </div>
         <Tooltip>
-          <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => setVoicePanelOpen((open) => !open)} disabled={isRemoteWorkspace} aria-label="打开配音设置"><AudioLines /></Button>} />
-          <TooltipContent>配音设置</TooltipContent>
+          <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => setVoicePanelOpen((open) => !open)} disabled={isRemoteWorkspace} aria-label={t("video.voice_settings")}><AudioLines /></Button>} />
+          <TooltipContent>{t("video.voice_settings")}</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="xs" onClick={() => { setVoicePanelOpen(true); setVoicePreviewRequest((value) => value + 1); }} disabled={isRemoteWorkspace} aria-label="试听当前配音"><Play />Preview</Button>} />
-          <TooltipContent>试听当前已选音色</TooltipContent>
+          <TooltipTrigger render={<Button variant="ghost" size="xs" onClick={() => { setVoicePanelOpen(true); setVoicePreviewRequest((value) => value + 1); }} disabled={isRemoteWorkspace} aria-label={t("video.preview_voice")}><Play />{t("video.preview")}</Button>} />
+          <TooltipContent>{t("video.preview_voice")}</TooltipContent>
         </Tooltip>
         <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setDetail("Reloading Studio…"); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
         <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close Video Studio" title="Close Video Studio"><X /></Button>
       </header>
 
       {isRemoteWorkspace ? (
-        <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">Video Studio is available for local workspaces only.</div>
+        <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">{t("video.local_only")}</div>
       ) : (
         <div className="relative min-h-0 flex-1 bg-[#0c0c0d]">
           {status === "starting" || (status === "ready" && !studioChromeReady) ? <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"><div className="text-center"><Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /><p className="text-xs text-muted-foreground">{status === "starting" ? "Starting the local HyperFrames workspace..." : "Preparing the Video Studio..."}</p><p className="mt-1 max-w-[32rem] text-[11px] text-muted-foreground">{detail}</p></div></div> : null}

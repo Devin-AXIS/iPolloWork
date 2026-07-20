@@ -32,7 +32,7 @@ describe("template API", () => {
     const capabilities = await fetch(`${base}/capabilities`, { headers }).then((response) => response.json());
     expect(capabilities.templates).toEqual({ read: true, install: true, import: true, uninstall: true });
     const catalog = await fetch(`${base}/workspace/ws/templates`, { headers }).then((response) => response.json());
-    expect(catalog.items).toHaveLength(65);
+    expect(catalog.items).toHaveLength(74);
 
     const missingCategory = await fetch(`${base}/workspace/ws/templates/import`, {
       method: "POST",
@@ -65,6 +65,10 @@ describe("template API", () => {
     expect(adopted.manifest.surface).toBe("video");
     expect(await readFile(join(root, adopted.state.entry), "utf8")).toContain("legacy-video");
     expect(JSON.parse(await readFile(join(root, adopted.state.briefPath), "utf8"))).toEqual({ source: "legacy-video-session" });
+
+    const missingTemplateMetadataResponse = await fetch(`${base}/workspace/ws/template-sessions/plain-session`, { headers });
+    expect(missingTemplateMetadataResponse.status).toBe(404);
+    expect((await missingTemplateMetadataResponse.json()).code).toBe("template_session_not_found");
 
     const uninstallResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.saas-landing`, { method: "DELETE", headers });
     expect(uninstallResponse.status).toBe(200);

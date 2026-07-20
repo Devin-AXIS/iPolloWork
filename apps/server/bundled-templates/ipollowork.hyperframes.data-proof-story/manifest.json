@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.data-proof-story",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "data-story",
+  "style": "data",
+  "tags": ["video", "data", "chart", "proof", "case-study", "metrics"],
+  "surface": "video",
+  "title": "Data Proof Story",
+  "description": "A data-led case-study template with count-up proof, animated bars, insight labels, and a confident conclusion.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork · HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition inspired by HyperFrames data chart, map, shimmer, and lower-third patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "accent", "label": "Accent", "type": "color", "group": "theme" },
+      { "id": "metric", "label": "Metric", "type": "text", "group": "content" },
+      { "id": "metricLabel", "label": "Metric label", "type": "text", "group": "content" },
+      { "id": "insight", "label": "Insight", "type": "text", "group": "content" },
+      { "id": "source", "label": "Source", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the metric, label, insight, and source with verified data from the brief.",
+    "Keep chart values proportional and let the count-up land before the conclusion appears.",
+    "Use the accent variable for the primary bar, highlight, and key insight only.",
+    "Verify that the source label remains readable and that no claim is invented by decoration."
+  ],
+  "minimumAppVersion": "0.17.24"
+}
