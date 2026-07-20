@@ -64,8 +64,8 @@ const RELEASE_PAGE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/late
 const DOCS_PAGE_URL = "https://ipolloworklabs.com/docs";
 const MAIN_WINDOW_DEFAULT_WIDTH = 1440;
 const MAIN_WINDOW_DEFAULT_HEIGHT = 900;
-const MAIN_WINDOW_MIN_WIDTH = 480;
-const MAIN_WINDOW_MIN_HEIGHT = 480;
+const MAIN_WINDOW_MIN_WIDTH = 880;
+const MAIN_WINDOW_MIN_HEIGHT = 768;
 const MAIN_WINDOW_STATE_FILE = "main-window-state.json";
 const applicationMenu = createApplicationMenu({
   appName: APP_NAME,

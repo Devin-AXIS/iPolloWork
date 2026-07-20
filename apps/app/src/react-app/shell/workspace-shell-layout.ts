@@ -100,7 +100,7 @@ export function useWorkspaceShellLayout(options: WorkspaceShellLayoutOptions) {
 
       if (typeof document !== "undefined") {
         Object.assign(document.body.style, {
-          cursor: "col-resize",
+          cursor: "ew-resize",
           userSelect: "none",
         });
       }
