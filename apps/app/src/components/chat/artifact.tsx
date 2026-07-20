@@ -53,13 +53,13 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
 
   const content = (
     <>
-      <DescriptiveButtonIcon className="size-5">
-        <ArtifactIcon className="size-4 shrink-0" type={artifact.type} />
+      <DescriptiveButtonIcon className={cn(compact ? "size-5" : "size-12 rounded-2xl bg-muted/55")}>
+        <ArtifactIcon className={cn("shrink-0", compact ? "size-4" : "size-5")} type={artifact.type} />
       </DescriptiveButtonIcon>
-      <DescriptiveButtonContent className="min-w-0 flex-none">
-        <DescriptiveButtonTitle className={cn("text-xs font-medium", compact ? "max-w-56" : "max-w-[172px]")} title={artifact.name}>{title}</DescriptiveButtonTitle>
+      <DescriptiveButtonContent className={cn("min-w-0", compact && "flex-none")}>
+        <DescriptiveButtonTitle className={cn(compact ? "max-w-56 text-xs font-medium" : "max-w-full text-sm font-medium")} title={artifact.name}>{title}</DescriptiveButtonTitle>
         {(!compact || canOpenVideoStudio) && canActivate ? (
-          <DescriptiveButtonDescription className="text-[10px] leading-3">
+          <DescriptiveButtonDescription className={cn(compact ? "text-[10px] leading-3" : "text-xs leading-4")}>
             {canOpenVideoStudio ? t("session.outputs.action_video_preview_edit") : t("session.outputs.action_browse_edit")}
           </DescriptiveButtonDescription>
         ) : null}
@@ -74,7 +74,7 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
 
   if (!canActivate) {
     return (
-      <div className={cn("flex h-auto max-w-full flex-none shrink-0 items-center justify-start gap-1.5 rounded-xl border px-2 py-1.5 text-left whitespace-nowrap", compact ? "w-full border-transparent" : "w-fit border-border")}>
+      <div className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", compact ? "w-full flex-none shrink-0 border-transparent px-2 py-1.5" : "min-h-[72px] w-full min-w-0 gap-4 border-border px-5 py-4")}>
         {content}
       </div>
     );
@@ -82,7 +82,7 @@ function ArtifactButton({ artifact, onOpenVideoStudio, compact = false }: Artifa
 
   return (
     <DescriptiveButton
-      className={cn("max-w-full flex-none items-center gap-1.5 rounded-xl px-2.5 py-2 whitespace-nowrap", compact ? "w-full justify-start px-2 py-1.5 hover:bg-muted/70" : "min-w-[220px]")}
+      className={cn("max-w-full items-center whitespace-nowrap", compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "min-h-[72px] w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
       onClick={() => {
         if (canOpenVideoStudio) {
           onOpenVideoStudio?.();
@@ -155,7 +155,7 @@ export function ArtifactList({ messages, includeTargetFallbacks = false, onOpenV
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-2 md:px-10">
+    <div className="w-full">
       <div className="no-scrollbar flex min-w-0 flex-nowrap gap-2 overflow-x-auto pb-1">
         {artifacts.map((artifact) => (
           <ArtifactButton key={artifact.id} artifact={artifact} onOpenVideoStudio={onOpenVideoStudio} />
