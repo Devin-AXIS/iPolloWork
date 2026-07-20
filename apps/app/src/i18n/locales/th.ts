@@ -4,6 +4,9 @@
  */
 
 export default {
+  "design.export.download": "ดาวน์โหลด",
+  "design.export.download_pdf": "ดาวน์โหลด PDF",
+  "design.export.download_pptx": "ดาวน์โหลด PPTX",
   "new_conversation.mode_label": "เลือกจุดประสงค์ของการสนทนา",
   "new_conversation.mode.work": "งานประจำวัน",
   "new_conversation.mode.code": "สร้างด้วยโค้ด",

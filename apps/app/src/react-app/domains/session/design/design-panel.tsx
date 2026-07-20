@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Download, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
@@ -33,6 +33,7 @@ import {
   type DesignSelection,
   type DesignStyleField,
 } from "./design-html-runtime";
+import { DesignExportMenu } from "./design-export-menu";
 import { DesignSystemDrawer, type DesignTokenValues } from "./design-system-drawer";
 import {
   downgradeUnsupportedPdfExportColors,
@@ -1209,29 +1210,13 @@ export function DesignPanel({
               </ToggleGroup>
             ) : null}
             {deck ? (
-              <div className="ml-auto flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPptxConfirmationOpen(true)}
-                  disabled={exportingPptx}
-                  aria-label="Export presentation to PPTX"
-                  title="Export PPTX"
-                >
-                  {exportingPptx ? <Loader2 className="animate-spin" /> : <Presentation />}
-                  Export PPTX
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void exportDeckToPdf()}
-                  disabled={exportingPdf}
-                  aria-label="Export presentation to PDF"
-                  title="Export PDF"
-                >
-                  {exportingPdf ? <Loader2 className="animate-spin" /> : <Download />}
-                  Export PDF
-                </Button>
+              <div className="ml-auto">
+                <DesignExportMenu
+                  exportingPdf={exportingPdf}
+                  exportingPptx={exportingPptx}
+                  onExportPdf={() => void exportDeckToPdf()}
+                  onExportPptx={() => setPptxConfirmationOpen(true)}
+                />
               </div>
             ) : null}
           </div>

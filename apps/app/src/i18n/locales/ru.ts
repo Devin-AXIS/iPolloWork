@@ -4,6 +4,9 @@
  */
 
 export default {
+  "design.export.download": "Скачать",
+  "design.export.download_pdf": "Скачать PDF",
+  "design.export.download_pptx": "Скачать PPTX",
   "new_conversation.mode_label": "Выберите фокус беседы",
   "new_conversation.mode.work": "Повседневная работа",
   "new_conversation.mode.code": "Разработка с кодом",
