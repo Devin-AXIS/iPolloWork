@@ -4,19 +4,9 @@
   <a href="../README.md">English</a> · <a href="./README_ZH.md">简体中文</a> · <a href="./README_ZH_hk.md">繁體中文</a> · 日本語
 </p>
 
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">
-    <img src="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@7037c3b5/docs/assets/ipollowork-demo-poster.jpg" alt="iPolloWork のデモを見る" width="900">
-  </a>
-</p>
+**一つの目的から編集可能なコード・文書・プレゼン・Webサイト・デザイン・動画まで作れる、ローカルファーストのビジュアルAIワークベンチであり、CodexとClaude Codeのソースアベイラブルな代替です。**
 
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/Devin-AXIS/iPolloWork@b85fc51cf9f36ebf3bcbffad199905d07527bbf4/docs/assets/ipollowork-demo.mp4">▶ iPolloWork のデモを見る</a>
-</p>
-
-> **AI がつくり、動かし、成果物を編集可能なままにする。**
-
-**ターミナルの外にある仕事のための、ソースアベイラブルでローカルファーストな Codex 代替です。**
+https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 
 iPolloWork は、リポジトリ、ローカルファイル、ブラウザ操作、ドキュメント、プレゼンテーション、Web サイト、デザイン、動画を一つのワークスペースで扱える AI エージェント環境です。目的を伝えると、エージェントが計画して実行します。ユーザーは手順を確認し、操作を承認し、同じ場所で成果物を編集し続けられます。
 
