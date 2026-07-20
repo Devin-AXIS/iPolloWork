@@ -10,7 +10,6 @@ import { isPptxCompatibleTemplate, type TemplateCatalogItem, type TemplateManife
 import { currentLocale, t } from "../../../../i18n";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
-import { buildDenAuthUrl, readDenBootstrapConfig } from "../../../../app/lib/den";
 import { type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
@@ -42,8 +41,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
-import { usePlatform } from "../../../kernel/platform";
 import { useDenAuth } from "../../cloud/den-auth-provider";
+import { CloudSignInComingSoonDialog } from "../../cloud/cloud-signin-coming-soon-dialog";
 import ProviderAuthModal, { type ProviderAuthModalProps } from "../../connections/provider-auth/provider-auth-modal";
 import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
@@ -392,7 +391,6 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
 export function SessionPage(props: SessionPageProps) {
   const locale = currentLocale();
   const { config: shellConfig } = useShellConfig();
-  const platform = usePlatform();
   const navigate = useNavigate();
   const denAuth = useDenAuth();
   const sidebarOpen = useUiStateStore((state) => state.sidebarOpen);
@@ -431,6 +429,7 @@ export function SessionPage(props: SessionPageProps) {
   const [templateCatalogError, setTemplateCatalogError] = useState<string | null>(null);
   const [templateBusyId, setTemplateBusyId] = useState<string | null>(null);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
+  const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
   const [templateSessionData, setTemplateSessionData] = useState<{ state: TemplateSessionState; manifest: TemplateManifestV1; hasBrief: boolean } | null>(null);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
   const [sessionTypeRevision, setSessionTypeRevision] = useState(0);
@@ -689,10 +688,8 @@ export function SessionPage(props: SessionPageProps) {
   );
   const voiceExtensionEnabled = voiceExtension ? isiPolloWorkExtensionEnabled(voiceExtension) : false;
   const openCloudSignIn = useCallback(() => {
-    const baseUrl = readDenBootstrapConfig().baseUrl;
-    // Label stays "Sign in"; opens the sign-up tab so new users aren't defaulted into sign-in.
-    platform.openLink(buildDenAuthUrl(baseUrl, "sign-up"));
-  }, [platform]);
+    setCloudSignInComingSoonOpen(true);
+  }, []);
   const openCloudAccount = useCallback(() => {
     navigate(props.selectedWorkspaceId
       ? workspaceSettingsRoute(props.selectedWorkspaceId, "cloud-account")
@@ -2000,6 +1997,11 @@ export function SessionPage(props: SessionPageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CloudSignInComingSoonDialog
+        open={cloudSignInComingSoonOpen}
+        onOpenChange={setCloudSignInComingSoonOpen}
+      />
 
       {props.shareWorkspaceModal ? <ShareWorkspaceModal {...props.shareWorkspaceModal} /> : null}
 
