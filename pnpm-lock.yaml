@@ -449,6 +449,8 @@ importers:
 
   packages/ipollowork-bootstrap: {}
 
+  packages/ipollowork-launcher: {}
+
   packages/ipollowork-ui-mcp:
     dependencies:
       '@modelcontextprotocol/sdk':
