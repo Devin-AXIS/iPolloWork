@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,7 +62,10 @@ function runSync(command, args, options = {}) {
 }
 
 function ensureHyperframesDevProject() {
-  if (existsSync(resolve(hyperframesDevProjectDir, "index.html"))) return;
+  if (existsSync(resolve(hyperframesDevProjectDir, "index.html"))) {
+    ensureVisibleHyperframesStarter(hyperframesDevProjectDir);
+    return;
+  }
   if (!existsSync(hyperframesCli)) {
     throw new Error(`HyperFrames CLI was not found at ${hyperframesCli}`);
   }
@@ -77,6 +80,28 @@ function ensureHyperframesDevProject() {
       NO_COLOR: "1",
     },
   });
+  ensureVisibleHyperframesStarter(hyperframesDevProjectDir);
+}
+
+function ensureVisibleHyperframesStarter(projectDir) {
+  const indexPath = resolve(projectDir, "index.html");
+  if (!existsSync(indexPath)) return;
+  const html = readFileSync(indexPath, "utf8");
+  if (html.includes("ipollowork-video-placeholder")) return;
+  if (!html.includes("Add your clips here")) return;
+
+  const placeholder = `      <div id="ipollowork-video-placeholder" class="clip" data-start="0" data-duration="10" data-track-index="1" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:#111827; color:#f8fafc; font:600 56px Inter, sans-serif;">
+        Ready
+      </div>
+
+`;
+  const patched = html.replace(
+    /(<div\b[^>]*\bdata-composition-id="main"[^>]*>\s*)(<!--\s*Add your clips here)/,
+    `$1${placeholder}$2`,
+  );
+  if (patched !== html) {
+    writeFileSync(indexPath, patched, "utf8");
+  }
 }
 
 function startHyperframesDevServer() {

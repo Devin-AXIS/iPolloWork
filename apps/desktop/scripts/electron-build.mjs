@@ -13,6 +13,7 @@ const electronRoot = resolve(desktopRoot, "electron");
 const packagedServerRoot = resolve(desktopRoot, "server");
 const hyperframesRoot = resolve(repoRoot, "vendor", "hyperframes");
 const hyperframesBuildStamp = resolve(desktopRoot, ".hyperframes-build-stamp.json");
+const hyperframesInstallStamp = resolve(desktopRoot, ".hyperframes-install-stamp.json");
 
 const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const bunCmd = process.platform === "win32" ? "bun.exe" : "bun";
@@ -53,6 +54,7 @@ function ensureHyperframesFfmpegBinary() {
   const probe = existsSync(binaryPath)
     ? spawnSync(binaryPath, ["-version"], { stdio: "ignore" })
     : null;
+  if (probe?.status === 0) return;
   if (probe?.status !== 0) {
     rmSync(binaryPath, { force: true });
   }
@@ -89,6 +91,17 @@ function hashFiles(paths) {
   return hash.digest("hex");
 }
 
+function currentHyperframesInstallKey() {
+  return hashFiles([
+    resolve(hyperframesRoot, "package.json"),
+    resolve(hyperframesRoot, "bun.lock"),
+    ...readdirSync(resolve(hyperframesRoot, "packages"), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && existsSync(resolve(hyperframesRoot, "packages", entry.name, "package.json")))
+      .map((entry) => resolve(hyperframesRoot, "packages", entry.name, "package.json"))
+      .sort(),
+  ]);
+}
+
 function currentHyperframesBuildKey() {
   const hash = createHash("sha256");
   hash.update(hashFiles([
@@ -121,8 +134,30 @@ function readHyperframesBuildStamp() {
   }
 }
 
-function ensureHyperframesBuild() {
+function readJsonStamp(stampPath) {
+  try {
+    return JSON.parse(readFileSync(stampPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function ensureHyperframesDependencies() {
+  const key = currentHyperframesInstallKey();
+  const hasDependencies = existsSync(resolve(hyperframesRoot, "node_modules", ".bun"));
+  if (hasDependencies && readJsonStamp(hyperframesInstallStamp)?.key === key) {
+    console.log("HyperFrames dependencies are up to date; skipping bun install.");
+    return;
+  }
   run(bunCmd, ["install", "--frozen-lockfile", "--ignore-scripts"], hyperframesRoot);
+  writeFileSync(
+    hyperframesInstallStamp,
+    `${JSON.stringify({ key, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+  );
+}
+
+function ensureHyperframesBuild() {
+  ensureHyperframesDependencies();
   ensureHyperframesFfmpegBinary();
 
   const beforeBuildKey = currentHyperframesBuildKey();
@@ -144,6 +179,7 @@ run(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", 
 run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", "--outdir", electronHelperDir], desktopRoot);
 // Build the server TS → JS so Electron can import it in-process
 ensureHyperframesBuild();
+run(nodeCmd, [resolve(__dirname, "prepare-hyperframes-runtime.mjs")], desktopRoot);
 run(pnpmCmd, ["--filter", "ipollowork-server", "build"], repoRoot);
 // IPOLLOWORK_ELECTRON_BUILD tells Vite to emit relative asset paths so
 // index.html resolves /assets/* correctly when loaded via file:// from

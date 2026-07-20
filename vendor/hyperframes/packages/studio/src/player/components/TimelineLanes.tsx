@@ -174,9 +174,9 @@ export function TimelineLanes({
           const isTrackHidden = els.length > 0 && els.every((element) => element.hidden === true);
           const isAudioTrack = els.length > 0 && els.some(isAudioTimelineElement);
           return (
-            <div key={trackNum} className="relative flex" style={{ height: TRACK_H }}>
+            <div key={trackNum} className="hf-timeline-lane relative flex" style={{ height: TRACK_H }}>
               <div
-                className="sticky left-0 z-[12] flex-shrink-0 flex flex-col items-center justify-center gap-0.5"
+                className="hf-timeline-gutter sticky left-0 z-[12] flex-shrink-0 flex flex-col items-center justify-center gap-0.5"
                 style={{
                   width: GUTTER,
                   background: theme.gutterBackground,
@@ -228,7 +228,7 @@ export function TimelineLanes({
                   opacity: isTrackHidden ? 0.35 : 1,
                   transition: "opacity 120ms ease",
                 }}
-                className="relative"
+                className="hf-timeline-row relative"
                 onContextMenu={(e: React.MouseEvent) => {
                   // Clip / keyframe-diamond context menus preventDefault at the
                   // target before this bubble handler runs — respect them so a

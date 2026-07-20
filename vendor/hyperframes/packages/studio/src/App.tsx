@@ -476,7 +476,7 @@ export function StudioApp() {
               <FileManagerProvider value={fileManager}>
                 <DomEditProvider value={domEditSession}>
                 <div
-                  className="flex flex-col h-full w-full bg-neutral-950 relative"
+                  className="hf-studio-shell flex flex-col h-full w-full bg-neutral-950 relative"
                   onDragOver={dragOverlay.onDragOver}
                   onDragEnter={dragOverlay.onDragEnter}
                   onDragLeave={dragOverlay.onDragLeave}

@@ -73,7 +73,7 @@ export const TimelineRuler = memo(function TimelineRuler({
           scrolling underneath don't bleed through; z-index sits above the track
           rows and drag overlays but below the playhead (z 100). */}
       <div
-        className="sticky top-0 flex"
+        className="hf-timeline-ruler sticky top-0 flex"
         style={{
           height: RULER_H,
           width: GUTTER + TRACKS_LEFT_PAD + trackContentWidth,
@@ -81,7 +81,7 @@ export const TimelineRuler = memo(function TimelineRuler({
         }}
       >
         <div
-          className="sticky left-0 z-[12] flex-shrink-0"
+          className="hf-timeline-ruler-gutter sticky left-0 z-[12] flex-shrink-0"
           style={{
             width: GUTTER,
             // Ruler corner uses the panel surface — same as the ruler strip
@@ -95,11 +95,11 @@ export const TimelineRuler = memo(function TimelineRuler({
             beat right of the gutter (see TRACKS_LEFT_PAD). */}
         <div
           aria-hidden="true"
-          className="flex-shrink-0"
+          className="hf-timeline-ruler-pad flex-shrink-0"
           style={{ width: TRACKS_LEFT_PAD, background: theme.shellBackground }}
         />
         <div
-          className="relative overflow-hidden"
+          className="hf-timeline-ruler-content relative overflow-hidden"
           style={{
             height: RULER_H,
             width: trackContentWidth,

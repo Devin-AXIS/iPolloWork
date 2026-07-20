@@ -7,6 +7,10 @@ describe("HyperFrames Video Studio", () => {
     expect(hyperframesStudioUrl()).toBe("http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1");
   });
 
+  test("passes the app locale through the Studio hash route", () => {
+    expect(hyperframesStudioUrl(3002, "video", "zh")).toBe("http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1&locale=zh");
+  });
+
   test("isolates each video task in a shell-safe project directory", () => {
     expect(videoProjectId("ses/current video")).toBe("ses_current_video");
     expect(videoProjectDirectory("ses_current-video")).toBe("video/ses_current-video");

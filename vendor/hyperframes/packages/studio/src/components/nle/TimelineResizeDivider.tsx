@@ -97,7 +97,7 @@ export function TimelineResizeDivider({
       {/* Expanded hit zone: 8px tall, centered on the 3px seam */}
       <div className="absolute inset-x-0 -top-[2.5px] h-2" />
       {/* Visible hairline — invisible at rest, subtle wash on hover/drag/focus */}
-      <div className="h-[3px] w-full bg-transparent transition-colors group-hover:bg-white/12 group-active:bg-white/18 group-focus-visible:bg-studio-accent/60" />
+      <div className="hf-timeline-divider h-[3px] w-full bg-transparent transition-colors group-hover:bg-white/12 group-active:bg-white/18 group-focus-visible:bg-studio-accent/60" />
     </div>
   );
 }

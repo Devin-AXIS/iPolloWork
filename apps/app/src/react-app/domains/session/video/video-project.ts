@@ -11,12 +11,26 @@ export function hyperframesStudioPort(sessionId: string) {
   return HYPERFRAMES_PORT_BASE + (hash % HYPERFRAMES_PORT_RANGE);
 }
 
-export function hyperframesStudioUrl(port = 3_002, projectId = "video") {
+export function hyperframesStudioUrl(
+  port = 3_002,
+  projectId = "video",
+  locale?: string,
+  theme?: "light" | "dark",
+) {
   // Start on a deterministic, hydrated main-composition frame. HyperFrames can
   // otherwise restore a panel/playhead state before its preview has mounted,
   // which leaves the first playback visually empty until a timeline layer is
   // selected.
-  return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?v=1&t=0&tab=design&rc=1&tv=1`;
+  const params = new URLSearchParams({
+    v: "1",
+    t: "0",
+    tab: "design",
+    rc: "1",
+    tv: "1",
+  });
+  if (locale) params.set("locale", locale);
+  if (theme) params.set("ipolloworkTheme", theme);
+  return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?${params.toString()}`;
 }
 
 export function videoProjectId(sessionId: string) {

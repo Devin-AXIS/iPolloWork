@@ -328,6 +328,20 @@ function createServerProbeRequest(port, onConfig) {
   return request;
 }
 
+async function waitForHyperframesServer(port, expectedProjectPath, timeoutMs = HYPERFRAMES_START_TIMEOUT_MS) {
+  const startedAt = Date.now();
+  const expectedProjectDir = path.resolve(expectedProjectPath);
+  while (Date.now() - startedAt < timeoutMs) {
+    const config = await readHyperframesServerConfig(port);
+    if (config?.isHyperframes) {
+      const runningProject = typeof config.projectDir === "string" ? path.resolve(config.projectDir) : "";
+      if (runningProject === expectedProjectDir) return config;
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 350));
+  }
+  throw new Error(`Timed out waiting for HyperFrames Studio on port ${port}.`);
+}
+
 async function stopStaleHyperframesPort(port, expectedProjectPath) {
   const config = await readHyperframesServerConfig(port);
   if (!config?.pid) return;
@@ -361,7 +375,10 @@ function resolveWorkspaceChild(root, childPath) {
 }
 
 async function runHyperframesInit(workspaceRoot, projectDirectory, projectPath) {
-  if (existsSync(path.join(projectPath, "index.html"))) return;
+  if (existsSync(path.join(projectPath, "index.html"))) {
+    await ensureVisibleHyperframesStarter(projectPath);
+    return;
+  }
   await mkdir(path.dirname(projectPath), { recursive: true });
   const child = spawnLocalHyperframes(["init", projectDirectory, "--example", "blank", "--non-interactive"], workspaceRoot);
   let output = "";
@@ -374,6 +391,28 @@ async function runHyperframesInit(workspaceRoot, projectDirectory, projectPath) 
       else reject(new Error(output.trim() || `HyperFrames init failed (${code ?? "unknown"}).`));
     });
   });
+  await ensureVisibleHyperframesStarter(projectPath);
+}
+
+async function ensureVisibleHyperframesStarter(projectPath) {
+  const indexPath = path.join(projectPath, "index.html");
+  if (!existsSync(indexPath)) return;
+  const html = await readFile(indexPath, "utf8");
+  if (html.includes("ipollowork-video-placeholder")) return;
+  if (!html.includes("Add your clips here")) return;
+
+  const placeholder = `      <div id="ipollowork-video-placeholder" class="clip" data-start="0" data-duration="10" data-track-index="1" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:#111827; color:#f8fafc; font:600 56px Inter, sans-serif;">
+        Ready
+      </div>
+
+`;
+  const patched = html.replace(
+    /(<div\b[^>]*\bdata-composition-id="main"[^>]*>\s*)(<!--\s*Add your clips here)/,
+    `$1${placeholder}$2`,
+  );
+  if (patched !== html) {
+    await writeFile(indexPath, patched, "utf8");
+  }
 }
 
 function stopHyperframesForKey(key) {
@@ -409,6 +448,7 @@ async function startHyperframesPreview(event, options = {}) {
   let output = "";
   return await new Promise((resolve, reject) => {
     let ready = false;
+    let settled = false;
     const cleanup = () => {
       clearTimeout(timeout);
       child.stdout?.off("data", onData);
@@ -417,7 +457,7 @@ async function startHyperframesPreview(event, options = {}) {
       child.off("exit", onExit);
     };
     const finishReady = () => {
-      if (ready) return;
+      if (ready || settled) return;
       ready = true;
       clearTimeout(timeout);
       child.stdout?.off("data", onData);
@@ -427,32 +467,36 @@ async function startHyperframesPreview(event, options = {}) {
       event.sender.once("destroyed", () => stopHyperframesForWebContents(event.sender.id));
       resolve({ ok: true, port, reused: false });
     };
-    const onData = (data) => {
-      output += String(data);
-      if (new RegExp(`localhost:${port}|127\\.0\\.0\\.1:${port}|studio.*ready|server.*running`, "i").test(output)) {
-        finishReady();
-      }
-    };
-    const onError = (error) => {
-      cleanup();
-      reject(error);
-    };
-    const onExit = (code) => {
+    const failStart = (error) => {
+      if (settled || ready) return;
+      settled = true;
       cleanup();
       hyperframesProcesses.delete(key);
+      reject(error);
+    };
+    const onData = (data) => {
+      output += String(data);
+    };
+    const onError = (error) => {
+      failStart(error);
+    };
+    const onExit = (code) => {
       if (ready) return;
-      reject(new Error(output.trim() || `HyperFrames stopped before Studio was ready (${code ?? "unknown"}).`));
+      failStart(new Error(output.trim() || `HyperFrames stopped before Studio was ready (${code ?? "unknown"}).`));
     };
     const timeout = setTimeout(() => {
-      cleanup();
       killProcessTree(child);
-      reject(new Error("Timed out starting HyperFrames Studio."));
+      failStart(new Error(output.trim() || "Timed out starting HyperFrames Studio."));
     }, HYPERFRAMES_START_TIMEOUT_MS);
     hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, timeout });
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.once("error", onError);
     child.once("exit", onExit);
+    waitForHyperframesServer(port, projectPath).then(finishReady, (error) => {
+      killProcessTree(child);
+      failStart(error);
+    });
   });
 }
 

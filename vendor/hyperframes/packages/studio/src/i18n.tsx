@@ -210,10 +210,16 @@ function resolveStudioLocale(value: unknown): StudioLocale {
   return value.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
+function readLocaleFromHash(): string | null {
+  const query = window.location.hash.split("?")[1];
+  if (!query) return null;
+  return new URLSearchParams(query).get("locale");
+}
+
 function readInitialLocale(): StudioLocale {
   if (typeof window === "undefined") return "en";
-  const params = new URLSearchParams(window.location.search);
-  const queryLocale = params.get("locale");
+  const searchParams = new URLSearchParams(window.location.search);
+  const queryLocale = searchParams.get("locale") ?? readLocaleFromHash();
   if (queryLocale) return resolveStudioLocale(queryLocale);
   try {
     const stored = window.localStorage.getItem("ipollowork.language");
@@ -235,7 +241,13 @@ export function StudioI18nProvider({ children }: { children: ReactNode }) {
     const handleMessage = (event: MessageEvent) => {
       const data = event.data as { type?: unknown; locale?: unknown } | null;
       if (!data || data.type !== "ipollowork:studio-locale") return;
-      setLocale(resolveStudioLocale(data.locale));
+      const nextLocale = resolveStudioLocale(data.locale);
+      setLocale(nextLocale);
+      try {
+        window.localStorage.setItem("ipollowork.language", nextLocale);
+      } catch {
+        // Ignore storage access failures; the URL and parent app remain authoritative.
+      }
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);

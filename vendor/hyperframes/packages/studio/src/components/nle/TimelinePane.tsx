@@ -250,12 +250,12 @@ export function TimelinePane({
       {/* Timeline section — inner padding (not margin) keeps the divider's
           height math exact while giving the panel a gap from the shell edges. */}
       <div
-        className="relative flex flex-col flex-shrink-0 px-px pb-px"
+        className="hf-timeline-section relative flex flex-col flex-shrink-0 px-px pb-px"
         style={{ height: timelineH }}
         aria-disabled={timelineDisabled || undefined}
       >
         <div
-          className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
+          className="hf-timeline-pane flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
           onDoubleClick={(e) => {
             if ((e.target as HTMLElement).closest("[data-clip]")) return;
             if (timelineDisabled) return;

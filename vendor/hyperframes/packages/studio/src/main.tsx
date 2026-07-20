@@ -3,8 +3,10 @@ import { createRoot } from "react-dom/client";
 import { StudioApp } from "./App";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { trackStudioEvent } from "./utils/studioTelemetry";
+import { installIPolloWorkThemeSync } from "./ipolloworkTheme";
 import "./styles/studio.css";
 
+installIPolloWorkThemeSync();
 trackStudioEvent("session_start");
 
 function errorProps(value: unknown): {

@@ -9,6 +9,63 @@
  */
 :root {
   color-scheme: dark;
+  --hf-studio-bg: #0a0a0a;
+  --hf-studio-surface: #141414;
+  --hf-studio-border: #262626;
+  --hf-studio-text: #e5e5e5;
+  --hf-studio-muted: #737373;
+  --hf-panel-bg: #0c0c0e;
+  --hf-panel-bg-inset: #121214;
+  --hf-panel-input: #161618;
+  --hf-panel-surface: #18181b;
+  --hf-panel-hover: #27272a;
+  --hf-panel-border: #1e1e1e;
+  --hf-panel-border-input: #27272a;
+  --hf-panel-hairline: #1a1a1c;
+  --hf-panel-text-0: #fafafa;
+  --hf-panel-text-1: #e4e4e7;
+  --hf-panel-text-2: #a1a1aa;
+  --hf-panel-text-3: #71717a;
+  --hf-panel-text-4: #52525b;
+  --hf-panel-text-5: #3f3f46;
+}
+
+:root[data-ipollowork-theme="light"] {
+  color-scheme: light;
+  --hf-studio-bg: #ffffff;
+  --hf-studio-surface: #fafafa;
+  --hf-studio-border: #e5e7eb;
+  --hf-studio-text: #18181b;
+  --hf-studio-muted: #71717a;
+  --hf-panel-bg: #ffffff;
+  --hf-panel-bg-inset: #f7f7f8;
+  --hf-panel-input: #f4f4f5;
+  --hf-panel-surface: #fafafa;
+  --hf-panel-hover: #e9eaec;
+  --hf-panel-border: #e5e7eb;
+  --hf-panel-border-input: #d8dadd;
+  --hf-panel-hairline: #eceef0;
+  --hf-panel-text-0: #09090b;
+  --hf-panel-text-1: #18181b;
+  --hf-panel-text-2: #3f3f46;
+  --hf-panel-text-3: #52525b;
+  --hf-panel-text-4: #71717a;
+  --hf-panel-text-5: #a1a1aa;
+  --hf-workspace-bg: #eef1f4;
+  --hf-workspace-surface: #f8fafb;
+  --hf-workspace-inset: #e7ebef;
+  --hf-workspace-border: #d7dde3;
+  --hf-workspace-hairline: #e1e6eb;
+  --hf-workspace-muted: #64707d;
+}
+
+:root:not([data-ipollowork-theme="light"]) {
+  --hf-workspace-bg: #0a0a0a;
+  --hf-workspace-surface: #141414;
+  --hf-workspace-inset: #0c0c0e;
+  --hf-workspace-border: #262626;
+  --hf-workspace-hairline: #1a1a1c;
+  --hf-workspace-muted: #a1a1aa;
 }
 
 body {
@@ -18,6 +75,135 @@ body {
   color: #e5e5e5;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   overflow: hidden;
+}
+
+:root[data-ipollowork-theme="light"] body {
+  background: var(--hf-studio-bg);
+  color: var(--hf-studio-text);
+}
+
+/* HyperFrames predates host themes and still uses Tailwind's neutral palette
+   directly in several panels. Scope the semantic inversion to host light mode. */
+:root[data-ipollowork-theme="light"] .bg-neutral-950 { background-color: #ffffff !important; }
+:root[data-ipollowork-theme="light"] .bg-neutral-900 { background-color: #fafafa !important; }
+:root[data-ipollowork-theme="light"] .bg-neutral-800 { background-color: #f4f4f5 !important; }
+:root[data-ipollowork-theme="light"] .bg-neutral-700 { background-color: #e4e4e7 !important; }
+:root[data-ipollowork-theme="light"] .text-white,
+:root[data-ipollowork-theme="light"] .text-neutral-100,
+:root[data-ipollowork-theme="light"] .text-neutral-200 { color: #18181b !important; }
+:root[data-ipollowork-theme="light"] .text-neutral-300 { color: #3f3f46 !important; }
+:root[data-ipollowork-theme="light"] .text-neutral-400 { color: #52525b !important; }
+:root[data-ipollowork-theme="light"] .text-neutral-500 { color: #71717a !important; }
+:root[data-ipollowork-theme="light"] .text-neutral-600 { color: #a1a1aa !important; }
+:root[data-ipollowork-theme="light"] .border-neutral-800 { border-color: #e5e7eb !important; }
+:root[data-ipollowork-theme="light"] .border-neutral-700 { border-color: #d4d4d8 !important; }
+:root[data-ipollowork-theme="light"] .border-neutral-600 { border-color: #c4c4c8 !important; }
+:root[data-ipollowork-theme="light"] .hover\:bg-neutral-900:hover,
+:root[data-ipollowork-theme="light"] .hover\:bg-neutral-800:hover { background-color: #e9eaec !important; }
+:root[data-ipollowork-theme="light"] input,
+:root[data-ipollowork-theme="light"] textarea,
+:root[data-ipollowork-theme="light"] select { color: #18181b; }
+
+/* The embedded Studio has a few intentionally dark Tailwind surfaces. Give
+   the host light theme one continuous, pale workspace so the preview, timeline,
+   and their gutters do not expose black seams between panels. */
+:root[data-ipollowork-theme="light"] .hf-studio-shell,
+:root[data-ipollowork-theme="light"] .hf-preview-pane,
+:root[data-ipollowork-theme="light"] .hf-preview-surface,
+:root[data-ipollowork-theme="light"] .hf-timeline-pane {
+  background: var(--hf-workspace-bg) !important;
+  color: var(--hf-panel-text-1);
+}
+
+:root[data-ipollowork-theme="light"] .hf-preview-pane,
+:root[data-ipollowork-theme="light"] .hf-timeline-pane {
+  border-color: var(--hf-workspace-border) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-pane > :first-child,
+:root[data-ipollowork-theme="light"] .hf-timeline-pane [class*="border-b"] {
+  border-color: var(--hf-workspace-hairline) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-neutral-900\/50,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-neutral-900\/90 {
+  background-color: var(--hf-workspace-surface) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-black\/18,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-black\/20,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-black\/50,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-black\/60 {
+  background-color: rgba(255, 255, 255, 0.62) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-studio-shell .text-white\/80,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .text-white\/90 {
+  color: var(--hf-panel-text-2) !important;
+}
+
+/* Timeline rows and the ruler use inline colors from TimelineTheme, so the
+   semantic theme needs a small light-mode bridge for the actual NLE surfaces. */
+:root[data-ipollowork-theme="light"] .hf-timeline-section,
+:root[data-ipollowork-theme="light"] .hf-timeline-root,
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll,
+:root[data-ipollowork-theme="light"] .hf-timeline-lane,
+:root[data-ipollowork-theme="light"] .hf-timeline-row,
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter {
+  background-color: var(--hf-workspace-surface) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-root {
+  border-top-color: var(--hf-workspace-border) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-divider {
+  background-color: var(--hf-workspace-border) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll {
+  scrollbar-color: #b8c1ca var(--hf-workspace-inset);
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll::-webkit-scrollbar-track {
+  background: var(--hf-workspace-inset);
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll::-webkit-scrollbar-thumb {
+  background: #b8c1ca;
+  border: 2px solid var(--hf-workspace-inset);
+  border-radius: 8px;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll::-webkit-scrollbar-thumb:hover {
+  background: #98a4af;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter {
+  color: var(--hf-workspace-muted);
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter .text-white\/35,
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter .text-white\/75 {
+  color: #7a8793 !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter,
+:root[data-ipollowork-theme="light"] .hf-timeline-row {
+  border-right-color: var(--hf-workspace-border) !important;
+  border-bottom-color: var(--hf-workspace-hairline) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler,
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler-gutter,
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler-pad,
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler-content {
+  background-color: var(--hf-workspace-surface) !important;
 }
 
 .hf-color-grading-number::-webkit-outer-spin-button,
