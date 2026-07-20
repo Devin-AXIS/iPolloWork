@@ -766,15 +766,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       }
     },
   });
-  const onReleaseChannelChange = useCallback(
-    (next: "stable" | "alpha") => {
-      local.setPrefs((previous) => ({ ...previous, releaseChannel: next }));
-    },
-    [local],
-  );
   const electronUpdaterState = useElectronUpdaterState({
-    releaseChannel: local.prefs.releaseChannel ?? "stable",
-    onReleaseChannelChange,
     updateAutoCheck,
     updateAutoDownload,
     desktopConfig: desktopConfig.config,
@@ -2281,9 +2273,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             checkForUpdates={electronUpdaterState.checkForUpdates}
             downloadUpdate={electronUpdaterState.downloadUpdate}
             installUpdateAndRestart={electronUpdaterState.installUpdateAndRestart}
-            releaseChannel={local.prefs.releaseChannel ?? "stable"}
-            onReleaseChannelChange={electronUpdaterState.setReleaseChannel}
-            alphaChannelSupported={isElectronRuntime() && isMacPlatform()}
           />
         );
       case "recovery":

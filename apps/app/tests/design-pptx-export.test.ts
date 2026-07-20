@@ -22,8 +22,8 @@ describe("PPTX deck export", () => {
   test("uses a PowerPoint filename and editable-first confirmation copy", () => {
     expect(deckPptxFileName("Q2 launch")).toBe("Q2 launch.pptx");
     expect(deckPptxFileName("Q2 launch.pdf")).toBe("Q2 launch.pptx");
-    expect(PPTX_EXPORT_CONFIRMATION.title).toBe("??????? PPTX");
-    expect(PPTX_EXPORT_CONFIRMATION.message).toContain("????");
+    expect(PPTX_EXPORT_CONFIRMATION.title).toBe("可编辑优先导出 PPTX");
+    expect(PPTX_EXPORT_CONFIRMATION.message).toContain("局部图片");
   });
 
   test("maps slide-relative browser text geometry to editable PPTX text", () => {
@@ -60,7 +60,7 @@ describe("PPTX deck export", () => {
 
   test("uses installed CJK fonts and exact spacing for Chinese editable text", () => {
     expect(createPptxTextOverlay({
-      text: "?????\n??????",
+      text: "学术出版物\n视觉系统设计",
       slide: { left: 0, top: 0, width: 1600, height: 900 },
       box: { left: 160, top: 90, width: 800, height: 180 },
       style: {

@@ -11,8 +11,7 @@ import {
 } from "react";
 
 import { THINKING_PREF_KEY } from "../../app/constants";
-import { coerceReleaseChannel } from "../../app/lib/release-channels";
-import type { ModelRef, ReleaseChannel, SettingsTab, View } from "../../app/types";
+import type { ModelRef, SettingsTab, View } from "../../app/types";
 import {
   DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE,
   isDesktopNotificationPreference,
@@ -36,12 +35,6 @@ export type LocalPreferences = {
    * fall back to the default agent (#2101).
    */
   selectedAgent: string | null;
-  /**
-   * Release channel the desktop app is subscribed to. Defaults to
-   * "stable". Alpha is only honored on macOS; the updater helper falls
-   * back to stable elsewhere.
-   */
-  releaseChannel: ReleaseChannel;
   featureFlags: {
     microsandboxCreateSandbox: boolean;
     /**
@@ -93,7 +86,6 @@ const INITIAL_PREFS: LocalPreferences = {
   modelVariant: null,
   defaultModel: null,
   selectedAgent: null,
-  releaseChannel: "stable",
   featureFlags: { microsandboxCreateSandbox: true, memory: false },
   hasCompletedOnboarding: false,
   providerStepCompleted: false,
@@ -135,6 +127,7 @@ export function LocalProvider({ children }: LocalProviderProps) {
   );
   const [prefs, setPrefsRaw] = useState<LocalPreferences>(() => {
     const persisted = readPersisted(LOCAL_PREFERENCES_KEY, INITIAL_PREFS);
+    delete (persisted as { releaseChannel?: unknown }).releaseChannel;
     persisted.desktopNotifications = isDesktopNotificationPreference(persisted.desktopNotifications)
       ? persisted.desktopNotifications
       : DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE;

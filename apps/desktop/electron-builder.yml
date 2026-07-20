@@ -39,13 +39,12 @@ asarUnpack:
 npmRebuild: false
 afterPack: scripts/electron-after-pack.cjs
 afterSign: scripts/electron-after-sign.cjs
-# electron-updater feed. Matches the existing release workflow's GitHub target
-# so both Tauri (latest.json) and Electron (latest*.yml) can live on the same
-# release assets during the migration window.
+# electron-updater feed. The public GitHub Release carries the platform
+# manifests consumed by the Electron desktop clients.
 publish:
   - provider: github
-    owner: different-ai
-    repo: ipollowork
+    owner: Devin-AXIS
+    repo: iPolloWork
     releaseType: release
 mac:
   icon: resources/icons/mac/icon.icns
