@@ -25,17 +25,7 @@ This source-available repository contains the Work client and its local runtime 
 
 ## Install iPolloWork
 
-### One-command install
-
-With Node.js 20 or newer installed, run:
-
-```bash
-npx -y ipollowork
-```
-
-The official installer detects your operating system and CPU, downloads the matching public desktop build, and starts it. Use `npx -y ipollowork --release v0.17.26` when you need a specific release.
-
-### Download a desktop build
+### Download the desktop app
 
 Official installers are published on [GitHub Releases](https://github.com/Devin-AXIS/iPolloWork/releases). If you prefer a manual download, choose the file that matches both your operating system and CPU:
 
