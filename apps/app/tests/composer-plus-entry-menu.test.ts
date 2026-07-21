@@ -16,6 +16,14 @@ function actionRowSource() {
   return composerSource.slice(start, end);
 }
 
+function plusMenuOutsideClickHandlerSource() {
+  const start = composerSource.indexOf("const handlePointerDown = (event: MouseEvent) =>", composerSource.indexOf("if (!plusMenuOpen) return;"));
+  const end = composerSource.indexOf("window.addEventListener(\"mousedown\", handlePointerDown);", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return composerSource.slice(start, end);
+}
+
 describe("composer plus entry menu", () => {
   test("routes files, tools, and agents from one plus menu", () => {
     expect(composerSource).toContain("plusMenuOpen");
@@ -51,5 +59,12 @@ describe("composer plus entry menu", () => {
     expect(filesIndex).toBeGreaterThan(-1);
     expect(toolsIndex).toBeGreaterThan(filesIndex);
     expect(agentsIndex).toBeGreaterThan(toolsIndex);
+  });
+
+  test("keeps the plus menu open while interacting with tool and agent submenus", () => {
+    const outsideClickHandler = plusMenuOutsideClickHandlerSource();
+
+    expect(outsideClickHandler).toContain("toolMenuRef.current?.contains(target)");
+    expect(outsideClickHandler).toContain("agentMenuRef.current?.contains(target)");
   });
 });
