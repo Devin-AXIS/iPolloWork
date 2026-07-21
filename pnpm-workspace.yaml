@@ -17,6 +17,10 @@ catalogs:
 linkWorkspacePackages: true
 preferWorkspacePackages: true
 allowBuilds:
+  "@ffmpeg-installer/darwin-arm64": true
+  "@ffmpeg-installer/linux-x64": true
+  "@ffprobe-installer/darwin-arm64": true
+  "@ffprobe-installer/linux-x64": true
   "@whiskeysockets/baileys": true
   better-sqlite3: true
   core-js: true
