@@ -45,18 +45,19 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('selected.style.width = `${width}px`');
   });
 
-  test("keeps slide previews scrollable without injecting deck navigation by default", () => {
+  test("pages presentation previews without enabling fixed slide scaling", () => {
     const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
     const preview = buildDesignPreviewDocument(source, true, "", false, false, true);
 
     expect(preview).toContain('id="ipollowork-design-runtime"');
-    expect(preview).not.toContain('id="ipollowork-design-deck-runtime"');
+    expect(preview).toContain('id="ipollowork-design-deck-runtime"');
     expect(preview).toContain('type === "set-editing"');
-    expect(preview).not.toContain("deck-navigate");
-    expect(preview).not.toContain('visibilityStyle.id = "ipollowork-design-deck-runtime-style"');
+    expect(preview).toContain("deck-navigate");
+    expect(preview).toContain('visibilityStyle.id = "ipollowork-design-deck-runtime-style"');
+    expect(preview).not.toContain('id="ipollowork-design-fixed-slide-runtime"');
   });
 
-  test("injects the deck adapter only for fixed slide export mode", () => {
+  test("keeps fixed slide scaling separate from presentation pagination", () => {
     const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
     const preview = buildDesignPreviewDocument(source, true, "", false, true, true);
 
@@ -66,6 +67,9 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('data-action=\'next\'');
     expect(preview).toContain('visibilityStyle.id = "ipollowork-design-deck-runtime-style"');
     expect(preview).toContain('clone.querySelector("#ipollowork-design-deck-runtime-style")?.remove()');
+    expect(preview).toContain('data-ipollowork-deck-added-slide');
+    expect(preview).toContain('element.removeAttribute("data-ipw-slide")');
+    expect(preview).toContain('restoreDeckRuntimeState');
     expect(preview).toContain('[data-ipw-slide][aria-hidden="true"] { display: none !important; opacity: 0 !important; pointer-events: none !important; }');
     expect(preview).toContain('event.key === "ArrowRight"');
     expect(preview).toContain("isEditableTarget(event.target)");

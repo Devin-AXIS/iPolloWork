@@ -18,10 +18,11 @@ describe("Design deck navigation", () => {
     expect(navigation).not.toContain("deck.title");
   });
 
-  test("keeps ordinary slide HTML scrollable while reserving fixed canvas for compatible PPTX", async () => {
+  test("pages ordinary slide previews while reserving fixed canvas scaling for compatible PPTX", async () => {
     const source = await Bun.file(panelUrl).text();
 
     expect(source).toContain("const usesFixedPresentationPreview = usesNativeEditablePptx");
+    expect(source).toContain("isPresentationTemplate),");
     expect(source).toContain("h-[900px] w-[1600px] origin-center");
     expect(source).toContain("presentationCanvasScale(previewViewport.width, previewViewport.height)");
     expect(source).toContain("const visiblePresentationScale = presentationScale || FALLBACK_PRESENTATION_SCALE");

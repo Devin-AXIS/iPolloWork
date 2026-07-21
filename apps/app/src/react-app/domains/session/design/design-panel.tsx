@@ -5,6 +5,7 @@ import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, Chev
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
+import { downloadTextAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -312,6 +313,7 @@ export function DesignPanel({
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
+  const [exportingHtml, setExportingHtml] = React.useState(false);
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
@@ -546,6 +548,19 @@ export function DesignPanel({
       frameWindow.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "snapshot", requestId }, "*");
     });
   }, [editing, quickEdit, selection]);
+
+  const exportDesignHtml = React.useCallback(async () => {
+    if (!activePagePath || exportingHtml) return;
+    setExportingHtml(true);
+    try {
+      const content = await readLatestCanvasHtml();
+      downloadTextAsFile(fileName(activePagePath), content, "text/html;charset=utf-8");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not download this HTML file.");
+    } finally {
+      setExportingHtml(false);
+    }
+  }, [activePagePath, exportingHtml, readLatestCanvasHtml]);
 
   const exportDeckToPdf = React.useCallback(async () => {
     if (!deck || exportingPdf) return;
@@ -1207,7 +1222,7 @@ export function DesignPanel({
               <Button
                 variant={designSystemOpen ? "secondary" : "ghost"}
                 size="icon-sm"
-                className={cn("rounded-lg", !deck && "ml-auto")}
+                className="rounded-lg"
                 onClick={() => {
                   setDesignSystemOpen((current) => !current);
                   setAdvancedOpen(false);
@@ -1259,16 +1274,17 @@ export function DesignPanel({
                 </ToggleGroupItem>
               </ToggleGroup>
             ) : null}
-            {deck ? (
-              <div className="ml-auto">
-                <DesignExportMenu
-                  exportingPdf={exportingPdf}
-                  exportingPptx={exportingPptx}
-                  onExportPdf={() => void exportDeckToPdf()}
-                  onExportPptx={() => setPptxConfirmationOpen(true)}
-                />
-              </div>
-            ) : null}
+            <div className="ml-auto">
+              <DesignExportMenu
+                canExportPresentation={Boolean(deck)}
+                exportingHtml={exportingHtml}
+                exportingPdf={exportingPdf}
+                exportingPptx={exportingPptx}
+                onExportHtml={() => void exportDesignHtml()}
+                onExportPdf={() => void exportDeckToPdf()}
+                onExportPptx={() => setPptxConfirmationOpen(true)}
+              />
+            </div>
           </div>
 
           {fileQuery.isLoading || !sourceHydrated ? (

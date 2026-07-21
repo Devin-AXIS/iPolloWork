@@ -8,6 +8,7 @@
 
 export default {
   "design.export.download": "下载",
+  "design.export.download_html": "下载 HTML",
   "design.export.download_pdf": "下载 PDF",
   "design.export.download_pptx": "下载 PPTX",
   "app.compact_command_desc": "压缩此会话以减少上下文大小。",

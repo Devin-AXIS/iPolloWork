@@ -5,6 +5,7 @@
 
 export default {
   "design.export.download": "ดาวน์โหลด",
+  "design.export.download_html": "ดาวน์โหลด HTML",
   "design.export.download_pdf": "ดาวน์โหลด PDF",
   "design.export.download_pptx": "ดาวน์โหลด PPTX",
   "new_conversation.mode_label": "เลือกจุดประสงค์ของการสนทนา",

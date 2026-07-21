@@ -3,6 +3,8 @@ import { connect, debuggerUrlFor, evaluate, listTargets } from "../runner/cdp.mj
 
 const vo = await loadVoiceoverParagraphs("design-slide-editing");
 const activeSlideIndex = "[...document.querySelectorAll('.slide')].findIndex((slide) => slide.getAttribute('aria-hidden') === 'false')";
+const activeSlideHeading = '.slide[aria-hidden="false"] h1';
+const editedHeading = "Edited directly in Design";
 
 async function ensureSession(ctx) {
   await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "iPolloWork control API" });
@@ -51,6 +53,33 @@ async function clickFrame(ctx, selector, label) {
   ctx.assert(clicked, `${label} was not available.`);
 }
 
+async function editAndMoveFrameHeading(ctx) {
+  const result = await withPreviewClient(ctx, async (client) => {
+    const beganEditing = await evaluate(client, `(() => {
+      const heading = document.querySelector(${JSON.stringify(activeSlideHeading)});
+      if (!heading) return false;
+      heading.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+      return heading.getAttribute("contenteditable") === "true";
+    })()`);
+    if (!beganEditing) return null;
+    return evaluate(client, `(() => {
+      const heading = document.querySelector(${JSON.stringify(activeSlideHeading)});
+      if (!heading) return null;
+      heading.textContent = ${JSON.stringify(editedHeading)};
+      heading.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: ${JSON.stringify(editedHeading)} }));
+      heading.blur();
+      const overlay = document.querySelector("#ipollowork-design-transform-overlay");
+      if (!overlay) return null;
+      const rect = overlay.getBoundingClientRect();
+      overlay.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, clientX: rect.left + 10, clientY: rect.top + 10 }));
+      document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, cancelable: true, pointerId: 1, clientX: rect.left + 34, clientY: rect.top + 26 }));
+      document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, pointerId: 1, clientX: rect.left + 34, clientY: rect.top + 26 }));
+      return { text: heading.textContent || "", left: heading.style.left, top: heading.style.top };
+    })()`);
+  });
+  ctx.assert(result?.text === editedHeading && result.left === "24px" && result.top === "16px", `Direct edit or drag did not stick: ${JSON.stringify(result)}`);
+}
+
 async function openDeck(ctx) {
   await ctx.control("eval.design.seed_deck");
   await ctx.waitFor("document.querySelector('[data-testid=\"design-panel\"] iframe')?.dataset.previewLoaded === 'true'", { timeoutMs: 30_000, label: "initial Design preview" });
@@ -95,25 +124,30 @@ export default {
               return Boolean(frame?.dataset.slideEditingIdentity) && pager?.textContent?.includes('2 / 3');
             })()`, { timeoutMs: 10_000, label: "slide two remains in edit mode" });
           },
-          screenshot: { name: "edit-mode-keeps-second-slide", requireText: ["Edit page", "2 / 3", "Edit second slide"], rejectText: ["Something went wrong"] },
+          screenshot: { name: "edit-mode-keeps-second-slide", requireText: ["Edit page", "2 / 3"], rejectText: ["Something went wrong"] },
         });
       },
     },
     {
       name: "Native and compact controls continue navigation while editing",
       run: async (ctx) => {
-        await ctx.prove("The deck's native next button and the compact pager both work during editing, so another slide can be selected immediately", {
+        await ctx.prove("The deck stays paged while its heading is typed into directly and dragged to a new position", {
           voiceover: vo[1],
           action: async () => {
             await clickFrame(ctx, '[data-action="next"]', "Edit-mode native next slide");
             await waitForFrame(ctx, `${activeSlideIndex} === 2`, "third slide after native navigation");
             await ctx.trustedClick('[aria-label="Previous slide"]');
             await waitForFrame(ctx, `${activeSlideIndex} === 1`, "second slide after compact navigation");
-            await clickFrame(ctx, "h1", "Select second-slide heading");
+            await clickFrame(ctx, activeSlideHeading, "Select second-slide heading");
+            await editAndMoveFrameHeading(ctx);
           },
           assert: async () => {
             await ctx.waitFor("Boolean(document.querySelector('[data-testid=\"design-floating-toolbar\"]'))", { timeoutMs: 10_000, label: "second-slide editing toolbar" });
             const page = await frameEval(ctx, activeSlideIndex);
+            const frameState = await frameEval(ctx, `(() => {
+              const heading = document.querySelector(${JSON.stringify(activeSlideHeading)});
+              return { text: heading?.textContent || "", left: heading?.style.left || "", top: heading?.style.top || "" };
+            })()`);
             const state = await ctx.eval(`(() => ({
               editing: document.querySelector('[aria-label="Edit page"]')?.getAttribute('data-state') || '',
               pager: document.querySelector('[data-testid="design-deck-navigation"]')?.textContent || '',
@@ -121,9 +155,25 @@ export default {
               hasWorkspaceFilePicker: Boolean(document.querySelector('[aria-label="HTML file"]')),
               hasVersionPicker: Boolean(document.querySelector('[aria-label="Design version"]')),
             }))()`);
-            ctx.assert(page === 1 && state.pager.includes("2 / 3") && state.textTools && !state.hasWorkspaceFilePicker && !state.hasVersionPicker, `Editing navigation state is wrong: ${JSON.stringify({ ...state, page })}`);
+            ctx.assert(page === 1 && state.pager.includes("2 / 3") && state.textTools && frameState?.text === editedHeading && frameState.left === "24px" && frameState.top === "16px" && !state.hasWorkspaceFilePicker && !state.hasVersionPicker, `Editing navigation state is wrong: ${JSON.stringify({ ...state, frameState, page })}`);
           },
-          screenshot: { name: "native-and-compact-navigation-in-edit-mode", requireText: ["2 / 3", "Edit second slide", "Edit text"], rejectText: ["Something went wrong"] },
+          screenshot: { name: "native-and-compact-navigation-in-edit-mode", requireText: ["2 / 3", "Edit text"], rejectText: ["Something went wrong"] },
+        });
+      },
+    },
+    {
+      name: "HTML and presentation downloads remain available",
+      run: async (ctx) => {
+        await ctx.prove("The Design download menu keeps the clean HTML file alongside the existing PDF and PPTX presentation exports", {
+          voiceover: vo[2],
+          action: async () => {
+            await ctx.trustedClick('[aria-label="Download"]');
+          },
+          assert: async () => {
+            const formats = await ctx.eval(`(() => document.body.innerText)()`);
+            ctx.assert(formats.includes("Download HTML") && formats.includes("Download PDF") && formats.includes("Download PPTX"), `Design download formats are incomplete: ${formats}`);
+          },
+          screenshot: { name: "html-pdf-pptx-downloads", requireText: ["Download HTML", "Download PDF", "Download PPTX"], rejectText: ["Something went wrong"] },
         });
       },
     },
