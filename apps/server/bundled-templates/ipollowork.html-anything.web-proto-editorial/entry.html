@@ -255,6 +255,7 @@
     /* ============ MOTION (entry, subtle) ============ */
     .reveal { opacity: 0; transform: translateY(12px); transition: opacity 600ms cubic-bezier(0.16,1,0.3,1), transform 600ms cubic-bezier(0.16,1,0.3,1); }
     .reveal.is-in { opacity: 1; transform: none; }
+    .action-status { min-height: 24px; margin: 18px auto 0; text-align: center; color: var(--accent); font-weight: 600; }
     @media (prefers-reduced-motion: reduce) {
       .reveal { opacity: 1; transform: none; transition: none; }
     }
@@ -268,11 +269,11 @@
       <li><a href="#bento">Surfaces</a></li>
       <li><a href="#contrast">What it isn't</a></li>
       <li><a href="#pricing">Plans</a></li>
-      <li><a href="#changelog">Changelog</a></li>
+      <li><a href="#bento-history">Changelog</a></li>
       <li class="mobile-cta"><a href="#bento">Open workspace</a></li>
     </ul>
     <button class="mobile-nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"><span></span></button>
-    <button class="cta">Open workspace</button>
+    <button type="button" class="cta" data-ipw-action-message="Workspace preview opened. Connect this button to your app entry point.">Open workspace</button>
   </header>
 
   <main>
@@ -281,8 +282,8 @@
       <h1>A quiet place to write the <em>docs nobody read</em>, and have them read.</h1>
       <p class="lede">Quartz is a workspace for technical writers who'd rather ship a clean changelog than win a Notion-template contest. Outline, draft, review, publish - without leaving the keyboard.</p>
       <div class="actions">
-        <button class="btn btn-primary">Request access</button>
-        <button class="btn-link">Read the manual</button>
+        <button type="button" class="btn btn-primary" data-ipw-action-message="Access request prepared. Connect this button to your request form.">Request access</button>
+        <a class="btn-link" href="#bento">Read the manual</a>
         <span class="keystroke">⌘ K</span>
       </div>
     </section>
@@ -311,7 +312,7 @@
           <h4>Markdown out, always</h4>
           <p>Export round-trips: a doc opened in Quartz writes the same .md it read.</p>
         </div>
-        <div class="cell cell--small" data-od-id="bento-history">
+        <div class="cell cell--small" id="bento-history" data-od-id="bento-history">
           <span class="num">04 / history</span>
           <span class="chip chip--yellow">Audit</span>
           <h4 style="margin-top: 8px;">Git-grade history</h4>
@@ -376,7 +377,7 @@
             <li>Markdown export & import</li>
             <li>Three custom themes</li>
           </ul>
-          <button class="btn btn-ghost">Start solo</button>
+          <button type="button" class="btn btn-ghost" data-ipw-action-message="Solo plan selected. Connect this button to your signup flow.">Start solo</button>
         </div>
         <div class="tier tier--highlight">
           <h3>Studio</h3>
@@ -389,7 +390,7 @@
             <li>Audit log with diff history</li>
             <li>Static-site publish target</li>
           </ul>
-          <button class="btn btn-primary">Start studio</button>
+          <button type="button" class="btn btn-primary" data-ipw-action-message="Studio plan selected. Connect this button to your signup flow.">Start studio</button>
         </div>
         <div class="tier">
           <h3>Press</h3>
@@ -401,17 +402,18 @@
             <li>Custom export pipelines</li>
             <li>Named support engineer</li>
           </ul>
-          <button class="btn btn-ghost">Open a thread</button>
+          <button type="button" class="btn btn-ghost" data-ipw-action-message="Sales conversation prepared. Connect this button to your contact flow.">Open a thread</button>
         </div>
       </div>
     </section>
   </main>
+  <p class="action-status" data-ipw-action-status role="status" aria-live="polite"></p>
 
   <footer>
     <div class="wrap row">
       <span>Quartz · Bordeaux, FR · v0.4.7 · 2026</span>
       <span>
-        <a href="#">Manual</a> · <a href="#">Changelog</a> · <a href="#">Status</a> · <a href="#">Privacy</a>
+        <a href="#bento">Manual</a> · <a href="#bento-history">Changelog</a> · <a href="#contrast">Status</a> · <a href="#pricing">Privacy</a>
       </span>
     </div>
   </footer>
@@ -430,7 +432,10 @@
       nav.querySelectorAll('a').forEach((item) => item.addEventListener('click', () => setOpen(false)));
       document.addEventListener('click', (event) => { if (!nav.contains(event.target)) setOpen(false); });
       document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
-    })();
+      const status = document.querySelector('[data-ipw-action-status]');
+      document.querySelectorAll('[data-ipw-action-message]').forEach((button) => {
+        button.addEventListener('click', () => { if (status) status.textContent = button.dataset.ipwActionMessage || ''; });
+      });
     // Intersection-observer reveal - never window scroll listeners.
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) {
@@ -438,6 +443,7 @@
       }
     }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
     document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+    })();
   </script>
 </body>
 </html>
