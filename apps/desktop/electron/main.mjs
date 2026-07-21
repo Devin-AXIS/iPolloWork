@@ -33,6 +33,8 @@ import { createApplicationMenu } from "./app-menu.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
 import { openExternalUrl } from "./open-external.mjs";
+import { protectOutputStreamFromBrokenPipe } from "./stdio-safety.mjs";
+import { relaunchActionForMode } from "./relaunch-policy.mjs";
 import {
   applyWindowsTaskbarIcon,
   windowsBrandAppUserModelId,
@@ -45,6 +47,8 @@ import {
 } from "./brand-icon-windows.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+protectOutputStreamFromBrokenPipe(process.stdout);
+protectOutputStreamFromBrokenPipe(process.stderr);
 const require = createRequire(import.meta.url);
 const pty = require(["node", "pty"].join("-"));
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
@@ -2507,22 +2511,8 @@ const desktopCommandHandlers = {
 
 if (isDevMode) {
   desktopCommandHandlers.__evalRelaunch = async () => {
-    // Chromium persists localStorage/leveldb lazily; force a flush so the
-    // relaunched instance sees the same renderer storage (otherwise the app
-    // can come back signed out and eval flows misread that as a regression).
-    try {
-      mainWindow?.webContents.session.flushStorageData();
-      session.defaultSession.flushStorageData();
-    } catch {
-      // Best effort — never block the relaunch on a flush failure.
-    }
-    setTimeout(() => {
-      app.relaunch();
-      // Graceful quit (not app.exit) so before-quit teardown runs and managed
-      // sidecars are stopped — a hard exit orphans them and they can hold
-      // ports (e.g. the CDP debug port) the relaunched instance needs.
-      app.quit();
-    }, 150);
+    const win = await createMainWindow();
+    win.webContents.reloadIgnoringCache();
     return { ok: true };
   };
 }
@@ -2750,6 +2740,11 @@ ipcMain.handle("ipollowork:shell:openExternal", async (_event, url) => {
   return openExternalUrl(url.trim());
 });
 ipcMain.handle("ipollowork:shell:relaunch", async () => {
+  if (relaunchActionForMode(isDevMode) === "reload-window") {
+    const win = await createMainWindow();
+    win.webContents.reloadIgnoringCache();
+    return;
+  }
   app.relaunch();
   app.exit(0);
 });

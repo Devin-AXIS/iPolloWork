@@ -5,3 +5,7 @@ export function isPptxExportElement(node: Node | null | undefined): node is HTML
 export function isPptxExportImage(node: Node | null | undefined): node is HTMLImageElement {
   return isPptxExportElement(node) && node.tagName === "IMG";
 }
+
+export function isPptxExportSvg(node: Node | null | undefined): node is SVGSVGElement {
+  return isPptxExportElement(node) && node.localName === "svg";
+}

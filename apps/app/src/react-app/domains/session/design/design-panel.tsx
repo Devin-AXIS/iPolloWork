@@ -1,10 +1,11 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, RotateCcw, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
+import { downloadBlobAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -56,7 +57,11 @@ import {
 import {
   collectPptxBackgroundPlan,
   collectPptxElementPlans,
+  hasPptxCapturedPseudoElement,
   pptxExportSummary,
+  pptxPlanCoverage,
+  pptxPlanCoversVisual,
+  pptxVisualElementPaints,
   slideHasVisiblePptxContent,
   validatePptxElementPlanCoverage,
 } from "./pptx-element-export";
@@ -67,6 +72,14 @@ import {
   pptxCompatibleSlideBackground,
   removePptxCompatibleRuntimeArtifacts,
 } from "./pptx-compatible-export";
+import { isPptxExportElement, isPptxExportSvg } from "./pptx-dom";
+import {
+  addPptxEntranceAnimations,
+  isPptxNativeEntranceAnimation,
+  pptxEntranceAnimation,
+  pptxEntranceObjectName,
+  type PptxEntranceAnimation,
+} from "./pptx-entrance-animations";
 
 type DesignPanelProps = {
   sessionId: string;
@@ -202,6 +215,184 @@ async function yieldForExportWork() {
       globalThis.setTimeout(resolve, 0);
     }
   });
+}
+
+const finalFrameProperties = ["transform", "transform-origin", "opacity", "filter", "backdrop-filter", "background-position", "text-shadow", "box-shadow"] as const;
+
+async function freezePptxExportFrame(document: Document) {
+  const animatedProperties = new Set<string>(finalFrameProperties);
+  for (const animation of document.getAnimations()) {
+    const effect = animation.effect;
+    const target = effect ? Reflect.get(effect, "target") : null;
+    const pseudoElement = effect ? Reflect.get(effect, "pseudoElement") : null;
+    if (isPptxExportElement(target) && (!isPptxNativeEntranceAnimation(target.dataset.anim) || typeof pseudoElement === "string" && pseudoElement.length > 0)) {
+      target.setAttribute("data-ipw-pptx-static-animation", "");
+    }
+    const getKeyframes = effect ? Reflect.get(effect, "getKeyframes") : null;
+    const keyframesValue: unknown = typeof getKeyframes === "function" ? getKeyframes.call(effect) : [];
+    const keyframes = Array.isArray(keyframesValue) ? keyframesValue : [];
+    for (const keyframe of keyframes) {
+      for (const property of Object.keys(keyframe)) {
+        if (property !== "offset" && property !== "easing" && property !== "composite") animatedProperties.add(property);
+      }
+    }
+    try {
+      animation.finish();
+    } catch {
+      const endTime = effect?.getComputedTiming().endTime;
+      if (typeof endTime === "number" && Number.isFinite(endTime)) animation.currentTime = endTime;
+      else {
+        const getTiming = effect ? Reflect.get(effect, "getTiming") : null;
+        const timingValue: unknown = typeof getTiming === "function" ? getTiming.call(effect) : null;
+        const duration = timingValue && typeof timingValue === "object" ? Reflect.get(timingValue, "duration") : 0;
+        animation.currentTime = typeof duration === "number" ? Math.max(0, duration - 0.001) : 0;
+      }
+    }
+    animation.pause();
+  }
+  const view = document.defaultView;
+  if (view) {
+    const pseudoRules: string[] = [];
+    let pseudoIndex = 0;
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>("*"))) {
+      const computed = view.getComputedStyle(element);
+      for (const property of animatedProperties) element.style.setProperty(property, computed.getPropertyValue(property));
+      for (const pseudo of ["::before", "::after"] as const) {
+        const pseudoStyle = view.getComputedStyle(element, pseudo);
+        if (pseudoStyle.content === "none" || pseudoStyle.content === "normal") continue;
+        const selector = `data-ipw-pptx-pseudo-${++pseudoIndex}`;
+        element.setAttribute(selector, "");
+        const declarations = Array.from(pseudoStyle)
+          .filter((property) => !property.startsWith("animation") && !property.startsWith("transition"))
+          .map((property) => `${property}:${pseudoStyle.getPropertyValue(property)}!important`)
+          .join(";");
+        pseudoRules.push(`[${selector}]${pseudo}{${declarations}}`);
+      }
+    }
+    if (pseudoRules.length) document.head.append(Object.assign(document.createElement("style"), { textContent: pseudoRules.join("") }));
+  }
+  const style = document.createElement("style");
+  style.textContent = "*,*::before,*::after{animation:none!important;animation-play-state:paused!important;transition:none!important;caret-color:transparent!important}";
+  document.head.append(style);
+  await new Promise<void>((resolve) => document.defaultView?.requestAnimationFrame(() => resolve()) ?? resolve());
+}
+
+function visiblePptxVisualElements(slide: HTMLElement, includeSlide: boolean) {
+  const view = slide.ownerDocument.defaultView;
+  const slideBox = slide.getBoundingClientRect();
+  if (!view || !slideBox.width || !slideBox.height) return [];
+  const candidates = includeSlide ? [slide, ...Array.from(slide.querySelectorAll<HTMLElement>("*"))] : Array.from(slide.querySelectorAll<HTMLElement>("*"));
+  return candidates.filter((element) => {
+    if (element.matches(".notes,[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next'],.deck-chrome,.deck-controls,.dots,.counter")) return false;
+    const style = view.getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    const directText = Array.from(element.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent ?? "")
+      .join("");
+    return style.display !== "none"
+      && style.visibility !== "hidden"
+      && Number(style.opacity) > 0
+      && box.width > 1
+      && box.height > 1
+      && box.right > slideBox.left
+      && box.left < slideBox.right
+      && box.bottom > slideBox.top
+      && box.top < slideBox.bottom
+      && (element.children.length === 0 || element.matches("img,svg,canvas,video"))
+      && pptxVisualElementPaints({
+        hasChildren: element.children.length > 0,
+        text: directText,
+        tag: element.tagName,
+        backgroundColor: style.backgroundColor,
+        backgroundImage: style.backgroundImage,
+        borderWidths: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
+        boxShadow: style.boxShadow,
+        outlineStyle: style.outlineStyle,
+        filter: style.filter,
+        backdropFilter: style.backdropFilter,
+        maskImage: style.maskImage,
+        clipPath: style.clipPath,
+        hasVisiblePseudo: hasPptxCapturedPseudoElement(element),
+        hasStaticAnimation: element.hasAttribute("data-ipw-pptx-static-animation"),
+      });
+  });
+}
+
+function assertPptxVisualCoverage(
+  slide: HTMLElement,
+  plans: readonly { kind: string; element: HTMLElement; coversDescendants?: boolean }[],
+  backgroundPlan?: { kind: "color" | "fallback"; element?: HTMLElement },
+) {
+  const visible = visiblePptxVisualElements(slide, backgroundPlan != null);
+  const covered = visible.filter((element) => backgroundPlan?.kind === "color" && element === slide
+    || backgroundPlan?.kind === "fallback" && backgroundPlan.element === element
+    || plans.some((plan) => pptxPlanCoversVisual(plan, element)));
+  const coverage = pptxPlanCoverage({ visibleVisualElementCount: visible.length, coveredVisualElementCount: covered.length });
+  if (!coverage.valid) {
+    const missing = visible
+      .filter((element) => !covered.includes(element))
+      .slice(0, 8)
+      .map((element) => {
+        const classes = typeof element.className === "string" && element.className.trim()
+          ? `.${element.className.trim().split(/\s+/).join(".")}`
+          : "";
+        const text = Array.from(element.childNodes)
+          .filter((node) => node.nodeType === Node.TEXT_NODE)
+          .map((node) => node.textContent?.trim() ?? "")
+          .filter(Boolean)
+          .join(" ")
+          .slice(0, 32);
+        return `${element.tagName.toLowerCase()}${classes}${text ? `:${text}` : ""}`;
+      });
+    throw new Error(`PPTX export stopped because ${visible.length - covered.length} visible visual element(s) are not covered: ${missing.join(", ")}. No incomplete presentation was created.`);
+  }
+}
+
+function svgSourceWithDimensions(element: SVGSVGElement, width: number, height: number) {
+  const source = new XMLSerializer().serializeToString(element);
+  const document = new DOMParser().parseFromString(source, "image/svg+xml");
+  const root = document.documentElement;
+  const sourceElements = [element, ...Array.from(element.querySelectorAll<SVGElement>("*"))];
+  const clonedElements = [root, ...Array.from(root.querySelectorAll("*"))];
+  const view = element.ownerDocument.defaultView;
+  for (const [index, sourceElement] of sourceElements.entries()) {
+    const clonedElement = clonedElements[index];
+    if (!clonedElement || !view) continue;
+    const style = view.getComputedStyle(sourceElement);
+    const declarations = Array.from(style).map((property) => `${property}:${style.getPropertyValue(property)}${style.getPropertyPriority(property) ? " !important" : ""}`);
+    clonedElement.setAttribute("style", declarations.join(";"));
+  }
+  root.setAttribute("width", String(Math.max(1, Math.ceil(width))));
+  root.setAttribute("height", String(Math.max(1, Math.ceil(height))));
+  if (!root.hasAttribute("viewBox")) root.setAttribute("viewBox", `0 0 ${Math.max(1, Math.ceil(width))} ${Math.max(1, Math.ceil(height))}`);
+  return new XMLSerializer().serializeToString(root);
+}
+
+async function capturePptxSvgElement(element: SVGSVGElement, scale: number) {
+  const bounds = element.getBoundingClientRect();
+  const width = Math.max(1, Math.ceil(bounds.width));
+  const height = Math.max(1, Math.ceil(bounds.height));
+  const source = svgSourceWithDimensions(element, width, height);
+  const objectUrl = URL.createObjectURL(new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
+  try {
+    const image = new Image();
+    const loaded = new Promise<void>((resolve, reject) => {
+      image.addEventListener("load", () => resolve(), { once: true });
+      image.addEventListener("error", () => reject(new Error("Could not render the SVG export element.")), { once: true });
+    });
+    image.src = objectUrl;
+    await loaded;
+    const canvas = element.ownerDocument.createElement("canvas");
+    canvas.width = Math.max(1, Math.ceil(width * scale));
+    canvas.height = Math.max(1, Math.ceil(height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas is unavailable.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function normalizeHexColor(value: string) {
@@ -357,6 +548,13 @@ export function DesignPanel({
     setPreviewDevice("desktop");
   }, [isPresentationTemplate]);
 
+  // A presentation is opened to edit slides, not to inspect a static page.
+  // The editor bridge supplies click-to-select, drag, resize handles and
+  // double-click text editing directly on the 16:9 canvas.
+  React.useEffect(() => {
+    setEditing(isPresentationTemplate);
+  }, [isPresentationTemplate]);
+
   React.useEffect(() => {
     const viewport = previewViewportRef.current;
     if (!viewport || !isPresentationTemplate) return;
@@ -368,7 +566,7 @@ export function DesignPanel({
     const observer = new ResizeObserver(sync);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [isPresentationTemplate]);
+  }, [isPresentationTemplate, sourceHydrated]);
   const templateTokenPath = React.useMemo(() => {
     const tokenPath = designTemplate?.designSystem.tokens || linkedDesignTokenPath(fileQuery.data?.content) || "design-tokens.css";
     const briefPath = templateQuery.data?.state.briefPath;
@@ -629,7 +827,9 @@ export function DesignPanel({
     setExportingPptx(true);
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
-    frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;visibility:hidden;pointer-events:none`;
+    // html2canvas clones local fallback elements into its own iframe. Keep this
+    // source iframe paintable so Chromium can resolve those elements in the clone.
+    frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;opacity:0;pointer-events:none`;
     document.body.append(frame);
     try {
       const content = editing ? await readLatestCanvasHtml() : draftRef.current;
@@ -648,6 +848,7 @@ export function DesignPanel({
       await waitForExportFrame(frame);
       const frameDocument = frame.contentDocument;
       if (!frameDocument) throw new Error("Could not prepare the presentation.");
+      await freezePptxExportFrame(frameDocument);
       if (!usesNativeEditablePptx) downgradeUnsupportedPdfExportColors(frameDocument);
       if (usesNativeEditablePptx) {
         normalizePptxCompatibleMarkers(frameDocument);
@@ -673,27 +874,43 @@ export function DesignPanel({
       if (!slides.length) throw new Error("No slides were found in this presentation.");
 
       const { default: PptxGenJS } = await import("pptxgenjs");
-      const html2canvas = usesNativeEditablePptx ? null : (await import("html2canvas-pro")).default;
+      const html2canvas = await import("html2canvas-pro").then((module) => module.default);
       const pptx = new PptxGenJS();
       pptx.layout = "LAYOUT_WIDE";
       pptx.author = "iPolloWork";
       pptx.title = deck.title || "Presentation";
       let nativeObjectCount = 0;
       let fallbackCount = 0;
-      const capturePptxElement = async (element: HTMLElement, captureBackground = false) => {
-        if (!html2canvas) throw new Error("PPTX-compatible templates cannot use image fallback rendering.");
+      let entryObjectIndex = 0;
+      const animationFor = (element: HTMLElement): PptxEntranceAnimation | null => {
+        const animationElement = element.closest<HTMLElement>("[data-anim]");
+        if (animationElement && isPptxNativeEntranceAnimation(animationElement.dataset.anim)) return pptxEntranceAnimation(animationElement.dataset.anim);
+        return element.closest<HTMLElement>("[data-ipw-pptx-static-animation]") ? "fade" : null;
+      };
+      const entryObjectName = (element: HTMLElement) => {
+        const animation = animationFor(element);
+        return animation ? pptxEntranceObjectName(++entryObjectIndex, animation) : undefined;
+      };
+      const capturePptxElement = async (element: HTMLElement, captureBackground = false, capturePadding = 0) => {
         const marker = "data-ipw-pptx-background-root";
         if (captureBackground) element.setAttribute(marker, "true");
         try {
           return await html2canvas(element, {
             backgroundColor: null,
             scale: PPTX_CAPTURE_SCALE,
+            ...(capturePadding > 0 ? {
+              x: -capturePadding,
+              y: -capturePadding,
+              width: Math.ceil(element.getBoundingClientRect().width + capturePadding * 2),
+              height: Math.ceil(element.getBoundingClientRect().height + capturePadding * 2),
+            } : {}),
             useCORS: true,
             logging: false,
             onclone: (clonedDocument) => {
               downgradeUnsupportedPdfExportColors(clonedDocument);
               if (!captureBackground) return;
               const root = clonedDocument.querySelector<HTMLElement>(`[${marker}]`);
+              if (root?.matches(PRESENTATION_SLIDE_SELECTOR)) Array.from(root.children).forEach((child) => { (child as HTMLElement).style.visibility = "hidden"; });
               root?.querySelectorAll<HTMLElement>(`${PRESENTATION_SLIDE_SELECTOR},.deck-chrome,.deck-controls,.dots,.counter,[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next']`)
                 .forEach((node) => { node.style.visibility = "hidden"; });
             },
@@ -702,7 +919,7 @@ export function DesignPanel({
           if (captureBackground) element.removeAttribute(marker);
         }
       };
-      for (const slide of slides) {
+      for (const [slideIndex, slide] of slides.entries()) {
         activateDeckExportSlide(slides, slide);
         slide.style.width = `${PDF_SLIDE_WIDTH}px`;
         slide.style.height = `${PDF_SLIDE_HEIGHT}px`;
@@ -714,8 +931,26 @@ export function DesignPanel({
 
         const pptxSlide = pptx.addSlide();
         if (usesNativeEditablePptx) {
-          pptxSlide.background = { color: pptxCompatibleSlideBackground(slide) };
+          try {
+            pptxSlide.background = { color: pptxCompatibleSlideBackground(slide) };
+          } catch {
+            const backgroundCanvas = await capturePptxElement(slide, true);
+            pptxSlide.addImage({
+              data: backgroundCanvas.toDataURL(PPTX_BACKGROUND_IMAGE_FORMAT),
+              x: 0,
+              y: 0,
+              w: 13.333,
+              h: 7.5,
+              objectName: `ipw-background-${slideIndex}`,
+            });
+            fallbackCount += 1;
+          }
           const objects = collectPptxCompatibleObjects(slide);
+          assertPptxVisualCoverage(slide, objects.map((object) => ({
+            kind: object.kind,
+            element: object.element,
+            ...(object.kind === "text" || object.kind === "fallback" ? { coversDescendants: true } : {}),
+          })), { kind: "color" });
           const objectCoverage = validatePptxElementPlanCoverage({
             hasVisibleContent: slideHasVisiblePptxContent(slide),
             planCount: objects.length,
@@ -725,11 +960,24 @@ export function DesignPanel({
           }
           nativeObjectCount += objects.length;
           for (const object of objects) {
+            if (object.kind === "fallback") {
+              const canvas = isPptxExportSvg(object.element)
+                ? await capturePptxSvgElement(object.element, PPTX_CAPTURE_SCALE)
+                : await capturePptxElement(object.element);
+              pptxSlide.addImage({
+                data: canvas.toDataURL(PPTX_BACKGROUND_IMAGE_FORMAT),
+                ...object.frame,
+                objectName: entryObjectName(object.element),
+              });
+              fallbackCount += 1;
+              continue;
+            }
             if (object.kind === "shape") {
               pptxSlide.addShape(object.value.type, {
                 ...object.value.frame,
                 fill: object.value.fill,
                 line: object.value.line,
+                objectName: entryObjectName(object.element),
               });
               continue;
             }
@@ -747,6 +995,7 @@ export function DesignPanel({
                 margin: 0,
                 valign: "top",
                 fit: "none",
+                objectName: entryObjectName(object.element),
               });
               continue;
             }
@@ -754,6 +1003,7 @@ export function DesignPanel({
               data: object.value.data,
               ...object.value.frame,
               altText: object.value.altText,
+              objectName: entryObjectName(object.element),
             });
           }
           await yieldForExportWork();
@@ -764,10 +1014,11 @@ export function DesignPanel({
           pptxSlide.background = { color: backgroundPlan.color };
         } else if (backgroundPlan?.kind === "fallback") {
           const canvas = await capturePptxElement(backgroundPlan.element, true);
-          pptxSlide.addImage({ data: canvas.toDataURL(PPTX_BACKGROUND_IMAGE_FORMAT), ...backgroundPlan.frame });
+          pptxSlide.addImage({ data: canvas.toDataURL(PPTX_BACKGROUND_IMAGE_FORMAT), ...backgroundPlan.frame, objectName: `ipw-background-${slideIndex}` });
           fallbackCount += 1;
         }
         const plans = collectPptxElementPlans(slide);
+        assertPptxVisualCoverage(slide, plans, backgroundPlan ?? undefined);
         const planCoverage = validatePptxElementPlanCoverage({
           hasVisibleContent: slideHasVisiblePptxContent(slide),
           planCount: plans.length,
@@ -780,11 +1031,11 @@ export function DesignPanel({
         fallbackCount += summary.fallbackCount;
         for (const plan of plans) {
           if (plan.kind === "shape" && plan.shape) {
-            pptxSlide.addShape(plan.shape.shape, plan.shape);
+            pptxSlide.addShape(plan.shape.shape, { ...plan.shape, objectName: entryObjectName(plan.element) });
             continue;
           }
           if (plan.kind === "text" && plan.text) {
-            pptxSlide.addText(plan.text.text, {
+            pptxSlide.addText(plan.text.runs?.length ? plan.text.runs : plan.text.text, {
               x: plan.text.x,
               y: plan.text.y,
               w: plan.text.w,
@@ -803,15 +1054,21 @@ export function DesignPanel({
               breakLine: false,
               valign: "top",
               fit: "none",
+              objectName: entryObjectName(plan.element),
             });
             continue;
           }
-          const canvas = await capturePptxElement(plan.element);
-          pptxSlide.addImage({ data: canvas.toDataURL(PPTX_BACKGROUND_IMAGE_FORMAT), ...plan.frame });
+          const canvas = isPptxExportSvg(plan.element)
+            ? await capturePptxSvgElement(plan.element, PPTX_CAPTURE_SCALE)
+            : await capturePptxElement(plan.element, false, plan.capturePadding);
+          pptxSlide.addImage({ data: canvas.toDataURL(PPTX_BACKGROUND_IMAGE_FORMAT), ...plan.frame, objectName: entryObjectName(plan.element) });
         }
         await yieldForExportWork();
       }
-      await pptx.writeFile({ fileName: deckPptxFileName(deckPdfFileName(frameDocument, activePagePath)) });
+      const exported = await pptx.write({ outputType: "blob" });
+      if (!(exported instanceof Blob)) throw new Error("Could not build the PowerPoint file.");
+      const finalized = await addPptxEntranceAnimations(exported);
+      downloadBlobAsFile(deckPptxFileName(deckPdfFileName(frameDocument, activePagePath)), finalized);
       toast.success(fallbackCount
         ? `Presentation exported: ${nativeObjectCount} editable objects, ${fallbackCount} local visual fallbacks.`
         : `Presentation exported: ${nativeObjectCount} editable objects.`);
@@ -1185,7 +1442,7 @@ export function DesignPanel({
                 }}
                 aria-label="Edit page"
               />
-              Edit page
+              {isPresentationTemplate ? "Canvas edit" : "Edit page"}
             </Label>
             {deck ? (
               <div className="flex h-8 min-w-0 items-center rounded-lg border border-border/80 bg-muted/35 p-0.5 shadow-sm" data-testid="design-deck-navigation">

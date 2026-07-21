@@ -65,6 +65,23 @@ export function seedWorkspacePathsForEmbeddedServer(workspacePaths, serverConfig
   return serverConfigExists ? [] : workspacePaths;
 }
 
+export function applyEmbeddedServerEnvironment(targetEnv, sourceEnv) {
+  const desktopOnlyKeys = new Set([
+    "HOME",
+    "USERPROFILE",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_STATE_HOME",
+    "OPENCODE_CONFIG_DIR",
+    "OPENCODE_TEST_HOME",
+  ]);
+  for (const [key, value] of Object.entries(sourceEnv ?? {})) {
+    if (!desktopOnlyKeys.has(key)) targetEnv[key] = value;
+  }
+  return targetEnv;
+}
+
 export function devModeHomeDirectoryPaths(homeDir) {
   return ["Desktop", "Downloads", "Documents"].map((name) => path.join(homeDir, name));
 }
@@ -1174,9 +1191,12 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       engineState.opencodeBinSource = managedOpencode?.source ?? null;
     }
 
-    // Inject user env vars so the server and managed OpenCode inherit them.
+    // Apply user env vars for the in-process server without leaking the
+    // development child sandbox's home/config paths into Electron itself.
+    // Electron relaunches inherit process.env, so copying HOME here would make
+    // the next desktop instance create a nested, empty workspace.
     const serverEnv = await buildChildEnv({});
-    Object.assign(process.env, serverEnv);
+    applyEmbeddedServerEnvironment(process.env, serverEnv);
 
     // Once the embedded server has a persisted registry, it is the source of
     // truth. Do not pass Electron's legacy workspace list as CLI workspaces or

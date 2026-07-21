@@ -31,6 +31,7 @@ type PptxTextStyle = {
 
 export type PptxTextOverlay = {
   text: string;
+  runs?: Array<{ text: string; options: { color: string; bold: boolean; italic: boolean; fontFace: string; fontSize: number; softBreakBefore?: boolean } }>;
   x: number;
   y: number;
   w: number;
@@ -103,6 +104,7 @@ type CreatePptxShapeOverlayInput = {
 type PptxTextStyleCompatibilityInput = {
   text: string;
   hasElementChildren: boolean;
+  hasOnlyCompatibleInlineChildren?: boolean;
   isMarkedForPptxText?: boolean;
   hasVisualAncestor?: boolean;
   transform: string;
@@ -158,14 +160,17 @@ function fontFace(value: string, text: string) {
   return faces[0] || "Arial";
 }
 
-function fontSizePoints(value: string) {
+function fontSizePoints(value: string, slideWidthPixels = 1600) {
   const pixels = Number.parseFloat(value);
-  return Number.isFinite(pixels) ? round(pixels * 0.75) : 12;
+  return Number.isFinite(pixels) ? round(pixels / slideWidthPixels * PPTX_SLIDE_WIDTH_INCHES * 72) : 12;
 }
 
-function pointValue(value: string) {
+function pointValue(value: string, slideWidthPixels?: number) {
   const pixels = Number.parseFloat(value);
-  return Number.isFinite(pixels) ? round(pixels * 0.75) : undefined;
+  if (!Number.isFinite(pixels)) return undefined;
+  return slideWidthPixels == null
+    ? round(pixels * 0.75)
+    : round(pixels / slideWidthPixels * PPTX_SLIDE_WIDTH_INCHES * 72);
 }
 
 function cssPixels(value: string) {
@@ -236,15 +241,15 @@ export function deckPptxFileName(baseName: string) {
 export function createPptxTextOverlay(input: CreatePptxTextOverlayInput): PptxTextOverlay {
   const { slide, box, style } = input;
   const color = parseColor(style.color);
-  const lineSpacing = pointValue(style.lineHeight);
-  const charSpacing = pointValue(style.letterSpacing);
+  const lineSpacing = pointValue(style.lineHeight, slide.width);
+  const charSpacing = pointValue(style.letterSpacing, slide.width);
   return {
     text: input.text,
     x: round((box.left - slide.left) / slide.width * PPTX_SLIDE_WIDTH_INCHES),
     y: round((box.top - slide.top) / slide.height * PPTX_SLIDE_HEIGHT_INCHES),
     w: round(box.width / slide.width * PPTX_SLIDE_WIDTH_INCHES),
     h: round(box.height / slide.height * PPTX_SLIDE_HEIGHT_INCHES),
-    fontSize: fontSizePoints(style.fontSize),
+    fontSize: fontSizePoints(style.fontSize, slide.width),
     fontFace: fontFace(style.fontFamily, input.text),
     ...(lineSpacing == null ? {} : { lineSpacing }),
     ...(charSpacing == null ? {} : { charSpacing }),
@@ -258,7 +263,7 @@ export function createPptxTextOverlay(input: CreatePptxTextOverlayInput): PptxTe
 }
 
 export function isPptxTextStyleCompatible(input: PptxTextStyleCompatibilityInput) {
-  if (!input.text || (input.hasElementChildren && !input.isMarkedForPptxText)) return false;
+  if (!input.text || (input.hasElementChildren && !input.isMarkedForPptxText && !input.hasOnlyCompatibleInlineChildren)) return false;
   if (input.transform !== "none" || input.filter !== "none" || input.textShadow !== "none") return false;
   return input.backgroundClip !== "text" && input.webkitBackgroundClip !== "text";
 }

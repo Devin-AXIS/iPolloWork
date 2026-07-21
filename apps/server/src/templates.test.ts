@@ -241,14 +241,19 @@ describe("template installations", () => {
       expect(manifest.source.license).toBe("Apache-2.0");
       expect(manifest.source.revision).toBe("d0efb1eaa3b65c731709981718cd5a0a0d4e8f71");
       const upgradedCategories = new Set(["site", "other"]);
-      expect(manifest.version).toBe(upgradedCategories.has(manifest.category) ? "1.1.5" : "1.1.4");
+      const upgradedSlides = manifest.category === "slides" && manifest.id !== "ipollowork.html-anything.weekly-update";
+      expect(manifest.version).toBe(upgradedCategories.has(manifest.category) || upgradedSlides ? "1.1.5" : "1.1.4");
       expect(manifest.cover).toBe("cover.png");
       expect(JSON.stringify(manifest)).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
       expect(manifest.designSystem.variables.length).toBeGreaterThanOrEqual(manifest.surface === "video" ? 4 : 20);
       const entry = await readFile(join(root, manifest.entry), "utf8");
-      expect(entry).toMatch(manifest.surface === "video" ? /data-var-src="logoUrl"/ : /data-ipw-brand-slot/);
+      expect(entry).toMatch(manifest.surface === "video" ? /(data-var-src="logoUrl"|data-var-text="brandName")/ : /data-ipw-brand-slot/);
       expect(entry).not.toMatch(/HTML[- ]ANYTHING|OPEN DESIGN|Open Design/i);
       expect(entry).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
+      if (manifest.category === "slides") {
+        const visualTemplateId = manifest.id.replace("ipollowork.html-anything.", "");
+        expect(entry).toContain(`data-ipw-template="${visualTemplateId}"`);
+      }
       for (const script of entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
         expect(() => new Function(script[1])).not.toThrow();
       }
