@@ -4,11 +4,24 @@ import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { deflateRawSync } from "node:zlib";
 import { TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, readTemplateSession, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
+const crc32Table = Uint32Array.from({ length: 256 }, (_, value) => {
+  let entry = value;
+  for (let bit = 0; bit < 8; bit += 1) entry = entry & 1 ? 0xedb88320 ^ (entry >>> 1) : entry >>> 1;
+  return entry >>> 0;
+});
+
+function crc32(data: Uint8Array): number {
+  let checksum = 0xffffffff;
+  for (const byte of data) checksum = crc32Table[(checksum ^ byte) & 0xff] ^ (checksum >>> 8);
+  return (checksum ^ 0xffffffff) >>> 0;
+}
+
 afterEach(() => {
   if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
@@ -34,6 +47,7 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(crc32(data), 14);
     local.writeUInt32LE(data.length, 18);
     local.writeUInt32LE(data.length, 22);
     local.writeUInt16LE(nameBuffer.length, 26);
@@ -42,6 +56,7 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE(20, 4);
     central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc32(data), 16);
     central.writeUInt32LE(data.length, 20);
     central.writeUInt32LE(data.length, 24);
     central.writeUInt16LE(nameBuffer.length, 28);
@@ -76,6 +91,37 @@ const flagshipVideoTemplateIds = [
 
 function importedTemplateId(id: string) {
   return `test.${id.replace(/^ipollowork\./, "")}`;
+}
+
+function deflatedZip(name: string, contents: string, declaredSize: number): Uint8Array {
+  const nameBuffer = Buffer.from(name);
+  const data = Buffer.from(contents);
+  const compressed = deflateRawSync(data);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(crc32(data), 14);
+  local.writeUInt32LE(compressed.length, 18);
+  local.writeUInt32LE(declaredSize, 22);
+  local.writeUInt16LE(nameBuffer.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(crc32(data), 16);
+  central.writeUInt32LE(compressed.length, 20);
+  central.writeUInt32LE(declaredSize, 24);
+  central.writeUInt16LE(nameBuffer.length, 28);
+  const centralOffset = local.length + nameBuffer.length + compressed.length;
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(1, 8);
+  eocd.writeUInt16LE(1, 10);
+  eocd.writeUInt32LE(central.length + nameBuffer.length, 12);
+  eocd.writeUInt32LE(centralOffset, 16);
+  return Buffer.concat([local, nameBuffer, compressed, central, nameBuffer, eocd]);
 }
 
 function htmlAttribute(tag: string, name: string) {
@@ -171,6 +217,13 @@ function localPackage(id = "local.clean-portfolio", overrides: Record<string, un
     schemaVersion: 1, id, version: "1.0.0", kind: "design", category: "site", subcategory: "portfolio", title: "Clean Portfolio", description: "A compact local portfolio template.", cover: "cover.svg", entry: "entry.html", source: { name: "Local author", license: "MIT" }, designSystem: { tokenVersion: 1, editableGroups: ["theme", "typography"] }, applyChecklist: ["Update the portfolio content"], minimumAppVersion: "0.17.0", ...overrides,
   };
   return storedZip({ "manifest.json": JSON.stringify(manifest), "entry.html": "<!doctype html><h1>Portfolio</h1>", "cover.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>", LICENSE: "MIT" });
+}
+
+function slidesPackage(id = "local.native-deck", entry = "<!doctype html><section data-ipw-slide><h1 data-pptx-text>Deck</h1></section>", overrides: Record<string, unknown> = {}) {
+  const manifest = {
+    schemaVersion: 1, id, version: "1.0.0", kind: "design", category: "slides", subcategory: "pitch", style: "minimal", tags: ["pitch"], pptxCompatibility: "native-editable", surface: "design", title: "Native Deck", description: "A local editable presentation template.", cover: "cover.svg", entry: "entry.html", source: { name: "Local author", license: "MIT" }, designSystem: { tokenVersion: 1, editableGroups: ["theme", "typography"] }, applyChecklist: ["Update the presentation content"], minimumAppVersion: "0.17.0", ...overrides,
+  };
+  return storedZip({ "manifest.json": JSON.stringify(manifest), "entry.html": entry, "cover.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>", LICENSE: "MIT" });
 }
 
 function videoPackage(id = "local.product-video", entry = "<!doctype html><html data-composition-variables='[{\"id\":\"title\",\"type\":\"string\",\"label\":\"Title\",\"default\":\"Product Reveal\"},{\"id\":\"accent\",\"type\":\"color\",\"label\":\"Accent\",\"default\":\"#7c3aed\"}]'><body><div id=\"root\" data-composition-id=\"main\" data-width=\"1920\" data-height=\"1080\" data-duration=\"6\"><h1 data-var-text=\"title\">Product Reveal</h1></div></body></html>") {
@@ -497,6 +550,32 @@ describe("template installations", () => {
     await expect(importTemplate(serverConfig, "alpha", storedZip({ "../escape.html": "bad" }), "site")).rejects.toMatchObject({ code: "invalid_template_package" });
     await expect(importTemplate(serverConfig, "alpha", localPackage(), "slides")).rejects.toMatchObject({ code: "template_category_mismatch" });
     await expect(importTemplate(serverConfig, "alpha", localPackage("local.invalid-video", { category: "video", surface: "video" }), "video")).rejects.toMatchObject({ code: "invalid_template_manifest" });
+  });
+
+  test("auto-detects imported categories while preserving scoped import checks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-import-category-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const detected = await importTemplate(serverConfig, "alpha", localPackage("local.detected-site"));
+    expect(detected.manifest.category).toBe("site");
+    await expect(importTemplate(serverConfig, "alpha", localPackage("local.scoped-site"), "slides")).rejects.toMatchObject({ code: "template_category_mismatch" });
+  });
+
+  test("requires slideshow structure and honest PPTX compatibility markers", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-import-slides-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const installed = await importTemplate(serverConfig, "alpha", slidesPackage());
+    expect(installed.manifest.category).toBe("slides");
+    expect(installed.manifest.pptxCompatibility).toBe("native-editable");
+    await expect(importTemplate(serverConfig, "alpha", slidesPackage("local.not-a-deck", "<!doctype html><main>Not a deck</main>", { pptxCompatibility: undefined }))).rejects.toMatchObject({ code: "invalid_slides_template" });
+    await expect(importTemplate(serverConfig, "alpha", slidesPackage("local.false-pptx", "<!doctype html><section data-ipw-slide>Visual only</section>"))).rejects.toMatchObject({ code: "invalid_pptx_template" });
+  });
+
+  test("bounds decompression using the declared entry size", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-import-inflate-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    await expect(importTemplate(config(root), "alpha", deflatedZip("manifest.json", "x".repeat(1024), 1))).rejects.toMatchObject({ code: "invalid_template_package" });
   });
 
   test("requires HyperFrames variable declarations for local video templates only", async () => {

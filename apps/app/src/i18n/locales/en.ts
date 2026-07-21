@@ -381,6 +381,7 @@ export default {
   "templates.error_install": "Could not install this template.",
   "templates.error_uninstall": "Could not uninstall this template.",
   "templates.error_invalid_package": "Invalid template package.",
+  "templates.error_package_too_large": "Template packages cannot exceed 50 MB.",
   "templates.error_save": "Could not save this template.",
   "templates.confirm_uninstall": "Uninstalling will not delete existing work. Are you sure you want to uninstall this template?",
   "templates.toast_installed": "Installed {title}",

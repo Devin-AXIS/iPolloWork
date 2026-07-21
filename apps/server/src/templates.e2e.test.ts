@@ -34,13 +34,13 @@ describe("template API", () => {
     const catalog = await fetch(`${base}/workspace/ws/templates`, { headers }).then((response) => response.json());
     expect(catalog.items).toHaveLength(74);
 
-    const missingCategory = await fetch(`${base}/workspace/ws/templates/import`, {
+    const invalidPackage = await fetch(`${base}/workspace/ws/templates/import`, {
       method: "POST",
       headers: { Authorization: "Bearer token", "Content-Type": "application/vnd.ipollowork-template+zip" },
       body: new Uint8Array([1]),
     });
-    expect(missingCategory.status).toBe(400);
-    expect((await missingCategory.json()).code).toBe("template_category_required");
+    expect(invalidPackage.status).toBe(400);
+    expect((await invalidPackage.json()).code).toBe("invalid_template_package");
 
     const materializedResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.saas-landing/materialize`, { method: "POST", headers, body: JSON.stringify({ sessionId: "session_api" }) });
     expect(materializedResponse.status).toBe(200);

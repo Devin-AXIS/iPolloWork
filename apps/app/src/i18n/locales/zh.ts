@@ -383,6 +383,7 @@ export default {
   "templates.error_install": "安装模板失败",
   "templates.error_uninstall": "卸载模板失败",
   "templates.error_invalid_package": "模板包无效",
+  "templates.error_package_too_large": "模板包不能超过 50 MB。",
   "templates.error_save": "保存模板失败",
   "templates.confirm_uninstall": "卸载后，已有作品不会被删除。确定卸载这个模板吗？",
   "templates.toast_installed": "已安装 {title}",

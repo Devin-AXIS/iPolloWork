@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   isPptxCompatibleTemplate,
   sortTemplatesForCatalog,
+  templateManifestV1Schema,
 } from "@ipollowork/types/templates";
 
 describe("PPTX-compatible templates", () => {
@@ -30,5 +31,29 @@ describe("PPTX-compatible templates", () => {
       "Website",
       "Visual Deck",
     ]);
+  });
+
+  test("rejects PPTX compatibility metadata on non-slide templates", () => {
+    const result = templateManifestV1Schema.safeParse({
+      schemaVersion: 1,
+      id: "local.invalid-pptx-site",
+      version: "1.0.0",
+      kind: "design",
+      category: "site",
+      subcategory: "landing",
+      style: "minimal",
+      tags: [],
+      pptxCompatibility: "native-editable",
+      surface: "design",
+      title: "Invalid PPTX Site",
+      description: "A website cannot claim presentation compatibility.",
+      cover: "cover.svg",
+      entry: "entry.html",
+      source: { name: "Local author", license: "MIT" },
+      designSystem: { tokenVersion: 1, editableGroups: ["theme"], variables: [] },
+      applyChecklist: ["Update the content"],
+      minimumAppVersion: "0.17.0",
+    });
+    expect(result.success).toBe(false);
   });
 });
