@@ -44,8 +44,11 @@ function findByAriaLabel(node: React.ReactNode, label: string): React.ReactEleme
 
 function menu(overrides: Partial<React.ComponentProps<typeof DesignExportMenu>> = {}) {
   return DesignExportMenu({
+    canExportPresentation: true,
+    exportingHtml: false,
     exportingPdf: false,
     exportingPptx: false,
+    onExportHtml: () => undefined,
     onExportPdf: () => undefined,
     onExportPptx: () => undefined,
     ...overrides,
@@ -60,6 +63,7 @@ describe("design export download menu", () => {
     const englishMenu = menu();
     const englishTrigger = findByAriaLabel(englishMenu, "Download");
     expect(textContent(englishTrigger).trim()).toBe("");
+    expect(textContent(englishMenu)).toContain("Download HTML");
     expect(textContent(englishMenu)).toContain("Download PDF");
     expect(textContent(englishMenu)).toContain("Download PPTX");
 
@@ -67,6 +71,7 @@ describe("design export download menu", () => {
     const chineseMenu = menu();
     const chineseTrigger = findByAriaLabel(chineseMenu, "下载");
     expect(textContent(chineseTrigger).trim()).toBe("");
+    expect(textContent(chineseMenu)).toContain("下载 HTML");
     expect(textContent(chineseMenu)).toContain("下载 PDF");
     expect(textContent(chineseMenu)).toContain("下载 PPTX");
   });
@@ -78,6 +83,7 @@ describe("design export download menu", () => {
     );
 
     expect(panelSource).toContain("<DesignExportMenu");
+    expect(panelSource).toContain("onExportHtml={() => void exportDesignHtml()}");
     expect(panelSource).toContain("onExportPdf={() => void exportDeckToPdf()}");
     expect(panelSource).toContain("onExportPptx={() => setPptxConfirmationOpen(true)}");
     expect(panelSource).not.toContain("Export presentation to PDF");
@@ -85,9 +91,15 @@ describe("design export download menu", () => {
   });
 
   test("routes each format to its existing export action", () => {
+    const onExportHtml = mock(() => undefined);
     const onExportPdf = mock(() => undefined);
     const onExportPptx = mock(() => undefined);
-    const result = menu({ onExportPdf, onExportPptx });
+    const result = menu({ onExportHtml, onExportPdf, onExportPptx });
+
+    Reflect.get(findByText(result, "Download HTML").props, "onClick")();
+    expect(onExportHtml).toHaveBeenCalledTimes(1);
+    expect(onExportPdf).not.toHaveBeenCalled();
+    expect(onExportPptx).not.toHaveBeenCalled();
 
     Reflect.get(findByText(result, "Download PDF").props, "onClick")();
     expect(onExportPdf).toHaveBeenCalledTimes(1);
@@ -98,6 +110,10 @@ describe("design export download menu", () => {
   });
 
   test("disables only the format currently being generated", () => {
+    const htmlBusy = menu({ exportingHtml: true });
+    expect(Reflect.get(findByText(htmlBusy, "Download HTML").props, "disabled")).toBe(true);
+    expect(Reflect.get(findByText(htmlBusy, "Download PDF").props, "disabled")).toBe(false);
+
     const pdfBusy = menu({ exportingPdf: true });
     expect(Reflect.get(findByText(pdfBusy, "Download PDF").props, "disabled")).toBe(true);
     expect(Reflect.get(findByText(pdfBusy, "Download PPTX").props, "disabled")).toBe(false);
@@ -108,8 +124,17 @@ describe("design export download menu", () => {
   });
 
   test("disables the download trigger only when both formats are busy", () => {
+    expect(Reflect.get(findByAriaLabel(menu({ exportingHtml: true }), "Download").props, "disabled")).toBe(false);
     expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true }), "Download").props, "disabled")).toBe(false);
     expect(Reflect.get(findByAriaLabel(menu({ exportingPptx: true }), "Download").props, "disabled")).toBe(false);
-    expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true, exportingPptx: true }), "Download").props, "disabled")).toBe(true);
+    expect(Reflect.get(findByAriaLabel(menu({ exportingHtml: true, exportingPdf: true, exportingPptx: true }), "Download").props, "disabled")).toBe(true);
+  });
+
+  test("offers only HTML for non-presentation designs", () => {
+    const result = menu({ canExportPresentation: false });
+
+    expect(textContent(result)).toContain("Download HTML");
+    expect(textContent(result)).not.toContain("Download PDF");
+    expect(textContent(result)).not.toContain("Download PPTX");
   });
 });

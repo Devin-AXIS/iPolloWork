@@ -45,7 +45,7 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('selected.style.width = `${width}px`');
   });
 
-  test("keeps a dormant editor bridge and deck adapter in the same preview document", () => {
+  test("pages presentation previews without enabling fixed slide scaling", () => {
     const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
     const preview = buildDesignPreviewDocument(source, true, "", false, false, true);
 
@@ -53,9 +53,23 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('id="ipollowork-design-deck-runtime"');
     expect(preview).toContain('type === "set-editing"');
     expect(preview).toContain("deck-navigate");
+    expect(preview).toContain('visibilityStyle.id = "ipollowork-design-deck-runtime-style"');
+    expect(preview).not.toContain('id="ipollowork-design-fixed-slide-runtime"');
+  });
+
+  test("keeps fixed slide scaling separate from presentation pagination", () => {
+    const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
+    const preview = buildDesignPreviewDocument(source, true, "", false, true, true);
+
+    expect(preview).toContain('id="ipollowork-design-deck-runtime"');
+    expect(preview).toContain("deck-navigate");
     expect(preview).toContain('data-ipw-slide');
     expect(preview).toContain('data-action=\'next\'');
     expect(preview).toContain('visibilityStyle.id = "ipollowork-design-deck-runtime-style"');
+    expect(preview).toContain('clone.querySelector("#ipollowork-design-deck-runtime-style")?.remove()');
+    expect(preview).toContain('data-ipollowork-deck-added-slide');
+    expect(preview).toContain('element.removeAttribute("data-ipw-slide")');
+    expect(preview).toContain('restoreDeckRuntimeState');
     expect(preview).toContain('[data-ipw-slide][aria-hidden="true"] { display: none !important; opacity: 0 !important; pointer-events: none !important; }');
     expect(preview).toContain('event.key === "ArrowRight"');
     expect(preview).toContain("isEditableTarget(event.target)");
@@ -66,7 +80,7 @@ describe("Design HTML runtime", () => {
 
   test("treats a one-page canvas as a presentation so it can be exported", () => {
     const source = "<!doctype html><html><body><div class=\"slide-frame\"><h1>Only slide</h1></div></body></html>";
-    const preview = buildDesignPreviewDocument(source, true, "", false, false, true);
+    const preview = buildDesignPreviewDocument(source, true, "", false, true, true);
 
     expect(preview).toContain('document.querySelectorAll("[data-ipw-slide],section.slide,.slide,.slide-frame")');
     expect(preview).toContain("if (!slides.length)");

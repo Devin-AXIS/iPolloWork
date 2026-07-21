@@ -89,6 +89,25 @@ const TEMPLATE_CATEGORY_ICONS: Record<TemplateCategory, Icon> = {
   video: Film,
 };
 
+const TEMPLATE_CATEGORY_LABELS: Record<TemplateCategory, () => string> = {
+  site: () => t("new_conversation.template_category.site"),
+  poster: () => t("new_conversation.template_category.poster"),
+  cards: () => t("new_conversation.template_category.cards"),
+  app: () => t("new_conversation.template_category.app"),
+  article: () => t("new_conversation.template_category.article"),
+  slides: () => t("new_conversation.template_category.slides"),
+  report: () => t("new_conversation.template_category.report"),
+  other: () => t("new_conversation.template_category.other"),
+  video: () => t("new_conversation.template_category.video"),
+};
+
+const NEW_CONVERSATION_PLACEHOLDERS: Record<NewConversationMode, () => string> = {
+  work: () => t("new_conversation.placeholder.work"),
+  code: () => t("new_conversation.placeholder.code"),
+  design: () => t("new_conversation.placeholder.design"),
+  video: () => t("new_conversation.placeholder.video"),
+};
+
 const MODE_ACTIONS: Record<NewConversationMode, ReadonlyArray<StarterAction>> = {
   work: [
     { id: "auto_computer", label: "new_conversation.action.auto_computer", icon: MonitorCog, prompt: "new_conversation.prompt.auto_computer" },
@@ -170,7 +189,7 @@ function TemplateStrip({
   const categoryTemplates = templates.filter((template) => (
     template.manifest.category === category && (category !== "video" || template.manifest.surface === "video")
   ));
-  const categoryLabel = t(`new_conversation.template_category.${category}`);
+  const categoryLabel = TEMPLATE_CATEGORY_LABELS[category]();
   const CategoryIcon = TEMPLATE_CATEGORY_ICONS[category];
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -387,7 +406,7 @@ function ShortcutEditor({
 }
 
 export function newConversationPlaceholder(mode: NewConversationMode) {
-  return t(`new_conversation.placeholder.${mode}`);
+  return NEW_CONVERSATION_PLACEHOLDERS[mode]();
 }
 
 export function NewConversationStarter({

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -59,7 +60,8 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
   return Buffer.concat([...localParts, ...centralParts, eocd]);
 }
 
-const bundledTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "bundled-templates");
+const serverRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const bundledTemplatesRoot = join(serverRoot, "bundled-templates");
 const pptxCompatibleTemplateIds = [
   "ipollowork.pptx-compatible-brief",
   "ipollowork.pptx-compatible-pitch",
@@ -315,7 +317,8 @@ describe("template installations", () => {
   });
 
   test("build copies strict PPTX-compatible templates into the embedded server catalog", async () => {
-    const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
+    execFileSync(process.execPath, [join(serverRoot, "script", "copy-bundled-templates.mjs")], { cwd: serverRoot });
+    const builtTemplatesRoot = join(serverRoot, "dist", "bundled-templates");
     for (const templateId of pptxCompatibleTemplateIds) {
       expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
     }

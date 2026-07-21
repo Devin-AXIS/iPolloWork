@@ -59,7 +59,27 @@ const CATEGORIES: CategoryDefinition[] = [
 ];
 
 const STYLE_ORDER = Object.keys(TEMPLATE_STYLE_LABELS) as TemplateStyle[];
-const templateStyleLabel = (style: TemplateStyle) => t(`template_market.style.${style}`);
+const TEMPLATE_STYLE_TRANSLATIONS: Record<TemplateStyle, () => string> = {
+  minimal: () => t("template_market.style.minimal"),
+  editorial: () => t("template_market.style.editorial"),
+  newsprint: () => t("template_market.style.newsprint"),
+  swiss: () => t("template_market.style.swiss"),
+  bold: () => t("template_market.style.bold"),
+  soft: () => t("template_market.style.soft"),
+  pastel: () => t("template_market.style.pastel"),
+  glass: () => t("template_market.style.glass"),
+  dark: () => t("template_market.style.dark"),
+  cyber: () => t("template_market.style.cyber"),
+  technical: () => t("template_market.style.technical"),
+  playful: () => t("template_market.style.playful"),
+  cinematic: () => t("template_market.style.cinematic"),
+  data: () => t("template_market.style.data"),
+  brutalist: () => t("template_market.style.brutalist"),
+  retro: () => t("template_market.style.retro"),
+  sketch: () => t("template_market.style.sketch"),
+  custom: () => t("template_market.style.custom"),
+};
+const templateStyleLabel = (style: TemplateStyle) => TEMPLATE_STYLE_TRANSLATIONS[style]();
 
 function TemplateCover({ template, getCover, className, alt = "" }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; className?: string; alt?: string }) {
   const [src, setSrc] = React.useState("");

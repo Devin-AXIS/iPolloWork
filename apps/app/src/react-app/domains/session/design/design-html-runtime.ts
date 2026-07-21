@@ -95,7 +95,7 @@ export function buildDesignPreviewDocument(
     ? `<style id="ipollowork-design-template-token-style">${templateTokenCss.replace(/<\/style/gi, "<\\/style")}</style>`
     : "";
   const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"});<\/script>`;
-  const deckRuntime = isPresentationTemplate
+  const deckRuntime = isPresentationTemplate && (includeEditor || fixedSlideStage)
     ? `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${fixedSlideStage ? "true" : "false"});<\/script>`
     : "";
   const fixedSlideRuntime = fixedSlideStage
@@ -226,11 +226,31 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
     .filter((element, index, list) => list.indexOf(element) === index);
   if (!slides.length) return;
 
+  const addedSlideAttribute = "data-ipollowork-deck-added-slide";
+  const originalAriaHiddenAttribute = "data-ipollowork-deck-original-aria-hidden";
+  const hadAriaHiddenAttribute = "data-ipollowork-deck-had-aria-hidden";
+  const originalClassAttribute = "data-ipollowork-deck-original-class";
+  const hadClassAttribute = "data-ipollowork-deck-had-class";
+  const originalWrapperClassAttribute = "data-ipollowork-deck-original-wrapper-class";
+  const hadWrapperClassAttribute = "data-ipollowork-deck-had-wrapper-class";
+  const rememberAttribute = (element: HTMLElement, attribute: string, originalAttribute: string, hadAttribute: string) => {
+    if (element.hasAttribute(hadAttribute)) return;
+    element.setAttribute(hadAttribute, String(element.hasAttribute(attribute)));
+    element.setAttribute(originalAttribute, element.getAttribute(attribute) || "");
+  };
   slides.forEach((slide, index) => {
-    if (!slide.hasAttribute("data-ipw-slide")) slide.setAttribute("data-ipw-slide", String(index + 1));
+    rememberAttribute(slide, "aria-hidden", originalAriaHiddenAttribute, hadAriaHiddenAttribute);
+    rememberAttribute(slide, "class", originalClassAttribute, hadClassAttribute);
+    if (!slide.hasAttribute("data-ipw-slide")) {
+      slide.setAttribute("data-ipw-slide", String(index + 1));
+      slide.setAttribute(addedSlideAttribute, "true");
+    }
   });
   const slideWrappers = slides.map((slide) => slide.closest<HTMLElement>(".slide-wrap"));
   const usesSlideWrappers = slideWrappers.every(Boolean);
+  slideWrappers.forEach((wrapper) => {
+    if (wrapper) rememberAttribute(wrapper, "class", originalWrapperClassAttribute, hadWrapperClassAttribute);
+  });
 
   // Some templates include a static, vertically stacked preview fallback.
   // The deck runtime owns aria-hidden so only the active page is laid out.
@@ -451,17 +471,42 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     .filter((element) => element !== overlay && !overlay.contains(element));
   elements.forEach((element, index) => element.setAttribute(idAttribute, String(index + 1)));
 
+  const restoreDeckRuntimeState = (root: HTMLElement) => {
+    const restoreAttribute = (element: Element, attribute: string, originalAttribute: string, hadAttribute: string) => {
+      const originalValue = element.getAttribute(originalAttribute) || "";
+      if (element.getAttribute(hadAttribute) === "true") element.setAttribute(attribute, originalValue);
+      else element.removeAttribute(attribute);
+      element.removeAttribute(originalAttribute);
+      element.removeAttribute(hadAttribute);
+    };
+    root.querySelectorAll("[data-ipollowork-deck-had-aria-hidden]").forEach((element) => {
+      restoreAttribute(element, "aria-hidden", "data-ipollowork-deck-original-aria-hidden", "data-ipollowork-deck-had-aria-hidden");
+    });
+    root.querySelectorAll("[data-ipollowork-deck-had-class]").forEach((element) => {
+      restoreAttribute(element, "class", "data-ipollowork-deck-original-class", "data-ipollowork-deck-had-class");
+    });
+    root.querySelectorAll("[data-ipollowork-deck-had-wrapper-class]").forEach((element) => {
+      restoreAttribute(element, "class", "data-ipollowork-deck-original-wrapper-class", "data-ipollowork-deck-had-wrapper-class");
+    });
+    root.querySelectorAll("[data-ipollowork-deck-added-slide]").forEach((element) => {
+      element.removeAttribute("data-ipw-slide");
+      element.removeAttribute("data-ipollowork-deck-added-slide");
+    });
+  };
+
   const serialize = () => {
     const clone = document.documentElement.cloneNode(true);
     if (!(clone instanceof HTMLElement)) return "";
     clone.querySelector(`#${runtimeId}`)?.remove();
     clone.querySelector("#ipollowork-design-navigation-runtime")?.remove();
     clone.querySelector("#ipollowork-design-deck-runtime")?.remove();
+    clone.querySelector("#ipollowork-design-deck-runtime-style")?.remove();
     clone.querySelector("#ipollowork-design-fixed-slide-runtime")?.remove();
     clone.querySelector("#ipollowork-design-fixed-slide-runtime-style")?.remove();
     clone.querySelector(`#${styleId}`)?.remove();
     clone.querySelector("#ipollowork-design-template-token-style")?.remove();
     clone.querySelector(`#${overlayId}`)?.remove();
+    restoreDeckRuntimeState(clone);
     clone.querySelectorAll("[data-ipw-materialize-once]").forEach((element) => element.remove());
     clone.querySelectorAll(`[${textNodeAttribute}]`).forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
     clone.querySelectorAll(`[${idAttribute}]`).forEach((element) => element.removeAttribute(idAttribute));

@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, FolderOpen, Loader2, X } from "lucide-react";
+import { Download, ExternalLink, FolderOpen, Loader2, Presentation, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getDesktopFileIcon, openDesktopPath, revealDesktopItemInDir } from "@/app/lib/desktop";
@@ -18,6 +18,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { t } from "@/i18n";
 import { cn, formatFileSize } from "@/lib/utils";
 import { type ArtifactPanelTab, usePanelTabStore } from "../panel/panel-tab-store";
+import { activateDeckExportSlide, PRESENTATION_SLIDE_SELECTOR } from "../design/deck-export";
+import { buildDesignPreviewDocument } from "../design/design-html-runtime";
+import {
+  PPTX_BACKGROUND_IMAGE_FORMAT,
+  PPTX_CAPTURE_SCALE,
+  PPTX_SLIDE_HEIGHT_INCHES,
+  PPTX_SLIDE_WIDTH_INCHES,
+  deckPptxFileName,
+} from "../design/pptx-export";
 import { isCollectibleArtifactTarget, type BinaryData, type Data, type OpenTarget, type TextData } from "./open-target";
 import { HTMLPreview, ImagePreview, MarkdownPreview, PdfPreview, PlainText, PreviewError, PreviewLoading, PreviewUnavailable } from "./preview";
 
@@ -29,6 +38,10 @@ const ArtifactSpreadsheetEditor = lazy(() =>
 );
 
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
+const PDF_SLIDE_WIDTH = 1600;
+const PDF_SLIDE_HEIGHT = 900;
+const PDF_PAGE_WIDTH_MM = 297;
+const PDF_PAGE_HEIGHT_MM = 167.0625;
 
 type ArtifactPanelProps = {
   sessionId: string;
@@ -189,6 +202,17 @@ function waitForNextFrame() {
   });
 }
 
+async function yieldForExportWork() {
+  await waitForNextFrame();
+  await new Promise<void>((resolve) => {
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(() => resolve(), { timeout: 180 });
+    } else {
+      globalThis.setTimeout(resolve, 0);
+    }
+  });
+}
+
 function canvasHasVisibleContent(canvas: HTMLCanvasElement) {
   if (canvas.width === 0 || canvas.height === 0) return false;
 
@@ -323,6 +347,155 @@ async function createMarkdownPdf(source: HTMLElement) {
   }
 }
 
+function hasPresentationSlides(source: string) {
+  return /(?:data-ipw-slide|class=["'][^"']*(?:slide|slide-frame)\b|<section\b[^>]*class=["'][^"']*\bslide\b)/i.test(source);
+}
+
+function sanitizeExportFileBaseName(value: string | undefined) {
+  return (value ?? "")
+    .replace(/[\u0000-\u001f<>:"/\\|?*]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s.]+|[\s.]+$/g, "")
+    .slice(0, 96);
+}
+
+function presentationExportBaseName(document: Document, target: OpenTarget) {
+  const candidates = [
+    document.querySelector<HTMLMetaElement>("meta[property='og:title'],meta[name='title'],meta[name='ipw-title']")?.content,
+    document.title,
+    document.querySelector<HTMLElement>(PRESENTATION_SLIDE_SELECTOR)?.querySelector<HTMLElement>("h1,h2,[data-ipw-title],[data-title]")?.textContent,
+    target.name.replace(/\.[^.]+$/, ""),
+  ];
+  return candidates.map(sanitizeExportFileBaseName).find(Boolean) || "presentation";
+}
+
+async function waitForPresentationExportFrame(frame: HTMLIFrameElement) {
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error("Timed out preparing the presentation.")), 10_000);
+    frame.addEventListener("load", () => {
+      window.clearTimeout(timeout);
+      resolve();
+    }, { once: true });
+  });
+  const document = frame.contentDocument;
+  if (!document) throw new Error("Could not prepare the presentation.");
+  await document.fonts?.ready;
+  await Promise.all(Array.from(document.images).map((image) => image.complete
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+      })));
+}
+
+async function withPresentationExportFrame<T>(source: string, run: (frameDocument: Document) => Promise<T>) {
+  const frame = document.createElement("iframe");
+
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.position = "fixed";
+  frame.style.left = "-2000px";
+  frame.style.top = "0";
+  frame.style.width = `${PDF_SLIDE_WIDTH}px`;
+  frame.style.height = `${PDF_SLIDE_HEIGHT}px`;
+  frame.style.border = "0";
+  frame.style.opacity = "0";
+  frame.style.pointerEvents = "none";
+  document.body.append(frame);
+
+  try {
+    frame.srcdoc = buildDesignPreviewDocument(source, false, "", false, false, true);
+    await waitForPresentationExportFrame(frame);
+    if (!frame.contentDocument) throw new Error("Could not prepare the presentation.");
+    return await run(frame.contentDocument);
+  } finally {
+    frame.remove();
+  }
+}
+
+async function createPresentationPdf(source: string, target: OpenTarget) {
+  return withPresentationExportFrame(source, async (frameDocument) => {
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas-pro"), import("jspdf")]);
+    const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>(PRESENTATION_SLIDE_SELECTOR))
+      .filter((slide, index, list) => list.indexOf(slide) === index);
+    if (!slides.length) throw new Error("Could not find slides to export.");
+
+    const pdf = new jsPDF({ unit: "mm", format: [PDF_PAGE_WIDTH_MM, PDF_PAGE_HEIGHT_MM], orientation: "landscape", compress: true });
+    slides.forEach((slide) => slide.removeAttribute("hidden"));
+
+    for (const [index, slide] of slides.entries()) {
+      activateDeckExportSlide(slides, slide);
+      slide.style.width = `${PDF_SLIDE_WIDTH}px`;
+      slide.style.height = `${PDF_SLIDE_HEIGHT}px`;
+      slide.style.maxWidth = `${PDF_SLIDE_WIDTH}px`;
+      slide.style.maxHeight = `${PDF_SLIDE_HEIGHT}px`;
+      slide.style.margin = "0";
+      slide.style.overflow = "hidden";
+      await yieldForExportWork();
+
+      const canvas = await html2canvas(slide, {
+        backgroundColor: null,
+        scale: 1.5,
+        useCORS: true,
+        width: PDF_SLIDE_WIDTH,
+        height: PDF_SLIDE_HEIGHT,
+        windowWidth: PDF_SLIDE_WIDTH,
+        windowHeight: PDF_SLIDE_HEIGHT,
+      });
+      if (!canvasHasVisibleContent(canvas)) throw new Error("PDF capture was blank. Please try again after the preview finishes rendering.");
+      if (index > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, PDF_PAGE_WIDTH_MM, PDF_PAGE_HEIGHT_MM, undefined, "FAST");
+    }
+
+    return { blob: pdf.output("blob"), filename: `${presentationExportBaseName(frameDocument, target)}.pdf` };
+  });
+}
+
+async function createPresentationPptx(source: string, target: OpenTarget) {
+  return withPresentationExportFrame(source, async (frameDocument) => {
+    const [{ default: PptxGenJS }, { default: html2canvas }] = await Promise.all([import("pptxgenjs"), import("html2canvas-pro")]);
+    const slides = Array.from(frameDocument.querySelectorAll<HTMLElement>(PRESENTATION_SLIDE_SELECTOR))
+      .filter((slide, index, list) => list.indexOf(slide) === index);
+    if (!slides.length) throw new Error("Could not find slides to export.");
+
+    const pptx = new PptxGenJS();
+    pptx.layout = "LAYOUT_WIDE";
+    pptx.author = "iPolloWork";
+    pptx.title = presentationExportBaseName(frameDocument, target);
+    slides.forEach((slide) => slide.removeAttribute("hidden"));
+
+    for (const slide of slides) {
+      activateDeckExportSlide(slides, slide);
+      slide.style.width = `${PDF_SLIDE_WIDTH}px`;
+      slide.style.height = `${PDF_SLIDE_HEIGHT}px`;
+      slide.style.maxWidth = `${PDF_SLIDE_WIDTH}px`;
+      slide.style.maxHeight = `${PDF_SLIDE_HEIGHT}px`;
+      slide.style.margin = "0";
+      slide.style.overflow = "hidden";
+      await yieldForExportWork();
+
+      const canvas = await html2canvas(slide, {
+        backgroundColor: null,
+        scale: PPTX_CAPTURE_SCALE,
+        useCORS: true,
+        width: PDF_SLIDE_WIDTH,
+        height: PDF_SLIDE_HEIGHT,
+        windowWidth: PDF_SLIDE_WIDTH,
+        windowHeight: PDF_SLIDE_HEIGHT,
+      });
+      if (!canvasHasVisibleContent(canvas)) throw new Error("PPTX capture was blank. Please try again after the preview finishes rendering.");
+      pptx.addSlide().addImage({
+        data: canvas.toDataURL(PPTX_BACKGROUND_IMAGE_FORMAT),
+        x: 0,
+        y: 0,
+        w: PPTX_SLIDE_WIDTH_INCHES,
+        h: PPTX_SLIDE_HEIGHT_INCHES,
+      });
+    }
+
+    await pptx.writeFile({ fileName: deckPptxFileName(presentationExportBaseName(frameDocument, target)) });
+  });
+}
+
 export function ArtifactPanel({ sessionId, tab, client, workspaceId, workspaceRoot, isRemoteWorkspace = false, onClose }: ArtifactPanelProps) {
   const transcriptTargets = usePanelTabStore((state) => state.transcriptArtifactTargets[sessionId] ?? EMPTY_TRANSCRIPT_TARGETS);
   const artifactTargets = useMemo(() => transcriptTargets.filter(isCollectibleArtifactTarget), [transcriptTargets]);
@@ -350,6 +523,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   const [draft, setDraft] = useState("");
   const [autoSaveBlockedDraft, setAutoSaveBlockedDraft] = useState<string | null>(null);
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
+  const [isPptxGenerating, setIsPptxGenerating] = useState(false);
   const visibleMarkdownRef = useRef<HTMLDivElement | null>(null);
   const pdfContentRef = useRef<HTMLDivElement | null>(null);
   const isDirectTextEdit = isTextContent(target) && target.preview === "markdown";
@@ -389,6 +563,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   });
 
   const [binaryObjectUrl, setBinaryObjectUrl] = useState<string | null>(null);
+  const isPresentationHtml = target.kind === "file" && target.preview === "html" && data?.kind === "text" && hasPresentationSlides(draft);
 
   useEffect(() => {
     if (!data || data.kind !== "binary") {
@@ -509,6 +684,41 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
       toast.error(cause instanceof Error ? cause.message : "Could not download this PDF.");
     } finally {
       setIsPdfGenerating(false);
+    }
+  };
+
+  const downloadPresentationPdf = async () => {
+    if (target.kind !== "file" || target.preview !== "html" || data?.kind !== "text" || isPdfGenerating) {
+      return;
+    }
+
+    setIsPdfGenerating(true);
+
+    try {
+      const { blob, filename } = await createPresentationPdf(draft, target);
+      downloadBlob(blob, filename);
+      toast.success("PDF downloaded.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Could not download this PDF.");
+    } finally {
+      setIsPdfGenerating(false);
+    }
+  };
+
+  const downloadPresentationPptx = async () => {
+    if (target.kind !== "file" || target.preview !== "html" || data?.kind !== "text" || isPptxGenerating) {
+      return;
+    }
+
+    setIsPptxGenerating(true);
+
+    try {
+      await createPresentationPptx(draft, target);
+      toast.success("PPTX downloaded.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Could not download this PPTX.");
+    } finally {
+      setIsPptxGenerating(false);
     }
   };
 
@@ -667,7 +877,27 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
               </Tooltip>
             )
           ) : null}
-          {target.kind === "file" && target.preview === "markdown" ? (
+          {isPresentationHtml ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={(
+                  <Button variant="ghost" size="icon-sm" aria-label={t("artifact.download_options")}>
+                    {isPdfGenerating || isPptxGenerating ? <Loader2 className="animate-spin" /> : <Download />}
+                  </Button>
+                )}
+              />
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem disabled={isPdfGenerating} onClick={() => void downloadPresentationPdf()}>
+                  {isPdfGenerating ? <Loader2 className="animate-spin" /> : <Download />}
+                  {t("design.export.download_pdf")}
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={isPptxGenerating} onClick={() => void downloadPresentationPptx()}>
+                  {isPptxGenerating ? <Loader2 className="animate-spin" /> : <Presentation />}
+                  {t("design.export.download_pptx")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : target.kind === "file" && target.preview === "markdown" ? (
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={(
