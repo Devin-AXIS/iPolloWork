@@ -5,6 +5,7 @@ import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } fro
 import type { DenOrgMarketplace, DenOrgPluginResolved, DenResourceSnapshot } from "./den-types";
 import type { CloudImportedMarketplace, CloudImportedPlugin } from "../cloud/import-state";
 import type { TemplateCatalogItem, TemplateCategory, TemplateManifestV1, TemplateSessionSnapshot, TemplateSessionState } from "@ipollowork/types/templates";
+import type { iPolloWorkExtensionManifest } from "../extensions";
 
 export type iPolloWorkServerCapabilities = {
   skills: { read: boolean; write: boolean; source: "ipollowork" | "opencode" };
@@ -262,6 +263,58 @@ export type iPolloWorkCloudPluginInstallResult = {
 export type iPolloWorkCloudPluginsResult = {
   marketplaces: Record<string, CloudImportedMarketplace>;
   plugins: Record<string, CloudImportedPlugin>;
+};
+
+export type iPolloWorkPluginPackageItem = {
+  pluginId: string;
+  name: string;
+  version: string;
+  enabled: boolean;
+  previousVersion: string | null;
+  manifest: iPolloWorkExtensionManifest;
+  integrity: { sha256: string; status: "verified" | "unsigned" };
+};
+
+export type iPolloWorkPluginPackagePreview = {
+  manifest: iPolloWorkExtensionManifest;
+  writes: Array<{ path: string; sha256: string }>;
+  integrity: { sha256: string; status: "verified" | "unsigned" };
+};
+
+export type iPolloWorkPluginConnectionStatus = {
+  accountId: string;
+  methodId: string;
+  status: "connected";
+  fields: Record<string, boolean>;
+  updatedAt: number;
+};
+
+export type iPolloWorkPluginAuthorizationState = {
+  required: boolean;
+  ready: boolean;
+  requiredMethodIds: string[];
+  methods: Array<{ id: string; kind: "secret-form" | "oauth-pkce" | "device-code" | "hosted-browser"; label: string; description: string | null }>;
+  connections: iPolloWorkPluginConnectionStatus[];
+  flows: Array<{
+    accountId: string;
+    methodId: string;
+    flowId: string;
+    status: "pending" | "expired";
+    expiresAt: number;
+  }>;
+};
+
+export type iPolloWorkPluginAuthorizationFlow = {
+  flowId: string;
+  methodId: string;
+  kind: "oauth-pkce" | "device-code" | "hosted-browser";
+  status: "pending";
+  authorizationUrl?: string;
+  userCode?: string;
+  verificationUrl?: string;
+  qrValue?: string;
+  pollIntervalMs?: number;
+  expiresAt: number;
 };
 
 export type iPolloWorkClaudePluginComponent = {
@@ -1453,6 +1506,101 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       }),
     removeCloudPlugin: (workspaceId: string, pluginId: string) =>
       requestJson<iPolloWorkCloudPluginInstallResult>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/cloud-plugins/${encodeURIComponent(pluginId)}`, {
+        token,
+        hostToken,
+        method: "DELETE",
+        timeoutMs: timeouts.config,
+      }),
+    listPluginPackages: (workspaceId: string) =>
+      requestJson<{ items: iPolloWorkPluginPackageItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages`, {
+        token,
+        hostToken,
+        timeoutMs: timeouts.config,
+      }),
+    validatePluginPackage: (workspaceId: string, packageRoot: string) =>
+      requestJson<{ preview: iPolloWorkPluginPackagePreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/validate`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: { packageRoot },
+        timeoutMs: timeouts.config,
+      }),
+    installPluginPackage: (workspaceId: string, packageRoot: string) =>
+      requestJson<{ result: { status: "installed" | "unchanged"; pluginId: string; version: string }; item?: iPolloWorkPluginPackageItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: { packageRoot },
+        timeoutMs: timeouts.binary,
+      }),
+    updatePluginPackage: (workspaceId: string, pluginId: string, packageRoot: string) =>
+      requestJson<{ result: { status: "updated" | "unchanged"; pluginId: string; version: string; previousVersion?: string } }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/update`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: { packageRoot },
+        timeoutMs: timeouts.binary,
+      }),
+    rollbackPluginPackage: (workspaceId: string, pluginId: string) =>
+      requestJson<{ result: { status: "rolled_back"; pluginId: string; version: string; previousVersion: string } }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/rollback`, {
+        token,
+        hostToken,
+        method: "POST",
+        timeoutMs: timeouts.binary,
+      }),
+    setPluginPackageEnabled: (workspaceId: string, pluginId: string, enabled: boolean) =>
+      requestJson<{ result: { pluginId: string; enabled: boolean; changed: boolean } }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}`, {
+        token,
+        hostToken,
+        method: "PATCH",
+        body: { enabled },
+        timeoutMs: timeouts.config,
+      }),
+    uninstallPluginPackage: (workspaceId: string, pluginId: string) =>
+      requestJson<{ result: { status: "uninstalled"; pluginId: string; version: string } }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}`, {
+        token,
+        hostToken,
+        method: "DELETE",
+        timeoutMs: timeouts.binary,
+      }),
+    getPluginAuthorization: (workspaceId: string, pluginId: string) =>
+      requestJson<iPolloWorkPluginAuthorizationState>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/authorization`, {
+        token,
+        hostToken,
+        timeoutMs: timeouts.config,
+      }),
+    savePluginAuthorization: (workspaceId: string, pluginId: string, methodId: string, values: Record<string, string>, accountId = "default") =>
+      requestJson<{ status: iPolloWorkPluginConnectionStatus }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/authorization/${encodeURIComponent(methodId)}/credentials`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: { accountId, values },
+        timeoutMs: timeouts.config,
+      }),
+    startPluginAuthorization: (workspaceId: string, pluginId: string, methodId: string, accountId = "default") =>
+      requestJson<{ flow: iPolloWorkPluginAuthorizationFlow }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/authorization/${encodeURIComponent(methodId)}/start`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: { accountId },
+        timeoutMs: timeouts.config,
+      }),
+    pollPluginDeviceAuthorization: (workspaceId: string, pluginId: string, flowId: string) =>
+      requestJson<{ status: iPolloWorkPluginConnectionStatus | { status: "pending"; flowId: string; expiresAt: number } }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/authorization/device/${encodeURIComponent(flowId)}/poll`, {
+        token,
+        hostToken,
+        method: "POST",
+        timeoutMs: timeouts.config,
+      }),
+    cancelPluginAuthorization: (workspaceId: string, pluginId: string, flowId: string) =>
+      requestJson<{ removed: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/authorization/flows/${encodeURIComponent(flowId)}`, {
+        token,
+        hostToken,
+        method: "DELETE",
+        timeoutMs: timeouts.config,
+      }),
+    revokePluginAuthorization: (workspaceId: string, pluginId: string, accountId: string) =>
+      requestJson<{ removed: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/authorization/${encodeURIComponent(accountId)}`, {
         token,
         hostToken,
         method: "DELETE",

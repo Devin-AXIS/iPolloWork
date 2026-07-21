@@ -84,6 +84,7 @@ import { DebugView } from "@/react-app/domains/settings/pages/debug-view";
 import { EnvironmentView } from "@/react-app/domains/settings/pages/environment-view";
 import { AuthorizationCenterView } from "@/react-app/domains/settings/pages/authorization-center-view";
 import { ExtensionsView } from "@/react-app/domains/settings/pages/extensions-view";
+import { PluginPackagesPanel } from "@/react-app/domains/settings/plugin-packages-panel";
 import { McpView } from "@/react-app/domains/settings/pages/mcp-view";
 import { RecoveryView } from "@/react-app/domains/settings/pages/recovery-view";
 import { SkillsView } from "@/react-app/domains/settings/pages/skills-view";
@@ -2074,6 +2075,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               void extensionsStore.refreshCloudOrgMarketplaces({ force: true });
               void orgMcpConnections.refresh();
             }}
+            pluginPackagesView={
+              <PluginPackagesPanel
+                client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+                workspaceId={runtimeWorkspaceId}
+                onOpenUrl={(url) => platform.openLink(url)}
+              />
+            }
             mcpView={
               <McpView
                 busy={busy}

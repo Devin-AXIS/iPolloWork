@@ -289,11 +289,12 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
 
   addRoute(routes, "GET", "/experimental/extensions/actions", "client", async (ctx) => {
     const extensionId = ctx.url.searchParams.get("extensionId") ?? "";
+    const directory = ctx.url.searchParams.get("directory") ?? "";
     const connectSnapshot = await getConnectSnapshot(config);
     return jsonResponse({
       ok: true,
       schemaVersion: 1,
-      actions: listExperimentalExtensionActions(extensionId, connectSnapshot),
+      actions: await listExperimentalExtensionActions(config, extensionId, { directory }, connectSnapshot),
     });
   });
 
