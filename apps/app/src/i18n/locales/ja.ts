@@ -4,7 +4,6 @@
 
 export default {
   "design.export.download": "ダウンロード",
-  "design.export.download_html": "HTML をダウンロード",
   "design.export.download_pdf": "PDF をダウンロード",
   "design.export.download_pptx": "PPTX をダウンロード",
   "new_conversation.mode_label": "会話の目的を選択",

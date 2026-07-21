@@ -5,7 +5,6 @@
 
 export default {
   "design.export.download": "Скачать",
-  "design.export.download_html": "Скачать HTML",
   "design.export.download_pdf": "Скачать PDF",
   "design.export.download_pptx": "Скачать PPTX",
   "new_conversation.mode_label": "Выберите фокус беседы",

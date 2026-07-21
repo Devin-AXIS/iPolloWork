@@ -5,7 +5,6 @@
 
 export default {
   "design.export.download": "Télécharger",
-  "design.export.download_html": "Télécharger le HTML",
   "design.export.download_pdf": "Télécharger le PDF",
   "design.export.download_pptx": "Télécharger le PPTX",
   "new_conversation.mode_label": "Choisir le sujet de la conversation",

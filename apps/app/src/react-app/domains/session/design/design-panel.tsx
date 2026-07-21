@@ -5,7 +5,6 @@ import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, Chev
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
-import { downloadTextAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -90,7 +89,6 @@ const PDF_SLIDE_HEIGHT = 900;
 const PDF_PAGE_WIDTH_MM = 297;
 const PDF_PAGE_HEIGHT_MM = 167.0625;
 const LOCAL_IMAGE_ACCEPT = "image/*";
-const FALLBACK_PRESENTATION_SCALE = 0.45;
 
 const TYPE_PRESETS = [
   { label: "Display", sample: "Aa", styles: { fontSize: "48px", fontWeight: "700", lineHeight: "1.05", letterSpacing: "-0.025em" } },
@@ -313,7 +311,6 @@ export function DesignPanel({
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
-  const [exportingHtml, setExportingHtml] = React.useState(false);
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
@@ -353,18 +350,16 @@ export function DesignPanel({
     && hasPptxCompatibleObjectMarkers(fileQuery.data?.content ?? ""),
   );
   const isPresentationTemplate = designTemplate?.category === "slides";
-  const usesFixedPresentationPreview = usesNativeEditablePptx;
   const presentationScale = presentationCanvasScale(previewViewport.width, previewViewport.height);
-  const visiblePresentationScale = presentationScale || FALLBACK_PRESENTATION_SCALE;
 
   React.useEffect(() => {
     if (!isPresentationTemplate) return;
     setPreviewDevice("desktop");
   }, [isPresentationTemplate]);
 
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     const viewport = previewViewportRef.current;
-    if (!viewport || !usesFixedPresentationPreview) return;
+    if (!viewport || !isPresentationTemplate) return;
     const sync = () => {
       const rect = viewport.getBoundingClientRect();
       setPreviewViewport({ width: rect.width, height: rect.height });
@@ -373,7 +368,7 @@ export function DesignPanel({
     const observer = new ResizeObserver(sync);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [activePagePath, previewRevision, sourceHydrated, usesFixedPresentationPreview]);
+  }, [isPresentationTemplate]);
   const templateTokenPath = React.useMemo(() => {
     const tokenPath = designTemplate?.designSystem.tokens || linkedDesignTokenPath(fileQuery.data?.content) || "design-tokens.css";
     const briefPath = templateQuery.data?.state.briefPath;
@@ -548,19 +543,6 @@ export function DesignPanel({
       frameWindow.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "snapshot", requestId }, "*");
     });
   }, [editing, quickEdit, selection]);
-
-  const exportDesignHtml = React.useCallback(async () => {
-    if (!activePagePath || exportingHtml) return;
-    setExportingHtml(true);
-    try {
-      const content = await readLatestCanvasHtml();
-      downloadTextAsFile(fileName(activePagePath), content, "text/html;charset=utf-8");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not download this HTML file.");
-    } finally {
-      setExportingHtml(false);
-    }
-  }, [activePagePath, exportingHtml, readLatestCanvasHtml]);
 
   const exportDeckToPdf = React.useCallback(async () => {
     if (!deck || exportingPdf) return;
@@ -1084,13 +1066,13 @@ export function DesignPanel({
     () => buildDesignPreviewDocument(previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
     [isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
-  const presentationLeft = Math.max(0, (previewViewport.width - PRESENTATION_CANVAS_WIDTH * visiblePresentationScale) / 2);
-  const presentationTop = Math.max(0, (previewViewport.height - PRESENTATION_CANVAS_HEIGHT * visiblePresentationScale) / 2);
-  const selectionLeft = usesFixedPresentationPreview
-    ? presentationLeft + (selection?.rect.left ?? 0) * visiblePresentationScale + (selection?.rect.width ?? 0) * visiblePresentationScale / 2
+  const presentationLeft = Math.max(0, (previewViewport.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
+  const presentationTop = Math.max(0, (previewViewport.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
+  const selectionLeft = isPresentationTemplate
+    ? presentationLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2
     : (iframeRef.current?.offsetLeft ?? 0) + (selection?.rect.left ?? 0) + (selection?.rect.width ?? 0) / 2;
-  const selectionTop = usesFixedPresentationPreview
-    ? presentationTop + (selection?.rect.top ?? 0) * visiblePresentationScale
+  const selectionTop = isPresentationTemplate
+    ? presentationTop + (selection?.rect.top ?? 0) * presentationScale
     : (iframeRef.current?.offsetTop ?? 0) + (selection?.rect.top ?? 0);
   const floatingStyle = selection ? {
     left: `clamp(112px, ${selectionLeft + 8}px, calc(100% - 112px))`,
@@ -1222,7 +1204,7 @@ export function DesignPanel({
               <Button
                 variant={designSystemOpen ? "secondary" : "ghost"}
                 size="icon-sm"
-                className="rounded-lg"
+                className={cn("rounded-lg", !deck && "ml-auto")}
                 onClick={() => {
                   setDesignSystemOpen((current) => !current);
                   setAdvancedOpen(false);
@@ -1274,17 +1256,16 @@ export function DesignPanel({
                 </ToggleGroupItem>
               </ToggleGroup>
             ) : null}
-            <div className="ml-auto">
-              <DesignExportMenu
-                canExportPresentation={Boolean(deck)}
-                exportingHtml={exportingHtml}
-                exportingPdf={exportingPdf}
-                exportingPptx={exportingPptx}
-                onExportHtml={() => void exportDesignHtml()}
-                onExportPdf={() => void exportDeckToPdf()}
-                onExportPptx={() => setPptxConfirmationOpen(true)}
-              />
-            </div>
+            {deck ? (
+              <div className="ml-auto">
+                <DesignExportMenu
+                  exportingPdf={exportingPdf}
+                  exportingPptx={exportingPptx}
+                  onExportPdf={() => void exportDeckToPdf()}
+                  onExportPptx={() => setPptxConfirmationOpen(true)}
+                />
+              </div>
+            ) : null}
           </div>
 
           {fileQuery.isLoading || !sourceHydrated ? (
@@ -1304,14 +1285,14 @@ export function DesignPanel({
                   title={`Design preview: ${fileName(activePagePath)}`}
                   className={cn(
                     "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
-                    usesFixedPresentationPreview
+                    isPresentationTemplate
                       ? "absolute left-1/2 top-1/2 h-[900px] w-[1600px] origin-center rounded-lg shadow-sm"
                       : previewDevice === "desktop"
-                      ? "h-full w-full rounded-lg shadow-sm"
-                      : "h-full w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
+                      ? "w-full rounded-lg shadow-sm"
+                      : "w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
                   )}
-                  style={usesFixedPresentationPreview
-                    ? { transform: `translate(-50%, -50%) scale(${visiblePresentationScale})` }
+                  style={isPresentationTemplate
+                    ? { transform: `translate(-50%, -50%) scale(${presentationScale})` }
                     : undefined}
                   sandbox="allow-scripts"
                   data-preview-loaded={previewLoaded ? "true" : "false"}

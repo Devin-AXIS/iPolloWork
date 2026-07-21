@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PendingPermission } from "../src/app/types";
@@ -8,11 +7,6 @@ import {
   PermissionApprovalPanel,
   permissionDetailRows,
 } from "../src/react-app/domains/session/chat/permission-approval-modal";
-
-const permissionPanelSource = readFileSync(
-  new URL("../src/react-app/domains/session/chat/permission-approval-modal.tsx", import.meta.url),
-  "utf8",
-);
 
 function pendingPermission(overrides: Partial<PendingPermission> = {}): PendingPermission {
   return {
@@ -74,7 +68,7 @@ describe("permission approval modal helpers", () => {
     ]);
   });
 
-  test("keeps one-shot approval primary and session approval in its menu", () => {
+  test("keeps keyboard order on the safer one-shot approval before session approval", () => {
     const html = renderToStaticMarkup(
       React.createElement(PermissionApprovalPanel, {
         permission: pendingPermission(),
@@ -86,12 +80,7 @@ describe("permission approval modal helpers", () => {
       match[0].replace(/<[^>]*>/g, "").trim(),
     );
 
-    expect(buttonLabels).toEqual(["Deny", "Allow once"]);
-
-    const allowOnce = permissionPanelSource.indexOf('props.respondPermission?.(props.permissionId, "once")');
-    const allowForSession = permissionPanelSource.indexOf('props.respondPermission?.(props.permissionId, "always")');
-    expect(allowOnce).toBeGreaterThan(-1);
-    expect(allowForSession).toBeGreaterThan(allowOnce);
+    expect(buttonLabels).toEqual(["Deny", "Allow once", "Allow for session"]);
   });
 
   test("uses readable labels for generic permission titles", () => {
