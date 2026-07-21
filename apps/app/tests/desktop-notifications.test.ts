@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { LOCAL_PREFERENCES_KEY } from "../src/react-app/kernel/local-preferences-storage";
 import { notifyDesktopEvent } from "../src/react-app/shell/desktop-notifications";
@@ -7,6 +7,8 @@ type DesktopCall = { command: string; args: unknown[] };
 
 const storage = new Map<string, string>();
 const calls: DesktopCall[] = [];
+const originalWindow = globalThis.window;
+const originalDocument = globalThis.document;
 
 const localStorageStub = {
   getItem: (key: string) => storage.get(key) ?? null,
@@ -55,6 +57,17 @@ describe("desktop notifications", () => {
     storage.clear();
     calls.length = 0;
     installRuntime({ focused: false });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
+    });
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: originalDocument,
+    });
   });
 
   test("off suppresses important events", () => {

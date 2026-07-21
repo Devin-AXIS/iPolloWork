@@ -1,13 +1,14 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent } from "@opencode-ai/sdk/v2/client";
-import { AppWindowMac, ArrowUp, Check, ChevronRight, FileText, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, FileText, ListPlus, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
-import { formatBytes } from "@/app/utils";
+import { formatBytes, isMacPlatform } from "@/app/utils";
 import { t } from "@/i18n";
 import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
 import { useDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
@@ -1701,20 +1702,56 @@ export function ReactSessionComposer(props: ComposerProps) {
                     >
                       <Square size={12} fill="currentColor" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={canSend ? props.onSteer : undefined}
-                      disabled={!canSend}
-                      aria-label={t("composer.steer")}
-                      className={`inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
-                        canSend
-                          ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                          : "bg-gray-4 text-gray-10"
-                      }`}
-                      title={t("composer.steer_hint")}
-                    >
-                      <ArrowUp size={15} />
-                    </button>
+                    <div className="flex shrink-0 items-end">
+                      <button
+                        type="button"
+                        onClick={canSend ? props.onQueue : undefined}
+                        disabled={!canSend}
+                        aria-label={t("composer.queue")}
+                        className={`inline-flex h-8 max-h-8 items-center gap-1.5 rounded-l-full pl-3 pr-2 text-[12px] font-medium transition-colors ${
+                          canSend
+                            ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
+                            : "bg-gray-4 text-gray-10"
+                        }`}
+                        title={t("composer.queue_hint")}
+                      >
+                        <ListPlus size={14} />
+                        <span>{t("composer.queue")}</span>
+                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <button
+                              type="button"
+                              aria-label={t("composer.send_options")}
+                              className={`relative inline-flex h-8 max-h-8 items-center rounded-r-full border-l pl-1.5 pr-2 transition-colors ${
+                                canSend
+                                  ? "border-[color-mix(in_srgb,var(--dls-accent-fg)_25%,transparent)] bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
+                                  : "border-gray-6 bg-gray-4 text-gray-10"
+                              }`}
+                            >
+                              <ChevronDown size={14} />
+                              {props.queuedCount > 0 ? (
+                                <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gray-12 px-1 text-[10px] font-semibold text-gray-1">
+                                  {props.queuedCount}
+                                </span>
+                              ) : null}
+                            </button>
+                          }
+                        />
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            disabled={!canSend}
+                            onClick={() => void props.onSteer()}
+                            title={t("composer.steer_hint")}
+                          >
+                            <Zap size={14} />
+                            <span>{t("composer.steer")}</span>
+                            <DropdownMenuShortcut>{isMacPlatform() ? "⌘⏎" : "Ctrl+⏎"}</DropdownMenuShortcut>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </>
                 ) : (
                   <button

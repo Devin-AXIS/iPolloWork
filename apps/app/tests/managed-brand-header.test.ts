@@ -7,11 +7,11 @@ const sidebarPath = fileURLToPath(
 );
 
 describe("managed brand header", () => {
-  test("shows the application name only when no wordmark is supplied", () => {
+  test("uses a managed logo, managed name, then the default wordmark", () => {
     const source = readFileSync(sidebarPath, "utf8");
 
-    expect(source).toMatch(/brandLogoUrl \? \([\s\S]*?<img[\s\S]*?\) : \([\s\S]*?data-testid="brand-app-name"/);
-    expect(source).toMatch(/className="flex h-14 shrink-0 items-center/);
-    expect(source).toMatch(/className="max-h-9 w-auto max-w-\[140px\] object-contain object-left"/);
+    expect(source).toMatch(/brandLogoUrl \? \([\s\S]*?data-testid="brand-logo"[\s\S]*?\) : hasManagedBrand \? \([\s\S]*?data-testid="brand-app-name"/);
+    expect(source).toContain('src={publicAssetUrl("sidebar-icon/ipollo-work.svg")}');
+    expect(source).toContain('className="h-3.5 w-auto max-w-[140px] object-contain object-left"');
   });
 });
