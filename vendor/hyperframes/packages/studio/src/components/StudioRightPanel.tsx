@@ -431,7 +431,7 @@ export function StudioRightPanel({
       actionError={renderQueue.actionError}
       onDismissActionError={renderQueue.dismissActionError}
       onClearCompleted={renderQueue.clearCompleted}
-      onStartRender={async (format, quality, resolution, fps) => {
+      onStartRender={async (format, quality, resolution, fps, outputSize, captureSize) => {
         await waitForPendingDomEditSaves();
         const composition =
           activeCompPath && activeCompPath !== "index.html" ? activeCompPath : undefined;
@@ -440,6 +440,8 @@ export function StudioRightPanel({
           quality,
           format,
           resolution,
+          outputSize,
+          captureSize,
           composition,
           // Render what the user is previewing: active variable overrides
           // from the Variables panel ride along (undefined = defaults).

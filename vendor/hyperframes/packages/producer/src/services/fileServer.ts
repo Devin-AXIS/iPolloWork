@@ -711,9 +711,15 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   // Hyperframe runtime's __player is ready, while preserving any fields
   // already written.
   const preHeadScripts = [HF_EARLY_STUB, ...(options.preHeadScripts ?? [])];
-  // Default scripts: Hyperframe runtime in <head>, render mode in </body>
+  // Default scripts: Hyperframe runtime in <head>, render mode in </body>.
+  // Adapter-supplied body scripts are appended rather than replacing the render
+  // bridge; the bridge is required for window.__hf seeking during capture.
   const headScripts = options.headScripts ?? [getVerifiedHyperframeRuntimeSource()];
-  const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];
+  const bodyScripts = [
+    buildRenderModeScript(options.fps),
+    HF_BRIDGE_SCRIPT,
+    ...(options.bodyScripts ?? []),
+  ];
 
   const app = new Hono();
 

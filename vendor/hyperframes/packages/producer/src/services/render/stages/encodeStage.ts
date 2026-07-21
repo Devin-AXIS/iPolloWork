@@ -63,6 +63,8 @@ export interface EncodeStageInput {
   /** Output dimensions (post-deviceScaleFactor). */
   width: number;
   height: number;
+  /** Optional final encoded dimensions. Captured frames remain width x height. */
+  outputSize?: { width: number; height: number };
   /** True when the output format requires an alpha channel; selects frame extension. */
   needsAlpha: boolean;
   /** True iff the composition has audio. Drives the sidecar copy. */
@@ -203,6 +205,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     videoOnlyPath,
     width,
     height,
+    outputSize,
     needsAlpha,
     hasAudio,
     audioOutputPath,
@@ -294,6 +297,8 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     fps: job.config.fps,
     width,
     height,
+    outputWidth: outputSize?.width,
+    outputHeight: outputSize?.height,
     codec: preset.codec,
     preset: preset.preset,
     quality: effectiveQuality,

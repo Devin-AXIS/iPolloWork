@@ -1,7 +1,7 @@
 import { memo, useState, useRef, useEffect, useId } from "react";
 import { RenderQueueItem } from "./RenderQueueItem";
 import { Button } from "../ui/Button";
-import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
+import type { OutputSize, RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 
@@ -14,7 +14,9 @@ type StartRenderHandler = (
   format: "mp4" | "webm" | "mov",
   quality: "draft" | "standard" | "high",
   resolution: ResolutionPreset | "auto",
-  fps: 24 | 30 | 60,
+  fps: 15 | 24 | 30 | 60,
+  outputSize?: OutputSize,
+  captureSize?: OutputSize,
 ) => void | Promise<void>;
 
 interface RenderQueueProps {
@@ -43,15 +45,39 @@ interface RenderQueueProps {
 // Orientation is derived from the composition's authored aspect ratio,
 // not chosen by the user — picking "1080p portrait" for a landscape comp
 // would just produce a wrong-aspect render.
-type RenderScale = "auto" | "1080p" | "4k";
+type RenderScale = "auto" | "720p" | "1080p" | "4k";
 
-const SCALE_OPTION_ORDER: RenderScale[] = ["auto", "1080p", "4k"];
+const SCALE_OPTION_ORDER: RenderScale[] = ["720p", "auto", "1080p", "4k"];
 
 const SCALE_LABEL: Record<RenderScale, string> = {
   auto: "Auto",
+  "720p": "720p",
   "1080p": "1080p",
   "4k": "4K",
 };
+
+const QUICK_PREVIEW_LONG_EDGE = 1280;
+
+function evenDimension(value: number): number {
+  return Math.max(2, Math.round(value / 2) * 2);
+}
+
+function quickPreviewSize(
+  dims: CompositionDimensions | null | undefined,
+): CompositionDimensions {
+  if (!dims || dims.width <= 0 || dims.height <= 0) return { width: 1280, height: 720 };
+  if (dims.width === dims.height) return { width: 720, height: 720 };
+  if (dims.width > dims.height) {
+    return {
+      width: QUICK_PREVIEW_LONG_EDGE,
+      height: evenDimension((QUICK_PREVIEW_LONG_EDGE * dims.height) / dims.width),
+    };
+  }
+  return {
+    width: evenDimension((QUICK_PREVIEW_LONG_EDGE * dims.width) / dims.height),
+    height: QUICK_PREVIEW_LONG_EDGE,
+  };
+}
 
 // Mirrors `CANVAS_DIMENSIONS` in @hyperframes/core. Studio can't import from
 // the core barrel (it transitively pulls in node:fs) and the values are stable.
@@ -80,6 +106,7 @@ function resolveResolution(
   dims: CompositionDimensions | null | undefined,
 ): ResolutionPreset | "auto" {
   if (scale === "auto") return "auto";
+  if (scale === "720p") return "auto";
   const aspect = compAspect(dims);
   if (scale === "1080p") return aspect;
   return aspect === "landscape"
@@ -94,6 +121,7 @@ function resolvedDimensions(
   dims: CompositionDimensions | null | undefined,
 ): CompositionDimensions | null {
   if (scale === "auto") return dims ?? null;
+  if (scale === "720p") return quickPreviewSize(dims);
   const preset = resolveResolution(scale, dims);
   return preset === "auto" ? null : CANVAS_DIMENSIONS[preset];
 }
@@ -105,7 +133,7 @@ function resolvedDimensions(
 // render time — e.g. 1080p on a 1080×1080 square or 1080p on a 1280×720 comp
 // (1.5× isn't integer).
 function scaleApplies(scale: RenderScale, dims: CompositionDimensions | null | undefined): boolean {
-  if (scale === "auto" || dims == null) return true;
+  if (scale === "auto" || scale === "720p" || dims == null) return true;
   const preset = resolveResolution(scale, dims);
   if (preset === "auto") return true;
   const target = CANVAS_DIMENSIONS[preset];
@@ -254,8 +282,8 @@ function FormatExportButton({
   const persisted = getPersistedRenderSettings();
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">(persisted.format);
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
-  const [resolution, setResolution] = useState<ResolutionPreset | "auto">("auto");
-  const [fps, setFps] = useState<24 | 30 | 60>(persisted.fps);
+  const [resolution, setResolution] = useState<RenderScale>(persisted.resolution);
+  const [fps, setFps] = useState<15 | 24 | 30 | 60>(persisted.fps);
 
   // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
   const showQuality = format !== "mov";
@@ -276,7 +304,7 @@ function FormatExportButton({
             onChange={(e) => {
               const v = e.target.value as "mp4" | "webm" | "mov";
               setFormat(v);
-              persistRenderSettings(v, quality, fps);
+              persistRenderSettings(v, quality, fps, resolution);
             }}
             disabled={isRendering}
             className={selectCls}
@@ -290,7 +318,11 @@ function FormatExportButton({
           <span className="text-[10px] text-panel-text-4">Resolution</span>
           <select
             value={resolution}
-            onChange={(e) => setResolution(e.target.value as ResolutionPreset | "auto")}
+            onChange={(e) => {
+              const v = e.target.value as RenderScale;
+              setResolution(v);
+              persistRenderSettings(format, quality, fps, v);
+            }}
             disabled={isRendering}
             className={selectCls}
           >
@@ -310,13 +342,14 @@ function FormatExportButton({
           <select
             value={fps}
             onChange={(e) => {
-              const v = Number(e.target.value) as 24 | 30 | 60;
+              const v = Number(e.target.value) as 15 | 24 | 30 | 60;
               setFps(v);
-              persistRenderSettings(format, quality, v);
+              persistRenderSettings(format, quality, v, resolution);
             }}
             disabled={isRendering}
             className={selectCls}
           >
+            <option value={15}>15 fps</option>
             <option value={24}>24 fps</option>
             <option value={30}>30 fps</option>
             <option value={60}>60 fps</option>
@@ -330,7 +363,7 @@ function FormatExportButton({
               onChange={(e) => {
                 const v = e.target.value as "draft" | "standard" | "high";
                 setQuality(v);
-                persistRenderSettings(format, v, fps);
+                persistRenderSettings(format, v, fps, resolution);
               }}
               disabled={isRendering}
               className={selectCls}
@@ -352,8 +385,19 @@ function FormatExportButton({
           // loading already disables the button; this guard also stops a
           // double-click in the same frame from enqueueing two renders.
           if (isRendering) return;
-          trackStudioEvent("render_start", { format, quality, resolution, fps });
-          void onStartRender(format, quality, resolution, fps);
+          const outputSize =
+            resolution === "720p" ? quickPreviewSize(compositionDimensions) : undefined;
+          const captureSize = resolution === "720p" ? outputSize : undefined;
+          const outputResolution = resolveResolution(resolution, compositionDimensions);
+          trackStudioEvent("render_start", {
+            format,
+            quality,
+            resolution,
+            outputSize,
+            captureSize,
+            fps,
+          });
+          void onStartRender(format, quality, outputResolution, fps, outputSize, captureSize);
         }}
         className="w-full text-[11px] font-semibold"
       >

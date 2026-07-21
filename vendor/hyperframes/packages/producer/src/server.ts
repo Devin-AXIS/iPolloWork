@@ -109,6 +109,8 @@ interface RenderInput {
    * compositions as an aspect-ratio mismatch.
    */
   outputResolutionAspectAgnostic?: boolean;
+  outputSize?: { width: number; height: number };
+  captureSize?: { width: number; height: number };
 }
 
 interface PreparedRenderInput {
@@ -164,7 +166,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     ? body.videoFrameFormat
     : undefined;
 
-  const { variables, outputResolution, outputResolutionAspectAgnostic } =
+  const { variables, outputResolution, outputResolutionAspectAgnostic, outputSize, captureSize } =
     parseRenderOverrides(body);
 
   return {
@@ -180,12 +182,26 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     variables,
     outputResolution,
     outputResolutionAspectAgnostic,
+    outputSize,
+    captureSize,
     videoFrameFormat,
   };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseDimensionSize(value: unknown): { width: number; height: number } | undefined {
+  return isPlainObject(value) &&
+    typeof value.width === "number" &&
+    typeof value.height === "number" &&
+    Number.isInteger(value.width) &&
+    Number.isInteger(value.height) &&
+    value.width > 0 &&
+    value.height > 0
+    ? { width: value.width, height: value.height }
+    : undefined;
 }
 
 /**
@@ -198,6 +214,8 @@ function parseRenderOverrides(body: Record<string, unknown>): {
   variables?: Record<string, unknown>;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
+  outputSize?: { width: number; height: number };
+  captureSize?: { width: number; height: number };
 } {
   // Only forward a plain JSON object. Arrays / primitives / null → undefined.
   const variables = isPlainObject(body.variables) ? body.variables : undefined;
@@ -213,7 +231,9 @@ function parseRenderOverrides(body: Record<string, unknown>): {
   const outputResolutionAspectAgnostic = outputResolution
     ? isAspectAgnosticResolutionAlias(rawOutputResolution)
     : undefined;
-  return { variables, outputResolution, outputResolutionAspectAgnostic };
+  const outputSize = parseDimensionSize(body.outputSize);
+  const captureSize = parseDimensionSize(body.captureSize);
+  return { variables, outputResolution, outputResolutionAspectAgnostic, outputSize, captureSize };
 }
 
 /**
@@ -234,6 +254,8 @@ function buildRenderJobConfig(input: RenderInput, log: ProducerLogger) {
     variables: input.variables,
     outputResolution: input.outputResolution,
     outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
+    outputSize: input.outputSize,
+    captureSize: input.captureSize,
     videoFrameFormat: input.videoFrameFormat,
     logger: log,
   };
@@ -265,6 +287,14 @@ function resolvePreparedRenderOutput(
 function validateRenderOverrides(body: Record<string, unknown>): string | undefined {
   if (body.variables !== undefined && !isPlainObject(body.variables)) {
     return 'variables must be a JSON object keyed by variable id (e.g. {"title":"Hello"})';
+  }
+  if (body.outputSize !== undefined) {
+    const valid = parseDimensionSize(body.outputSize) !== undefined;
+    if (!valid) return 'outputSize must be an object like {"width":1280,"height":720}';
+  }
+  if (body.captureSize !== undefined) {
+    const valid = parseDimensionSize(body.captureSize) !== undefined;
+    if (!valid) return 'captureSize must be an object like {"width":1280,"height":720}';
   }
   return validateOutputResolutionOverride(body);
 }

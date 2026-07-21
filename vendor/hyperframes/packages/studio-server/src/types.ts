@@ -149,6 +149,10 @@ export interface StudioApiAdapter {
      * the producer for the integer-scale + aspect + HDR constraints.
      */
     outputResolution?: CanvasResolution;
+    /** Optional final encoded dimensions. Captured frames remain at composition resolution unless captureSize is also set. */
+    outputSize?: { width: number; height: number };
+    /** Optional capture viewport dimensions for draft/preview renders. */
+    captureSize?: { width: number; height: number };
     /** Entry file relative to projectDir (e.g. "compositions/intro.html"). Defaults to index.html. */
     composition?: string;
     /**

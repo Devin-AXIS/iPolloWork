@@ -12,6 +12,7 @@ export interface RenderJob {
   filename: string;
   createdAt: number;
   durationMs?: number;
+  perfSummary?: unknown;
 }
 
 // Mirrors `CanvasResolution` from @hyperframes/core. Kept local because
@@ -26,12 +27,19 @@ export type ResolutionPreset =
   | "square"
   | "square-4k";
 
+export interface OutputSize {
+  width: number;
+  height: number;
+}
+
 export interface StartRenderOptions {
   fps?: number;
   quality?: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
   /** `"auto"` (default) renders at the composition's authored dimensions. */
   resolution?: ResolutionPreset | "auto";
+  outputSize?: OutputSize;
+  captureSize?: OutputSize;
   /** Render a specific composition file instead of index.html. */
   composition?: string;
   /**
@@ -121,6 +129,7 @@ export function useRenderQueue(projectId: string | null) {
                 size: number;
                 status?: string;
                 durationMs?: number;
+                perfSummary?: unknown;
               }) => ({
                 id: r.id,
                 status: (r.status === "failed" ? "failed" : "complete") as "complete" | "failed",
@@ -128,6 +137,7 @@ export function useRenderQueue(projectId: string | null) {
                 filename: r.filename,
                 createdAt: r.createdAt,
                 durationMs: r.durationMs,
+                perfSummary: r.perfSummary,
               }),
             );
           return [...prev, ...fromServer];
@@ -149,8 +159,8 @@ export function useRenderQueue(projectId: string | null) {
     async (opts: StartRenderOptions = {}) => {
       if (!projectId) return;
 
-      const fps = opts.fps ?? 30;
-      const quality = opts.quality ?? "standard";
+      const fps = opts.fps ?? 15;
+      const quality = opts.quality ?? "draft";
       const format = opts.format ?? "mp4";
       const resolution = opts.resolution;
       const composition = opts.composition;
@@ -172,6 +182,8 @@ export function useRenderQueue(projectId: string | null) {
         quality: string;
         format: string;
         resolution?: string;
+        outputSize?: OutputSize;
+        captureSize?: OutputSize;
         composition?: string;
         variables?: Record<string, unknown>;
         telemetryDistinctId: string;
@@ -185,6 +197,8 @@ export function useRenderQueue(projectId: string | null) {
         telemetryDistinctId: getAnonymousId(),
       };
       if (resolution && resolution !== "auto") body.resolution = resolution;
+      if (opts.outputSize) body.outputSize = opts.outputSize;
+      if (opts.captureSize) body.captureSize = opts.captureSize;
       if (composition) body.composition = composition;
       if (opts.variables && Object.keys(opts.variables).length > 0) {
         body.variables = opts.variables;

@@ -21,8 +21,6 @@ const SHORTCUT_SECTIONS = [
     hints: [
       { key: "K", label: "Add keyframe at playhead" },
       { key: "Del", label: "Delete selected keyframe" },
-      { key: "H", label: "Toggle hold / bezier" },
-      { key: "U", label: "Expand / collapse properties" },
       { key: "R", label: "Record gesture" },
     ],
   },
@@ -47,8 +45,6 @@ const SHORTCUT_SECTIONS = [
       { key: "Scroll", label: "Record z depth" },
       { key: "Shift+Drag", label: "Record rotationX / rotationY" },
       { key: "Alt+Drag", label: "Record rotation" },
-      { key: "Alt+Drag Right", label: "Record opacity" },
-      { key: "Alt+Scroll", label: "Record scale" },
     ],
   },
   {
@@ -56,7 +52,6 @@ const SHORTCUT_SECTIONS = [
     hints: [
       { key: "Drag", label: "Move element / add keyframe" },
       { key: "Alt+Drag", label: "Move entire animation path" },
-      { key: "Shift+Drag", label: "Uniform resize" },
     ],
   },
   {

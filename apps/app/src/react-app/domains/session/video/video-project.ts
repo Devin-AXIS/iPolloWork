@@ -16,6 +16,7 @@ export function hyperframesStudioUrl(
   projectId = "video",
   locale?: string,
   theme?: "light" | "dark",
+  reloadToken?: number,
 ) {
   // Start on a deterministic, hydrated main-composition frame. HyperFrames can
   // otherwise restore a panel/playhead state before its preview has mounted,
@@ -30,6 +31,7 @@ export function hyperframesStudioUrl(
   });
   if (locale) params.set("locale", locale);
   if (theme) params.set("ipolloworkTheme", theme);
+  if (reloadToken != null) params.set("reload", String(reloadToken));
   return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?${params.toString()}`;
 }
 

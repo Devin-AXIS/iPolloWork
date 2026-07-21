@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Film, Loader2, Play, Plus, RefreshCw, X } from "lucide-react";
+import { AudioLines, Film, Loader2, Plus, RefreshCw, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
@@ -58,6 +58,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const localeSyncTimersRef = React.useRef<number[]>([]);
   const [revision, setRevision] = React.useState(0);
+  const [reloadToken, setReloadToken] = React.useState(0);
   const [startAttempt, setStartAttempt] = React.useState(0);
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
   const [startupStage, setStartupStage] = React.useState<StudioStartupStage>("starting-service");
@@ -65,7 +66,6 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [voicePanelOpen, setVoicePanelOpen] = React.useState(false);
-  const [voicePreviewRequest, setVoicePreviewRequest] = React.useState(0);
   const studioPort = hyperframesStudioPort(sessionId);
   const [activeStudioPort, setActiveStudioPort] = React.useState(studioPort);
   const resolvedTheme = React.useSyncExternalStore(
@@ -79,6 +79,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     videoProjectId(sessionId),
     currentLocale(),
     initialStudioThemeRef.current,
+    reloadToken,
   );
   const projectDirectory = videoProjectDirectory(sessionId);
 
@@ -203,12 +204,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
           <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => setVoicePanelOpen((open) => !open)} disabled={isRemoteWorkspace} aria-label="Voice settings"><AudioLines /></Button>} />
           <TooltipContent>Voice settings</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="xs" onClick={() => { setVoicePanelOpen(true); setVoicePreviewRequest((value) => value + 1); }} disabled={isRemoteWorkspace} aria-label="Preview selected voice"><Play />Preview</Button>} />
-          <TooltipContent>Preview selected voice</TooltipContent>
-        </Tooltip>
-
-              <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setStartupStage("loading-frame"); setDetail("Reloading Studio..."); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
+              <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setStartupStage("loading-frame"); setDetail("Reloading Studio..."); setReloadToken(Date.now()); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
               {launcherItems.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -259,7 +255,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             </div>
           ) : null}
           {status === "failed" ? <div className="absolute inset-0 z-20 grid place-items-center bg-background p-6"><div className="max-w-md text-center"><p className="text-sm font-medium">HyperFrames Studio failed to start</p><p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{detail}</p><Button className="mt-4" variant="secondary" size="sm" onClick={() => { setStatus("starting"); setStartupStage("starting-service"); setDetail(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`); setStudioFrameLoaded(false); setStudioChromeReady(false); setStartAttempt((value) => value + 1); }}>Retry</Button></div></div> : null}
-          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
+          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" allow="fullscreen" allowFullScreen className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
             setStudioFrameLoaded(true);
             setStudioChromeReady(true);
             scheduleStudioLocaleSync();
@@ -273,7 +269,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             workspaceRoot={workspaceRoot}
             client={client}
             workspaceId={workspaceId}
-            previewRequest={voicePreviewRequest}
+            previewRequest={0}
             onClose={() => setVoicePanelOpen(false)}
           /> : null}
         </div>

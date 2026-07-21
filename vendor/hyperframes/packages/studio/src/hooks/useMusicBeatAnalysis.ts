@@ -52,17 +52,6 @@ async function resolveBeats(
   return { ...detected, hasFile: false };
 }
 
-/** True when the beats file for a track exists and holds at least one beat. */
-async function readHasSavedBeats(io: ProjectIo, beatPath: string): Promise<boolean> {
-  try {
-    const content = await io.readOptionalProjectFile(beatPath);
-    const parsed = content ? parseBeats(content) : null;
-    return !!(parsed && parsed.times.length > 0);
-  } catch {
-    return false;
-  }
-}
-
 type MusicAnalysis = Awaited<ReturnType<typeof analyzeMusicFromUrl>>;
 
 /**
@@ -109,11 +98,10 @@ export function useMusicBeatAnalysis(): void {
       ? { readOptionalProjectFile, writeProjectFile }
       : null;
 
-  const { musicSrc, isFallbackTrack } = useMemo(() => {
+  const { musicSrc } = useMemo(() => {
     const resolved = resolveBeatSourceTrack(elements);
     return {
       musicSrc: resolved?.element.src ?? null,
-      isFallbackTrack: resolved?.isFallback ?? false,
     };
   }, [elements]);
 
@@ -145,14 +133,6 @@ export function useMusicBeatAnalysis(): void {
     // always run analysis so the Beat tool becomes usable immediately.
     (async () => {
       if (!beatPath || !io) return;
-      if (!isFallbackTrack) {
-        const hasSavedBeats = await readHasSavedBeats(io, beatPath);
-        if (cancelled) return;
-        if (!hasSavedBeats) {
-          setBeatAnalysis(null);
-          return;
-        }
-      }
       if (cancelled) return;
 
       const result = await loadBeatAnalysis(musicSrc, beatPath, io);
@@ -174,7 +154,7 @@ export function useMusicBeatAnalysis(): void {
     return () => {
       cancelled = true;
     };
-  }, [musicSrc, isFallbackTrack, setBeatAnalysis, setBeatEdits, resetBeatHistory]);
+  }, [musicSrc, setBeatAnalysis, setBeatEdits, resetBeatHistory]);
 
   // ── Persist: register a debounced writer fired by every beat edit/undo/redo.
   //    Flushes any pending write on cleanup so the last edit is never lost. ──

@@ -112,7 +112,8 @@ function postPreviewControl(
 }
 
 export function shouldMutePreviewAudio(audioMuted: boolean, playbackRate: number): boolean {
-  return audioMuted || playbackRate > 1;
+  void playbackRate;
+  return audioMuted;
 }
 
 export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: boolean): void {
