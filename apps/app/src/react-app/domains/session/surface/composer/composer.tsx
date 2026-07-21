@@ -1661,7 +1661,13 @@ export function ReactSessionComposer(props: ComposerProps) {
                   disabled={props.busy}
                 />
                 {props.modelUnavailable ? (
-                  <span className="text-xs font-medium text-red-10">{t("composer.model_unavailable")}</span>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-red-10 underline-offset-2 hover:underline"
+                    onClick={() => props.onModelPickerOpenChange(true)}
+                  >
+                    {t("composer.model_unavailable")}
+                  </button>
                 ) : null}
 
                 <ModelBehaviorSelect

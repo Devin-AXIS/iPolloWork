@@ -117,12 +117,6 @@ if (existsSync(sidecarManifestPath)) {
   );
 }
 
-if (!process.env.SOURCE_DATE_EPOCH) {
-  addWarning(
-    "SOURCE_DATE_EPOCH is not set (sidecar manifests will include current time).",
-  );
-}
-
 const report = { ok, versions, checks, warnings };
 
 if (outputJson) {

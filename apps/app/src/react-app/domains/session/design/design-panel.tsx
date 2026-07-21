@@ -86,6 +86,7 @@ const PDF_SLIDE_HEIGHT = 900;
 const PDF_PAGE_WIDTH_MM = 297;
 const PDF_PAGE_HEIGHT_MM = 167.0625;
 const LOCAL_IMAGE_ACCEPT = "image/*";
+const DESIGN_INSPECTOR_WIDTHS = { compact: 256, wide: 384 } as const;
 
 const TYPE_PRESETS = [
   { label: "Display", sample: "Aa", styles: { fontSize: "48px", fontWeight: "700", lineHeight: "1.05", letterSpacing: "-0.025em" } },
@@ -306,6 +307,7 @@ export function DesignPanel({
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  const [advancedInspectorWidth, setAdvancedInspectorWidth] = React.useState<keyof typeof DESIGN_INSPECTOR_WIDTHS>("compact");
   const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
@@ -542,6 +544,10 @@ export function DesignPanel({
 
   const exportDeckToPdf = React.useCallback(async () => {
     if (!deck || exportingPdf) return;
+    if (!previewLoaded) {
+      toast.warning("Preview is still preparing. Try exporting again when it finishes loading.");
+      return;
+    }
     setExportingPdf(true);
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
@@ -615,10 +621,14 @@ export function DesignPanel({
       frame.remove();
       setExportingPdf(false);
     }
-  }, [activePagePath, deck, editing, exportingPdf, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data]);
+  }, [activePagePath, deck, editing, exportingPdf, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data]);
 
   const exportDeckToPptx = React.useCallback(async () => {
     if (!deck || exportingPptx) return;
+    if (!previewLoaded) {
+      toast.warning("Preview is still preparing. Try exporting again when it finishes loading.");
+      return;
+    }
     setExportingPptx(true);
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
@@ -807,7 +817,7 @@ export function DesignPanel({
       frame.remove();
       setExportingPptx(false);
     }
-  }, [activePagePath, deck, editing, exportingPptx, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx]);
+  }, [activePagePath, deck, editing, exportingPptx, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1214,6 +1224,8 @@ export function DesignPanel({
                 <DesignExportMenu
                   exportingPdf={exportingPdf}
                   exportingPptx={exportingPptx}
+                  exportReady={previewLoaded}
+                  exportDisabledReason="Preview is still preparing."
                   onExportPdf={() => void exportDeckToPdf()}
                   onExportPptx={() => setPptxConfirmationOpen(true)}
                 />
@@ -1426,7 +1438,11 @@ export function DesignPanel({
                 }}
               />
               {editing && advancedOpen ? (
-                <aside className="w-64 shrink-0 overflow-y-auto border-l border-[#EAEAEA] bg-background [border-left-width:0.5px]" aria-label="Design inspector">
+                <aside
+                  className="shrink-0 overflow-y-auto border-l border-[#EAEAEA] bg-background [border-left-width:0.5px]"
+                  style={{ width: DESIGN_INSPECTOR_WIDTHS[advancedInspectorWidth] }}
+                  aria-label="Design inspector"
+                >
                   {selection ? (
                     <div className="space-y-1 p-2">
                       <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[#EAEAEA] bg-background/95 px-1 py-2 [border-bottom-width:0.5px] backdrop-blur-xl">
@@ -1435,6 +1451,15 @@ export function DesignPanel({
                           <p className="text-xs font-semibold">Design properties</p>
                           <p className="truncate text-[10px] text-muted-foreground">{selection.tag.toUpperCase()} · element {selection.id}</p>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => setAdvancedInspectorWidth((current) => current === "compact" ? "wide" : "compact")}
+                          aria-label={advancedInspectorWidth === "compact" ? "Widen design inspector" : "Narrow design inspector"}
+                          title={advancedInspectorWidth === "compact" ? "Widen inspector" : "Narrow inspector"}
+                        >
+                          {advancedInspectorWidth === "compact" ? <ChevronLeft /> : <ChevronRight />}
+                        </Button>
                         <Button variant="ghost" size="icon-xs" onClick={() => setAdvancedOpen(false)} aria-label="Close advanced design settings"><X /></Button>
                       </div>
 

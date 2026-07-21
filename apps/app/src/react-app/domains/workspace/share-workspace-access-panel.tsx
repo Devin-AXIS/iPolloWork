@@ -37,6 +37,7 @@ type CredentialFieldProps = {
   field: ShareField;
   fieldKey: string;
   copiedKey: string | null;
+  copyErrorKey: string | null;
   revealedByKey: Record<string, boolean>;
   onCopy: (value: string, key: string) => void;
   onToggleReveal: (key: string) => void;
@@ -86,6 +87,11 @@ function CredentialField(props: CredentialFieldProps) {
       {props.field.hint?.trim() ? (
         <p className="mt-1.5 text-[12px] text-dls-secondary">{props.field.hint}</p>
       ) : null}
+      {props.copyErrorKey === props.fieldKey ? (
+        <p className="mt-1.5 text-[12px] font-medium text-red-10">
+          Copy failed. Select the value and copy it manually.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -93,6 +99,7 @@ function CredentialField(props: CredentialFieldProps) {
 export type ShareWorkspaceAccessPanelProps = {
   fields: ShareField[];
   copiedKey: string | null;
+  copyErrorKey: string | null;
   onCopy: (value: string, key: string) => void;
   revealedByKey: Record<string, boolean>;
   onToggleReveal: (key: string) => void;
@@ -219,6 +226,7 @@ export function ShareWorkspaceAccessPanel(
                   field={field}
                   fieldKey={`primary:${field.label}`}
                   copiedKey={props.copiedKey}
+                  copyErrorKey={props.copyErrorKey}
                   revealedByKey={props.revealedByKey}
                   onCopy={props.onCopy}
                   onToggleReveal={props.onToggleReveal}
@@ -261,6 +269,7 @@ export function ShareWorkspaceAccessPanel(
                 field={collaboratorField}
                 fieldKey={`collaborator:${collaboratorField.label}`}
                 copiedKey={props.copiedKey}
+                copyErrorKey={props.copyErrorKey}
                 revealedByKey={props.revealedByKey}
                 onCopy={props.onCopy}
                 onToggleReveal={props.onToggleReveal}

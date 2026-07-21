@@ -882,7 +882,25 @@ export function SessionRoute() {
           setProviderStepOpen(true);
           return;
         }
-        if (selectedModelUnavailable) throw new Error("Selected model is unavailable. Choose another model before sending.");
+        if (selectedModelUnavailable) {
+          toast.error("Selected model is unavailable.", {
+            description: "Choose another model before sending.",
+            action: {
+              label: "Choose model",
+              onClick: () => {
+                modelPicker.setQuery("");
+                modelPicker.setCompactOpen(true);
+              },
+            },
+            cancel: {
+              label: "Configure",
+              onClick: () => {
+                void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
+              },
+            },
+          });
+          return;
+        }
 
         captureAnalyticsEvent("task_message_sent", {
           mode: draft.mode ?? "prompt",
