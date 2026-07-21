@@ -5,7 +5,6 @@
 
 export default {
   "design.export.download": "Download",
-  "design.export.download_html": "Download HTML",
   "design.export.download_pdf": "Download PDF",
   "design.export.download_pptx": "Download PPTX",
   "app.compact_command_desc": "Summarize this session to reduce context size.",

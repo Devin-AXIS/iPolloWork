@@ -76,7 +76,6 @@
     "marked-emoji": "^2.0.3",
     "marked-shiki": "^1.2.1",
     "motion": "^12.38.0",
-    "pptxgenjs": "3.12.0",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-markdown": "^10.1.0",
