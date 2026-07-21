@@ -16,6 +16,8 @@
   details summary { cursor:pointer; list-style:none; }
   .card-rise { transition:transform 0.25s ease, box-shadow 0.25s ease; }
   .card-rise:hover { transform:translateY(-4px); box-shadow:0 30px 60px -30px rgba(21,20,15,0.2); }
+  .demo-play { border:0; background:transparent; color:white; cursor:pointer; }
+  .action-status { min-height:24px; margin:16px auto 0; text-align:center; color:#c96442; font-weight:600; }
   .mobile-nav-toggle { display:none; position:relative; width:42px; height:42px; flex:0 0 42px; border:1px solid #e7e5e0; border-radius:12px; background:rgba(255,255,255,.82); color:#15140f; }
   .mobile-nav-toggle span, .mobile-nav-toggle::before, .mobile-nav-toggle::after { content:""; position:absolute; left:12px; width:16px; height:1.5px; border-radius:2px; background:currentColor; transition:top .2s ease, transform .2s ease, opacity .2s ease; }
   .mobile-nav-toggle::before { top:13px; }
@@ -49,7 +51,7 @@
 
 <nav class="sticky top-0 z-30 glass">
   <div class="nav-inner max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-    <a href="#" class="flex items-center gap-2.5 font-bold tracking-tight">
+    <a href="#top" class="flex items-center gap-2.5 font-bold tracking-tight">
       <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#c96442] to-[#e9b94a] grid place-items-center text-white font-black">Ⅰ</div>
       <span>Inkstack</span>
     </a>
@@ -61,14 +63,14 @@
       <a href="#cta" class="hover:text-[#15140f] md:hidden">Contact</a>
     </div>
     <div class="flex items-center gap-2">
-      <a href="#" class="hidden sm:inline text-sm font-medium text-[#5a564e] hover:text-[#15140f] px-3 py-2">About</a>
+      <a href="#features" class="hidden sm:inline text-sm font-medium text-[#5a564e] hover:text-[#15140f] px-3 py-2">About</a>
       <a href="#cta" class="text-sm font-semibold bg-[#15140f] text-white px-4 py-2 rounded-full hover:bg-[#2a2620] transition-colors">Contact</a>
       <button class="mobile-nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"><span></span></button>
     </div>
   </div>
 </nav>
 
-<section class="gradient-bg pt-24 pb-32 px-6">
+<section id="top" class="gradient-bg pt-24 pb-32 px-6">
   <div class="max-w-5xl mx-auto text-center">
     <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/70 border border-[#e7e5e0] text-xs font-medium text-[#5a564e] mb-7">
       <span class="w-1.5 h-1.5 rounded-full bg-[#c96442]"></span>
@@ -92,15 +94,16 @@
       <div class="rounded-2xl bg-white shadow-[0_50px_100px_-30px_rgba(21,20,15,0.25)] border border-[#e7e5e0] p-2">
         <div class="rounded-xl bg-[#15140f] aspect-video grid place-items-center relative overflow-hidden">
           <div class="absolute inset-0 opacity-20" style="background-image:linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px); background-size:32px 32px;"></div>
-          <div class="text-center relative z-10">
-            <div class="text-7xl mb-3">▶</div>
-            <div class="text-white/60 text-sm">A clearer way to move forward</div>
-          </div>
+          <button type="button" class="demo-play text-center relative z-10" data-ipw-action-message="Demo only — no video is connected yet. Add your product video before publishing.">
+            <span class="block text-7xl mb-3" aria-hidden="true">▶</span>
+            <span class="block text-white/60 text-sm">Play: A clearer way to move forward</span>
+          </button>
         </div>
       </div>
     </div>
   </div>
 </section>
+<p class="action-status" data-ipw-action-status role="status" aria-live="polite"></p>
 
 <section id="features" class="py-24 px-6">
   <div class="max-w-6xl mx-auto">
@@ -209,7 +212,7 @@
         <ul class="space-y-2 text-sm text-[#262421] mb-6">
           <li>Customers</li><li>About</li><li>Contact</li>
         </ul>
-        <button class="w-full py-2.5 rounded-full border border-[#15140f]/15 hover:border-[#15140f]/40 font-medium text-sm">Get started</button>
+        <a href="#cta" class="block w-full py-2.5 rounded-full border border-[#15140f]/15 hover:border-[#15140f]/40 font-medium text-sm text-center">Get started</a>
       </div>
       <div class="p-8 rounded-2xl bg-[#15140f] text-white border border-[#15140f] ring-2 ring-[#c96442]/30 relative">
         <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-[#c96442] text-white text-[10px] font-bold tracking-wider">Learn more</div>
@@ -219,7 +222,7 @@
         <ul class="space-y-2 text-sm opacity-90 mb-6">
           <li>Product</li><li>Solutions</li><li>Customers</li>
         </ul>
-        <button class="w-full py-2.5 rounded-full bg-[#c96442] hover:bg-[#b25737] font-semibold text-sm">About</button>
+        <a href="#features" class="block w-full py-2.5 rounded-full bg-[#c96442] hover:bg-[#b25737] font-semibold text-sm text-center">About</a>
       </div>
       <div class="p-8 rounded-2xl bg-white border border-[#e7e5e0]">
         <div class="text-sm font-semibold text-[#5a564e] mb-2">Team</div>
@@ -228,7 +231,7 @@
         <ul class="space-y-2 text-sm text-[#262421] mb-6">
           <li>Learn more</li><li>Home</li><li>Product</li>
         </ul>
-        <button class="w-full py-2.5 rounded-full border border-[#15140f]/15 hover:border-[#15140f]/40 font-medium text-sm">Solutions</button>
+        <a href="#voices" class="block w-full py-2.5 rounded-full border border-[#15140f]/15 hover:border-[#15140f]/40 font-medium text-sm text-center">Solutions</a>
       </div>
     </div>
   </div>
@@ -237,7 +240,7 @@
 <section id="cta" class="py-32 px-6 text-center">
   <h2 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-5">Everything you need to grow</h2>
   <p class="text-lg text-[#5a564e] mb-8">Build what matters.</p>
-  <a href="#" class="inline-flex items-center gap-2 bg-[#c96442] text-white font-semibold px-7 py-3.5 rounded-full hover:bg-[#b25737] transition-colors shadow-[0_14px_32px_-16px_rgba(201,100,66,0.85)]">
+  <a href="#pricing" class="inline-flex items-center gap-2 bg-[#c96442] text-white font-semibold px-7 py-3.5 rounded-full hover:bg-[#b25737] transition-colors shadow-[0_14px_32px_-16px_rgba(201,100,66,0.85)]">
     Customers
   </a>
 </section>
@@ -250,9 +253,9 @@
       <span class="opacity-50">© 2026</span>
     </div>
     <div class="flex gap-5">
-      <a href="#" class="hover:text-[#15140f]">About</a>
-      <a href="#" class="hover:text-[#15140f]">Contact</a>
-      <a href="#" class="hover:text-[#15140f]">Get started</a>
+      <a href="#features" class="hover:text-[#15140f]">About</a>
+      <a href="#voices" class="hover:text-[#15140f]">Contact</a>
+      <a href="#cta" class="hover:text-[#15140f]">Get started</a>
     </div>
   </div>
 </footer>
@@ -271,6 +274,10 @@
     nav.querySelectorAll('.mobile-menu a').forEach((item) => item.addEventListener('click', () => setOpen(false)));
     document.addEventListener('click', (event) => { if (!nav.contains(event.target)) setOpen(false); });
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
+    const status = document.querySelector('[data-ipw-action-status]');
+    document.querySelectorAll('[data-ipw-action-message]').forEach((button) => {
+      button.addEventListener('click', () => { if (status) status.textContent = button.dataset.ipwActionMessage || ''; });
+    });
   })();
 </script>
 
