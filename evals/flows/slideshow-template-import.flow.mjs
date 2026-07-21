@@ -290,6 +290,13 @@ export default {
             await dismissToasts(ctx);
             await installSelectedPackage(ctx, `fraimz-invalid-deck-${runKey}.ipwt`);
             await ctx.waitForText("The .ipwt file is not a valid ZIP archive", { timeoutMs: 20_000 });
+            await ctx.waitFor(`(() => {
+              const filename = ${JSON.stringify(`fraimz-invalid-deck-${runKey}.ipwt`)};
+              const buttons = [...document.querySelectorAll("button")];
+              const retry = buttons.find((button) => (button.textContent || "").trim() === "Install" && (button.parentElement?.textContent || "").includes(filename));
+              const cancel = buttons.find((button) => (button.textContent || "").trim() === "Cancel");
+              return Boolean(retry && !retry.disabled && cancel && !cancel.disabled);
+            })()`, { timeoutMs: 10_000, label: "enabled retry controls" });
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
