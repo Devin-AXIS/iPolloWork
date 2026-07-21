@@ -1262,12 +1262,16 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       requestJson<{ items: TemplateCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates`, { token, hostToken }),
     installTemplate: (workspaceId: string, templateId: string) =>
       requestJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/install`, { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceImport }),
-    importTemplate: (workspaceId: string, file: File, category: TemplateCategory) =>
+    importTemplate: (workspaceId: string, file: File, category?: TemplateCategory) =>
       requestRawJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/import`, {
         token,
         hostToken,
         body: file,
-        headers: { "Content-Type": "application/vnd.ipollowork-template+zip", "X-iPolloWork-Filename": encodeURIComponent(file.name), "X-iPolloWork-Template-Category": category },
+        headers: {
+          "Content-Type": "application/vnd.ipollowork-template+zip",
+          "X-iPolloWork-Filename": encodeURIComponent(file.name),
+          ...(category ? { "X-iPolloWork-Template-Category": category } : {}),
+        },
         timeoutMs: timeouts.workspaceImport,
       }),
     saveTemplateFromSession: (workspaceId: string, input: { sessionId: string; category: TemplateManifestV1["category"]; title: string; description?: string; subcategory?: string; style?: TemplateManifestV1["style"]; tags?: string[] }) =>
