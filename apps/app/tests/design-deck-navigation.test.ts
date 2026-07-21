@@ -23,6 +23,15 @@ describe("Design deck navigation", () => {
 
     expect(source).toContain("h-[900px] w-[1600px] origin-center");
     expect(source).toContain("presentationCanvasScale(previewViewport.width, previewViewport.height)");
+    expect(source).toContain("[isPresentationTemplate, sourceHydrated]");
     expect(source).toContain("!isPresentationTemplate ? (");
+  });
+
+  test("renders the export menu independently from detected deck state", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("isPresentation={isPresentationTemplate}");
+    expect(source).toMatch(/<div className="ml-auto">\s*<DesignExportMenu/);
+    expect(source).not.toMatch(/\{deck \? \(\s*<div className="ml-auto">\s*<DesignExportMenu/);
   });
 });

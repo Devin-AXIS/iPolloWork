@@ -5,6 +5,7 @@
 
 export default {
   "design.export.download": "Tải xuống",
+  "design.export.download_html": "Tải xuống HTML",
   "design.export.download_pdf": "Tải xuống PDF",
   "design.export.download_pptx": "Tải xuống PPTX",
   "new_conversation.mode_label": "Chọn trọng tâm cuộc trò chuyện",

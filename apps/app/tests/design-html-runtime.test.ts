@@ -43,6 +43,8 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('data-handle="se"');
     expect(preview).toContain('prepareTransform(selected, handle === "move" ? "move" : "resize"');
     expect(preview).toContain('selected.style.width = `${width}px`');
+    expect(preview).toContain('selected.style.maxWidth = "none"');
+    expect(preview).toContain('selected.style.maxHeight = "none"');
   });
 
   test("keeps a dormant editor bridge and deck adapter in the same preview document", () => {
@@ -62,6 +64,30 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('const slideWrappers = slides.map((slide) => slide.closest(".slide-wrap"))');
     expect(preview).toContain('const wrapperIndex = slideWrappers.findIndex((wrapper) => wrapper && !wrapper.classList.contains("hidden")');
     expect(preview).toContain("event.stopImmediatePropagation();");
+    expect(preview).toContain("data-ipollowork-design-deck-original-state");
+    expect(preview).toContain('rememberAttributes(slide, ["class", "data-ipw-slide", "aria-hidden"], originalAttributes("slides", index))');
+    expect(preview).toContain('originalAttributes("wrappers", index)');
+  });
+
+  test("keeps presentation pagination out of non-editor documents", () => {
+    const source = "<!doctype html><html><body><section class=\"slide\" aria-hidden=\"keep\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
+    const rendered = buildDesignPreviewDocument(source, false, "", false, false, true);
+
+    expect(rendered).toContain('<section class="slide" aria-hidden="keep">');
+    expect(rendered).not.toContain('id="ipollowork-design-deck-runtime"');
+    expect(rendered).not.toContain("ipollowork-design-deck-runtime-style");
+    expect(rendered).not.toContain("data-ipollowork-design-deck-original-state");
+  });
+
+  test("restores pagination attributes and removes editor artifacts during serialization", () => {
+    const source = "<!doctype html><html><body><section class=\"slide\"><h1>One</h1></section></body></html>";
+    const preview = buildDesignPreviewDocument(source, true, "", false, false, true);
+
+    expect(preview).toContain('clone.querySelector("#ipollowork-design-deck-runtime-style")?.remove()');
+    expect(preview).toContain("element.setAttribute(name, value)");
+    expect(preview).toContain("element.removeAttribute(name)");
+    expect(preview).toContain("element.removeAttribute(deckStateAttribute)");
+    expect(preview).not.toContain("clone.querySelectorAll(\"script,[data-ipw-notes]");
   });
 
   test("treats a one-page canvas as a presentation so it can be exported", () => {

@@ -1118,10 +1118,9 @@ export function SessionPage(props: SessionPageProps) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>iPolloWork Slide Editing Demo</title>
     <style>
-      body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #111827; color: #f8fafc; }
-      main { width: min(760px, calc(100% - 48px)); }
-      .slide { display: none; min-height: 390px; padding: 52px; border-radius: 28px; background: linear-gradient(135deg, #312e81, #0f172a); box-sizing: border-box; }
-      .slide.is-active { display: block; }
+      body { margin: 0; min-height: 100vh; font-family: system-ui, sans-serif; background: #111827; color: #f8fafc; }
+      main { display: grid; width: min(960px, calc(100% - 48px)); margin: 40px auto; gap: 32px; }
+      .slide { display: block; min-height: 540px; padding: 52px; aspect-ratio: 16 / 9; border-radius: 28px; background: linear-gradient(135deg, #312e81, #0f172a); box-sizing: border-box; }
       .eyebrow { color: #c4b5fd; font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
       h1 { max-width: 620px; margin: 72px 0 16px; font-size: 54px; line-height: 1.02; letter-spacing: -.04em; }
       p { max-width: 560px; color: #cbd5e1; font-size: 19px; line-height: 1.6; }

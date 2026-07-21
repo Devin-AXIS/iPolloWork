@@ -1,5 +1,42 @@
 export const DESIGN_MESSAGE_CHANNEL = "ipollowork-design-html-v1";
 
+const DESIGN_DECK_STATE_ATTRIBUTE = "data-ipollowork-design-deck-original-state";
+const DESIGN_SLIDE_SELECTOR = "[data-ipw-slide],section.slide,.slide,.slide-frame";
+
+type DesignAttributeState = {
+  name: string;
+  present: boolean;
+  value: string;
+};
+
+type DesignDeckOriginalState = {
+  slides: DesignAttributeState[][];
+  wrappers: Array<DesignAttributeState[] | null>;
+};
+
+function readOriginalDeckState(source: string): DesignDeckOriginalState | null {
+  if (typeof DOMParser === "undefined") return null;
+  const parsed = new DOMParser().parseFromString(source, "text/html");
+  const slides = Array.from(parsed.querySelectorAll<HTMLElement>(DESIGN_SLIDE_SELECTOR))
+    .filter((element, index, list) => list.indexOf(element) === index);
+  const readAttributes = (element: HTMLElement, names: readonly string[]) => names.map((name) => ({
+    name,
+    present: element.hasAttribute(name),
+    value: element.getAttribute(name) ?? "",
+  }));
+  return {
+    slides: slides.map((slide) => readAttributes(slide, ["class", "data-ipw-slide", "aria-hidden"])),
+    wrappers: slides.map((slide) => {
+      const wrapper = slide.closest<HTMLElement>(".slide-wrap");
+      return wrapper ? readAttributes(wrapper, ["class"]) : null;
+    }),
+  };
+}
+
+function runtimeJson(value: unknown) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
 export const DESIGN_STYLE_FIELDS = [
   "color",
   "backgroundColor",
@@ -91,18 +128,19 @@ export function buildDesignPreviewDocument(
   fixedSlideStage = false,
   isPresentationTemplate = fixedSlideStage,
 ) {
+  const originalDeckState = isPresentationTemplate && includeEditor ? readOriginalDeckState(source) : null;
   const tokenStyle = templateTokenCss.trim()
     ? `<style id="ipollowork-design-template-token-style">${templateTokenCss.replace(/<\/style/gi, "<\\/style")}</style>`
     : "";
   const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"});<\/script>`;
-  const deckRuntime = isPresentationTemplate
-    ? `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${fixedSlideStage ? "true" : "false"});<\/script>`
+  const deckRuntime = isPresentationTemplate && includeEditor
+    ? `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${fixedSlideStage ? "true" : "false"},${JSON.stringify(DESIGN_DECK_STATE_ATTRIBUTE)},${runtimeJson(originalDeckState)});<\/script>`
     : "";
   const fixedSlideRuntime = fixedSlideStage
     ? `<script id="ipollowork-design-fixed-slide-runtime">(${designFixedSlideRuntime.toString()})();<\/script>`
     : "";
   const editingRuntime = includeEditor
-    ? `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"});<\/script>`
+    ? `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${JSON.stringify(DESIGN_DECK_STATE_ATTRIBUTE)});<\/script>`
     : "";
   const runtime = `${tokenStyle}${navigationRuntime}${deckRuntime}${fixedSlideRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
@@ -220,23 +258,42 @@ function designNavigationRuntime(channel: string, editing: boolean) {
   });
 }
 
-function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
-  const slideSelector = "[data-ipw-slide],section.slide,.slide,.slide-frame";
-  const slides = Array.from(document.querySelectorAll<HTMLElement>(slideSelector))
+function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, originalStateAttribute: string, originalState: unknown) {
+  const slides = Array.from(document.querySelectorAll<HTMLElement>("[data-ipw-slide],section.slide,.slide,.slide-frame"))
     .filter((element, index, list) => list.indexOf(element) === index);
   if (!slides.length) return;
-
-  slides.forEach((slide, index) => {
-    if (!slide.hasAttribute("data-ipw-slide")) slide.setAttribute("data-ipw-slide", String(index + 1));
-  });
   const slideWrappers = slides.map((slide) => slide.closest<HTMLElement>(".slide-wrap"));
   const usesSlideWrappers = slideWrappers.every(Boolean);
+
+  const originalAttributes = (collection: "slides" | "wrappers", index: number) => {
+    if (!originalState || typeof originalState !== "object") return null;
+    const states = Reflect.get(originalState, collection);
+    return Array.isArray(states) && Array.isArray(states[index]) ? states[index] : null;
+  };
+  const rememberAttributes = (element: HTMLElement, names: readonly string[], sourceState: unknown[] | null) => {
+    if (element.hasAttribute(originalStateAttribute)) return;
+    const state = sourceState ?? names.map((name) => ({
+      name,
+      present: element.hasAttribute(name),
+      value: element.getAttribute(name) ?? "",
+    }));
+    element.setAttribute(originalStateAttribute, JSON.stringify(state));
+  };
+
+  slides.forEach((slide, index) => {
+    rememberAttributes(slide, ["class", "data-ipw-slide", "aria-hidden"], originalAttributes("slides", index));
+    if (!slide.hasAttribute("data-ipw-slide")) slide.setAttribute("data-ipw-slide", String(index + 1));
+  });
+  slideWrappers.forEach((wrapper, index) => {
+    if (wrapper) rememberAttributes(wrapper, ["class"], originalAttributes("wrappers", index));
+  });
 
   // Some templates include a static, vertically stacked preview fallback.
   // The deck runtime owns aria-hidden so only the active page is laid out.
   const visibilityStyle = document.createElement("style");
   visibilityStyle.id = "ipollowork-design-deck-runtime-style";
   visibilityStyle.textContent = `
+    html, body { width: 100% !important; height: 100% !important; overflow: hidden !important; }
     [data-ipw-slide][aria-hidden="true"] { display: none !important; opacity: 0 !important; pointer-events: none !important; }
     [data-ipw-slide][aria-hidden="false"] { opacity: 1 !important; pointer-events: auto !important; }
   `;
@@ -374,7 +431,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
   report();
 }
 
-function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, strictPptx = false) {
+function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, deckStateAttribute: string) {
   const runtimeId = "ipollowork-design-runtime";
   const styleId = "ipollowork-design-runtime-style";
   const selectedAttribute = "data-ipollowork-design-selected";
@@ -457,12 +514,35 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     clone.querySelector(`#${runtimeId}`)?.remove();
     clone.querySelector("#ipollowork-design-navigation-runtime")?.remove();
     clone.querySelector("#ipollowork-design-deck-runtime")?.remove();
+    clone.querySelector("#ipollowork-design-deck-runtime-style")?.remove();
     clone.querySelector("#ipollowork-design-fixed-slide-runtime")?.remove();
     clone.querySelector("#ipollowork-design-fixed-slide-runtime-style")?.remove();
     clone.querySelector(`#${styleId}`)?.remove();
     clone.querySelector("#ipollowork-design-template-token-style")?.remove();
     clone.querySelector(`#${overlayId}`)?.remove();
     clone.querySelectorAll("[data-ipw-materialize-once]").forEach((element) => element.remove());
+    // Pagination is editor-only. Restore every slide and wrapper attribute to
+    // the value it had before the Design deck adapter touched the document.
+    clone.querySelectorAll(`[${deckStateAttribute}]`).forEach((element) => {
+      const serialized = element.getAttribute(deckStateAttribute);
+      try {
+        const entries: unknown = serialized ? JSON.parse(serialized) : null;
+        if (Array.isArray(entries)) {
+          entries.forEach((entry) => {
+            if (!entry || typeof entry !== "object") return;
+            const name = Reflect.get(entry, "name");
+            const present = Reflect.get(entry, "present");
+            const value = Reflect.get(entry, "value");
+            if (typeof name !== "string" || typeof present !== "boolean" || typeof value !== "string") return;
+            if (present) element.setAttribute(name, value);
+            else element.removeAttribute(name);
+          });
+        }
+      } catch {
+        // A malformed editor-only marker must never prevent saving user HTML.
+      }
+      element.removeAttribute(deckStateAttribute);
+    });
     clone.querySelectorAll(`[${textNodeAttribute}]`).forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
     clone.querySelectorAll(`[${idAttribute}]`).forEach((element) => element.removeAttribute(idAttribute));
     clone.querySelectorAll(`[${selectedAttribute}]`).forEach((element) => element.removeAttribute(selectedAttribute));
@@ -470,10 +550,6 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       element.removeAttribute(editingAttribute);
       element.removeAttribute("contenteditable");
     });
-    if (strictPptx) {
-      clone.querySelectorAll("script,[data-ipw-notes],.ipw-notes,.slide-counter,.controls,.deck-chrome,.deck-controls,.dots,.counter,[data-ipw-deck-control],[data-ipw-prev],[data-ipw-next],[data-action='prev'],[data-action='previous'],[data-action='next']")
-        .forEach((element) => element.remove());
-    }
     clone.removeAttribute(modeAttribute);
     const doctype = document.doctype
       ? `<!DOCTYPE ${document.doctype.name}${document.doctype.publicId ? ` PUBLIC \"${document.doctype.publicId}\"` : ""}${document.doctype.systemId ? ` \"${document.doctype.systemId}\"` : ""}>\n`
@@ -670,8 +746,16 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       }
       width = Math.max(12, width);
       height = Math.max(12, height);
-      selected.style.width = `${width}px`;
-      selected.style.height = `${height}px`;
+      if (west || east) {
+        selected.style.minWidth = "0";
+        selected.style.maxWidth = "none";
+        selected.style.width = `${width}px`;
+      }
+      if (north || south) {
+        selected.style.minHeight = "0";
+        selected.style.maxHeight = "none";
+        selected.style.height = `${height}px`;
+      }
       if (west) selected.style.left = `${transform.left + (transform.width - width)}px`;
       if (north) selected.style.top = `${transform.top + (transform.height - height)}px`;
     }

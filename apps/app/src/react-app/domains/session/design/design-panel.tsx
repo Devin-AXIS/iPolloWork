@@ -130,6 +130,11 @@ function fileName(path: string) {
   return path.split(/[\\/]/).pop() || path;
 }
 
+function htmlDownloadFileName(path: string) {
+  const name = fileName(path).trim() || "design.html";
+  return /\.html?$/i.test(name) ? name : `${name}.html`;
+}
+
 function directoryPath(path: string) {
   const boundary = path.lastIndexOf("/");
   return boundary < 0 ? "" : path.slice(0, boundary + 1);
@@ -311,6 +316,7 @@ export function DesignPanel({
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
+  const [exportingHtml, setExportingHtml] = React.useState(false);
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
@@ -359,7 +365,7 @@ export function DesignPanel({
 
   React.useEffect(() => {
     const viewport = previewViewportRef.current;
-    if (!viewport || !isPresentationTemplate) return;
+    if (!viewport || !isPresentationTemplate || !sourceHydrated) return;
     const sync = () => {
       const rect = viewport.getBoundingClientRect();
       setPreviewViewport({ width: rect.width, height: rect.height });
@@ -368,7 +374,7 @@ export function DesignPanel({
     const observer = new ResizeObserver(sync);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [isPresentationTemplate]);
+  }, [isPresentationTemplate, sourceHydrated]);
   const templateTokenPath = React.useMemo(() => {
     const tokenPath = designTemplate?.designSystem.tokens || linkedDesignTokenPath(fileQuery.data?.content) || "design-tokens.css";
     const briefPath = templateQuery.data?.state.briefPath;
@@ -544,8 +550,30 @@ export function DesignPanel({
     });
   }, [editing, quickEdit, selection]);
 
+  const exportDesignToHtml = React.useCallback(async () => {
+    if (!activePagePath || exportingHtml) return;
+    setExportingHtml(true);
+    try {
+      const content = editing ? await readLatestCanvasHtml() : draftRef.current;
+      const blobUrl = URL.createObjectURL(new Blob([content], { type: "text/html;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = htmlDownloadFileName(activePagePath);
+      link.hidden = true;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1_000);
+      toast.success("Design downloaded as HTML.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not download this design.");
+    } finally {
+      setExportingHtml(false);
+    }
+  }, [activePagePath, editing, exportingHtml, readLatestCanvasHtml]);
+
   const exportDeckToPdf = React.useCallback(async () => {
-    if (!deck || exportingPdf) return;
+    if (!isPresentationTemplate || exportingPdf) return;
     setExportingPdf(true);
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
@@ -622,10 +650,10 @@ export function DesignPanel({
       frame.remove();
       setExportingPdf(false);
     }
-  }, [activePagePath, deck, editing, exportingPdf, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data]);
+  }, [activePagePath, editing, exportingPdf, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data]);
 
   const exportDeckToPptx = React.useCallback(async () => {
-    if (!deck || exportingPptx) return;
+    if (!isPresentationTemplate || exportingPptx) return;
     setExportingPptx(true);
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
@@ -677,7 +705,7 @@ export function DesignPanel({
       const pptx = new PptxGenJS();
       pptx.layout = "LAYOUT_WIDE";
       pptx.author = "iPolloWork";
-      pptx.title = deck.title || "Presentation";
+      pptx.title = deck?.title || "Presentation";
       let nativeObjectCount = 0;
       let fallbackCount = 0;
       const capturePptxElement = async (element: HTMLElement, captureBackground = false) => {
@@ -821,7 +849,7 @@ export function DesignPanel({
       frame.remove();
       setExportingPptx(false);
     }
-  }, [activePagePath, deck, editing, exportingPptx, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx]);
+  }, [activePagePath, deck?.title, editing, exportingPptx, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1204,7 +1232,7 @@ export function DesignPanel({
               <Button
                 variant={designSystemOpen ? "secondary" : "ghost"}
                 size="icon-sm"
-                className={cn("rounded-lg", !deck && "ml-auto")}
+                className="rounded-lg"
                 onClick={() => {
                   setDesignSystemOpen((current) => !current);
                   setAdvancedOpen(false);
@@ -1256,16 +1284,17 @@ export function DesignPanel({
                 </ToggleGroupItem>
               </ToggleGroup>
             ) : null}
-            {deck ? (
-              <div className="ml-auto">
-                <DesignExportMenu
-                  exportingPdf={exportingPdf}
-                  exportingPptx={exportingPptx}
-                  onExportPdf={() => void exportDeckToPdf()}
-                  onExportPptx={() => setPptxConfirmationOpen(true)}
-                />
-              </div>
-            ) : null}
+            <div className="ml-auto">
+              <DesignExportMenu
+                exportingHtml={exportingHtml}
+                exportingPdf={exportingPdf}
+                exportingPptx={exportingPptx}
+                isPresentation={isPresentationTemplate}
+                onExportHtml={() => void exportDesignToHtml()}
+                onExportPdf={() => void exportDeckToPdf()}
+                onExportPptx={() => setPptxConfirmationOpen(true)}
+              />
+            </div>
           </div>
 
           {fileQuery.isLoading || !sourceHydrated ? (
