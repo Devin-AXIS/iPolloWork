@@ -25,4 +25,19 @@ describe("Design deck navigation", () => {
     expect(source).toContain("presentationCanvasScale(previewViewport.width, previewViewport.height)");
     expect(source).toContain("!isPresentationTemplate ? (");
   });
+
+  test("starts presentation templates in canvas editing mode", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('setEditing(isPresentationTemplate);');
+    expect(source).toContain('{isPresentationTemplate ? "Canvas edit" : "Edit page"}');
+  });
+
+  test("measures the presentation viewport after the canvas mounts", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const measurementEffect = source.match(/React\.useEffect\(\(\) => \{\s*const viewport = previewViewportRef\.current;[\s\S]*?\}, \[([^\]]*)\]\);/);
+
+    expect(measurementEffect?.[1]).toContain("isPresentationTemplate");
+    expect(measurementEffect?.[1]).toContain("sourceHydrated");
+  });
 });

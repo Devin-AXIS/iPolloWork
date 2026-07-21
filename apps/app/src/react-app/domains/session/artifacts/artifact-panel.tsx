@@ -18,8 +18,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { t } from "@/i18n";
 import { cn, formatFileSize } from "@/lib/utils";
 import { type ArtifactPanelTab, usePanelTabStore } from "../panel/panel-tab-store";
-import { isCollectibleArtifactTarget, type BinaryData, type Data, type OpenTarget, type TextData } from "./open-target";
+import { isCollectibleArtifactTarget, isStylesheetArtifactTarget, type BinaryData, type Data, type OpenTarget, type TextData } from "./open-target";
 import { HTMLPreview, ImagePreview, MarkdownPreview, PdfPreview, PlainText, PreviewError, PreviewLoading, PreviewUnavailable } from "./preview";
+import { inlineHtmlPreviewStylesheet, linkedHtmlPreviewStylesheetPath } from "./html-preview-mode";
 
 const ArtifactTextEditor = lazy(() =>
   import("./artifact-text-editor").then((module) => ({ default: module.ArtifactTextEditor })),
@@ -352,7 +353,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
   const visibleMarkdownRef = useRef<HTMLDivElement | null>(null);
   const pdfContentRef = useRef<HTMLDivElement | null>(null);
-  const isDirectTextEdit = isTextContent(target) && target.preview === "markdown";
+  const isDirectTextEdit = isTextContent(target) && (target.preview === "markdown" || isStylesheetArtifactTarget(target));
   const externalPath = useMemo(() => target.kind === "file" ? absoluteWorkspacePath(workspaceRoot, target.value) : target.value, [target.kind, target.value, workspaceRoot]);
 
   const { data: fileIcon } = useQuery<string | null>({
@@ -389,6 +390,20 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   });
 
   const [binaryObjectUrl, setBinaryObjectUrl] = useState<string | null>(null);
+  const htmlStylesheetPath = target.preview === "html" && data?.kind === "text"
+    ? linkedHtmlPreviewStylesheetPath(target.value, data.data)
+    : "";
+  const htmlStylesheetQuery = useQuery({
+    queryKey: ["artifact-html-stylesheet", workspaceId, htmlStylesheetPath] as const,
+    queryFn: async () => htmlStylesheetPath ? (await client.readWorkspaceFile(workspaceId, htmlStylesheetPath)).content : "",
+    enabled: Boolean(htmlStylesheetPath),
+    staleTime: Infinity,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  });
+  const htmlPreviewContent = target.preview === "html" && data?.kind === "text"
+    ? inlineHtmlPreviewStylesheet(data.data, htmlStylesheetQuery.data ?? "")
+    : "";
 
   useEffect(() => {
     if (!data || data.kind !== "binary") {
@@ -749,7 +764,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
             onSave={saveSpreadsheetContent}
           />
         ) : target.preview === "html" && data?.kind === "text" ? (
-          <HTMLPreview type="text" title={target.name} content={data.data} />
+          <HTMLPreview type="text" title={target.name} content={htmlPreviewContent} />
         ) : target.preview === "image" && data?.kind === "binary" && binaryObjectUrl ? (
           <ImagePreview src={binaryObjectUrl} alt={target.name} />
         ) : target.preview === "pdf" && data?.kind === "binary" && binaryObjectUrl ? (

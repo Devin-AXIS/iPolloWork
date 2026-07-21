@@ -35,6 +35,7 @@ const FILE_PATTERN = /(?:^|[\s"'`([{])((?:\.{1,2}[/\\]|~[/\\]|[/\\])?[\w.\-]+(?:
 const URL_PATTERN = /https?:\/\/[^\s)\]}>"'`]+/gi;
 const SOCKET_PATTERN = /(?:ws|wss):\/\/[^\s)\]}>"'`]+/gi;
 const SIDEBAR_ARTIFACT_FILE_PREVIEWS = new Set<OpenTargetPreview>(["markdown", "sheet", "slides", "image", "pdf", "html"]);
+const STYLESHEET_EXTENSIONS = new Set([".css", ".scss", ".sass", ".less"]);
 const MARKDOWN_LINK_PATTERN = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 const ASSISTANT_ARTIFACT_MENTION_PATTERN = /\b(?:artifact|created|deck|deliverable|exported|file|generated|opened|presentation|saved|slides?|updated|wrote)\b/i;
 const DISCOVERY_TOOL_NAMES = new Set(["glob", "grep", "search", "find"]);
@@ -152,7 +153,13 @@ function isArtifactTarget(target: OpenTarget) {
 }
 
 export function isCollectibleArtifactTarget(target: OpenTarget) {
-  return target.kind === "file" && target.exists === true && SIDEBAR_ARTIFACT_FILE_PREVIEWS.has(target.preview);
+  return target.kind === "file" && target.exists === true && (
+    SIDEBAR_ARTIFACT_FILE_PREVIEWS.has(target.preview) || isStylesheetArtifactTarget(target)
+  );
+}
+
+export function isStylesheetArtifactTarget(target: OpenTarget) {
+  return target.kind === "file" && target.preview === "text" && STYLESHEET_EXTENSIONS.has(extname(target.value));
 }
 
 export function isOpenableFileTarget(target: OpenTarget) {

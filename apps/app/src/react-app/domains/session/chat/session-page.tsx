@@ -72,6 +72,7 @@ import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTa
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
+import { isTemplateDesignEntryTarget } from "../design/design-entry-target";
 import { VideoPanel } from "../video/video-panel";
 import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, templateColorPaletteLabel, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
@@ -911,6 +912,16 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
 
+    const sourceId = sourceSessionId ?? props.selectedSessionId;
+    if (
+      sourceId === props.selectedSessionId
+      && templateSessionData?.manifest.surface === "design"
+      && isTemplateDesignEntryTarget(target, templateSessionData.state.entry)
+    ) {
+      setCurrentSidePanel("design");
+      return;
+    }
+
     if (!isCollectibleArtifactTarget(target)) {
       if (isOpenableFileTarget(target)) {
         if (props.selectedWorkspaceDisplay.workspaceType === "remote") {
@@ -922,7 +933,7 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
 
-    const sessionId = sourceSessionId ?? props.selectedSessionId;
+    const sessionId = sourceId;
     if (!sessionId) return;
     if (options?.auto && activePanelTab?.id === target.id) return;
     openTab(sessionId, {
@@ -933,7 +944,7 @@ export function SessionPage(props: SessionPageProps) {
     });
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
-  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel]);
+  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel, templateSessionData]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;

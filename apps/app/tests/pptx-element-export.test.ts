@@ -2,9 +2,16 @@ import { describe, expect, test } from "bun:test";
 
 import {
   classifyPptxElement,
+  hasPptxCapturedPseudoElement,
+  hasPptxBlurredBoxShadow,
   intersectsPptxSlide,
   needsPptxBackgroundFallback,
+  pptxPlanCoversVisual,
+  pptxShapeNeedsFallback,
+  pptxFallbackCapturePadding,
+  pptxVisualElementPaints,
   pptxExportSummary,
+  pptxPlanCoverage,
   validatePptxElementPlanCoverage,
   requiresPptxInlineTextFallback,
   type PptxElementPlan,
@@ -59,6 +66,46 @@ describe("editable PPTX element export", () => {
     expect(classifyPptxElement({ tag: "p", text: "Glow", style: { ...plainTextStyle, textShadow: "0 1px #000" } })).toBe("fallback");
   });
 
+  test("collects a gradient-only decorative shape as a fallback", () => {
+    expect(pptxShapeNeedsFallback({
+      ...solidCardStyle,
+      backgroundColor: "transparent",
+      backgroundImage: "radial-gradient(circle, rgba(37, 99, 235, 0.55), transparent 70%)",
+      borderTopWidth: "0px",
+      borderRightWidth: "0px",
+      borderBottomWidth: "0px",
+      borderLeftWidth: "0px",
+      boxShadow: "none",
+      outlineStyle: "none",
+      filter: "blur(110px)",
+    })).toBe(true);
+  });
+
+  test("uses a local fallback for every blurred box shadow", () => {
+    expect(hasPptxBlurredBoxShadow("rgba(0, 0, 0, 0.18) 0px 4px 48px 0px")).toBe(true);
+    expect(hasPptxBlurredBoxShadow("rgba(0, 0, 0, 0.18) 0px 2px 0px 0px")).toBe(false);
+    expect(classifyPptxElement({
+      tag: "div",
+      style: { ...solidCardStyle, boxShadow: "rgba(0, 0, 0, 0.18) 0px 4px 48px 0px" },
+    })).toBe("fallback");
+  });
+
+  test("keeps a minimum safety margin around rasterized text", () => {
+    expect(pptxFallbackCapturePadding("none", "none", 4)).toBe(4);
+  });
+
+  test("routes every frozen pseudo-element visual through one local fallback", () => {
+    const slideNumber = {
+      getAttributeNames: () => ["class", "data-current", "data-ipw-pptx-pseudo-1", "data-ipw-pptx-pseudo-2"],
+    } as HTMLElement;
+    const ordinarySpan = {
+      getAttributeNames: () => ["class", "data-current"],
+    } as HTMLElement;
+
+    expect(hasPptxCapturedPseudoElement(slideNumber)).toBe(true);
+    expect(hasPptxCapturedPseudoElement(ordinarySpan)).toBe(false);
+  });
+
   test("counts native plans separately from local fallbacks", () => {
     expect(pptxExportSummary([
       { kind: "text" },
@@ -99,6 +146,41 @@ describe("editable PPTX element export", () => {
     });
     expect(validatePptxElementPlanCoverage({ hasVisibleContent: true, planCount: 1 })).toEqual({ valid: true });
     expect(validatePptxElementPlanCoverage({ hasVisibleContent: false, planCount: 0 })).toEqual({ valid: true });
+  });
+
+  test("rejects a slide when any visible visual element lacks an export plan", () => {
+    expect(pptxPlanCoverage({ visibleVisualElementCount: 4, coveredVisualElementCount: 3 })).toEqual({
+      valid: false,
+      reason: "visible-visual-not-planned",
+    });
+    expect(pptxPlanCoverage({ visibleVisualElementCount: 4, coveredVisualElementCount: 4 })).toEqual({ valid: true });
+  });
+
+  test("only lets a raster fallback cover visual descendants", () => {
+    const child = {} as HTMLElement;
+    const parent = {
+      contains: (element: HTMLElement) => element === child,
+    } as unknown as HTMLElement;
+
+    expect(pptxPlanCoversVisual({ kind: "shape", element: parent }, child)).toBe(false);
+    expect(pptxPlanCoversVisual({ kind: "fallback", element: parent }, child)).toBe(true);
+  });
+
+  test("does not audit an unpainted leaf inside a fallback visual", () => {
+    expect(pptxVisualElementPaints({
+      hasChildren: false,
+      text: "",
+      tag: "div",
+      backgroundColor: "transparent",
+      backgroundImage: "none",
+      borderWidths: ["0px", "0px", "0px", "0px"],
+      boxShadow: "none",
+      outlineStyle: "none",
+      filter: "none",
+      backdropFilter: "none",
+      maskImage: "none",
+      clipPath: "none",
+    })).toBe(false);
   });
 
   test("only rasterizes complex slide backgrounds", () => {
