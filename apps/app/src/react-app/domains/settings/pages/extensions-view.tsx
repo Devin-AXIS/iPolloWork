@@ -40,6 +40,8 @@ export type ExtensionsViewProps = {
   mcpConnectedAppsCount: number;
   /** The MCP view (quick-connect grid + configured servers). Skills are injected into it. */
   mcpView: ReactNode;
+  /** Independently packaged plugins and their plugin-owned authorization. */
+  pluginPackagesView?: ReactNode;
   /** Organization marketplace content, rendered in the same Extensions pane. */
   cloudMarketplaceView?: ReactNode;
   onRefresh: () => void;
@@ -114,6 +116,8 @@ export function ExtensionsView(props: ExtensionsViewProps) {
 
       {activeView === "my" ? (
         <>
+          {props.pluginPackagesView}
+
           {/* Runtime extensions: MCPs + skills + marketplace imports in one view */}
           {props.mcpView}
 
