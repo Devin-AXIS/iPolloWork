@@ -32,6 +32,12 @@ extraResources:
       - "**/*.md"
       - "**/*.mdx"
       - "docs.json"
+  - from: hyperframes-runtime
+    to: hyperframes
+    filter:
+      - "**/*"
+      - "!**/*.map"
+      - "!node_modules/.bun/**/node_modules/.bin/**"
 asar: true
 asarUnpack:
   - node_modules/.pnpm/@lydell+node-pty*/**

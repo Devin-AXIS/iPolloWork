@@ -6,9 +6,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const hyperframesRoot = resolve(root, "vendor", "hyperframes");
 const command = process.argv[2] ?? "help";
 const args = process.argv.slice(3);
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const bun = process.platform === "win32" ? "bun.exe" : "bun";
 const launcher = process.platform === "win32" ? ".\\ipollowork.cmd" : "./ipollowork";
 
 function run(bin, binArgs, env = process.env) {
@@ -22,10 +24,10 @@ function run(bin, binArgs, env = process.env) {
   child.once("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 1)));
 }
 
-function runAndWait(bin, binArgs, env = process.env) {
+function runAndWait(bin, binArgs, env = process.env, cwd = root) {
   return new Promise((resolveExit, rejectExit) => {
     const child = spawn(bin, binArgs, {
-      cwd: root,
+      cwd,
       env,
       stdio: "inherit",
       shell: process.platform === "win32",
@@ -36,8 +38,8 @@ function runAndWait(bin, binArgs, env = process.env) {
 }
 
 async function runSequence(steps) {
-  for (const [bin, binArgs] of steps) {
-    const code = await runAndWait(bin, binArgs);
+  for (const [bin, binArgs, options = {}] of steps) {
+    const code = await runAndWait(bin, binArgs, options.env ?? process.env, options.cwd ?? root);
     if (code !== 0) process.exit(code);
   }
 }
@@ -75,7 +77,11 @@ requireCommand("node", "Install Node.js 22 or newer.");
 switch (command) {
   case "setup":
     requireCommand("pnpm", "Run: corepack enable");
-    run(pnpm, ["install", ...args]);
+    requireCommand("bun", "Install Bun from https://bun.sh/docs/installation.");
+    await runSequence([
+      [pnpm, ["install", ...args]],
+      [bun, ["install", "--frozen-lockfile", "--ignore-scripts"], { cwd: hyperframesRoot }],
+    ]);
     break;
   case "dev":
     requireCommand("pnpm", "Run: corepack enable");

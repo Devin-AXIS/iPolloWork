@@ -104,6 +104,14 @@ describe("PPTX deck export", () => {
     expect(pptxExport).toContain("No blank presentation was created.");
   });
 
+  test("stops a native-editable deck export instead of writing blank slides", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const pptxExport = source.slice(source.indexOf("const exportDeckToPptx"), source.indexOf("const saveMutation"));
+
+    expect(pptxExport).toContain("const objectCoverage = validatePptxElementPlanCoverage");
+    expect(pptxExport).toContain("planCount: objects.length");
+  });
+
   test("keeps native-editable exports separate from PDF color conversion", async () => {
     const source = await Bun.file(panelUrl).text();
     const pptxExport = source.slice(source.indexOf("const exportDeckToPptx"), source.indexOf("const saveMutation"));
