@@ -103,9 +103,8 @@ async function readJsonFile(targetPath, fallback) {
 
 // The bootstrap CLI (packages/ipollowork-bootstrap) and this app must agree on
 // where desktop-bootstrap.json lives: %LOCALAPPDATA% on Windows, XDG_CONFIG_HOME
-// (falling back to ~/.config) elsewhere. Resolved once at module load so a
-// mid-session process.env mutation (runtime.mjs buildChildEnv ->
-// Object.assign(process.env)) can never retarget reads to a different file.
+// (falling back to ~/.config) elsewhere. Resolved once at module load so
+// workspace bootstrap reads stay stable for the lifetime of the desktop app.
 const DEFAULT_DESKTOP_BOOTSTRAP_PATH = (() => {
   // Same precedence as the CLI's configHomeDir(): XDG_CONFIG_HOME everywhere,
   // then LOCALAPPDATA on Windows, then ~/.config.
@@ -144,10 +143,8 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     if (process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH?.trim()) {
       return process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH.trim();
     }
-    // Dev mode swaps process.env.HOME to the sandboxed dev-data home midway
-    // through startup (runtime.mjs buildChildEnv -> Object.assign(process.env)),
-    // which changes what os.homedir() returns. Resolve the dev-data home
-    // deterministically so early and late IPC reads target the same file.
+    // Keep development bootstrap state inside the app's dev-data root instead
+    // of using the real machine-level config location.
     if (process.env.IPOLLOWORK_DEV_MODE === "1") {
       return path.join(
         app.getPath("userData"),

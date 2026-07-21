@@ -78,6 +78,57 @@ function importedTemplateId(id: string) {
   return `test.${id.replace(/^ipollowork\./, "")}`;
 }
 
+function htmlAttribute(tag: string, name: string) {
+  return tag.match(new RegExp(`(?:^|\\s)${name}\\s*=\\s*["']([^"']*)["']`, "i"))?.[1]?.trim() ?? "";
+}
+
+function websiteInteractionProblems(entry: string) {
+  const ids = new Set(Array.from(entry.matchAll(/\sid=["']([^"']+)["']/gi), (match) => match[1]));
+  const buttons = Array.from(entry.matchAll(/<button\b[^>]*>/gi), (match) => match[0]);
+  const links = Array.from(entry.matchAll(/<a\b[^>]*>/gi), (match) => match[0]);
+  const scripts = Array.from(
+    entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi),
+    (match) => match[1],
+  );
+  const inertButtons = buttons.filter((tag) => {
+    const type = htmlAttribute(tag, "type");
+    return !(
+      tag.includes("mobile-nav-toggle")
+      || type === "submit"
+      || htmlAttribute(tag, "data-ipw-action-message")
+      || htmlAttribute(tag, "data-ipw-toggle")
+    );
+  });
+  const badLinks = links.filter((tag) => {
+    const href = htmlAttribute(tag, "href");
+    return !href || href === "#" || (href.startsWith("#") && !ids.has(href.slice(1)));
+  });
+  const fallbackButtons = buttons.filter((tag) => htmlAttribute(tag, "data-ipw-action-message"));
+  const scriptIsIsolated = (script: string) => /^\s*\(\(\)\s*=>\s*\{[\s\S]*\}\)\(\);?\s*$/.test(script);
+  return {
+    inertButtons,
+    badLinks,
+    hasFallbackStatus: fallbackButtons.length === 0 || /<(?:p|div)\b[^>]*(?:role=["']status["']|aria-live=["']polite["'])/i.test(entry),
+    scriptsParseTogether: (() => {
+      try { new Function(scripts.join("\n")); return true; } catch { return false; }
+    })(),
+    scriptsAreIsolated: scripts.every(scriptIsIsolated),
+  };
+}
+
+function interactiveButton(dataset: Record<string, string>) {
+  const attributes = new Map<string, string>();
+  const listeners = new Map<string, () => void>();
+  return {
+    dataset,
+    attributes,
+    listeners,
+    classList: { toggle: (_name: string, _active: boolean) => undefined },
+    setAttribute: (name: string, value: string) => attributes.set(name, value),
+    addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+  };
+}
+
 async function readPackageFiles(root: string, relative = ""): Promise<Record<string, Buffer>> {
   const files: Record<string, Buffer> = {};
   for (const entry of await readdir(join(root, relative), { withFileTypes: true })) {
@@ -190,14 +241,19 @@ describe("template installations", () => {
       expect(manifest.source.license).toBe("Apache-2.0");
       expect(manifest.source.revision).toBe("d0efb1eaa3b65c731709981718cd5a0a0d4e8f71");
       const upgradedCategories = new Set(["site", "other"]);
-      expect(manifest.version).toBe(upgradedCategories.has(manifest.category) ? "1.1.5" : "1.1.4");
+      const upgradedSlides = manifest.category === "slides" && manifest.id !== "ipollowork.html-anything.weekly-update";
+      expect(manifest.version).toBe(upgradedCategories.has(manifest.category) || upgradedSlides ? "1.1.5" : "1.1.4");
       expect(manifest.cover).toBe("cover.png");
       expect(JSON.stringify(manifest)).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
       expect(manifest.designSystem.variables.length).toBeGreaterThanOrEqual(manifest.surface === "video" ? 4 : 20);
       const entry = await readFile(join(root, manifest.entry), "utf8");
-      expect(entry).toMatch(manifest.surface === "video" ? /data-var-src="logoUrl"/ : /data-ipw-brand-slot/);
+      expect(entry).toMatch(manifest.surface === "video" ? /(data-var-src="logoUrl"|data-var-text="brandName")/ : /data-ipw-brand-slot/);
       expect(entry).not.toMatch(/HTML[- ]ANYTHING|OPEN DESIGN|Open Design/i);
       expect(entry).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
+      if (manifest.category === "slides") {
+        const visualTemplateId = manifest.id.replace("ipollowork.html-anything.", "");
+        expect(entry).toContain(`data-ipw-template="${visualTemplateId}"`);
+      }
       for (const script of entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
         expect(() => new Function(script[1])).not.toThrow();
       }
@@ -261,7 +317,7 @@ describe("template installations", () => {
     }
   });
 
-  test("ships every website template with an explicit mobile layout and accessible navigation", async () => {
+  test("ships every website template with accessible navigation and observable actions", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
     const websites: Array<{ manifest: TemplateManifestV1; entry: string }> = [];
     for (const directory of directories) {
@@ -280,7 +336,88 @@ describe("template installations", () => {
         expect(entry).toContain('aria-expanded="false"');
       }
       expect(manifest.minimumAppVersion).toBeTruthy();
+      const problems = websiteInteractionProblems(entry);
+      expect(problems.inertButtons).toEqual([]);
+      expect(problems.badLinks).toEqual([]);
+      expect(problems.hasFallbackStatus).toBe(true);
+      expect(problems.scriptsParseTogether).toBe(true);
+      expect(problems.scriptsAreIsolated).toBe(true);
+      if (manifest.id === "ipollowork.html-anything.prototype-web") {
+        expect(entry).toContain('data-ipw-action-message="Demo only — no video is connected yet. Add your product video before publishing."');
+      }
+      if (manifest.id === "ipollowork.html-anything.waitlist-page") {
+        expect(entry).not.toContain("You're on the list!");
+        expect(entry).toContain("Demo only — no information was sent. Connect this form to your signup service before publishing.");
+      }
     }
+  });
+
+  test("runs website toggle and fallback interactions without leaking globals", async () => {
+    const entry = await readFile(join(bundledTemplatesRoot, "ipollowork.html-anything.pricing-page", "entry.html"), "utf8");
+    const scripts = Array.from(
+      entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi),
+      (match) => match[1],
+    );
+    const script = scripts.at(-1);
+    if (!script) throw new Error("Pricing interaction script is missing");
+
+    const monthly = interactiveButton({ ipwToggle: "monthly" });
+    const yearly = interactiveButton({ ipwToggle: "yearly" });
+    const team = interactiveButton({ ipwActionMessage: "Team plan selected. Connect this button to your checkout flow." });
+    const status = { textContent: "" };
+    const soloSuffix = { textContent: "/ month" };
+    const teamSuffix = { textContent: "/ seat / month" };
+    const soloPrice = { dataset: { monthly: "$8", yearly: "$80" }, firstChild: { textContent: "$8 " }, querySelector: () => soloSuffix };
+    const teamPrice = { dataset: { monthly: "$14", yearly: "$140" }, firstChild: { textContent: "$14 " }, querySelector: () => teamSuffix };
+    const documentFixture = {
+      querySelector: (selector: string) => selector === "[data-ipw-action-status]" ? status : null,
+      querySelectorAll: (selector: string) => {
+        if (selector === "[data-ipw-toggle]") return [monthly, yearly];
+        if (selector === ".price[data-monthly][data-yearly]") return [soloPrice, teamPrice];
+        if (selector === "[data-ipw-action-message]") return [team];
+        return [];
+      },
+    };
+
+    new Function("document", script)(documentFixture);
+    yearly.listeners.get("click")?.();
+    team.listeners.get("click")?.();
+
+    expect(yearly.attributes.get("aria-pressed")).toBe("true");
+    expect(monthly.attributes.get("aria-pressed")).toBe("false");
+    expect(soloPrice.firstChild.textContent).toBe("$80 ");
+    expect(soloSuffix.textContent).toBe("/ year");
+    expect(status.textContent).toBe("Team plan selected. Connect this button to your checkout flow.");
+  });
+
+  test("submits the waitlist form with visible success feedback", async () => {
+    const entry = await readFile(join(bundledTemplatesRoot, "ipollowork.html-anything.waitlist-page", "entry.html"), "utf8");
+    const script = Array.from(
+      entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi),
+      (match) => match[1],
+    ).at(-1);
+    if (!script) throw new Error("Waitlist interaction script is missing");
+
+    let submit: ((event: { preventDefault: () => void }) => void) | undefined;
+    let prevented = false;
+    let visible = false;
+    const form = {
+      style: { display: "block" },
+      checkValidity: () => true,
+      reportValidity: () => undefined,
+      addEventListener: (_type: string, listener: typeof submit) => { submit = listener; },
+    };
+    const success = { classList: { add: (name: string) => { visible = name === "visible"; } } };
+    const documentFixture = {
+      getElementById: (id: string) => id === "waitlist-form" ? form : id === "success-msg" ? success : null,
+    };
+
+    new Function("document", script)(documentFixture);
+    submit?.call(form, { preventDefault: () => { prevented = true; } });
+
+    expect(prevented).toBe(true);
+    expect(form.style.display).toBe("none");
+    expect(visible).toBe(true);
   });
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {

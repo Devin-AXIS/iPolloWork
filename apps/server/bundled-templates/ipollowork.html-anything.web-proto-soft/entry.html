@@ -408,13 +408,14 @@
     /* ============ MOTION ENTRY ============ */
     .reveal { opacity: 0; transform: translateY(18px); filter: blur(6px); transition: opacity 800ms var(--ease), transform 800ms var(--ease), filter 800ms var(--ease); }
     .reveal.is-in { opacity: 1; transform: none; filter: none; }
+    .action-status { min-height: 24px; margin: 18px auto; padding-inline: 18px; text-align: center; color: var(--accent); font-weight: 650; }
     @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; filter: none; transition: none; } }
   </style>
 <link rel="stylesheet" href="design-tokens.css"></head>
 <body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
   <div class="mesh" aria-hidden="true"></div>
 
-  <div class="nav-shell" data-od-id="topnav">
+  <div class="nav-shell" id="topnav" data-od-id="topnav">
     <header class="nav">
       <span class="brand"><span class="brand-mark"></span>Halcyon</span>
       <ul>
@@ -425,7 +426,7 @@
         <li class="mobile-cta"><a href="#docs">Get started</a></li>
       </ul>
       <button class="mobile-nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"><span></span></button>
-      <button class="pill">
+      <button type="button" class="pill" data-ipw-action-message="Getting-started flow opened. Connect this button to your signup page.">
         <span>Get started</span>
         <span class="icon-wrap"><svg viewBox="0 0 12 12" stroke-width="1.6"><path d="M2.5 6h7M6 2.5L9.5 6 6 9.5"/></svg></span>
       </button>
@@ -439,13 +440,11 @@
         <h1>Calmer infrastructure for the agents <span class="soft">already running your business.</span></h1>
         <p class="lede">Halcyon is a runtime for long-running AI agents that need stable identity, predictable cost, and an audit trail you can hand to legal. We replace the YAML scaffolding teams keep rebuilding from scratch.</p>
         <div class="actions">
-          <button class="pill">
+          <button type="button" class="pill" data-ipw-action-message="Console preview opened. Connect this button to your application console.">
             <span>Open the console</span>
             <span class="icon-wrap"><svg viewBox="0 0 12 12" stroke-width="1.6"><path d="M2.5 6h7M6 2.5L9.5 6 6 9.5"/></svg></span>
           </button>
-          <button class="ghost">
-            Read the runtime spec
-          </button>
+          <a class="ghost" href="#bento">Read the runtime spec</a>
         </div>
       </div>
 
@@ -549,29 +548,30 @@
       </div>
     </section>
 
-    <section class="marquee reveal">
+    <section class="marquee reveal" id="metrics">
       <div class="marquee-track">
         <span class="marquee-item">Anthropic<em>·</em>Stripe<em>·</em>Linear<em>·</em>Vercel<em>·</em>Cursor<em>·</em>Brex<em>·</em>Ramp<em>·</em>Replicate<em>·</em>Hex<em>·</em>Notion<em>·</em></span>
         <span class="marquee-item" aria-hidden="true">Anthropic<em>·</em>Stripe<em>·</em>Linear<em>·</em>Vercel<em>·</em>Cursor<em>·</em>Brex<em>·</em>Ramp<em>·</em>Replicate<em>·</em>Hex<em>·</em>Notion<em>·</em></span>
       </div>
     </section>
 
-    <section class="closing reveal" data-od-id="closing">
+    <section class="closing reveal" id="docs" data-od-id="closing">
       <div class="closing-inner">
         <h2>Less duct tape between the model and the bill.</h2>
         <p>14-day evaluation, then choose pay-as-you-go or annual. We'll send a real engineer for setup. No SDR funnel.</p>
-        <button class="pill">
+        <button type="button" class="pill" data-ipw-action-message="Engineer conversation prepared. Connect this button to your contact form.">
           <span>Talk to an engineer</span>
           <span class="icon-wrap"><svg viewBox="0 0 12 12" stroke-width="1.6"><path d="M2.5 6h7M6 2.5L9.5 6 6 9.5"/></svg></span>
         </button>
       </div>
     </section>
   </main>
+  <p class="action-status" data-ipw-action-status role="status" aria-live="polite"></p>
 
-  <footer>
+  <footer id="changelog">
     <div class="row">
       <span>Halcyon Runtime · SOC 2 · ISO 27001 · v2026.05</span>
-      <span><a href="#">Docs</a> · <a href="#">Changelog</a> · <a href="#">Status</a> · <a href="#">Privacy</a> · <a href="#">Contact</a></span>
+      <span><a href="#docs">Docs</a> · <a href="#changelog">Changelog</a> · <a href="#metrics">Status</a> · <a href="#topnav">Privacy</a> · <a href="#docs">Contact</a></span>
     </div>
   </footer>
 
@@ -589,13 +589,17 @@
       nav.querySelectorAll('a').forEach((item) => item.addEventListener('click', () => setOpen(false)));
       document.addEventListener('click', (event) => { if (!nav.contains(event.target)) setOpen(false); });
       document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
-    })();
+      const status = document.querySelector('[data-ipw-action-status]');
+      document.querySelectorAll('[data-ipw-action-message]').forEach((button) => {
+        button.addEventListener('click', () => { if (status) status.textContent = button.dataset.ipwActionMessage || ''; });
+      });
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) {
         if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
       }
     }, { threshold: 0.1, rootMargin: '0px 0px -10% 0px' });
     document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+    })();
   </script>
 </body>
 </html>

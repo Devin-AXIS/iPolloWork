@@ -86,6 +86,17 @@ describe("deriveOpenTargets", () => {
     expect(target ? isCollectibleArtifactTarget({ ...target, exists: true }) : true).toBe(false);
   });
 
+  it("opens stylesheet artifacts in the built-in code workspace", () => {
+    const targets = deriveOpenTargets([
+      toolMessage("msg_tool", "write", { filePath: "design/design-tokens.css" }, { filePath: "design/design-tokens.css" }),
+    ]);
+
+    const target = targets[0];
+
+    expect(target).toMatchObject({ value: "design/design-tokens.css", preview: "text", confidence: 95 });
+    expect(target ? isCollectibleArtifactTarget({ ...target, exists: true }) : false).toBe(true);
+  });
+
   it("uses markdown link href once when the label is the href basename", () => {
     const targets = deriveOpenTargets([
       message("msg_1", "assistant", "I generated the file [native-link.txt](reports/native-link.txt)."),

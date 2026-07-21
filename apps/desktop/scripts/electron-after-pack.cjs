@@ -48,6 +48,44 @@ function resolveMacAppPath(context) {
   return fallback ? path.join(context.appOutDir, fallback) : null;
 }
 
+function packagedNodePtyPaths(context) {
+  if (context.electronPlatformName !== "darwin") return [];
+
+  const appPath = resolveMacAppPath(context);
+  if (!appPath) return [];
+
+  const packageName = `node-pty-darwin-${context.arch}`;
+  const nodeModulesDir = path.join(
+    appPath,
+    "Contents",
+    "Resources",
+    "app.asar.unpacked",
+    "node_modules",
+  );
+  const directPath = path.join(nodeModulesDir, "@lydell", packageName);
+  const pnpmDir = path.join(nodeModulesDir, ".pnpm");
+  const pnpmPaths = fs.existsSync(pnpmDir)
+    ? fs.readdirSync(pnpmDir)
+      .filter((entry) => entry.startsWith(`@lydell+${packageName}@`))
+      .map((entry) => path.join(pnpmDir, entry, "node_modules", "@lydell", packageName))
+    : [];
+
+  return [directPath, ...pnpmPaths];
+}
+
+function assertPackagedNodePty(context) {
+  if (context.electronPlatformName !== "darwin") return;
+
+  const expectedBinary = path.join("prebuilds", `darwin-${context.arch}`, "pty.node");
+  const paths = packagedNodePtyPaths(context);
+  if (paths.some((packagePath) => fs.existsSync(path.join(packagePath, expectedBinary)))) return;
+
+  throw new Error(
+    `Missing @lydell/node-pty-darwin-${context.arch} in the packaged macOS app. `
+      + `Expected ${expectedBinary} under app.asar.unpacked/node_modules.`,
+  );
+}
+
 function signComputerUseHelper(context) {
   const appPath = resolveMacAppPath(context);
   if (!appPath) return;
@@ -122,8 +160,10 @@ async function afterPack(context) {
     }
   }
 
+  assertPackagedNodePty(context);
   signComputerUseHelper(context);
 }
 
 module.exports = afterPack;
 module.exports.default = afterPack;
+module.exports.assertPackagedNodePty = assertPackagedNodePty;

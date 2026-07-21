@@ -510,7 +510,11 @@ export function ReactSessionComposer(props: ComposerProps) {
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (plusMenuRef.current?.contains(target)) return;
+      if (
+        plusMenuRef.current?.contains(target)
+        || toolMenuRef.current?.contains(target)
+        || agentMenuRef.current?.contains(target)
+      ) return;
       setPlusMenuOpen(false);
       setPlusMenuSection(null);
       setToolMenuOpen(false);
