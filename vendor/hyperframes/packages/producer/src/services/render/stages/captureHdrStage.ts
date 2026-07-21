@@ -98,6 +98,7 @@ export interface CaptureHdrStageInput {
 
   width: number;
   height: number;
+  outputSize?: { width: number; height: number };
   totalFrames: number;
 
   composition: CompositionMetadata;
@@ -168,6 +169,7 @@ export async function runCaptureHdrStage(
     videoOnlyPath,
     width,
     height,
+    outputSize,
     totalFrames,
     composition,
     hasHdrContent,
@@ -295,6 +297,8 @@ export async function runCaptureHdrStage(
         fps: job.config.fps,
         width,
         height,
+        outputWidth: outputSize?.width,
+        outputHeight: outputSize?.height,
         codec: preset.codec,
         preset: preset.preset,
         quality: effectiveQuality,

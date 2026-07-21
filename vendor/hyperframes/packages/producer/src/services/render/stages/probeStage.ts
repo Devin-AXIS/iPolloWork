@@ -82,6 +82,7 @@ export interface ProbeStageInput {
   height: number;
   needsAlpha: boolean;
   deviceScaleFactor: number;
+  renderBodyScripts?: string[];
 }
 
 const FRAME_BOUNDARY_EPSILON = 1e-3;
@@ -243,6 +244,9 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       compiledDir: join(workDir, "compiled"),
       port: 0,
       preHeadScripts: [VIRTUAL_TIME_SHIM],
+      ...(input.renderBodyScripts && input.renderBodyScripts.length > 0
+        ? { bodyScripts: input.renderBodyScripts }
+        : {}),
       fps: job.config.fps,
     });
     assertNotAborted();

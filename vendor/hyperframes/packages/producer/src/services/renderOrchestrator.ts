@@ -335,6 +335,8 @@ export interface RenderConfig {
    * `--variables-file <path>`. Must be a JSON-serializable plain object.
    */
   variables?: Record<string, unknown>;
+  /** Render-only body scripts injected by Studio/adapters before capture. */
+  renderBodyScripts?: string[];
   /**
    * Override the output resolution via Chrome `deviceScaleFactor` (DPR).
    * The composition's authored dimensions are unchanged. See
@@ -357,6 +359,10 @@ export interface RenderConfig {
    * alias (`1080p-portrait`). Explicit orientation presets stay strict.
    */
   outputResolutionAspectAgnostic?: boolean;
+  /** Optional final encoded dimensions. Capture still uses composition/outputResolution pixels unless captureSize is set. */
+  outputSize?: { width: number; height: number };
+  /** Optional low-resolution capture viewport. Intended for draft/preview renders. */
+  captureSize?: { width: number; height: number };
 }
 
 export interface RenderPerfSummary {
@@ -1095,6 +1101,56 @@ export function createRenderJob(config: RenderConfigInput): RenderJob {
   };
 }
 
+function buildCaptureScaleScript(args: {
+  authoredWidth: number;
+  authoredHeight: number;
+  captureWidth: number;
+  captureHeight: number;
+}): string {
+  const { authoredWidth, authoredHeight, captureWidth, captureHeight } = args;
+  return `(() => {
+  const root = document.querySelector("[data-composition-id]");
+  if (!(root instanceof HTMLElement)) return;
+  const authoredWidth = ${JSON.stringify(authoredWidth)};
+  const authoredHeight = ${JSON.stringify(authoredHeight)};
+  const captureWidth = ${JSON.stringify(captureWidth)};
+  const captureHeight = ${JSON.stringify(captureHeight)};
+  if (!Number.isFinite(authoredWidth) || !Number.isFinite(authoredHeight) || authoredWidth <= 0 || authoredHeight <= 0) return;
+  const scaleX = captureWidth / authoredWidth;
+  const scaleY = captureHeight / authoredHeight;
+  const scale = Math.min(scaleX, scaleY);
+  if (!Number.isFinite(scale) || scale <= 0 || Math.abs(scale - 1) < 0.0001) return;
+  const scaledWidth = authoredWidth * scale;
+  const scaledHeight = authoredHeight * scale;
+  const offsetX = (captureWidth - scaledWidth) / 2;
+  const offsetY = (captureHeight - scaledHeight) / 2;
+  let wrapper = document.getElementById("__hf_capture_scale_wrapper");
+  if (!wrapper) {
+    wrapper = document.createElement("div");
+    wrapper.id = "__hf_capture_scale_wrapper";
+    const parent = root.parentNode;
+    if (!parent) return;
+    parent.insertBefore(wrapper, root);
+    wrapper.appendChild(root);
+  }
+  document.documentElement.style.width = captureWidth + "px";
+  document.documentElement.style.height = captureHeight + "px";
+  document.documentElement.style.margin = "0";
+  document.documentElement.style.overflow = "hidden";
+  document.body.style.width = captureWidth + "px";
+  document.body.style.height = captureHeight + "px";
+  document.body.style.margin = "0";
+  document.body.style.overflow = "hidden";
+  wrapper.style.position = "absolute";
+  wrapper.style.left = "0";
+  wrapper.style.top = "0";
+  wrapper.style.width = authoredWidth + "px";
+  wrapper.style.height = authoredHeight + "px";
+  wrapper.style.transformOrigin = "0 0";
+  wrapper.style.transform = "translate(" + offsetX + "px, " + offsetY + "px) scale(" + scale + ")";
+})();`;
+}
+
 function normalizeCompositionSrcPath(srcPath: string): string {
   return srcPath.replace(/\\/g, "/").replace(/^\.\//, "");
 }
@@ -1815,11 +1871,39 @@ async function executeRenderPipeline(input: {
     const composition = compileResult.composition;
     const { deviceScaleFactor, outputWidth, outputHeight } = compileResult;
     const { width, height } = composition;
+    const captureSize = job.config.captureSize;
+    const captureWidth = captureSize?.width ?? outputWidth;
+    const captureHeight = captureSize?.height ?? outputHeight;
+    const encodedOutputWidth = job.config.outputSize?.width ?? captureWidth;
+    const encodedOutputHeight = job.config.outputSize?.height ?? captureHeight;
     // Capture the *output* (device-scaled) dimensions for the OOM error path —
     // memory is allocated at output resolution, so the guidance must report the
     // real pixel size that exhausted memory, not the smaller CSS composition.
-    captureCompositionWidth = outputWidth;
-    captureCompositionHeight = outputHeight;
+    captureCompositionWidth = captureWidth;
+    captureCompositionHeight = captureHeight;
+    if (captureSize) {
+      log.info("[Render] Quick preview capture size active", {
+        authoredWidth: width,
+        authoredHeight: height,
+        outputWidth,
+        outputHeight,
+        captureWidth,
+        captureHeight,
+      });
+    }
+    const extraRenderBodyScripts = [
+      ...(captureSize
+        ? [
+            buildCaptureScaleScript({
+              authoredWidth: width,
+              authoredHeight: height,
+              captureWidth,
+              captureHeight,
+            }),
+          ]
+        : []),
+      ...(job.config.renderBodyScripts ?? []),
+    ];
     perfStages.compileOnlyMs = compileResult.compileOnlyMs;
     // Snapshot of `cfg.forceScreenshot` resolved by compileStage. The
     // BeginFrame auto-worker calibration may flip this to `true` at
@@ -1901,6 +1985,12 @@ async function executeRenderPipeline(input: {
         { totalMemMb: getSystemTotalMb(), thresholdMb: LOW_MEMORY_TOTAL_MB_THRESHOLD },
       );
     }
+    if (captureSize && cfg.useDrawElement) {
+      cfg.useDrawElement = false;
+      log.info(
+        "[Render] Quick preview capture size disables drawElement fast capture so render-only scaling is captured correctly.",
+      );
+    }
 
     // Scale the CDP protocol timeout up for oversized compositions BEFORE the
     // probe launches its browser. `protocolTimeout` is a Puppeteer
@@ -1912,8 +2002,8 @@ async function executeRenderPipeline(input: {
     // legitimate slow-but-valid large renders with `Runtime.callFunctionOn
     // timed out`. Only ever raises; small compositions keep the configured base.
     const scaledProtocolTimeout = scaleProtocolTimeoutForComposition(cfg.protocolTimeout, {
-      width: outputWidth,
-      height: outputHeight,
+      width: captureWidth,
+      height: captureHeight,
     });
     if (scaledProtocolTimeout > cfg.protocolTimeout) {
       log.info("[Render] Scaled CDP protocol timeout up for large composition.", {
@@ -1942,10 +2032,11 @@ async function executeRenderPipeline(input: {
           assertNotAborted,
           compiled,
           composition,
-          width,
-          height,
+          width: captureWidth,
+          height: captureHeight,
           needsAlpha,
           deviceScaleFactor,
+          renderBodyScripts: extraRenderBodyScripts,
         }),
       // Browser probe is pre-capture; report `browser calibrating` so a
       // slow probe (~64s SwiftShader warm-up on Windows was the reported
@@ -2128,6 +2219,9 @@ async function executeRenderPipeline(input: {
           compiledDir: join(workDir, "compiled"),
           port: 0,
           preHeadScripts: [VIRTUAL_TIME_SHIM],
+          ...(extraRenderBodyScripts.length > 0
+            ? { bodyScripts: extraRenderBodyScripts }
+            : {}),
           fps: job.config.fps,
         });
         assertNotAborted();
@@ -2176,8 +2270,8 @@ async function executeRenderPipeline(input: {
     const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(composition.videos.length);
 
     const captureOptions: CaptureOptions = {
-      width,
-      height,
+      width: captureWidth,
+      height: captureHeight,
       fps: job.config.fps,
       format: needsAlpha ? "png" : "jpeg",
       quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
@@ -2775,6 +2869,7 @@ async function executeRenderPipeline(input: {
             videoOnlyPath,
             width,
             height,
+            outputSize: job.config.outputSize,
             totalFrames,
             composition,
             hasHdrContent,
@@ -2835,8 +2930,10 @@ async function executeRenderPipeline(input: {
                 forceParallelStream: deParallelStreamForced || captureParallelStreamForced,
                 streamingEncoderOptions: {
                   fps: job.config.fps,
-                  width,
-                  height,
+                  width: captureWidth,
+                  height: captureHeight,
+                  outputWidth: job.config.outputSize?.width,
+                  outputHeight: job.config.outputSize?.height,
                   codec: preset.codec,
                   preset: preset.preset,
                   quality: effectiveQuality,
@@ -3097,8 +3194,9 @@ async function executeRenderPipeline(input: {
               outputPath: stagedOutputPath,
               framesDir,
               videoOnlyPath,
-              width,
-              height,
+              width: captureWidth,
+              height: captureHeight,
+              outputSize: job.config.outputSize,
               needsAlpha,
               hasAudio,
               audioOutputPath,
@@ -3198,8 +3296,8 @@ async function executeRenderPipeline(input: {
       chunkedEncodeSize,
       compositionDurationSeconds: composition.duration,
       totalFrames,
-      outputWidth,
-      outputHeight,
+      outputWidth: encodedOutputWidth,
+      outputHeight: encodedOutputHeight,
       videoCount: composition.videos.length,
       audioCount: composition.audios.length,
       totalElapsedMs: totalElapsed,

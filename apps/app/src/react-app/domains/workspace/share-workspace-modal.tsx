@@ -21,6 +21,7 @@ type ShareWorkspaceModalState = {
   activeView: ShareView;
   revealedByKey: Record<string, boolean>;
   copiedKey: string | null;
+  copyErrorKey: string | null;
   collaboratorExpanded: boolean;
   remoteAccessEnabled: boolean;
 };
@@ -31,6 +32,8 @@ type ShareWorkspaceModalAction =
   | { type: "toggleReveal"; key: string }
   | { type: "setCopiedKey"; key: string | null }
   | { type: "clearCopiedKey"; key: string }
+  | { type: "setCopyErrorKey"; key: string | null }
+  | { type: "clearCopyErrorKey"; key: string }
   | { type: "toggleCollaboratorExpanded" }
   | { type: "setRemoteAccessEnabled"; enabled: boolean };
 
@@ -38,6 +41,7 @@ const initialShareWorkspaceModalState: ShareWorkspaceModalState = {
   activeView: "chooser",
   revealedByKey: {},
   copiedKey: null,
+  copyErrorKey: null,
   collaboratorExpanded: false,
   remoteAccessEnabled: false,
 };
@@ -52,6 +56,7 @@ function shareWorkspaceModalReducer(
         activeView: "chooser",
         revealedByKey: {},
         copiedKey: null,
+        copyErrorKey: null,
         collaboratorExpanded: false,
         remoteAccessEnabled: action.remoteAccessEnabled,
       };
@@ -72,6 +77,13 @@ function shareWorkspaceModalReducer(
         ...state,
         copiedKey: state.copiedKey === action.key ? null : state.copiedKey,
       };
+    case "setCopyErrorKey":
+      return { ...state, copyErrorKey: action.key };
+    case "clearCopyErrorKey":
+      return {
+        ...state,
+        copyErrorKey: state.copyErrorKey === action.key ? null : state.copyErrorKey,
+      };
     case "toggleCollaboratorExpanded":
       return {
         ...state,
@@ -91,6 +103,7 @@ export function ShareWorkspaceModal(props: ShareWorkspaceModalProps) {
     activeView,
     revealedByKey,
     copiedKey,
+    copyErrorKey,
     collaboratorExpanded,
     remoteAccessEnabled,
   } = state;
@@ -137,11 +150,15 @@ export function ShareWorkspaceModal(props: ShareWorkspaceModalProps) {
     try {
       await navigator.clipboard.writeText(text);
       dispatch({ type: "setCopiedKey", key });
+      dispatch({ type: "setCopyErrorKey", key: null });
       window.setTimeout(() => {
         dispatch({ type: "clearCopiedKey", key });
       }, 2000);
     } catch {
-      // ignore clipboard failures
+      dispatch({ type: "setCopyErrorKey", key });
+      window.setTimeout(() => {
+        dispatch({ type: "clearCopyErrorKey", key });
+      }, 4000);
     }
   }, []);
 
@@ -209,6 +226,7 @@ export function ShareWorkspaceModal(props: ShareWorkspaceModalProps) {
             <ShareWorkspaceAccessPanel
               fields={props.fields}
               copiedKey={copiedKey}
+              copyErrorKey={copyErrorKey}
               onCopy={(value, key) => void handleCopy(value, key)}
               revealedByKey={revealedByKey}
               onToggleReveal={(key) => dispatch({ type: "toggleReveal", key })}

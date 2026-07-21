@@ -173,11 +173,11 @@ let _thumbnailBrowserInitializing: Promise<
   import("@hyperframes/engine").BrowserLease | null
 > | null = null;
 
-const THUMBNAIL_BROWSER_TIMEOUT_MS = 8000;
-const THUMBNAIL_PAGE_TIMEOUT_MS = 5000;
-const THUMBNAIL_NAVIGATION_TIMEOUT_MS = 8000;
-const THUMBNAIL_TIMELINE_TIMEOUT_MS = 2000;
-const THUMBNAIL_SCREENSHOT_TIMEOUT_MS = 6000;
+const THUMBNAIL_BROWSER_TIMEOUT_MS = 60_000;
+const THUMBNAIL_PAGE_TIMEOUT_MS = 15_000;
+const THUMBNAIL_NAVIGATION_TIMEOUT_MS = 20_000;
+const THUMBNAIL_TIMELINE_TIMEOUT_MS = 5_000;
+const THUMBNAIL_SCREENSHOT_TIMEOUT_MS = 20_000;
 
 function withThumbnailTimeout<T>(
   promise: Promise<T>,
@@ -217,7 +217,11 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
 
       const acquired = await acquireBrowser(
         buildChromeArgs({ width: 1920, height: 1080, captureMode: "screenshot" }),
-        { forceScreenshot: true },
+        {
+          forceScreenshot: true,
+          browserTimeout: THUMBNAIL_BROWSER_TIMEOUT_MS,
+          protocolTimeout: Math.max(120_000, THUMBNAIL_BROWSER_TIMEOUT_MS * 2),
+        },
       );
       _thumbnailBrowserLease = acquired;
       acquired.browser.on("disconnected", () => {
@@ -521,7 +525,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     async generateThumbnail(opts): Promise<Buffer | null> {
       const browser = await withThumbnailTimeout(
         getThumbnailBrowser(),
-        THUMBNAIL_BROWSER_TIMEOUT_MS,
+        THUMBNAIL_BROWSER_TIMEOUT_MS + 5_000,
         "Timed out while starting the thumbnail browser",
       );
       if (!browser) {
@@ -608,6 +612,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           "[Studio] Thumbnail generation failed:",
           err instanceof Error ? err.message : err,
         );
+        await closeThumbnailBrowser();
         return null;
       } finally {
         await page?.close().catch(() => {});

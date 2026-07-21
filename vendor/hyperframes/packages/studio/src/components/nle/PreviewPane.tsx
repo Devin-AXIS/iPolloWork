@@ -220,6 +220,7 @@ export function PreviewPane({
           onSeek={seek}
           disabled={timelineDisabled}
           isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
         />
       </div>
     </div>

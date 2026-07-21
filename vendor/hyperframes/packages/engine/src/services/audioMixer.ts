@@ -10,7 +10,7 @@ import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
-import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { formatFfmpegError, runFfmpeg } from "../utils/runFfmpeg.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
@@ -412,7 +412,7 @@ async function mixAudioTracks(
       const trimDuration = track.end - track.start;
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
       filterParts.push(
-        `[${i}:a]atrim=0:${trimDuration},${volumeFilter},adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration}[a${i}]`,
+        `[${i}:a]atrim=0:${trimDuration},${volumeFilter},adelay=${delayMs}|${delayMs},apad[a${i}]`,
       );
     });
 
@@ -507,8 +507,7 @@ async function mixAudioTracks(
       outputPath,
       durationMs: result.durationMs,
       tracksProcessed: 0,
-      error:
-        result.exitCode !== null ? `FFmpeg exited with code ${result.exitCode}` : result.stderr,
+      error: formatFfmpegError(result.exitCode, result.stderr),
     };
   }
   return {

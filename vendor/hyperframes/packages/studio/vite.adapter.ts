@@ -47,11 +47,19 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
   let _producerModuleLoader:
     | (() => Promise<{
         createRenderJob: (config: {
-          fps: 24 | 30 | 60;
+          fps: import("@hyperframes/core").Fps;
           quality: "draft" | "standard" | "high";
           format: string;
           renderBodyScripts?: string[];
-          outputResolution?: "landscape" | "portrait" | "landscape-4k" | "portrait-4k";
+          outputResolution?:
+            | "landscape"
+            | "portrait"
+            | "landscape-4k"
+            | "portrait-4k"
+            | "square"
+            | "square-4k";
+          outputSize?: { width: number; height: number };
+          captureSize?: { width: number; height: number };
           variables?: Record<string, unknown>;
         }) => unknown;
         executeRenderJob: (
@@ -256,6 +264,8 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
             format: opts.format,
             ...(renderBodyScripts.length > 0 ? { renderBodyScripts } : {}),
             outputResolution: opts.outputResolution,
+            outputSize: opts.outputSize,
+            captureSize: opts.captureSize,
             ...(opts.composition ? { entryFile: opts.composition } : {}),
             ...(opts.variables ? { variables: opts.variables } : {}),
           });
@@ -282,7 +292,11 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
           mkdirSync(dirname(metaPath), { recursive: true });
           writeFileSync(
             metaPath,
-            JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
+            JSON.stringify({
+              status: "complete",
+              durationMs: Date.now() - startTime,
+              perfSummary: job.perfSummary,
+            }),
           );
         } catch (err) {
           if (abortController.signal.aborted) {

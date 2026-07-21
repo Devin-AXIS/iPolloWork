@@ -38,41 +38,33 @@ function PlayPauseIcon({ playing }: { playing: boolean }) {
 
 const MuteButton = memo(function MuteButton({
   audioMuted,
-  audioAutoMuted,
   effectiveAudioMuted,
   controlsDisabled,
   setAudioMuted,
 }: {
   audioMuted: boolean;
-  audioAutoMuted: boolean;
   effectiveAudioMuted: boolean;
   controlsDisabled: boolean;
   setAudioMuted: (v: boolean) => void;
 }) {
   const { t } = useStudioI18n();
-  const label = audioAutoMuted
-    ? t("player.audioMutedSpeed")
-    : audioMuted
-      ? t("player.unmuteAudio")
-      : t("player.muteAudio");
+  const label = audioMuted ? t("player.unmuteAudio") : t("player.muteAudio");
   return (
     <Tooltip label={label}>
       <button
         type="button"
         onClick={() => {
-          if (!audioAutoMuted) {
-            trackStudioEvent("playback", { action: "mute_toggle", muted: !audioMuted });
-            setAudioMuted(!audioMuted);
-          }
+          trackStudioEvent("playback", { action: "mute_toggle", muted: !audioMuted });
+          setAudioMuted(!audioMuted);
         }}
-        disabled={controlsDisabled || audioAutoMuted}
+        disabled={controlsDisabled}
         aria-label={label}
         aria-pressed={effectiveAudioMuted}
         className={`h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md border transition-colors disabled:pointer-events-none ${
           effectiveAudioMuted
             ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
             : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
-        } ${audioAutoMuted ? "opacity-70" : ""}`}
+        }`}
       >
         <svg
           width="13"
@@ -159,50 +151,50 @@ const FullscreenButton = memo(function FullscreenButton({
   onToggleFullscreen: () => void;
 }) {
   const { t } = useStudioI18n();
+  const label = isFullscreen ? t("player.exitFullscreen") : t("player.enterFullscreen");
   return (
-    <Tooltip label={`${isFullscreen ? t("player.exitFullscreen") : t("player.enterFullscreen")} (F)`}>
-      <button
-        type="button"
-        onClick={() => {
-          trackStudioEvent("playback", { action: "fullscreen_toggle", active: !isFullscreen });
-          onToggleFullscreen();
-        }}
-        className={`h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md border transition-colors ${
-          isFullscreen
-            ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-            : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
-        }`}
-        aria-label={isFullscreen ? t("player.exitFullscreen") : t("player.enterFullscreen")}
+    <button
+      type="button"
+      onClick={() => {
+        trackStudioEvent("playback", { action: "fullscreen_toggle", active: !isFullscreen });
+        onToggleFullscreen();
+      }}
+      title={`${label} (F)`}
+      className={`h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md border transition-colors ${
+        isFullscreen
+          ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
+          : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
+      }`}
+      aria-label={label}
+    >
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
       >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          {isFullscreen ? (
-            <>
-              <path d="M8 3v3a2 2 0 0 1-2 2H3" />
-              <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
-              <path d="M3 16h3a2 2 0 0 1 2 2v3" />
-              <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
-            </>
-          ) : (
-            <>
-              <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-              <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-              <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-              <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-            </>
-          )}
-        </svg>
-      </button>
-    </Tooltip>
+        {isFullscreen ? (
+          <>
+            <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+            <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+            <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+            <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+          </>
+        ) : (
+          <>
+            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+            <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+            <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+          </>
+        )}
+      </svg>
+    </button>
   );
 });
 
@@ -366,7 +358,6 @@ export const PlayerControls = memo(function PlayerControls({
   const durationRef = useRef(duration);
   durationRef.current = duration;
   const controlsDisabled = disabled || !timelineReady;
-  const audioAutoMuted = playbackRate > 1;
   const effectiveAudioMuted = shouldMutePreviewAudio(audioMuted, playbackRate);
 
   useEffect(() => {
@@ -473,7 +464,6 @@ export const PlayerControls = memo(function PlayerControls({
 
       <MuteButton
         audioMuted={audioMuted}
-        audioAutoMuted={audioAutoMuted}
         effectiveAudioMuted={effectiveAudioMuted}
         controlsDisabled={controlsDisabled}
         setAudioMuted={setAudioMuted}
@@ -487,11 +477,18 @@ export const PlayerControls = memo(function PlayerControls({
 
       <LoopButton loopEnabled={loopEnabled} disabled={disabled} setLoopEnabled={setLoopEnabled} />
 
-      {/*
-      {onToggleFullscreen && (
-        <FullscreenButton isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />
-      )}
-      */}
+      <FullscreenButton
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={() => {
+          if (onToggleFullscreen) {
+            onToggleFullscreen();
+            return;
+          }
+          seekBarRef.current
+            ?.closest("[data-studio-fullscreen-target]")
+            ?.dispatchEvent(new CustomEvent("studio-toggle-fullscreen", { bubbles: true }));
+        }}
+      />
 
       <ShortcutsPanel
         disabled={disabled}

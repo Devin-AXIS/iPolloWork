@@ -54,7 +54,7 @@ export function useFrameCapture({
         });
         const filename = buildFrameCaptureFilename(activeCompPath, time);
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
+        const timeout = setTimeout(() => controller.abort(), 75000);
         try {
           const response = await fetch(href, { cache: "no-store", signal: controller.signal });
           clearTimeout(timeout);
@@ -80,7 +80,7 @@ export function useFrameCapture({
         } catch (fetchErr) {
           clearTimeout(timeout);
           if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
-            throw new Error("Capture timed out — the server took too long to respond");
+            throw new Error("Capture timed out - the server took too long to respond");
           }
           throw fetchErr;
         }

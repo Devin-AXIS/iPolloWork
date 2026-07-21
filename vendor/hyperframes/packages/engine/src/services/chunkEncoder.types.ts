@@ -6,6 +6,9 @@ export interface EncoderOptions {
   fps: Fps;
   width: number;
   height: number;
+  /** Optional final encoded dimensions. Captured frames remain width x height. */
+  outputWidth?: number;
+  outputHeight?: number;
   codec?: "h264" | "h265" | "vp9" | "prores";
   preset?: string;
   quality?: number;

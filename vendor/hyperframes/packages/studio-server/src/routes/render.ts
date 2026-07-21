@@ -62,6 +62,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       quality?: string;
       format?: string;
       resolution?: string;
+      outputSize?: { width?: unknown; height?: unknown };
+      captureSize?: { width?: unknown; height?: unknown };
       composition?: string;
       // Browser telemetry id, so the server-emitted render outcome is
       // attributed to the user who triggered the render (joinable funnel).
@@ -86,6 +88,17 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const outputResolution = VALID_RESOLUTIONS.has(body.resolution ?? "")
       ? (body.resolution as CanvasResolution)
       : undefined;
+    const parseSize = (size?: { width?: unknown; height?: unknown }) =>
+      typeof size?.width === "number" &&
+      typeof size?.height === "number" &&
+      Number.isInteger(size.width) &&
+      Number.isInteger(size.height) &&
+      size.width > 0 &&
+      size.height > 0
+        ? { width: size.width, height: size.height }
+        : undefined;
+    const outputSize = parseSize(body.outputSize);
+    const captureSize = parseSize(body.captureSize);
     let composition: string | undefined;
     if (typeof body.composition === "string" && body.composition.length > 0) {
       // `body.composition` is attacker-controlled (from c.req.json()).
@@ -122,6 +135,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       quality,
       jobId,
       outputResolution,
+      outputSize,
+      captureSize,
       composition,
       variables,
       distinctId:
@@ -284,11 +299,13 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         const metaPath = join(rendersDir, `${rid}.meta.json`);
         let status: "complete" | "failed" = "complete";
         let durationMs: number | undefined;
+        let perfSummary: unknown;
         if (existsSync(metaPath)) {
           try {
             const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
             if (meta.status === "failed") status = "failed";
             if (meta.durationMs) durationMs = meta.durationMs;
+            if (meta.perfSummary) perfSummary = meta.perfSummary;
           } catch {
             /* ignore */
           }
@@ -300,6 +317,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
           createdAt: stat.mtimeMs,
           status,
           durationMs,
+          perfSummary,
         };
       })
       .sort((a, b) => b.createdAt - a.createdAt);

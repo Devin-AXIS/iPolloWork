@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Film, Loader2, Play, Plus, RefreshCw, X } from "lucide-react";
+import { AudioLines, Film, Loader2, Plus, RefreshCw, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
@@ -36,18 +36,36 @@ type VideoPanelProps = {
   onClose: () => void;
 };
 
+type StudioStartupStage = "starting-service" | "waiting-for-studio" | "loading-frame";
+
+const studioStartupCopy: Record<StudioStartupStage, { title: string; detail: string }> = {
+  "starting-service": {
+    title: "Starting the local HyperFrames service...",
+    detail: "Launching the project server for this video task.",
+  },
+  "waiting-for-studio": {
+    title: "Waiting for HyperFrames Studio...",
+    detail: "The service is starting. This can take a moment on the first launch.",
+  },
+  "loading-frame": {
+    title: "Preparing the Video Studio...",
+    detail: "Loading the Studio interface and applying iPolloWork settings.",
+  },
+};
+
 export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const localeSyncTimersRef = React.useRef<number[]>([]);
   const [revision, setRevision] = React.useState(0);
+  const [reloadToken, setReloadToken] = React.useState(0);
   const [startAttempt, setStartAttempt] = React.useState(0);
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
+  const [startupStage, setStartupStage] = React.useState<StudioStartupStage>("starting-service");
   const [detail, setDetail] = React.useState(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`);
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [voicePanelOpen, setVoicePanelOpen] = React.useState(false);
-  const [voicePreviewRequest, setVoicePreviewRequest] = React.useState(0);
   const studioPort = hyperframesStudioPort(sessionId);
   const [activeStudioPort, setActiveStudioPort] = React.useState(studioPort);
   const resolvedTheme = React.useSyncExternalStore(
@@ -61,6 +79,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     videoProjectId(sessionId),
     currentLocale(),
     initialStudioThemeRef.current,
+    reloadToken,
   );
   const projectDirectory = videoProjectDirectory(sessionId);
 
@@ -96,6 +115,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
 
   React.useEffect(() => {
     setStatus("starting");
+    setStartupStage("starting-service");
     setDetail(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`);
     setStudioFrameLoaded(false);
     setStudioChromeReady(false);
@@ -120,6 +140,12 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     const stopHyperframes = bridge.stop;
 
     let disposed = false;
+    const waitingTimer = window.setTimeout(() => {
+      if (!disposed) {
+        setStartupStage("waiting-for-studio");
+        setDetail(`Waiting for ${HYPERFRAMES_STUDIO_LABEL} to answer on port ${studioPort}...`);
+      }
+    }, 900);
     void startHyperframes({
       workspaceRoot,
       sessionId,
@@ -127,22 +153,26 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       port: studioPort,
     }).then((result) => {
       if (disposed) return;
+      window.clearTimeout(waitingTimer);
       if (!result?.ok) throw new Error("Could not start HyperFrames.");
       if (typeof result.port === "number" && Number.isInteger(result.port) && result.port > 0) {
         setActiveStudioPort(result.port);
       }
       setStatus("ready");
+      setStartupStage("loading-frame");
       setDetail(`Studio ready on port ${result.port ?? studioPort}`);
       setStudioFrameLoaded(false);
       setRevision((value) => value + 1);
     }).catch((cause) => {
       if (disposed) return;
+      window.clearTimeout(waitingTimer);
       setStatus("failed");
       setDetail(cause instanceof Error ? cause.message : "Could not start HyperFrames.");
     });
 
     return () => {
       disposed = true;
+      window.clearTimeout(waitingTimer);
       void stopHyperframes(sessionId);
     };
   }, [isRemoteWorkspace, projectDirectory, sessionId, startAttempt, studioPort, workspaceRoot]);
@@ -166,17 +196,16 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         <Film className="size-4 text-primary" />
         <div className="flex min-w-0 flex-1 items-center">
           <p className="truncate text-sm font-medium">Video Studio</p>
+          <span className="ml-2 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {status === "failed" ? "Failed" : status === "ready" && studioChromeReady ? "Ready" : startupStage === "waiting-for-studio" ? "Waiting" : "Starting"}
+          </span>
         </div>
         <Tooltip>
           <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => setVoicePanelOpen((open) => !open)} disabled={isRemoteWorkspace} aria-label="Voice settings"><AudioLines /></Button>} />
           <TooltipContent>Voice settings</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="xs" onClick={() => { setVoicePanelOpen(true); setVoicePreviewRequest((value) => value + 1); }} disabled={isRemoteWorkspace} aria-label="Preview selected voice"><Play />Preview</Button>} />
-          <TooltipContent>Preview selected voice</TooltipContent>
-        </Tooltip>
-        <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setDetail("Reloading Studio…"); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
-        {launcherItems.length > 0 ? (
+              <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setStartupStage("loading-frame"); setDetail("Reloading Studio..."); setReloadToken(Date.now()); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
+              {launcherItems.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={(
@@ -216,9 +245,17 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">Video Studio is available for local workspaces only.</div>
       ) : (
         <div className="relative min-h-0 flex-1 bg-[#0c0c0d]">
-          {status === "starting" || (status === "ready" && !studioChromeReady) ? <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"><div className="text-center"><Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /><p className="text-xs text-muted-foreground">{status === "starting" ? "Starting the local HyperFrames workspace..." : "Preparing the Video Studio..."}</p><p className="mt-1 max-w-[32rem] text-[11px] text-muted-foreground">{detail}</p></div></div> : null}
-          {status === "failed" ? <div className="absolute inset-0 z-20 grid place-items-center bg-background p-6"><div className="max-w-md text-center"><p className="text-sm font-medium">HyperFrames Studio failed to start</p><p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{detail}</p><Button className="mt-4" variant="secondary" size="sm" onClick={() => { setStatus("starting"); setDetail(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`); setStudioFrameLoaded(false); setStudioChromeReady(false); setStartAttempt((value) => value + 1); }}>Retry</Button></div></div> : null}
-          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
+          {status === "starting" || (status === "ready" && !studioChromeReady) ? (
+            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm" aria-live="polite">
+              <div className="text-center">
+                <Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" />
+                <p className="text-xs font-medium text-foreground">{studioStartupCopy[startupStage].title}</p>
+                <p className="mt-1 max-w-[32rem] text-[11px] text-muted-foreground">{detail || studioStartupCopy[startupStage].detail}</p>
+              </div>
+            </div>
+          ) : null}
+          {status === "failed" ? <div className="absolute inset-0 z-20 grid place-items-center bg-background p-6"><div className="max-w-md text-center"><p className="text-sm font-medium">HyperFrames Studio failed to start</p><p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{detail}</p><Button className="mt-4" variant="secondary" size="sm" onClick={() => { setStatus("starting"); setStartupStage("starting-service"); setDetail(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`); setStudioFrameLoaded(false); setStudioChromeReady(false); setStartAttempt((value) => value + 1); }}>Retry</Button></div></div> : null}
+          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title="HyperFrames Video Studio" allow="fullscreen" allowFullScreen className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
             setStudioFrameLoaded(true);
             setStudioChromeReady(true);
             scheduleStudioLocaleSync();
@@ -232,7 +269,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             workspaceRoot={workspaceRoot}
             client={client}
             workspaceId={workspaceId}
-            previewRequest={voicePreviewRequest}
+            previewRequest={0}
             onClose={() => setVoicePanelOpen(false)}
           /> : null}
         </div>

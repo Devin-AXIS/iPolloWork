@@ -39,6 +39,38 @@ export interface EncoderPreset {
   hdr?: { transfer: HdrTransfer };
 }
 
+function targetDimensions(options: EncoderOptions): { width: number; height: number } {
+  return {
+    width: options.outputWidth ?? options.width,
+    height: options.outputHeight ?? options.height,
+  };
+}
+
+function scaleFilter(
+  options: EncoderOptions,
+  rangeConversion: "none" | "full-to-tv" = "none",
+): string {
+  const needsResize =
+    options.outputWidth !== undefined &&
+    options.outputHeight !== undefined &&
+    (options.outputWidth !== options.width || options.outputHeight !== options.height);
+  if (!needsResize) {
+    return rangeConversion === "full-to-tv" ? "scale=in_range=pc:out_range=tv" : "";
+  }
+  const range = rangeConversion === "full-to-tv" ? ":in_range=pc:out_range=tv" : "";
+  return `scale=w=${options.outputWidth}:h=${options.outputHeight}${range}`;
+}
+
+function appendVideoFilter(args: string[], filter: string): void {
+  if (!filter) return;
+  const vfIdx = args.indexOf("-vf");
+  if (vfIdx === -1) {
+    args.push("-vf", filter);
+    return;
+  }
+  args[vfIdx + 1] = `${filter},${args[vfIdx + 1]}`;
+}
+
 function appendEncodeTimeoutMessage(error: string, timedOut: boolean, timeoutMs: number): string {
   if (!timedOut) return error;
   // Two independent reports of this exact timeout, both resolved by env vars
@@ -357,6 +389,7 @@ export function buildEncoderArgs(
     }
   } else if (codec === "prores") {
     args.push("-c:v", "prores_ks", "-profile:v", preset, "-vendor", "apl0");
+    appendVideoFilter(args, scaleFilter(options));
     args.push("-pix_fmt", pixelFormat);
     return [...args, "-y", outputPath];
   }
@@ -405,29 +438,30 @@ export function buildEncoderArgs(
     if (gpuEncoder === "vaapi") {
       // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
       // odd dimensions before upload, so only prepend the range conversion.
-      const vfIdx = args.indexOf("-vf");
-      if (vfIdx !== -1) {
-        args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
-      }
+      appendVideoFilter(args, scaleFilter(options, "full-to-tv"));
     } else if (shouldUseGpu) {
       // nvenc/videotoolbox/qsv/amf feed software frames straight to the HW
       // encoder with no `-vf`. They hit the same "height not divisible by 2"
       // abort as libx264 on an odd-sized 4:2:0 canvas, so pad odd dimensions
       // up to even on the software side before the encode.
-      const vf = withEvenDimensionPad("", pixelFormat, options.width, options.height);
-      if (vf) args.push("-vf", vf);
+      const target = targetDimensions(options);
+      appendVideoFilter(
+        args,
+        withEvenDimensionPad(scaleFilter(options), pixelFormat, target.width, target.height),
+      );
     } else {
       // Range conversion: Chrome screenshots are full-range RGB.
       // The scale filter handles both 8-bit and 10-bit correctly. Pad odd
       // dimensions up to even so libx264/libx265 (4:2:0) don't abort with
       // "height not divisible by 2" on an odd-sized composition canvas.
+      const target = targetDimensions(options);
       args.push(
         "-vf",
         withEvenDimensionPad(
-          "scale=in_range=pc:out_range=tv",
+          scaleFilter(options, "full-to-tv"),
           pixelFormat,
-          options.width,
-          options.height,
+          target.width,
+          target.height,
         ),
       );
     }
@@ -437,6 +471,9 @@ export function buildEncoderArgs(
   }
 
   if (gpuEncoder !== "vaapi") {
+    if (codec === "vp9") {
+      appendVideoFilter(args, scaleFilter(options));
+    }
     args.push("-pix_fmt", pixelFormat);
   }
 
