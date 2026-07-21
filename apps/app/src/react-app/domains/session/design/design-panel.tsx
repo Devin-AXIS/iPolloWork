@@ -6,6 +6,7 @@ import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, Chev
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -35,6 +36,7 @@ import {
 } from "./design-html-runtime";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignSystemDrawer, type DesignTokenValues } from "./design-system-drawer";
+import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
   downgradeUnsupportedPdfExportColors,
   downgradeUnsupportedPdfExportColorText,
@@ -71,6 +73,7 @@ type DesignPanelProps = {
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
+  launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
 };
 
@@ -245,6 +248,7 @@ export function DesignPanel({
   client,
   workspaceId,
   isRemoteWorkspace = false,
+  launcherItems = [],
   onClose,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
@@ -551,7 +555,10 @@ export function DesignPanel({
     setExportingPdf(true);
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
-    frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;visibility:hidden;pointer-events:none`;
+    // Keep the export document laid out and paintable. `visibility:hidden` on
+    // the host iframe can make Chromium/html2canvas skip its rendering tree in
+    // packaged Electron builds, producing a valid but blank PPTX.
+    frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;opacity:0;pointer-events:none`;
     document.body.append(frame);
     try {
       const exportLibraries = Promise.all([import("html2canvas-pro"), import("jspdf")]);
@@ -719,6 +726,13 @@ export function DesignPanel({
         if (usesNativeEditablePptx) {
           pptxSlide.background = { color: pptxCompatibleSlideBackground(slide) };
           const objects = collectPptxCompatibleObjects(slide);
+          const objectCoverage = validatePptxElementPlanCoverage({
+            hasVisibleContent: slideHasVisiblePptxContent(slide),
+            planCount: objects.length,
+          });
+          if (!objectCoverage.valid) {
+            throw new Error("PPTX export stopped because visible slide content could not be collected. No blank presentation was created.");
+          }
           nativeObjectCount += objects.length;
           for (const object of objects) {
             if (object.kind === "shape") {
@@ -1094,6 +1108,39 @@ export function DesignPanel({
         <div className="flex min-w-0 flex-1 items-center">
           <p className="truncate text-sm font-medium">Design</p>
         </div>
+        {launcherItems.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={(
+                <Button variant="ghost" size="icon-sm" aria-label="Add panel">
+                  <Plus />
+                </Button>
+              )}
+            />
+            <DropdownMenuContent
+              align="end"
+              className="w-[296px] rounded-[18px] border border-[#E5E5E5] bg-white p-3 text-[#242424] shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
+            >
+              {launcherItems.map((item) => (
+                <DropdownMenuItem
+                  key={item.id}
+                  disabled={item.disabled}
+                  onClick={item.onClick}
+                  className={cn(
+                    "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424] data-disabled:opacity-40",
+                    item.active && "bg-[#F5F5F5]",
+                  )}
+                >
+                  <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
+                  <span className="flex-1">{item.label}</span>
+                  {item.shortcut ? (
+                    <span className="text-[12px] tracking-[-0.24px] text-[#8A8A8A]">{item.shortcut}</span>
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close Design">
           <X />
         </Button>
