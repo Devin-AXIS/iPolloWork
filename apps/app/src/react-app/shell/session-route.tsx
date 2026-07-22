@@ -804,6 +804,13 @@ export function SessionRoute() {
     navigate(target, { state: { workspaceId, sessionId } });
   }, [navigate, selectedSessionId, sidebarActiveWorkspaceId]);
 
+  const handleOpenHelp = useCallback(() => {
+    const returnTo = sidebarActiveWorkspaceId
+      ? workspaceSessionRoute(sidebarActiveWorkspaceId, selectedSessionId)
+      : "/session";
+    navigate("/help", { state: { returnTo } });
+  }, [navigate, selectedSessionId, sidebarActiveWorkspaceId]);
+
   const surfaceProps = useMemo(() => {
     if (!client || !selectedWorkspaceId || !selectedSessionId || !opencodeBaseUrl || !token || !opencodeClient) {
       return null;
@@ -1989,6 +1996,7 @@ export function SessionRoute() {
       providers={providers}
       mcpConnectedCount={mcpConnectedCount}
       onOpenSettings={() => handleOpenSettings("/settings/general")}
+      onOpenHelp={handleOpenHelp}
       onOpenProviderAuth={() => sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" })}
       providerAuthModal={sessionProviderAuthSnapshot.providerAuthModalOpen ? {
         open: true,
@@ -2290,6 +2298,7 @@ export function SessionRoute() {
       }}
       onOpenSession={(workspaceId, sessionId) => navigateToWorkspaceSession(workspaceId, sessionId)}
       onOpenSettings={(route) => handleOpenSettings(route ?? "/settings/general")}
+      onOpenHelp={handleOpenHelp}
       onOpenModelPicker={() => {
         modelPicker.setQuery("");
         modelPicker.setRecentProviderIds(new Set());

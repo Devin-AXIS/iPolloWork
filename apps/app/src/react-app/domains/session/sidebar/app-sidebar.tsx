@@ -19,6 +19,7 @@ import {
   RefreshCw,
   RotateCcw,
   Settings,
+  HelpCircle,
   FolderOpen,
   Tag,
   UserRound,
@@ -600,6 +601,7 @@ export type AppSidebarProps = {
   activePrimaryItem?: "template-market" | "extensions" | null;
   onOpenAccount: () => void;
   onOpenSettings: (route?: string) => void;
+  onOpenHelp: () => void;
   onOpenTemplateMarket: () => void;
   onOpenExtensions: () => void;
   onSignIn: () => void;
@@ -907,6 +909,10 @@ export function AppSidebar(props: AppSidebarProps) {
                   <DropdownMenuItem onClick={() => props.onOpenSettings("/settings/general")}>
                     <Settings className="size-4" />
                     {t("status.settings")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={props.onOpenHelp}>
+                    <HelpCircle className="size-4" />
+                    {t("help.title")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => switchLanguage("zh")}>

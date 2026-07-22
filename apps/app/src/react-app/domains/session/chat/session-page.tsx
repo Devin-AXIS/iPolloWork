@@ -173,6 +173,7 @@ export type SessionPageProps = {
   providers?: ProviderListItem[];
   mcpConnectedCount: number;
   onOpenSettings: (route?: string) => void;
+  onOpenHelp: () => void;
   sidebar: SessionPageSidebarProps;
   surface?: SessionPageSurfaceProps | null;
   history?: SessionPageHistoryControls | null;
@@ -1597,6 +1598,7 @@ export function SessionPage(props: SessionPageProps) {
           activePrimaryItem={templateMarketOpen ? "template-market" : mainWorkspaceView === "extensions" ? "extensions" : null}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
+          onOpenHelp={props.onOpenHelp}
           onOpenTemplateMarket={() => setTemplateMarketOpen(true)}
           onOpenExtensions={openExtensionsRailPane}
           onSignIn={openCloudSignIn}
