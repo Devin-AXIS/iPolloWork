@@ -905,7 +905,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 >
                   <Settings className="size-4" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="end" className="w-36 min-w-36">
+                <DropdownMenuContent side="top" align="end" className="w-44 min-w-44">
                   <DropdownMenuItem onClick={() => props.onOpenSettings("/settings/general")}>
                     <Settings className="size-4" />
                     {t("status.settings")}
@@ -915,16 +915,25 @@ export function AppSidebar(props: AppSidebarProps) {
                     {t("help.title")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => switchLanguage("zh")}>
-                    <Languages className="size-4" />
-                    中文
-                    {language === "zh" ? <Check className="ml-auto size-3.5" /> : null}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => switchLanguage("en")}>
-                    <Languages className="size-4" />
-                    English
-                    {language === "en" ? <Check className="ml-auto size-3.5" /> : null}
-                  </DropdownMenuItem>
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Languages className="size-4" />
+                      {t("settings.language")}
+                      <span className="ml-auto text-xs font-normal text-muted-foreground">
+                        {language === "zh" ? "中文" : "English"}
+                      </span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-36 min-w-36">
+                      <DropdownMenuItem onClick={() => switchLanguage("zh")}>
+                        中文
+                        {language === "zh" ? <Check className="ml-auto size-3.5" /> : null}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => switchLanguage("en")}>
+                        English
+                        {language === "en" ? <Check className="ml-auto size-3.5" /> : null}
+                      </DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
                 </DropdownMenuContent>
               </DropdownMenu>
               <NotificationBell className="shrink-0 rounded-lg text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
