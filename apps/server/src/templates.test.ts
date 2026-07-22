@@ -321,12 +321,14 @@ describe("template installations", () => {
     }
   });
 
-  test("seeds the full personal template market and keeps its install state global", async () => {
+  test("withdraws selected bundled templates from the personal template market", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-templates-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(74);
+    expect(first.filter((item) => item.installed)).toHaveLength(72);
+    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.deck-xhs-post")).toBe(false);
+    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.social-x-post-card")).toBe(false);
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
