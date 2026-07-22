@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+  <rect width="800" height="450" fill="#f6f7fb"/>
+  <rect x="54" y="48" width="692" height="310" rx="8" fill="#d9eaf6"/>
+  <circle cx="630" cy="150" r="120" fill="#1fbac0" opacity=".72"/>
+  <circle cx="570" cy="255" r="92" fill="#fff" opacity=".78"/>
+  <text x="54" y="405" fill="#161e24" font-family="Arial, sans-serif" font-size="24" font-weight="600">iPollo 公众号长图</text>
+</svg>

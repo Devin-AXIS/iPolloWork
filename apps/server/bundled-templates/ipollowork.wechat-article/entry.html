@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iPollo</title>
+  <style>
+    :root { --page:#f6f7fb; --white:#fff; --ink:#161e24; --steel:#5a6774; --accent:#1fbac0; --dark:#1e262b; --line:#e7e7e8; }
+    * { box-sizing:border-box; }
+    html { background:#dfe5ec; }
+    body { margin:0; background:var(--page); color:var(--ink); font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; }
+    .figma-page { width:800px; min-height:2430px; margin:0 auto; overflow:hidden; background:var(--page); }
+    .main-content { width:100%; padding-top:56px; }
+    .figure { width:692px; margin:0 54px; }
+    .hero-figure { height:309px; overflow:hidden; border-radius:8px; background:#d9eaf6; }
+    .fixed-brand-image { display:block; width:100%; height:100%; object-fit:cover; user-select:none; pointer-events:none; }
+    h1,h2,p { margin:0; }
+    h1 { font-size:48px; line-height:56.5px; letter-spacing:-2.25px; font-weight:600; color:var(--ink); }
+    .section { width:692px; margin:0 54px; padding-top:48px; }
+    .section-label { color:#000; font-size:12px; line-height:11px; letter-spacing:1.54px; font-weight:500; text-transform:uppercase; }
+    h2 { width:650px; padding-top:17px; color:var(--ink); font-size:32px; line-height:38.75px; letter-spacing:-1.395px; font-weight:600; }
+    .section p { width:100%; padding-top:17px; color:var(--steel); font-size:16px; line-height:29.25px; }
+    .section p + p { padding-top:21px; }
+    .quote-margin { width:692px; margin:0 54px; padding-top:24px; }
+    .quote { width:100%; margin:0; padding:25px 28px 24px 34px; border-left:6px solid #000; border-radius:8px; background:var(--white); }
+    .quote p { width:633px; color:var(--ink); font-size:20px; line-height:32.55px; }
+    .quote cite { display:block; width:633px; height:25px; padding-top:14px; color:var(--steel); font-size:12px; line-height:11px; font-style:normal; }
+    .media-margin { width:692px; margin:0 54px; padding-top:24px; }
+    .media-grid { display:grid; grid-template-columns:339.5px 339.5px; gap:13px; }
+    .media-card { margin:0; overflow:hidden; border-radius:8px; background:var(--white); }
+    .media-grid.first-grid { grid-auto-rows:auto; }
+    .media-grid.first-grid .media-card { height:auto; }
+    .media-grid.first-grid .media-card__image { display:block; width:100%; height:170px; background:#dedede; object-fit:cover; }
+    .media-card__image { display:block; width:100%; background:#dedede; object-fit:cover; }
+    .media-card figcaption { min-height:37px; padding:10px 12px 12px; color:var(--steel); font-size:11px; line-height:normal; white-space:nowrap; }
+    .cta-margin { width:692px; margin:0 54px; padding-top:48px; padding-bottom:32px; }
+    .fixed-footer-cta { display:block; width:100%; aspect-ratio:692 / 150; overflow:hidden; border-radius:8px; background:var(--dark); }
+    .fixed-footer-cta .fixed-brand-image { height:auto; aspect-ratio:692 / 150; object-fit:contain; }
+    @media (max-width:800px) {
+      .figma-page { width:100%; min-height:0; }
+      .main-content { padding-top:7vw; }
+      .figure,.section,.quote-margin,.media-margin,.cta-margin { width:auto; margin-left:7vw; margin-right:7vw; }
+      .hero-figure { height:39vw; }
+      h1 { font-size:6vw; line-height:1.18; letter-spacing:-.25vw; }
+      h2,.section p { width:100%; }
+      .quote p,.quote cite { width:100%; }
+      .media-grid { grid-template-columns:1fr 1fr; }
+      .media-grid.first-grid .media-card__image { height:24vw; }
+    }
+    @media (max-width:560px) {
+      .media-grid { grid-template-columns:1fr; }
+      .media-grid.first-grid .media-card__image { height:48vw; }
+    }
+  </style>
+</head>
+<body>
+  <article class="figma-page" data-node-id="108:40" data-name="公众号长图模版">
+    <main class="main-content" data-node-id="108:287" data-name="Main Content">
+      <figure class="figure hero-figure" data-node-id="108:288" data-name="Fixed brand hero" data-ipw-fixed="true">
+        <img class="fixed-brand-image" src="assets/fixed-hero.jpg" alt="iPollo 固定页头视觉" data-ipw-fixed="true">
+      </figure>
+
+      <section class="section" data-node-id="108:292">
+        <div class="section-label" data-node-id="108:294">01 / Context first</div>
+        <h2 data-node-id="108:296">先理解工作，再开始工作</h2>
+        <p data-node-id="108:298">真正有价值的 AI，不只是回答一个问题，而是理解问题背后的目标、背景和限制。iPollo 将分散在文档、网页、文件和团队协作中的信息，组织成可持续使用的工作上下文。</p>
+        <p data-node-id="108:300">这意味着每一次执行，都建立在更完整的认知之上。你不需要不断重复背景，AI 也不会把每个任务当成孤立的指令。</p>
+      </section>
+
+      <div class="quote-margin" data-node-id="108:301"><blockquote class="quote" data-node-id="108:302"><p data-node-id="108:304">“从 intent 到 execution，中间的距离，正是 agentic AI 应该解决的问题。”</p><cite data-node-id="108:306">— iPollo product principle</cite></blockquote></div>
+
+      <section class="section" data-node-id="108:307">
+        <div class="section-label" data-node-id="108:309">02 / The system</div>
+        <h2 data-node-id="108:311">一个可以一起工作的系统</h2>
+        <p data-node-id="108:313">iPollo 不试图替代团队，而是让团队拥有一个能够观察、计划、执行并持续学习的工作伙伴。它把复杂流程变成清晰的下一步，让人类判断出现在真正重要的地方。</p>
+      </section>
+
+      <div class="media-margin" data-node-id="108:314"><div class="media-grid first-grid" data-node-id="108:315">
+        <figure class="media-card" data-node-id="108:316"><img class="media-card__image" data-node-id="108:317" src="assets/Main-Dashboard_1Main Dashboard.webp" alt="iPollo 工作区预览"><figcaption data-node-id="108:319">把工作集中到一个清晰的执行空间</figcaption></figure>
+        <figure class="media-card" data-node-id="108:320"><img class="media-card__image" data-node-id="108:321" src="assets/ipollo-light-blue-yellow-upward-variant-2-4k.png" alt="iPollo 视觉内容预览"><figcaption data-node-id="108:323">让每一次行动都连接上下文</figcaption></figure>
+      </div></div>
+
+      <section class="section" data-node-id="108:324">
+        <div class="section-label" data-node-id="108:326">03 / Closing note</div>
+        <h2 data-node-id="108:328">从下一步开始</h2>
+        <p data-node-id="108:330">好的工具不会增加更多复杂度，而是让复杂工作显得更有秩序。iPollo 正在构建这样一个开放、可执行、以人为中心的 AI work system。</p>
+        <p data-node-id="115:7455">好的工具不会增加更多复杂度，而是让复杂工作显得更有秩序。iPollo 正在构建这样一个开放、可执行、以人为中心的 AI work system。</p>
+      </section>
+
+      <figure class="figure" style="height:334px;padding-top:24px" data-node-id="114:578"><img class="media-card__image" style="height:310px;border-radius:8px" data-node-id="114:579" src="assets/Main-Dashboard_1Main Dashboard.webp" alt="iPollo 产品界面预览"></figure>
+
+      <div class="cta-margin" data-node-id="108:331"><a class="fixed-footer-cta" href="https://ipollo.work/" target="_blank" rel="noopener" data-node-id="108:332" data-name="Footer CTA link">
+        <img class="fixed-brand-image" src="assets/fixed-footer-cta.jpg" alt="iPollo 固定页尾 CTA" data-ipw-fixed="true">
+      </a></div>
+    </main>
+  </article>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.wechat-article",
+  "version": "1.0.6",
+  "kind": "design",
+  "category": "other",
+  "subcategory": "wechat",
+  "style": "editorial",
+  "tags": ["wechat", "article", "公众号", "editorial"],
+  "surface": "design",
+  "title": "iPollo 公众号长图",
+  "description": "适用于 iPollo 公众号文章与品牌内容发布的轻技术编辑风格长图模板。",
+  "cover": "cover.svg",
+  "entry": "entry.html",
+  "source": {
+    "name": "iPolloWork · iPollo WeChat Article",
+    "license": "Proprietary",
+    "attribution": "Provided by iPolloWork."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["typography"]
+  },
+  "applyChecklist": [
+    "只替换文章标题、正文和中间内容图片；中间图片必须继续使用 img 标签，不能改成渐变、色块或 div 占位。",
+    "页头 fixed-hero.jpg 和页尾 fixed-footer-cta.jpg 是固定品牌 JPG 资产；所有 data-ipw-fixed=\"true\" 节点必须原样保留，不得改写、替换、删除或重新生成。",
+    "保持模板颜色、背景、页头、页尾 CTA 和品牌视觉不变；不要使用 brief 中的 colorPalette 改变这个模板的颜色；页脚 CTA 只允许编辑外层链接 href，不允许编辑文字、颜色、图片或布局。",
+    "保持 800px 画布与公众号移动端阅读比例。",
+    "检查图片加载、链接、文字换行和横向溢出。"
+  ],
+  "minimumAppVersion": "0.17.28"
+}
