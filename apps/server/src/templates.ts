@@ -101,12 +101,14 @@ function templatesRoot(config: ServerConfig): string {
   return join(dirname(runtimeDbPath(config)), "templates");
 }
 
-function bundledRoot(): string {
+export function resolveBundledTemplatesRoot(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const configuredPath = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR?.trim();
   const resourcesPath = typeof process.resourcesPath === "string" && process.resourcesPath.trim()
     ? process.resourcesPath.trim()
     : "";
   const candidates = [
+    ...(configuredPath ? [resolve(configuredPath)] : []),
     ...(resourcesPath ? [join(resourcesPath, "server", "dist", "bundled-templates")] : []),
     join(moduleDir, "bundled-templates"),
     join(moduleDir, "..", "bundled-templates"),
@@ -414,7 +416,7 @@ async function copyTemplateSource(sourceDirectory: string, destination: string) 
 }
 
 async function loadBundledTemplates(): Promise<BundledTemplate[]> {
-  const root = bundledRoot();
+  const root = resolveBundledTemplatesRoot();
   const items: BundledTemplate[] = [];
   for (const name of await readdir(root)) {
     const directory = join(root, name);
