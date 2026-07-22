@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowUpRight, BookOpen, HelpCircle, Search, X } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -54,17 +54,36 @@ export function HelpRoute() {
   const navigate = useNavigate();
   const platform = usePlatform();
   const [searchParams, setSearchParams] = useSearchParams();
-  const query = searchParams.get("q") ?? "";
+  const urlQuery = searchParams.get("q") ?? "";
+  const [query, setQuery] = useState(urlQuery);
+  const [isComposing, setIsComposing] = useState(false);
+  const isComposingRef = useRef(false);
   const requestedCategory = searchParams.get("category");
   const category = requestedCategory && faqDocument.categories.includes(requestedCategory)
     ? requestedCategory
     : null;
   const hashId = location.hash.replace(/^#/, "");
   const [openItems, setOpenItems] = useState<string[]>(hashId ? [hashId] : []);
+  const updateSearchParam = useCallback((key: "q" | "category", value: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const filteredItems = useMemo(
     () => searchFaqItems(faqDocument.items, query, category),
     [category, query],
   );
+
+  useEffect(() => {
+    if (!isComposingRef.current) setQuery(urlQuery);
+  }, [urlQuery]);
+
+  useEffect(() => {
+    if (isComposing || query === urlQuery) return;
+    const timeout = window.setTimeout(() => updateSearchParam("q", query), 200);
+    return () => window.clearTimeout(timeout);
+  }, [isComposing, query, updateSearchParam, urlQuery]);
 
   useEffect(() => {
     if (!hashId || !faqDocument.items.some((item) => item.id === hashId)) return;
@@ -73,13 +92,6 @@ export function HelpRoute() {
       document.getElementById(hashId)?.scrollIntoView({ block: "center" });
     });
   }, [hashId]);
-
-  const updateSearchParam = (key: "q" | "category", value: string | null) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    setSearchParams(next, { replace: true });
-  };
 
   const handleOpenItemsChange = (values: string[]) => {
     setOpenItems(values);
@@ -126,7 +138,16 @@ export function HelpRoute() {
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
-                onChange={(event) => updateSearchParam("q", event.currentTarget.value)}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+                onCompositionStart={() => {
+                  isComposingRef.current = true;
+                  setIsComposing(true);
+                }}
+                onCompositionEnd={(event) => {
+                  isComposingRef.current = false;
+                  setIsComposing(false);
+                  setQuery(event.currentTarget.value);
+                }}
                 placeholder={t("help.search_placeholder")}
                 aria-label={t("help.search_placeholder")}
                 className="h-11 rounded-xl pl-9"
@@ -177,7 +198,14 @@ export function HelpRoute() {
                   </p>
                 </div>
                 {query ? (
-                  <Button variant="ghost" size="sm" onClick={() => updateSearchParam("q", null)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setQuery("");
+                      updateSearchParam("q", null);
+                    }}
+                  >
                     {t("help.clear_search")}
                   </Button>
                 ) : null}
