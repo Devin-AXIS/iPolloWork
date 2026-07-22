@@ -202,6 +202,12 @@ function isSessionErrorMessage(message: UIMessage) {
   return message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)
 }
 
+export function getLatestArtifactAssistantMessageId(messages: UIMessage[]) {
+  return messages.findLast(
+    (message) => message.role === "assistant" && !isSessionErrorMessage(message),
+  )?.id
+}
+
 function retryDelaySeconds(status: RetryStatus) {
   return Math.max(0, Math.round((status.next - Date.now()) / 1000))
 }
@@ -826,7 +832,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath }
   const isStreaming = status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages, status), [messages, status]);
   const latestAssistantMessageId = React.useMemo(
-    () => messages.findLast((message) => message.role === "assistant")?.id,
+    () => getLatestArtifactAssistantMessageId(messages),
     [messages],
   )
   const error = useSessionErrorMessage();
