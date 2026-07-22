@@ -89,12 +89,15 @@ export function buildDesignPreviewDocument(
   templateTokenCss = "",
   editing = includeEditor,
   fixedSlideStage = false,
+  isPresentationTemplate = fixedSlideStage,
 ) {
   const tokenStyle = templateTokenCss.trim()
     ? `<style id="ipollowork-design-template-token-style">${templateTokenCss.replace(/<\/style/gi, "<\\/style")}</style>`
     : "";
   const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"});<\/script>`;
-  const deckRuntime = `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${fixedSlideStage ? "true" : "false"});<\/script>`;
+  const deckRuntime = isPresentationTemplate
+    ? `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${fixedSlideStage ? "true" : "false"});<\/script>`
+    : "";
   const fixedSlideRuntime = fixedSlideStage
     ? `<script id="ipollowork-design-fixed-slide-runtime">(${designFixedSlideRuntime.toString()})();<\/script>`
     : "";
@@ -221,7 +224,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
   const slideSelector = "[data-ipw-slide],section.slide,.slide,.slide-frame";
   const slides = Array.from(document.querySelectorAll<HTMLElement>(slideSelector))
     .filter((element, index, list) => list.indexOf(element) === index);
-  if (slides.length < 2) return;
+  if (!slides.length) return;
 
   slides.forEach((slide, index) => {
     if (!slide.hasAttribute("data-ipw-slide")) slide.setAttribute("data-ipw-slide", String(index + 1));
@@ -241,8 +244,8 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
 
   const deckControl = (direction: "previous" | "next") => {
     const aliases = direction === "previous"
-      ? ["[data-ipw-deck-control='previous']", "[data-action='prev']", "[data-action='previous']", "[aria-label*='Previous' i]", "[aria-label*='???']"]
-      : ["[data-ipw-deck-control='next']", "[data-action='next']", "[aria-label*='Next' i]", "[aria-label*='???']"];
+      ? ["[data-ipw-deck-control='previous']", "[data-action='prev']", "[data-action='previous']", "[aria-label*='Previous' i]", "[aria-label*='上一页']"]
+      : ["[data-ipw-deck-control='next']", "[data-action='next']", "[aria-label*='Next' i]", "[aria-label*='下一页']"];
     return document.querySelector<HTMLElement>(aliases.join(","));
   };
 
@@ -459,6 +462,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     clone.querySelector(`#${styleId}`)?.remove();
     clone.querySelector("#ipollowork-design-template-token-style")?.remove();
     clone.querySelector(`#${overlayId}`)?.remove();
+    clone.querySelectorAll("[data-ipw-materialize-once]").forEach((element) => element.remove());
     clone.querySelectorAll(`[${textNodeAttribute}]`).forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
     clone.querySelectorAll(`[${idAttribute}]`).forEach((element) => element.removeAttribute(idAttribute));
     clone.querySelectorAll(`[${selectedAttribute}]`).forEach((element) => element.removeAttribute(selectedAttribute));

@@ -17,4 +17,12 @@ describe("Design deck navigation", () => {
     expect(navigation).toContain("{deck.index + 1} / {deck.total}");
     expect(navigation).not.toContain("deck.title");
   });
+
+  test("uses a fixed presentation canvas instead of a mobile document preview", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("h-[900px] w-[1600px] origin-center");
+    expect(source).toContain("presentationCanvasScale(previewViewport.width, previewViewport.height)");
+    expect(source).toContain("!isPresentationTemplate ? (");
+  });
 });

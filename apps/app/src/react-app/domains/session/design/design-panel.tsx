@@ -47,6 +47,11 @@ import {
 } from "./pptx-export";
 import { activateDeckExportSlide, PRESENTATION_SLIDE_SELECTOR } from "./deck-export";
 import {
+  PRESENTATION_CANVAS_HEIGHT,
+  PRESENTATION_CANVAS_WIDTH,
+  presentationCanvasScale,
+} from "./presentation-canvas";
+import {
   collectPptxBackgroundPlan,
   collectPptxElementPlans,
   pptxExportSummary,
@@ -243,6 +248,7 @@ export function DesignPanel({
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
   const iframeRef = React.useRef<any>(null);
+  const previewViewportRef = React.useRef<HTMLDivElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
   const templateQuery = useQuery({
     queryKey: ["design-session-template", workspaceId, sessionId] as const,
@@ -284,6 +290,7 @@ export function DesignPanel({
   const [viewedVersionPath, setViewedVersionPath] = React.useState("current");
   const [viewedVersionUpdatedAt, setViewedVersionUpdatedAt] = React.useState<number | null>(null);
   const [previewDevice, setPreviewDevice] = React.useState<"desktop" | "mobile">("desktop");
+  const [previewViewport, setPreviewViewport] = React.useState({ width: 0, height: 0 });
   const [editing, setEditing] = React.useState(false);
   const [deck, setDeck] = React.useState<DesignDeckState | null>(null);
   const hydratedPageRef = React.useRef("");
@@ -338,6 +345,26 @@ export function DesignPanel({
     && isPptxCompatibleTemplate(designTemplate)
     && hasPptxCompatibleObjectMarkers(fileQuery.data?.content ?? ""),
   );
+  const isPresentationTemplate = designTemplate?.category === "slides";
+  const presentationScale = presentationCanvasScale(previewViewport.width, previewViewport.height);
+
+  React.useEffect(() => {
+    if (!isPresentationTemplate) return;
+    setPreviewDevice("desktop");
+  }, [isPresentationTemplate]);
+
+  React.useEffect(() => {
+    const viewport = previewViewportRef.current;
+    if (!viewport || !isPresentationTemplate) return;
+    const sync = () => {
+      const rect = viewport.getBoundingClientRect();
+      setPreviewViewport({ width: rect.width, height: rect.height });
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [isPresentationTemplate]);
   const templateTokenPath = React.useMemo(() => {
     const tokenPath = designTemplate?.designSystem.tokens || linkedDesignTokenPath(fileQuery.data?.content) || "design-tokens.css";
     const briefPath = templateQuery.data?.state.briefPath;
@@ -528,6 +555,8 @@ export function DesignPanel({
         false,
         downgradeUnsupportedPdfExportColorText(templateTokenQuery.data ?? ""),
         false,
+        false,
+        isPresentationTemplate,
       );
       await waitForExportFrame(frame);
       const frameDocument = frame.contentDocument;
@@ -586,7 +615,7 @@ export function DesignPanel({
       frame.remove();
       setExportingPdf(false);
     }
-  }, [activePagePath, deck, editing, exportingPdf, readLatestCanvasHtml, templateTokenQuery.data]);
+  }, [activePagePath, deck, editing, exportingPdf, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data]);
 
   const exportDeckToPptx = React.useCallback(async () => {
     if (!deck || exportingPptx) return;
@@ -607,6 +636,7 @@ export function DesignPanel({
         previewTokens,
         false,
         usesNativeEditablePptx,
+        isPresentationTemplate,
       );
       await waitForExportFrame(frame);
       const frameDocument = frame.contentDocument;
@@ -777,7 +807,7 @@ export function DesignPanel({
       frame.remove();
       setExportingPptx(false);
     }
-  }, [activePagePath, deck, editing, exportingPptx, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx]);
+  }, [activePagePath, deck, editing, exportingPptx, isPresentationTemplate, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -929,7 +959,7 @@ export function DesignPanel({
 
   const chooseReplacementImage = async () => {
     if (!selection || selection.tag !== "img") return;
-    const pickedPath = await pickLocalImageFile("??????");
+    const pickedPath = await pickLocalImageFile("选择替换图片");
     if (pickedPath) {
       const dataUrl = await readLocalImageAsDataUrl(pickedPath);
       if (!dataUrl) {
@@ -1019,12 +1049,20 @@ export function DesignPanel({
   const preview = React.useMemo(
     // The bridge is always present but starts inactive. Toggling Edit page is
     // a message to that bridge, not a new srcDoc, so a deck stays on its slide.
-    () => buildDesignPreviewDocument(previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx),
-    [previewSource, templateTokenQuery.data, usesNativeEditablePptx],
+    () => buildDesignPreviewDocument(previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
+    [isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
+  const presentationLeft = Math.max(0, (previewViewport.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
+  const presentationTop = Math.max(0, (previewViewport.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
+  const selectionLeft = isPresentationTemplate
+    ? presentationLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2
+    : (iframeRef.current?.offsetLeft ?? 0) + (selection?.rect.left ?? 0) + (selection?.rect.width ?? 0) / 2;
+  const selectionTop = isPresentationTemplate
+    ? presentationTop + (selection?.rect.top ?? 0) * presentationScale
+    : (iframeRef.current?.offsetTop ?? 0) + (selection?.rect.top ?? 0);
   const floatingStyle = selection ? {
-    left: `clamp(112px, ${(iframeRef.current?.offsetLeft ?? 0) + selection.rect.left + selection.rect.width / 2 + 8}px, calc(100% - 112px))`,
-    top: `${Math.max(8, (iframeRef.current?.offsetTop ?? 0) + selection.rect.top + 8)}px`,
+    left: `clamp(112px, ${selectionLeft + 8}px, calc(100% - 112px))`,
+    top: `${Math.max(8, selectionTop + 8)}px`,
     transform: selection.rect.top > 58 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
   } satisfies React.CSSProperties : undefined;
 
@@ -1147,28 +1185,30 @@ export function DesignPanel({
             >
               {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
             </Button>
-            <ToggleGroup
-              value={[previewDevice]}
-              onValueChange={(value) => {
-                const next = value[0];
-                if (next !== "desktop" && next !== "mobile") return;
-                setPreviewDevice(next);
-                setSelection(null);
-                setQuickEdit(null);
-                setAdvancedOpen(false);
-              }}
-              variant="outline"
-              size="sm"
-              aria-label="Preview device"
-              className="rounded-lg"
-            >
-              <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label="Desktop preview" title="Desktop">
-                <Monitor className="size-3.5" />
-              </ToggleGroupItem>
-              <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label="Mobile preview" title="Mobile">
-                <Smartphone className="size-3.5" />
-              </ToggleGroupItem>
-            </ToggleGroup>
+            {!isPresentationTemplate ? (
+              <ToggleGroup
+                value={[previewDevice]}
+                onValueChange={(value) => {
+                  const next = value[0];
+                  if (next !== "desktop" && next !== "mobile") return;
+                  setPreviewDevice(next);
+                  setSelection(null);
+                  setQuickEdit(null);
+                  setAdvancedOpen(false);
+                }}
+                variant="outline"
+                size="sm"
+                aria-label="Preview device"
+                className="rounded-lg"
+              >
+                <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label="Desktop preview" title="Desktop">
+                  <Monitor className="size-3.5" />
+                </ToggleGroupItem>
+                <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label="Mobile preview" title="Mobile">
+                  <Smartphone className="size-3.5" />
+                </ToggleGroupItem>
+              </ToggleGroup>
+            ) : null}
             {deck ? (
               <div className="ml-auto">
                 <DesignExportMenu
@@ -1187,18 +1227,26 @@ export function DesignPanel({
             <div className="p-4 text-sm text-destructive">{fileQuery.error.message}</div>
           ) : (
             <div className="flex min-h-0 flex-1">
-              <div className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}>
+              <div
+                ref={previewViewportRef}
+                className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", !isPresentationTemplate && previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}
+              >
                 <iframe
                   ref={iframeRef}
                   key={`${activePagePath}:${previewRevision}`}
                   srcDoc={preview}
                   title={`Design preview: ${fileName(activePagePath)}`}
                   className={cn(
-                    "h-full border border-border bg-white transition-[width,border-radius,box-shadow] duration-200",
-                    previewDevice === "desktop"
+                    "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
+                    isPresentationTemplate
+                      ? "absolute left-1/2 top-1/2 h-[900px] w-[1600px] origin-center rounded-lg shadow-sm"
+                      : previewDevice === "desktop"
                       ? "w-full rounded-lg shadow-sm"
                       : "w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
                   )}
+                  style={isPresentationTemplate
+                    ? { transform: `translate(-50%, -50%) scale(${presentationScale})` }
+                    : undefined}
                   sandbox="allow-scripts"
                   data-preview-loaded={previewLoaded ? "true" : "false"}
                   onLoad={() => {
@@ -1277,7 +1325,7 @@ export function DesignPanel({
                             aria-label={quickEdit === "text" ? "Quick edit text" : quickEdit === "href" ? "Quick edit link" : "Quick edit image URL"}
                             className="h-7 w-52 rounded-xl border-0 bg-muted/70 px-2.5 text-xs shadow-none focus-visible:ring-2"
                             value={quickEdit === "text" ? selection.text : quickEdit === "href" ? selection.href : selection.src}
-                            placeholder={quickEdit === "src" ? "Paste an image URL?" : undefined}
+                            placeholder={quickEdit === "src" ? "Paste an image URL…" : undefined}
                             onChange={(event) => applyField(quickEdit, event.currentTarget.value, false)}
                             onKeyDown={(event) => {
                               if (event.key === "Escape" || event.key === "Enter") setQuickEdit(null);
@@ -1385,14 +1433,14 @@ export function DesignPanel({
                         <div className="grid size-6 place-items-center rounded-lg bg-primary/10 text-primary"><SlidersHorizontal className="size-3" /></div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-semibold">Design properties</p>
-                          <p className="truncate text-[10px] text-muted-foreground">{selection.tag.toUpperCase()} ? element {selection.id}</p>
+                          <p className="truncate text-[10px] text-muted-foreground">{selection.tag.toUpperCase()} · element {selection.id}</p>
                         </div>
                         <Button variant="ghost" size="icon-xs" onClick={() => setAdvancedOpen(false)} aria-label="Close advanced design settings"><X /></Button>
                       </div>
 
                       {selection.rangeText ? (
                         <div className="rounded-lg border border-primary/15 bg-primary/5 px-2 py-1.5 text-[9px] text-primary">
-                          Formatting selection: ?{selection.rangeText.slice(0, 48)}{selection.rangeText.length > 48 ? "?" : ""}?
+                          Formatting selection: “{selection.rangeText.slice(0, 48)}{selection.rangeText.length > 48 ? "…" : ""}”
                         </div>
                       ) : null}
 
