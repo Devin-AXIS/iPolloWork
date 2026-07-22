@@ -173,7 +173,7 @@ const packageSchema = z.object({
   entrypoints: z.object({
     opencode: relativePathSchema.optional(),
     service: relativePathSchema.optional(),
-  }).strict().refine((value) => Boolean(value.opencode || value.service), "must declare at least one entry point"),
+  }).strict(),
   checksum: z.object({
     algorithm: z.literal("sha256"),
     value: z.string().regex(/^[a-f0-9]{64}$/i),

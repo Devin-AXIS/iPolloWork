@@ -43,6 +43,19 @@ const packageManifest = {
 };
 
 describe("plugin package manifest", () => {
+  test("accepts the complete Figma example package", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/figma/ipollowork.plugin.json", import.meta.url)).json();
+
+    const result = validatePluginPackageManifest(manifest);
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(JSON.stringify(result.issues));
+    expect(result.manifest.id).toBe("figma");
+    expect(result.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(12);
+    expect(result.manifest.resources.some((resource) => resource.type === "mcp" && resource.mcpServerName === "figma")).toBe(true);
+  });
+
   test("accepts current extension manifests and additive self-contained packages", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
 
@@ -121,6 +134,32 @@ describe("plugin package manifest", () => {
     const result = validatePluginPackageManifest(minimal);
 
     expect(result.success).toBe(true);
+  });
+
+  test("accepts a declarative package made only of MCP and skill resources", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const declarative = {
+      ...legacyManifest,
+      id: "figma",
+      source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+      package: {
+        version: "2.0.13",
+        updateId: "figma/official-workflows",
+        entrypoints: {},
+      },
+      resources: [
+        { type: "mcp", id: "figma-mcp", path: ".opencode/mcps/figma.json", required: true },
+        {
+          type: "skill",
+          id: "figma-design-to-code",
+          path: ".opencode/skills/figma-design-to-code/SKILL.md",
+          requires: ["resource:figma-mcp"],
+          required: true,
+        },
+      ],
+    };
+
+    expect(validatePluginPackageManifest(declarative).success).toBe(true);
   });
 
   test("rejects package identities reserved by built-in extension actions", async () => {
