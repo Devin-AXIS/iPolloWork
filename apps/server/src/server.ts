@@ -41,6 +41,7 @@ import {
   uninstallPluginPackage,
   updatePluginPackage,
 } from "./plugin-package-lifecycle.js";
+import { bundledPluginPackageIds, resolveBundledPluginPackageRoot } from "./plugin-package-catalog.js";
 import {
   cancelPluginAuthorizationFlow,
   completePluginBrowserAuthorization,
@@ -1752,6 +1753,66 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const items = await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id });
     return jsonResponse({ items });
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/plugin-packages/catalog", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const installed = await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id });
+    const installedById = new Map(installed.map((item) => [item.pluginId, item]));
+    const items = await Promise.all(bundledPluginPackageIds.map(async (pluginId) => {
+      const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
+      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+      const current = installedById.get(pluginId);
+      return {
+        pluginId,
+        name: preview.manifest.name,
+        version: preview.manifest.package?.version ?? "",
+        manifest: preview.manifest,
+        integrity: preview.integrity,
+        installedVersion: current?.version ?? null,
+        updateAvailable: Boolean(current && current.version !== preview.manifest.package?.version),
+      };
+    }));
+    return jsonResponse({ items });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/catalog/:pluginId/install", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const pluginId = ctx.params.pluginId ?? "";
+    const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    await requireApproval(ctx, {
+      workspaceId: workspace.id,
+      action: "plugin_packages.install",
+      summary: `Install bundled plugin package ${preview.manifest.name}`,
+      paths: preview.writes.map((file) => join(workspace.path, file.path)),
+    });
+    const current = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id }))
+      .find((item) => item.pluginId === pluginId);
+    const result = current && current.version !== preview.manifest.package?.version
+      ? await updatePluginPackage({ serverConfig: config, workspaceId: workspace.id, packageRoot, workspaceRoot: workspace.path })
+      : await installPluginPackage({ serverConfig: config, workspaceId: workspace.id, packageRoot, workspaceRoot: workspace.path });
+    await disposePluginServices(config, workspace.id, pluginId);
+    await reconcilePluginAuthorization({ config, workspaceId: workspace.id, pluginId });
+    await recordAudit(workspace.path, {
+      id: shortId(),
+      workspaceId: workspace.id,
+      actor: ctx.actor ?? { type: "remote" },
+      action: "plugin_packages.install",
+      target: `bundled:${pluginId}`,
+      summary: `Installed bundled plugin package ${preview.manifest.name} ${preview.manifest.package?.version ?? ""}`.trim(),
+      timestamp: Date.now(),
+    });
+    emitReloadEvent(ctx.reloadEvents, workspace, "plugins", {
+      type: "plugin",
+      name: pluginId,
+      action: current ? "updated" : "added",
+    });
+    const item = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id }))
+      .find((entry) => entry.pluginId === pluginId);
+    return jsonResponse({ result, item });
   });
 
   addRoute(routes, "POST", "/workspace/:id/plugin-packages/validate", "client", async (ctx) => {

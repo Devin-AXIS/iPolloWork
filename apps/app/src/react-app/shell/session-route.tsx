@@ -796,12 +796,19 @@ export function SessionRoute() {
     return list.filter((agent) => !agent.hidden && agent.mode !== "subagent");
   }, [engineReloadVersion, opencodeClient]);
 
-  const handleOpenSettings = useCallback((route = "/settings/general", workspaceId = sidebarActiveWorkspaceId) => {
+  const handleOpenSettings = useCallback((route = "/settings/preferences", workspaceId = sidebarActiveWorkspaceId) => {
     const sessionId = workspaceId === sidebarActiveWorkspaceId ? selectedSessionId : null;
-    const tab = route.replace(/^\/settings\/?/, "").replace(/^\/+|\/+$/g, "") || "general";
+    const tab = route.replace(/^\/settings\/?/, "").replace(/^\/+|\/+$/g, "") || "preferences";
     const target = workspaceId ? workspaceSettingsRoute(workspaceId, tab) : route;
     writeActiveWorkspaceId(workspaceId || null);
     navigate(target, { state: { workspaceId, sessionId } });
+  }, [navigate, selectedSessionId, sidebarActiveWorkspaceId]);
+
+  const handleOpenHelp = useCallback(() => {
+    const returnTo = sidebarActiveWorkspaceId
+      ? workspaceSessionRoute(sidebarActiveWorkspaceId, selectedSessionId)
+      : "/session";
+    navigate("/help", { state: { returnTo } });
   }, [navigate, selectedSessionId, sidebarActiveWorkspaceId]);
 
   const surfaceProps = useMemo(() => {
@@ -861,7 +868,7 @@ export function SessionRoute() {
       },
       providerConnectedCount: hasUsableModel ? 1 : providerConnectedIds.length,
       onOpenSettingsSection: (section: "commands" | "skills" | "mcps" | "plugins" | "providers") => {
-        handleOpenSettings(section === "skills" ? "/settings/skills" : section === "mcps" ? "/settings/extensions/mcp" : section === "plugins" ? "/settings/extensions/plugins" : section === "providers" ? "/settings/ai" : "/settings/general");
+        handleOpenSettings(section === "skills" ? "/settings/skills" : section === "mcps" ? "/settings/extensions/mcp" : section === "plugins" ? "/settings/extensions/plugins" : section === "providers" ? "/settings/ai" : "/settings/preferences");
       },
       onSendDraft: async (draft: ComposerDraft, sessionId: string) => {
         const targetSessionId = sessionId.trim() || selectedSessionId;
@@ -1988,7 +1995,8 @@ export function SessionRoute() {
       hasUsableModel={hasUsableModel}
       providers={providers}
       mcpConnectedCount={mcpConnectedCount}
-      onOpenSettings={() => handleOpenSettings("/settings/general")}
+      onOpenSettings={() => handleOpenSettings("/settings/preferences")}
+      onOpenHelp={handleOpenHelp}
       onOpenProviderAuth={() => sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" })}
       providerAuthModal={sessionProviderAuthSnapshot.providerAuthModalOpen ? {
         open: true,
@@ -2289,7 +2297,8 @@ export function SessionRoute() {
         }
       }}
       onOpenSession={(workspaceId, sessionId) => navigateToWorkspaceSession(workspaceId, sessionId)}
-      onOpenSettings={(route) => handleOpenSettings(route ?? "/settings/general")}
+      onOpenSettings={(route) => handleOpenSettings(route ?? "/settings/preferences")}
+      onOpenHelp={handleOpenHelp}
       onOpenModelPicker={() => {
         modelPicker.setQuery("");
         modelPicker.setRecentProviderIds(new Set());
@@ -2363,7 +2372,7 @@ export function SessionRoute() {
       }}
       onOpenSettings={() => {
         modelPicker.setOpen(false);
-        handleOpenSettings("/settings/general");
+        handleOpenSettings("/settings/preferences");
       }}
       onClose={() => { modelPicker.setOpen(false); modelPicker.setRecentProviderIds(new Set()); }}
     />

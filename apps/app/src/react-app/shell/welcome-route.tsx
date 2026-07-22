@@ -16,6 +16,7 @@ import { isDesktopRuntime } from "../../app/utils";
 import { createClient, unwrap } from "../../app/lib/opencode";
 import { useLocal } from "../kernel/local-provider";
 import { usePlatform } from "../kernel/platform";
+import { CloudSignInComingSoonDialog } from "../domains/cloud/cloud-signin-coming-soon-dialog";
 import { WelcomePage } from "../domains/onboarding/welcome-page";
 import { ProviderSelectionStep } from "../domains/onboarding/provider-selection-step";
 import { AttributionStep, type AttributionSource } from "../domains/onboarding/attribution-step";
@@ -30,7 +31,7 @@ import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
 import { captureAnalyticsEvent } from "../../app/lib/analytics";
 import { buildiPolloWorkWorkspaceBaseUrl, createiPolloWorkServerClient } from "../../app/lib/ipollowork-server";
-import { buildDenAuthUrl, clearDenSession, DEFAULT_DEN_BASE_URL, readDenSettings } from "../../app/lib/den";
+import { clearDenSession, readDenSettings } from "../../app/lib/den";
 import {
   denSettingsChangedEvent,
   dispatchDenSessionUpdated,
@@ -131,6 +132,7 @@ export function WelcomeRoute() {
   const [state, dispatch] = useReducer(welcomeReducer, initialWelcomeState);
   const [manualFolder, setManualFolder] = useState("");
   const [organizationServerUrl, setOrganizationServerUrl] = useState(() => readDenSettings().baseUrl);
+  const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
   const [organizationServerBusy, setOrganizationServerBusy] = useState(false);
   const [organizationServerError, setOrganizationServerError] = useState<string | null>(null);
 
@@ -352,9 +354,8 @@ export function WelcomeRoute() {
   }, [handleCreateWorkspace, manualFolder]);
 
   const handleTeamSignIn = useCallback(() => {
-    const settings = readDenSettings();
-    platform.openLink(buildDenAuthUrl(settings.baseUrl || DEFAULT_DEN_BASE_URL, "sign-in"));
-  }, [platform]);
+    setCloudSignInComingSoonOpen(true);
+  }, []);
 
   const finishOnboarding = useCallback(() => {
     navigate(state.pendingRoute ?? "/session", { replace: true });
@@ -417,6 +418,10 @@ export function WelcomeRoute() {
             ? undefined
             : t("app.local_disabled_reason")
         }
+      />
+      <CloudSignInComingSoonDialog
+        open={cloudSignInComingSoonOpen}
+        onOpenChange={setCloudSignInComingSoonOpen}
       />
       {state.providerStep ? (
         <ProviderSelectionStep

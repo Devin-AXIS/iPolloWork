@@ -194,7 +194,7 @@ export function getSettingsTabDescription(tab: SettingsTab) {
 }
 
 export function getWorkspaceSettingsTabs(): SettingsTab[] {
-  return ["preferences", "permissions", "extensions", "advanced"];
+  return ["preferences", "permissions", "extensions"];
 }
 
 export function getGlobalSettingsTabs(developerMode: boolean): SettingsTab[] {
@@ -313,24 +313,6 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {/* Top-level hub entry */}
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  type="button"
-                  isActive={props.activeTab === "general"}
-                  onClick={() => props.onSelectTab("general")}
-                >
-                  <Cog />
-                  <span>{getSettingsTabLabel("general")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
         <SidebarGroup>
           <SidebarGroupLabel>{t("settings.group_workspace")}</SidebarGroupLabel>
           <SidebarGroupContent>

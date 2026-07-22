@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { startServer } from "./server.js";
@@ -92,6 +93,48 @@ afterEach(async () => {
 });
 
 describe("plugin package lifecycle", () => {
+  test("previews the complete Figma package and every bundled workflow file", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-figma-preview-workspace-");
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/figma", import.meta.url));
+
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+
+    expect(preview.manifest.id).toBe("figma");
+    expect(preview.writes.length).toBeGreaterThan(100);
+    expect(preview.writes.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(true);
+    expect(preview.writes.some((entry) => entry.path === ".opencode/skills/figma-use/references/plugin-api-standalone.d.ts")).toBe(true);
+  });
+
+  test("expands directory resources into owned files without duplicates", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-directory-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-directory-package-");
+    const skillRoot = join(packageRoot, ".opencode", "skills", "figma");
+    await mkdir(join(skillRoot, "references"), { recursive: true });
+    await writeFile(join(skillRoot, "SKILL.md"), "# Figma\n", "utf8");
+    await writeFile(join(skillRoot, "references", "api.md"), "# API\n", "utf8");
+    await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
+      schemaVersion: 1,
+      id: "figma",
+      name: "Figma",
+      description: "Figma workflows.",
+      source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+      package: { version: "1.0.0", updateId: "figma/workflows", entrypoints: {} },
+      resources: [
+        { type: "skill", id: "figma-skill", path: ".opencode/skills/figma/SKILL.md", required: true },
+        { type: "file", id: "figma-skill-files", path: ".opencode/skills/figma", required: true },
+      ],
+    }), "utf8");
+
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+
+    expect(preview.writes.map((entry) => entry.path)).toEqual([
+      ".opencode/skills/figma/SKILL.md",
+      ".opencode/skills/figma/references/api.md",
+    ]);
+  });
+
   test("previews, installs idempotently, registers OpenCode, and uninstalls owned files", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-workspace-");
@@ -245,6 +288,39 @@ describe("plugin package lifecycle", () => {
       expect(removal.status).toBe(200);
       const list = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers });
       expect(await list.json()).toEqual({ items: [] });
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("lists and installs the bundled Figma package through the user catalog API", async () => {
+    const workspaceRoot = await createRoot("ipollowork-figma-catalog-api-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const config = serverConfig(workspaceRoot);
+    const server = await startServer(config);
+    const base = `http://127.0.0.1:${server.port}`;
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    try {
+      const catalog = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, { headers });
+      expect(catalog.status).toBe(200);
+      expect(await catalog.json()).toMatchObject({
+        items: [{ pluginId: "figma", version: "2.0.13", installedVersion: null, updateAvailable: false }],
+      });
+
+      const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/figma/install`, {
+        method: "POST",
+        headers,
+      });
+      expect(installation.status).toBe(200);
+      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "figma", version: "2.0.13" } });
+      expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.figma).toEqual({
+        type: "remote",
+        url: "https://mcp.figma.com/mcp",
+        enabled: true,
+        oauth: {},
+      });
+      expect(await readFile(join(workspaceRoot, ".opencode", "skills", "figma-design-to-code", "SKILL.md"), "utf8"))
+        .toContain("Implement a Figma Design as Code");
     } finally {
       await server.stop();
     }

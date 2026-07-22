@@ -80,12 +80,31 @@ describe("plugin developer and user flow", () => {
       "plugin_platform.status.expired",
       "plugin_platform.status.failed",
       "plugin_platform.status.revoked",
+      "plugin_platform.status.installed",
+      "plugin_platform.official_bundle",
+      "plugin_platform.bundle_contents",
+      "plugin_platform.mcp_authorization_hint",
+      "plugin_platform.connect_figma",
+      "mcp.quick_connect_figma_title",
+      "mcp.quick_connect_figma_desc",
     ];
 
     for (const key of keys) {
       expect(Object.hasOwn(en, key)).toBe(true);
       expect(Object.hasOwn(zh, key)).toBe(true);
     }
+  });
+
+  test("ships a one-click Figma OAuth connection matching the bundled package", async () => {
+    const { FIGMA_MCP_QUICK_CONNECT } = await import("../src/app/constants");
+
+    expect(FIGMA_MCP_QUICK_CONNECT).toMatchObject({
+      serverName: "figma",
+      url: "https://mcp.figma.com/mcp",
+      type: "remote",
+      oauth: true,
+      iconSlug: "figma",
+    });
   });
 
   test("uses the independent package and authorization API without environment routes", async () => {
