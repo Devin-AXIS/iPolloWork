@@ -180,7 +180,7 @@ describe("template installations", () => {
 
   test("ships the reviewed HTML Anything catalog with iPolloWork categories, styles and editable variables", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => name.startsWith("ipollowork.html-anything."));
-    expect(directories).toHaveLength(60);
+    expect(directories).toHaveLength(58);
     const categoryCounts: Record<string, number> = {};
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -211,7 +211,7 @@ describe("template installations", () => {
         for (const variable of manifest.designSystem.variables) expect(tokens).toContain(variable.id);
       }
     }
-    expect(categoryCounts).toEqual({ article: 4, cards: 7, other: 4, report: 4, slides: 23, video: 8, poster: 2, site: 8 });
+    expect(categoryCounts).toEqual({ article: 4, cards: 6, other: 4, report: 4, slides: 22, video: 8, poster: 2, site: 8 });
   });
 
   test("ships six flagship HyperFrames video templates with local deterministic runtimes", async () => {
@@ -285,7 +285,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(74);
+    expect(directories).toHaveLength(72);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -298,7 +298,7 @@ describe("template installations", () => {
       expect(cover.byteLength).toBeGreaterThan(15_000);
       hashes.add(Bun.hash(cover).toString());
     }
-    expect(hashes.size).toBe(74);
+    expect(hashes.size).toBe(72);
   });
 
   test("ships strict PPTX-compatible slide templates with explicit editable object markers", async () => {
@@ -321,14 +321,17 @@ describe("template installations", () => {
     }
   });
 
-  test("withdraws selected bundled templates from the personal template market", async () => {
+  test("does not ship removed templates into the personal template market", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-templates-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
     expect(first.filter((item) => item.installed)).toHaveLength(72);
-    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.deck-xhs-post")).toBe(false);
-    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.social-x-post-card")).toBe(false);
+    const removedIds = ["ipollowork.html-anything.deck-xhs-post", "ipollowork.html-anything.social-x-post-card"];
+    for (const templateId of removedIds) {
+      expect(existsSync(join(bundledTemplatesRoot, templateId))).toBe(false);
+      expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
+    }
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
