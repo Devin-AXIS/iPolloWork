@@ -89,6 +89,8 @@ export type CommandPaletteProps = {
   onCreateNewSession: () => void;
   /** Called when "Open settings" is chosen. Accepts an optional route to jump straight to a tab. */
   onOpenSettings: (route?: string) => void;
+  /** Opens the in-app FAQ and help center. */
+  onOpenHelp: () => void;
   /** Optional: open the full default-model picker. */
   onOpenModelPicker?: () => void;
   selectedModelLabel?: string;
@@ -249,11 +251,12 @@ export function CommandPalette(props: CommandPaletteProps) {
     // plus every settings tab the user is likely to reach for.
     {
       id: "open-docs",
-      title: t("session.support_docs"),
+      title: t("help.title"),
+      detail: t("help.description"),
       meta: t("session.cmd_settings_meta"),
       action: () => {
         props.onClose();
-        openUrl("https://ipollowork.dev/docs");
+        props.onOpenHelp();
       },
     },
     {

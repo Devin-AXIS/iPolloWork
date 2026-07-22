@@ -23,6 +23,7 @@ import { Button } from "../../components/ui/button";
 import { localeChangedEvent, t } from "../../i18n";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { ForcedSigninPage } from "../domains/cloud/forced-signin-page";
+import { HelpRoute } from "../domains/help/help-route";
 import { OrgOnboardingPage } from "../domains/cloud/org-onboarding-page";
 import { NewProvidersListener } from "./new-providers-listener";
 import { useDesktopFontZoomBehavior } from "./font-zoom";
@@ -395,6 +396,14 @@ export function AppRoot() {
                 element={
                   <DevProfiler id="WelcomeRoute">
                     <WelcomeRoute />
+                  </DevProfiler>
+                }
+              />
+              <Route
+                path="/help"
+                element={
+                  <DevProfiler id="HelpRoute">
+                    <HelpRoute />
                   </DevProfiler>
                 }
               />
