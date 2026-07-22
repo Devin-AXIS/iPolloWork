@@ -27,6 +27,20 @@ function toolMessage(id: string, toolName: string, input: Record<string, unknown
 }
 
 describe("deriveOpenTargets", () => {
+  it("includes a template entry without assistant file text", () => {
+    const targets = deriveOpenTargets([], {
+      supplementalFiles: ["design/ses_deck/entry.html"],
+    });
+
+    expect(targets).toEqual([
+      expect.objectContaining({
+        value: "design/ses_deck/entry.html",
+        preview: "html",
+        reason: "template entry",
+      }),
+    ]);
+  });
+
   it("extracts file and localhost URL targets from recent assistant output", () => {
     const targets = deriveOpenTargets([
       toolMessage("msg_tool", "write", { filePath: "reports/revenue.xlsx" }, { filePath: "reports/revenue.xlsx" }),

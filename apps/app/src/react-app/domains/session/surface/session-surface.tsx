@@ -155,6 +155,7 @@ export type SessionSurfaceProps = {
   onForkAtMessage?: (messageId: string | null, sessionId: string) => void;
   onOpenTarget?: (target: OpenTarget, options?: OpenTargetOptions, sessionId?: string) => void;
   onConversationMessagesChange?: (sessionId: string, messages: UIMessage[]) => void;
+  templateEntryPath?: string;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
 };
@@ -609,7 +610,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
   useEffect(() => {
     props.onConversationMessagesChange?.(props.sessionId, renderedMessages);
   }, [props.onConversationMessagesChange, props.sessionId, renderedMessages]);
-  const openTargets = useMemo(() => deriveOpenTargets(renderedMessages), [renderedMessages]);
+  const openTargets = useMemo(
+    () => deriveOpenTargets(renderedMessages, { supplementalFiles: props.templateEntryPath ? [props.templateEntryPath] : undefined }),
+    [props.templateEntryPath, renderedMessages],
+  );
   const openTargetsFingerprint = useMemo(
     () => openTargets.map((target) => `${target.kind}:${target.value}:${target.confidence}`).join("|"),
     [openTargets],
@@ -1572,6 +1576,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         messages={renderedMessages}
                         status={status}
                         retryStatus={liveStatus.type === "retry" ? liveStatus : null}
+                        templateEntryPath={props.templateEntryPath}
                       />
                     </MessageListProvider>
                   </EnvironmentVariableProvider>

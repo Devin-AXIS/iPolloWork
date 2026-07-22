@@ -35,6 +35,7 @@ type ArtifactEntry = ArtifactItem & {
 
 type GetArtifactsOptions = {
   includeTargetFallbacks?: boolean
+  supplementalFiles?: readonly string[]
 }
 
 const WORKSPACES_PREFIX_PATTERN = /^workspaces\/[^/]+\//i;
@@ -429,6 +430,23 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
     }
   });
 
+  const latestAssistantIndex = messages.findLastIndex((message) => message.role === "assistant");
+  const latestAssistantMessage = latestAssistantIndex >= 0 ? messages[latestAssistantIndex] : undefined;
+  for (const path of options.supplementalFiles ?? []) {
+    const normalized = normalizeArtifactPath(path);
+    const target = openTargets.find((item) => artifactPathMatchesTarget(normalized, item.value));
+    addArtifact(
+      artifacts,
+      normalized,
+      latestAssistantMessage?.id ?? target?.id ?? "open-target",
+      latestAssistantIndex >= 0 ? latestAssistantIndex : messages.length,
+      sequence,
+      openTargets,
+      target,
+    );
+    sequence += 1;
+  }
+
   if (options.includeTargetFallbacks ?? true) {
     const fallbackMessageId = messages[messages.length - 1]?.id ?? "open-target";
     for (const target of openTargets) {
@@ -453,10 +471,11 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
 export function useArtifacts(messages: UIMessage[], options: GetArtifactsOptions = {}) {
   const { openTargets } = useOpenTargets();
   const includeTargetFallbacks = options.includeTargetFallbacks ?? false;
+  const supplementalFiles = options.supplementalFiles;
 
   return React.useMemo(
-    () => getArtifactsFromMessages(messages, openTargets, { includeTargetFallbacks }),
-    [includeTargetFallbacks, messages, openTargets],
+    () => getArtifactsFromMessages(messages, openTargets, { includeTargetFallbacks, supplementalFiles }),
+    [includeTargetFallbacks, messages, openTargets, supplementalFiles],
   );
 }
 

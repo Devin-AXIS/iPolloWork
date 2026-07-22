@@ -144,11 +144,12 @@ function OutputGroupRow({ group, onOpenVideoStudio }: OutputGroupRowProps) {
 interface ArtifactListProps {
   messages: UIMessage[]
   includeTargetFallbacks?: boolean
+  supplementalFiles?: readonly string[]
   onOpenVideoStudio?: () => void
 }
 
-export function ArtifactList({ messages, includeTargetFallbacks = false, onOpenVideoStudio }: ArtifactListProps) {
-  const artifacts = useArtifacts(messages, { includeTargetFallbacks });
+export function ArtifactList({ messages, includeTargetFallbacks = false, supplementalFiles, onOpenVideoStudio }: ArtifactListProps) {
+  const artifacts = useArtifacts(messages, { includeTargetFallbacks, supplementalFiles });
 
   if (artifacts.length === 0) {
     return null;
@@ -168,12 +169,16 @@ export function ArtifactList({ messages, includeTargetFallbacks = false, onOpenV
 interface ConversationOutputPanelProps {
   messages: UIMessage[]
   openTargets?: OpenTarget[]
+  templateEntryPath?: string
   onOpenTarget?: (target: OpenTarget, options?: OpenTargetOptions) => void
   onOpenVideoStudio?: () => void
 }
 
-function ConversationOutputPanelContent({ messages, onOpenVideoStudio }: Omit<ConversationOutputPanelProps, "openTargets" | "onOpenTarget">) {
-  const artifacts = useArtifacts(messages, { includeTargetFallbacks: false });
+function ConversationOutputPanelContent({ messages, templateEntryPath, onOpenVideoStudio }: Omit<ConversationOutputPanelProps, "openTargets" | "onOpenTarget">) {
+  const artifacts = useArtifacts(messages, {
+    includeTargetFallbacks: false,
+    supplementalFiles: templateEntryPath ? [templateEntryPath] : undefined,
+  });
   const outputs = artifacts.filter(isConversationOutputArtifact);
   const outputGroups = groupConversationOutputArtifacts(outputs);
 
@@ -217,12 +222,12 @@ export function ConversationOutputTrigger({ active, disabled, onClick }: { activ
 }
 
 /** Right-side conversation output surface. It looks like a floating card but never covers chat content. */
-export function ConversationOutputPanel({ messages, openTargets = [], onOpenTarget, onOpenVideoStudio }: ConversationOutputPanelProps) {
+export function ConversationOutputPanel({ messages, openTargets = [], templateEntryPath, onOpenTarget, onOpenVideoStudio }: ConversationOutputPanelProps) {
   return (
     <OpenTargetProvider openTargets={openTargets} onOpenTarget={onOpenTarget}>
       <div className="h-full min-h-0 bg-background p-3">
         <div className="h-full min-h-0 overflow-hidden rounded-3xl border border-border/80 bg-card shadow-sm">
-          <ConversationOutputPanelContent messages={messages} onOpenVideoStudio={onOpenVideoStudio} />
+          <ConversationOutputPanelContent messages={messages} templateEntryPath={templateEntryPath} onOpenVideoStudio={onOpenVideoStudio} />
         </div>
       </div>
     </OpenTargetProvider>

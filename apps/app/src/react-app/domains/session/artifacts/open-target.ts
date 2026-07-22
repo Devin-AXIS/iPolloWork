@@ -57,6 +57,7 @@ const URI_PATTERN = /^(?:https?|wss?|file):\/\//i;
 
 type DeriveOpenTargetsOptions = {
   includeFileMentions?: boolean;
+  supplementalFiles?: readonly string[];
 };
 
 function normalizePath(path: string) {
@@ -280,6 +281,8 @@ function addFileValues(map: Map<string, OpenTarget>, values: string[], confidenc
 
 export function deriveOpenTargets(messages: UIMessage[], options: DeriveOpenTargetsOptions = {}): OpenTarget[] {
   const targets = new Map<string, OpenTarget>();
+
+  addFileValues(targets, [...(options.supplementalFiles ?? [])], 100, "template entry");
 
   for (const message of messages) {
     for (const part of message.parts) {

@@ -443,6 +443,9 @@ export function SessionPage(props: SessionPageProps) {
   const hasTemplateSession = Boolean(templateSessionData);
   const hasTemplateBrief = templateSessionData?.hasBrief === true;
   const selectedTemplate = templateSessionData?.manifest ?? null;
+  const designTemplateEntryPath = templateSessionData?.manifest.surface === "design"
+    ? templateSessionData.state.entry
+    : undefined;
   const [conversationMessageState, setConversationMessageState] = useState<{ sessionId: string | null; messages: UIMessage[] }>({
     sessionId: null,
     messages: [],
@@ -1614,7 +1617,7 @@ export function SessionPage(props: SessionPageProps) {
             <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
               <ConversationOutputTrigger
                 active={activeSidePanel === "outputs"}
-                disabled={!conversationMessages.length}
+                disabled={!conversationMessages.length && !designTemplateEntryPath}
                 onClick={() => toggleCurrentSidePanel("outputs")}
               />
               <Tooltip>
@@ -1738,6 +1741,7 @@ export function SessionPage(props: SessionPageProps) {
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
                         onConversationMessagesChange={handleConversationMessagesChange}
+                        templateEntryPath={designTemplateEntryPath}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type, templateId)}
                         onActivateVideoStudio={activateVideoStudio}
                         designTemplates={templateCatalog}
@@ -1913,6 +1917,7 @@ export function SessionPage(props: SessionPageProps) {
                     <ConversationOutputPanel
                       messages={conversationMessages}
                       openTargets={accessibleTargets}
+                      templateEntryPath={designTemplateEntryPath}
                       onOpenTarget={openTarget}
                       onOpenVideoStudio={openCurrentVideoStudio}
                     />
