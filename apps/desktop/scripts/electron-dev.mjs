@@ -11,6 +11,9 @@ const electronSidecarDir = resolve(desktopRoot, "resources", "sidecars");
 const electronHelperDir = resolve(desktopRoot, "resources", "helpers");
 const hyperframesRoot = resolve(repoRoot, "vendor", "hyperframes");
 const hyperframesCli = resolve(hyperframesRoot, "packages", "cli", "bin", "hyperframes.mjs");
+const hyperframesCliBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "cli.js");
+const hyperframesRuntimeVersion = resolve(hyperframesRoot, "packages", "cli", "dist", "runtimeVersion.js");
+const hyperframesDependencies = resolve(hyperframesRoot, "node_modules", ".bun");
 const hyperframesDevProjectDir = resolve(repoRoot, ".ipollowork-dev", "hyperframes-preview");
 const hyperframesDevProjectName = ".ipollowork-dev/hyperframes-preview";
 const defaultDevDataDir = resolve(
@@ -20,6 +23,7 @@ const defaultDevDataDir = resolve(
 );
 
 const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const bunCmd = process.platform === "win32" ? "bun.exe" : "bun";
 const nodeCmd = process.execPath;
 const portValue = Number.parseInt(process.env.PORT ?? "", 10);
 const devPort = Number.isFinite(portValue) && portValue > 0 ? portValue : 5173;
@@ -81,6 +85,19 @@ function ensureHyperframesDevProject() {
     },
   });
   ensureVisibleHyperframesStarter(hyperframesDevProjectDir);
+}
+
+function ensureHyperframesDevBuild() {
+  if (!shouldStartHyperframes) return;
+
+  if (!existsSync(hyperframesDependencies)) {
+    console.log("[electron-dev] Installing HyperFrames dependencies...");
+    runSync(bunCmd, ["install", "--frozen-lockfile"], { cwd: hyperframesRoot });
+  }
+  if (!existsSync(hyperframesCliBuild) || !existsSync(hyperframesRuntimeVersion)) {
+    console.log("[electron-dev] Building HyperFrames Studio...");
+    runSync(bunCmd, ["run", "build:local-studio"], { cwd: hyperframesRoot });
+  }
 }
 
 function ensureVisibleHyperframesStarter(projectDir) {
@@ -291,6 +308,7 @@ if (process.env.IPOLLOWORK_ELECTRON_SKIP_SHARED_PREPARE !== "1") {
 }
 
 // Build the server TS → JS so Electron can import it in-process
+ensureHyperframesDevBuild();
 hyperframesChild = startHyperframesDevServer();
 
 console.log("[electron-dev] Building ipollowork-server (tsc)...");
