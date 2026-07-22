@@ -352,8 +352,10 @@ function writeIfChanged(
   original: string,
   next: string,
 ): Response {
+  const version = fileContentVersion(next);
+  c.header("ETag", version);
   if (next === original) {
-    return c.json({ ok: true, changed: false, content: original, path: filePath });
+    return c.json({ ok: true, changed: false, content: original, path: filePath, version });
   }
   const backup = snapshotBeforeWrite(projectDir, absPath);
   if (backup.error) console.warn(`Failed to create backup for ${filePath}: ${backup.error}`);
@@ -363,6 +365,7 @@ function writeIfChanged(
     changed: true,
     content: next,
     path: filePath,
+    version,
     backupPath: backupPathForResponse(projectDir, backup.backupPath),
   });
 }

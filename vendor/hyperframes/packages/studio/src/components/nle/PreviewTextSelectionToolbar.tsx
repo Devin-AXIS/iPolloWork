@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -8,6 +9,7 @@ import {
 } from "react";
 import { type DomEditSelection } from "../editor/domEditing";
 import { useDomEditActionsContext } from "../../contexts/DomEditContext";
+import { resolveBoundedOverlayPosition } from "./boundedOverlay";
 
 type TextFormatAction = "bold" | "italic" | "strike" | "code" | "link";
 
@@ -224,13 +226,21 @@ function replaceMarkedSelectionWithText(html: string, value: string): string {
   return `${before}${escapeHtmlText(value)}${after}`;
 }
 
-function toolbarStyle(rect: DOMRect, container: HTMLElement): CSSProperties {
+function toolbarStyle(
+  rect: DOMRect,
+  container: HTMLElement,
+  toolbarSize: { width: number; height: number },
+): CSSProperties {
   const hostRect = container.getBoundingClientRect();
-  const right = Math.min(hostRect.width - 12, rect.right - hostRect.left);
-  const top = Math.max(12, rect.top - hostRect.top - 44);
+  const position = resolveBoundedOverlayPosition(rect, hostRect, toolbarSize, {
+    edgePadding: 12,
+    gap: 8,
+  });
   return {
-    right: Math.max(12, hostRect.width - right),
-    top,
+    left: position.left,
+    top: position.top,
+    maxWidth: position.maxWidth,
+    maxHeight: position.maxHeight,
   };
 }
 
@@ -246,7 +256,26 @@ export function PreviewTextSelectionToolbar({
   const stateRef = useRef<TextSelectionState | null>(null);
   const dragRef = useRef<TextSelectionDrag | null>(null);
   const committingRef = useRef(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarSize, setToolbarSize] = useState({ width: 420, height: 40 });
   stateRef.current = state;
+
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const measure = () => {
+      const rect = toolbar.getBoundingClientRect();
+      const width = Math.max(toolbar.scrollWidth, rect.width);
+      const height = Math.max(toolbar.scrollHeight, rect.height);
+      setToolbarSize((current) => current.width === width && current.height === height
+        ? current
+        : { width, height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, [state?.text]);
 
   const updateSelection = useCallback(() => {
     if (hidden) {
@@ -463,8 +492,9 @@ export function PreviewTextSelectionToolbar({
 
   return (
     <div
-      className="hf-preview-text-toolbar absolute z-[80] flex items-center gap-1 rounded-md border px-1.5 py-1 shadow-lg"
-      style={toolbarStyle(state.rect, containerRef.current)}
+      ref={toolbarRef}
+      className="hf-preview-text-toolbar absolute z-[80] flex items-center gap-1 overflow-auto rounded-md border px-1.5 py-1 shadow-lg"
+      style={toolbarStyle(state.rect, containerRef.current, toolbarSize)}
       onMouseDown={(event) => {
         const target = event.target as HTMLElement | null;
         if (target?.closest("input,button")) return;

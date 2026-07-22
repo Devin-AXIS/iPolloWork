@@ -76,6 +76,7 @@ import { loadTemplateSession } from "../templates/template-session-probe";
 import { VideoPanel } from "../video/video-panel";
 import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, templateColorPaletteLabel, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
+import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
@@ -282,6 +283,19 @@ function controlStringArg(args: unknown, key: string) {
   const object = controlObjectArg(args);
   const value = object ? Reflect.get(object, key) : null;
   return typeof value === "string" ? value.trim() : "";
+}
+
+function sessionMessageToPromptText(message: UIMessage) {
+  const header = message.role === "user" ? "You" : message.role === "assistant" ? "iPolloWork" : message.role;
+  const body = message.parts
+    .flatMap((part) => {
+      if (part.type === "text") return [part.text];
+      if (part.type === "reasoning") return [part.text];
+      if (part.type === "dynamic-tool") return [`[tool:${part.toolName}] ${part.state}`];
+      return [];
+    })
+    .join("\n\n");
+  return `${header}\n${body}`.trim();
 }
 
 function TemplateCover({ client, workspaceId, template, className, alt = "" }: { client: iPolloWorkServerClient; workspaceId: string; template: TemplateCatalogItem; className?: string; alt?: string }) {
@@ -784,11 +798,21 @@ export function SessionPage(props: SessionPageProps) {
         preserveSidePanelOnPanelOpenRef.current = false;
         return;
       }
+      // Browser tools may open pages while an agent is editing a video. Keep
+      // that WebContentsView in the background so it cannot cover the Studio.
+      if (isVideoSession && activeSidePanel !== "panel") {
+        void browser.hide?.();
+        setCurrentSidePanel("video");
+        return;
+      }
       setCurrentSidePanel("panel");
     });
-    const unsubClose = browser.onPanelClosed?.(() => setCurrentSidePanel(null));
+    const unsubClose = browser.onPanelClosed?.(() => {
+      if (isVideoSession && activeSidePanel !== "panel") return;
+      setCurrentSidePanel(null);
+    });
     return () => { unsubOpen?.(); unsubClose?.(); };
-  }, [setCurrentSidePanel]);
+  }, [activeSidePanel, isVideoSession, setCurrentSidePanel]);
   const {
     leftSidebarResizing,
     leftSidebarWidth,
@@ -800,6 +824,7 @@ export function SessionPage(props: SessionPageProps) {
     minRightWidth: 160,
   });
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
+  const [videoStudioExpanded, setVideoStudioExpanded] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
   ));
@@ -922,9 +947,13 @@ export function SessionPage(props: SessionPageProps) {
     return waitForTemplateEntrySurface(target, binding);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, templateSessionData]);
   const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
+    // SessionSurface automatically previews newly discovered targets after an
+    // agent finishes. Video tasks already have a dedicated preview surface.
+    if (isVideoSession && options?.auto) return;
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);
       if (isElectronRuntime()) {
+        preserveSidePanelOnPanelOpenRef.current = true;
         setCurrentSidePanel("panel");
         void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.(url);
       } else {
@@ -979,7 +1008,7 @@ export function SessionPage(props: SessionPageProps) {
     });
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
-  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, setCurrentSidePanel]);
+  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, isVideoSession, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, setCurrentSidePanel]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;
@@ -1028,6 +1057,7 @@ export function SessionPage(props: SessionPageProps) {
     if (opening && isElectronRuntime()) {
       const hasBrowserTab = sessionPanelState.tabs.some((tab) => tab.type === "browser");
       if (!hasBrowserTab) {
+        preserveSidePanelOnPanelOpenRef.current = true;
         void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.();
       }
     }
@@ -1240,10 +1270,15 @@ export function SessionPage(props: SessionPageProps) {
       if (provider !== "auto" && provider !== "builtin") {
         return { ok: false, error: `Browser provider is not available yet: ${provider}` };
       }
-      setCurrentSidePanel("panel");
-      return window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
+      if (!isVideoSession) setCurrentSidePanel("panel");
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
+      if (isVideoSession) {
+        await window.__IPOLLOWORK_ELECTRON__?.browser?.hide?.();
+        setCurrentSidePanel("video");
+      }
+      return result;
     },
-  }), [setCurrentSidePanel]);
+  }), [isVideoSession, setCurrentSidePanel]);
   useControlAction(openBrowserUrlControlAction);
   const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.set_proxy",
@@ -1438,6 +1473,25 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.workspaceSessionGroups, props.selectedSessionId),
     [props.selectedSessionId, props.sidebar.workspaceSessionGroups],
   );
+  const canSavePromptTemplate = Boolean(props.selectedSessionId && conversationMessages.some((message) => message.role === "user"));
+  const saveCurrentTaskAsPromptTemplate = useCallback(() => {
+    if (!props.selectedSessionId || !canSavePromptTemplate) return;
+    const firstUserMessage = conversationMessages.find((message) => message.role === "user");
+    const firstGoal = firstUserMessage ? sessionMessageToPromptText(firstUserMessage).replace(/^You\s*/i, "").trim() : "";
+    const recentContext = conversationMessages.slice(-6).map(sessionMessageToPromptText).join("\n\n").trim();
+    const title = selectedSessionTitle || t("session.default_title");
+    const prompt = [
+      firstGoal ? `Goal:\n${firstGoal}` : "",
+      recentContext ? `Reference context from the previous successful task:\n${recentContext}` : "",
+      "Please repeat this workflow for the new task. Ask for any missing inputs before making changes.",
+    ].filter(Boolean).join("\n\n");
+    try {
+      savePromptTemplate({ title, prompt });
+      toast.success(t("prompt_templates.toast_saved", { title }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("prompt_templates.error_save"));
+    }
+  }, [canSavePromptTemplate, conversationMessages, props.selectedSessionId, selectedSessionTitle]);
   const sessionActionTitle = useMemo(
     () => sessionTitleForId(props.sidebar.workspaceSessionGroups, sessionActionId),
     [props.sidebar.workspaceSessionGroups, sessionActionId],
@@ -1663,6 +1717,7 @@ export function SessionPage(props: SessionPageProps) {
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
             mainHeaderHidden ? "hidden" : "flex",
+            sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
           )}>
             {shellConfig.sidebar && sidebarVisuallyCollapsed ? (
               <Button
@@ -1706,6 +1761,13 @@ export function SessionPage(props: SessionPageProps) {
                     }
                   />
                   <DropdownMenuContent align="start" className="w-48">
+                    {props.selectedSessionId ? (
+                      <DropdownMenuItem disabled={!canSavePromptTemplate} onClick={saveCurrentTaskAsPromptTemplate}>
+                        <FileText className="size-4" />
+                        {t("prompt_templates.save_task")}
+                      </DropdownMenuItem>
+                    ) : null}
+                    {props.selectedSessionId && (props.onRenameSession || props.onDeleteSession || props.developerMode) ? <DropdownMenuSeparator /> : null}
                     {props.selectedSessionId && props.onRenameSession ? (
                       <DropdownMenuItem onClick={() => openRenameModal(props.selectedSessionId!)}>
                         <Pencil className="size-4" />
@@ -2037,16 +2099,28 @@ export function SessionPage(props: SessionPageProps) {
                       onClose={closeRightPane}
                     />
                   ) : activeSidePanel === "video" && props.selectedSessionId ? (
-                    <VideoPanel
-                      key={`${props.selectedWorkspaceId}:${props.selectedSessionId}`}
-                      sessionId={props.selectedSessionId}
-                      workspaceRoot={props.selectedWorkspaceRoot}
-                      client={props.ipolloworkServerClient}
-                      workspaceId={props.runtimeWorkspaceId}
-                      isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
-                      launcherItems={sidePanelLauncherItems}
-                      onClose={closeRightPane}
-                    />
+                    <div
+                      className={cn(
+                        "h-full min-h-0",
+                        videoStudioExpanded ? "fixed inset-y-0 right-0 z-[60] bg-background" : "w-full",
+                      )}
+                      style={videoStudioExpanded ? {
+                        left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0",
+                      } : undefined}
+                    >
+                      <VideoPanel
+                        key={`${props.selectedWorkspaceId}:${props.selectedSessionId}`}
+                        sessionId={props.selectedSessionId}
+                        workspaceRoot={props.selectedWorkspaceRoot}
+                        client={props.ipolloworkServerClient}
+                        workspaceId={props.runtimeWorkspaceId}
+                        isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
+                        launcherItems={sidePanelLauncherItems}
+                        expanded={videoStudioExpanded}
+                        onExpandedChange={setVideoStudioExpanded}
+                        onClose={closeRightPane}
+                      />
+                    </div>
                   ) : activeSidePanel === "outputs" ? (
                     <ConversationOutputPanel
                       messages={conversationMessages}

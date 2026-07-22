@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Film, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { AudioLines, Film, Loader2, Maximize2, Minimize2, Plus, RefreshCw, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
@@ -33,6 +33,8 @@ type VideoPanelProps = {
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   onClose: () => void;
 };
 
@@ -53,7 +55,7 @@ const studioStartupCopy: Record<StudioStartupStage, { title: string; detail: str
   },
 };
 
-export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], onClose }: VideoPanelProps) {
+export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const localeSyncTimersRef = React.useRef<number[]>([]);
@@ -190,8 +192,23 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     syncStudioTheme();
   }, [resolvedTheme, syncStudioTheme]);
 
+  const toggleFullscreen = React.useCallback(() => {
+    onExpandedChange?.(!expanded);
+  }, [expanded, onExpandedChange]);
+
+  React.useEffect(() => {
+    if (!expanded) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onExpandedChange?.(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [expanded, onExpandedChange]);
+
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel">
+    <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel" data-expanded={expanded ? "true" : "false"}>
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px]">
         <Film className="size-4 text-primary" />
         <div className="flex min-w-0 flex-1 items-center">
@@ -204,8 +221,24 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
           <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => setVoicePanelOpen((open) => !open)} disabled={isRemoteWorkspace} aria-label="Voice settings"><AudioLines /></Button>} />
           <TooltipContent>Voice settings</TooltipContent>
         </Tooltip>
-              <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setStartupStage("loading-frame"); setDetail("Reloading Studio..."); setReloadToken(Date.now()); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
-              {launcherItems.length > 0 ? (
+        <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setStartupStage("loading-frame"); setDetail("Reloading Studio..."); setReloadToken(Date.now()); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={(
+              <Button
+                variant={expanded ? "secondary" : "ghost"}
+                size="icon-xs"
+                onClick={toggleFullscreen}
+                aria-label="Toggle Video Studio fullscreen"
+                aria-pressed={expanded}
+              >
+                {expanded ? <Minimize2 /> : <Maximize2 />}
+              </Button>
+            )}
+          />
+          <TooltipContent>{expanded ? "Exit fullscreen" : "Fullscreen Video Studio"}</TooltipContent>
+        </Tooltip>
+        {launcherItems.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={(
@@ -238,7 +271,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-        <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close Video Studio" title="Close Video Studio"><X /></Button>
+        <Button variant="ghost" size="icon-xs" onClick={() => { onExpandedChange?.(false); onClose(); }} aria-label="Close Video Studio" title="Close Video Studio"><X /></Button>
       </header>
 
       {isRemoteWorkspace ? (

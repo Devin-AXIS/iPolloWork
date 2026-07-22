@@ -466,6 +466,11 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     clone.querySelectorAll(`[${textNodeAttribute}]`).forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
     clone.querySelectorAll(`[${idAttribute}]`).forEach((element) => element.removeAttribute(idAttribute));
     clone.querySelectorAll(`[${selectedAttribute}]`).forEach((element) => element.removeAttribute(selectedAttribute));
+    clone.querySelectorAll<HTMLImageElement>("img[data-ipw-preview-src]").forEach((element) => {
+      const original = element.getAttribute("data-ipw-preview-src") ?? "";
+      if (original) element.setAttribute("src", original);
+      element.removeAttribute("data-ipw-preview-src");
+    });
     clone.querySelectorAll(`[${editingAttribute}]`).forEach((element) => {
       element.removeAttribute(editingAttribute);
       element.removeAttribute("contenteditable");
@@ -799,6 +804,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       else return;
     } else if (data.field === "src" && selected instanceof HTMLImageElement) {
       selected.setAttribute("src", data.value);
+      selected.removeAttribute("data-ipw-preview-src");
     } else if (data.field === "alt" && selected instanceof HTMLImageElement) {
       selected.setAttribute("alt", data.value);
     } else if (styleFields.includes(data.field)) {

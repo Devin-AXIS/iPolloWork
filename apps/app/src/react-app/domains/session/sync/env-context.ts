@@ -9,6 +9,15 @@ const MAX_CONTEXT_CACHE_ENTRIES = 100;
 
 const envSystemContextCache = new Map<string, string | undefined>();
 
+const LONG_RUNNING_PROCESS_CONTEXT = [
+  "Long-running local process rule:",
+  "- Never start a long-running development or preview server as a foreground shell command. A listening server does not exit, so the tool remains pending until its timeout even when the server is already ready.",
+  "- Never stop all Node processes (`Stop-Process -Name node`, `taskkill /IM node.exe`, `pkill node`, or equivalents). The desktop app, agent runtime, and embedded previews may all use Node; terminate only a PID that this task started and recorded.",
+  "- Do not restart an application-owned preview service. Save the source and let the embedded preview hot-reload it.",
+  "- Prefer the application's built-in preview surface when one exists.",
+  "- If a separate local server is genuinely required, start it as a detached/background process without attaching its output pipes, perform a bounded health check, report the URL, and return control immediately.",
+].join("\n");
+
 export function cleariPolloWorkEnvSystemContextCache(): void {
   envSystemContextCache.clear();
 }
@@ -58,10 +67,10 @@ export async function buildiPolloWorkEnvSystemContext(
     readPendingChanges?: () => boolean;
   } = {},
 ): Promise<string | undefined> {
-  if (!client) return undefined;
+  if (!client) return LONG_RUNNING_PROCESS_CONTEXT;
   const readPendingChanges = options.readPendingChanges ??
     (() => readiPolloWorkEnvPendingChanges(options.runtimeKey));
-  if (readPendingChanges()) return undefined;
+  if (readPendingChanges()) return LONG_RUNNING_PROCESS_CONTEXT;
 
   const cacheKey = `${client.baseUrl}:${options.cacheKey ?? DEFAULT_CACHE_KEY}`;
   if (envSystemContextCache.has(cacheKey)) {
@@ -78,12 +87,8 @@ export async function buildiPolloWorkEnvSystemContext(
     ]);
     const keys = normalizeEnvKeys(envResponse.keys ?? []);
     const authorizationContext = buildAuthorizationAgentContext(authorizationResponse.items ?? []);
-    if (keys.length === 0 && !authorizationContext) {
-      rememberEnvSystemContext(cacheKey, undefined);
-      return undefined;
-    }
-
     const context = [
+      LONG_RUNNING_PROCESS_CONTEXT,
       authorizationContext,
       keys.length > 0
         ? [
@@ -96,7 +101,7 @@ export async function buildiPolloWorkEnvSystemContext(
     rememberEnvSystemContext(cacheKey, context);
     return context;
   } catch {
-    return undefined;
+    return LONG_RUNNING_PROCESS_CONTEXT;
   }
 }
 

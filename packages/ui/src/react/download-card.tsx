@@ -116,7 +116,7 @@ function getArchLabel(os: DetectedOS, arch: DetectedArch): string {
 function getDetectedLabel(detected: DetectedPlatform | null, os: DetectedOS): string | null {
   if (!detected || detected.os !== os) return null
   if (detected.arch === null) return "Detected"
-  return `Detected · ${getArchLabel(os, detected.arch)}`
+  return `Detected ${getArchLabel(os, detected.arch)}`
 }
 
 function isRecommended(detected: DetectedPlatform | null, os: DetectedOS, arch: DetectedArch): boolean {

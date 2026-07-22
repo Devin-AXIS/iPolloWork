@@ -29,6 +29,7 @@ import {
   getDefaultStaticSeekPlaybackClock,
   releaseStaticSeekCache,
   resolveStaticSeekFallback,
+  wrapAdapterWithDurationLimit,
   type StaticSeekCacheEntry,
 } from "../lib/playbackAdapter";
 import {
@@ -39,14 +40,16 @@ import {
 import { normalizeToZones } from "../components/timelineZones";
 import {
   setPreviewMediaMuted,
+  setPreviewPlaybackActive,
   setPreviewPlaybackRate,
   shouldMutePreviewAudio,
 } from "../lib/timelineIframeHelpers";
-import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
+import { stopScrubPreviewAudio } from "../lib/playbackScrub";
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
+import { wrapAdapterWithTimedClipVisibility } from "../lib/timedClipVisibility";
 
 /**
  * Whether the derived elements differ from the current ones in any field that
@@ -147,10 +150,15 @@ export function useTimelinePlayer() {
         win.__player && typeof win.__player.play === "function" ? win.__player : null;
       const docDuration = readTimelineDurationFromDocument(iframe.contentDocument);
       const adapterDur = getAdapterDuration(playerAdapter);
+      const withTimedVisibility = (adapter: PlaybackAdapter) =>
+        wrapAdapterWithTimedClipVisibility(
+          docDuration > 0 ? wrapAdapterWithDurationLimit(adapter, docDuration) : adapter,
+          () => iframe.contentDocument,
+        );
 
       if (adapterDur > 0 && docDuration <= adapterDur) {
         releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-        return playerAdapter;
+        return withTimedVisibility(playerAdapter!);
       }
 
       let timelineAdapter: PlaybackAdapter | null = null;
@@ -159,7 +167,7 @@ export function useTimelinePlayer() {
         const dur = getAdapterDuration(adapter);
         if (dur > 0 && docDuration <= dur) {
           releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-          return adapter;
+          return withTimedVisibility(adapter);
         }
         if (dur > 0) timelineAdapter ??= adapter;
       }
@@ -177,7 +185,7 @@ export function useTimelinePlayer() {
           const dur = getAdapterDuration(adapter);
           if (dur > 0 && docDuration <= dur) {
             releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-            return adapter;
+            return withTimedVisibility(adapter);
           }
           if (dur > 0) timelineAdapter ??= adapter;
         }
@@ -197,7 +205,7 @@ export function useTimelinePlayer() {
         effectiveDuration > 0 &&
         ("renderSeek" in bestAdapter || typeof bestAdapter.seek === "function")
       ) {
-        return resolveStaticSeekFallback({
+        return withTimedVisibility(resolveStaticSeekFallback({
           cache: staticSeekAdapterRef,
           warned: staticSeekWarnedRef,
           bestAdapter,
@@ -205,10 +213,10 @@ export function useTimelinePlayer() {
           docDuration,
           clock: getDefaultStaticSeekPlaybackClock(win),
           getPlaybackRate: () => usePlayerStore.getState().playbackRate,
-        });
+        }));
       }
 
-      return bestAdapter;
+      return bestAdapter ? withTimedVisibility(bestAdapter) : null;
     } catch {
       return null;
     }
@@ -249,6 +257,10 @@ export function useTimelinePlayer() {
       shouldMutePreviewAudio(audioMuted, effectivePlaybackRate),
     );
   }, []);
+  const stopPreviewMedia = useCallback(() => {
+    stopScrubPreviewAudio();
+    setPreviewPlaybackActive(iframeRef.current, false);
+  }, []);
   const play = useCallback(() => {
     stopRAFLoop();
     stopReverseLoop();
@@ -260,6 +272,7 @@ export function useTimelinePlayer() {
     }
     applyPlaybackRate(usePlayerStore.getState().playbackRate);
     applyPreviewAudioState();
+    setPreviewPlaybackActive(iframeRef.current, true);
     adapter.play();
     shuttleDirectionRef.current = "forward";
     setIsPlaying(true);
@@ -334,15 +347,17 @@ export function useTimelinePlayer() {
   );
   const pause = useCallback(() => {
     stopReverseLoop();
+    stopPreviewMedia();
     const adapter = getAdapter();
-    if (!adapter) return;
-    adapter.pause();
-    setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
+    if (adapter) {
+      adapter.pause();
+      setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
+    }
     setIsPlaying(false);
     shuttleDirectionRef.current = null;
     shuttleSpeedIndexRef.current = 0;
     stopRAFLoop();
-  }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop]);
+  }, [getAdapter, setCurrentTime, setIsPlaying, stopPreviewMedia, stopRAFLoop, stopReverseLoop]);
   const seek = useCallback(
     (time: number, options?: { keepPlaying?: boolean }) => {
       const wasReverseShuttle = shuttleDirectionRef.current === "backward";
@@ -365,7 +380,7 @@ export function useTimelinePlayer() {
       adapter.seek(nextTime, options);
       liveTime.notify(nextTime); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
-      if (!shouldResumeAfterSeek && !keepPlaying) scrubMusicAtSeek(iframeRef.current, nextTime);
+      if (!shouldResumeAfterSeek && !keepPlaying) stopPreviewMedia();
       if (shouldResumeAfterSeek) {
         stopRAFLoop();
         applyPlaybackRate(usePlayerStore.getState().playbackRate);
@@ -393,6 +408,7 @@ export function useTimelinePlayer() {
       stopReverseLoop,
       applyPlaybackRate,
       applyPreviewAudioState,
+      stopPreviewMedia,
       shuttleDirectionRef,
       shuttleSpeedIndexRef,
     ],
@@ -433,6 +449,7 @@ export function useTimelinePlayer() {
       setIsPlaying,
       attachIframeShortcutListeners,
       applyPreviewAudioState,
+      stopPreviewMedia,
     });
   const saveSeekPosition = useCallback(() => {
     // Never DEGRADE the saved position. Overlapping reloads (e.g. an external
@@ -462,6 +479,7 @@ export function useTimelinePlayer() {
     const iframe = iframeRef.current;
     if (!iframe) return;
     saveSeekPosition();
+    setPreviewPlaybackActive(iframe, false);
     // Hide the iframe across the full reload so the user never sees the reloading
     // document's RAW DOM (every clip stacked and visible) in the window between the
     // new document parsing and the runtime initializing + seeking. initializeAdapter
