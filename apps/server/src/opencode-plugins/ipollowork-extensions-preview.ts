@@ -627,9 +627,11 @@ export const iPolloWorkExtensionsPreview = async () => {
       args: listActionsArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = listActionsArgsSchema.parse(rawArgs);
-        const query = args.extensionId ? `?extensionId=${encodeURIComponent(args.extensionId)}` : "";
+        const query = new URLSearchParams();
+        if (args.extensionId) query.set("extensionId", args.extensionId);
+        if (context.directory) query.set("directory", context.directory);
         const { url, token } = requireiPolloWorkServer();
-        const response = await fetch(`${url}/experimental/extensions/actions${query}`, {
+        const response = await fetch(`${url}/experimental/extensions/actions?${query.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const payload = await parseResponse(response);

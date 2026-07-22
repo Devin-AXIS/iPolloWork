@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
-import { hyperframesPreviewCommand, hyperframesStudioPort, hyperframesStudioUrl, shouldInjectVideoTaskContext, videoProjectDirectory, videoProjectId, videoProjectPath, videoTaskSystemContext } from "../src/react-app/domains/session/video/video-project";
+import { hyperframesStudioPort, hyperframesStudioUrl, shouldInjectVideoTaskContext, videoProjectDirectory, videoProjectId, videoProjectPath, videoTaskSystemContext } from "../src/react-app/domains/session/video/video-project";
 
 describe("HyperFrames Video Studio", () => {
   test("opens the native Studio on a hydrated first frame", () => {
     expect(hyperframesStudioUrl()).toBe("http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1");
+  });
+
+  test("passes the app locale through the Studio hash route", () => {
+    expect(hyperframesStudioUrl(3002, "video", "zh")).toBe("http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1&locale=zh");
   });
 
   test("isolates each video task in a shell-safe project directory", () => {
@@ -22,16 +26,6 @@ describe("HyperFrames Video Studio", () => {
     expect(hyperframesStudioUrl(hyperframesStudioPort("ses_video_a"), videoProjectId("ses_video_a"))).toBe(
       `http://localhost:${hyperframesStudioPort("ses_video_a")}/#project/ses_video_a?v=1&t=0&tab=design&rc=1&tv=1`,
     );
-  });
-
-  test("starts the embedded Studio without opening an external browser", () => {
-    const command = hyperframesPreviewCommand("ses_video_a");
-    expect(command).toContain("cd video/ses_video_a");
-    expect(command).toContain("--example blank");
-    expect(command).not.toContain("warm-grain");
-    expect(command).not.toContain("HYPERFRAMES_SKIP_SKILLS");
-    expect(command).toContain(`--port ${hyperframesStudioPort("ses_video_a")}`);
-    expect(command).toContain("--no-open");
   });
 
   test("keeps legacy Video Studio sessions on the video task contract", () => {

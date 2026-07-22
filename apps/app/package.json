@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/app",
   "private": true,
-  "version": "0.17.28",
+  "version": "0.17.29",
   "type": "module",
   "scripts": {
     "test": "bun test --isolate tests/",
@@ -50,7 +50,7 @@
     "@ipollowork/types": "workspace:*",
     "@ipollowork/ui": "workspace:*",
     "@lexical/react": "^0.35.0",
-    "@opencode-ai/sdk": "^1.18.3",
+    "@opencode-ai/sdk": "^1.17.11",
     "@paper-design/shaders-react": "0.0.72",
     "@radix-ui/colors": "^3.0.0",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
@@ -68,6 +68,7 @@
     "emojilib": "^4.0.3",
     "fuzzysort": "^3.1.0",
     "html2canvas-pro": "2.2.4",
+    "jszip": "3.10.1",
     "jsonc-parser": "^3.2.1",
     "jspdf": "^4.2.1",
     "lexical": "^0.35.0",

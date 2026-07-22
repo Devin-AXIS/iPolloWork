@@ -25,12 +25,17 @@ if (!orchestratorVersion) {
   );
 }
 
-const sourceDateEpoch = process.env.SOURCE_DATE_EPOCH
+const fallbackSourceDateEpoch = Number.parseInt(
+  createHash("sha256").update(orchestratorVersion).digest("hex").slice(0, 8),
+  16,
+);
+const configuredSourceDateEpoch = process.env.SOURCE_DATE_EPOCH
   ? Number(process.env.SOURCE_DATE_EPOCH)
-  : null;
-const generatedAt = Number.isFinite(sourceDateEpoch)
-  ? new Date(sourceDateEpoch * 1000).toISOString()
-  : new Date().toISOString();
+  : NaN;
+const sourceDateEpoch = Number.isFinite(configuredSourceDateEpoch)
+  ? configuredSourceDateEpoch
+  : fallbackSourceDateEpoch;
+const generatedAt = new Date(sourceDateEpoch * 1000).toISOString();
 
 const serverPkg = JSON.parse(
   readFileSync(resolve(repoRoot, "apps", "server", "package.json"), "utf8"),

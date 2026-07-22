@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
+
 export const templateCategorySchema = z.enum([
   "site",
   "video",
@@ -94,6 +96,9 @@ export const templateManifestV1Schema = z.object({
   applyChecklist: z.array(z.string().trim().min(1).max(240)).min(1),
   minimumAppVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
 }).strict().superRefine((manifest, context) => {
+  if (manifest.pptxCompatibility && manifest.category !== "slides") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["pptxCompatibility"], message: "PPTX compatibility is only supported for slide templates" });
+  }
   if (manifest.surface === "video") {
     if (manifest.category !== "video") {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["category"], message: "Video templates must use the video category" });

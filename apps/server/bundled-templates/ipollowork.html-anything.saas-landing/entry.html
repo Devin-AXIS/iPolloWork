@@ -50,6 +50,7 @@
     .closing h2 { font-size: 38px; letter-spacing: -0.02em; margin: 0 0 14px; }
     .closing p { opacity: 0.85; margin: 0 0 28px; }
     .closing button { background: white; color: var(--accent); border: none; }
+    .action-status { min-height: 24px; margin: 22px auto; padding: 0 18px; text-align: center; color: var(--accent); font-weight: 600; }
     footer { padding: 28px 0; color: var(--muted); font-size: 13px; text-align: center; }
     .mobile-nav-toggle { position: relative; display: none; width: 42px; height: 42px; padding: 0; place-items: center; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 78%, transparent); color: var(--fg); }
     .mobile-nav-toggle span, .mobile-nav-toggle::before, .mobile-nav-toggle::after { content: ""; position: absolute; left: 12px; display: block; width: 16px; height: 1.5px; border-radius: 2px; background: currentColor; transition: top .2s ease, transform .2s ease, opacity .2s ease; }
@@ -87,15 +88,15 @@
         <a href="#features">Features</a>
         <a href="#pricing">Pricing</a>
         <a href="#docs">Docs</a>
-        <button class="btn-secondary" style="margin-left: 12px;">Sign in</button>
+        <button type="button" class="btn-secondary" style="margin-left: 12px;" data-ipw-action-message="Sign-in demo opened. Connect this button to your authentication page.">Sign in</button>
       </nav>
     </header>
     <section class="hero" data-od-id="hero">
       <h1>File sync that doesn't eat your bandwidth.</h1>
       <p>Block-level deltas, end-to-end encryption, and a pricing model that doesn't punish you for working with video.</p>
       <div class="cta">
-        <button class="btn-primary">Get iPolloWork</button>
-        <button class="btn-link">Read the whitepaper →</button>
+        <button type="button" class="btn-primary" data-ipw-action-message="Trial selected. Connect this button to your signup flow.">Get iPolloWork</button>
+        <button type="button" class="btn-link" data-ipw-action-message="Whitepaper requested. Connect this button to your document download.">Read the whitepaper →</button>
       </div>
     </section>
   </div>
@@ -138,7 +139,7 @@
           <li>Block-level sync</li>
           <li>Email support</li>
         </ul>
-        <button class="btn-secondary" style="width: 100%;">Choose Solo</button>
+        <button type="button" class="btn-secondary" style="width: 100%;" data-ipw-action-message="Solo plan selected. Connect this button to your checkout flow.">Choose Solo</button>
       </div>
       <div class="tier featured">
         <h3>Team</h3>
@@ -150,7 +151,7 @@
           <li>Priority support</li>
           <li>Audit log</li>
         </ul>
-        <button class="btn-primary" style="width: 100%;">Choose Team</button>
+        <button type="button" class="btn-primary" style="width: 100%;" data-ipw-action-message="Team plan selected. Connect this button to your checkout flow.">Choose Team</button>
       </div>
       <div class="tier">
         <h3>Enterprise</h3>
@@ -161,19 +162,20 @@
           <li>SAML / SCIM</li>
           <li>Dedicated support</li>
         </ul>
-        <button class="btn-secondary" style="width: 100%;">Talk to sales</button>
+        <button type="button" class="btn-secondary" style="width: 100%;" data-ipw-action-message="Sales request started. Connect this button to your contact form.">Talk to sales</button>
       </div>
     </div>
   </section>
 
-  <section class="closing" data-od-id="closing">
+  <section class="closing" id="docs" data-od-id="closing">
     <div class="wrap">
       <h2>Sync less, ship more.</h2>
       <p>14-day free trial. No credit card needed.</p>
-      <button>Get iPolloWork</button>
+      <button type="button" data-ipw-action-message="Trial selected. Connect this button to your signup flow.">Get iPolloWork</button>
     </div>
   </section>
 
+  <p class="action-status" data-ipw-action-status role="status" aria-live="polite"></p>
   <footer class="wrap" data-od-id="footer">© iPolloWork · Privacy · Terms · Status</footer>
   <script>
     (() => {
@@ -189,6 +191,10 @@
       header.querySelectorAll('nav a, nav button').forEach((item) => item.addEventListener('click', () => setOpen(false)));
       document.addEventListener('click', (event) => { if (!header.contains(event.target)) setOpen(false); });
       document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
+      const status = document.querySelector('[data-ipw-action-status]');
+      document.querySelectorAll('[data-ipw-action-message]').forEach((button) => {
+        button.addEventListener('click', () => { if (status) status.textContent = button.dataset.ipwActionMessage || ''; });
+      });
     })();
   </script>
 </body>

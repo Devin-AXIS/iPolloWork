@@ -5,7 +5,7 @@ import type { UIMessage } from "ai";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
 import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
-import { isPptxCompatibleTemplate, type TemplateCatalogItem, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateStyle } from "@ipollowork/types/templates";
+import { MAX_TEMPLATE_PACKAGE_BYTES, isPptxCompatibleTemplate, type TemplateCatalogItem, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateStyle } from "@ipollowork/types/templates";
 
 import { currentLocale, t } from "../../../../i18n";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
@@ -72,6 +72,7 @@ import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTa
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
+import { isTemplateDesignEntryTarget } from "../design/design-entry-target";
 import { VideoPanel } from "../video/video-panel";
 import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, templateColorPaletteLabel, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
@@ -91,7 +92,10 @@ const STARTUP_SKELETON_ROWS = [
 const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowork_voice__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
 const MAIN_WORKSPACE_MIN_WIDTH = 520;
-const MAIN_WORKSPACE_FALLBACK_MIN_WIDTH = 480;
+const MAIN_WORKSPACE_FALLBACK_MIN_WIDTH = 240;
+const AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH = 520;
+const AUTO_COLLAPSE_RIGHT_PANEL_WIDTH = 520;
+const NARROW_LAYOUT_WIDTH = 960;
 type SessionPanelView = SidePanelItem | "launcher";
 
 export type SessionPageHistoryControls = {
@@ -306,7 +310,7 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   onChoose: (templateId: iPolloWorkTemplateId) => void;
   onInstall: (templateId: string) => void;
   onUninstall: (templateId: string) => void;
-  onImport: (file: File, category: TemplateManifestV1["category"]) => void;
+  onImport: (file: File, category?: TemplateManifestV1["category"]) => Promise<boolean>;
 }) {
   const [category, setCategory] = useState<"website" | "slides" | "poster" | null>(null);
   const [pendingImport, setPendingImport] = useState<File | null>(null);
@@ -330,14 +334,14 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
           const visible = templates.filter((item) => item.manifest.category === serverCategory);
           const selectedCategory = categories.find((item) => item.id === category);
           return <div>
-            <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← {t("templates.starter.back_to_categories")}</button><button type="button" onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text"><Upload className="size-3" />{t("template_market.import_ipwt")}</button><input ref={importRef} type="file" accept=".ipwt,application/zip" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
-            {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB · {t("templates.starter.file_type", { type: selectedCategory ? t(selectedCategory.labelKey) : "" })}</div></div><button type="button" onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text">{t("common.cancel")}</button><button type="button" onClick={() => { onImport(pendingImport, serverCategory); setPendingImport(null); }} className="h-7 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground">{t("template_market.install")}</button></div> : null}
-            {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><button type="button" className="block w-full text-left" onClick={() => setPreviewTemplate(item)} aria-label={t("template_market.preview_aria", { title: item.manifest.title })}><TemplateCover client={client} workspaceId={workspaceId} template={item} alt={t("template_market.cover_alt", { title: item.manifest.title })} /></button><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2 text-sm font-semibold">{item.manifest.title}{isPptxCompatibleTemplate(item.manifest) ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">PPTX-compatible</span> : null}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">{t("new_conversation.templates.local")}</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.update")}</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.uninstall_template")}</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.update_template")}</button> : null}</div></details></div><div className="mt-4 flex items-center gap-2"><button type="button" onClick={() => setPreviewTemplate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dls-border px-3 text-xs font-medium text-dls-text transition hover:bg-dls-hover"><Eye className="size-3.5" />{t("template_market.preview")}</button><button type="button" disabled={busyId === item.manifest.id} onClick={() => item.updateAvailable || !item.installed ? onInstall(item.manifest.id) : onChoose(item.manifest.id)} className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.updateAvailable ? t("template_market.update") : item.installed ? t("template_market.use_template") : t("template_market.install")}</button></div></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">{t("templates.starter.empty_title")}</p><p className="mt-1 text-xs text-dls-secondary">{t("templates.starter.empty_description")}</p></div>}
+            <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← {t("templates.starter.back_to_categories")}</button><button type="button" disabled={busyId !== null} onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text disabled:opacity-50"><Upload className="size-3" />{t("template_market.import_ipwt")}</button><input ref={importRef} type="file" accept=".ipwt" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
+            {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB · {t("templates.starter.file_type", { type: selectedCategory ? t(selectedCategory.labelKey) : "" })}</div></div><button type="button" disabled={busyId !== null} onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text disabled:opacity-50">{t("common.cancel")}</button><button type="button" disabled={busyId !== null} onClick={async () => { if (await onImport(pendingImport, serverCategory)) setPendingImport(null); }} className="inline-flex h-7 items-center rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50">{busyId === "import" ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{t("template_market.install")}</button></div> : null}
+            {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><button type="button" className="block w-full text-left" onClick={() => setPreviewTemplate(item)} aria-label={t("template_market.preview_aria", { title: item.manifest.title })}><TemplateCover client={client} workspaceId={workspaceId} template={item} alt={t("template_market.cover_alt", { title: item.manifest.title })} /></button><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2 text-sm font-semibold">{item.manifest.title}{isPptxCompatibleTemplate(item.manifest) ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">PPTX-compatible</span> : null}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">{t("new_conversation.templates.local")}</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.update")}</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.uninstall_template")}</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.update_template")}</button> : null}</div></details></div><div className="mt-4 flex items-center gap-2"><button type="button" onClick={() => setPreviewTemplate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dls-border px-3 text-xs font-medium text-dls-text transition hover:bg-dls-hover"><Eye className="size-3.5" />{t("template_market.preview")}</button><button type="button" disabled={busyId !== null} onClick={() => item.updateAvailable || !item.installed ? onInstall(item.manifest.id) : onChoose(item.manifest.id)} className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.updateAvailable ? t("template_market.update") : item.installed ? t("template_market.use_template") : t("template_market.install")}</button></div></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">{t("templates.starter.empty_title")}</p><p className="mt-1 text-xs text-dls-secondary">{t("templates.starter.empty_description")}</p></div>}
           </div>;
         })()}
       </div>
     </div>
-    <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}><DialogContent className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">{previewTemplate ? <><div className="aspect-video overflow-hidden bg-dls-hover"><TemplateCover client={client} workspaceId={workspaceId} template={previewTemplate} className="h-full" alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} /></div><div className="flex flex-col gap-4 border-t border-dls-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle><DialogDescription className="mt-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-dls-secondary">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>{t("common.back")}</Button><Button size="sm" className="rounded-xl" disabled={busyId === previewTemplate.manifest.id} onClick={() => { setPreviewTemplate(null); if (previewTemplate.updateAvailable || !previewTemplate.installed) onInstall(previewTemplate.manifest.id); else onChoose(previewTemplate.manifest.id); }}>{busyId === previewTemplate.manifest.id ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? t("template_market.update_template") : previewTemplate.installed ? t("template_market.use_template") : t("template_market.install_template")}</Button></div></div></> : null}</DialogContent></Dialog>
+    <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}><DialogContent className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">{previewTemplate ? <><div className="aspect-video overflow-hidden bg-dls-hover"><TemplateCover client={client} workspaceId={workspaceId} template={previewTemplate} className="h-full" alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} /></div><div className="flex flex-col gap-4 border-t border-dls-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle><DialogDescription className="mt-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-dls-secondary">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>{t("common.back")}</Button><Button size="sm" className="rounded-xl" disabled={busyId !== null} onClick={() => { setPreviewTemplate(null); if (previewTemplate.updateAvailable || !previewTemplate.installed) onInstall(previewTemplate.manifest.id); else onChoose(previewTemplate.manifest.id); }}>{busyId === previewTemplate.manifest.id ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? t("template_market.update_template") : previewTemplate.installed ? t("template_market.use_template") : t("template_market.install_template")}</Button></div></div></> : null}</DialogContent></Dialog>
   </>);
 }
 
@@ -428,6 +432,7 @@ export function SessionPage(props: SessionPageProps) {
   const [templateCatalogLoading, setTemplateCatalogLoading] = useState(false);
   const [templateCatalogError, setTemplateCatalogError] = useState<string | null>(null);
   const [templateBusyId, setTemplateBusyId] = useState<string | null>(null);
+  const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
   const [templateSessionData, setTemplateSessionData] = useState<{ state: TemplateSessionState; manifest: TemplateManifestV1; hasBrief: boolean } | null>(null);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
@@ -560,12 +565,26 @@ export function SessionPage(props: SessionPageProps) {
     catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_uninstall")); }
     finally { setTemplateBusyId(null); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
-  const importDesignTemplate = useCallback(async (file: File, category: TemplateManifestV1["category"]) => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
+  const importDesignTemplate = useCallback(async (file: File, category?: TemplateManifestV1["category"]): Promise<boolean> => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || templateImportInFlightRef.current) return false;
+    if (file.size > MAX_TEMPLATE_PACKAGE_BYTES) {
+      toast.error(t("templates.error_package_too_large"));
+      return false;
+    }
+    templateImportInFlightRef.current = true;
     setTemplateBusyId("import");
-    try { const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file, category); toast.success(t("templates.toast_installed", { title: result.item.manifest.title })); await refreshTemplateCatalog(); }
-    catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_invalid_package")); }
-    finally { setTemplateBusyId(null); }
+    try {
+      const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file, category);
+      toast.success(t("templates.toast_installed", { title: result.item.manifest.title }));
+      await refreshTemplateCatalog();
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("templates.error_invalid_package"));
+      return false;
+    } finally {
+      templateImportInFlightRef.current = false;
+      setTemplateBusyId(null);
+    }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
   const saveCurrentAsTemplate = useCallback(async (input: { title: string; category: TemplateManifestV1["category"]; style: TemplateStyle }) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
@@ -652,6 +671,11 @@ export function SessionPage(props: SessionPageProps) {
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
+  const autoCollapsedSidebarRef = useRef(false);
+  const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
+  const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
+  const userOpenedSidebarWhileNarrowRef = useRef(false);
+  const userOpenedSidePanelWhileNarrowRef = useRef(false);
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
   const videoRailActive = activeSidePanel === "video";
@@ -663,7 +687,7 @@ export function SessionPage(props: SessionPageProps) {
       setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
       return;
     }
-    if (isDesignSession && (activeSidePanel === "video" || activeSidePanel === "panel")) {
+    if (isDesignSession && activeSidePanel === "video") {
       setSidePanelState(props.selectedSessionId, "design");
     }
   }, [activeSidePanel, isDesignSession, isVideoSession, props.selectedSessionId, setSidePanelState]);
@@ -718,6 +742,10 @@ export function SessionPage(props: SessionPageProps) {
   const preserveSidePanelOnPanelOpenRef = useRef(false);
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
+    if (panel) {
+      userOpenedSidePanelWhileNarrowRef.current = true;
+      autoCollapsedSidePanelRef.current = null;
+    }
     if (panel) setMainWorkspaceView(null);
     setSessionPanelView(null);
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, panel === "voice" ? "voice" : null);
@@ -729,9 +757,13 @@ export function SessionPage(props: SessionPageProps) {
     setMainWorkspaceView(null);
     setSessionPanelView(null);
     if (panel === "voice") {
+      userOpenedSidePanelWhileNarrowRef.current = true;
+      autoCollapsedSidePanelRef.current = null;
       toggleSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, "voice");
       return;
     }
+    userOpenedSidePanelWhileNarrowRef.current = true;
+    autoCollapsedSidePanelRef.current = null;
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
     toggleSidePanelState(props.selectedSessionId, panel);
   }, [props.selectedSessionId, setSidePanelState, toggleSidePanelState]);
@@ -762,16 +794,28 @@ export function SessionPage(props: SessionPageProps) {
     startLeftSidebarResize,
   } = useWorkspaceShellLayout({
     expandedRightWidth: 520,
-    minRightWidth: 320,
+    minRightWidth: 160,
   });
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
   ));
+  const narrowLayout = viewportWidth < NARROW_LAYOUT_WIDTH;
+  const effectiveLeftSidebarWidth = narrowLayout ? Math.min(leftSidebarWidth, 200) : leftSidebarWidth;
+  const effectiveBrowserPanelWidth = narrowLayout ? Math.min(browserPanelDefaultWidth, 180) : browserPanelDefaultWidth;
   const sidebarProviderStyle: CSSProperties & Record<"--sidebar-width", string> = {
-    "--sidebar-width": `${leftSidebarWidth}px`,
+    "--sidebar-width": `${effectiveLeftSidebarWidth}px`,
   };
-  const mainWorkspaceMinWidth = viewportWidth >= leftSidebarWidth + browserPanelDefaultWidth + MAIN_WORKSPACE_MIN_WIDTH
+  const availableMainWorkspaceWidth = viewportWidth
+    - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0)
+    - (sidePanelOpen ? effectiveBrowserPanelWidth : 0);
+  const expandedMainWorkspaceWidth = viewportWidth
+    - (shellConfig.sidebar ? effectiveLeftSidebarWidth : 0)
+    - (autoCollapsedSidePanelRef.current ? effectiveBrowserPanelWidth : 0);
+  const expandedRightPanelWorkspaceWidth = viewportWidth
+    - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0)
+    - (autoCollapsedSidePanelRef.current ? effectiveBrowserPanelWidth : 0);
+  const mainWorkspaceMinWidth = viewportWidth >= effectiveLeftSidebarWidth + effectiveBrowserPanelWidth + MAIN_WORKSPACE_MIN_WIDTH
     ? MAIN_WORKSPACE_MIN_WIDTH
     : MAIN_WORKSPACE_FALLBACK_MIN_WIDTH;
   const sidebarVisuallyCollapsed = !sidebarOpen;
@@ -782,9 +826,52 @@ export function SessionPage(props: SessionPageProps) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
   useEffect(() => {
+    if (!shellConfig.sidebar) return;
+    if (
+      availableMainWorkspaceWidth < AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH &&
+      sidebarOpen &&
+      !userOpenedSidebarWhileNarrowRef.current
+    ) {
+      autoCollapsedSidebarRef.current = true;
+      setSidebarOpen(false);
+      return;
+    }
+    if (
+      autoCollapsedSidebarRef.current &&
+      !sidebarOpen &&
+      !sidePanelOpen &&
+      expandedMainWorkspaceWidth >= AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH
+    ) {
+      autoCollapsedSidebarRef.current = false;
+      userOpenedSidebarWhileNarrowRef.current = false;
+      setSidebarOpen(true);
+    }
+  }, [
+    availableMainWorkspaceWidth,
+    expandedMainWorkspaceWidth,
+    setSidebarOpen,
+    shellConfig.sidebar,
+    sidebarOpen,
+    sidePanelOpen,
+  ]);
+  useEffect(() => {
     if (sidePanelOpen) return;
     setBrowserPanelDefaultWidth(browserPanelWidth);
   }, [sidePanelOpen, browserPanelWidth]);
+  useEffect(() => {
+    if (effectiveSidePanelView) {
+      lastRightPanelViewRef.current = effectiveSidePanelView;
+    }
+  }, [effectiveSidePanelView]);
+  const handleSidebarOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      userOpenedSidebarWhileNarrowRef.current = true;
+      autoCollapsedSidebarRef.current = false;
+    } else {
+      userOpenedSidebarWhileNarrowRef.current = false;
+    }
+    setSidebarOpen(open);
+  }, [setSidebarOpen]);
   useEffect(() => {
     props.onAccessibleTargetsChange?.(accessibleTargets);
   }, [accessibleTargets, props.onAccessibleTargetsChange]);
@@ -840,6 +927,16 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
 
+    const sourceId = sourceSessionId ?? props.selectedSessionId;
+    if (
+      sourceId === props.selectedSessionId
+      && templateSessionData?.manifest.surface === "design"
+      && isTemplateDesignEntryTarget(target, templateSessionData.state.entry)
+    ) {
+      setCurrentSidePanel("design");
+      return;
+    }
+
     if (!isCollectibleArtifactTarget(target)) {
       if (isOpenableFileTarget(target)) {
         if (props.selectedWorkspaceDisplay.workspaceType === "remote") {
@@ -851,7 +948,7 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
 
-    const sessionId = sourceSessionId ?? props.selectedSessionId;
+    const sessionId = sourceId;
     if (!sessionId) return;
     if (options?.auto && activePanelTab?.id === target.id) return;
     openTab(sessionId, {
@@ -862,11 +959,47 @@ export function SessionPage(props: SessionPageProps) {
     });
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
-  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel]);
-  const closeRightPane = useCallback(() => {
+  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel, templateSessionData]);
+  const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
+    if (!options?.preserveAutoCollapse) {
+      userOpenedSidePanelWhileNarrowRef.current = false;
+      autoCollapsedSidePanelRef.current = null;
+    }
     setSessionPanelView(null);
     setCurrentSidePanel(null);
   }, [setCurrentSidePanel]);
+  useEffect(() => {
+    if (
+      availableMainWorkspaceWidth < AUTO_COLLAPSE_RIGHT_PANEL_WIDTH &&
+      sidePanelOpen &&
+      !userOpenedSidePanelWhileNarrowRef.current
+    ) {
+      autoCollapsedSidePanelRef.current = effectiveSidePanelView;
+      closeRightPane({ preserveAutoCollapse: true });
+      return;
+    }
+    const restoredPanel = autoCollapsedSidePanelRef.current;
+    if (
+      restoredPanel &&
+      !sidePanelOpen &&
+      expandedRightPanelWorkspaceWidth >= AUTO_COLLAPSE_RIGHT_PANEL_WIDTH
+    ) {
+      autoCollapsedSidePanelRef.current = null;
+      userOpenedSidePanelWhileNarrowRef.current = false;
+      if (restoredPanel === "launcher") {
+        setSessionPanelView("launcher");
+      } else {
+        setCurrentSidePanel(restoredPanel);
+      }
+    }
+  }, [
+    availableMainWorkspaceWidth,
+    closeRightPane,
+    effectiveSidePanelView,
+    expandedRightPanelWorkspaceWidth,
+    setCurrentSidePanel,
+    sidePanelOpen,
+  ]);
   const openBrowserRailPane = useCallback(() => {
     // Opening the browser pane should land on a usable page, not an empty
     // panel that forces the user to click "+". If no browser tab exists yet,
@@ -889,11 +1022,21 @@ export function SessionPage(props: SessionPageProps) {
   }, [setCurrentSidePanel]);
   const toggleRightPanel = useCallback(() => {
     if (sidePanelOpen) {
+      if (effectiveSidePanelView) {
+        lastRightPanelViewRef.current = effectiveSidePanelView;
+      }
       closeRightPane();
       return;
     }
-    setSessionPanelView("launcher");
-  }, [closeRightPane, sidePanelOpen]);
+    userOpenedSidePanelWhileNarrowRef.current = true;
+    autoCollapsedSidePanelRef.current = null;
+    const restoredPanel = lastRightPanelViewRef.current;
+    if (restoredPanel === "launcher") {
+      setSessionPanelView("launcher");
+      return;
+    }
+    setCurrentSidePanel(restoredPanel);
+  }, [closeRightPane, effectiveSidePanelView, setCurrentSidePanel, sidePanelOpen]);
   const openDesignRailPane = useCallback(() => {
     toggleCurrentSidePanel("design");
   }, [toggleCurrentSidePanel]);
@@ -1338,6 +1481,11 @@ export function SessionPage(props: SessionPageProps) {
     showWorkspaceSetupEmptyState || (props.selectedSessionId && !selectedSessionIsDefaultTitle),
   );
   const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
+  const mainHeaderHidden = mainWorkspaceView === "extensions" || (showNewConversationChrome && !sidebarVisuallyCollapsed);
+  const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
+  const floatingRightPanelToggleOffset = sidePanelOpen
+    ? Math.min(effectiveBrowserPanelWidth, Math.max(0, visibleWorkspaceWidth - 40)) + 8
+    : 8;
 
   useEffect(() => {
     if (!showSessionLoadingState) {
@@ -1395,7 +1543,7 @@ export function SessionPage(props: SessionPageProps) {
     <div className="flex h-full min-h-0 flex-col bg-[radial-gradient(circle_at_top,rgba(74,111,255,0.12),transparent_42%),var(--app-bg,#0b1020)] text-dls-text mac:bg-transparent">
       <SidebarProvider
         open={sidebarOpen}
-        onOpenChange={setSidebarOpen}
+        onOpenChange={handleSidebarOpenChange}
         className={cn(
           "relative min-h-0 flex-1 mac:bg-transparent",
           leftSidebarResizing &&
@@ -1461,13 +1609,39 @@ export function SessionPage(props: SessionPageProps) {
           <ResizablePanelGroup
             orientation="horizontal"
             onLayoutChanged={sidePanelOpen ? commitBrowserPanelWidth : undefined}
-            className="min-h-0 flex-1"
+            className="relative min-h-0 flex-1"
           >
+            {mainHeaderHidden ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="absolute top-2 z-50 rounded-lg bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
+                      style={{ right: floatingRightPanelToggleOffset }}
+                      aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                      title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                      aria-pressed={sidePanelOpen}
+                      disabled={!props.selectedSessionId && !sidePanelOpen}
+                      onClick={toggleRightPanel}
+                    >
+                      <img
+                        src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
+                        alt=""
+                        className="h-3 w-4 shrink-0"
+                      />
+                    </Button>
+                  }
+                />
+                <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
+              </Tooltip>
+            ) : null}
             <ResizablePanel minSize={`${mainWorkspaceMinWidth}px`} className="min-w-0">
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
-            mainWorkspaceView === "extensions" || (showNewConversationChrome && !sidebarVisuallyCollapsed) ? "hidden" : "flex",
+            mainHeaderHidden ? "hidden" : "flex",
           )}>
             {shellConfig.sidebar && sidebarVisuallyCollapsed ? (
               <Button
@@ -1477,7 +1651,11 @@ export function SessionPage(props: SessionPageProps) {
                 className="absolute left-6 top-1/2 z-20 size-8 -translate-y-1/2 rounded-lg border-none text-muted-foreground hover:bg-muted hover:text-foreground mac:left-20 mac:titlebar-no-drag"
                 aria-label={t("sidebar.expand")}
                 title={t("sidebar.expand")}
-                onClick={() => setSidebarOpen(true)}
+                onClick={() => {
+                  userOpenedSidebarWhileNarrowRef.current = true;
+                  autoCollapsedSidebarRef.current = false;
+                  setSidebarOpen(true);
+                }}
                 style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
               >
                 <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0" />
@@ -1563,7 +1741,7 @@ export function SessionPage(props: SessionPageProps) {
                       aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                       title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                       aria-pressed={sidePanelOpen}
-                      disabled={!props.selectedSessionId}
+                      disabled={!props.selectedSessionId && !sidePanelOpen}
                       onClick={toggleRightPanel}
                     >
                       <img
@@ -1646,7 +1824,7 @@ export function SessionPage(props: SessionPageProps) {
                           onChoose={(templateId) => void chooseDesignTemplate(templateId)}
                           onInstall={(templateId) => void installDesignTemplate(templateId)}
                           onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
-                          onImport={(file, category) => void importDesignTemplate(file, category)}
+                          onImport={importDesignTemplate}
                         />
                       ) : templateSessionData && !hasTemplateBrief && !templateBriefDismissed ? (
                         <TemplateBriefCard template={templateSessionData.manifest} onSubmit={(brief) => void submitTemplateBrief(brief)} onClose={() => void closeTemplateBrief()} />
@@ -1793,13 +1971,13 @@ export function SessionPage(props: SessionPageProps) {
                 <ResizableHandle withHandle className="hidden lg:flex" />
                 <ResizablePanel
                   panelRef={browserPanelRef}
-                  defaultSize={`${effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "outputs" ? Math.max(browserPanelDefaultWidth, 360) : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
-                  minSize={effectiveSidePanelView === "video" ? "760px" : effectiveSidePanelView === "launcher" ? "280px" : effectiveSidePanelView === "outputs" ? "320px" : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? "420px" : "320px"}
+                  defaultSize={`${narrowLayout ? effectiveBrowserPanelWidth : effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "outputs" ? Math.max(browserPanelDefaultWidth, 360) : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
+                  minSize={narrowLayout ? "160px" : effectiveSidePanelView === "video" ? "760px" : effectiveSidePanelView === "launcher" ? "280px" : effectiveSidePanelView === "outputs" ? "320px" : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? "420px" : "320px"}
                   maxSize={effectiveSidePanelView === "video" ? "82%" : "70%"}
                   className="min-h-0 overflow-hidden lg:flex lg:flex-col"
                 >
                   {effectiveSidePanelView === "launcher" ? (
-                    <div className="flex h-full flex-col bg-background px-10 pt-[44vh] text-[#6B7280]">
+                    <div className="flex h-full flex-col bg-background px-6 pt-16 text-[#6B7280] min-[960px]:px-10 min-[960px]:pt-[44vh]">
                       <div className="w-full max-w-[240px] space-y-5">
                         {sidePanelLauncherItems.map((item) => {
                           return (
@@ -1833,6 +2011,7 @@ export function SessionPage(props: SessionPageProps) {
                       client={props.ipolloworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
+                      launcherItems={sidePanelLauncherItems}
                       onClose={closeRightPane}
                     />
                   ) : activeSidePanel === "video" && props.selectedSessionId ? (
@@ -1843,6 +2022,7 @@ export function SessionPage(props: SessionPageProps) {
                       client={props.ipolloworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
+                      launcherItems={sidePanelLauncherItems}
                       onClose={closeRightPane}
                     />
                   ) : activeSidePanel === "outputs" ? (
@@ -1885,7 +2065,7 @@ export function SessionPage(props: SessionPageProps) {
         onRefresh={refreshTemplateCatalog}
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
-        onImport={(file, category) => void importDesignTemplate(file, category)}
+        onImport={importDesignTemplate}
         onSaveCurrent={(input) => void saveCurrentAsTemplate(input)}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {

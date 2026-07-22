@@ -7,6 +7,7 @@ import path from "node:path";
 import afterPackModule from "../scripts/electron-after-pack.cjs";
 
 const afterPack = afterPackModule.default ?? afterPackModule;
+const { assertPackagedNodePty } = afterPackModule;
 
 async function createWindowsFixture(triple) {
   const appOutDir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-after-pack-"));
@@ -55,3 +56,50 @@ for (const [arch, triple] of [
     }
   });
 }
+
+async function createMacNodePtyFixture(arch) {
+  const appOutDir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-node-pty-"));
+  const packageDir = path.join(
+    appOutDir,
+    "iPollo.app",
+    "Contents",
+    "Resources",
+    "app.asar.unpacked",
+    "node_modules",
+    "@lydell",
+    `node-pty-darwin-${arch}`,
+    "prebuilds",
+    `darwin-${arch}`,
+  );
+  await mkdir(packageDir, { recursive: true });
+  await writeFile(path.join(packageDir, "pty.node"), "placeholder");
+  return appOutDir;
+}
+
+it("accepts an Intel macOS app that includes the Intel node-pty binary", async () => {
+  const appOutDir = await createMacNodePtyFixture("x64");
+  try {
+    assert.doesNotThrow(() => assertPackagedNodePty({
+      electronPlatformName: "darwin",
+      arch: "x64",
+      appOutDir,
+      packager: { appInfo: { productFilename: "iPollo" } },
+    }));
+  } finally {
+    await rm(appOutDir, { recursive: true, force: true });
+  }
+});
+
+it("rejects an Intel macOS app that only includes the Apple Silicon node-pty binary", async () => {
+  const appOutDir = await createMacNodePtyFixture("arm64");
+  try {
+    assert.throws(() => assertPackagedNodePty({
+      electronPlatformName: "darwin",
+      arch: "x64",
+      appOutDir,
+      packager: { appInfo: { productFilename: "iPollo" } },
+    }), /node-pty-darwin-x64/);
+  } finally {
+    await rm(appOutDir, { recursive: true, force: true });
+  }
+});

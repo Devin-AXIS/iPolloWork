@@ -97,4 +97,21 @@ describe("template brief", () => {
     expect(prompt).toContain("The Design panel owns slide navigation");
     expect(prompt).toContain("responsive slide reflow");
   });
+
+  test("requires slide generation to retain the selected template's distinct composition", () => {
+    const prompt = templateBriefPrompt({
+      template: {
+        category: "slides",
+        title: "Xiaohongshu Post Deck",
+        applyChecklist: ["Keep the template hierarchy"],
+      },
+      entryPath: "design/ses_xhs/entry.html",
+      briefPath: "design/ses_xhs/brief.json",
+    });
+
+    expect(prompt).toContain("existing HTML and CSS are the layout source of truth");
+    expect(prompt).toContain("Update existing elements in place");
+    expect(prompt).toContain("Do not replace the template with a generic deck");
+    expect(prompt).toContain("colored blocks, artwork, decorative elements, and template-specific components");
+  });
 });

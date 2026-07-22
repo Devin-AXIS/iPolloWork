@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, net as electronNet, Notification as ElectronNotification, session, shell, systemPreferences } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, net as electronNet, Notification as ElectronNotification, screen, session, shell, systemPreferences } from "electron";
 import { configureFakeMediaForTests, installMediaPermissionHandlers } from "./media-permissions.mjs";
 import { registerMigrationIpc } from "./migration.mjs";
 import { createRuntimeManager } from "./runtime.mjs";
@@ -33,6 +33,8 @@ import { createApplicationMenu } from "./app-menu.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
 import { openExternalUrl } from "./open-external.mjs";
+import { protectOutputStreamFromBrokenPipe } from "./stdio-safety.mjs";
+import { relaunchActionForMode } from "./relaunch-policy.mjs";
 import {
   applyWindowsTaskbarIcon,
   windowsBrandAppUserModelId,
@@ -45,6 +47,8 @@ import {
 } from "./brand-icon-windows.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+protectOutputStreamFromBrokenPipe(process.stdout);
+protectOutputStreamFromBrokenPipe(process.stderr);
 const require = createRequire(import.meta.url);
 const pty = require(["node", "pty"].join("-"));
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
@@ -62,8 +66,11 @@ const APP_IDENTIFIER =
 const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
 const RELEASE_PAGE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest";
 const DOCS_PAGE_URL = "https://ipolloworklabs.com/docs";
-const MAIN_WINDOW_MIN_WIDTH = 720;
-const MAIN_WINDOW_MIN_HEIGHT = 640;
+const MAIN_WINDOW_DEFAULT_WIDTH = 1440;
+const MAIN_WINDOW_DEFAULT_HEIGHT = 900;
+const MAIN_WINDOW_MIN_WIDTH = 880;
+const MAIN_WINDOW_MIN_HEIGHT = 768;
+const MAIN_WINDOW_STATE_FILE = "main-window-state.json";
 const applicationMenu = createApplicationMenu({
   appName: APP_NAME,
   docsUrl: DOCS_PAGE_URL,
@@ -79,7 +86,6 @@ const uiControlServer = createUiControlServer({
 const terminalProcesses = new Map();
 const hyperframesProcesses = new Map();
 let nextTerminalId = 1;
-const HYPERFRAMES_VERSION = "0.7.52";
 const HYPERFRAMES_START_TIMEOUT_MS = 90_000;
 const HYPERFRAMES_PORT_BASE = 3_100;
 const HYPERFRAMES_PORT_RANGE = 800;
@@ -149,31 +155,270 @@ function hyperframesKey(webContentsId, sessionId) {
   return `${webContentsId}:${String(sessionId ?? "").trim()}`;
 }
 
-function npxCommand() {
-  return process.platform === "win32" ? "npx.cmd" : "npx";
+function desktopRepoRoot() {
+  return path.resolve(__dirname, "..", "..", "..");
 }
 
-function npxPathEnv() {
+function resolveLocalHyperframesCli() {
+  const candidates = [
+    path.resolve(desktopRepoRoot(), "vendor", "hyperframes", "packages", "cli", "bin", "hyperframes.mjs"),
+    process.resourcesPath
+      ? path.join(process.resourcesPath, "hyperframes", "packages", "cli", "bin", "hyperframes.mjs")
+      : null,
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  throw new Error("Local HyperFrames Studio is missing. Run `bun install` and `bun run build:local-studio` in `vendor/hyperframes`.");
+}
+
+function localHyperframesVersion() {
+  try {
+    const packagePath = path.join(path.dirname(resolveLocalHyperframesCli()), "..", "package.json");
+    return require(packagePath).version || "";
+  } catch {
+    return "";
+  }
+}
+
+function resolveLocalHyperframesRoot() {
+  return path.resolve(path.dirname(resolveLocalHyperframesCli()), "..", "..", "..");
+}
+
+function findFirstExistingPath(candidates) {
+  for (const candidate of candidates.filter(Boolean)) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function isRunnableBinary(candidate) {
+  if (!candidate || !existsSync(candidate)) return false;
+  try {
+    execFileSync(candidate, ["-version"], {
+      stdio: "ignore",
+      timeout: 5_000,
+      windowsHide: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findFirstRunnablePath(candidates) {
+  for (const candidate of candidates.filter(Boolean)) {
+    if (isRunnableBinary(candidate)) return candidate;
+  }
+  return null;
+}
+
+function asarUnpackedPath(candidate) {
+  if (!candidate || !candidate.includes("app.asar")) return null;
+  return candidate.replace(/app\.asar(?=([\\/]|$))/, "app.asar.unpacked");
+}
+
+function resolveBundledFfBinary(name) {
+  const extension = process.platform === "win32" ? ".exe" : "";
+  const executable = `${name}${extension}`;
+  const hyperframesRoot = resolveLocalHyperframesRoot();
+  const packageName = name === "ffprobe" ? "ffprobe-static" : "ffmpeg-static";
+  const packageGlobPrefix = name === "ffprobe" ? "ffprobe-static@" : "ffmpeg-static@";
+  const nodeModulesRoot = path.join(hyperframesRoot, "node_modules");
+  const directPackage = path.join(nodeModulesRoot, packageName);
+  const bunRoot = path.join(nodeModulesRoot, ".bun");
+  const bunPackageRoot = existsSync(bunRoot)
+    ? readdirSync(bunRoot, { withFileTypes: true })
+      .find((entry) => entry.isDirectory() && entry.name.startsWith(packageGlobPrefix))?.name
+    : null;
+  return findFirstRunnablePath([
+    path.join(directPackage, executable),
+    path.join(directPackage, "bin", process.platform, process.arch, executable),
+    path.join(directPackage, "bin", executable),
+    bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, executable) : null,
+    bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, "bin", process.platform, process.arch, executable) : null,
+    bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, "bin", executable) : null,
+  ]);
+}
+
+function resolveInstallerFfBinary(name) {
+  const packageName = name === "ffprobe" ? "@ffprobe-installer/ffprobe" : "@ffmpeg-installer/ffmpeg";
+  const platformPackageName = name === "ffprobe" ? "@ffprobe-installer" : "@ffmpeg-installer";
+  const platformPackageDir = process.platform === "win32" ? "win32-x64" : null;
+  const executable = process.platform === "win32" ? `${name}.exe` : name;
+  try {
+    const installer = require(packageName);
+    const installerPath = typeof installer?.path === "string" ? installer.path : "";
+    const unpackedInstallerPath = asarUnpackedPath(installerPath);
+    const resourcesNodeModules = process.resourcesPath
+      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
+      : null;
+    return findFirstRunnablePath([
+      unpackedInstallerPath,
+      installerPath,
+      resourcesNodeModules && platformPackageDir
+        ? path.join(resourcesNodeModules, platformPackageName, platformPackageDir, executable)
+        : null,
+    ]);
+  } catch {
+    const resourcesNodeModules = process.resourcesPath
+      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
+      : null;
+    return findFirstRunnablePath([
+      resourcesNodeModules && platformPackageDir
+        ? path.join(resourcesNodeModules, platformPackageName, platformPackageDir, executable)
+        : null,
+    ]);
+  }
+}
+
+function resolveSystemFfBinary(name) {
+  const command = process.platform === "win32" ? "where.exe" : "which";
+  try {
+    const output = execFileSync(command, [name], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 3_000,
+      windowsHide: true,
+    });
+    const resolved = findFirstRunnablePath(
+      output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+    );
+    if (resolved) return resolved;
+  } catch {
+    /* fall through to local fallbacks */
+  }
+  if (process.platform !== "win32" || name !== "ffmpeg") return null;
+  return findFirstRunnablePath(["C:\\LenovoSoftstore\\Install\\EVluping\\ffmpeg.exe"]);
+}
+
+function resolveFfBinary(name) {
+  return resolveInstallerFfBinary(name) ?? resolveBundledFfBinary(name) ?? resolveSystemFfBinary(name);
+}
+
+function resolveSystemChromiumBinary() {
+  if (process.platform === "win32") {
+    return findFirstExistingPath([
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    ]);
+  }
+  if (process.platform === "darwin") {
+    return findFirstExistingPath([
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ]);
+  }
+  return findFirstRunnablePath(["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]);
+}
+
+function inheritedPathEnv() {
   const currentPath = process.env.PATH || "";
   if (process.platform !== "darwin") return currentPath;
   const fallbackPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
   return [...new Set([...currentPath.split(path.delimiter).filter(Boolean), ...fallbackPaths])].join(path.delimiter);
 }
 
-function spawnNpx(args, cwd) {
-  return spawn(npxCommand(), args, {
+function spawnLocalHyperframes(args, cwd) {
+  const isInit = args[0] === "init";
+  const ffmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH || resolveFfBinary("ffmpeg");
+  const ffprobePath = process.env.HYPERFRAMES_FFPROBE_PATH || resolveFfBinary("ffprobe");
+  const browserPath =
+    process.env.HYPERFRAMES_BROWSER_PATH ||
+    process.env.PRODUCER_HEADLESS_SHELL_PATH ||
+    resolveSystemChromiumBinary();
+  return spawn(process.execPath, [resolveLocalHyperframesCli(), ...args], {
     cwd,
-    shell: process.platform === "win32",
     detached: process.platform !== "win32",
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
-      PATH: npxPathEnv(),
+      PATH: inheritedPathEnv(),
       BROWSER: "none",
+      ELECTRON_RUN_AS_NODE: "1",
       NO_COLOR: "1",
+      ...(ffmpegPath ? { HYPERFRAMES_FFMPEG_PATH: ffmpegPath } : {}),
+      ...(ffprobePath ? { HYPERFRAMES_FFPROBE_PATH: ffprobePath } : {}),
+      ...(browserPath
+        ? {
+            HYPERFRAMES_BROWSER_PATH: browserPath,
+            PRODUCER_HEADLESS_SHELL_PATH: browserPath,
+          }
+        : {}),
+      ...(isInit ? { HYPERFRAMES_SKIP_SKILLS: "1" } : {}),
     },
   });
+}
+
+async function readHyperframesServerConfig(port) {
+  return await new Promise((resolve) => {
+    const request = createServerProbeRequest(port, (config) => resolve(config));
+    request.on("error", () => resolve(null));
+    request.setTimeout(1_500, () => {
+      request.destroy();
+      resolve(null);
+    });
+    request.end();
+  });
+}
+
+function createServerProbeRequest(port, onConfig) {
+  const http = require("node:http");
+  const request = http.request({
+    host: "127.0.0.1",
+    port,
+    path: "/__hyperframes_config",
+    method: "GET",
+  }, (response) => {
+    let body = "";
+    response.setEncoding("utf8");
+    response.on("data", (chunk) => { body += chunk; });
+    response.on("end", () => {
+      try {
+        const parsed = JSON.parse(body);
+        onConfig(parsed?.isHyperframes ? parsed : null);
+      } catch {
+        onConfig(null);
+      }
+    });
+  });
+  return request;
+}
+
+async function waitForHyperframesServer(port, expectedProjectPath, timeoutMs = HYPERFRAMES_START_TIMEOUT_MS) {
+  const startedAt = Date.now();
+  const expectedProjectDir = path.resolve(expectedProjectPath);
+  while (Date.now() - startedAt < timeoutMs) {
+    const config = await readHyperframesServerConfig(port);
+    if (config?.isHyperframes) {
+      const runningProject = typeof config.projectDir === "string" ? path.resolve(config.projectDir) : "";
+      if (runningProject === expectedProjectDir) return config;
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 350));
+  }
+  throw new Error(`Timed out waiting for HyperFrames Studio on port ${port}.`);
+}
+
+async function stopStaleHyperframesPort(port, expectedProjectPath) {
+  const config = await readHyperframesServerConfig(port);
+  if (!config?.pid) return;
+  const runningProject = typeof config.projectDir === "string" ? path.resolve(config.projectDir) : "";
+  const runningVersion = typeof config.version === "string" ? config.version : "";
+  const expectedVersion = localHyperframesVersion();
+  if (runningProject === path.resolve(expectedProjectPath) && runningVersion === expectedVersion) return;
+  try {
+    if (process.platform === "win32") {
+      execFileSync("taskkill", ["/pid", String(config.pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      process.kill(Number(config.pid), "SIGTERM");
+    }
+  } catch {
+    /* stale process may already be gone */
+  }
 }
 
 function resolveWorkspaceChild(root, childPath) {
@@ -191,9 +436,12 @@ function resolveWorkspaceChild(root, childPath) {
 }
 
 async function runHyperframesInit(workspaceRoot, projectDirectory, projectPath) {
-  if (existsSync(path.join(projectPath, "index.html"))) return;
+  if (existsSync(path.join(projectPath, "index.html"))) {
+    await ensureVisibleHyperframesStarter(projectPath);
+    return;
+  }
   await mkdir(path.dirname(projectPath), { recursive: true });
-  const child = spawnNpx(["--yes", `hyperframes@${HYPERFRAMES_VERSION}`, "init", projectDirectory, "--example", "blank", "--non-interactive"], workspaceRoot);
+  const child = spawnLocalHyperframes(["init", projectDirectory, "--example", "blank", "--non-interactive"], workspaceRoot);
   let output = "";
   await new Promise((resolve, reject) => {
     child.stdout?.on("data", (data) => { output += String(data); });
@@ -204,6 +452,28 @@ async function runHyperframesInit(workspaceRoot, projectDirectory, projectPath) 
       else reject(new Error(output.trim() || `HyperFrames init failed (${code ?? "unknown"}).`));
     });
   });
+  await ensureVisibleHyperframesStarter(projectPath);
+}
+
+async function ensureVisibleHyperframesStarter(projectPath) {
+  const indexPath = path.join(projectPath, "index.html");
+  if (!existsSync(indexPath)) return;
+  const html = await readFile(indexPath, "utf8");
+  if (html.includes("ipollowork-video-placeholder")) return;
+  if (!html.includes("Add your clips here")) return;
+
+  const placeholder = `      <div id="ipollowork-video-placeholder" class="clip" data-start="0" data-duration="10" data-track-index="1" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:#111827; color:#f8fafc; font:600 56px Inter, sans-serif;">
+        Ready
+      </div>
+
+`;
+  const patched = html.replace(
+    /(<div\b[^>]*\bdata-composition-id="main"[^>]*>\s*)(<!--\s*Add your clips here)/,
+    `$1${placeholder}$2`,
+  );
+  if (patched !== html) {
+    await writeFile(indexPath, patched, "utf8");
+  }
 }
 
 function stopHyperframesForKey(key) {
@@ -233,11 +503,13 @@ async function startHyperframesPreview(event, options = {}) {
   }
   stopHyperframesForKey(key);
   await runHyperframesInit(workspaceRoot, projectDirectory, projectPath);
+  await stopStaleHyperframesPort(port, projectPath);
 
-  const child = spawnNpx(["--yes", `hyperframes@${HYPERFRAMES_VERSION}`, "preview", "--port", String(port), "--no-open"], projectPath);
+  const child = spawnLocalHyperframes(["preview", "--port", String(port), "--no-open"], projectPath);
   let output = "";
   return await new Promise((resolve, reject) => {
     let ready = false;
+    let settled = false;
     const cleanup = () => {
       clearTimeout(timeout);
       child.stdout?.off("data", onData);
@@ -246,7 +518,7 @@ async function startHyperframesPreview(event, options = {}) {
       child.off("exit", onExit);
     };
     const finishReady = () => {
-      if (ready) return;
+      if (ready || settled) return;
       ready = true;
       clearTimeout(timeout);
       child.stdout?.off("data", onData);
@@ -256,32 +528,36 @@ async function startHyperframesPreview(event, options = {}) {
       event.sender.once("destroyed", () => stopHyperframesForWebContents(event.sender.id));
       resolve({ ok: true, port, reused: false });
     };
-    const onData = (data) => {
-      output += String(data);
-      if (new RegExp(`localhost:${port}|127\\.0\\.0\\.1:${port}|studio.*ready|server.*running`, "i").test(output)) {
-        finishReady();
-      }
-    };
-    const onError = (error) => {
-      cleanup();
-      reject(error);
-    };
-    const onExit = (code) => {
+    const failStart = (error) => {
+      if (settled || ready) return;
+      settled = true;
       cleanup();
       hyperframesProcesses.delete(key);
+      reject(error);
+    };
+    const onData = (data) => {
+      output += String(data);
+    };
+    const onError = (error) => {
+      failStart(error);
+    };
+    const onExit = (code) => {
       if (ready) return;
-      reject(new Error(output.trim() || `HyperFrames stopped before Studio was ready (${code ?? "unknown"}).`));
+      failStart(new Error(output.trim() || `HyperFrames stopped before Studio was ready (${code ?? "unknown"}).`));
     };
     const timeout = setTimeout(() => {
-      cleanup();
       killProcessTree(child);
-      reject(new Error("Timed out starting HyperFrames Studio."));
+      failStart(new Error(output.trim() || "Timed out starting HyperFrames Studio."));
     }, HYPERFRAMES_START_TIMEOUT_MS);
     hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, timeout });
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.once("error", onError);
     child.once("exit", onExit);
+    waitForHyperframesServer(port, projectPath).then(finishReady, (error) => {
+      killProcessTree(child);
+      failStart(error);
+    });
   });
 }
 
@@ -439,10 +715,17 @@ function selectDownloadFile(files, arch) {
 }
 
 async function resolveCorrectArchitectureDownloadUrl(arch) {
+  // The development shell must remain usable when GitHub is unavailable.
+  // Architecture detection is local; the manifest is only needed to offer a
+  // correct-build download in the packaged mismatch flow.
+  if (isDevMode) return null;
   const manifestUrl = `${RELEASE_DOWNLOAD_BASE_URL}/${updaterManifestName(arch)}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3_000);
   try {
     const response = await fetch(manifestUrl, {
       headers: { Accept: "text/yaml, text/plain, */*" },
+      signal: controller.signal,
     });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -454,6 +737,8 @@ async function resolveCorrectArchitectureDownloadUrl(arch) {
   } catch (error) {
     console.warn("[architecture] failed to resolve latest download URL", error);
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -1088,6 +1373,59 @@ const IDLE_ROUTER_INFO = Object.freeze({
 
 let mainWindow = null;
 const pendingDeepLinks = [];
+
+function mainWindowStatePath() {
+  return path.join(app.getPath("userData"), MAIN_WINDOW_STATE_FILE);
+}
+
+function normalizeMainWindowBounds(value) {
+  if (!value || typeof value !== "object") return null;
+  const x = Number(Reflect.get(value, "x"));
+  const y = Number(Reflect.get(value, "y"));
+  const width = Number(Reflect.get(value, "width"));
+  const height = Number(Reflect.get(value, "height"));
+  if (![x, y, width, height].every(Number.isFinite)) return null;
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.max(MAIN_WINDOW_MIN_WIDTH, Math.round(width)),
+    height: Math.max(MAIN_WINDOW_MIN_HEIGHT, Math.round(height)),
+  };
+}
+
+function mainWindowBoundsAreVisible(bounds) {
+  return screen.getAllDisplays().some((display) => {
+    const area = display.workArea;
+    return (
+      bounds.x < area.x + area.width &&
+      bounds.x + bounds.width > area.x &&
+      bounds.y < area.y + area.height &&
+      bounds.y + bounds.height > area.y
+    );
+  });
+}
+
+async function readMainWindowState() {
+  try {
+    const raw = await readFile(mainWindowStatePath(), "utf8");
+    const bounds = normalizeMainWindowBounds(JSON.parse(raw));
+    if (!bounds || !mainWindowBoundsAreVisible(bounds)) return null;
+    return bounds;
+  } catch {
+    return null;
+  }
+}
+
+async function writeMainWindowState(win) {
+  if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+  const bounds = normalizeMainWindowBounds(win.getBounds());
+  if (!bounds) return;
+  try {
+    await writeFile(mainWindowStatePath(), JSON.stringify(bounds), "utf8");
+  } catch (error) {
+    console.warn("[window-state] failed to persist main window bounds", error);
+  }
+}
 
 const browserPanel = createBrowserPanel({
   remoteDebugPort,
@@ -2173,22 +2511,8 @@ const desktopCommandHandlers = {
 
 if (isDevMode) {
   desktopCommandHandlers.__evalRelaunch = async () => {
-    // Chromium persists localStorage/leveldb lazily; force a flush so the
-    // relaunched instance sees the same renderer storage (otherwise the app
-    // can come back signed out and eval flows misread that as a regression).
-    try {
-      mainWindow?.webContents.session.flushStorageData();
-      session.defaultSession.flushStorageData();
-    } catch {
-      // Best effort — never block the relaunch on a flush failure.
-    }
-    setTimeout(() => {
-      app.relaunch();
-      // Graceful quit (not app.exit) so before-quit teardown runs and managed
-      // sidecars are stopped — a hard exit orphans them and they can hold
-      // ports (e.g. the CDP debug port) the relaunched instance needs.
-      app.quit();
-    }, 150);
+    const win = await createMainWindow();
+    win.webContents.reloadIgnoringCache();
     return { ok: true };
   };
 }
@@ -2260,6 +2584,7 @@ async function createMainWindow() {
   if (mainWindow) return mainWindow;
 
   const preloadPath = path.join(__dirname, "preload.mjs");
+  const savedWindowBounds = await readMainWindowState();
   const windowAppearanceOptions = {};
   if (process.platform === "darwin") {
     Object.assign(windowAppearanceOptions, {
@@ -2289,8 +2614,9 @@ async function createMainWindow() {
   }
 
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 820,
+    width: savedWindowBounds?.width ?? MAIN_WINDOW_DEFAULT_WIDTH,
+    height: savedWindowBounds?.height ?? MAIN_WINDOW_DEFAULT_HEIGHT,
+    ...(savedWindowBounds ? { x: savedWindowBounds.x, y: savedWindowBounds.y } : {}),
     minWidth: MAIN_WINDOW_MIN_WIDTH,
     minHeight: MAIN_WINDOW_MIN_HEIGHT,
     title: currentDisplayAppName,
@@ -2313,6 +2639,15 @@ async function createMainWindow() {
   });
   mainWindow.setMinimumSize(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT);
   mainWindow.on("resize", () => enforceMainWindowMinimumSize(mainWindow));
+  mainWindow.on("resize", () => {
+    void writeMainWindowState(mainWindow);
+  });
+  mainWindow.on("move", () => {
+    void writeMainWindowState(mainWindow);
+  });
+  mainWindow.on("close", () => {
+    void writeMainWindowState(mainWindow);
+  });
   if (cachedBrandImage && bootSourceUrl) {
     await applyCachedBrandIcon(cachedBrandImage, bootSourceUrl);
   }
@@ -2405,6 +2740,11 @@ ipcMain.handle("ipollowork:shell:openExternal", async (_event, url) => {
   return openExternalUrl(url.trim());
 });
 ipcMain.handle("ipollowork:shell:relaunch", async () => {
+  if (relaunchActionForMode(isDevMode) === "reload-window") {
+    const win = await createMainWindow();
+    win.webContents.reloadIgnoringCache();
+    return;
+  }
   app.relaunch();
   app.exit(0);
 });
@@ -2609,6 +2949,18 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       // text-and-image group, not as the old labelled SVG. Remove its direct
       // header group, the generated session id and its separator structurally
       // so a later Studio re-render cannot surface them again.
+      if (!document.querySelector('[data-ipollowork-studio-hide-style]')) {
+        const style = document.createElement('style');
+        style.dataset.ipolloworkStudioHideStyle = 'true';
+        style.textContent = '[data-ipollowork-studio-hidden]{display:none!important}';
+        document.head.appendChild(style);
+      }
+      const hideIdentityNode = (node) => {
+        if (!node || !header.contains(node)) return;
+        const rect = node.getBoundingClientRect();
+        if (rect.width > 260 || rect.height > 56 || rect.top > 80) return;
+        node.setAttribute('data-ipollowork-studio-hidden', 'true');
+      };
       const identityRoots = new Set();
       for (const brand of brandNodes) {
         const root = [...header.children].find((child) => child.contains(brand));
@@ -2623,7 +2975,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const text = compactText(child);
         if (isBrandText(text) || isSessionIdentity(text) || /^[|｜]$/.test(text)) identityRoots.add(child);
       }
-      for (const identity of identityRoots) identity.remove();
+      for (const identity of identityRoots) hideIdentityNode(identity);
 
       for (const button of [...header.querySelectorAll('button')]) {
         if (compactText(button) === 'Storyboard') button.remove();
@@ -2923,6 +3275,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       let editing = null;
       let selected = null;
       let selectedTarget = null;
+      let selectedTextRange = null;
       let pendingPointer = null;
       let saveTimer = 0;
       const postEditorMessage = (payload) => {
@@ -2962,6 +3315,19 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       }
       document.body.appendChild(toolbar);
 
+      const formatAnchor = toolbar.querySelector('[data-action="text"]');
+      for (const [action, label, tag] of [['bold', 'B', 'strong'], ['italic', 'I', 'em'], ['strike', 'S', 'del'], ['code', '</>', 'code'], ['link', '↗', 'a']]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.action = action;
+        button.dataset.richTag = tag;
+        button.title = action === 'link' ? 'Insert link' : label;
+        button.textContent = label;
+        if (action === 'bold') button.style.fontWeight = '700';
+        if (action === 'italic') button.style.fontStyle = 'italic';
+        formatAnchor?.after(button);
+      }
+
       const sourceTargetFor = (element) => {
         const composition = element.closest('[data-composition-file]') || element.closest('[data-composition-id]');
         const file = composition?.getAttribute('data-composition-file') || 'index.html';
@@ -2997,6 +3363,45 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       };
       const saveText = (element, immediate = false) => {
         saveTextTarget(sourceTargetFor(element), element.textContent || '', immediate);
+      };
+
+      const saveRichTextTarget = (target, html) => {
+        if (!target) return;
+        void fetch('/api/projects/' + encodeURIComponent(projectId) + '/file-mutations/patch-element/' + encodeURI(target.file), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            target: { selector: target.selector, selectorIndex: target.selectorIndex },
+            operations: [{ type: 'inner-html', value: String(html ?? '') }],
+          }),
+        }).catch(() => {});
+      };
+
+      const applyRichTextFormat = (tag, href) => {
+        if (!selected || !selectedTextRange || !selectedTextRange.toString().trim()) return;
+        const selection = window.getSelection();
+        if (!selection) return;
+        selection.removeAllRanges();
+        selection.addRange(selectedTextRange);
+        const range = selection.getRangeAt(0);
+        if (!selected.contains(range.commonAncestorContainer)) return;
+        const wrapper = document.createElement(tag);
+        if (tag === 'a') {
+          const value = href || window.prompt('Link URL', 'https://');
+          if (!value || !/^(https?:|mailto:)/i.test(value)) return;
+          wrapper.setAttribute('href', value);
+        }
+        try {
+          range.surroundContents(wrapper);
+        } catch {
+          const fragment = range.extractContents();
+          wrapper.appendChild(fragment);
+          range.insertNode(wrapper);
+        }
+        selectedTextRange = range.cloneRange();
+        selectedTextRange.selectNodeContents(wrapper);
+        saveRichTextTarget(sourceTargetFor(selected), selected.innerHTML);
+        showToolbar(selected);
       };
 
       const saveStyleTarget = async (target, property, value) => {
@@ -3037,6 +3442,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         toolbar.style.display = 'none';
         colors.style.display = 'none';
         selected = null;
+        selectedTextRange = null;
       };
 
       const showToolbar = (element) => {
@@ -3157,6 +3563,20 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       };
 
       toolbar.addEventListener('pointerdown', (event) => event.stopImmediatePropagation(), true);
+      document.addEventListener('selectionchange', () => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0 || !selection.toString().trim()) return;
+        const range = selection.getRangeAt(0);
+        const container = range.commonAncestorContainer.nodeType === 1
+          ? range.commonAncestorContainer
+          : range.commonAncestorContainer.parentElement;
+        const element = container?.closest?.(textSelector);
+        if (!element || !sourceTargetFor(element) || !element.contains(range.commonAncestorContainer)) return;
+        selected = element;
+        selectedTarget = sourceTargetFor(element);
+        selectedTextRange = range.cloneRange();
+        showToolbar(element);
+      }, true);
       toolbar.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -3164,6 +3584,10 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         if (!button || !selected) return;
         const action = button.dataset.action;
         if (action !== 'advanced') postEditorMessage({ type: 'ipollowork:hyperframes:close-side-panels' });
+        if (button.dataset.richTag) {
+          applyRichTextFormat(button.dataset.richTag);
+          return;
+        }
         if (button.dataset.color) {
           void saveStyle(selected, 'color', button.dataset.color);
           toolbar.querySelector('.ow-color').style.backgroundColor = button.dataset.color;

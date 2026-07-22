@@ -1,10 +1,16 @@
 /** @jsxImportSource react */
-import type * as React from "react";
+import * as React from "react";
 import { Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { t } from "@/i18n";
 import { MarkdownBlock } from "../surface/markdown";
+import {
+  htmlPreviewMode,
+  SLIDE_PREVIEW_HEIGHT,
+  SLIDE_PREVIEW_WIDTH,
+  slidePreviewScale,
+} from "./html-preview-mode";
 
 interface PreviewLoadingProps extends React.ComponentProps<"div"> {}
 
@@ -60,10 +66,56 @@ type HTMLPreviewProps = { className?: string } & (TextHTMLPreviewProps | BinaryH
 
 export function HTMLPreview({ className, ...props }: HTMLPreviewProps) {
   if (props.type === "text") {
+    if (htmlPreviewMode(props.content) === "slides") {
+      return <SlideHTMLPreview className={className} title={props.title} content={props.content} />;
+    }
     return <iframe srcDoc={props.content} title={props.title} className={cn("h-full w-full border-0", className)} sandbox="allow-scripts allow-same-origin" />;
   }
 
   return <iframe src={props.url} title={props.title} className={cn("h-full w-full border-0", className)} sandbox="allow-scripts allow-same-origin" />;
+}
+
+interface SlideHTMLPreviewProps {
+  className?: string;
+  title: string;
+  content: string;
+}
+
+function SlideHTMLPreview({ className, title, content }: SlideHTMLPreviewProps) {
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = React.useState({ width: 0, height: 0 });
+  const scale = slidePreviewScale(viewport.width, viewport.height);
+
+  React.useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const sync = () => {
+      const rect = viewport.getBoundingClientRect();
+      setViewport({ width: rect.width, height: rect.height });
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className={cn("relative h-full min-h-0 overflow-hidden bg-muted/30 p-3", className)}>
+      <div ref={viewportRef} className="absolute inset-3">
+        <iframe
+          srcDoc={content}
+          title={title}
+          className="absolute left-1/2 top-1/2 origin-center border-0 bg-white shadow-sm"
+          style={{
+            width: SLIDE_PREVIEW_WIDTH,
+            height: SLIDE_PREVIEW_HEIGHT,
+            transform: `translate(-50%, -50%) scale(${scale})`,
+          }}
+          sandbox="allow-scripts allow-same-origin"
+        />
+      </div>
+    </div>
+  );
 }
 
 interface PdfPreviewProps {

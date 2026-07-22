@@ -54,6 +54,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   google: "Google",
   openrouter: "OpenRouter",
+  qwen: "Qwen",
 };
 
 const IPOLLOWORK_MODELS_PROVIDER_ID = "ipollowork";

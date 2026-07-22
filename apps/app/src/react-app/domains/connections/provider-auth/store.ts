@@ -173,6 +173,14 @@ type MutableState = {
   importedCloudProviders: Record<string, CloudImportedProvider>;
 };
 
+const QWEN3_CODER_PROVIDER = {
+  providerId: "qwen",
+  name: "Qwen",
+  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  modelId: "qwen3-coder-plus",
+  modelName: "Qwen3-Coder Plus",
+};
+
 export type ProviderAuthStore = ReturnType<typeof createProviderAuthStore>;
 
 export function createProviderAuthStore(options: CreateProviderAuthStoreOptions) {
@@ -231,6 +239,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         id,
         name: provider.name.trim() || id,
         env: getCloudProviderEnv(provider.providerConfig),
+      });
+    }
+
+    if (
+      !merged.has(QWEN3_CODER_PROVIDER.providerId) &&
+      !isDesktopProviderBlocked({
+        providerId: QWEN3_CODER_PROVIDER.providerId,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      merged.set(QWEN3_CODER_PROVIDER.providerId, {
+        id: QWEN3_CODER_PROVIDER.providerId,
+        name: QWEN3_CODER_PROVIDER.name,
+        env: [],
       });
     }
 
@@ -1028,6 +1050,21 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       merged[id] = [...existing, { type: "api", label: t("providers.api_key_label") }];
     }
 
+    if (
+      !isDesktopProviderBlocked({
+        providerId: QWEN3_CODER_PROVIDER.providerId,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      const existing = merged[QWEN3_CODER_PROVIDER.providerId] ?? [];
+      if (!existing.some((method) => method.type === "api")) {
+        merged[QWEN3_CODER_PROVIDER.providerId] = [
+          ...existing,
+          { type: "api", label: t("providers.api_key_label") },
+        ];
+      }
+    }
+
     const availableProvidersById = new Map((availableProviders ?? []).map((provider) => [provider.id, provider]));
     for (const [id, providerMethods] of Object.entries(merged)) {
       if (isDesktopProviderBlocked({ providerId: id, checkRestriction: options.checkDesktopAppRestriction })) {
@@ -1300,26 +1337,71 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   }
 
   async function submitProviderApiKey(providerId: string, apiKey: string) {
-    setStateField("providerAuthError", null);
+    mutateState((current) => ({
+      ...current,
+      providerAuthBusy: true,
+      providerAuthError: null,
+    }));
     const c = options.client();
     if (!c) {
+      setStateField("providerAuthBusy", false);
       throw new Error(t("providers.not_connected"));
     }
 
     const trimmed = apiKey.trim();
     if (!trimmed) {
+      setStateField("providerAuthBusy", false);
       throw new Error(t("providers.api_key_required"));
     }
     assertProviderAllowedByDesktopPolicy(providerId);
+    const isQwen3Coder = providerId.trim().toLowerCase() === QWEN3_CODER_PROVIDER.providerId;
 
     try {
+      if (isQwen3Coder) {
+        await patchRuntimeProviders({
+          [QWEN3_CODER_PROVIDER.providerId]: {
+            npm: "@ai-sdk/openai-compatible",
+            name: QWEN3_CODER_PROVIDER.name,
+            options: { baseURL: QWEN3_CODER_PROVIDER.baseURL },
+            models: {
+              [QWEN3_CODER_PROVIDER.modelId]: {
+                name: QWEN3_CODER_PROVIDER.modelName,
+              },
+            },
+          },
+        });
+        try {
+          await updateProjectConfigFile((raw) =>
+            formatConfigWithoutCloudProvider(
+              raw,
+              QWEN3_CODER_PROVIDER.providerId,
+              options.disabledProviders(),
+            ),
+          );
+        } catch {
+          // Runtime config owns this provider; legacy file cleanup is best-effort.
+        }
+      }
       await c.auth.set({ providerID: providerId, auth: { type: "api", key: trimmed } });
-      await refreshProviders({ dispose: true });
+      if (isQwen3Coder) {
+        const nextConnected = [
+          ...options.providerConnectedIds().filter((id) => id !== QWEN3_CODER_PROVIDER.providerId),
+          QWEN3_CODER_PROVIDER.providerId,
+        ];
+        options.setProviderConnectedIds(nextConnected);
+        refreshSnapshot();
+        emitChange();
+        void refreshProviders({ dispose: true }).catch(() => null);
+      } else {
+        await refreshProviders({ dispose: true });
+      }
       return `${t("status.connected")} ${providerId}`;
     } catch (error) {
       const message = describeProviderError(error, t("providers.save_api_key_failed"));
       setStateField("providerAuthError", message);
       throw error instanceof Error ? error : new Error(message);
+    } finally {
+      setStateField("providerAuthBusy", false);
     }
   }
 

@@ -11,7 +11,6 @@ import {
   Split,
   Undo2,
 } from "lucide-react"
-import { PaperGrainGradient } from "@ipollowork/ui/react"
 import {
   DynamicToolUIPart,
   isFileUIPart,
@@ -21,6 +20,7 @@ import {
 } from "ai"
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client"
 import { openDesktopUrl } from "@/app/lib/desktop"
+import { publicAssetUrl } from "@/app/lib/public-asset"
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
 import { ApplyPatchTool } from "@/components/tools/apply-patch"
@@ -252,7 +252,7 @@ function EmptyMessage({
   return (
     <div
       className={cn(
-        "mx-auto flex w-full max-w-3xl flex-col items-start gap-2 px-2 md:px-10 text-muted-foreground",
+        "mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-2 md:px-10 text-muted-foreground",
         className
       )}
       {...props}
@@ -319,7 +319,7 @@ const AssistantMessage = React.memo(
 
     return (
       <Message
-        className="mx-auto flex w-full max-w-3xl flex-col items-start gap-2 px-2 md:px-10"
+        className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-2 md:px-10"
         data-message-id={message.id}
         data-message-role={message.role}
       >
@@ -442,7 +442,7 @@ const UserMessage = React.memo(
 
     return (
       <Message
-        className="mx-auto flex w-full max-w-3xl flex-col items-end gap-2 px-2 md:px-10"
+        className="mx-auto flex w-full max-w-[800px] flex-col items-end gap-2 px-2 md:px-10"
         data-message-id={message.id}
         data-message-role={message.role}
       >
@@ -581,21 +581,15 @@ const MessageComponent = React.memo(
 MessageComponent.displayName = "MessageComponent"
 
 const LoadingMessage = React.memo(({ label }: { label?: string }) => (
-  <Message className="mx-auto flex w-full max-w-3xl flex-col items-start gap-2 px-2 md:px-10">
+  <Message className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-2 md:px-10">
     <div className="group flex w-full flex-col gap-0">
-      <div className="flex items-center gap-1.5 px-1 py-1 text-sm text-muted-foreground">
-        <div style={{ width: 20, height: 20, borderRadius: "50%", overflow: "hidden" }}>
-          <PaperGrainGradient
-            speed={12}
-            softness={0.1}
-            intensity={1}
-            noise={0.05}
-            shape="sphere"
-            colors={["#818cf8", "#fb7185", "#fbbf24", "#34d399"]}
-            colorBack="#ffffff00"
-            style={{ backgroundColor: "#818cf8", width: "100%", height: "100%", borderRadius: "50%" }}
-          />
-        </div>
+      <div className="flex items-center gap-2 px-1 py-1 text-sm text-muted-foreground">
+        <img
+          src={publicAssetUrl("ipollowork-thinking-logo-v2.gif")}
+          alt=""
+          aria-hidden="true"
+          className="size-6 shrink-0 object-contain"
+        />
         <span>{label ?? t("session.assistant_thinking")}</span>
       </div>
     </div>
@@ -610,7 +604,7 @@ interface ErrorMessageProps {
 
 function ErrorMessage({ error }: ErrorMessageProps) {
   return (
-    <Message className="not-prose mx-auto flex w-full max-w-3xl flex-col items-start gap-2 px-0 md:px-10">
+    <Message className="not-prose mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0 md:px-10">
       <div className="group flex w-full flex-col items-start gap-0">
         <div className="text-foreground flex min-w-0 flex-1 flex-row items-start gap-2 rounded-lg border-2 border-red-300 bg-red-300/20 px-2 py-1">
           <AlertTriangle size={16} className="mt-0.5 shrink-0 text-destructive" />
@@ -654,7 +648,7 @@ const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
   const action = status.action
 
   return (
-    <Message className="not-prose mx-auto flex w-full max-w-3xl flex-col items-start gap-2 px-0 md:px-10">
+    <Message className="not-prose mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0 md:px-10">
       <div className="group flex w-full flex-col items-start gap-0">
         <div className="text-foreground flex min-w-0 flex-1 flex-col gap-2 rounded-lg border-2 border-amber-300 bg-amber-300/20 px-3 py-2">
           <div className="flex items-start gap-2">
@@ -770,7 +764,7 @@ function MessageGroup({
       ) : null}
       {proseItems.map((item, groupIndex) => renderItem(item, stepItems.length + groupIndex))}
       {lastTextMessage && !isStreaming && (
-        <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">
+        <div className="mx-auto flex w-full max-w-[800px] flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">
           <MessageActions className="flex gap-0">
             <CopyMessageButton messages={renderableItems.map((item) => item.message)} />
             {lastRealItem ? (

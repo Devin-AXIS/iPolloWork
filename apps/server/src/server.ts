@@ -13,6 +13,7 @@ import { deleteSkill, listSkills, upsertSkill } from "./skills.js";
 import { installHubSkill, listHubSkills } from "./skill-hub.js";
 import { deleteCommand, listCommands, repairCommands, upsertCommand } from "./commands.js";
 import { ApiError, formatError, isApiError } from "./errors.js";
+import { readLimitedRequestBody } from "./limited-request-body.js";
 import { readJsoncFile, updateJsoncTopLevel, writeJsoncFile } from "./jsonc.js";
 import { recordAudit, readAuditEntries, readLastAudit } from "./audit.js";
 import { ReloadEventStore } from "./events.js";
@@ -31,6 +32,27 @@ import {
   syncDesktopCloudResources,
 } from "./desktop-cloud-sync.js";
 import { installCloudPlugin, readCloudPluginResolved, readInstalledCloudPlugins, removeCloudPlugin } from "./cloud-plugins.js";
+import {
+  installPluginPackage,
+  listInstalledPluginPackages,
+  previewPluginPackage,
+  rollbackPluginPackage,
+  setPluginPackageEnabled,
+  uninstallPluginPackage,
+  updatePluginPackage,
+} from "./plugin-package-lifecycle.js";
+import {
+  cancelPluginAuthorizationFlow,
+  completePluginBrowserAuthorization,
+  deletePluginAuthorization,
+  listPluginAuthorization,
+  pollPluginDeviceAuthorization,
+  reconcilePluginAuthorization,
+  revokePluginAuthorization,
+  savePluginSecretAuthorization,
+  startIndependentPluginAuthorization,
+} from "./plugin-platform-runtime.js";
+import { disposeAllPluginServices, disposePluginServices } from "./plugin-service-runtime.js";
 import { resolveClaudePluginBundle } from "./claude-plugin-bundle.js";
 import {
   applyMaterializedBlueprintSessions,
@@ -79,6 +101,7 @@ import {
 } from "./ipollowork-workspace-config-store.js";
 import { buildiPolloWorkRuntimeConfigObject } from "./ipollowork-runtime-config.js";
 import {
+  MAX_TEMPLATE_PACKAGE_BYTES,
   adoptLegacyVideoSession,
   importTemplate,
   installBundledTemplate,
@@ -884,6 +907,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     stop: async () => {
       watcherHandle.close();
       reloadBaselineRefreshers.delete(config);
+      await disposeAllPluginServices(config);
       await server.stop();
     },
   };
@@ -1432,11 +1456,8 @@ function createRoutes(
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     await requireApproval(ctx, { workspaceId: workspace.id, action: "template.import", summary: "Import a personal template", paths: [join(dirname(runtimeDbPathForServer(config)), "templates")] });
-    const declaredBytes = Number(ctx.request.headers.get("content-length") ?? "0");
-    if (Number.isFinite(declaredBytes) && declaredBytes > 50 * 1024 * 1024) throw new ApiError(413, "template_package_too_large", "Template package exceeds 50 MB");
     const category = ctx.request.headers.get("x-ipollowork-template-category")?.trim();
-    if (!category) throw new ApiError(400, "template_category_required", "Choose a template category before importing");
-    const archive = new Uint8Array(await ctx.request.arrayBuffer());
+    const archive = await readLimitedRequestBody(ctx.request, MAX_TEMPLATE_PACKAGE_BYTES);
     if (archive.byteLength === 0) throw new ApiError(400, "empty_template_package", "Choose a .ipwt template package");
     return jsonResponse({ item: await importTemplate(config, workspace.id, archive, category) }, 201);
   });
@@ -1725,6 +1746,230 @@ function createRoutes(
     }
 
     return jsonResponse({ item: removed, warnings: [] });
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/plugin-packages", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const items = await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id });
+    return jsonResponse({ items });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/validate", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    return jsonResponse({ preview });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    await requireApproval(ctx, {
+      workspaceId: workspace.id,
+      action: "plugin_packages.install",
+      summary: `Install plugin package ${preview.manifest.name}`,
+      paths: preview.writes.map((file) => join(workspace.path, file.path)),
+    });
+    const result = await installPluginPackage({ serverConfig: config, workspaceId: workspace.id, packageRoot, workspaceRoot: workspace.path });
+    await recordAudit(workspace.path, {
+      id: shortId(),
+      workspaceId: workspace.id,
+      actor: ctx.actor ?? { type: "remote" },
+      action: "plugin_packages.install",
+      target: packageRoot,
+      summary: `Installed plugin package ${preview.manifest.name} ${preview.manifest.package?.version ?? ""}`.trim(),
+      timestamp: Date.now(),
+    });
+    if (result.status === "installed") emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: preview.manifest.id, action: "added" });
+    const item = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id })).find((entry) => entry.pluginId === preview.manifest.id);
+    return jsonResponse({ result, item });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/:pluginId/update", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    if (preview.manifest.id !== ctx.params.pluginId) throw new ApiError(400, "plugin_package_id_mismatch", "Update package ID does not match the installed plugin");
+    await requireApproval(ctx, {
+      workspaceId: workspace.id,
+      action: "plugin_packages.update",
+      summary: `Update plugin package ${preview.manifest.name}`,
+      paths: preview.writes.map((file) => join(workspace.path, file.path)),
+    });
+    const result = await updatePluginPackage({ serverConfig: config, workspaceId: workspace.id, packageRoot, workspaceRoot: workspace.path });
+    await disposePluginServices(config, workspace.id, preview.manifest.id);
+    await reconcilePluginAuthorization({ config, workspaceId: workspace.id, pluginId: preview.manifest.id });
+    emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: preview.manifest.id, action: "updated" });
+    return jsonResponse({ result });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/:pluginId/rollback", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const pluginId = ctx.params.pluginId ?? "";
+    await requireApproval(ctx, {
+      workspaceId: workspace.id,
+      action: "plugin_packages.rollback",
+      summary: `Roll back plugin package ${pluginId}`,
+      paths: [join(workspace.path, ".opencode")],
+    });
+    const result = await rollbackPluginPackage({ serverConfig: config, workspaceId: workspace.id, pluginId, workspaceRoot: workspace.path });
+    await disposePluginServices(config, workspace.id, pluginId);
+    await reconcilePluginAuthorization({ config, workspaceId: workspace.id, pluginId });
+    emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: pluginId, action: "updated" });
+    return jsonResponse({ result });
+  });
+
+  addRoute(routes, "PATCH", "/workspace/:id/plugin-packages/:pluginId", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    if (typeof body.enabled !== "boolean") throw new ApiError(400, "invalid_payload", "enabled must be a boolean");
+    const result = await setPluginPackageEnabled({
+      serverConfig: config,
+      workspaceId: workspace.id,
+      pluginId: ctx.params.pluginId ?? "",
+      workspaceRoot: workspace.path,
+      enabled: body.enabled,
+    });
+    if (result.changed && !body.enabled) await disposePluginServices(config, workspace.id, result.pluginId);
+    if (result.changed) emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: result.pluginId, action: body.enabled ? "added" : "removed" });
+    return jsonResponse({ result });
+  });
+
+  addRoute(routes, "DELETE", "/workspace/:id/plugin-packages/:pluginId", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const pluginId = ctx.params.pluginId ?? "";
+    await requireApproval(ctx, {
+      workspaceId: workspace.id,
+      action: "plugin_packages.remove",
+      summary: `Remove plugin package ${pluginId}`,
+      paths: [join(workspace.path, ".opencode")],
+    });
+    const result = await uninstallPluginPackage({ serverConfig: config, workspaceId: workspace.id, pluginId, workspaceRoot: workspace.path });
+    await disposePluginServices(config, workspace.id, pluginId);
+    await deletePluginAuthorization({ config, workspaceId: workspace.id, pluginId });
+    emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: pluginId, action: "removed" });
+    return jsonResponse({ result });
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/plugin-packages/:pluginId/authorization", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse(await listPluginAuthorization(config, workspace.id, ctx.params.pluginId ?? ""));
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/:pluginId/authorization/:methodId/credentials", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    const accountId = typeof body.accountId === "string" && body.accountId.trim() ? body.accountId.trim() : "default";
+    const status = await savePluginSecretAuthorization({
+      config,
+      workspaceId: workspace.id,
+      pluginId: ctx.params.pluginId ?? "",
+      methodId: ctx.params.methodId ?? "",
+      accountId,
+      values: body.values,
+    });
+    await disposePluginServices(config, workspace.id, ctx.params.pluginId ?? "");
+    return jsonResponse({ status });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/:pluginId/authorization/:methodId/start", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readOptionalJsonBody(ctx.request);
+    const accountId = typeof body.accountId === "string" && body.accountId.trim() ? body.accountId.trim() : "default";
+    const callbackUrl = new URL(ctx.request.url);
+    callbackUrl.pathname = `/workspace/${encodeURIComponent(workspace.id)}/plugin-packages/${encodeURIComponent(ctx.params.pluginId ?? "")}/authorization/callback`;
+    callbackUrl.search = "";
+    const flow = await startIndependentPluginAuthorization({
+      config,
+      workspaceId: workspace.id,
+      pluginId: ctx.params.pluginId ?? "",
+      methodId: ctx.params.methodId ?? "",
+      accountId,
+      callbackUrl: callbackUrl.toString(),
+    });
+    return jsonResponse({ flow });
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/plugin-packages/:pluginId/authorization/callback", "none", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const status = await completePluginBrowserAuthorization({
+      config,
+      workspaceId: workspace.id,
+      pluginId: ctx.params.pluginId ?? "",
+      state: ctx.url.searchParams.get("state") ?? "",
+      code: ctx.url.searchParams.get("code") ?? "",
+    });
+    await disposePluginServices(config, workspace.id, ctx.params.pluginId ?? "");
+    const title = status.status === "connected" ? "Plugin connected" : "Plugin authorization finished";
+    return new Response(`<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:system-ui;padding:32px"><h1>${title}</h1><p>You can close this window and return to iPolloWork.</p></body>`, {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/:pluginId/authorization/callback", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    const status = await completePluginBrowserAuthorization({
+      config,
+      workspaceId: workspace.id,
+      pluginId: ctx.params.pluginId ?? "",
+      state: typeof body.state === "string" ? body.state : "",
+      code: typeof body.code === "string" ? body.code : undefined,
+    });
+    await disposePluginServices(config, workspace.id, ctx.params.pluginId ?? "");
+    return jsonResponse({ status });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/:pluginId/authorization/device/:flowId/poll", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const status = await pollPluginDeviceAuthorization({ config, workspaceId: workspace.id, pluginId: ctx.params.pluginId ?? "", flowId: ctx.params.flowId ?? "" });
+    if ("status" in status && status.status === "connected") await disposePluginServices(config, workspace.id, ctx.params.pluginId ?? "");
+    return jsonResponse({ status });
+  });
+
+  addRoute(routes, "DELETE", "/workspace/:id/plugin-packages/:pluginId/authorization/flows/:flowId", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const removed = await cancelPluginAuthorizationFlow({
+      config,
+      workspaceId: workspace.id,
+      pluginId: ctx.params.pluginId ?? "",
+      flowId: ctx.params.flowId ?? "",
+    });
+    return jsonResponse({ removed });
+  });
+
+  addRoute(routes, "DELETE", "/workspace/:id/plugin-packages/:pluginId/authorization/:accountId", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const removed = await revokePluginAuthorization({ config, workspaceId: workspace.id, pluginId: ctx.params.pluginId ?? "", accountId: ctx.params.accountId ?? "" });
+    if (removed) await disposePluginServices(config, workspace.id, ctx.params.pluginId ?? "");
+    return jsonResponse({ removed });
   });
 
   addRoute(routes, "GET", "/workspace/:id/authorized-folders", "client", async (ctx) => {
@@ -2697,6 +2942,16 @@ function createRoutes(
   });
 
   return routes;
+}
+
+function resolveLocalPluginPackageRoot(workspaceRoot: string, value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) throw new ApiError(400, "invalid_payload", "packageRoot is required");
+  const root = resolve(workspaceRoot);
+  const target = resolve(root, value.trim());
+  if (target !== root && !target.startsWith(`${root}${sep}`)) {
+    throw new ApiError(403, "plugin_package_root_unauthorized", "Local plugin packages must be inside the selected workspace");
+  }
+  return target;
 }
 
 async function resolveWorkspace(config: ServerConfig, id: string): Promise<WorkspaceInfo> {

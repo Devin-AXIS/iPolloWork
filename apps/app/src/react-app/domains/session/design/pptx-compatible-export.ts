@@ -59,9 +59,10 @@ export type PptxCompatibleImage = {
 };
 
 export type PptxCompatibleObject =
-  | { kind: "shape"; value: PptxCompatibleShape }
-  | { kind: "text"; value: PptxCompatibleText }
-  | { kind: "image"; value: PptxCompatibleImage };
+  | { kind: "shape"; element: HTMLElement; value: PptxCompatibleShape }
+  | { kind: "text"; element: HTMLElement; value: PptxCompatibleText }
+  | { kind: "image"; element: HTMLElement; value: PptxCompatibleImage }
+  | { kind: "fallback"; element: HTMLElement; frame: PptxCompatibleFrame };
 
 const ignoredSelector = "[data-pptx-ignore]";
 const markedSelector = "[data-pptx-shape],[data-pptx-text],[data-pptx-image],[data-pptx-ignore]";
@@ -174,7 +175,42 @@ function unsupported(style: CSSStyleDeclaration) {
     || unsupportedProperties.some((property) => {
       const value = style[property];
       return property === "mixBlendMode" ? value !== "normal" : value !== "none";
-    });
+    })
+    || hasPptxCompatibleBlurredShadow(style.boxShadow);
+}
+
+function hasPptxCompatibleBlurredShadow(value: string) {
+  if (!value || value === "none") return false;
+  return value.split(/,(?![^()]*\))/).some((shadow) => {
+    const values = shadow.match(/-?\d*\.?\d+px/g)?.map((part) => Math.abs(Number.parseFloat(part))) ?? [];
+    return values.length >= 3 && values[2]! > 0;
+  });
+}
+
+function pseudoElementPaints(style: CSSStyleDeclaration) {
+  return style.display !== "none"
+    && style.visibility !== "hidden"
+    && Number(style.opacity) > 0
+    && (style.backgroundColor !== "transparent"
+      && style.backgroundColor !== "rgba(0, 0, 0, 0)"
+      || style.backgroundImage !== "none"
+      || style.boxShadow !== "none"
+      || style.filter !== "none"
+      || style.backdropFilter !== "none"
+      || style.clipPath !== "none"
+      || style.maskImage !== "none");
+}
+
+function hasVisiblePseudoElement(element: HTMLElement, view: Window) {
+  return ["::before", "::after"].some((pseudo) => {
+    const style = view.getComputedStyle(element, pseudo);
+    return style.content !== "none" && style.content !== "normal" && pseudoElementPaints(style);
+  });
+}
+
+function requiresPptxCompatibleFallback(element: HTMLElement, view: Window) {
+  return [element, ...Array.from(element.querySelectorAll<HTMLElement>("*"))]
+    .some((candidate) => unsupported(view.getComputedStyle(candidate)) || hasVisiblePseudoElement(candidate, view));
 }
 
 function effectiveOpacity(element: HTMLElement, slide: HTMLElement) {
@@ -355,20 +391,32 @@ export function collectPptxCompatibleObjects(slide: HTMLElement): PptxCompatible
     const style = view.getComputedStyle(element);
     return visible(element.getBoundingClientRect(), slideBox, style) && (element.children.length === 0 || isPptxExportImage(element));
   });
-  const unsupportedVisual = elements.some((element) => unsupported(view.getComputedStyle(element)));
-  const validation = validatePptxCompatibleMarkup({ hasUnsupportedVisual: unsupportedVisual, hasUnmarkedVisibleElement: unmarkedVisibleElement });
+  const validation = validatePptxCompatibleMarkup({ hasUnsupportedVisual: false, hasUnmarkedVisibleElement: unmarkedVisibleElement });
   if (!validation.valid) throw new Error(`PPTX-compatible export blocked: ${validation.reason}.`);
+
+  const fallbackRoots = elements.filter((element) => {
+    if (element.closest(ignoredSelector)) return false;
+    const style = view.getComputedStyle(element);
+    const type = element.dataset.pptxShape as PptxCompatibleShape["type"] | undefined;
+    return visible(element.getBoundingClientRect(), slideBox, style, type)
+      && requiresPptxCompatibleFallback(element, view);
+  }).filter((element, _, entries) => !entries.some((parent) => parent !== element && parent.contains(element)));
 
   for (const element of elements) {
     if (element.closest(ignoredSelector)) continue;
     const style = view.getComputedStyle(element);
     const box = element.getBoundingClientRect();
     if (!visible(box, slideBox, style, element.dataset.pptxShape as PptxCompatibleShape["type"] | undefined)) continue;
-    if (element.hasAttribute("data-pptx-shape")) objects.push({ kind: "shape", value: shapeFor(element, slide, slideBox, style) });
-    else if (element.hasAttribute("data-pptx-text")) objects.push({ kind: "text", value: textFor(element, slide, slideBox, style) });
+    if (fallbackRoots.includes(element)) {
+      objects.push({ kind: "fallback", element, frame: frameFor(slideBox, box) });
+      continue;
+    }
+    if (fallbackRoots.some((root) => root.contains(element))) continue;
+    if (element.hasAttribute("data-pptx-shape")) objects.push({ kind: "shape", element, value: shapeFor(element, slide, slideBox, style) });
+    else if (element.hasAttribute("data-pptx-text")) objects.push({ kind: "text", element, value: textFor(element, slide, slideBox, style) });
     else if (element.hasAttribute("data-pptx-image")) {
       if (!isPptxExportImage(element)) throw new Error("PPTX image marker must be on an image element.");
-      objects.push({ kind: "image", value: imageFor(element, slideBox) });
+      objects.push({ kind: "image", element, value: imageFor(element, slideBox) });
     }
   }
   return objects;

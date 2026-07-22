@@ -132,7 +132,7 @@ Every video template must declare a non-empty `data-composition-variables` array
 Do not start a second preview server from the template or agent instructions. iPolloWork owns the embedded preview. Before import, run the same strict structural check used for built-in video templates:
 
 ```bash
-npx --yes hyperframes@0.7.52 check . --strict --at-transitions
+npx hyperframes check . --strict --at-transitions
 ```
 
 Keep video assets inside the package and avoid depending on an external browser window. The project should still make sense when it is copied into one isolated session. For site, app, slides, poster, cards, report, and article templates, do not add `data-composition-variables` or a HyperFrames runtime: author them as ordinary static HTML/CSS/asset packages, just like the built-in design templates.

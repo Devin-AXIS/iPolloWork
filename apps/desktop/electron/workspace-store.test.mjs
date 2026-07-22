@@ -25,9 +25,13 @@ async function withIsolatedBootstrapStore(callback) {
   const previousOverride = process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH;
   const previousBundleDir = process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR;
   const previousDevMode = process.env.IPOLLOWORK_DEV_MODE;
+  const previousLocalAppData = process.env.LOCALAPPDATA;
+  const previousUserProfile = process.env.USERPROFILE;
 
   process.env.HOME = home;
+  process.env.USERPROFILE = home;
   process.env.XDG_CONFIG_HOME = xdg;
+  delete process.env.LOCALAPPDATA;
   delete process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH;
   delete process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR;
   delete process.env.IPOLLOWORK_DEV_MODE;
@@ -55,6 +59,8 @@ async function withIsolatedBootstrapStore(callback) {
     restoreEnv("IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH", previousOverride);
     restoreEnv("IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR", previousBundleDir);
     restoreEnv("IPOLLOWORK_DEV_MODE", previousDevMode);
+    restoreEnv("LOCALAPPDATA", previousLocalAppData);
+    restoreEnv("USERPROFILE", previousUserProfile);
   }
 }
 

@@ -47,6 +47,7 @@
     details { padding: 16px 0; border-top: 1px solid var(--border); }
     details summary { font-weight: 500; cursor: pointer; }
     details p { margin: 10px 0 0; color: var(--muted); }
+    .action-status { min-height: 24px; margin: -40px 0 48px; text-align: center; color: var(--accent); font-weight: 500; }
     @media (max-width: 640px) {
       .wrap { padding: 40px 18px 72px; }
       header { margin-bottom: 40px; }
@@ -72,8 +73,8 @@
       <h1>One flat rate. No throttling.</h1>
       <p>Start free. Pick a paid tier the day you outgrow it. Switch yearly billing for two months off.</p>
       <div class="toggle">
-        <button class="active">Monthly</button>
-        <button>Yearly · save 17%</button>
+        <button type="button" class="active" data-ipw-toggle="monthly" aria-pressed="true">Monthly</button>
+        <button type="button" data-ipw-toggle="yearly" aria-pressed="false">Yearly · save 17%</button>
       </div>
     </header>
 
@@ -81,20 +82,20 @@
       <div class="tier">
         <h2>Solo</h2>
         <p class="desc">For individuals.</p>
-        <div class="price">$8 <small>/ month</small></div>
+        <div class="price" data-monthly="$8" data-yearly="$80">$8 <small>/ month</small></div>
         <ul>
           <li>1 TB storage</li>
           <li>Block-level sync</li>
           <li>2 devices</li>
           <li>Email support</li>
         </ul>
-        <button class="cta cta-secondary">Choose Solo</button>
+        <button type="button" class="cta cta-secondary" data-ipw-action-message="Solo plan selected. Connect this button to your checkout flow.">Choose Solo</button>
       </div>
       <div class="tier featured">
         <span class="featured-pill">Recommended</span>
         <h2>Team</h2>
         <p class="desc">For teams up to 50 people.</p>
-        <div class="price">$14 <small>/ seat / month</small></div>
+        <div class="price" data-monthly="$14" data-yearly="$140">$14 <small>/ seat / month</small></div>
         <ul>
           <li>5 TB pooled storage</li>
           <li>Shared folders & granular roles</li>
@@ -102,7 +103,7 @@
           <li>Audit log + usage analytics</li>
           <li>Priority support</li>
         </ul>
-        <button class="cta cta-primary">Choose Team</button>
+        <button type="button" class="cta cta-primary" data-ipw-action-message="Team plan selected. Connect this button to your checkout flow.">Choose Team</button>
       </div>
       <div class="tier">
         <h2>Enterprise</h2>
@@ -114,9 +115,10 @@
           <li>On-prem encryption keys</li>
           <li>Dedicated CSM</li>
         </ul>
-        <button class="cta cta-secondary">Talk to sales</button>
+        <button type="button" class="cta cta-secondary" data-ipw-action-message="Sales request started. Connect this button to your contact form.">Talk to sales</button>
       </div>
     </section>
+    <p class="action-status" data-ipw-action-status role="status" aria-live="polite"></p>
 
     <section class="compare" data-od-id="compare">
       <h3>Plan comparison</h3>
@@ -143,5 +145,28 @@
       <details><summary>How does seat-based billing work for Team?</summary><p>You pay per active seat per month. Inactive seats automatically free up after 30 days; we'll prorate the credit.</p></details>
     </section>
   </div>
+  <script>
+    (() => {
+      const status = document.querySelector('[data-ipw-action-status]');
+      const toggles = document.querySelectorAll('[data-ipw-toggle]');
+      const prices = document.querySelectorAll('.price[data-monthly][data-yearly]');
+      const selectBilling = (period) => {
+        toggles.forEach((button) => {
+          const selected = button.dataset.ipwToggle === period;
+          button.classList.toggle('active', selected);
+          button.setAttribute('aria-pressed', String(selected));
+        });
+        prices.forEach((price) => {
+          price.firstChild.textContent = `${period === 'yearly' ? price.dataset.yearly : price.dataset.monthly} `;
+          const suffix = price.querySelector('small');
+          if (suffix) suffix.textContent = period === 'yearly' ? '/ year' : price.dataset.monthly === '$14' ? '/ seat / month' : '/ month';
+        });
+      };
+      toggles.forEach((button) => button.addEventListener('click', () => selectBilling(button.dataset.ipwToggle)));
+      document.querySelectorAll('[data-ipw-action-message]').forEach((button) => {
+        button.addEventListener('click', () => { if (status) status.textContent = button.dataset.ipwActionMessage || ''; });
+      });
+    })();
+  </script>
 </body>
 </html>
