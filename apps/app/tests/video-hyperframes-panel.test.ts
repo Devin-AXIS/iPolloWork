@@ -1,8 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import { hyperframesStudioPort, hyperframesStudioUrl, shouldInjectVideoTaskContext, videoProjectDirectory, videoProjectId, videoProjectPath, videoTaskSystemContext } from "../src/react-app/domains/session/video/video-project";
 
 describe("HyperFrames Video Studio", () => {
+  test("keeps a visible fullscreen control in the iPolloWork Video Studio header", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain('aria-label="Toggle Video Studio fullscreen"');
+    expect(panelSource).toContain("videoPanelRef.current?.requestFullscreen()");
+    expect(panelSource).toContain("document.exitFullscreen()");
+  });
+
   test("opens the native Studio on a hydrated first frame", () => {
     expect(hyperframesStudioUrl()).toBe("http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1");
   });

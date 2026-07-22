@@ -109,6 +109,11 @@ export function PreviewPane({
   }, [fullscreenElement, isNativeFullscreen]);
 
   useEffect(() => {
+    document.body.toggleAttribute("data-studio-preview-fullscreen", isFullscreen);
+    return () => document.body.removeAttribute("data-studio-preview-fullscreen");
+  }, [isFullscreen]);
+
+  useEffect(() => {
     if (!isStudioFullscreen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setIsStudioFullscreen(false);

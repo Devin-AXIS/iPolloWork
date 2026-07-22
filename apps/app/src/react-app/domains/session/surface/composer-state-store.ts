@@ -33,6 +33,8 @@ export type ComposerStateStore = {
   appendHistory: (sessionId: string, text: string) => void;
   appendQueuedDraft: (sessionId: string, draft: ComposerDraft) => void;
   removeQueuedDraft: (sessionId: string, index: number) => void;
+  removeQueuedDrafts: (sessionId: string, indices: number[]) => void;
+  reorderQueuedDraft: (sessionId: string, fromIndex: number, toIndex: number) => void;
   clearQueuedDrafts: (sessionId: string) => void;
   prependQueuedDrafts: (sessionId: string, drafts: ComposerDraft[]) => void;
   clearSession: (sessionId: string) => void;
@@ -105,6 +107,26 @@ export const useComposerStateStore = create<ComposerStateStore>((set) => ({
     const queuedDrafts = { ...state.queuedDrafts };
     delete queuedDrafts[sessionId];
     return { queuedDrafts };
+  }),
+  removeQueuedDrafts: (sessionId, indices) => set((state) => {
+    const current = state.queuedDrafts[sessionId];
+    if (!current || indices.length === 0) return state;
+    const selected = new Set(indices);
+    const next = current.filter((_, itemIndex) => !selected.has(itemIndex));
+    if (next.length === current.length) return state;
+    if (next.length > 0) return { queuedDrafts: { ...state.queuedDrafts, [sessionId]: next } };
+    const queuedDrafts = { ...state.queuedDrafts };
+    delete queuedDrafts[sessionId];
+    return { queuedDrafts };
+  }),
+  reorderQueuedDraft: (sessionId, fromIndex, toIndex) => set((state) => {
+    const current = state.queuedDrafts[sessionId];
+    if (!current || fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= current.length || toIndex >= current.length) return state;
+    const next = [...current];
+    const [item] = next.splice(fromIndex, 1);
+    if (!item) return state;
+    next.splice(toIndex, 0, item);
+    return { queuedDrafts: { ...state.queuedDrafts, [sessionId]: next } };
   }),
   clearQueuedDrafts: (sessionId) => set((state) => {
     if (!state.queuedDrafts[sessionId]) return state;

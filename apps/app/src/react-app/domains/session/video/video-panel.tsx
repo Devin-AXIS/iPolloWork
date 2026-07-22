@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Film, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { AudioLines, Film, Loader2, Maximize2, Minimize2, Plus, RefreshCw, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
@@ -55,6 +55,7 @@ const studioStartupCopy: Record<StudioStartupStage, { title: string; detail: str
 
 export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
+  const videoPanelRef = React.useRef<HTMLDivElement | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const localeSyncTimersRef = React.useRef<number[]>([]);
   const [revision, setRevision] = React.useState(0);
@@ -66,6 +67,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [voicePanelOpen, setVoicePanelOpen] = React.useState(false);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
   const studioPort = hyperframesStudioPort(sessionId);
   const [activeStudioPort, setActiveStudioPort] = React.useState(studioPort);
   const resolvedTheme = React.useSyncExternalStore(
@@ -190,8 +192,25 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     syncStudioTheme();
   }, [resolvedTheme, syncStudioTheme]);
 
+  React.useEffect(() => {
+    const syncFullscreenState = () => {
+      setIsFullscreen(document.fullscreenElement === videoPanelRef.current);
+    };
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    syncFullscreenState();
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, []);
+
+  const toggleFullscreen = React.useCallback(() => {
+    if (document.fullscreenElement === videoPanelRef.current) {
+      void document.exitFullscreen();
+      return;
+    }
+    void videoPanelRef.current?.requestFullscreen();
+  }, []);
+
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel">
+    <div ref={videoPanelRef} className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px]">
         <Film className="size-4 text-primary" />
         <div className="flex min-w-0 flex-1 items-center">
@@ -204,8 +223,24 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
           <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => setVoicePanelOpen((open) => !open)} disabled={isRemoteWorkspace} aria-label="Voice settings"><AudioLines /></Button>} />
           <TooltipContent>Voice settings</TooltipContent>
         </Tooltip>
-              <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setStartupStage("loading-frame"); setDetail("Reloading Studio..."); setReloadToken(Date.now()); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
-              {launcherItems.length > 0 ? (
+        <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setStartupStage("loading-frame"); setDetail("Reloading Studio..."); setReloadToken(Date.now()); setRevision((value) => value + 1); }} aria-label="Reload Video Studio"><RefreshCw /></Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={(
+              <Button
+                variant={isFullscreen ? "secondary" : "ghost"}
+                size="icon-xs"
+                onClick={toggleFullscreen}
+                aria-label="Toggle Video Studio fullscreen"
+                aria-pressed={isFullscreen}
+              >
+                {isFullscreen ? <Minimize2 /> : <Maximize2 />}
+              </Button>
+            )}
+          />
+          <TooltipContent>{isFullscreen ? "Exit fullscreen" : "Fullscreen Video Studio"}</TooltipContent>
+        </Tooltip>
+        {launcherItems.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={(

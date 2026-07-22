@@ -145,7 +145,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
         </>
       ) : props.cloudMarketplaceView ?? (
         <div className="rounded-xl border border-dashed border-dls-border px-5 py-10 text-center text-sm text-dls-secondary">
-          Marketplace is unavailable.
+          {t("extensions.marketplace_unavailable")}
         </div>
       )}
     </section>
