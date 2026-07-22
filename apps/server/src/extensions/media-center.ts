@@ -1,8 +1,10 @@
 import { ApiError } from "../errors.js";
 import type { EnvService } from "../env-file.js";
 import type { ServerConfig } from "../types.js";
-import { withTemporaryWorkspaceObject } from "./storage.js";
-import { extname } from "node:path";
+import { link, mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, extname } from "node:path";
+import { randomUUID } from "node:crypto";
+import { resolveWorkspaceFile, withTemporaryWorkspaceObject, workspaceForContext } from "./storage.js";
 
 // The Alibaba adapter stays internal to this module. The public action
 // contract is provider-neutral so Media Center can add providers without
@@ -12,7 +14,9 @@ export const MEDIA_EXTENSION_ID = "media";
 const DEFAULT_ALIYUN_MEDIA_BASE_URL = "https://dashscope.aliyuncs.com";
 const BAILIAN_REQUEST_TIMEOUT_MS = 90_000;
 const MAX_TRANSLATION_AUDIO_CHARS = 16 * 1024 * 1024;
+const MAX_SYNTHESIZED_AUDIO_BYTES = 50 * 1024 * 1024;
 const COSYVOICE_V3_FLASH = "cosyvoice-v3-flash";
+const VOICEOVER_READING_BUFFER_SECONDS = 0.25;
 const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
   longxiaochun: "longyingmu_v3",
   longxiaoxia: "longyingmu_v3",
@@ -23,6 +27,28 @@ const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
 };
 
 type JsonRecord = Record<string, unknown>;
+
+function roundVoiceoverTime(value: number) {
+  return Math.round(value * 1_000) / 1_000;
+}
+
+export function planSceneVoiceoverTiming(
+  sceneStart: number,
+  sceneDuration: number,
+  audioDuration: number,
+) {
+  const requiredSceneDuration = Math.max(
+    sceneDuration,
+    audioDuration + VOICEOVER_READING_BUFFER_SECONDS,
+  );
+  return {
+    startSeconds: roundVoiceoverTime(sceneStart),
+    endSeconds: roundVoiceoverTime(sceneStart + audioDuration),
+    requiredSceneDurationSeconds: roundVoiceoverTime(requiredSceneDuration),
+    shiftFollowingBySeconds: roundVoiceoverTime(requiredSceneDuration - sceneDuration),
+    readingBufferSeconds: VOICEOVER_READING_BUFFER_SECONDS,
+  };
+}
 
 export const MEDIA_EXTENSION_ACTIONS = [
   {
@@ -47,6 +73,28 @@ export const MEDIA_EXTENSION_ACTIONS = [
         sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
       },
       required: ["text"],
+      additionalProperties: false,
+    },
+  },
+  {
+    extensionId: MEDIA_EXTENSION_ID,
+    action: "speech_synthesize_workspace_file",
+    title: "Synthesize speech to a workspace file",
+    description: "Create an MP3 voiceover, save it atomically inside the active workspace, and return its measured frame duration for video synchronization.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "One visual scene's narration text." },
+        sceneId: { type: "string", description: "The exact .scene element id narrated by this file." },
+        sceneText: { type: "string", description: "The scene's visible text snapshot. Must exactly equal text." },
+        sceneStart: { type: "number", description: "The exact scene start time in seconds." },
+        sceneDuration: { type: "number", description: "The visual scene's current duration in seconds. Used with the measured MP3 duration to return a non-overlapping timeline allocation." },
+        outputPath: { type: "string", description: "New immutable .mp3 path relative to the active workspace." },
+        voice: { type: "string", description: "Model Studio voice name or cloned voice id." },
+        model: { type: "string", description: "Speech model. Defaults to cosyvoice-v3-flash." },
+        sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
+      },
+      required: ["text", "sceneId", "sceneText", "sceneStart", "sceneDuration", "outputPath"],
       additionalProperties: false,
     },
   },
@@ -288,6 +336,114 @@ function taskIdFromPayload(payload: unknown): string | null {
 function voiceIdFromPayload(payload: unknown): string {
   const output = readRecord(payload, "output");
   return readStringField(output, "voice_id") || readStringField(output, "voice");
+}
+
+function synthesizedAudioUrl(payload: unknown): string {
+  const output = readRecord(payload, "output");
+  const audio = readRecord(output, "audio");
+  const value = readStringField(audio, "url") || readStringField(output, "audio_url");
+  if (!value) {
+    throw new ApiError(502, "bailian_audio_url_missing", "Alibaba Model Studio did not return a synthesized audio URL.");
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ApiError(502, "bailian_audio_url_invalid", "Alibaba Model Studio returned an invalid synthesized audio URL.");
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new ApiError(502, "bailian_audio_url_invalid", "Alibaba Model Studio returned an unsafe synthesized audio URL.");
+  }
+  return url.toString();
+}
+
+async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(504, "bailian_audio_download_timeout", "The synthesized audio download timed out.");
+    }
+    throw new ApiError(502, "bailian_audio_download_failed", "Could not download synthesized audio from Alibaba Model Studio.");
+  }
+  try {
+    if (!response.ok) {
+      throw new ApiError(response.status, "bailian_audio_download_failed", `Synthesized audio download failed (HTTP ${response.status}).`);
+    }
+    const declaredBytes = Number(response.headers.get("content-length") ?? "0");
+    if (Number.isFinite(declaredBytes) && declaredBytes > MAX_SYNTHESIZED_AUDIO_BYTES) {
+      throw new ApiError(413, "bailian_audio_too_large", "Synthesized audio exceeded the local file size limit.");
+    }
+    if (!response.body) throw new ApiError(502, "bailian_audio_download_failed", "Synthesized audio response was empty.");
+
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    const reader = response.body.getReader();
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > MAX_SYNTHESIZED_AUDIO_BYTES) {
+        await reader.cancel();
+        throw new ApiError(413, "bailian_audio_too_large", "Synthesized audio exceeded the local file size limit.");
+      }
+      chunks.push(chunk.value);
+    }
+    if (!bytes) throw new ApiError(502, "bailian_audio_download_failed", "Synthesized audio response was empty.");
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), bytes);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(504, "bailian_audio_download_timeout", "The synthesized audio download timed out.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function mp3DurationSeconds(bytes: Uint8Array): number {
+  let offset = 0;
+  if (bytes.length >= 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+    const size = ((bytes[6]! & 0x7f) << 21) | ((bytes[7]! & 0x7f) << 14) | ((bytes[8]! & 0x7f) << 7) | (bytes[9]! & 0x7f);
+    offset = 10 + size + ((bytes[5]! & 0x10) ? 10 : 0);
+  }
+
+  const mpeg1Layer3Bitrates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+  const mpeg2Layer3Bitrates = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
+  const baseSampleRates = [44_100, 48_000, 32_000, 0];
+  let duration = 0;
+  let frames = 0;
+
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff || (bytes[offset + 1]! & 0xe0) !== 0xe0) {
+      offset += 1;
+      continue;
+    }
+    const versionBits = (bytes[offset + 1]! >> 3) & 0x03;
+    const layerBits = (bytes[offset + 1]! >> 1) & 0x03;
+    const bitrateIndex = (bytes[offset + 2]! >> 4) & 0x0f;
+    const sampleRateIndex = (bytes[offset + 2]! >> 2) & 0x03;
+    const padding = (bytes[offset + 2]! >> 1) & 0x01;
+    if (versionBits === 1 || layerBits !== 1 || bitrateIndex === 0 || bitrateIndex === 15 || sampleRateIndex === 3) {
+      offset += 1;
+      continue;
+    }
+    const mpeg1 = versionBits === 3;
+    const sampleRateDivisor = mpeg1 ? 1 : versionBits === 2 ? 2 : 4;
+    const sampleRate = baseSampleRates[sampleRateIndex]! / sampleRateDivisor;
+    const bitrateKbps = (mpeg1 ? mpeg1Layer3Bitrates : mpeg2Layer3Bitrates)[bitrateIndex]!;
+    const samplesPerFrame = mpeg1 ? 1_152 : 576;
+    const frameLength = Math.floor(((mpeg1 ? 144_000 : 72_000) * bitrateKbps) / sampleRate) + padding;
+    if (frameLength < 4 || offset + frameLength > bytes.length) break;
+    duration += samplesPerFrame / sampleRate;
+    frames += 1;
+    offset += frameLength;
+  }
+  if (!frames) throw new ApiError(502, "bailian_audio_invalid", "Alibaba Model Studio returned audio without valid MP3 frames.");
+  return duration;
 }
 
 function voiceListFromPayload(payload: unknown) {
@@ -539,6 +695,70 @@ export async function callMediaExtensionAction(
         url: endpoint(baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
         body: { model, input },
       });
+      break;
+    }
+    case "speech_synthesize_workspace_file": {
+      const text = requireString(args, "text");
+      const sceneId = requireString(args, "sceneId");
+      const sceneText = requireString(args, "sceneText");
+      const sceneStart = readOptionalNumber(args, "sceneStart");
+      const sceneDuration = readOptionalNumber(args, "sceneDuration");
+      if (text !== sceneText) {
+        throw new ApiError(400, "voiceover_scene_text_mismatch", "text must exactly equal sceneText so narration matches the visible scene.");
+      }
+      if (!/^[-_A-Za-z0-9:.]+$/.test(sceneId)) {
+        throw new ApiError(400, "invalid_voiceover_scene_id", "sceneId contains unsupported characters.");
+      }
+      if (sceneStart === undefined || sceneStart < 0) {
+        throw new ApiError(400, "invalid_voiceover_scene_start", "sceneStart must be a non-negative number.");
+      }
+      if (sceneDuration === undefined || sceneDuration <= 0) {
+        throw new ApiError(400, "invalid_voiceover_scene_duration", "sceneDuration must be greater than zero.");
+      }
+      const outputPath = requireString(args, "outputPath");
+      if (extname(outputPath).toLowerCase() !== ".mp3") {
+        throw new ApiError(400, "invalid_synthesized_audio_path", "outputPath must use the .mp3 extension.");
+      }
+      const model = readStringField(args, "model") || COSYVOICE_V3_FLASH;
+      const requestedVoice = readStringField(args, "voice");
+      const voice = requestedVoice ? compatibleCosyVoiceVoice(model, requestedVoice) : "";
+      const providerResponse = await requestProviderJson({
+        apiKey,
+        url: endpoint(baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
+        body: {
+          model,
+          input: {
+            text,
+            ...(voice ? { voice } : {}),
+            format: "mp3",
+            ...(readOptionalNumber(args, "sampleRate") ? { sample_rate: readOptionalNumber(args, "sampleRate") } : {}),
+          },
+        },
+      });
+      const audio = await downloadSynthesizedAudio(synthesizedAudioUrl(providerResponse));
+      const durationSeconds = mp3DurationSeconds(audio);
+      const workspace = workspaceForContext(config, context);
+      const destination = resolveWorkspaceFile(workspace.path, outputPath);
+      const temporaryPath = `${destination.absolutePath}.${randomUUID()}.tmp`;
+      await mkdir(dirname(destination.absolutePath), { recursive: true });
+      try {
+        await writeFile(temporaryPath, audio, { flag: "wx" });
+        await link(temporaryPath, destination.absolutePath);
+      } finally {
+        await rm(temporaryPath, { force: true });
+      }
+      result = {
+        sourcePath: destination.relativePath,
+        durationSeconds,
+        bytes: audio.byteLength,
+        sceneId,
+        sceneText,
+        sceneStart,
+        sceneDuration,
+        timing: planSceneVoiceoverTiming(sceneStart, sceneDuration, durationSeconds),
+        model,
+        ...(voice ? { voice } : {}),
+      };
       break;
     }
     case "voice_clone": {

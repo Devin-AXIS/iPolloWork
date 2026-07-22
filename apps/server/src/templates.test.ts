@@ -329,6 +329,12 @@ describe("template installations", () => {
   test("ships six flagship HyperFrames video templates with local deterministic runtimes", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => name.startsWith("ipollowork.hyperframes."));
     expect(directories).toHaveLength(flagshipVideoTemplateIds.length);
+    const currentLogo = await readFile(join(
+      bundledTemplatesRoot,
+      "ipollowork.hyperframes.course-journey",
+      "assets",
+      "ipollowork-logo.svg",
+    ), "utf8");
     for (const templateId of flagshipVideoTemplateIds) {
       const root = join(bundledTemplatesRoot, templateId);
       const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
@@ -342,6 +348,7 @@ describe("template installations", () => {
       expect(entry).toContain("data-composition-variables");
       expect(entry).toContain("gsap.timeline({ paused: true })");
       expect(entry).toContain("window.__timelines.main");
+      expect(entry).toContain("assets/ipollowork-logo.svg?v=20260721");
       expect(entry).not.toMatch(/(?:src|href)\s*=\s*["']https?:\/\//i);
       for (const variable of manifest.designSystem.variables) expect(entry).toContain(`"id":"${variable.id}"`);
       const cover = await readFile(join(root, manifest.cover));
@@ -353,6 +360,7 @@ describe("template installations", () => {
         expect(() => new Function(script[1])).not.toThrow();
       }
       expect(existsSync(join(root, "assets", "gsap.min.js"))).toBe(true);
+      expect(await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8")).toBe(currentLogo);
     }
     expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "iphone.glb"))).toBe(true);
     expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "macbook.glb"))).toBe(true);

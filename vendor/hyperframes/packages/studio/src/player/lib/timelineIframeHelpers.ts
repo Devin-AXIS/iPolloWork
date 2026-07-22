@@ -85,10 +85,11 @@ export function autoHealMissingCompositionIds(doc: Document): void {
 type PreviewPlayerHost = HTMLElement & {
   muted?: boolean;
   playbackRate?: number;
+  pause?: () => void;
 };
 
 function isPreviewPlayerHost(value: unknown): value is PreviewPlayerHost {
-  return value instanceof HTMLElement;
+  return typeof HTMLElement !== "undefined" && value instanceof HTMLElement;
 }
 
 function resolvePreviewPlayerHost(iframe: HTMLIFrameElement): PreviewPlayerHost | null {
@@ -125,6 +126,61 @@ export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: bo
       return;
     }
     postPreviewControl(iframe, "set-muted", { muted });
+  } catch {}
+}
+
+function enforceSynchronizedVoiceovers(doc: Document | null | undefined): void {
+  if (!doc) return;
+  const voiceovers = doc.querySelectorAll<HTMLAudioElement>(
+    'audio[data-ipw-voiceover="true"], audio[id^="vo-"], audio[src*="/audio/voice/"]',
+  );
+  for (const voiceover of voiceovers) {
+    const sceneId = voiceover.getAttribute("data-ipw-scene-id")?.trim() ?? "";
+    const sceneText = voiceover.getAttribute("data-ipw-scene-text")?.trim() ?? "";
+    const narrationText = voiceover.getAttribute("data-ipw-narration-text")?.trim() ?? "";
+    const start = Number(voiceover.getAttribute("data-start"));
+    const duration = Number(voiceover.getAttribute("data-duration"));
+    const scene = sceneId ? doc.getElementById(sceneId) : null;
+    const sceneStart = Number(scene?.getAttribute("data-start"));
+    const valid = Boolean(
+      scene?.matches(".scene, [data-scene]") &&
+      sceneText &&
+      narrationText === sceneText &&
+      Number.isFinite(start) &&
+      Number.isFinite(duration) &&
+      duration > 0 &&
+      Number.isFinite(sceneStart) &&
+      Math.abs(start - sceneStart) < 0.001,
+    );
+    if (valid) {
+      voiceover.removeAttribute("data-ipw-sync-invalid");
+      continue;
+    }
+    voiceover.setAttribute("data-ipw-sync-invalid", "true");
+    voiceover.muted = true;
+    voiceover.pause();
+  }
+}
+
+export function setPreviewPlaybackActive(iframe: HTMLIFrameElement | null, active: boolean): void {
+  if (!iframe) return;
+  try {
+    enforceSynchronizedVoiceovers(iframe.contentDocument);
+  } catch {}
+  if (active) return;
+  try {
+    const root = iframe.getRootNode() as ShadowRoot & { host?: PreviewPlayerHost };
+    const host = resolvePreviewPlayerHost(iframe) ?? root.host ?? null;
+    if (host && typeof host.pause === "function") host.pause();
+  } catch {}
+  try {
+    for (const media of iframe.contentDocument?.querySelectorAll<HTMLMediaElement>("audio, video") ?? []) {
+      media.pause();
+    }
+  } catch {}
+  try {
+    postPreviewControl(iframe, "pause", {});
+    postPreviewControl(iframe, "stop-media", {});
   } catch {}
 }
 

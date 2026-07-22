@@ -44,6 +44,7 @@ interface UseTimelineSyncCallbacksParams {
   setIsPlaying: (v: boolean) => void;
   attachIframeShortcutListeners: () => void;
   applyPreviewAudioState: () => void;
+  stopPreviewMedia: () => void;
 }
 
 /**
@@ -129,6 +130,7 @@ export function useTimelineSyncCallbacks({
   setIsPlaying,
   attachIframeShortcutListeners,
   applyPreviewAudioState,
+  stopPreviewMedia,
 }: UseTimelineSyncCallbacksParams) {
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const processTimelineMessage = useCallback(
@@ -410,6 +412,7 @@ export function useTimelineSyncCallbacks({
   ]);
 
   const onIframeLoad = useCallback(() => {
+    stopPreviewMedia();
     applyPreviewAudioState();
     if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
 
@@ -453,7 +456,7 @@ export function useTimelineSyncCallbacks({
       // (initializeAdapter reveals on success; this covers the give-up case).
       revealIframe(iframeRef.current);
     }, 5000) as unknown as ReturnType<typeof setInterval>;
-  }, [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState]);
+  }, [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState, stopPreviewMedia]);
 
   // Stable refs so mount-effect closures always call the latest version
   const processTimelineMessageRef = { current: processTimelineMessage };

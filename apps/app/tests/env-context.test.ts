@@ -91,7 +91,7 @@ describe("buildiPolloWorkEnvSystemContext", () => {
       readPendingChanges: () => true,
     });
 
-    expect(context).toBeUndefined();
+    expect(context).toContain("Never start a long-running development or preview server as a foreground shell command");
     expect(calls).toEqual({ env: 0, authorizations: 0 });
   });
 
@@ -117,5 +117,20 @@ describe("buildiPolloWorkEnvSystemContext", () => {
     expect(context).toContain("Prefer the iPolloWork image extension.");
     expect(context).toContain("Never ask for, read, reveal, copy");
     expect(context).not.toContain("sk-openai-secret");
+  });
+
+  test("prevents foreground preview servers from blocking a tool call", async () => {
+    cleariPolloWorkEnvSystemContextCache();
+    const calls = { env: 0, authorizations: 0 };
+    const context = await buildiPolloWorkEnvSystemContext(client([], calls), {
+      cacheKey: "session-server",
+      readPendingChanges: () => false,
+    });
+
+    expect(context).toContain("Never start a long-running development or preview server as a foreground shell command");
+    expect(context).toContain("Never stop all Node processes");
+    expect(context).toContain("Do not restart an application-owned preview service");
+    expect(context).toContain("health check");
+    expect(context).toContain("return control immediately");
   });
 });

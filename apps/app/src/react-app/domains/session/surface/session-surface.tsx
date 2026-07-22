@@ -842,6 +842,14 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const removeQueuedDraft = useCallback((index: number) => {
     removeQueuedDraftFromStore(props.sessionId, index);
   }, [props.sessionId, removeQueuedDraftFromStore]);
+  const removeQueuedDrafts = useComposerStateStore((state) => state.removeQueuedDrafts);
+  const reorderQueuedDraft = useComposerStateStore((state) => state.reorderQueuedDraft);
+  const removeManyQueuedDrafts = useCallback((indices: number[]) => {
+    removeQueuedDrafts(props.sessionId, indices);
+  }, [props.sessionId, removeQueuedDrafts]);
+  const reorderQueuedDrafts = useCallback((fromIndex: number, toIndex: number) => {
+    reorderQueuedDraft(props.sessionId, fromIndex, toIndex);
+  }, [props.sessionId, reorderQueuedDraft]);
 
   // One label per queued draft, kept index-aligned with `queuedDrafts` so the
   // panel's remove action targets the correct entry. Attachment-only drafts
@@ -1405,7 +1413,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                   </div>
                 ) : null}
                 {queuedMessages.length > 0 ? (
-                  <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} />
+                  <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} onRemoveMany={removeManyQueuedDrafts} onReorder={reorderQueuedDrafts} />
                 ) : null}
                 {props.activeQuestion ? (
                   <QuestionPanel

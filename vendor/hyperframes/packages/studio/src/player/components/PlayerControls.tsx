@@ -477,19 +477,6 @@ export const PlayerControls = memo(function PlayerControls({
 
       <LoopButton loopEnabled={loopEnabled} disabled={disabled} setLoopEnabled={setLoopEnabled} />
 
-      <FullscreenButton
-        isFullscreen={isFullscreen}
-        onToggleFullscreen={() => {
-          if (onToggleFullscreen) {
-            onToggleFullscreen();
-            return;
-          }
-          seekBarRef.current
-            ?.closest("[data-studio-fullscreen-target]")
-            ?.dispatchEvent(new CustomEvent("studio-toggle-fullscreen", { bubbles: true }));
-        }}
-      />
-
       <ShortcutsPanel
         disabled={disabled}
         duration={duration}

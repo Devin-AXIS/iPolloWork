@@ -374,11 +374,39 @@ export class ParentMediaManager {
     return rawSrc ? new URL(rawSrc, iframeEl.ownerDocument.baseURI).href : null;
   }
 
+  private _isSynchronizedVoiceover(iframeEl: HTMLMediaElement): boolean {
+    const isVoiceover = iframeEl.matches(
+      'audio[data-ipw-voiceover="true"], audio[id^="vo-"], audio[src*="/audio/voice/"]',
+    );
+    if (!isVoiceover) return true;
+    const sceneId = iframeEl.getAttribute("data-ipw-scene-id")?.trim() ?? "";
+    const sceneText = iframeEl.getAttribute("data-ipw-scene-text")?.trim() ?? "";
+    const narrationText = iframeEl.getAttribute("data-ipw-narration-text")?.trim() ?? "";
+    const timing = readClipTiming(iframeEl);
+    const scene = sceneId ? iframeEl.ownerDocument.getElementById(sceneId) : null;
+    const sceneTiming = scene ? readClipTiming(scene) : null;
+    return Boolean(
+      scene?.matches(".scene, [data-scene]") &&
+      sceneText &&
+      narrationText === sceneText &&
+      timing.start != null &&
+      timing.duration != null &&
+      timing.duration > 0 &&
+      sceneTiming?.start != null &&
+      Math.abs(timing.start - sceneTiming.start) < 0.001,
+    );
+  }
+
   // fallow-ignore-next-line complexity
   private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
     // Skip elements the preloader has demoted — the observer will re-trigger
     // when the preload attribute is promoted to "auto".
     if (iframeEl.preload === "metadata" || iframeEl.preload === "none") return;
+    if (!this._isSynchronizedVoiceover(iframeEl)) {
+      iframeEl.muted = true;
+      iframeEl.pause();
+      return;
+    }
 
     const src = this._resolveIframeMediaSrc(iframeEl);
     if (!src) return;

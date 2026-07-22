@@ -3024,6 +3024,29 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const display = activeTab && activeTab !== 'design' || inspectorOpen || sidebarOpen || textEditorOpen ? 'inline-flex' : 'none';
         if (dismiss.style.display !== display) dismiss.style.display = display;
       }
+      let fullscreen = document.querySelector('[data-ipollowork-studio-fullscreen]');
+      if (!fullscreen && header) {
+        if (!document.querySelector('[data-ipollowork-studio-fullscreen-style]')) {
+          const style = document.createElement('style');
+          style.dataset.ipolloworkStudioFullscreenStyle = 'true';
+          style.textContent = '[data-ipollowork-studio-fullscreen]{display:inline-flex!important;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid rgba(20,184,166,.35);border-radius:7px;background:rgba(20,184,166,.12);color:#14b8a6;font:700 11px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer;transition:background-color .15s,color .15s,border-color .15s}[data-ipollowork-studio-fullscreen]:hover{background:rgba(20,184,166,.2);border-color:rgba(20,184,166,.55);color:#2dd4bf}[data-ipollowork-studio-fullscreen] svg{width:14px;height:14px;flex:0 0 auto}';
+          document.head.appendChild(style);
+        }
+        fullscreen = document.createElement('button');
+        fullscreen.type = 'button';
+        fullscreen.setAttribute('data-ipollowork-studio-fullscreen', 'true');
+        fullscreen.setAttribute('aria-label', 'Enter fullscreen');
+        fullscreen.setAttribute('title', 'Enter fullscreen');
+        fullscreen.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg><span>Full</span>';
+        fullscreen.addEventListener('click', () => {
+          const target = document.querySelector('[data-studio-fullscreen-target]');
+          target?.dispatchEvent(new CustomEvent('studio-toggle-fullscreen', { bubbles: true }));
+        });
+        const actionGroup = header.querySelector(':scope > div:last-child') || header;
+        const exportButton = [...actionGroup.querySelectorAll('button')].find((node) => compactText(node) === 'Export');
+        if (exportButton) actionGroup.insertBefore(fullscreen, exportButton);
+        else actionGroup.appendChild(fullscreen);
+      }
       return ![...header.children].some((child) => {
         const text = compactText(child);
         return isBrandText(text) || isSessionIdentity(text) || /^[|｜]$/.test(text);

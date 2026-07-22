@@ -9,6 +9,7 @@ import {
   trackWorkspaceSessionSync,
   transcriptKey,
 } from "../src/react-app/domains/session/sync/session-sync";
+import { describeOpencodeSessionError } from "../src/react-app/domains/session/sync/usechat-adapter";
 import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
@@ -84,6 +85,13 @@ function writeToolPart(
 }
 
 describe("tool part mapper", () => {
+  test("explains an aborted run instead of showing only the engine label", () => {
+    expect(describeOpencodeSessionError({
+      name: "MessageAbortedError",
+      message: "Aborted",
+    })).toBe("The run was interrupted before it finished. If you clicked Stop, the interruption was requested by you.");
+  });
+
   test("defers in-progress tools with empty input", () => {
     // shouldDeferInProgressTool left with the legacy message list (#2016);
     // the deferral behavior itself is still pinned here via the parser and
