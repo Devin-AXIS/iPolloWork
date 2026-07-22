@@ -36,6 +36,33 @@ export function getAdapterDuration(adapter: PlaybackAdapter | null | undefined):
   }
 }
 
+const durationLimitAdapterCache = new WeakMap<PlaybackAdapter, Map<number, PlaybackAdapter>>();
+
+export function wrapAdapterWithDurationLimit(adapter: PlaybackAdapter, duration: number): PlaybackAdapter {
+  const safeDuration = Math.max(0, Number.isFinite(duration) ? duration : 0);
+  if (safeDuration <= 0) return adapter;
+  let byDuration = durationLimitAdapterCache.get(adapter);
+  if (!byDuration) {
+    byDuration = new Map();
+    durationLimitAdapterCache.set(adapter, byDuration);
+  }
+  const cached = byDuration.get(safeDuration);
+  if (cached) return cached;
+  const limited: PlaybackAdapter = {
+    play: () => {
+      if (clampTime(adapter.getTime(), safeDuration) >= safeDuration) adapter.seek(0);
+      adapter.play();
+    },
+    pause: () => adapter.pause(),
+    seek: (time, options) => adapter.seek(clampTime(time, safeDuration), options),
+    getTime: () => clampTime(adapter.getTime(), safeDuration),
+    getDuration: () => safeDuration,
+    isPlaying: () => adapter.isPlaying(),
+  };
+  byDuration.set(safeDuration, limited);
+  return limited;
+}
+
 // ---------------------------------------------------------------------------
 // Clock factory
 // ---------------------------------------------------------------------------
@@ -200,8 +227,12 @@ export function resolveStaticSeekFallback(opts: {
 // GSAP timeline wrapper
 // ---------------------------------------------------------------------------
 
+const timelineAdapterCache = new WeakMap<TimelineLike, PlaybackAdapter>();
+
 export function wrapTimeline(tl: TimelineLike): PlaybackAdapter {
-  return {
+  const cached = timelineAdapterCache.get(tl);
+  if (cached) return cached;
+  const adapter: PlaybackAdapter = {
     play: () => tl.play(),
     pause: () => tl.pause(),
     seek: (t, options) => {
@@ -214,4 +245,6 @@ export function wrapTimeline(tl: TimelineLike): PlaybackAdapter {
     getDuration: () => tl.duration(),
     isPlaying: () => tl.isActive(),
   };
+  timelineAdapterCache.set(tl, adapter);
+  return adapter;
 }

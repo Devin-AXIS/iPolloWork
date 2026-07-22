@@ -41,7 +41,7 @@ function defaultErrorMessage(name: string | null, fallback: string) {
   if (name === "MessageOutputLengthError") return "The model reached its output limit before finishing";
   if (name === "StructuredOutputError") return "The model could not produce valid structured output";
   if (name === "ContextOverflowError") return "The conversation is too large for the model context window";
-  if (name === "MessageAbortedError") return "The message was interrupted";
+  if (name === "MessageAbortedError") return "The run was interrupted before it finished. If you clicked Stop, the interruption was requested by you.";
   return fallback;
 }
 
@@ -71,7 +71,8 @@ export function describeOpencodeSessionError(error: unknown, fallback = "Session
   const retries = firstNumberValue(records, ["retries", "retryCount"]);
   const responseBody = firstStringValue(records, ["responseBody", "body", "response"]);
 
-  const lines = [message ?? defaultErrorMessage(name, fallback)];
+  const genericAbortMessage = name === "MessageAbortedError" && /^abort(?:ed)?$/i.test(message ?? "");
+  const lines = [genericAbortMessage ? defaultErrorMessage(name, fallback) : message ?? defaultErrorMessage(name, fallback)];
   if (status && !lines[0]?.includes(String(status))) lines.push(`Status: ${status}`);
   if (provider && !lines[0]?.includes(provider)) lines.push(`Provider: ${provider}`);
   if (code) lines.push(`Code: ${code}`);

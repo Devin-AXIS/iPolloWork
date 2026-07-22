@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,7 @@ import type { ServerConfig } from "../types.js";
 import {
   MEDIA_EXTENSION_ID,
   callMediaExtensionAction,
+  planSceneVoiceoverTiming,
 } from "./media-center.js";
 
 const nativeFetch = globalThis.fetch;
@@ -44,6 +45,103 @@ async function workspaceConfig() {
 }
 
 describe("Media Center extension", () => {
+  test("allocates narration inside its scene and reports the exact downstream shift", () => {
+    expect(planSceneVoiceoverTiming(4, 3, 4.5)).toEqual({
+      startSeconds: 4,
+      endSeconds: 8.5,
+      requiredSceneDurationSeconds: 4.75,
+      shiftFollowingBySeconds: 1.75,
+      readingBufferSeconds: 0.25,
+    });
+    expect(planSceneVoiceoverTiming(10, 5, 2)).toEqual({
+      startSeconds: 10,
+      endSeconds: 12,
+      requiredSceneDurationSeconds: 5,
+      shiftFollowingBySeconds: 0,
+      readingBufferSeconds: 0.25,
+    });
+  });
+
+  test("rejects narration that differs from its visible scene text before calling Model Studio", async () => {
+    const workspace = await workspaceConfig();
+    let requested = false;
+    globalThis.fetch = ((() => {
+      requested = true;
+      throw new Error("provider must not be called");
+    }) as unknown) as typeof fetch;
+
+    await expect(callMediaExtensionAction(
+      workspace.config,
+      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      "speech_synthesize_workspace_file",
+      {
+        text: "unrelated narration",
+        sceneId: "scene-hook",
+        sceneText: "visible scene title",
+        sceneStart: 0,
+        sceneDuration: 3,
+        outputPath: "video/session/assets/voiceover-scene-1.mp3",
+      },
+      { directory: workspace.root },
+    )).rejects.toMatchObject({ code: "voiceover_scene_text_mismatch" });
+    expect(requested).toBe(false);
+  });
+
+  test("saves synthesized MP3 in the workspace and reports its real frame duration", async () => {
+    const workspace = await workspaceConfig();
+    const frame = Buffer.alloc(417);
+    frame.set([0xff, 0xfb, 0x90, 0x00]); // MPEG-1 Layer III, 128 kbps, 44.1 kHz.
+    const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
+    let request = 0;
+    globalThis.fetch = ((input) => {
+      request += 1;
+      if (request === 1) {
+        expect(String(input)).toContain("SpeechSynthesizer");
+        return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://audio.example.test/scene.mp3" } } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }
+      expect(String(input)).toBe("https://audio.example.test/scene.mp3");
+      return Promise.resolve(new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(workspace.config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize_workspace_file", {
+      text: "第一段旁白",
+      sceneId: "scene-hook",
+      sceneText: "第一段旁白",
+      sceneStart: 0,
+      sceneDuration: 1,
+      voice: "longyingmu_v3",
+      model: "cosyvoice-v3-flash",
+      outputPath: "video/session/assets/voiceover-scene-1.mp3",
+    }, { directory: workspace.root });
+
+    const measuredDuration = (result as any).result.output.durationSeconds;
+    expect(result).toMatchObject({
+      result: {
+        output: {
+          sourcePath: "video/session/assets/voiceover-scene-1.mp3",
+          durationSeconds: expect.any(Number),
+          bytes: mp3.byteLength,
+          sceneId: "scene-hook",
+          sceneText: "第一段旁白",
+          sceneStart: 0,
+          timing: {
+            startSeconds: 0,
+            endSeconds: expect.any(Number),
+            requiredSceneDurationSeconds: expect.any(Number),
+            shiftFollowingBySeconds: expect.any(Number),
+            readingBufferSeconds: 0.25,
+          },
+        },
+      },
+    });
+    const expectedDuration = 100 * 1152 / 44_100;
+    expect(Math.abs(measuredDuration - expectedDuration)).toBeLessThan(0.001);
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-scene-1.mp3"))).toEqual(mp3);
+  });
+
   test("keeps the Model Studio key server-side while synthesizing speech", async () => {
     globalThis.fetch = ((input, init) => {
       expect(String(input)).toBe("https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer");

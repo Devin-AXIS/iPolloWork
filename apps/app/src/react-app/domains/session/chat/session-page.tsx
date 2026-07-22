@@ -795,11 +795,21 @@ export function SessionPage(props: SessionPageProps) {
         preserveSidePanelOnPanelOpenRef.current = false;
         return;
       }
+      // Browser tools may open pages while an agent is editing a video. Keep
+      // that WebContentsView in the background so it cannot cover the Studio.
+      if (isVideoSession && activeSidePanel !== "panel") {
+        void browser.hide?.();
+        setCurrentSidePanel("video");
+        return;
+      }
       setCurrentSidePanel("panel");
     });
-    const unsubClose = browser.onPanelClosed?.(() => setCurrentSidePanel(null));
+    const unsubClose = browser.onPanelClosed?.(() => {
+      if (isVideoSession && activeSidePanel !== "panel") return;
+      setCurrentSidePanel(null);
+    });
     return () => { unsubOpen?.(); unsubClose?.(); };
-  }, [setCurrentSidePanel]);
+  }, [activeSidePanel, isVideoSession, setCurrentSidePanel]);
   const {
     leftSidebarResizing,
     leftSidebarWidth,
@@ -811,6 +821,7 @@ export function SessionPage(props: SessionPageProps) {
     minRightWidth: 160,
   });
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
+  const [videoStudioExpanded, setVideoStudioExpanded] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
   ));
@@ -913,9 +924,13 @@ export function SessionPage(props: SessionPageProps) {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   const openTarget = useCallback((target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
+    // SessionSurface automatically previews newly discovered targets after an
+    // agent finishes. Video tasks already have a dedicated preview surface.
+    if (isVideoSession && options?.auto) return;
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);
       if (isElectronRuntime()) {
+        preserveSidePanelOnPanelOpenRef.current = true;
         setCurrentSidePanel("panel");
         void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.(url);
       } else {
@@ -973,7 +988,7 @@ export function SessionPage(props: SessionPageProps) {
     });
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
-  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel, templateSessionData]);
+  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, isVideoSession, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel, templateSessionData]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;
@@ -1022,6 +1037,7 @@ export function SessionPage(props: SessionPageProps) {
     if (opening && isElectronRuntime()) {
       const hasBrowserTab = sessionPanelState.tabs.some((tab) => tab.type === "browser");
       if (!hasBrowserTab) {
+        preserveSidePanelOnPanelOpenRef.current = true;
         void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.();
       }
     }
@@ -1234,10 +1250,15 @@ export function SessionPage(props: SessionPageProps) {
       if (provider !== "auto" && provider !== "builtin") {
         return { ok: false, error: `Browser provider is not available yet: ${provider}` };
       }
-      setCurrentSidePanel("panel");
-      return window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
+      if (!isVideoSession) setCurrentSidePanel("panel");
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
+      if (isVideoSession) {
+        await window.__IPOLLOWORK_ELECTRON__?.browser?.hide?.();
+        setCurrentSidePanel("video");
+      }
+      return result;
     },
-  }), [setCurrentSidePanel]);
+  }), [isVideoSession, setCurrentSidePanel]);
   useControlAction(openBrowserUrlControlAction);
   const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.set_proxy",
@@ -1675,6 +1696,7 @@ export function SessionPage(props: SessionPageProps) {
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
             mainHeaderHidden ? "hidden" : "flex",
+            sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
           )}>
             {shellConfig.sidebar && sidebarVisuallyCollapsed ? (
               <Button
@@ -2055,16 +2077,28 @@ export function SessionPage(props: SessionPageProps) {
                       onClose={closeRightPane}
                     />
                   ) : activeSidePanel === "video" && props.selectedSessionId ? (
-                    <VideoPanel
-                      key={`${props.selectedWorkspaceId}:${props.selectedSessionId}`}
-                      sessionId={props.selectedSessionId}
-                      workspaceRoot={props.selectedWorkspaceRoot}
-                      client={props.ipolloworkServerClient}
-                      workspaceId={props.runtimeWorkspaceId}
-                      isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
-                      launcherItems={sidePanelLauncherItems}
-                      onClose={closeRightPane}
-                    />
+                    <div
+                      className={cn(
+                        "h-full min-h-0",
+                        videoStudioExpanded ? "fixed inset-y-0 right-0 z-[60] bg-background" : "w-full",
+                      )}
+                      style={videoStudioExpanded ? {
+                        left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0",
+                      } : undefined}
+                    >
+                      <VideoPanel
+                        key={`${props.selectedWorkspaceId}:${props.selectedSessionId}`}
+                        sessionId={props.selectedSessionId}
+                        workspaceRoot={props.selectedWorkspaceRoot}
+                        client={props.ipolloworkServerClient}
+                        workspaceId={props.runtimeWorkspaceId}
+                        isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
+                        launcherItems={sidePanelLauncherItems}
+                        expanded={videoStudioExpanded}
+                        onExpandedChange={setVideoStudioExpanded}
+                        onClose={closeRightPane}
+                      />
+                    </div>
                   ) : activeSidePanel === "outputs" ? (
                     <ConversationOutputPanel
                       messages={conversationMessages}

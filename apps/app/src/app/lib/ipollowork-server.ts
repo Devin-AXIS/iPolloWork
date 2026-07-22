@@ -511,6 +511,7 @@ export type iPolloWorkExtensionActionResult =
 export type iPolloWorkMediaAction =
   | "status"
   | "speech_synthesize"
+  | "speech_synthesize_workspace_file"
   | "voice_clone"
   | "voice_list"
   | "voice_clone_workspace_file"
