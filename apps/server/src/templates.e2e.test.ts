@@ -32,7 +32,7 @@ describe("template API", () => {
     const capabilities = await fetch(`${base}/capabilities`, { headers }).then((response) => response.json());
     expect(capabilities.templates).toEqual({ read: true, install: true, import: true, uninstall: true });
     const catalog = await fetch(`${base}/workspace/ws/templates`, { headers }).then((response) => response.json());
-    expect(catalog.items).toHaveLength(74);
+    expect(catalog.items).toHaveLength(75);
 
     const invalidPackage = await fetch(`${base}/workspace/ws/templates/import`, {
       method: "POST",

@@ -171,6 +171,82 @@ function isGenericPdfTitle(value: string) {
   return /^(?:cover|overview|summary|presentation|slides?|pitch deck|deck|untitled|index|entry|ipollowork(?: slide editing demo)?|pitch deck - ipollowork)$/i.test(value.trim());
 }
 
+function isPreviewLocalAssetUrl(value: string) {
+  const trimmed = value.trim();
+  return Boolean(trimmed)
+    && !trimmed.startsWith("#")
+    && !trimmed.startsWith("/")
+    && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(trimmed)
+    && !trimmed.split(/[?#]/, 1)[0]?.split("/").includes("..");
+}
+
+function resolvePreviewAssetPath(currentPath: string, assetUrl: string) {
+  const path = assetUrl.split(/[?#]/, 1)[0] ?? "";
+  const base = directoryPath(currentPath);
+  const segments: string[] = [];
+  for (const segment of `${base}${path}`.split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return segments.join("/");
+}
+
+type HydratedDesignPreview = {
+  source: string;
+  objectUrls: string[];
+};
+
+function arrayBufferToPreviewDataUrl(data: ArrayBuffer, contentType: string | null) {
+  const bytes = new Uint8Array(data);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return `data:${contentType ?? "application/octet-stream"};base64,${btoa(binary)}`;
+}
+
+async function hydrateDesignPreviewAssets(
+  source: string,
+  input: { client: iPolloWorkServerClient | null; workspaceId: string | null; activePagePath: string },
+): Promise<HydratedDesignPreview> {
+  if (!input.client || !input.workspaceId || !input.activePagePath || typeof DOMParser === "undefined") {
+    return { source, objectUrls: [] };
+  }
+  const client = input.client;
+  const workspaceId = input.workspaceId;
+  const parser = new DOMParser();
+  const document = parser.parseFromString(source, "text/html");
+  const images = Array.from(document.querySelectorAll<HTMLImageElement>("img[src]"))
+    .filter((image) => isPreviewLocalAssetUrl(image.getAttribute("src") ?? ""));
+  if (!images.length) return { source, objectUrls: [] };
+
+  const assetUrls = new Map<string, string>();
+  await Promise.all(images.map(async (image) => {
+    const original = image.getAttribute("src") ?? "";
+    const assetPath = resolvePreviewAssetPath(input.activePagePath, original);
+    const existing = assetUrls.get(assetPath);
+    if (existing) {
+      image.setAttribute("src", existing);
+      image.setAttribute("data-ipw-preview-src", original);
+      return;
+    }
+    try {
+      const downloaded = await client.downloadWorkspaceFile(workspaceId, assetPath);
+      const dataUrl = arrayBufferToPreviewDataUrl(downloaded.data, downloaded.contentType);
+      assetUrls.set(assetPath, dataUrl);
+      image.setAttribute("src", dataUrl);
+      image.setAttribute("data-ipw-preview-src", original);
+    } catch {
+      // Leave the original relative URL in place so broken assets stay visible
+      // as broken assets instead of hiding an underlying file issue.
+    }
+  }));
+  const doctype = source.trimStart().toLowerCase().startsWith("<!doctype") ? "<!DOCTYPE html>\n" : "";
+  return { source: `${doctype}${document.documentElement.outerHTML}`, objectUrls: [] };
+}
+
 function deckPdfFileName(document: Document, path: string) {
   const cleanCandidate = (value: string | null | undefined) => {
     const cleaned = sanitizePdfFileBaseName(value ?? "");
@@ -497,6 +573,7 @@ export function DesignPanel({
   const [savedSource, setSavedSource] = React.useState("");
   const [history, setHistory] = React.useState<string[]>([]);
   const [previewSource, setPreviewSource] = React.useState("");
+  const [hydratedPreviewSource, setHydratedPreviewSource] = React.useState("");
   const [previewRevision, setPreviewRevision] = React.useState(0);
   const [previewLoaded, setPreviewLoaded] = React.useState(false);
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
@@ -633,10 +710,34 @@ export function DesignPanel({
     setAdvancedOpen(false);
     setDesignSystemOpen(false);
     setPreviewSource(fileQuery.data.content);
+    setHydratedPreviewSource("");
     setPreviewLoaded(false);
     setSourceHydrated(true);
     setPreviewRevision((current) => current + 1);
   }, [activePagePath, fileQuery.data?.content, fileQuery.data?.updatedAt, sessionId, viewedVersionPath]);
+
+  React.useEffect(() => {
+    if (!previewSource) {
+      setHydratedPreviewSource("");
+      return;
+    }
+    let cancelled = false;
+    let objectUrls: string[] = [];
+    setPreviewLoaded(false);
+    void hydrateDesignPreviewAssets(previewSource, { client, workspaceId, activePagePath }).then((result) => {
+      objectUrls = result.objectUrls;
+      if (cancelled) {
+        objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        return;
+      }
+      setHydratedPreviewSource(result.source);
+      setPreviewRevision((current) => current + 1);
+    });
+    return () => {
+      cancelled = true;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [activePagePath, client, previewSource, workspaceId]);
 
   React.useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
@@ -758,11 +859,17 @@ export function DesignPanel({
     // packaged Electron builds, producing a valid but blank PPTX.
     frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;opacity:0;pointer-events:none`;
     document.body.append(frame);
+    let hydratedObjectUrls: string[] = [];
     try {
       const exportLibraries = Promise.all([import("html2canvas-pro"), import("jspdf")]);
       const content = editing ? await readLatestCanvasHtml() : draftRef.current;
-      frame.srcdoc = buildDesignPreviewDocument(
+      const hydratedContent = await hydrateDesignPreviewAssets(
         downgradeUnsupportedPdfExportColorText(content),
+        { client, workspaceId, activePagePath },
+      );
+      hydratedObjectUrls = hydratedContent.objectUrls;
+      frame.srcdoc = buildDesignPreviewDocument(
+        hydratedContent.source,
         false,
         downgradeUnsupportedPdfExportColorText(templateTokenQuery.data ?? ""),
         false,
@@ -823,10 +930,11 @@ export function DesignPanel({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not export this presentation.");
     } finally {
+      hydratedObjectUrls.forEach((url) => URL.revokeObjectURL(url));
       frame.remove();
       setExportingPdf(false);
     }
-  }, [activePagePath, deck, editing, exportingPdf, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data]);
+  }, [activePagePath, client, deck, editing, exportingPdf, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data, workspaceId]);
 
   const exportDeckToPptx = React.useCallback(async () => {
     if (!deck || exportingPptx) return;
@@ -841,14 +949,20 @@ export function DesignPanel({
     // source iframe paintable so Chromium can resolve those elements in the clone.
     frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;opacity:0;pointer-events:none`;
     document.body.append(frame);
+    let hydratedObjectUrls: string[] = [];
     try {
       const content = editing ? await readLatestCanvasHtml() : draftRef.current;
       const previewContent = usesNativeEditablePptx ? content : downgradeUnsupportedPdfExportColorText(content);
       const previewTokens = usesNativeEditablePptx
         ? templateTokenQuery.data ?? ""
         : downgradeUnsupportedPdfExportColorText(templateTokenQuery.data ?? "");
-      frame.srcdoc = buildDesignPreviewDocument(
+      const hydratedContent = await hydrateDesignPreviewAssets(
         previewContent,
+        { client, workspaceId, activePagePath },
+      );
+      hydratedObjectUrls = hydratedContent.objectUrls;
+      frame.srcdoc = buildDesignPreviewDocument(
+        hydratedContent.source,
         false,
         previewTokens,
         false,
@@ -1085,10 +1199,11 @@ export function DesignPanel({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not export this presentation.");
     } finally {
+      hydratedObjectUrls.forEach((url) => URL.revokeObjectURL(url));
       frame.remove();
       setExportingPptx(false);
     }
-  }, [activePagePath, deck, editing, exportingPptx, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx]);
+  }, [activePagePath, client, deck, editing, exportingPptx, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx, workspaceId]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1154,6 +1269,7 @@ export function DesignPanel({
       setQuickEdit(null);
       setAdvancedOpen(false);
       setPreviewSource(content);
+      setHydratedPreviewSource("");
       setPreviewLoaded(false);
       setPreviewRevision((current) => current + 1);
     } catch (error) {
@@ -1266,6 +1382,7 @@ export function DesignPanel({
     setSelection(null);
     setQuickEdit(null);
     setPreviewSource(previous);
+    setHydratedPreviewSource("");
     setPreviewLoaded(false);
     setPreviewRevision((current) => current + 1);
   };
@@ -1330,8 +1447,8 @@ export function DesignPanel({
   const preview = React.useMemo(
     // The bridge is always present but starts inactive. Toggling Edit page is
     // a message to that bridge, not a new srcDoc, so a deck stays on its slide.
-    () => buildDesignPreviewDocument(previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
-    [isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
+    () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
+    [hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
   const presentationLeft = Math.max(0, (previewViewport.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
   const presentationTop = Math.max(0, (previewViewport.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
