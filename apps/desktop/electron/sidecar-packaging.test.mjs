@@ -1,12 +1,37 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import afterPackModule from "../scripts/electron-after-pack.cjs";
+import { stageServerConstants } from "../scripts/server-packaging.mjs";
 
 const afterPack = afterPackModule.default ?? afterPackModule;
+
+it("stages constants beside every compiled server module that imports them", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-server-package-"));
+  const serverDistDir = path.join(root, "dist");
+  const constantsSrc = path.join(root, "constants.json");
+  await mkdir(serverDistDir, { recursive: true });
+  await writeFile(constantsSrc, '{"opencodeVersion":"1.2.3"}\n');
+  await writeFile(path.join(serverDistDir, "server.js"), 'import constants from "../../../constants.json" with { type: "json" };\n');
+  await writeFile(path.join(serverDistDir, "plugin-package-lifecycle.js"), "import constants from '../../../constants.json' with { type: 'json' };\n");
+  await writeFile(path.join(serverDistDir, "unrelated.js"), 'export const value = "../../../constants.json";\n');
+
+  try {
+    assert.deepEqual(stageServerConstants({ serverDistDir, constantsSrc }).sort(), [
+      "plugin-package-lifecycle.js",
+      "server.js",
+    ]);
+    assert.equal(await readFile(path.join(serverDistDir, "constants.json"), "utf8"), '{"opencodeVersion":"1.2.3"}\n');
+    assert.match(await readFile(path.join(serverDistDir, "server.js"), "utf8"), /from "\.\/constants\.json"/);
+    assert.match(await readFile(path.join(serverDistDir, "plugin-package-lifecycle.js"), "utf8"), /from "\.\/constants\.json"/);
+    assert.match(await readFile(path.join(serverDistDir, "unrelated.js"), "utf8"), /\.\.\/\.\.\/\.\.\/constants\.json/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 const { assertPackagedNodePty } = afterPackModule;
 
 async function createWindowsFixture(triple) {

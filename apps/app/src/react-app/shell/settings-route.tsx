@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
-import { SUGGESTED_PLUGINS } from "@/app/constants";
+import { FIGMA_MCP_QUICK_CONNECT, SUGGESTED_PLUGINS } from "@/app/constants";
 import type { EnablementContext } from "@/app/enablement";
 import { createClient } from "@/app/lib/opencode";
 import {
@@ -2080,6 +2080,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                 client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
                 workspaceId={runtimeWorkspaceId}
                 onOpenUrl={(url) => platform.openLink(url)}
+                onConnectFigma={() => {
+                  void connectionsStore.connectMcp(FIGMA_MCP_QUICK_CONNECT);
+                }}
               />
             }
             mcpView={
