@@ -4,7 +4,6 @@ import {
   AlertCircle,
   Archive,
   ArchiveRestore,
-  Check,
   ChevronRight,
   FolderPlus,
   Loader2,
@@ -78,6 +77,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -919,19 +920,17 @@ export function AppSidebar(props: AppSidebarProps) {
                     <DropdownMenuSubTrigger>
                       <Languages className="size-4" />
                       {t("settings.language")}
-                      <span className="ml-auto text-xs font-normal text-muted-foreground">
-                        {language === "zh" ? "中文" : "English"}
-                      </span>
                     </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="w-36 min-w-36">
-                      <DropdownMenuItem onClick={() => switchLanguage("zh")}>
-                        中文
-                        {language === "zh" ? <Check className="ml-auto size-3.5" /> : null}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => switchLanguage("en")}>
-                        English
-                        {language === "en" ? <Check className="ml-auto size-3.5" /> : null}
-                      </DropdownMenuItem>
+                    <DropdownMenuSubContent className="w-40 min-w-40">
+                      <DropdownMenuRadioGroup
+                        value={language}
+                        onValueChange={(value) => {
+                          if (value === "zh" || value === "en") switchLanguage(value);
+                        }}
+                      >
+                        <DropdownMenuRadioItem value="zh">中文</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                 </DropdownMenuContent>
