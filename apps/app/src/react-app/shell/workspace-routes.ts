@@ -10,7 +10,7 @@ export function workspaceSessionRoute(workspaceId: string, sessionId?: string | 
 
 export function workspaceSettingsRoute(
   workspaceId: string,
-  tab: SettingsTab | "extensions/mcp" | "extensions/plugins" | string = "general",
+  tab: SettingsTab | "extensions/mcp" | "extensions/plugins" | string = "preferences",
 ) {
   return `/workspace/${encodeURIComponent(workspaceId.trim())}/settings/${tab}`;
 }
