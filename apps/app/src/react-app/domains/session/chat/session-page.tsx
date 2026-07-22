@@ -73,6 +73,7 @@ import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
+import { loadTemplateSession } from "../templates/template-session-probe";
 import { VideoPanel } from "../video/video-panel";
 import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, templateColorPaletteLabel, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
@@ -490,7 +491,7 @@ export function SessionPage(props: SessionPageProps) {
     return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   useEffect(() => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || (selectedSessionType !== "design" && selectedSessionType !== "video")) {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) {
       setTemplateSessionData(null);
       setTemplateSessionLoading(false);
       return;
@@ -501,17 +502,18 @@ export function SessionPage(props: SessionPageProps) {
     const sessionId = props.selectedSessionId;
     setTemplateSessionLoading(true);
     void (async () => {
+      const result = await loadTemplateSession({
+        client,
+        workspaceId,
+        sessionId,
+        knownSessionType: selectedSessionType,
+      });
+      if (!result) {
+        if (active) setTemplateSessionData(null);
+        if (active) setTemplateSessionLoading(false);
+        return;
+      }
       try {
-        let result: TemplateSessionSnapshot;
-        try {
-          result = await client.getTemplateSession(workspaceId, sessionId);
-        } catch (error) {
-          // Sessions created before template persistence already have exactly
-          // one Studio project at video/<session>. Claim that project once so
-          // future app launches and agent prompts use its stored binding.
-          if (selectedSessionType !== "video") throw error;
-          result = await client.adoptLegacyVideoSession(workspaceId, sessionId);
-        }
         const materializedType = sessionTypeForTemplate(result.manifest);
         if (materializedType !== selectedSessionType) {
           setSessionType(sessionId, materializedType);
