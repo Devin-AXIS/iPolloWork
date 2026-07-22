@@ -80,7 +80,7 @@ const LocalContext = createContext<LocalContextValue | undefined>(undefined);
 const UI_STORAGE_KEY = "ipollowork.ui";
 export const DEFAULT_SHOW_THINKING = true;
 
-const INITIAL_UI: LocalUIState = { view: "settings", tab: "general" };
+const INITIAL_UI: LocalUIState = { view: "settings", tab: "preferences" };
 const INITIAL_PREFS: LocalPreferences = {
   showThinking: DEFAULT_SHOW_THINKING,
   modelVariant: null,

@@ -14,7 +14,7 @@ export function AppMenuProvider({ children }: { children: ReactNode }) {
   const toggleSidebar = useUiStateStore((state) => state.toggleSidebar);
 
   useEffect(() => {
-    const openSettings = () => navigate("/settings/general");
+    const openSettings = () => navigate("/settings/preferences");
     const checkUpdates = () => {
       useUpdateCheckRequestStore.getState().requestUpdateCheck();
       navigate("/settings/updates");
