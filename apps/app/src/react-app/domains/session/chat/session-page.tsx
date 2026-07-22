@@ -72,6 +72,7 @@ import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTa
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
+import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { VideoPanel } from "../video/video-panel";
 import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, templateColorPaletteLabel, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
@@ -811,7 +812,27 @@ export function SessionPage(props: SessionPageProps) {
 
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
-  const openTarget = useCallback((target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
+  const resolveOpenTargetTemplateSurface = useCallback(async (target: OpenTarget, sourceSessionId: string | null | undefined) => {
+    if (
+      !sourceSessionId
+      || sourceSessionId !== props.selectedSessionId
+      || target.kind !== "file"
+      || !props.ipolloworkServerClient
+      || !props.runtimeWorkspaceId
+    ) {
+      return null;
+    }
+
+    const binding = templateSessionData
+      ? Promise.resolve({ surface: templateSessionData.manifest.surface, entry: templateSessionData.state.entry })
+      : props.ipolloworkServerClient
+        .getTemplateSession(props.runtimeWorkspaceId, sourceSessionId)
+        .then((session) => ({ surface: session.manifest.surface, entry: session.state.entry }))
+        .catch(() => null);
+
+    return waitForTemplateEntrySurface(target, binding);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, templateSessionData]);
+  const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);
       if (isElectronRuntime()) {
@@ -840,6 +861,13 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
 
+    const sourceId = sourceSessionId ?? props.selectedSessionId;
+    const templateSurface = await resolveOpenTargetTemplateSurface(target, sourceId);
+    if (templateSurface) {
+      setCurrentSidePanel(templateSurface);
+      return;
+    }
+
     if (!isCollectibleArtifactTarget(target)) {
       if (isOpenableFileTarget(target)) {
         if (props.selectedWorkspaceDisplay.workspaceType === "remote") {
@@ -862,11 +890,47 @@ export function SessionPage(props: SessionPageProps) {
     });
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
-  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel]);
-  const closeRightPane = useCallback(() => {
+  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, setCurrentSidePanel]);
+  const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
+    if (!options?.preserveAutoCollapse) {
+      userOpenedSidePanelWhileNarrowRef.current = false;
+      autoCollapsedSidePanelRef.current = null;
+    }
     setSessionPanelView(null);
     setCurrentSidePanel(null);
   }, [setCurrentSidePanel]);
+  useEffect(() => {
+    if (
+      availableMainWorkspaceWidth < AUTO_COLLAPSE_RIGHT_PANEL_WIDTH &&
+      sidePanelOpen &&
+      !userOpenedSidePanelWhileNarrowRef.current
+    ) {
+      autoCollapsedSidePanelRef.current = effectiveSidePanelView;
+      closeRightPane({ preserveAutoCollapse: true });
+      return;
+    }
+    const restoredPanel = autoCollapsedSidePanelRef.current;
+    if (
+      restoredPanel &&
+      !sidePanelOpen &&
+      expandedRightPanelWorkspaceWidth >= AUTO_COLLAPSE_RIGHT_PANEL_WIDTH
+    ) {
+      autoCollapsedSidePanelRef.current = null;
+      userOpenedSidePanelWhileNarrowRef.current = false;
+      if (restoredPanel === "launcher") {
+        setSessionPanelView("launcher");
+      } else {
+        setCurrentSidePanel(restoredPanel);
+      }
+    }
+  }, [
+    availableMainWorkspaceWidth,
+    closeRightPane,
+    effectiveSidePanelView,
+    expandedRightPanelWorkspaceWidth,
+    setCurrentSidePanel,
+    sidePanelOpen,
+  ]);
   const openBrowserRailPane = useCallback(() => {
     // Opening the browser pane should land on a usable page, not an empty
     // panel that forces the user to click "+". If no browser tab exists yet,
