@@ -24,6 +24,7 @@ import {
   groupConversationOutputArtifacts,
   isConversationOutputArtifact,
   isVideoHtmlArtifact,
+  selectTemplateEntryArtifacts,
   useArtifacts,
   usePreviewArtifact,
 } from "@/lib/artifacts";
@@ -150,15 +151,18 @@ interface ArtifactListProps {
 
 export function ArtifactList({ messages, includeTargetFallbacks = false, supplementalFiles, onOpenVideoStudio }: ArtifactListProps) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks, supplementalFiles });
+  const displayedArtifacts = supplementalFiles?.[0]
+    ? selectTemplateEntryArtifacts(artifacts, supplementalFiles[0])
+    : artifacts;
 
-  if (artifacts.length === 0) {
+  if (displayedArtifacts.length === 0) {
     return null;
   }
 
   return (
     <div className="mx-auto w-full max-w-3xl px-2 md:px-10">
       <div className="no-scrollbar flex min-w-0 flex-nowrap gap-2 overflow-x-auto pb-1">
-        {artifacts.map((artifact) => (
+        {displayedArtifacts.map((artifact) => (
           <ArtifactButton key={artifact.id} artifact={artifact} onOpenVideoStudio={onOpenVideoStudio} />
         ))}
       </div>
@@ -175,10 +179,13 @@ interface ConversationOutputPanelProps {
 }
 
 function ConversationOutputPanelContent({ messages, templateEntryPath, onOpenVideoStudio }: Omit<ConversationOutputPanelProps, "openTargets" | "onOpenTarget">) {
-  const artifacts = useArtifacts(messages, {
+  const discoveredArtifacts = useArtifacts(messages, {
     includeTargetFallbacks: false,
     supplementalFiles: templateEntryPath ? [templateEntryPath] : undefined,
   });
+  const artifacts = templateEntryPath
+    ? selectTemplateEntryArtifacts(discoveredArtifacts, templateEntryPath)
+    : discoveredArtifacts;
   const outputs = artifacts.filter(isConversationOutputArtifact);
   const outputGroups = groupConversationOutputArtifacts(outputs);
 

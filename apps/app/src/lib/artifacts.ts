@@ -150,6 +150,19 @@ export function canOpenArtifact(artifact: ArtifactItem) {
   return canPreviewArtifact(artifact) || isOpenableFileTarget(artifact.legacy_target);
 }
 
+/** A template-backed chat turn exposes one Design entry, never its implementation assets. */
+export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
+  const entryName = getArtifactName(normalizeArtifactPath(templateEntryPath)).toLowerCase();
+  const candidates = artifacts.filter((artifact) => (
+    artifact.type === "html" && artifact.name.toLowerCase() === entryName
+  ));
+  const selected = candidates.find(canOpenArtifact)
+    ?? candidates.find((artifact) => normalizeArtifactPath(artifact.path).toLowerCase() === normalizeArtifactPath(templateEntryPath).toLowerCase())
+    ?? candidates[0];
+
+  return selected ? [selected] : [];
+}
+
 function getArtifactName(path: string) {
   const segments = path.split(/[/\\]/);
 
