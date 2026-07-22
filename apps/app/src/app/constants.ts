@@ -95,7 +95,19 @@ export function getMcpServerName(entry: McpDirectoryInfo): string {
     .replace(/^-|-$/g, "") || "mcp";
 }
 
+export const FIGMA_MCP_QUICK_CONNECT: McpDirectoryInfo = {
+  get name() { return t("mcp.quick_connect_figma_title"); },
+  serverName: "figma",
+  get description() { return t("mcp.quick_connect_figma_desc"); },
+  url: "https://mcp.figma.com/mcp",
+  type: "remote",
+  oauth: true,
+  kind: "mcp",
+  iconSlug: "figma",
+};
+
 export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
+  FIGMA_MCP_QUICK_CONNECT,
   {
     get name() { return t("mcp.quick_connect_notion_title"); },
     serverName: "notion",

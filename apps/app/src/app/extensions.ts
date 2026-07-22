@@ -46,6 +46,8 @@ export type iPolloWorkExtensionResource = {
   providerId?: string;
   mcpServerName?: string;
   localCommandRef?: "ipollowork.computerUseMcp" | "ipollowork.uiMcp";
+  requires?: string[];
+  provides?: string[];
   required?: boolean;
 };
 
@@ -80,6 +82,81 @@ export type iPolloWorkExtensionSetup = {
 export type iPolloWorkExtensionLifecycle = {
   reload?: ReloadReason[];
   detection?: string[];
+};
+
+export type iPolloWorkPluginPermissionId =
+  | "network"
+  | "workspace-read"
+  | "workspace-write"
+  | "process"
+  | "clipboard"
+  | "notifications"
+  | "camera"
+  | "microphone";
+
+export type iPolloWorkPluginPermission = {
+  id: iPolloWorkPluginPermissionId;
+  reason: string;
+  optional?: boolean;
+};
+
+export type iPolloWorkPluginSecretField = {
+  id: string;
+  label: string;
+  description?: string;
+  placeholder?: string;
+  secret?: boolean;
+  required?: boolean;
+};
+
+export type iPolloWorkPluginAuthorizationMethod =
+  | {
+      id: string;
+      kind: "secret-form";
+      label: string;
+      description?: string;
+      fields: iPolloWorkPluginSecretField[];
+    }
+  | {
+      id: string;
+      kind: "oauth-pkce";
+      label: string;
+      description?: string;
+      clientId: string;
+      authorizationUrl: string;
+      tokenUrl: string;
+      scopes: string[];
+      audience?: string;
+    }
+  | {
+      id: string;
+      kind: "device-code";
+      label: string;
+      description?: string;
+      clientId: string;
+      deviceAuthorizationUrl: string;
+      tokenUrl: string;
+      scopes: string[];
+      qr?: boolean;
+    }
+  | {
+      id: string;
+      kind: "hosted-browser";
+      label: string;
+      description?: string;
+      startUrl: string;
+      callbackOrigin: string;
+      exchangeUrl: string;
+      refreshUrl?: string;
+    };
+
+export type iPolloWorkPluginPackageMetadata = {
+  version: string;
+  publisher?: { id: string; name: string };
+  compatibility?: { ipollowork?: string; opencode?: string };
+  updateId: string;
+  entrypoints: { opencode?: string; service?: string };
+  checksum?: { algorithm: "sha256"; value: string };
 };
 
 // ---------------------------------------------------------------------------
@@ -126,6 +203,15 @@ export type iPolloWorkExtensionManifest = {
   resources: iPolloWorkExtensionResource[];
   contributions?: iPolloWorkExtensionContribution[];
   lifecycle?: iPolloWorkExtensionLifecycle;
+  /** Optional package metadata for independently distributed extensions. */
+  package?: iPolloWorkPluginPackageMetadata;
+  /** Permissions shown before installing executable third-party packages. */
+  permissions?: iPolloWorkPluginPermission[];
+  /** Plugin-owned authorization; intentionally independent from Authorization Center. */
+  authorization?: {
+    required: boolean;
+    methods: iPolloWorkPluginAuthorizationMethod[];
+  };
   /** Declarative conditions that must ALL be true for the extension to be "active". */
   enablement?: EnablementCondition[];
   defaultEnabled?: boolean;

@@ -41,7 +41,7 @@ describe("PPTX-compatible export", () => {
     expect(pointsForPptxCompatibleSlide("76.44px", 1600)).toBe(45.863);
   });
 
-  test("rejects unsupported visuals instead of planning a screenshot fallback", () => {
+  test("keeps the validation result available for unsupported visual diagnostics", () => {
     expect(validatePptxCompatibleMarkup({
       hasUnsupportedVisual: true,
       hasUnmarkedVisibleElement: false,
@@ -54,6 +54,13 @@ describe("PPTX-compatible export", () => {
       hasUnsupportedVisual: false,
       hasUnmarkedVisibleElement: false,
     })).toEqual({ valid: true });
+  });
+
+  test("routes marked unsupported visuals to local fallback images", async () => {
+    const source = await Bun.file(new URL("../src/react-app/domains/session/design/pptx-compatible-export.ts", import.meta.url)).text();
+
+    expect(source).toContain('{ kind: "fallback", element');
+    expect(source).toContain("fallbackRoots.some");
   });
 
   test("only enables strict native export when the document has native object markers", () => {

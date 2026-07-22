@@ -462,10 +462,10 @@ export function IPolloWorkRouteControlActions() {
     },
     {
       id: "route.settings.general",
-      label: "Open general settings",
-      description: "Navigate to general settings.",
+      label: "Open preferences settings",
+      description: "Navigate to preferences settings.",
       sideEffect: "navigation",
-      execute: () => navigate("/settings/general"),
+      execute: () => navigate("/settings/preferences"),
     },
     {
       id: "route.settings.skills",

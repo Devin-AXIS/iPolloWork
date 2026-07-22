@@ -1,6 +1,11 @@
 export function downloadTextAsFile(filename: string, content: string, mimeType: string) {
   if (typeof window === "undefined") return;
   const blob = new Blob([content], { type: mimeType });
+  downloadBlobAsFile(filename, blob);
+}
+
+export function downloadBlobAsFile(filename: string, blob: Blob) {
+  if (typeof window === "undefined") return;
   const url = URL.createObjectURL(blob);
   try {
     const anchor = document.createElement("a");

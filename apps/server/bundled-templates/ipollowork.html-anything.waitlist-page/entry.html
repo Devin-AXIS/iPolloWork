@@ -319,7 +319,7 @@
       <input type="email" name="email" placeholder="Work email" autocomplete="email" required>
       <button type="submit">Join the Waitlist</button>
     </form>
-    <p class="success-msg" id="success-msg" role="status">You're on the list! We'll be in touch.</p>
+    <p class="success-msg" id="success-msg" role="status">Demo only — no information was sent. Connect this form to your signup service before publishing.</p>
   </section>
 
   <div class="deco-section">
@@ -402,15 +402,19 @@
   </div>
 
   <script>
-    document.getElementById('waitlist-form').addEventListener('submit', function(e) {
-      e.preventDefault();
-      if (!this.checkValidity()) {
-        this.reportValidity();
-        return;
-      }
-      this.style.display = 'none';
-      document.getElementById('success-msg').classList.add('visible');
-    });
+    (() => {
+      const form = document.getElementById('waitlist-form');
+      if (!form) return;
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (!this.checkValidity()) {
+          this.reportValidity();
+          return;
+        }
+        this.style.display = 'none';
+        document.getElementById('success-msg')?.classList.add('visible');
+      });
+    })();
   </script>
 </body>
 </html>

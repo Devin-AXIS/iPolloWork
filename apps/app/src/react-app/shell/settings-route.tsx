@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
-import { SUGGESTED_PLUGINS } from "@/app/constants";
+import { FIGMA_MCP_QUICK_CONNECT, SUGGESTED_PLUGINS } from "@/app/constants";
 import type { EnablementContext } from "@/app/enablement";
 import { createClient } from "@/app/lib/opencode";
 import {
@@ -84,6 +84,7 @@ import { DebugView } from "@/react-app/domains/settings/pages/debug-view";
 import { EnvironmentView } from "@/react-app/domains/settings/pages/environment-view";
 import { AuthorizationCenterView } from "@/react-app/domains/settings/pages/authorization-center-view";
 import { ExtensionsView } from "@/react-app/domains/settings/pages/extensions-view";
+import { PluginPackagesPanel } from "@/react-app/domains/settings/plugin-packages-panel";
 import { McpView } from "@/react-app/domains/settings/pages/mcp-view";
 import { RecoveryView } from "@/react-app/domains/settings/pages/recovery-view";
 import { SkillsView } from "@/react-app/domains/settings/pages/skills-view";
@@ -253,7 +254,7 @@ export function parseSettingsPath(pathname: string): {
     .replace(/^\/settings\/?/, "")
     .replace(/^\/+|\/+$/g, "");
   if (!trimmed) {
-    return { tab: "general", redirectPath: "general" };
+    return { tab: "preferences", redirectPath: "preferences" };
   }
 
   const [head, tail] = trimmed.split("/");
@@ -286,7 +287,7 @@ export function parseSettingsPath(pathname: string): {
       if (tail === "plugins") return { tab: "extensions", redirectPath: null, extensionsSection: "plugins" };
       return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
     default:
-      return { tab: "general", redirectPath: "general" };
+      return { tab: "preferences", redirectPath: "preferences" };
   }
 }
 
@@ -356,7 +357,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const checkDesktopRestriction = useCheckDesktopRestriction();
   const restrictionNotice = useRestrictionNotice();
   const reloadCoordinator = useReloadCoordinator();
-  const [embeddedPath, setEmbeddedPath] = useState(props.initialPath ?? "general");
+  const [embeddedPath, setEmbeddedPath] = useState(props.initialPath ?? "preferences");
   const route = props.embedded ? parseSettingsPath(`/settings/${embeddedPath}`) : parseSettingsPath(location.pathname);
   const navigationWorkspaceId = readNavigationWorkspaceId(location.state);
   const navigationSessionId = readNavigationSessionId(location.state);
@@ -2074,6 +2075,16 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               void extensionsStore.refreshCloudOrgMarketplaces({ force: true });
               void orgMcpConnections.refresh();
             }}
+            pluginPackagesView={
+              <PluginPackagesPanel
+                client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+                workspaceId={runtimeWorkspaceId}
+                onOpenUrl={(url) => platform.openLink(url)}
+                onConnectFigma={() => {
+                  void connectionsStore.connectMcp(FIGMA_MCP_QUICK_CONNECT);
+                }}
+              />
+            }
             mcpView={
               <McpView
                 busy={busy}

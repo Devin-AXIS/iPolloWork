@@ -1,17 +1,33 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { deflateRawSync } from "node:zlib";
 import { TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, readTemplateSession, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
+import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
+const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
+const crc32Table = Uint32Array.from({ length: 256 }, (_, value) => {
+  let entry = value;
+  for (let bit = 0; bit < 8; bit += 1) entry = entry & 1 ? 0xedb88320 ^ (entry >>> 1) : entry >>> 1;
+  return entry >>> 0;
+});
+
+function crc32(data: Uint8Array): number {
+  let checksum = 0xffffffff;
+  for (const byte of data) checksum = crc32Table[(checksum ^ byte) & 0xff] ^ (checksum >>> 8);
+  return (checksum ^ 0xffffffff) >>> 0;
+}
+
 afterEach(() => {
   if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
+  if (previousBundledTemplatesDir === undefined) delete process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
+  else process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR = previousBundledTemplatesDir;
 });
 
 function config(root: string): ServerConfig {
@@ -34,6 +50,7 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(crc32(data), 14);
     local.writeUInt32LE(data.length, 18);
     local.writeUInt32LE(data.length, 22);
     local.writeUInt16LE(nameBuffer.length, 26);
@@ -42,6 +59,7 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE(20, 4);
     central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc32(data), 16);
     central.writeUInt32LE(data.length, 20);
     central.writeUInt32LE(data.length, 24);
     central.writeUInt16LE(nameBuffer.length, 28);
@@ -76,6 +94,88 @@ const flagshipVideoTemplateIds = [
 
 function importedTemplateId(id: string) {
   return `test.${id.replace(/^ipollowork\./, "")}`;
+}
+
+function deflatedZip(name: string, contents: string, declaredSize: number): Uint8Array {
+  const nameBuffer = Buffer.from(name);
+  const data = Buffer.from(contents);
+  const compressed = deflateRawSync(data);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(crc32(data), 14);
+  local.writeUInt32LE(compressed.length, 18);
+  local.writeUInt32LE(declaredSize, 22);
+  local.writeUInt16LE(nameBuffer.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(crc32(data), 16);
+  central.writeUInt32LE(compressed.length, 20);
+  central.writeUInt32LE(declaredSize, 24);
+  central.writeUInt16LE(nameBuffer.length, 28);
+  const centralOffset = local.length + nameBuffer.length + compressed.length;
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(1, 8);
+  eocd.writeUInt16LE(1, 10);
+  eocd.writeUInt32LE(central.length + nameBuffer.length, 12);
+  eocd.writeUInt32LE(centralOffset, 16);
+  return Buffer.concat([local, nameBuffer, compressed, central, nameBuffer, eocd]);
+}
+
+function htmlAttribute(tag: string, name: string) {
+  return tag.match(new RegExp(`(?:^|\\s)${name}\\s*=\\s*["']([^"']*)["']`, "i"))?.[1]?.trim() ?? "";
+}
+
+function websiteInteractionProblems(entry: string) {
+  const ids = new Set(Array.from(entry.matchAll(/\sid=["']([^"']+)["']/gi), (match) => match[1]));
+  const buttons = Array.from(entry.matchAll(/<button\b[^>]*>/gi), (match) => match[0]);
+  const links = Array.from(entry.matchAll(/<a\b[^>]*>/gi), (match) => match[0]);
+  const scripts = Array.from(
+    entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi),
+    (match) => match[1],
+  );
+  const inertButtons = buttons.filter((tag) => {
+    const type = htmlAttribute(tag, "type");
+    return !(
+      tag.includes("mobile-nav-toggle")
+      || type === "submit"
+      || htmlAttribute(tag, "data-ipw-action-message")
+      || htmlAttribute(tag, "data-ipw-toggle")
+    );
+  });
+  const badLinks = links.filter((tag) => {
+    const href = htmlAttribute(tag, "href");
+    return !href || href === "#" || (href.startsWith("#") && !ids.has(href.slice(1)));
+  });
+  const fallbackButtons = buttons.filter((tag) => htmlAttribute(tag, "data-ipw-action-message"));
+  const scriptIsIsolated = (script: string) => /^\s*\(\(\)\s*=>\s*\{[\s\S]*\}\)\(\);?\s*$/.test(script);
+  return {
+    inertButtons,
+    badLinks,
+    hasFallbackStatus: fallbackButtons.length === 0 || /<(?:p|div)\b[^>]*(?:role=["']status["']|aria-live=["']polite["'])/i.test(entry),
+    scriptsParseTogether: (() => {
+      try { new Function(scripts.join("\n")); return true; } catch { return false; }
+    })(),
+    scriptsAreIsolated: scripts.every(scriptIsIsolated),
+  };
+}
+
+function interactiveButton(dataset: Record<string, string>) {
+  const attributes = new Map<string, string>();
+  const listeners = new Map<string, () => void>();
+  return {
+    dataset,
+    attributes,
+    listeners,
+    classList: { toggle: (_name: string, _active: boolean) => undefined },
+    setAttribute: (name: string, value: string) => attributes.set(name, value),
+    addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+  };
 }
 
 async function readPackageFiles(root: string, relative = ""): Promise<Record<string, Buffer>> {
@@ -120,6 +220,13 @@ function localPackage(id = "local.clean-portfolio", overrides: Record<string, un
     schemaVersion: 1, id, version: "1.0.0", kind: "design", category: "site", subcategory: "portfolio", title: "Clean Portfolio", description: "A compact local portfolio template.", cover: "cover.svg", entry: "entry.html", source: { name: "Local author", license: "MIT" }, designSystem: { tokenVersion: 1, editableGroups: ["theme", "typography"] }, applyChecklist: ["Update the portfolio content"], minimumAppVersion: "0.17.0", ...overrides,
   };
   return storedZip({ "manifest.json": JSON.stringify(manifest), "entry.html": "<!doctype html><h1>Portfolio</h1>", "cover.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>", LICENSE: "MIT" });
+}
+
+function slidesPackage(id = "local.native-deck", entry = "<!doctype html><section data-ipw-slide><h1 data-pptx-text>Deck</h1></section>", overrides: Record<string, unknown> = {}) {
+  const manifest = {
+    schemaVersion: 1, id, version: "1.0.0", kind: "design", category: "slides", subcategory: "pitch", style: "minimal", tags: ["pitch"], pptxCompatibility: "native-editable", surface: "design", title: "Native Deck", description: "A local editable presentation template.", cover: "cover.svg", entry: "entry.html", source: { name: "Local author", license: "MIT" }, designSystem: { tokenVersion: 1, editableGroups: ["theme", "typography"] }, applyChecklist: ["Update the presentation content"], minimumAppVersion: "0.17.0", ...overrides,
+  };
+  return storedZip({ "manifest.json": JSON.stringify(manifest), "entry.html": entry, "cover.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>", LICENSE: "MIT" });
 }
 
 function videoPackage(id = "local.product-video", entry = "<!doctype html><html data-composition-variables='[{\"id\":\"title\",\"type\":\"string\",\"label\":\"Title\",\"default\":\"Product Reveal\"},{\"id\":\"accent\",\"type\":\"color\",\"label\":\"Accent\",\"default\":\"#7c3aed\"}]'><body><div id=\"root\" data-composition-id=\"main\" data-width=\"1920\" data-height=\"1080\" data-duration=\"6\"><h1 data-var-text=\"title\">Product Reveal</h1></div></body></html>") {
@@ -190,14 +297,19 @@ describe("template installations", () => {
       expect(manifest.source.license).toBe("Apache-2.0");
       expect(manifest.source.revision).toBe("d0efb1eaa3b65c731709981718cd5a0a0d4e8f71");
       const upgradedCategories = new Set(["site", "other"]);
-      expect(manifest.version).toBe(upgradedCategories.has(manifest.category) ? "1.1.5" : "1.1.4");
+      const upgradedSlides = manifest.category === "slides" && manifest.id !== "ipollowork.html-anything.weekly-update";
+      expect(manifest.version).toBe(upgradedCategories.has(manifest.category) || upgradedSlides ? "1.1.5" : "1.1.4");
       expect(manifest.cover).toBe("cover.png");
       expect(JSON.stringify(manifest)).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
       expect(manifest.designSystem.variables.length).toBeGreaterThanOrEqual(manifest.surface === "video" ? 4 : 20);
       const entry = await readFile(join(root, manifest.entry), "utf8");
-      expect(entry).toMatch(manifest.surface === "video" ? /data-var-src="logoUrl"/ : /data-ipw-brand-slot/);
+      expect(entry).toMatch(manifest.surface === "video" ? /(data-var-src="logoUrl"|data-var-text="brandName")/ : /data-ipw-brand-slot/);
       expect(entry).not.toMatch(/HTML[- ]ANYTHING|OPEN DESIGN|Open Design/i);
       expect(entry).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
+      if (manifest.category === "slides") {
+        const visualTemplateId = manifest.id.replace("ipollowork.html-anything.", "");
+        expect(entry).toContain(`data-ipw-template="${visualTemplateId}"`);
+      }
       for (const script of entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
         expect(() => new Function(script[1])).not.toThrow();
       }
@@ -261,7 +373,7 @@ describe("template installations", () => {
     }
   });
 
-  test("ships every website template with an explicit mobile layout and accessible navigation", async () => {
+  test("ships every website template with accessible navigation and observable actions", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
     const websites: Array<{ manifest: TemplateManifestV1; entry: string }> = [];
     for (const directory of directories) {
@@ -280,7 +392,88 @@ describe("template installations", () => {
         expect(entry).toContain('aria-expanded="false"');
       }
       expect(manifest.minimumAppVersion).toBeTruthy();
+      const problems = websiteInteractionProblems(entry);
+      expect(problems.inertButtons).toEqual([]);
+      expect(problems.badLinks).toEqual([]);
+      expect(problems.hasFallbackStatus).toBe(true);
+      expect(problems.scriptsParseTogether).toBe(true);
+      expect(problems.scriptsAreIsolated).toBe(true);
+      if (manifest.id === "ipollowork.html-anything.prototype-web") {
+        expect(entry).toContain('data-ipw-action-message="Demo only — no video is connected yet. Add your product video before publishing."');
+      }
+      if (manifest.id === "ipollowork.html-anything.waitlist-page") {
+        expect(entry).not.toContain("You're on the list!");
+        expect(entry).toContain("Demo only — no information was sent. Connect this form to your signup service before publishing.");
+      }
     }
+  });
+
+  test("runs website toggle and fallback interactions without leaking globals", async () => {
+    const entry = await readFile(join(bundledTemplatesRoot, "ipollowork.html-anything.pricing-page", "entry.html"), "utf8");
+    const scripts = Array.from(
+      entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi),
+      (match) => match[1],
+    );
+    const script = scripts.at(-1);
+    if (!script) throw new Error("Pricing interaction script is missing");
+
+    const monthly = interactiveButton({ ipwToggle: "monthly" });
+    const yearly = interactiveButton({ ipwToggle: "yearly" });
+    const team = interactiveButton({ ipwActionMessage: "Team plan selected. Connect this button to your checkout flow." });
+    const status = { textContent: "" };
+    const soloSuffix = { textContent: "/ month" };
+    const teamSuffix = { textContent: "/ seat / month" };
+    const soloPrice = { dataset: { monthly: "$8", yearly: "$80" }, firstChild: { textContent: "$8 " }, querySelector: () => soloSuffix };
+    const teamPrice = { dataset: { monthly: "$14", yearly: "$140" }, firstChild: { textContent: "$14 " }, querySelector: () => teamSuffix };
+    const documentFixture = {
+      querySelector: (selector: string) => selector === "[data-ipw-action-status]" ? status : null,
+      querySelectorAll: (selector: string) => {
+        if (selector === "[data-ipw-toggle]") return [monthly, yearly];
+        if (selector === ".price[data-monthly][data-yearly]") return [soloPrice, teamPrice];
+        if (selector === "[data-ipw-action-message]") return [team];
+        return [];
+      },
+    };
+
+    new Function("document", script)(documentFixture);
+    yearly.listeners.get("click")?.();
+    team.listeners.get("click")?.();
+
+    expect(yearly.attributes.get("aria-pressed")).toBe("true");
+    expect(monthly.attributes.get("aria-pressed")).toBe("false");
+    expect(soloPrice.firstChild.textContent).toBe("$80 ");
+    expect(soloSuffix.textContent).toBe("/ year");
+    expect(status.textContent).toBe("Team plan selected. Connect this button to your checkout flow.");
+  });
+
+  test("submits the waitlist form with visible success feedback", async () => {
+    const entry = await readFile(join(bundledTemplatesRoot, "ipollowork.html-anything.waitlist-page", "entry.html"), "utf8");
+    const script = Array.from(
+      entry.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi),
+      (match) => match[1],
+    ).at(-1);
+    if (!script) throw new Error("Waitlist interaction script is missing");
+
+    let submit: ((event: { preventDefault: () => void }) => void) | undefined;
+    let prevented = false;
+    let visible = false;
+    const form = {
+      style: { display: "block" },
+      checkValidity: () => true,
+      reportValidity: () => undefined,
+      addEventListener: (_type: string, listener: typeof submit) => { submit = listener; },
+    };
+    const success = { classList: { add: (name: string) => { visible = name === "visible"; } } };
+    const documentFixture = {
+      getElementById: (id: string) => id === "waitlist-form" ? form : id === "success-msg" ? success : null,
+    };
+
+    new Function("document", script)(documentFixture);
+    submit?.call(form, { preventDefault: () => { prevented = true; } });
+
+    expect(prevented).toBe(true);
+    expect(form.style.display).toBe("none");
+    expect(visible).toBe(true);
   });
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
@@ -321,21 +514,28 @@ describe("template installations", () => {
     }
   });
 
-  test("does not ship removed templates into the personal template market", async () => {
+  test("seeds the full personal template market and keeps its install state global", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-templates-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
     expect(first.filter((item) => item.installed)).toHaveLength(72);
+    expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
+    await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
+    expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
+    expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
+  });
+
+  test("does not ship removed templates into the personal template market", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-templates-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const first = await listTemplates(serverConfig, "alpha");
     const removedIds = ["ipollowork.html-anything.deck-xhs-post", "ipollowork.html-anything.social-x-post-card"];
     for (const templateId of removedIds) {
       expect(existsSync(join(bundledTemplatesRoot, templateId))).toBe(false);
       expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
     }
-    expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
-    await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
-    expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
-    expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
   });
 
   test("materializes a full session snapshot that survives template uninstall", async () => {
@@ -352,6 +552,16 @@ describe("template installations", () => {
     expect(existsSync(join(ws.path, "design", "session_1", "template.json"))).toBe(false);
   });
 
+  test("resolves an explicit bundled template directory for headless runtimes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-bundled-templates-"));
+    try {
+      process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR = root;
+      expect(resolveBundledTemplatesRoot()).toBe(root);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("imports a valid local package and rejects traversal", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-import-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
@@ -365,6 +575,32 @@ describe("template installations", () => {
     await expect(importTemplate(serverConfig, "alpha", storedZip({ "../escape.html": "bad" }), "site")).rejects.toMatchObject({ code: "invalid_template_package" });
     await expect(importTemplate(serverConfig, "alpha", localPackage(), "slides")).rejects.toMatchObject({ code: "template_category_mismatch" });
     await expect(importTemplate(serverConfig, "alpha", localPackage("local.invalid-video", { category: "video", surface: "video" }), "video")).rejects.toMatchObject({ code: "invalid_template_manifest" });
+  });
+
+  test("auto-detects imported categories while preserving scoped import checks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-import-category-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const detected = await importTemplate(serverConfig, "alpha", localPackage("local.detected-site"));
+    expect(detected.manifest.category).toBe("site");
+    await expect(importTemplate(serverConfig, "alpha", localPackage("local.scoped-site"), "slides")).rejects.toMatchObject({ code: "template_category_mismatch" });
+  });
+
+  test("requires slideshow structure and honest PPTX compatibility markers", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-import-slides-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const installed = await importTemplate(serverConfig, "alpha", slidesPackage());
+    expect(installed.manifest.category).toBe("slides");
+    expect(installed.manifest.pptxCompatibility).toBe("native-editable");
+    await expect(importTemplate(serverConfig, "alpha", slidesPackage("local.not-a-deck", "<!doctype html><main>Not a deck</main>", { pptxCompatibility: undefined }))).rejects.toMatchObject({ code: "invalid_slides_template" });
+    await expect(importTemplate(serverConfig, "alpha", slidesPackage("local.false-pptx", "<!doctype html><section data-ipw-slide>Visual only</section>"))).rejects.toMatchObject({ code: "invalid_pptx_template" });
+  });
+
+  test("bounds decompression using the declared entry size", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-import-inflate-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    await expect(importTemplate(config(root), "alpha", deflatedZip("manifest.json", "x".repeat(1024), 1))).rejects.toMatchObject({ code: "invalid_template_package" });
   });
 
   test("requires HyperFrames variable declarations for local video templates only", async () => {

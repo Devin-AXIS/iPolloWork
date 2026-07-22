@@ -8,6 +8,11 @@ import {
 } from "../connect-state.js";
 import type { ServerConfig } from "../types.js";
 import {
+  callPluginServiceAction,
+  listPluginServiceActions,
+  workspaceIdForPluginContext,
+} from "../plugin-service-runtime.js";
+import {
   callGoogleWorkspaceExtensionAction,
   GOOGLE_WORKSPACE_EXTENSION_ACTIONS,
   GOOGLE_WORKSPACE_EXTENSION_ID,
@@ -45,13 +50,22 @@ function readStringField(value: unknown, key: string): string {
   return typeof field === "string" ? field.trim() : "";
 }
 
-export function listExperimentalExtensionActions(extensionId: string, connectSnapshot?: ConnectSnapshot) {
+export async function listExperimentalExtensionActions(
+  config: ServerConfig,
+  extensionId: string,
+  context: unknown,
+  connectSnapshot?: ConnectSnapshot,
+) {
   const filter = extensionId.trim();
-  const actions = filter
+  const builtInActions = filter
     ? IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS.filter((action) => action.extensionId === filter)
     : IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS;
-  if (!connectSnapshot || !shouldGateLegacyGoogleWorkspace(connectSnapshot)) return actions;
-  return actions.filter((action) => action.extensionId !== GOOGLE_WORKSPACE_EXTENSION_ID || action.action === "status");
+  const actions = !connectSnapshot || !shouldGateLegacyGoogleWorkspace(connectSnapshot)
+    ? builtInActions
+    : builtInActions.filter((action) => action.extensionId !== GOOGLE_WORKSPACE_EXTENSION_ID || action.action === "status");
+  if (!config.workspaces.length) return actions;
+  const workspaceId = workspaceIdForPluginContext(config, context);
+  return [...actions, ...await listPluginServiceActions(config, workspaceId, filter)];
 }
 
 export async function callExperimentalExtensionAction(config: ServerConfig, env: EnvService, input: unknown, connectSnapshot?: ConnectSnapshot) {
@@ -67,7 +81,14 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
   }
   const registered = IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS.find((item) => item.extensionId === extensionId && item.action === action);
   if (!registered) {
-    throw new ApiError(404, "extension_action_not_found", "iPolloWork extension action not found");
+    return callPluginServiceAction({
+      config,
+      workspaceId: workspaceIdForPluginContext(config, context),
+      pluginId: extensionId,
+      action,
+      args,
+      context,
+    });
   }
 
   if (

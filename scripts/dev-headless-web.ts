@@ -7,6 +7,7 @@ import path from "node:path";
 
 const cwd = process.cwd();
 const tmpDir = path.join(cwd, "tmp");
+const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 const ensureTmp = async () => {
   await mkdir(tmpDir, { recursive: true });
@@ -128,8 +129,9 @@ const ipolloworkToken = process.env.IPOLLOWORK_TOKEN ?? randomUUID();
 const ipolloworkHostToken = process.env.IPOLLOWORK_HOST_TOKEN ?? randomUUID();
 const ipolloworkServerBin = path.join(
   cwd,
-  "apps/server/dist/bin/ipollowork-server",
+  `apps/server/dist/bin/ipollowork-server${process.platform === "win32" ? ".exe" : ""}`,
 );
+const bundledTemplatesDir = path.join(cwd, "apps/server/dist/bundled-templates");
 
 const ensureiPolloWorkServer = async () => {
   try {
@@ -158,7 +160,7 @@ const ensureiPolloWorkServer = async () => {
       "[dev:headless-web] Auto-building: pnpm --filter ipollowork-server build:bin",
     );
     try {
-      await runCommand("pnpm", ["--filter", "ipollowork-server", "build:bin"]);
+      await runCommand(pnpmCommand, ["--filter", "ipollowork-server", "build:bin"]);
       await access(ipolloworkServerBin);
     } catch (error) {
       logLine(
@@ -188,6 +190,7 @@ const headlessEnv = {
   IPOLLOWORK_TOKEN: ipolloworkToken,
   IPOLLOWORK_HOST_TOKEN: ipolloworkHostToken,
   IPOLLOWORK_SERVER_BIN: ipolloworkServerBin,
+  IPOLLOWORK_BUNDLED_TEMPLATES_DIR: bundledTemplatesDir,
   IPOLLOWORK_SIDECAR_SOURCE: process.env.IPOLLOWORK_SIDECAR_SOURCE ?? "external",
 };
 
@@ -209,7 +212,7 @@ logLine(
 );
 
 const webProcess = spawnLogged(
-  "pnpm",
+  pnpmCommand,
   [
     "--filter",
     "@ipollowork/app",
@@ -226,7 +229,7 @@ const webProcess = spawnLogged(
 );
 
 const headlessProcess = spawnLogged(
-  "pnpm",
+  pnpmCommand,
   [
     "--filter",
     "ipollowork-orchestrator",

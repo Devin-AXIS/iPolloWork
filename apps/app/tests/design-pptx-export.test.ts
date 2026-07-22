@@ -48,7 +48,7 @@ describe("PPTX deck export", () => {
       y: 0.75,
       w: 6.667,
       h: 0.75,
-      fontSize: 36,
+      fontSize: 28.799,
       fontFace: "Inter",
       color: "111827",
       transparency: 25,
@@ -76,15 +76,52 @@ describe("PPTX deck export", () => {
       },
     })).toMatchObject({
       fontFace: "Noto Serif SC",
-      fontSize: 84,
-      lineSpacing: 79.5,
-      charSpacing: 1.125,
+      fontSize: 67.198,
+      lineSpacing: 63.598,
+      charSpacing: 0.9,
       lang: "zh-CN",
     });
   });
 
   test("captures only local visual fallbacks at high resolution", () => {
     expect(PPTX_CAPTURE_SCALE).toBe(2);
+  });
+
+  test("keeps the PPTX export frame paintable for html2canvas element captures", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const pptxExport = source.slice(source.indexOf("const exportDeckToPptx"), source.indexOf("const saveMutation"));
+
+    expect(pptxExport).toContain("opacity:0");
+    expect(pptxExport).not.toContain("visibility:hidden");
+  });
+
+  test("rasterizes inline SVG fallbacks without sending an SVG root to html2canvas", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const pptxExport = source.slice(source.indexOf("const exportDeckToPptx"), source.indexOf("const saveMutation"));
+
+    expect(pptxExport).toContain("isPptxExportSvg(plan.element)");
+    expect(pptxExport).toContain("capturePptxSvgElement(plan.element, PPTX_CAPTURE_SCALE)");
+  });
+
+  test("freezes browser motion before planning the final PPTX frame", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const pptxExport = source.slice(source.indexOf("const exportDeckToPptx"), source.indexOf("const saveMutation"));
+
+    expect(pptxExport).toContain("freezePptxExportFrame(frameDocument)");
+    expect(pptxExport).toContain("assertPptxVisualCoverage(slide, plans, backgroundPlan");
+  });
+
+  test("finishes animations and snapshots their final browser styles before disabling motion", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("document.getAnimations()");
+    expect(source).toContain("animation.finish()");
+    expect(source).toContain("animation.pause()");
+    expect(source).toContain('"transform"');
+    expect(source).toContain("animation-play-state:paused!important");
+    expect(source).toContain('data-ipw-pptx-static-animation');
+    expect(source).toContain("isPptxExportElement(target)");
+    expect(source).not.toContain("target instanceof HTMLElement");
   });
 
   test("exports an element plan instead of rasterizing every full slide", async () => {
@@ -102,6 +139,27 @@ describe("PPTX deck export", () => {
 
     expect(pptxExport).toContain("validatePptxElementPlanCoverage");
     expect(pptxExport).toContain("No blank presentation was created.");
+  });
+
+  test("stops a native-editable deck export instead of writing blank slides", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const pptxExport = source.slice(source.indexOf("const exportDeckToPptx"), source.indexOf("const saveMutation"));
+
+    expect(pptxExport).toContain("const objectCoverage = validatePptxElementPlanCoverage");
+    expect(pptxExport).toContain("planCount: objects.length");
+    expect(pptxExport).toContain("assertPptxVisualCoverage(slide, objects.map");
+  });
+
+  test("names every entry object and post-processes the PPTX package for native animation", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const pptxExport = source.slice(source.indexOf("const exportDeckToPptx"), source.indexOf("const saveMutation"));
+
+    expect(pptxExport).toContain("objectName: entryObjectName(");
+    expect(pptxExport).toContain('const exported = await pptx.write({ outputType: "blob" })');
+    expect(pptxExport).toContain("await addPptxEntranceAnimations(exported)");
+    expect(pptxExport).toContain("downloadBlobAsFile(");
+    expect(pptxExport).toContain("animationElement && isPptxNativeEntranceAnimation");
+    expect(pptxExport).toContain('element.closest<HTMLElement>("[data-ipw-pptx-static-animation]")');
   });
 
   test("keeps native-editable exports separate from PDF color conversion", async () => {
@@ -224,6 +282,17 @@ describe("PPTX deck export", () => {
     expect(isPptxTextStyleCompatible({
       text: "Accent text",
       hasElementChildren: true,
+      hasOnlyCompatibleInlineChildren: true,
+      transform: "none",
+      filter: "none",
+      textShadow: "none",
+      backgroundClip: "border-box",
+      webkitBackgroundClip: "border-box",
+    })).toBe(true);
+    expect(isPptxTextStyleCompatible({
+      text: "Complex accent text",
+      hasElementChildren: true,
+      hasOnlyCompatibleInlineChildren: false,
       transform: "none",
       filter: "none",
       textShadow: "none",

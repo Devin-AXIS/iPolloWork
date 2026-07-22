@@ -4,7 +4,8 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } fr
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inflateRawSync } from "node:zlib";
+import { promisify } from "node:util";
+import { inflateRaw } from "node:zlib";
 import {
   templateCategorySchema,
   templateManifestV1Schema,
@@ -23,10 +24,14 @@ import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { ApiError } from "./errors.js";
 import pkg from "../package.json" with { type: "json" };
 
-const MAX_PACKAGE_BYTES = 50 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 200 * 1024 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES = 1_000;
+export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
+const WITHDRAWN_BUNDLED_TEMPLATE_IDS = new Set([
+  "ipollowork.html-anything.deck-xhs-post",
+  "ipollowork.html-anything.social-x-post-card",
+]);
 // The market is opened from the account menu, so local templates belong to
 // the signed-in desktop profile rather than an individual workstation. The
 // workspace route remains the authorization and materialization boundary.
@@ -38,6 +43,14 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 const EXECUTABLE_EXTENSIONS = new Set([".exe", ".dll", ".com", ".bat", ".cmd", ".sh", ".ps1", ".app", ".dmg", ".pkg"]);
 const HYPERFRAMES_VARIABLE_TYPES = new Set(["string", "number", "color", "boolean", "enum"]);
+const SLIDE_DOCUMENT_PATTERN = /\bdata-ipw-slide(?:\s|=|>)|\bclass\s*=\s*["'](?:[^"']*\s)?(?:slide|slide-frame)(?=\s|["'])|\bclassName\s*=\s*["'](?:slide|slide-frame)["']|\bclassList\.add\(\s*["'](?:slide|slide-frame)["']/i;
+const PPTX_OBJECT_PATTERN = /\bdata-pptx-(?:shape|text|image)\b/i;
+const inflateRawAsync = promisify(inflateRaw);
+const CRC32_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
+  let entry = value;
+  for (let bit = 0; bit < 8; bit += 1) entry = entry & 1 ? 0xedb88320 ^ (entry >>> 1) : entry >>> 1;
+  return entry >>> 0;
+});
 
 type InstallationStatus = "installed" | "uninstalled";
 type InstallationRow = {
@@ -92,12 +105,14 @@ function templatesRoot(config: ServerConfig): string {
   return join(dirname(runtimeDbPath(config)), "templates");
 }
 
-function bundledRoot(): string {
+export function resolveBundledTemplatesRoot(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const configuredPath = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR?.trim();
   const resourcesPath = typeof process.resourcesPath === "string" && process.resourcesPath.trim()
     ? process.resourcesPath.trim()
     : "";
   const candidates = [
+    ...(configuredPath ? [resolve(configuredPath)] : []),
     ...(resourcesPath ? [join(resourcesPath, "server", "dist", "bundled-templates")] : []),
     join(moduleDir, "bundled-templates"),
     join(moduleDir, "..", "bundled-templates"),
@@ -207,8 +222,14 @@ function validateStaticFile(name: string, unixMode = 0) {
   return normalized;
 }
 
-function readZip(buffer: Buffer): ZipEntry[] {
-  if (buffer.byteLength > MAX_PACKAGE_BYTES) throw new ApiError(413, "template_package_too_large", "Template package exceeds 50 MB");
+function crc32(data: Uint8Array): number {
+  let checksum = 0xffffffff;
+  for (const byte of data) checksum = CRC32_TABLE[(checksum ^ byte) & 0xff] ^ (checksum >>> 8);
+  return (checksum ^ 0xffffffff) >>> 0;
+}
+
+async function readZip(buffer: Buffer): Promise<ZipEntry[]> {
+  if (buffer.byteLength > MAX_TEMPLATE_PACKAGE_BYTES) throw new ApiError(413, "template_package_too_large", "Template package exceeds 50 MB");
   let eocd = -1;
   for (let offset = Math.max(0, buffer.length - 65_557); offset <= buffer.length - 22; offset += 1) {
     if (buffer.readUInt32LE(offset) === 0x06054b50) eocd = offset;
@@ -226,13 +247,16 @@ function readZip(buffer: Buffer): ZipEntry[] {
     const method = buffer.readUInt16LE(cursor + 10);
     const compressedSize = buffer.readUInt32LE(cursor + 20);
     const uncompressedSize = buffer.readUInt32LE(cursor + 24);
+    const expectedCrc = buffer.readUInt32LE(cursor + 16);
     const nameLength = buffer.readUInt16LE(cursor + 28);
     const extraLength = buffer.readUInt16LE(cursor + 30);
     const commentLength = buffer.readUInt16LE(cursor + 32);
     const externalAttributes = buffer.readUInt32LE(cursor + 38);
     const localOffset = buffer.readUInt32LE(cursor + 42);
+    const directoryEnd = cursor + 46 + nameLength + extraLength + commentLength;
+    if (directoryEnd > buffer.length) throw new ApiError(400, "invalid_template_package", "Invalid ZIP directory");
     const name = buffer.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8");
-    cursor += 46 + nameLength + extraLength + commentLength;
+    cursor = directoryEnd;
     if (name.endsWith("/")) continue;
     const safeName = validateStaticFile(name, externalAttributes >>> 16);
     if (names.has(safeName)) throw new ApiError(400, "invalid_template_package", `Duplicate package path: ${safeName}`);
@@ -245,11 +269,20 @@ function readZip(buffer: Buffer): ZipEntry[] {
     const localExtraLength = buffer.readUInt16LE(localOffset + 28);
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
     if (dataStart + compressedSize > buffer.length) throw new ApiError(400, "invalid_template_package", `Corrupt ZIP entry: ${safeName}`);
+    const localName = buffer.subarray(localOffset + 30, localOffset + 30 + localNameLength).toString("utf8");
+    if (localName !== name) throw new ApiError(400, "invalid_template_package", `Mismatched ZIP entry: ${safeName}`);
     const compressed = buffer.subarray(dataStart, dataStart + compressedSize);
     let data: Buffer | null = null;
-    try { data = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed) : null; }
+    try {
+      data = method === 0
+        ? Buffer.from(compressed)
+        : method === 8
+          ? await inflateRawAsync(compressed, { maxOutputLength: Math.max(1, uncompressedSize) })
+          : null;
+    }
     catch { throw new ApiError(400, "invalid_template_package", `Corrupt ZIP entry: ${safeName}`); }
     if (!data || data.byteLength !== uncompressedSize) throw new ApiError(400, "invalid_template_package", `Unsupported or corrupt ZIP entry: ${safeName}`);
+    if (crc32(data) !== expectedCrc) throw new ApiError(400, "invalid_template_package", `Checksum mismatch: ${safeName}`);
     entries.push({ name: safeName, data: Buffer.from(data) });
   }
   return entries;
@@ -345,7 +378,13 @@ async function readManifest(directory: string): Promise<TemplateManifestV1> {
     for (const variable of manifest.designSystem.variables) {
       if (!declared.has(variable.id)) throw new ApiError(400, "invalid_template_manifest", `Manifest variable is missing from the HyperFrames document: ${variable.id}`);
     }
-  } else if (manifest.designSystem.variables.length > 0) {
+  } else {
+    if (manifest.category === "slides") {
+      const entry = await readFile(join(directory, ...manifest.entry.split("/")), "utf8");
+      if (!SLIDE_DOCUMENT_PATTERN.test(entry)) throw new ApiError(400, "invalid_slides_template", "Slide templates must contain at least one recognized slide element");
+      if (manifest.pptxCompatibility && !PPTX_OBJECT_PATTERN.test(entry)) throw new ApiError(400, "invalid_pptx_template", "PPTX-compatible templates must contain editable PowerPoint object markers");
+    }
+    if (manifest.designSystem.variables.length === 0) return manifest;
     if (!manifest.designSystem.tokens) throw new ApiError(400, "invalid_template_manifest", "Design templates with variables must include a token stylesheet");
     const tokens = await readFile(join(directory, ...manifest.designSystem.tokens.split("/")), "utf8");
     for (const variable of manifest.designSystem.variables) {
@@ -381,12 +420,13 @@ async function copyTemplateSource(sourceDirectory: string, destination: string) 
 }
 
 async function loadBundledTemplates(): Promise<BundledTemplate[]> {
-  const root = bundledRoot();
+  const root = resolveBundledTemplatesRoot();
   const items: BundledTemplate[] = [];
   for (const name of await readdir(root)) {
     const directory = join(root, name);
     if (!(await stat(directory)).isDirectory()) continue;
     const manifest = await readManifest(directory);
+    if (WITHDRAWN_BUNDLED_TEMPLATE_IDS.has(manifest.id)) continue;
     items.push({ manifest, directory, hash: await hashDirectory(directory) });
   }
   return items;
@@ -476,22 +516,22 @@ export async function installBundledTemplate(config: ServerConfig, workspaceId: 
   return installDirectory({ config, workspaceId: PERSONAL_TEMPLATE_LIBRARY, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
 }
 
-export async function importTemplate(config: ServerConfig, workspaceId: string, archive: Uint8Array, declaredCategory: string) {
-  const category = templateCategorySchema.safeParse(declaredCategory);
-  if (!category.success) throw new ApiError(400, "invalid_template_category", "Choose a supported template category before importing");
+export async function importTemplate(config: ServerConfig, workspaceId: string, archive: Uint8Array, declaredCategory?: string) {
+  const category = declaredCategory ? templateCategorySchema.safeParse(declaredCategory) : null;
+  if (category && !category.success) throw new ApiError(400, "invalid_template_category", "Choose a supported template category before importing");
   const buffer = Buffer.from(archive);
   const hash = createHash("sha256").update(buffer).digest("hex");
   const tempParent = await mkdtemp(join(tmpdir(), "ipollowork-import-"));
   const sourceDirectory = join(tempParent, "package");
   try {
     await mkdir(sourceDirectory, { recursive: true });
-    for (const entry of readZip(buffer)) {
+    for (const entry of await readZip(buffer)) {
       const target = join(sourceDirectory, ...entry.name.split("/"));
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, entry.data, { flag: "wx" });
     }
     const manifest = await readManifest(sourceDirectory);
-    if (manifest.category !== category.data) {
+    if (category?.success && manifest.category !== category.data) {
       throw new ApiError(400, "template_category_mismatch", "The selected template category does not match manifest.json");
     }
     if (manifest.id.startsWith("ipollowork.")) throw new ApiError(400, "reserved_template_id", "Local templates cannot use the reserved ipollowork.* namespace");

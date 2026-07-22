@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  applyEmbeddedServerEnvironment,
   commandMatchesPackagedSidecar,
   devModeHomeDirectoryPaths,
   embeddedServerImportUrl,
@@ -14,6 +15,33 @@ import {
   seedWorkspacePathsForEmbeddedServer,
   selectStickyiPolloWorkPortWorkspace,
 } from "./runtime.mjs";
+
+describe("applyEmbeddedServerEnvironment", () => {
+  it("keeps the desktop process home and config locations outside the dev child sandbox", () => {
+    const desktopEnv = {
+      APPDATA: "C:\\Users\\Lenovo\\AppData\\Roaming",
+      HOME: "C:\\Users\\Lenovo",
+      USERPROFILE: "C:\\Users\\Lenovo",
+      XDG_CONFIG_HOME: "C:\\Users\\Lenovo\\.config",
+    };
+    const childEnv = {
+      ...desktopEnv,
+      HOME: "C:\\Users\\Lenovo\\AppData\\Roaming\\com.differentai.ipollowork.dev\\ipollowork-dev-data\\home",
+      USERPROFILE: "C:\\Users\\Lenovo\\AppData\\Roaming\\com.differentai.ipollowork.dev\\ipollowork-dev-data\\home",
+      XDG_CONFIG_HOME: "C:\\Users\\Lenovo\\AppData\\Roaming\\com.differentai.ipollowork.dev\\ipollowork-dev-data\\xdg\\config",
+      OPENCODE_CONFIG_DIR: "C:\\Users\\Lenovo\\AppData\\Roaming\\com.differentai.ipollowork.dev\\ipollowork-dev-data\\config\\opencode",
+      OPENAI_API_KEY: "test-key",
+    };
+
+    applyEmbeddedServerEnvironment(desktopEnv, childEnv);
+
+    assert.equal(desktopEnv.HOME, "C:\\Users\\Lenovo");
+    assert.equal(desktopEnv.USERPROFILE, "C:\\Users\\Lenovo");
+    assert.equal(desktopEnv.XDG_CONFIG_HOME, "C:\\Users\\Lenovo\\.config");
+    assert.equal(desktopEnv.OPENCODE_CONFIG_DIR, undefined);
+    assert.equal(desktopEnv.OPENAI_API_KEY, "test-key");
+  });
+});
 
 describe("devModeHomeDirectoryPaths", () => {
   it("includes common shell folders used by Windows file pickers", () => {
@@ -143,7 +171,7 @@ describe("resolveiPolloWorkServerConfigPath", () => {
   it("respects explicit server config path", () => {
     assert.equal(
       resolveiPolloWorkServerConfigPath({ IPOLLOWORK_SERVER_CONFIG: "/tmp/ipollowork/server.json" }),
-      "/tmp/ipollowork/server.json",
+      path.resolve("/tmp/ipollowork/server.json"),
     );
   });
 

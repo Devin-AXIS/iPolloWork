@@ -37,9 +37,9 @@ import { attemptSilentMcpReauth } from "@/react-app/domains/connections/mcp-sile
 import { ReactSessionComposer } from "./composer/composer";
 import { decodeComposerMentionValue, encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import { desktopBridge } from "@/app/lib/desktop";
+import { publicAssetUrl } from "@/app/lib/public-asset";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
 import { DevProfiler } from "@/react-app/shell/dev-profiler";
-import { PaperGrainGradient } from "@ipollowork/ui/react";
 import { useShellConfig } from "@/react-app/shell/shell-config";
 import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog";
 import { SessionDebugPanel } from "./debug-panel";
@@ -248,19 +248,13 @@ function messageHasVisibleAssistantOutput(message: UIMessage) {
 function AssistantWaitingCard({ label = t("session.assistant_thinking") }: { label?: string }) {
   return (
     <div className="flex justify-start" role="status" aria-live="polite">
-      <div className="inline-flex items-center gap-1.5 px-1 py-1 text-[12px] text-dls-secondary">
-        <div style={{ width: 20, height: 20, borderRadius: "50%", overflow: "hidden" }}>
-          <PaperGrainGradient
-            speed={12}
-            softness={0.1}
-            intensity={1}
-            noise={0.05}
-            shape="sphere"
-            colors={["#818cf8", "#fb7185", "#fbbf24", "#34d399"]}
-            colorBack="#ffffff00"
-            style={{ backgroundColor: "#818cf8", width: "100%", height: "100%", borderRadius: "50%" }}
-          />
-        </div>
+      <div className="inline-flex items-center gap-2 px-1 py-1 text-[12px] text-dls-secondary">
+        <img
+          src={publicAssetUrl("ipollowork-thinking-logo-v2.gif")}
+          alt=""
+          aria-hidden="true"
+          className="size-6 shrink-0 object-contain"
+        />
         <span>{label}</span>
       </div>
     </div>
@@ -356,7 +350,7 @@ function SessionErrorCard({ error, onDismiss, onChangeModel, onOpenModelPicker }
   onOpenModelPicker?: () => void;
 }) {
   return (
-    <div className="mx-auto max-w-[720px] px-3 py-3 sm:px-5">
+    <div className="mx-auto max-w-[800px] px-3 py-3 sm:px-5">
       <div className="rounded-2xl border border-red-6/30 bg-red-3/15 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -1462,7 +1456,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
       {isEmptyConversation ? (
         <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-5">
-          <div className="flex min-h-full w-full max-w-[720px] flex-col justify-center pb-12 pt-8">
+          <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-12 pt-8">
             <NewConversationStarter
               selectedMode={newConversationMode}
               selectedCapabilityId={starterCapability?.id}
@@ -1514,7 +1508,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         >
           {/* Chat column: tighter than the composer (800px) so messages
                keep a comfortable reading width and don't feel "too big". */}
-          <div ref={contentRef} className="mx-auto w-full max-w-[720px]">
+          <div ref={contentRef} className="mx-auto w-full max-w-[800px]">
             {showDelayedLoading && pendingSessionLoad ? (
               <div className="px-6 py-16">
                 <div className="mx-auto max-w-sm rounded-3xl border border-dls-border bg-dls-hover/60 px-8 py-10 text-center">

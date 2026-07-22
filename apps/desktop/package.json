@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/desktop",
   "private": true,
-  "version": "0.17.28",
+  "version": "0.17.29",
   "description": "iPolloWork desktop shell",
   "author": {
     "name": "iPolloWork",
@@ -18,15 +18,17 @@
     "package:electron": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --publish never",
     "package:electron:dir": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --dir --publish never",
     "package:mac:release": "node ./scripts/package-mac-release.mjs",
-    "package:windows": "node ./scripts/package-windows.mjs",
+    "package:windows": "cross-env IPOLLOWORK_WINDOWS_INSTALLER=1 node ./scripts/package-windows.mjs",
     "electron": "pnpm exec electron ./electron/main.mjs",
     "check:electron": "node ./scripts/check-electron-bridge.mjs",
     "typecheck:electron": "pnpm --dir ../server exec tsc -p ../desktop/tsconfig.electron.json --noEmit",
     "prepare:sidecar": "node ./scripts/prepare-sidecar.mjs",
-    "test": "node --test electron/brand-icon-windows.test.mjs electron/open-external.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
+    "test": "node --test electron/brand-icon-windows.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "^1.18.3",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@opencode-ai/sdk": "^1.17.11",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.1",
     "electron-updater": "^6.3.9",
