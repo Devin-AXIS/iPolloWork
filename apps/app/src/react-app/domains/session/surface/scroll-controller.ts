@@ -72,6 +72,22 @@ function latestMessageTopClippedId(container: HTMLElement) {
   return lastMessageDoesNotFit && !startVisible ? messageId : null;
 }
 
+function syncProgrammaticScrollTop(container: HTMLElement, top: number, behavior: ScrollBehavior = "auto") {
+  const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+  const clampedTop = Math.min(Math.max(0, top), maxScrollTop);
+  const anchor = container.ownerDocument.createElement("span");
+
+  // In Electron, scrolling the container by pixels can update DOM hit testing
+  // without repainting the corresponding compositor layer. A real element
+  // scroll keeps those two layers in the same coordinate system.
+  anchor.setAttribute("aria-hidden", "true");
+  anchor.style.cssText = `position:absolute;top:${clampedTop}px;left:0;width:1px;height:1px;pointer-events:none;`;
+  container.append(anchor);
+  anchor.scrollIntoView({ block: "start", inline: "nearest", behavior });
+  anchor.remove();
+  return clampedTop;
+}
+
 export function useSessionScrollController(
   options: SessionScrollControllerOptions,
 ) {
@@ -142,6 +158,10 @@ export function useSessionScrollController(
     return nextId;
   }, [options.containerRef, selectedSessionId, setTopClippedMessageId]);
 
+  const syncCurrentScrollPosition = useCallback((container: HTMLDivElement) => {
+    syncProgrammaticScrollTop(container, container.scrollTop);
+  }, []);
+
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "auto") => {
       const container = options.containerRef.current;
@@ -151,21 +171,19 @@ export function useSessionScrollController(
       programmaticScrollRef.current = true;
 
       if (behavior === "smooth") {
-        container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+        lastKnownScrollTopRef.current = syncProgrammaticScrollTop(container, container.scrollHeight, "smooth");
         releaseProgrammaticScrollSoon();
         return;
       }
 
-      container.scrollTop = container.scrollHeight;
-      lastKnownScrollTopRef.current = container.scrollTop;
+      lastKnownScrollTopRef.current = syncProgrammaticScrollTop(container, container.scrollHeight);
       window.requestAnimationFrame(() => {
         const next = options.containerRef.current;
         if (!next) {
           programmaticScrollRef.current = false;
           return;
         }
-        next.scrollTop = next.scrollHeight;
-        lastKnownScrollTopRef.current = next.scrollTop;
+        lastKnownScrollTopRef.current = syncProgrammaticScrollTop(next, next.scrollHeight);
         refreshTopClippedMessage();
         releaseProgrammaticScrollSoon();
       });
@@ -214,6 +232,8 @@ export function useSessionScrollController(
         return;
       }
 
+      syncCurrentScrollPosition(container);
+
       if (!userGestured && !scrolledUp) {
         if (isExactlyAtBottom(container)) {
           setStickyBottom(selectedSessionId, latestMessageTopClippedId(container));
@@ -227,7 +247,7 @@ export function useSessionScrollController(
       saveScrollPosition(container);
       lastKnownScrollTopRef.current = currentTop;
     },
-    [clearProgrammaticScrollReset, hasScrollGesture, refreshTopClippedMessage, saveScrollPosition, selectedSessionId, setStickyBottom],
+    [clearProgrammaticScrollReset, hasScrollGesture, refreshTopClippedMessage, saveScrollPosition, selectedSessionId, setStickyBottom, syncCurrentScrollPosition],
   );
 
   const jumpToLatest = useCallback(
@@ -302,16 +322,14 @@ export function useSessionScrollController(
       const savedState = getSessionScrollState(useSessionScrollStore.getState().sessions, selectedSessionId);
       if (savedState.mode === "manual") {
         programmaticScrollRef.current = true;
-        container.scrollTop = Math.min(savedState.scrollTop, Math.max(0, container.scrollHeight - container.clientHeight));
-        lastKnownScrollTopRef.current = container.scrollTop;
+        lastKnownScrollTopRef.current = syncProgrammaticScrollTop(container, savedState.scrollTop);
         window.requestAnimationFrame(() => {
           const next = options.containerRef.current;
           if (!next) {
             programmaticScrollRef.current = false;
             return;
           }
-          next.scrollTop = Math.min(savedState.scrollTop, Math.max(0, next.scrollHeight - next.clientHeight));
-          lastKnownScrollTopRef.current = next.scrollTop;
+          lastKnownScrollTopRef.current = syncProgrammaticScrollTop(next, savedState.scrollTop);
           saveScrollPosition(next);
           releaseProgrammaticScrollSoon();
         });
