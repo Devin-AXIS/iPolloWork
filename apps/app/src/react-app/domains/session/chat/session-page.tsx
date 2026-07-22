@@ -896,46 +896,10 @@ export function SessionPage(props: SessionPageProps) {
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
   }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, setCurrentSidePanel]);
-  const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
-    if (!options?.preserveAutoCollapse) {
-      userOpenedSidePanelWhileNarrowRef.current = false;
-      autoCollapsedSidePanelRef.current = null;
-    }
+  const closeRightPane = useCallback(() => {
     setSessionPanelView(null);
     setCurrentSidePanel(null);
   }, [setCurrentSidePanel]);
-  useEffect(() => {
-    if (
-      availableMainWorkspaceWidth < AUTO_COLLAPSE_RIGHT_PANEL_WIDTH &&
-      sidePanelOpen &&
-      !userOpenedSidePanelWhileNarrowRef.current
-    ) {
-      autoCollapsedSidePanelRef.current = effectiveSidePanelView;
-      closeRightPane({ preserveAutoCollapse: true });
-      return;
-    }
-    const restoredPanel = autoCollapsedSidePanelRef.current;
-    if (
-      restoredPanel &&
-      !sidePanelOpen &&
-      expandedRightPanelWorkspaceWidth >= AUTO_COLLAPSE_RIGHT_PANEL_WIDTH
-    ) {
-      autoCollapsedSidePanelRef.current = null;
-      userOpenedSidePanelWhileNarrowRef.current = false;
-      if (restoredPanel === "launcher") {
-        setSessionPanelView("launcher");
-      } else {
-        setCurrentSidePanel(restoredPanel);
-      }
-    }
-  }, [
-    availableMainWorkspaceWidth,
-    closeRightPane,
-    effectiveSidePanelView,
-    expandedRightPanelWorkspaceWidth,
-    setCurrentSidePanel,
-    sidePanelOpen,
-  ]);
   const openBrowserRailPane = useCallback(() => {
     // Opening the browser pane should land on a usable page, not an empty
     // panel that forces the user to click "+". If no browser tab exists yet,
