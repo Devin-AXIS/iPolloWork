@@ -67,7 +67,10 @@ async function main() {
   copyDirContents(studioDist, join(DIST, "studio"));
 
   for (const tmpl of ["blank", "_shared"]) {
-    copyDir(join(CLI_ROOT, "src", "templates", tmpl), join(DIST, "templates", tmpl));
+    const source = join(CLI_ROOT, "src", "templates", tmpl);
+    if (existsSync(source)) {
+      copyDir(source, join(DIST, "templates", tmpl));
+    }
   }
 
   // Bundle warm-grain from the repo registry so the built CLI can scaffold it
