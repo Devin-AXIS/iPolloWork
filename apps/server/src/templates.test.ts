@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import { TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, readTemplateSession, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
+import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
+const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
 const crc32Table = Uint32Array.from({ length: 256 }, (_, value) => {
   let entry = value;
   for (let bit = 0; bit < 8; bit += 1) entry = entry & 1 ? 0xedb88320 ^ (entry >>> 1) : entry >>> 1;
@@ -25,6 +26,8 @@ function crc32(data: Uint8Array): number {
 afterEach(() => {
   if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
+  if (previousBundledTemplatesDir === undefined) delete process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
+  else process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR = previousBundledTemplatesDir;
 });
 
 function config(root: string): ServerConfig {
@@ -543,6 +546,16 @@ describe("template installations", () => {
     expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain("<!doctype html>");
     expect((await readTemplateSession(serverConfig, ws, "session_1")).manifest.id).toBe("ipollowork.saas-landing");
     expect(existsSync(join(ws.path, "design", "session_1", "template.json"))).toBe(false);
+  });
+
+  test("resolves an explicit bundled template directory for headless runtimes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-bundled-templates-"));
+    try {
+      process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR = root;
+      expect(resolveBundledTemplatesRoot()).toBe(root);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("imports a valid local package and rejects traversal", async () => {

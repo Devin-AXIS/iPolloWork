@@ -159,15 +159,33 @@ export function mergeRouteWorkspaces(
       return path ? [path] : [];
     }),
   );
+  const hasServerLocalWorkspace = filteredServer.some((workspace) => workspace.workspaceType === "local");
 
   const missingDesktop = desktopWorkspaces.filter((workspace) => {
     if (mergedIds.has(workspace.id)) return false;
     const normalizedPath = normalizeDirectoryPath(workspace.path ?? "");
     if (normalizedPath && mergedPaths.has(normalizedPath)) return false;
+    // A running local server has its own persisted workspace registry. A
+    // desktop-only local record cannot be addressed by that server, so showing
+    // it here would make the shell fetch a guaranteed 404. Remote workspaces
+    // remain desktop-owned and must stay visible.
+    if (hasServerLocalWorkspace && workspace.workspaceType === "local") return false;
     return true;
   });
 
   return [...mergedServer, ...missingDesktop];
+}
+
+export function resolveKnownWorkspaceId(
+  workspaces: Array<Pick<RouteWorkspace, "id">>,
+  candidates: Array<string | null | undefined>,
+) {
+  const knownIds = new Set(workspaces.map((workspace) => workspace.id));
+  for (const candidate of candidates) {
+    const id = candidate?.trim() ?? "";
+    if (id && knownIds.has(id)) return id;
+  }
+  return "";
 }
 
 export function orderRouteWorkspaces(workspaces: RouteWorkspace[], orderIds: string[]): RouteWorkspace[] {

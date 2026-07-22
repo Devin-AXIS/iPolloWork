@@ -41,6 +41,7 @@ import {
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
   orderRouteWorkspaces,
+  resolveKnownWorkspaceId,
   type RouteSession,
   type RouteWorkspace,
 } from "./route-workspaces";
@@ -376,17 +377,13 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       // the user's last-active workspace from localStorage, the desktop's
       // activeId, the server's activeId, then the first known workspace.
       const persistedActiveId = readActiveWorkspaceId();
-      let nextWorkspaceId =
-        (routeWorkspaceId && nextWorkspaces.some((w) => w.id === routeWorkspaceId)
-          ? routeWorkspaceId
-          : "") ||
-        (persistedActiveId && nextWorkspaces.some((w) => w.id === persistedActiveId)
-          ? persistedActiveId
-          : "") ||
-        resolveWorkspaceListSelectedId(desktopList) ||
-        list.activeId?.trim() ||
-        nextWorkspaces[0]?.id ||
-        "";
+      let nextWorkspaceId = resolveKnownWorkspaceId(nextWorkspaces, [
+        routeWorkspaceId,
+        persistedActiveId,
+        resolveWorkspaceListSelectedId(desktopList),
+        list.activeId,
+        nextWorkspaces[0]?.id,
+      ]);
       if (selectedSessionId) {
         const match = cachedEntries.find((entry) =>
           entry.sessions.some((session) => session?.id === selectedSessionId),

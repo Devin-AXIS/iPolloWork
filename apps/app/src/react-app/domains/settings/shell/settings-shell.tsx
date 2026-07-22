@@ -166,7 +166,6 @@ export function SettingsShell(props: SettingsShellProps) {
 function SettingsSectionMenu(props: Pick<SettingsPageFrameProps, "activeTab" | "developerMode" | "onSelectTab">) {
   const { memoryEnabled } = useFeatureFlagsPreferences();
   const sections: Array<{ label: string | null; tabs: SettingsTab[] }> = [
-    { label: null, tabs: ["general"] },
     { label: t("settings.group_workspace"), tabs: getWorkspaceSettingsTabs() },
     { label: t("settings.group_global"), tabs: getGlobalSettingsTabs(props.developerMode) },
     { label: t("settings.group_cloud"), tabs: getCloudSettingsTabs(memoryEnabled) },

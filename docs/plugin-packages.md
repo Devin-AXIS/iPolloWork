@@ -17,7 +17,7 @@ acme-research/
     └── skills/acme-research/SKILL.md
 ```
 
-See [`examples/plugin-packages/acme-research`](../examples/plugin-packages/acme-research) for a working minimal package.
+See [`examples/plugin-packages/acme-research`](../examples/plugin-packages/acme-research) for a working minimal package. The bundled [`examples/plugin-packages/figma`](../examples/plugin-packages/figma) package is a complete declarative example with an official remote MCP, 12 skills, commands, agents, references, scripts, and assets.
 
 ## Manifest
 
@@ -85,7 +85,7 @@ The package contract extends the existing schema-version-1 extension manifest. E
 }
 ```
 
-Package versions use semantic versions. A published version is immutable: changing a file without changing the version is rejected. The installer records a SHA-256 digest for every owned file, preserves unrelated workspace files, and refuses to overwrite files changed outside the package manager.
+Package versions use semantic versions. A published version is immutable: changing a file without changing the version is rejected. A resource `path` may name a regular file or a directory; directories are expanded recursively, while symbolic links and special files are rejected. The installer records a SHA-256 digest for every owned file, preserves unrelated workspace files, and refuses to overwrite files changed outside the package manager.
 
 ## Authorization methods
 
@@ -157,6 +157,15 @@ DELETE /workspace/:id/plugin-packages/:pluginId
 ```
 
 The validate and install requests accept `{ "packageRoot": "plugins/acme-research" }`. Local package roots are restricted to the selected workspace.
+
+Desktop builds can also ship reviewed packages in the built-in catalog. Users install those packages without entering a path:
+
+```text
+GET  /workspace/:id/plugin-packages/catalog
+POST /workspace/:id/plugin-packages/catalog/:pluginId/install
+```
+
+Only server-allowlisted bundle IDs can use these routes. The Figma bundle is copied into the desktop resources at build time and uses the same preview, checksum, approval, install, update, rollback, and uninstall lifecycle as a local package.
 
 ## Release and catalog contract
 

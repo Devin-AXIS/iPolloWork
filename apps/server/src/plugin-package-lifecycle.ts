@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { z } from "zod";
 
@@ -110,6 +110,50 @@ async function fileExists(path: string): Promise<boolean> {
 
 async function sha256(path: string): Promise<string> {
   return createHash("sha256").update(await readFile(path)).digest("hex");
+}
+
+async function packageResourceFiles(packageRoot: string, resourcePath: string): Promise<string[]> {
+  const source = resolveWithin(packageRoot, resourcePath);
+  let metadata: Awaited<ReturnType<typeof lstat>>;
+  try {
+    metadata = await lstat(source);
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") {
+      throw new ApiError(400, "plugin_package_resource_missing", `Package resource is missing: ${resourcePath}`);
+    }
+    throw error;
+  }
+  if (metadata.isSymbolicLink()) {
+    throw new ApiError(400, "plugin_package_resource_symlink", `Package resources may not be symbolic links: ${resourcePath}`);
+  }
+  if (metadata.isFile()) return [resourcePath];
+  if (!metadata.isDirectory()) {
+    throw new ApiError(400, "plugin_package_resource_invalid", `Package resource must be a file or directory: ${resourcePath}`);
+  }
+
+  const files: string[] = [];
+  const visit = async (directoryPath: string): Promise<void> => {
+    const entries = await readdir(resolveWithin(packageRoot, directoryPath), { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const entryPath = `${directoryPath}/${entry.name}`;
+      if (entry.isSymbolicLink()) {
+        throw new ApiError(400, "plugin_package_resource_symlink", `Package resources may not be symbolic links: ${entryPath}`);
+      }
+      if (entry.isDirectory()) {
+        await visit(entryPath);
+      } else if (entry.isFile()) {
+        files.push(entryPath);
+      } else {
+        throw new ApiError(400, "plugin_package_resource_invalid", `Package resource must be a regular file: ${entryPath}`);
+      }
+    }
+  };
+  await visit(resourcePath);
+  if (files.length === 0) {
+    throw new ApiError(400, "plugin_package_resource_empty", `Package resource directory is empty: ${resourcePath}`);
+  }
+  return files;
 }
 
 function canonicalJson(value: unknown): string {
@@ -389,13 +433,13 @@ export async function previewPluginPackage(input: { packageRoot: string; workspa
   }
   if (!manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   assertRuntimeCompatibility(manifest);
-  const paths = [...new Set(manifest.resources.flatMap((resource) => resource.path ? [resource.path] : []))];
-  const writes: OwnedFile[] = [];
-  for (const path of paths) {
-    const source = resolveWithin(input.packageRoot, path);
-    if (!(await fileExists(source))) throw new ApiError(400, "plugin_package_resource_missing", `Package resource is missing: ${path}`);
-    writes.push({ path, sha256: await sha256(source) });
+  const resourcePaths = [...new Set(manifest.resources.flatMap((resource) => resource.path ? [resource.path] : []))];
+  const paths = new Set<string>();
+  for (const resourcePath of resourcePaths) {
+    for (const path of await packageResourceFiles(input.packageRoot, resourcePath)) paths.add(path);
   }
+  const writes: OwnedFile[] = [];
+  for (const path of [...paths].sort()) writes.push({ path, sha256: await sha256(resolveWithin(input.packageRoot, path)) });
   return { manifest, writes, integrity: integrityForManifest(manifest, writes) };
 }
 

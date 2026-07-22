@@ -1,12 +1,13 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, KeyRound, Loader2, Package, RefreshCw, ShieldCheck } from "lucide-react";
+import { CheckCircle2, KeyRound, Loader2, Package, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { t } from "@/i18n";
 import type {
   iPolloWorkPluginAuthorizationFlow,
   iPolloWorkPluginAuthorizationState,
+  iPolloWorkBundledPluginPackageItem,
   iPolloWorkPluginPackageItem,
   iPolloWorkPluginPackagePreview,
   iPolloWorkServerClient,
@@ -18,13 +19,15 @@ type PluginPackagesPanelProps = {
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   onOpenUrl: (url: string) => void;
+  onConnectFigma: () => void;
 };
 
 function methodKey(pluginId: string, methodId: string, fieldId: string) {
   return `${pluginId}\u0000${methodId}\u0000${fieldId}`;
 }
 
-function statusText(state: iPolloWorkPluginAuthorizationState | undefined) {
+function statusText(state: iPolloWorkPluginAuthorizationState | undefined, hasPluginAuthorization: boolean) {
+  if (!hasPluginAuthorization) return t("plugin_platform.status.installed");
   if (state?.ready) return t("plugin_platform.status.connected");
   if (state?.flows.some((flow) => flow.status === "pending")) return t("plugin_platform.status.pending");
   if (state?.flows.some((flow) => flow.status === "expired")) return t("plugin_platform.status.expired");
@@ -33,6 +36,7 @@ function statusText(state: iPolloWorkPluginAuthorizationState | undefined) {
 
 export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   const [items, setItems] = useState<iPolloWorkPluginPackageItem[]>([]);
+  const [catalogItems, setCatalogItems] = useState<iPolloWorkBundledPluginPackageItem[]>([]);
   const [authorizations, setAuthorizations] = useState<Record<string, iPolloWorkPluginAuthorizationState>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,13 +48,18 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   const refresh = useCallback(async () => {
     if (!props.client || !props.workspaceId) {
       setItems([]);
+      setCatalogItems([]);
       setAuthorizations({});
       return;
     }
     setError(null);
     try {
-      const response = await props.client.listPluginPackages(props.workspaceId);
+      const [response, catalog] = await Promise.all([
+        props.client.listPluginPackages(props.workspaceId),
+        props.client.listBundledPluginPackages(props.workspaceId),
+      ]);
       setItems(response.items);
+      setCatalogItems(catalog.items);
       const states = await Promise.all(response.items.map(async (item) => ({
         pluginId: item.pluginId,
         state: await props.client?.getPluginAuthorization(props.workspaceId ?? "", item.pluginId),
@@ -74,8 +83,11 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   }, [flows, refresh]);
 
   const installedCount = items.length;
+  const availableCatalogItems = catalogItems.filter((item) => item.installedVersion === null || item.updateAvailable);
   const connectedCount = useMemo(
-    () => items.filter((item) => authorizations[item.pluginId]?.ready === true).length,
+    () => items.filter((item) =>
+      (item.manifest.authorization?.methods?.length ?? 0) > 0 && authorizations[item.pluginId]?.ready === true
+    ).length,
     [authorizations, items],
   );
 
@@ -104,6 +116,12 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
     else await props.client.installPluginPackage(props.workspaceId, packageRoot.trim());
     setPreview(null);
     setPackageRoot("");
+    await refresh();
+  });
+
+  const installBundledPackage = (item: iPolloWorkBundledPluginPackageItem) => run(`catalog:${item.pluginId}`, async () => {
+    if (!props.client || !props.workspaceId) return;
+    await props.client.installBundledPluginPackage(props.workspaceId, item.pluginId);
     await refresh();
   });
 
@@ -161,10 +179,45 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
       </div>
 
       <div className="divide-y divide-dls-border">
+        {availableCatalogItems.map((item) => (
+          <div key={`catalog:${item.pluginId}`} className="flex flex-col gap-4 bg-blue-2/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-blue-6 bg-dls-surface text-blue-11">
+                <Sparkles size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-dls-text">{item.name}</span>
+                  <span className="rounded-full border border-dls-border px-2 py-0.5 font-mono text-[10px] text-dls-secondary">v{item.version}</span>
+                  <span className="rounded-full bg-blue-3 px-2 py-0.5 text-[10px] text-blue-11">{t("plugin_platform.official_bundle")}</span>
+                </div>
+                <p className="mt-1 text-xs text-dls-secondary">{item.manifest.description}</p>
+                <p className="mt-1 text-[11px] text-dls-secondary">
+                  {t("plugin_platform.bundle_contents", {
+                    skills: item.manifest.resources.filter((resource) => resource.type === "skill").length,
+                    mcps: item.manifest.resources.filter((resource) => resource.type === "mcp").length,
+                  })}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              disabled={busyKey !== null}
+              onClick={() => void installBundledPackage(item)}
+            >
+              {busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}
+              {item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}
+            </Button>
+          </div>
+        ))}
         {items.map((item) => {
           const auth = authorizations[item.pluginId];
-          const connected = auth?.ready === true;
           const methods = item.manifest.authorization?.methods ?? [];
+          const hasPluginAuthorization = methods.length > 0;
+          const connected = hasPluginAuthorization && auth?.ready === true;
+          const hasFigmaMcp = item.manifest.resources.some((resource) =>
+            resource.type === "mcp" && resource.mcpServerName === "figma"
+          );
           const flow = flows[item.pluginId];
           const primaryAction = derivePluginPrimaryAction({
             installed: true,
@@ -189,8 +242,8 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2 text-xs">
-                  {connected ? <CheckCircle2 size={15} className="text-green-9" /> : <KeyRound size={15} className="text-amber-9" />}
-                  <span className={connected ? "text-green-11" : "text-dls-secondary"}>{statusText(auth)}</span>
+                  {connected || !hasPluginAuthorization ? <CheckCircle2 size={15} className="text-green-9" /> : <KeyRound size={15} className="text-amber-9" />}
+                  <span className={connected || !hasPluginAuthorization ? "text-green-11" : "text-dls-secondary"}>{statusText(auth, hasPluginAuthorization)}</span>
                   <Button
                     size="sm"
                     disabled={busyKey !== null}
@@ -264,7 +317,17 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
                       })}>{t("plugin_platform.revoke")}</Button> : null}
                     </div>
                   ) : methods.length === 0 ? (
-                    <p className="text-xs text-dls-secondary">{t("plugin_platform.no_authorization")}</p>
+                    <div className="space-y-3">
+                      <p className="text-xs text-dls-secondary">
+                        {hasFigmaMcp ? t("plugin_platform.mcp_authorization_hint") : t("plugin_platform.no_authorization")}
+                      </p>
+                      {hasFigmaMcp ? (
+                        <Button size="sm" disabled={busyKey !== null} onClick={props.onConnectFigma}>
+                          <KeyRound size={14} />
+                          {t("plugin_platform.connect_figma")}
+                        </Button>
+                      ) : null}
+                    </div>
                   ) : (
                     <div className="space-y-3">
                       {methods.map((method) => (

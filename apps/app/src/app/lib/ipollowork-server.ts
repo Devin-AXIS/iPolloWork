@@ -281,6 +281,16 @@ export type iPolloWorkPluginPackagePreview = {
   integrity: { sha256: string; status: "verified" | "unsigned" };
 };
 
+export type iPolloWorkBundledPluginPackageItem = {
+  pluginId: string;
+  name: string;
+  version: string;
+  manifest: iPolloWorkExtensionManifest;
+  integrity: { sha256: string; status: "verified" | "unsigned" };
+  installedVersion: string | null;
+  updateAvailable: boolean;
+};
+
 export type iPolloWorkPluginConnectionStatus = {
   accountId: string;
   methodId: string;
@@ -1521,6 +1531,19 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         token,
         hostToken,
         timeoutMs: timeouts.config,
+      }),
+    listBundledPluginPackages: (workspaceId: string) =>
+      requestJson<{ items: iPolloWorkBundledPluginPackageItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog`, {
+        token,
+        hostToken,
+        timeoutMs: timeouts.config,
+      }),
+    installBundledPluginPackage: (workspaceId: string, pluginId: string) =>
+      requestJson<{ result: { status: "installed" | "updated" | "unchanged"; pluginId: string; version: string; previousVersion?: string }; item?: iPolloWorkPluginPackageItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog/${encodeURIComponent(pluginId)}/install`, {
+        token,
+        hostToken,
+        method: "POST",
+        timeoutMs: timeouts.binary,
       }),
     validatePluginPackage: (workspaceId: string, packageRoot: string) =>
       requestJson<{ preview: iPolloWorkPluginPackagePreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/validate`, {
