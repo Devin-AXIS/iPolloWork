@@ -68,6 +68,41 @@ describe("syncTimedClipVisibility", () => {
     expect(sceneState("image").visibility).toBe("visible");
   });
 
+  it("keeps a narrated scene visible until its slow voiceover finishes", () => {
+    const root = document.getElementById("root")!;
+    root.innerHTML = `
+      <section id="intro" class="scene clip" data-start="0" data-duration="3" data-track-index="2" style="position:absolute">
+        <h1 id="intro-title" data-start="0" data-duration="3" style="position:absolute">Intro copy</h1>
+      </section>
+      <section id="details" class="scene clip" data-start="3" data-duration="4" data-track-index="2" style="position:absolute">
+        <h1>Details copy</h1>
+      </section>
+      <div id="persistent-overlay" class="clip" data-start="0" data-duration="7" data-track-index="1" style="position:absolute"></div>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro copy" data-ipw-narration-text="Intro copy" data-start="0" data-duration="5"></audio>`;
+
+    syncTimedClipVisibility(document, 4.5);
+    expect(sceneState("intro").visibility).toBe("visible");
+    expect(sceneState("intro-title").visibility).toBe("visible");
+    expect(sceneState("details").visibility).toBe("hidden");
+    expect(sceneState("persistent-overlay").visibility).toBe("visible");
+
+    syncTimedClipVisibility(document, 5.1);
+    expect(sceneState("intro").visibility).toBe("hidden");
+    expect(sceneState("details").visibility).toBe("visible");
+  });
+
+  it("does not extend a scene for an invalid or mismatched narration binding", () => {
+    const root = document.getElementById("root")!;
+    root.innerHTML = `
+      <section id="intro" class="scene clip" data-start="0" data-duration="3" data-track-index="2" style="position:absolute"></section>
+      <section id="details" class="scene clip" data-start="3" data-duration="4" data-track-index="2" style="position:absolute"></section>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro copy" data-ipw-narration-text="Different copy" data-start="0" data-duration="5"></audio>`;
+
+    syncTimedClipVisibility(document, 4.5);
+    expect(sceneState("intro").visibility).toBe("hidden");
+    expect(sceneState("details").visibility).toBe("visible");
+  });
+
   it("does not let a child escape an inactive parent window", () => {
     document.getElementById("ui")!.innerHTML = `
       <div id="nested" data-start="0" data-duration="15" style="position:absolute"></div>`;

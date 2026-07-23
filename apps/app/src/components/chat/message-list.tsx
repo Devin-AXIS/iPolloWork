@@ -5,9 +5,11 @@ import {
   AlertTriangle,
   Check,
   Copy,
+  Download,
   FileIcon,
   LoaderCircle,
   Pencil,
+  Quote,
   Split,
   Undo2,
 } from "lucide-react"
@@ -20,6 +22,7 @@ import {
 } from "ai"
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client"
 import { openDesktopUrl } from "@/app/lib/desktop"
+import { downloadTextAsFile } from "@/app/lib/download"
 import { publicAssetUrl } from "@/app/lib/public-asset"
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
@@ -81,7 +84,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCreated, formatMessageTimestamp, type UIMessageWithIndex, getMessagesText } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCreated, formatMessageTimestamp, type UIMessageWithIndex, getMessagesText } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
@@ -297,6 +300,44 @@ function CopyMessageButton({ messages }: CopyMessageButtonProps) {
         onClick={() => void onCopy()}
       >
         {copied ? <Check /> : <Copy />}
+      </Button>
+    </MessageAction>
+  )
+}
+
+function SaveMessageAsMarkdownButton({ messages }: CopyMessageButtonProps) {
+  const { sessionTitle } = useMessageList()
+  const text = React.useMemo(() => getMessagesText(messages), [messages])
+  if (!text) return null
+
+  return (
+    <MessageAction tooltip={t("message.save_markdown")}>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={t("message.save_markdown")}
+        onClick={() => downloadTextAsFile(assistantResponseMarkdownFilename(sessionTitle), buildAssistantResponseMarkdown(text), "text/markdown;charset=utf-8")}
+      >
+        <Download />
+      </Button>
+    </MessageAction>
+  )
+}
+
+function QuoteFollowUpButton({ messages }: CopyMessageButtonProps) {
+  const { setPrompt } = useMessageList()
+  const text = React.useMemo(() => getMessagesText(messages), [messages])
+  if (!text) return null
+
+  return (
+    <MessageAction tooltip={t("message.quote_follow_up")}>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={t("message.quote_follow_up")}
+        onClick={() => setPrompt(buildQuoteFollowUpPrompt(text))}
+      >
+        <Quote />
       </Button>
     </MessageAction>
   )
@@ -767,6 +808,8 @@ function MessageGroup({
         <div className="mx-auto flex w-full max-w-[800px] flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">
           <MessageActions className="flex gap-0">
             <CopyMessageButton messages={renderableItems.map((item) => item.message)} />
+            <SaveMessageAsMarkdownButton messages={renderableItems.map((item) => item.message)} />
+            <QuoteFollowUpButton messages={renderableItems.map((item) => item.message)} />
             {lastRealItem ? (
               <>
                 <MessageAction tooltip={t("message.branch_new_chat")}>

@@ -130,6 +130,34 @@ function participatesInExclusiveTiming(element: HTMLElement): boolean {
   return element.classList.contains("clip") || element.hasAttribute("data-track-index") || element.hasAttribute("data-track");
 }
 
+function activeNarratedScene(
+  doc: Document,
+  currentTime: number,
+  resolveStart: (element: Element) => number,
+  resolveDuration: (element: Element) => number,
+): HTMLElement | null {
+  let winner: { scene: HTMLElement; start: number } | null = null;
+  const voiceovers = doc.querySelectorAll<HTMLElement>('audio[data-ipw-voiceover="true"]');
+  for (const voiceover of voiceovers) {
+    const sceneId = voiceover.getAttribute("data-ipw-scene-id")?.trim();
+    const sceneText = voiceover.getAttribute("data-ipw-scene-text")?.trim();
+    const narrationText = voiceover.getAttribute("data-ipw-narration-text")?.trim();
+    if (!sceneId || !sceneText || narrationText !== sceneText) continue;
+    const scene = doc.getElementById(sceneId);
+    if (!(scene instanceof HTMLElement) || !scene.matches(".scene, [data-scene]")) continue;
+    const start = resolveStart(voiceover);
+    const duration = resolveDuration(voiceover);
+    if (
+      duration <= 0 ||
+      Math.abs(start - resolveStart(scene)) >= 0.001 ||
+      currentTime < start ||
+      currentTime >= start + duration
+    ) continue;
+    if (!winner || start >= winner.start) winner = { scene, start };
+  }
+  return winner?.scene ?? null;
+}
+
 export function syncTimedClipVisibility(doc: Document | null | undefined, currentTime: number): void {
   if (!doc || !Number.isFinite(currentTime)) return;
   const win = doc.defaultView;
@@ -149,11 +177,21 @@ export function syncTimedClipVisibility(doc: Document | null | undefined, curren
   }
 
   const { resolveDuration, resolveStart } = resolveTimedWindows(doc);
+  const narratedScene = activeNarratedScene(doc, currentTime, resolveStart, resolveDuration);
+  const narratedSceneGroup = narratedScene ? exclusiveGroup(narratedScene) : null;
   const active = new Map<HTMLElement, boolean>();
   for (const element of timed) {
     const start = resolveStart(element);
     const duration = resolveDuration(element);
-    active.set(element, duration > 0 && currentTime >= start && currentTime < start + duration);
+    const retainedByNarration = Boolean(
+      narratedScene &&
+      (element === narratedScene || narratedScene.contains(element)) &&
+      currentTime >= start,
+    );
+    active.set(
+      element,
+      retainedByNarration || (duration > 0 && currentTime >= start && currentTime < start + duration),
+    );
   }
 
   const winningTopLevelClip = new Map<string, { element: HTMLElement; start: number }>();
@@ -166,7 +204,12 @@ export function syncTimedClipVisibility(doc: Document | null | undefined, curren
     const key = exclusiveGroup(element);
     const start = resolveStart(element);
     const winner = winningTopLevelClip.get(key);
-    if (!winner || start >= winner.start) winningTopLevelClip.set(key, { element, start });
+    if (
+      element === narratedScene ||
+      (key !== narratedSceneGroup && (!winner || start >= winner.start))
+    ) {
+      winningTopLevelClip.set(key, { element, start });
+    }
   }
 
   for (const element of timed) {

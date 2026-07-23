@@ -21,6 +21,8 @@ apps/desktop/.hyperframes-build-stamp.json
 apps/desktop/dist-electron-test-filter/
 apps/desktop/hyperframes-runtime/
 apps/desktop/video/
+# Runtime video-session projects created by the desktop app.
+/video/
 
 # Env
 .env

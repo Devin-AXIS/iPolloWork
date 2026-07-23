@@ -296,7 +296,7 @@ describe("template installations", () => {
       expect(TEMPLATE_STYLE_LABELS[manifest.style]).toBeTruthy();
       expect(manifest.source.license).toBe("Apache-2.0");
       expect(manifest.source.revision).toBe("d0efb1eaa3b65c731709981718cd5a0a0d4e8f71");
-      const upgradedCategories = new Set(["site", "other"]);
+      const upgradedCategories = new Set(["site", "other", "video"]);
       const upgradedSlides = manifest.category === "slides" && manifest.id !== "ipollowork.html-anything.weekly-update";
       expect(manifest.version).toBe(upgradedCategories.has(manifest.category) || upgradedSlides ? "1.1.5" : "1.1.4");
       expect(manifest.cover).toBe("cover.png");
@@ -306,6 +306,16 @@ describe("template installations", () => {
       expect(entry).toMatch(manifest.surface === "video" ? /(data-var-src="logoUrl"|data-var-text="brandName")/ : /data-ipw-brand-slot/);
       expect(entry).not.toMatch(/HTML[- ]ANYTHING|OPEN DESIGN|Open Design/i);
       expect(entry).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
+      if (manifest.surface === "video") {
+        const currentLogo = await readFile(join(
+          bundledTemplatesRoot,
+          "ipollowork.hyperframes.course-journey",
+          "assets",
+          "ipollowork-logo.svg",
+        ), "utf8");
+        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260721");
+        expect(await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8")).toBe(currentLogo);
+      }
       if (manifest.category === "slides") {
         const visualTemplateId = manifest.id.replace("ipollowork.html-anything.", "");
         expect(entry).toContain(`data-ipw-template="${visualTemplateId}"`);
@@ -341,6 +351,7 @@ describe("template installations", () => {
       const entry = await readFile(join(root, manifest.entry), "utf8");
       expect(manifest.category).toBe("video");
       expect(manifest.surface).toBe("video");
+      expect(manifest.version).toBe("1.0.1");
       expect(manifest.entry).toBe("index.html");
       expect(manifest.cover).toBe("cover.png");
       expect(manifest.source.license).toBe("Apache-2.0");
@@ -379,6 +390,23 @@ describe("template installations", () => {
       expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain("window.__timelines.main");
       expect(existsSync(join(ws.path, "video", sessionId, "brief.json"))).toBe(true);
     }
+  });
+
+  test("refreshes the current iPolloWork logo when an existing video session opens", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-video-logo-refresh-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await listTemplates(serverConfig, ws.id);
+    await materializeTemplate(serverConfig, ws, flagshipVideoTemplateIds[0]!, "session_logo");
+    const logoPath = join(ws.path, "video", "session_logo", "assets", "ipollowork-logo.svg");
+    await writeFile(logoPath, '<svg viewBox="-3 0 106 106"><rect fill="white"/></svg>');
+
+    await readTemplateSession(serverConfig, ws, "session_logo");
+
+    const refreshedLogo = await readFile(logoPath, "utf8");
+    expect(refreshedLogo).toContain('viewBox="0 0 476 500"');
+    expect(refreshedLogo).not.toContain('fill="white"');
   });
 
   test("ships every website template with accessible navigation and observable actions", async () => {

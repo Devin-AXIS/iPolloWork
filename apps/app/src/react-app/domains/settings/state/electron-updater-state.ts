@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { isElectronRuntime, safeStringify } from "../../../../app/utils";
+import { t } from "../../../../i18n";
 import { useUpdateCheckRequestStore } from "./update-check-request";
 
 export type SettingsUpdateStatus = {
@@ -57,6 +58,13 @@ function describeError(error: unknown) {
   if (error instanceof Error) return error.message;
   const serialized = safeStringify(error);
   return serialized && serialized !== "{}" ? serialized : String(error);
+}
+
+export function isMissingReleaseError(reason: unknown): boolean {
+  if (typeof reason !== "string") return false;
+  const normalized = reason.toLowerCase();
+  return /(?:404|status code 404|http 404)/.test(normalized)
+    && /(?:release|latest(?:-[a-z0-9]+)?\.ya?ml|update info)/.test(normalized);
 }
 
 function releaseNotesToText(value: unknown): string | undefined {
@@ -186,6 +194,14 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
         return;
       }
       if (result.reason) {
+        if (isMissingReleaseError(result.reason)) {
+          setUpdateStatus({
+            state: "idle",
+            lastCheckedAt: Date.now(),
+            message: t("settings.update_release_unavailable"),
+          });
+          return;
+        }
         setUpdateStatus({ state: "error", message: result.reason });
         return;
       }

@@ -763,7 +763,15 @@ function snapshotFromRow(row: TemplateSessionRow): TemplateSessionSnapshot {
 export async function readTemplateSession(config: ServerConfig, workspace: WorkspaceInfo, sessionId: string): Promise<TemplateSessionSnapshot> {
   const row = (await templateDb(config)).getSession(workspace.id, sessionId);
   if (!row) throw new ApiError(404, "template_session_not_found", "This session has no template metadata");
-  return snapshotFromRow(row);
+  const snapshot = snapshotFromRow(row);
+  if (snapshot.surface === "video") {
+    const currentLogo = join(await resolveBundledTemplatesRoot(), "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg");
+    const sessionLogo = join(sessionRoot(workspace, sessionId, "video"), "assets", "ipollowork-logo.svg");
+    if (existsSync(currentLogo) && existsSync(dirname(sessionLogo))) {
+      await cp(currentLogo, sessionLogo, { force: true });
+    }
+  }
+  return snapshot;
 }
 
 export async function listTemplateSessions(config: ServerConfig, workspace: WorkspaceInfo): Promise<TemplateSessionSnapshot[]> {

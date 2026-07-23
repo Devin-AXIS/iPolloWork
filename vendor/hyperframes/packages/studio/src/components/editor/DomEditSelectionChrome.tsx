@@ -180,12 +180,15 @@ export function DomEditSelectionChrome({
             width: overlayRect.width,
             height: overlayRect.height,
             clipPath: boxClipPath,
+            touchAction: "none",
+            userSelect: "none",
             cursor:
               allowCanvasMovement && selection.capabilities.canApplyManualOffset
                 ? "move"
                 : "default",
           }}
           onPointerDown={(e) => {
+            if (e.button !== 0) return;
             if (!allowCanvasMovement || e.shiftKey) return;
             if (selection.capabilities.canApplyManualOffset) {
               gestures.startGesture("drag", e);

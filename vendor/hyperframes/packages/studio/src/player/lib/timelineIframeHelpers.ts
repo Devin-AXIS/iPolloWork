@@ -132,9 +132,13 @@ export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: bo
 function enforceSynchronizedVoiceovers(doc: Document | null | undefined): void {
   if (!doc) return;
   const voiceovers = doc.querySelectorAll<HTMLAudioElement>(
-    'audio[data-ipw-voiceover="true"], audio[id^="vo-"], audio[src*="/audio/voice/"]',
+    'audio[data-ipw-voiceover="true"], audio[id^="vo-"], audio[src*="/audio/voice/"], audio[src*="voiceover-"]',
   );
-  for (const voiceover of voiceovers) {
+  let previousEnd = Number.NEGATIVE_INFINITY;
+  const ordered = Array.from(voiceovers).sort(
+    (left, right) => Number(left.getAttribute("data-start")) - Number(right.getAttribute("data-start")),
+  );
+  for (const voiceover of ordered) {
     const sceneId = voiceover.getAttribute("data-ipw-scene-id")?.trim() ?? "";
     const sceneText = voiceover.getAttribute("data-ipw-scene-text")?.trim() ?? "";
     const narrationText = voiceover.getAttribute("data-ipw-narration-text")?.trim() ?? "";
@@ -142,6 +146,7 @@ function enforceSynchronizedVoiceovers(doc: Document | null | undefined): void {
     const duration = Number(voiceover.getAttribute("data-duration"));
     const scene = sceneId ? doc.getElementById(sceneId) : null;
     const sceneStart = Number(scene?.getAttribute("data-start"));
+    const overlapsPrevious = Number.isFinite(start) && start < previousEnd - 0.001;
     const valid = Boolean(
       scene?.matches(".scene, [data-scene]") &&
       sceneText &&
@@ -150,10 +155,12 @@ function enforceSynchronizedVoiceovers(doc: Document | null | undefined): void {
       Number.isFinite(duration) &&
       duration > 0 &&
       Number.isFinite(sceneStart) &&
-      Math.abs(start - sceneStart) < 0.001,
+      Math.abs(start - sceneStart) < 0.001 &&
+      !overlapsPrevious,
     );
     if (valid) {
       voiceover.removeAttribute("data-ipw-sync-invalid");
+      previousEnd = Math.max(previousEnd, start + duration);
       continue;
     }
     voiceover.setAttribute("data-ipw-sync-invalid", "true");

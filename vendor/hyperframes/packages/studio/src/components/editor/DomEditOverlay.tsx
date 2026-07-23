@@ -464,7 +464,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       // Cursor follows marquee rect *state* (re-renders), not the mutable ref.
       style={marquee.marqueeRect ? { cursor: "crosshair" } : undefined}
       onPointerDownCapture={(event) => {
-        if (isPreviewTextSelectionSuppressingCanvas()) return;
         // A pointer gesture supersedes a pending nudge burst — commit it first
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();
