@@ -312,5 +312,3 @@ Expected: all tests pass, TypeScript exits 0, and `git diff --check` prints no e
 git add -- apps/app/src/app/types.ts apps/app/src/react-app/domains/session/design/design-ai-selection.ts apps/app/src/react-app/domains/session/design/design-ai-selection-store.ts apps/app/src/react-app/domains/session/design/design-html-runtime.ts apps/app/src/react-app/domains/session/design/design-panel.tsx apps/app/src/react-app/domains/session/chat/session-page.tsx apps/app/src/react-app/domains/session/surface/composer/editor.tsx apps/app/src/react-app/domains/session/surface/session-surface.tsx apps/app/src/react-app/domains/session/sync/runtime-sync.tsx apps/app/src/react-app/shell/session-route.tsx apps/app/tests/design-ai-selection.test.ts apps/app/tests/design-ai-composer.test.ts apps/app/tests/design-ai-session-route.test.ts apps/app/tests/design-html-runtime.test.ts apps/app/tests/design-deck-navigation.test.ts apps/app/tests/design-preview-height.test.ts
 git commit -m "Add AI editing for selected Design elements"
 ```
-
-
