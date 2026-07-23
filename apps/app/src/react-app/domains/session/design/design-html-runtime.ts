@@ -52,6 +52,7 @@ export type DesignDeckState = {
 export type DesignRuntimeMessage =
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "selected"; selection: DesignSelection }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "editing"; selection: DesignSelection }
+  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "deselected" }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "draft"; html: string; selection: DesignSelection }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "document-draft"; html: string }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "snapshot"; requestId: string; html: string }
@@ -292,6 +293,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
   };
 
   let lastState = "";
+  const notifyNavigation = () => document.dispatchEvent(new Event("ipollowork-design-deck-navigated"));
   const report = () => {
     const index = activeIndex();
     const title = slides[index]?.getAttribute("data-title") || slides[index]?.querySelector("h1,h2,h3")?.textContent?.trim() || "";
@@ -317,6 +319,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
       slides[next]?.scrollIntoView({ block: "nearest", inline: "start", behavior: "smooth" });
       setSlideVisibility(next);
     }
+    notifyNavigation();
     window.setTimeout(report, 0);
   };
 
@@ -327,6 +330,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
         control.click();
         window.setTimeout(() => {
           setSlideVisibility(activeIndex());
+          notifyNavigation();
           report();
         }, 0);
         return;
@@ -347,10 +351,15 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
 
   setSlideVisibility(activeIndex());
 
-  document.addEventListener("click", () => window.setTimeout(() => {
-    setSlideVisibility(activeIndex());
-    report();
-  }, 0), true);
+  document.addEventListener("click", (event) => {
+    const isDeckControl = event.target instanceof Element
+      && Boolean(event.target.closest("[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next'],button[aria-label^='Go to slide']"));
+    window.setTimeout(() => {
+      setSlideVisibility(activeIndex());
+      if (isDeckControl) notifyNavigation();
+      report();
+    }, 0);
+  }, true);
   document.addEventListener("keydown", (event) => {
     const direction = !event.defaultPrevented && !event.altKey && !event.ctrlKey && !event.metaKey && !isEditableTarget(event.target)
       ? keyboardDirection(event)
@@ -627,7 +636,8 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
 
   const isDeckNavigation = (target: Element) => Boolean(target.closest("[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next'],button[aria-label^='Go to slide']"));
 
-  const clearSelection = () => {
+  const clearSelection = (notify = false) => {
+    const hadSelection = Boolean(selected);
     selected?.removeAttribute(selectedAttribute);
     selected?.removeAttribute(editingAttribute);
     selected?.removeAttribute("contenteditable");
@@ -635,6 +645,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     textRange = null;
     transform = null;
     overlay.style.display = "none";
+    if (notify && hadSelection) window.parent.postMessage({ channel, type: "deselected" }, "*");
   };
 
   const setEditingEnabled = (next: boolean) => {
@@ -644,6 +655,8 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   };
 
   setEditingEnabled(initialEditing);
+
+  document.addEventListener("ipollowork-design-deck-navigated", () => clearSelection(true));
 
   const elementBelowOverlay = (x: number, y: number) => {
     const previous = overlay.style.pointerEvents;
@@ -787,7 +800,10 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     if (!(target instanceof Element)) return;
     if (!event.altKey && isDeckNavigation(target)) return;
     const element = selectionCandidate(target);
-    if (!element) return;
+    if (!element) {
+      clearSelection(true);
+      return;
+    }
     if (element.hasAttribute(editingAttribute)) return;
     event.preventDefault();
     event.stopPropagation();

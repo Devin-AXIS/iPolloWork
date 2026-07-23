@@ -119,7 +119,7 @@ const TYPE_PRESETS = [
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
 }
 
 function readDesignTokenValues(...sources: string[]): DesignTokenValues {
@@ -800,6 +800,12 @@ export function DesignPanel({
       }
       if (event.data.type === "pan") {
         presentationPanRef.current?.scrollBy({ left: -event.data.deltaX, top: -event.data.deltaY });
+        return;
+      }
+      if (event.data.type === "deselected") {
+        setSelection(null);
+        setQuickEdit(null);
+        setAdvancedOpen(false);
         return;
       }
       if (event.data.type === "document-draft") {

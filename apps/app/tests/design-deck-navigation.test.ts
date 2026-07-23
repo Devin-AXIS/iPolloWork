@@ -79,4 +79,13 @@ describe("Design deck navigation", () => {
     expect(source).toContain("overflow-auto");
     expect(source).toContain("presentationCanvasStageSize");
   });
+
+  test("dismisses the floating selection toolbar when the editor deselects", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('event.data.type === "deselected"');
+    expect(source).toContain("setSelection(null);");
+    expect(source).toContain("setQuickEdit(null);");
+    expect(source).toContain("setAdvancedOpen(false);");
+  });
 });

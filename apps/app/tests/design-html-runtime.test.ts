@@ -155,6 +155,20 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain("selectionCandidate(target)");
   });
 
+  test("clears the editor selection on blank canvas clicks and slide navigation", async () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><section class=\"slide\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>", true, "", true, false, true);
+    const runtimePath = new URL(
+      "../src/react-app/domains/session/design/design-html-runtime.ts",
+      import.meta.url,
+    );
+    const runtimeSource = await Bun.file(runtimePath).text();
+
+    expect(preview).toContain('type: "deselected"');
+    expect(preview).toContain("clearSelection(!0)");
+    expect(preview).toContain("ipollowork-design-deck-navigated");
+    expect(runtimeSource).toContain("if (isDeckControl) notifyNavigation();");
+  });
+
   test("intercepts Ctrl or Meta wheel zoom only for presentation canvases", () => {
     const sitePreview = buildDesignPreviewDocument("<!doctype html><html><body><h1>Site</h1></body></html>", true, "", false, false, false);
     const presentationPreview = buildDesignPreviewDocument("<!doctype html><html><body><section class=\"slide\"><h1>Slide</h1></section></body></html>", true, "", false, false, true);
