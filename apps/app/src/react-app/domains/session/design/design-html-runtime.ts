@@ -440,7 +440,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     html[${panningAttribute}="true"] :is(${slideRootSelector}) { cursor: grabbing !important; }
     html[${modeAttribute}="editing"] [${selectedAttribute}] { outline: 2px solid #7c3aed !important; outline-offset: 2px !important; }
     html[${modeAttribute}="editing"] [${editingAttribute}] { cursor: text !important; outline: 2px solid #2563eb !important; }
-    #${overlayId} { position: fixed; z-index: 2147483646; display: none; pointer-events: auto; cursor: move; border: 1px solid #7c3aed; box-sizing: border-box; background: transparent; }
+    #${overlayId} { position: fixed; z-index: 2147483646; display: none; pointer-events: none; cursor: move; border: 1px solid #7c3aed; box-sizing: border-box; background: transparent; }
     #${overlayId} [data-handle] { position: absolute; width: 9px; height: 9px; padding: 0; border: 1.5px solid #7c3aed; border-radius: 3px; background: white; box-shadow: 0 1px 4px rgba(15,23,42,.18); pointer-events: auto; }
     #${overlayId} [data-handle="nw"] { left: -5px; top: -5px; cursor: nwse-resize; }
     #${overlayId} [data-handle="n"] { left: 50%; top: -5px; transform: translateX(-50%); cursor: ns-resize; }

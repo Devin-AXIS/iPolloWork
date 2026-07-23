@@ -137,6 +137,14 @@ describe("Design HTML runtime", () => {
     expect(preview).not.toContain('event.key === "Backspace"');
   });
 
+  test("keeps the selection overlay from blocking clicks on text inside a selected card", () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><div class=\"card\"><h4>Card title</h4><p>Card body</p></div></body></html>", true);
+
+    expect(preview).toContain('#ipollowork-design-transform-overlay { position: fixed; z-index: 2147483646; display: none; pointer-events: none;');
+    expect(preview).toContain('#ipollowork-design-transform-overlay [data-handle] {');
+    expect(preview).toContain('pointer-events: auto;');
+  });
+
   test("does not select a presentation slide root for transform", () => {
     const preview = buildDesignPreviewDocument("<!doctype html><html><body><section class=\"slide\"><h1>Slide title</h1></section></body></html>", true, "", false, false, true);
 
