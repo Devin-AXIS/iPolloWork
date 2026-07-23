@@ -1,0 +1,4 @@
+interface:
+  display_name: "iPolloWork Video Template"
+  short_description: "Build valid HTML video templates"
+  default_prompt: "Use $ipollowork-video-template to create a production-ready HTML video template from this brief."
