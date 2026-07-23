@@ -87,6 +87,7 @@ import {
   mergeRouteWorkspaces,
   orderRouteWorkspaces,
   toSessionGroups,
+  userVisibleSessionsByWorkspaceId,
   workspaceExportFilename,
   workspaceLabel,
 } from "@/react-app/shell/route-workspaces";
@@ -644,10 +645,13 @@ export function SessionRoute() {
     onSaved: handleRemoteWorkspaceConnectionSaved,
   });
 
-
+  const visibleSessionsByWorkspaceId = useMemo(
+    () => userVisibleSessionsByWorkspaceId(sessionsByWorkspaceId),
+    [sessionsByWorkspaceId],
+  );
   const workspaceSessionGroups = useMemo(
-    () => toSessionGroups(workspaces, sessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
-    [errorsByWorkspaceId, retryingWorkspaceIds, sessionsByWorkspaceId, workspaces],
+    () => toSessionGroups(workspaces, visibleSessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
+    [errorsByWorkspaceId, retryingWorkspaceIds, visibleSessionsByWorkspaceId, workspaces],
   );
   useSessionGroupSync({ workspaces, endpointForWorkspace });
   const selectedWorkspaceGroupState = sessionManagementStore((state) => (
@@ -658,14 +662,15 @@ export function SessionRoute() {
   const sessionActivityByWorkspaceId = useSessionActivityStore((state) => state.statusesByWorkspaceId);
 
   useEffect(() => {
-    for (const group of workspaceSessionGroups) {
-      seedWorkspaceActivitySessions(group.workspace.id, group.sessions);
-      const serverId = workspaceServerId(group.workspace);
-      if (serverId && serverId !== group.workspace.id) {
-        seedWorkspaceActivitySessions(serverId, group.sessions);
+    for (const workspace of workspaces) {
+      const sessions = sessionsByWorkspaceId[workspace.id] ?? [];
+      seedWorkspaceActivitySessions(workspace.id, sessions);
+      const serverId = workspaceServerId(workspace);
+      if (serverId && serverId !== workspace.id) {
+        seedWorkspaceActivitySessions(serverId, sessions);
       }
     }
-  }, [seedWorkspaceActivitySessions, workspaceSessionGroups]);
+  }, [seedWorkspaceActivitySessions, sessionsByWorkspaceId, workspaces]);
 
   const sidebarSessionStatusById = useMemo(() => {
     const next: Record<string, string> = {};
@@ -1685,7 +1690,7 @@ export function SessionRoute() {
         workspace.name?.trim() ||
         workspace.path?.trim() ||
         t("session.workspace_fallback");
-      const list = sessionsByWorkspaceId[workspace.id] ?? [];
+      const list = visibleSessionsByWorkspaceId[workspace.id] ?? [];
       for (const session of list) {
         const sessionId = (session as { id?: string }).id?.trim() ?? "";
         if (!sessionId) continue;
@@ -1714,7 +1719,7 @@ export function SessionRoute() {
       return b.updatedAt - a.updatedAt;
     });
     return out;
-  }, [sessionsByWorkspaceId, selectedWorkspaceId, workspaces]);
+  }, [selectedWorkspaceId, visibleSessionsByWorkspaceId, workspaces]);
 
   const paletteSessionGroups = useMemo<SessionGroupOption[]>(
     () => selectedWorkspaceGroupState?.groups ?? [],

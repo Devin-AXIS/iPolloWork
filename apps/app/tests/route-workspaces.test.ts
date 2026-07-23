@@ -4,6 +4,7 @@ import type { WorkspaceInfo } from "../src/app/lib/desktop-types";
 import {
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
+  toSessionGroups,
   resolveKnownWorkspaceId,
   userVisibleSessionsByWorkspaceId,
 } from "../src/react-app/shell/route-workspaces";
@@ -77,5 +78,20 @@ describe("route workspaces", () => {
       "user-branch",
       "legacy-branch",
     ]);
+  });
+
+  test("provides one visible collection for sidebar, switcher, and search", () => {
+    const raw = {
+      ws: [
+        routeSession("hidden", { parentID: "parent", agent: "executor" }),
+        routeSession("visible", { parentID: "parent", agent: "orchestrator" }),
+      ],
+    };
+    const workspace = mapDesktopWorkspace(localWorkspace("ws", "/Users/example/current"));
+    const visible = userVisibleSessionsByWorkspaceId(raw);
+    const groups = toSessionGroups([workspace], visible, {}, new Set());
+
+    expect(groups[0]?.sessions).toBe(visible.ws);
+    expect(visible.ws.map((session) => session.id)).toEqual(["visible"]);
   });
 });
