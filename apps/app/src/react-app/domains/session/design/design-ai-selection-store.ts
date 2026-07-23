@@ -16,6 +16,7 @@ type DesignAiSelectionStore = {
   createContext: (context: DesignAiSelectionContext) => void;
   markRunning: (contextId: string) => void;
   complete: (contextId: string, result: CompleteDesignAiSelection) => void;
+  completeWithoutChange: (contextId: string) => void;
   fail: (contextId: string) => void;
   latestUndoCheckpoint: (sessionId: string, filePath: string) => DesignAiUndoCheckpoint | undefined;
   popUndoCheckpoint: (sessionId: string, filePath: string) => DesignAiUndoCheckpoint | undefined;
@@ -62,7 +63,7 @@ export const useDesignAiSelectionStore = create<DesignAiSelectionStore>((set, ge
   }),
   complete: (contextId, result) => set((state) => {
     const context = state.contexts[contextId];
-    if (!context) return state;
+    if (!context || state.statuses[contextId] === "completed") return state;
     const checkpointsForSession = state.undoCheckpoints[context.sessionId] ?? {};
     const checkpointsForFile = checkpointsForSession[context.filePath] ?? [];
 
@@ -76,6 +77,10 @@ export const useDesignAiSelectionStore = create<DesignAiSelectionStore>((set, ge
         },
       },
     };
+  }),
+  completeWithoutChange: (contextId) => set((state) => {
+    if (!state.contexts[contextId] || state.statuses[contextId] === "completed") return state;
+    return { statuses: { ...state.statuses, [contextId]: "completed" } };
   }),
   fail: (contextId) => set((state) => {
     if (!state.contexts[contextId]) return state;

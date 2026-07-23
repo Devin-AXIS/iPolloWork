@@ -12,6 +12,7 @@ import type {
   AgentPartInput,
   FilePartInput,
   ProviderListResponse,
+  SessionStatus,
   TextPartInput,
 } from "@opencode-ai/sdk/v2/client";
 
@@ -102,6 +103,8 @@ import {
   applySessionRevert,
 } from "@/react-app/domains/session/sync/session-sync";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
+import { designAiSelectionInstruction } from "@/react-app/domains/session/design/design-ai-selection";
+import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
 import { useModelBehavior } from "@/react-app/domains/session/surface/use-model-behavior";
 import { useSessionFindStore } from "@/react-app/domains/session/surface/find-store";
@@ -253,7 +256,11 @@ function attachmentMime(attachment: ComposerAttachment) {
   return "text/plain";
 }
 
-async function draftToParts(draft: ComposerDraft, workspaceRoot: string) {
+export async function draftToParts(
+  draft: ComposerDraft,
+  workspaceRoot: string,
+  designSelectionStore: Pick<typeof useDesignAiSelectionStore, "getState"> = useDesignAiSelectionStore,
+) {
   const parts: Array<TextPartInput | FilePartInput | AgentPartInput> = [];
   const root = workspaceRoot.trim();
 
@@ -273,6 +280,17 @@ async function draftToParts(draft: ComposerDraft, workspaceRoot: string) {
   };
 
   for (const part of draft.parts) {
+    if (part.type === "design-selection") {
+      const context = designSelectionStore.getState().contexts[part.contextId];
+      if (context) {
+        parts.push({
+          type: "text",
+          text: designAiSelectionInstruction(context),
+          synthetic: true,
+        });
+      }
+      continue;
+    }
     if (part.type === "text") {
       parts.push({
         type: "text",
@@ -811,6 +829,34 @@ export function SessionRoute() {
     navigate("/help", { state: { returnTo } });
   }, [navigate, selectedSessionId, sidebarActiveWorkspaceId]);
 
+  const handleSessionStatus = useCallback((update: { sessionId: string; status: SessionStatus }) => {
+    if (update.status.type !== "idle" || !selectedWorkspaceEndpoint) return;
+    const { contexts, statuses, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
+    const runningContexts = Object.values(contexts).filter((context) => (
+      context.sessionId === update.sessionId
+      && context.workspaceId === selectedWorkspaceEndpoint.workspaceId
+      && statuses[context.id] === "running"
+    ));
+
+    for (const context of runningContexts) {
+      void (async () => {
+        try {
+          const after = await selectedWorkspaceEndpoint.client.readWorkspaceFile(context.workspaceId, context.filePath);
+          if (after.content !== context.beforeHtml) {
+            complete(context.id, {
+              afterHtml: after.content,
+              afterUpdatedAt: after.updatedAt ?? null,
+            });
+          } else {
+            completeWithoutChange(context.id);
+          }
+        } catch {
+          fail(context.id);
+        }
+      })();
+    }
+  }, [selectedWorkspaceEndpoint]);
+
   const surfaceProps = useMemo(() => {
     if (!client || !selectedWorkspaceId || !selectedSessionId || !opencodeBaseUrl || !token || !opencodeClient) {
       return null;
@@ -1017,6 +1063,28 @@ export function SessionRoute() {
           ...capabilityPromptPart,
           ...parts,
         ];
+        const designSelectionContexts = draft.parts.flatMap((part) => {
+          if (part.type !== "design-selection") return [];
+          const context = useDesignAiSelectionStore.getState().contexts[part.contextId];
+          return context?.sessionId === targetSessionId ? [context] : [];
+        });
+        for (const context of designSelectionContexts) {
+          if (!selectedWorkspaceEndpoint || context.workspaceId !== selectedWorkspaceEndpoint.workspaceId) {
+            useDesignAiSelectionStore.getState().fail(context.id);
+            throw new Error("The selected Design element is no longer available in this workspace.");
+          }
+          const current = await selectedWorkspaceEndpoint.client.readWorkspaceFile(context.workspaceId, context.filePath);
+          if ((current.updatedAt ?? null) !== context.baseUpdatedAt) {
+            useDesignAiSelectionStore.getState().fail(context.id);
+            throw new Error("The selected Design file changed before the AI update. Reload it and try again.");
+          }
+          await selectedWorkspaceEndpoint.client.writeWorkspaceFile(context.workspaceId, {
+            path: context.filePath,
+            content: context.beforeHtml,
+            baseUpdatedAt: current.updatedAt ?? null,
+          });
+          useDesignAiSelectionStore.getState().markRunning(context.id);
+        }
         const result = await opencodeClient.session.promptAsync({
           sessionID: targetSessionId,
           parts: promptParts,
@@ -1966,6 +2034,7 @@ export function SessionRoute() {
         opencodeBaseUrl={opencodeBaseUrl}
         ipolloworkToken={selectedWorkspaceServerToken}
         onSessionUpdated={handleRuntimeSessionUpdated}
+        onSessionStatus={handleSessionStatus}
       />
     ) : null}
     <SessionPage
