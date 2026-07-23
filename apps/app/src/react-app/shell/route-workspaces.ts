@@ -13,6 +13,7 @@ import {
   normalizeSessionStatus,
   safeStringify,
 } from "@/app/utils";
+import { getDisplaySessionTitle } from "@/app/lib/session-title";
 import { t } from "@/i18n";
 
 export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
@@ -204,6 +205,49 @@ export function userVisibleSessionsByWorkspaceId(
       sessions.filter((session) => !isInternalSubtaskSession(session)),
     ]),
   );
+}
+
+export type TaskPaletteSessionOption = {
+  workspaceId: string;
+  sessionId: string;
+  title: string;
+  workspaceTitle: string;
+  updatedAt: number;
+  searchText: string;
+  isActive: boolean;
+};
+
+export function buildTaskPaletteSessionOptions(
+  workspaces: RouteWorkspace[],
+  sessionsByWorkspaceId: Record<string, RouteSession[]>,
+  selectedWorkspaceId: string,
+): TaskPaletteSessionOption[] {
+  const visibleSessionsByWorkspaceId = userVisibleSessionsByWorkspaceId(sessionsByWorkspaceId);
+  const options: TaskPaletteSessionOption[] = [];
+
+  for (const workspace of workspaces) {
+    const workspaceTitle = workspaceLabel(workspace);
+    for (const session of visibleSessionsByWorkspaceId[workspace.id] ?? []) {
+      const sessionId = session.id?.trim() ?? "";
+      if (!sessionId) continue;
+      const title = getDisplaySessionTitle(session.title ?? "");
+      const updatedAt = session.time?.updated ?? session.time?.created ?? 0;
+      options.push({
+        workspaceId: workspace.id,
+        sessionId,
+        title,
+        workspaceTitle,
+        updatedAt,
+        searchText: `${title} ${workspaceTitle}`.toLowerCase(),
+        isActive: workspace.id === selectedWorkspaceId,
+      });
+    }
+  }
+
+  return options.sort((a, b) => {
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+    return b.updatedAt - a.updatedAt;
+  });
 }
 
 export function orderRouteWorkspaces(workspaces: RouteWorkspace[], orderIds: string[]): RouteWorkspace[] {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { WorkspaceInfo } from "../src/app/lib/desktop-types";
 import {
+  buildTaskPaletteSessionOptions,
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
   toSessionGroups,
@@ -93,5 +94,23 @@ describe("route workspaces", () => {
 
     expect(groups[0]?.sessions).toBe(visible.ws);
     expect(visible.ws.map((session) => session.id)).toEqual(["visible"]);
+  });
+
+  test("excludes delegated children from the session-switcher and search inputs", () => {
+    const workspace = mapDesktopWorkspace(localWorkspace("ws", "/Users/example/current"));
+    const sessions = {
+      ws: [
+        routeSession("hidden", { parentID: "parent", agent: "executor", title: "Internal child" }),
+        routeSession("visible", { parentID: "parent", agent: "orchestrator", title: "User task" }),
+      ],
+    };
+    const options = buildTaskPaletteSessionOptions(
+      [workspace],
+      sessions,
+      "ws",
+    );
+
+    expect(options.map((option) => option.sessionId)).toEqual(["visible"]);
+    expect(options[0]?.searchText).toContain("user task");
   });
 });
