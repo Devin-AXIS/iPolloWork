@@ -840,6 +840,8 @@ export function SessionPage(props: SessionPageProps) {
   });
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
   const [videoStudioExpanded, setVideoStudioExpanded] = useState(false);
+  const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
+  const rightPanelRestoreWidthRef = useRef(browserPanelWidth);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
   ));
@@ -919,9 +921,26 @@ export function SessionPage(props: SessionPageProps) {
     props.onAccessibleTargetsChange?.(accessibleTargets);
   }, [accessibleTargets, props.onAccessibleTargetsChange]);
   const commitBrowserPanelWidth = useCallback(() => {
+    if (rightPanelExpanded) return;
     const size = browserPanelRef.current?.getSize();
     if (size?.inPixels) setBrowserPanelWidth(Math.round(size.inPixels));
-  }, [browserPanelRef, setBrowserPanelWidth]);
+  }, [browserPanelRef, rightPanelExpanded, setBrowserPanelWidth]);
+  const setRightPanelExpandedState = useCallback((expanded: boolean) => {
+    const panel = browserPanelRef.current;
+    if (!panel) return;
+    if (expanded) {
+      rightPanelRestoreWidthRef.current = Math.round(panel.getSize().inPixels);
+      setRightPanelExpanded(true);
+      window.requestAnimationFrame(() => panel.resize("100%"));
+      return;
+    }
+    setRightPanelExpanded(false);
+    window.requestAnimationFrame(() => panel.resize(`${rightPanelRestoreWidthRef.current}px`));
+  }, [browserPanelRef]);
+  useEffect(() => {
+    if (effectiveSidePanelView === "design" || !rightPanelExpanded) return;
+    setRightPanelExpandedState(false);
+  }, [effectiveSidePanelView, rightPanelExpanded, setRightPanelExpandedState]);
   const browserUrlForTarget = useCallback((target: OpenTarget) => {
     if (/^wss?:\/\//i.test(target.value)) return target.value.replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
     return target.value;
@@ -1727,7 +1746,7 @@ export function SessionPage(props: SessionPageProps) {
                 <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
               </Tooltip>
             ) : null}
-            <ResizablePanel minSize={`${mainWorkspaceMinWidth}px`} className="min-w-0">
+            <ResizablePanel minSize={rightPanelExpanded ? "0px" : `${mainWorkspaceMinWidth}px`} className="min-w-0">
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
@@ -2067,12 +2086,12 @@ export function SessionPage(props: SessionPageProps) {
             </ResizablePanel>
               {sidePanelOpen ? (
               <>
-                <ResizableHandle withHandle className="hidden lg:flex" />
+                <ResizableHandle withHandle className={cn("hidden lg:flex", rightPanelExpanded && "lg:hidden")} />
                 <ResizablePanel
                   panelRef={browserPanelRef}
                   defaultSize={`${narrowLayout ? effectiveBrowserPanelWidth : effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "outputs" ? Math.max(browserPanelDefaultWidth, 360) : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
                   minSize={narrowLayout ? "160px" : effectiveSidePanelView === "video" ? "760px" : effectiveSidePanelView === "launcher" ? "280px" : effectiveSidePanelView === "outputs" ? "320px" : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" ? "420px" : "320px"}
-                  maxSize={effectiveSidePanelView === "video" ? "82%" : "70%"}
+                  maxSize={rightPanelExpanded ? "100%" : effectiveSidePanelView === "video" ? "82%" : "70%"}
                   className="min-h-0 overflow-hidden lg:flex lg:flex-col"
                 >
                   {effectiveSidePanelView === "launcher" ? (
@@ -2112,6 +2131,8 @@ export function SessionPage(props: SessionPageProps) {
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
                       launcherItems={sidePanelLauncherItems}
                       onAskAi={handleDesignAskAi}
+                      expanded={rightPanelExpanded}
+                      onExpandedChange={setRightPanelExpandedState}
                       onClose={closeRightPane}
                     />
                   ) : activeSidePanel === "video" && props.selectedSessionId ? (

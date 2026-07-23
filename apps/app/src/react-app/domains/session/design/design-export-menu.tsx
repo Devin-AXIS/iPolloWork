@@ -11,6 +11,7 @@ import {
 import { t } from "@/i18n";
 
 type DesignExportMenuProps = {
+  triggerClassName?: string;
   exportingPdf: boolean;
   exportingPptx: boolean;
   exportReady?: boolean;
@@ -20,6 +21,7 @@ type DesignExportMenuProps = {
 };
 
 export function DesignExportMenu({
+  triggerClassName,
   exportingPdf,
   exportingPptx,
   exportReady = true,
@@ -36,8 +38,9 @@ export function DesignExportMenu({
       <DropdownMenuTrigger
         render={(
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon-sm"
+            className={triggerClassName}
             disabled={triggerDisabled}
             aria-label={downloadLabel}
             title={triggerDisabled && !exportReady ? disabledReason : downloadLabel}
