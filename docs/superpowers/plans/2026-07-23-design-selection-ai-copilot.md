@@ -48,7 +48,6 @@ test("restricts the agent instruction to one element in one file", () => {
   expect(instruction).toContain("Do not modify any other element");
 });
 ```
-
 - [ ] **Step 2: Verify RED**
 
 Run: `pnpm.cmd --filter @ipollowork/app exec bun test --isolate tests/design-ai-selection.test.ts`
