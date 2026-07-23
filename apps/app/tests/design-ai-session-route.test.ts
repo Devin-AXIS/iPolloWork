@@ -154,6 +154,26 @@ describe("Design AI session lifecycle", () => {
     )).rejects.toThrow("Only one Design element can be edited at a time");
   });
 
+  test("expands repeated copies of the same Design token only once", async () => {
+    const store = useDesignAiSelectionStore.getState();
+    store.createContext(lifecycleContext);
+    const parts = await sessionRoute.draftToParts({
+      mode: "prompt",
+      parts: [
+        { type: "design-selection", contextId: lifecycleContext.id, label: "H1 Original" },
+        { type: "design-selection", contextId: lifecycleContext.id, label: "H1 Original" },
+        { type: "text", text: "Make it blue." },
+      ],
+      attachments: [],
+      text: "",
+    }, "C:/workspace", useDesignAiSelectionStore, { sessionId: "ses_1", workspaceId: "workspace_1" });
+
+    expect(parts).toEqual([
+      expect.objectContaining({ type: "text", synthetic: true }),
+      { type: "text", text: "Make it blue." },
+    ]);
+  });
+
   test("notifies once when an idle Design turn made no change", async () => {
     const source = await Bun.file(routeUrl).text();
 

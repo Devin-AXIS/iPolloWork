@@ -139,6 +139,10 @@ export function shouldPreserveComposerDraftAfterSendFailure(draft: ComposerDraft
   return draft.parts.some((part) => part.type === "design-selection");
 }
 
+export function failedDraftRetrySurface(draft: ComposerDraft) {
+  return shouldPreserveComposerDraftAfterSendFailure(draft) ? "composer" : "queue";
+}
+
 export function replaceDesignSelectionToken(draft: string, token: string) {
   const withoutPrevious = draft.replace(/\[\[design-ai:[a-zA-Z0-9_-]+\]\]\s*/g, "").trimEnd();
   return `${withoutPrevious}${withoutPrevious ? "\n" : ""}${token} `;
@@ -966,8 +970,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
       try {
         await sendDraft(next, next.attachments);
       } catch {
-        // Restore the queue so the user can retry / edit on failure.
-        prependQueuedDrafts(props.sessionId, [next]);
+        if (failedDraftRetrySurface(next) === "composer") {
+          setComposerDraft(props.sessionId, next.text);
+        } else {
+          // Restore ordinary queued drafts so the user can retry / edit them.
+          prependQueuedDrafts(props.sessionId, [next]);
+        }
       } finally {
         drainingQueueRef.current = false;
       }

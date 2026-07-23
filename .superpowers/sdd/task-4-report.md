@@ -16,6 +16,18 @@
 - Type check: `pnpm.cmd --filter @ipollowork/app typecheck` — passed.
 - Whitespace check: `git diff --check` — passed.
 
+## Safeguards follow-up
+
+- A queued Design request that fails now has exactly one retry surface: its raw chip/text is restored to the active composer and is not reinserted into the queued list. Ordinary queued requests retain the existing queue-restoration behavior.
+- Repeated copies of the same Design selection token now produce one synthetic scoped instruction. Different selection ids remain rejected before preflight.
+
+### Safeguards follow-up verification
+
+- RED baseline: `pnpm.cmd --filter @ipollowork/app exec bun test --isolate tests/design-ai-composer.test.ts tests/design-ai-session-route.test.ts` — 2 expected failures before implementation.
+- Green suite: `pnpm.cmd --filter @ipollowork/app exec bun test --isolate tests/design-ai-composer.test.ts tests/design-ai-session-route.test.ts tests/design-ai-selection.test.ts tests/design-html-runtime.test.ts tests/design-deck-navigation.test.ts tests/design-preview-height.test.ts tests/presentation-canvas.test.ts` — 54 passed, 0 failed.
+- Type check: `pnpm.cmd --filter @ipollowork/app typecheck` — passed.
+- Whitespace check: `git diff --check` — passed.
+
 ## Final review fixes
 
 - A failed scoped Design request now preserves the raw composer draft and its selection chip, allowing a stale-revision failure to be retried. Ordinary drafts retain the existing clear-on-failure behavior.

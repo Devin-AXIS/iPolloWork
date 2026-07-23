@@ -58,6 +58,27 @@ describe("Design AI composer integration", () => {
     })).toBe(false);
   });
 
+  test("uses the composer, not the queue, as the sole retry surface for a failed queued Design draft", () => {
+    expect(sessionSurface.failedDraftRetrySurface).toBeFunction();
+    if (typeof sessionSurface.failedDraftRetrySurface !== "function") return;
+
+    const designDraft = {
+      mode: "prompt" as const,
+      parts: [{ type: "design-selection" as const, contextId: "design-ai-1", label: "H1 Original" }],
+      attachments: [],
+      text: "[[design-ai:design-ai-1]] Make it blue.",
+    };
+    const ordinaryDraft = {
+      mode: "prompt" as const,
+      parts: [{ type: "text" as const, text: "Ordinary prompt" }],
+      attachments: [],
+      text: "Ordinary prompt",
+    };
+
+    expect(sessionSurface.failedDraftRetrySurface(designDraft)).toBe("composer");
+    expect(sessionSurface.failedDraftRetrySurface(ordinaryDraft)).toBe("queue");
+  });
+
   test("renders a Design token as an atomic purple chip", async () => {
     const source = await Bun.file(editorUrl).text();
 

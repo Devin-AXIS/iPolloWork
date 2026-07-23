@@ -356,10 +356,13 @@ export async function draftToParts(
   const designContexts = new Map(
     designSelectionContextsForDraft(draft, designSelectionStore, scope).map((context) => [context.id, context]),
   );
+  const expandedDesignContextIds = new Set<string>();
   for (const part of draft.parts) {
     if (part.type === "design-selection") {
+      if (expandedDesignContextIds.has(part.contextId)) continue;
       const context = designContexts.get(part.contextId);
       if (!context) throw new Error("The selected Design element is no longer available.");
+      expandedDesignContextIds.add(part.contextId);
       parts.push({
         type: "text",
         text: designAiSelectionInstruction(context),
