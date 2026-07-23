@@ -25,6 +25,7 @@ export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
  * fields that the sidebar probes defensively via getSessionStatus.
  */
 export type RouteSession = Session & {
+  agent?: string;
   status?: unknown;
   state?: unknown;
   runStatus?: unknown;
@@ -186,6 +187,23 @@ export function resolveKnownWorkspaceId(
     if (id && knownIds.has(id)) return id;
   }
   return "";
+}
+
+export function isInternalSubtaskSession(session: RouteSession) {
+  const parentID = session.parentID?.trim() ?? "";
+  const agent = session.agent?.trim() ?? "";
+  return Boolean(parentID && agent && agent !== "orchestrator");
+}
+
+export function userVisibleSessionsByWorkspaceId(
+  sessionsByWorkspaceId: Record<string, RouteSession[]>,
+): Record<string, RouteSession[]> {
+  return Object.fromEntries(
+    Object.entries(sessionsByWorkspaceId).map(([workspaceId, sessions]) => [
+      workspaceId,
+      sessions.filter((session) => !isInternalSubtaskSession(session)),
+    ]),
+  );
 }
 
 export function orderRouteWorkspaces(workspaces: RouteWorkspace[], orderIds: string[]): RouteWorkspace[] {
