@@ -8,6 +8,7 @@ describe("Design preview height", () => {
 
     expect(source).toContain('? "h-full w-full rounded-lg shadow-sm"');
     expect(source).toContain(': "h-full w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15"');
-    expect(source).toContain('? "absolute left-1/2 top-1/2 h-[900px] w-[1600px] origin-center rounded-lg shadow-sm"');
+    expect(source).toContain('? "absolute h-[900px] w-[1600px] origin-top-left rounded-lg shadow-sm"');
+    expect(source).toContain('isPresentationTemplate ? "absolute inset-0 overflow-auto" : "contents"');
   });
 });
