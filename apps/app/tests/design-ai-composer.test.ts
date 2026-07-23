@@ -40,6 +40,24 @@ describe("Design AI composer integration", () => {
     ).toBe("make it blue\n[[design-ai:design-ai-new]] ");
   });
 
+  test("preserves a Design selection draft when prompt submission fails", () => {
+    expect(sessionSurface.shouldPreserveComposerDraftAfterSendFailure).toBeFunction();
+    if (typeof sessionSurface.shouldPreserveComposerDraftAfterSendFailure !== "function") return;
+
+    expect(sessionSurface.shouldPreserveComposerDraftAfterSendFailure({
+      mode: "prompt",
+      parts: [{ type: "design-selection", contextId: "design-ai-1", label: "H1 Original" }],
+      attachments: [],
+      text: "[[design-ai:design-ai-1]] Make it blue.",
+    })).toBe(true);
+    expect(sessionSurface.shouldPreserveComposerDraftAfterSendFailure({
+      mode: "prompt",
+      parts: [{ type: "text", text: "Ordinary prompt" }],
+      attachments: [],
+      text: "Ordinary prompt",
+    })).toBe(false);
+  });
+
   test("renders a Design token as an atomic purple chip", async () => {
     const source = await Bun.file(editorUrl).text();
 

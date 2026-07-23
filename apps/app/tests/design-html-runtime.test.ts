@@ -154,4 +154,14 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain("canvasPan");
     expect(preview).toContain("selectionCandidate(target)");
   });
+
+  test("intercepts Ctrl or Meta wheel zoom only for presentation canvases", () => {
+    const sitePreview = buildDesignPreviewDocument("<!doctype html><html><body><h1>Site</h1></body></html>", true, "", false, false, false);
+    const presentationPreview = buildDesignPreviewDocument("<!doctype html><html><body><section class=\"slide\"><h1>Slide</h1></section></body></html>", true, "", false, false, true);
+
+    expect(sitePreview).toContain("if (!presentationCanvas || !event.ctrlKey && !event.metaKey)");
+    expect(sitePreview).toContain("],false,false,false);</script>");
+    expect(presentationPreview).toContain("],false,false,true);</script>");
+    expect(presentationPreview).toContain('type: "zoom"');
+  });
 });

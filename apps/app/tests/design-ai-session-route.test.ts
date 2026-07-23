@@ -131,6 +131,37 @@ describe("Design AI session lifecycle", () => {
     )).rejects.toThrow("is no longer available");
   });
 
+  test("rejects drafts with more than one unique Design selection", async () => {
+    const second = { ...lifecycleContext, id: "design-ai-lifecycle-second" };
+    const store = useDesignAiSelectionStore.getState();
+    store.createContext(lifecycleContext);
+    store.createContext(second);
+    const draft: ComposerDraft = {
+      mode: "prompt",
+      parts: [
+        { type: "design-selection", contextId: lifecycleContext.id, label: "H1 Original" },
+        { type: "design-selection", contextId: second.id, label: "P Original" },
+      ],
+      attachments: [],
+      text: "",
+    };
+
+    await expect(sessionRoute.draftToParts(
+      draft,
+      "C:/workspace",
+      useDesignAiSelectionStore,
+      { sessionId: "ses_1", workspaceId: "workspace_1" },
+    )).rejects.toThrow("Only one Design element can be edited at a time");
+  });
+
+  test("notifies once when an idle Design turn made no change", async () => {
+    const source = await Bun.file(routeUrl).text();
+
+    expect(source).toContain('toast.info("No Design change was detected.")');
+    expect(source).toContain("completeWithoutChange(context.id)");
+    expect(source.indexOf('toast.info("No Design change was detected.")')).toBeGreaterThan(source.indexOf("completeWithoutChange(context.id)"));
+  });
+
   test("marks all preflighted contexts failed when prompt submission rejects", async () => {
     const second = { ...lifecycleContext, id: "design-ai-lifecycle-2" };
     const store = useDesignAiSelectionStore.getState();

@@ -16,6 +16,20 @@
 - Type check: `pnpm.cmd --filter @ipollowork/app typecheck` — passed.
 - Whitespace check: `git diff --check` — passed.
 
+## Final review fixes
+
+- A failed scoped Design request now preserves the raw composer draft and its selection chip, allowing a stale-revision failure to be retried. Ordinary drafts retain the existing clear-on-failure behavior.
+- A draft may contain only one unique Design selection context; a repeated same-id chip normalizes to one context, while two different selected elements are rejected before synthetic instruction expansion or preflight.
+- An idle turn that does not change the selected Design file now shows `No Design change was detected.` after its atomic completion claim, so it cannot create an undo point or duplicate its toast on repeated idle notifications.
+- Ctrl/Meta wheel is intercepted and posted to the parent only for presentation canvases. Site and poster previews keep their normal browser/iframe wheel behavior.
+
+### Final review verification
+
+- RED baseline: `pnpm.cmd --filter @ipollowork/app exec bun test --isolate tests/design-ai-composer.test.ts tests/design-ai-session-route.test.ts tests/design-html-runtime.test.ts` — 4 expected failures before implementation.
+- Green suite: `pnpm.cmd --filter @ipollowork/app exec bun test --isolate tests/design-ai-composer.test.ts tests/design-ai-session-route.test.ts tests/design-ai-selection.test.ts tests/design-html-runtime.test.ts tests/design-deck-navigation.test.ts tests/design-preview-height.test.ts tests/presentation-canvas.test.ts` — 52 passed, 0 failed.
+- Type check: `pnpm.cmd --filter @ipollowork/app typecheck` — passed.
+- Whitespace check: `git diff --check` — passed.
+
 ## Manual Electron validation
 
 Not run in this headless task environment. The required manual path is: select title/image, send a narrow request through the Design chip, wait for idle refresh, use Design Undo, and verify protected slide roots still do not expose AI.

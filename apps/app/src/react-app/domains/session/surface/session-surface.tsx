@@ -135,6 +135,10 @@ export function parseComposerParts(text: string, input: ParseComposerPartsInput)
   return parts;
 }
 
+export function shouldPreserveComposerDraftAfterSendFailure(draft: ComposerDraft) {
+  return draft.parts.some((part) => part.type === "design-selection");
+}
+
 export function replaceDesignSelectionToken(draft: string, token: string) {
   const withoutPrevious = draft.replace(/\[\[design-ai:[a-zA-Z0-9_-]+\]\]\s*/g, "").trimEnd();
   return `${withoutPrevious}${withoutPrevious ? "\n" : ""}${token} `;
@@ -844,7 +848,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       captureAnalyticsEvent("task_send_failed", {});
       setError(parsed);
       useSessionActivityStore.getState().setError(props.workspaceId, props.sessionId, parsed.message);
-      setComposerDraft(props.sessionId, "");
+      if (!shouldPreserveComposerDraftAfterSendFailure(nextDraft)) setComposerDraft(props.sessionId, "");
       setAwaitingAssistantBaseline(null);
       setSending(false);
       throw nextError;
@@ -872,9 +876,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     try {
       await sendDraft(nextDraft, sentAttachments);
       clearComposer();
-    } catch {
-      setComposerDraft(props.sessionId, "");
-    }
+    } catch {}
   }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, newConversationMode, props.onActivateVideoStudio, props.sessionId, sendDraft, setComposerDraft]);
 
   const handleSteer = handleSend;

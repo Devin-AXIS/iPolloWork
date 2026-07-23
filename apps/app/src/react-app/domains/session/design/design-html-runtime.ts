@@ -851,7 +851,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   window.addEventListener("scroll", () => { if (editingEnabled) { syncOverlay(); post("selected"); } }, true);
 
   document.addEventListener("wheel", (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
+    if (!presentationCanvas || (!event.ctrlKey && !event.metaKey)) return;
     event.preventDefault();
     window.parent.postMessage({ channel, type: "zoom", deltaY: event.deltaY }, "*");
   }, { capture: true, passive: false });

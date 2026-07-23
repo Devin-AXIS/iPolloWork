@@ -296,6 +296,7 @@ export function designSelectionContextsForDraft(
     contexts.set(context.id, context);
   }
   if (errors.length > 0) throw new Error(errors[0]);
+  if (contexts.size > 1) throw new Error("Only one Design element can be edited at a time.");
   return [...contexts.values()];
 }
 
@@ -924,6 +925,7 @@ export function SessionRoute() {
             });
           } else {
             completeWithoutChange(context.id);
+            toast.info("No Design change was detected.");
           }
         } catch {
           fail(context.id);
