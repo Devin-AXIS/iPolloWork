@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, RotateCcw, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, RotateCcw, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Trash2, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
@@ -23,6 +23,8 @@ import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
+import type { DesignAiSelectionContext } from "./design-ai-selection";
+import { useDesignAiSelectionStore } from "./design-ai-selection-store";
 import {
   buildDesignPreviewDocument,
   DESIGN_MESSAGE_CHANNEL,
@@ -53,6 +55,9 @@ import {
   PRESENTATION_CANVAS_HEIGHT,
   PRESENTATION_CANVAS_WIDTH,
   presentationCanvasScale,
+  presentationCanvasStageSize,
+  presentationCanvasWheelZoom,
+  presentationCanvasZoomedScale,
 } from "./presentation-canvas";
 import {
   collectPptxBackgroundPlan,
@@ -87,6 +92,7 @@ type DesignPanelProps = {
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
+  onAskAi: (context: DesignAiSelectionContext) => void;
   onClose: () => void;
 };
 
@@ -113,7 +119,7 @@ const TYPE_PRESETS = [
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck");
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
 }
 
 function readDesignTokenValues(...sources: string[]): DesignTokenValues {
@@ -169,6 +175,82 @@ function sanitizePdfFileBaseName(value: string) {
 
 function isGenericPdfTitle(value: string) {
   return /^(?:cover|overview|summary|presentation|slides?|pitch deck|deck|untitled|index|entry|ipollowork(?: slide editing demo)?|pitch deck - ipollowork)$/i.test(value.trim());
+}
+
+function isPreviewLocalAssetUrl(value: string) {
+  const trimmed = value.trim();
+  return Boolean(trimmed)
+    && !trimmed.startsWith("#")
+    && !trimmed.startsWith("/")
+    && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(trimmed)
+    && !trimmed.split(/[?#]/, 1)[0]?.split("/").includes("..");
+}
+
+function resolvePreviewAssetPath(currentPath: string, assetUrl: string) {
+  const path = assetUrl.split(/[?#]/, 1)[0] ?? "";
+  const base = directoryPath(currentPath);
+  const segments: string[] = [];
+  for (const segment of `${base}${path}`.split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return segments.join("/");
+}
+
+type HydratedDesignPreview = {
+  source: string;
+  objectUrls: string[];
+};
+
+function arrayBufferToPreviewDataUrl(data: ArrayBuffer, contentType: string | null) {
+  const bytes = new Uint8Array(data);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return `data:${contentType ?? "application/octet-stream"};base64,${btoa(binary)}`;
+}
+
+async function hydrateDesignPreviewAssets(
+  source: string,
+  input: { client: iPolloWorkServerClient | null; workspaceId: string | null; activePagePath: string },
+): Promise<HydratedDesignPreview> {
+  if (!input.client || !input.workspaceId || !input.activePagePath || typeof DOMParser === "undefined") {
+    return { source, objectUrls: [] };
+  }
+  const client = input.client;
+  const workspaceId = input.workspaceId;
+  const parser = new DOMParser();
+  const document = parser.parseFromString(source, "text/html");
+  const images = Array.from(document.querySelectorAll<HTMLImageElement>("img[src]"))
+    .filter((image) => isPreviewLocalAssetUrl(image.getAttribute("src") ?? ""));
+  if (!images.length) return { source, objectUrls: [] };
+
+  const assetUrls = new Map<string, string>();
+  await Promise.all(images.map(async (image) => {
+    const original = image.getAttribute("src") ?? "";
+    const assetPath = resolvePreviewAssetPath(input.activePagePath, original);
+    const existing = assetUrls.get(assetPath);
+    if (existing) {
+      image.setAttribute("src", existing);
+      image.setAttribute("data-ipw-preview-src", original);
+      return;
+    }
+    try {
+      const downloaded = await client.downloadWorkspaceFile(workspaceId, assetPath);
+      const dataUrl = arrayBufferToPreviewDataUrl(downloaded.data, downloaded.contentType);
+      assetUrls.set(assetPath, dataUrl);
+      image.setAttribute("src", dataUrl);
+      image.setAttribute("data-ipw-preview-src", original);
+    } catch {
+      // Leave the original relative URL in place so broken assets stay visible
+      // as broken assets instead of hiding an underlying file issue.
+    }
+  }));
+  const doctype = source.trimStart().toLowerCase().startsWith("<!doctype") ? "<!DOCTYPE html>\n" : "";
+  return { source: `${doctype}${document.documentElement.outerHTML}`, objectUrls: [] };
 }
 
 function deckPdfFileName(document: Document, path: string) {
@@ -440,11 +522,13 @@ export function DesignPanel({
   workspaceId,
   isRemoteWorkspace = false,
   launcherItems = [],
+  onAskAi,
   onClose,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
   const iframeRef = React.useRef<any>(null);
   const previewViewportRef = React.useRef<HTMLDivElement>(null);
+  const presentationPanRef = React.useRef<HTMLDivElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
   const templateQuery = useQuery({
     queryKey: ["design-session-template", workspaceId, sessionId] as const,
@@ -487,6 +571,8 @@ export function DesignPanel({
   const [viewedVersionUpdatedAt, setViewedVersionUpdatedAt] = React.useState<number | null>(null);
   const [previewDevice, setPreviewDevice] = React.useState<"desktop" | "mobile">("desktop");
   const [previewViewport, setPreviewViewport] = React.useState({ width: 0, height: 0 });
+  const [presentationZoom, setPresentationZoom] = React.useState(1);
+  const [presentationScroll, setPresentationScroll] = React.useState({ left: 0, top: 0 });
   const [editing, setEditing] = React.useState(false);
   const [deck, setDeck] = React.useState<DesignDeckState | null>(null);
   const hydratedPageRef = React.useRef("");
@@ -497,6 +583,7 @@ export function DesignPanel({
   const [savedSource, setSavedSource] = React.useState("");
   const [history, setHistory] = React.useState<string[]>([]);
   const [previewSource, setPreviewSource] = React.useState("");
+  const [hydratedPreviewSource, setHydratedPreviewSource] = React.useState("");
   const [previewRevision, setPreviewRevision] = React.useState(0);
   const [previewLoaded, setPreviewLoaded] = React.useState(false);
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
@@ -507,6 +594,12 @@ export function DesignPanel({
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
+  const aiUndoCheckpoint = useDesignAiSelectionStore((state) => {
+    const checkpoint = state.undoCheckpoints[sessionId]?.[activePagePath]?.at(-1);
+    const context = checkpoint ? state.contexts[checkpoint.contextId] : undefined;
+    return context?.workspaceId === workspaceId ? checkpoint : undefined;
+  });
+  const appliedAiCheckpointRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!lockedPath) {
@@ -537,18 +630,46 @@ export function DesignPanel({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+
+  React.useEffect(() => {
+    if (!aiUndoCheckpoint || appliedAiCheckpointRef.current === aiUndoCheckpoint.contextId) return;
+    appliedAiCheckpointRef.current = aiUndoCheckpoint.contextId;
+    queryClient.setQueryData<LoadedHtml>(
+      ["design-html", workspaceId, activePagePath] as const,
+      { content: aiUndoCheckpoint.afterHtml, updatedAt: aiUndoCheckpoint.afterUpdatedAt },
+    );
+    draftRef.current = aiUndoCheckpoint.afterHtml;
+    setDraft(aiUndoCheckpoint.afterHtml);
+    setSavedSource(aiUndoCheckpoint.afterHtml);
+    setPendingCanvasChange(false);
+    setSelection(null);
+    setQuickEdit(null);
+    setPreviewSource(aiUndoCheckpoint.afterHtml);
+    setHydratedPreviewSource("");
+    setPreviewLoaded(false);
+    setPreviewRevision((current) => current + 1);
+  }, [activePagePath, aiUndoCheckpoint, queryClient, workspaceId]);
   const usesNativeEditablePptx = Boolean(
     designTemplate
     && isPptxCompatibleTemplate(designTemplate)
     && hasPptxCompatibleObjectMarkers(fileQuery.data?.content ?? ""),
   );
   const isPresentationTemplate = designTemplate?.category === "slides";
-  const presentationScale = presentationCanvasScale(previewViewport.width, previewViewport.height);
+  const presentationFitScale = presentationCanvasScale(previewViewport.width, previewViewport.height);
+  const presentationScale = presentationCanvasZoomedScale(presentationFitScale, presentationZoom);
+  const presentationCanvasStage = presentationCanvasStageSize(previewViewport.width, previewViewport.height, presentationScale);
+  const presentationCanvasLeft = Math.max(0, (presentationCanvasStage.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
+  const presentationCanvasTop = Math.max(0, (presentationCanvasStage.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
 
   React.useEffect(() => {
     if (!isPresentationTemplate) return;
     setPreviewDevice("desktop");
   }, [isPresentationTemplate]);
+
+  React.useEffect(() => {
+    setPresentationZoom(1);
+    setPresentationScroll({ left: 0, top: 0 });
+  }, [activePagePath, isPresentationTemplate]);
 
   // A presentation is opened to edit slides, not to inspect a static page.
   // The editor bridge supplies click-to-select, drag, resize handles and
@@ -633,10 +754,34 @@ export function DesignPanel({
     setAdvancedOpen(false);
     setDesignSystemOpen(false);
     setPreviewSource(fileQuery.data.content);
+    setHydratedPreviewSource("");
     setPreviewLoaded(false);
     setSourceHydrated(true);
     setPreviewRevision((current) => current + 1);
   }, [activePagePath, fileQuery.data?.content, fileQuery.data?.updatedAt, sessionId, viewedVersionPath]);
+
+  React.useEffect(() => {
+    if (!previewSource) {
+      setHydratedPreviewSource("");
+      return;
+    }
+    let cancelled = false;
+    let objectUrls: string[] = [];
+    setPreviewLoaded(false);
+    void hydrateDesignPreviewAssets(previewSource, { client, workspaceId, activePagePath }).then((result) => {
+      objectUrls = result.objectUrls;
+      if (cancelled) {
+        objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        return;
+      }
+      setHydratedPreviewSource(result.source);
+      setPreviewRevision((current) => current + 1);
+    });
+    return () => {
+      cancelled = true;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [activePagePath, client, previewSource, workspaceId]);
 
   React.useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
@@ -647,6 +792,20 @@ export function DesignPanel({
       }
       if (event.data.type === "deck") {
         setDeck(event.data.deck);
+        return;
+      }
+      if (event.data.type === "zoom") {
+        setPresentationZoom((current) => presentationCanvasWheelZoom(current, event.data.deltaY));
+        return;
+      }
+      if (event.data.type === "pan") {
+        presentationPanRef.current?.scrollBy({ left: -event.data.deltaX, top: -event.data.deltaY });
+        return;
+      }
+      if (event.data.type === "deselected") {
+        setSelection(null);
+        setQuickEdit(null);
+        setAdvancedOpen(false);
         return;
       }
       if (event.data.type === "document-draft") {
@@ -758,11 +917,17 @@ export function DesignPanel({
     // packaged Electron builds, producing a valid but blank PPTX.
     frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;opacity:0;pointer-events:none`;
     document.body.append(frame);
+    let hydratedObjectUrls: string[] = [];
     try {
       const exportLibraries = Promise.all([import("html2canvas-pro"), import("jspdf")]);
       const content = editing ? await readLatestCanvasHtml() : draftRef.current;
-      frame.srcdoc = buildDesignPreviewDocument(
+      const hydratedContent = await hydrateDesignPreviewAssets(
         downgradeUnsupportedPdfExportColorText(content),
+        { client, workspaceId, activePagePath },
+      );
+      hydratedObjectUrls = hydratedContent.objectUrls;
+      frame.srcdoc = buildDesignPreviewDocument(
+        hydratedContent.source,
         false,
         downgradeUnsupportedPdfExportColorText(templateTokenQuery.data ?? ""),
         false,
@@ -823,10 +988,11 @@ export function DesignPanel({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not export this presentation.");
     } finally {
+      hydratedObjectUrls.forEach((url) => URL.revokeObjectURL(url));
       frame.remove();
       setExportingPdf(false);
     }
-  }, [activePagePath, deck, editing, exportingPdf, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data]);
+  }, [activePagePath, client, deck, editing, exportingPdf, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data, workspaceId]);
 
   const exportDeckToPptx = React.useCallback(async () => {
     if (!deck || exportingPptx) return;
@@ -841,14 +1007,20 @@ export function DesignPanel({
     // source iframe paintable so Chromium can resolve those elements in the clone.
     frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_SLIDE_WIDTH}px;height:${PDF_SLIDE_HEIGHT}px;border:0;opacity:0;pointer-events:none`;
     document.body.append(frame);
+    let hydratedObjectUrls: string[] = [];
     try {
       const content = editing ? await readLatestCanvasHtml() : draftRef.current;
       const previewContent = usesNativeEditablePptx ? content : downgradeUnsupportedPdfExportColorText(content);
       const previewTokens = usesNativeEditablePptx
         ? templateTokenQuery.data ?? ""
         : downgradeUnsupportedPdfExportColorText(templateTokenQuery.data ?? "");
-      frame.srcdoc = buildDesignPreviewDocument(
+      const hydratedContent = await hydrateDesignPreviewAssets(
         previewContent,
+        { client, workspaceId, activePagePath },
+      );
+      hydratedObjectUrls = hydratedContent.objectUrls;
+      frame.srcdoc = buildDesignPreviewDocument(
+        hydratedContent.source,
         false,
         previewTokens,
         false,
@@ -1085,10 +1257,11 @@ export function DesignPanel({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not export this presentation.");
     } finally {
+      hydratedObjectUrls.forEach((url) => URL.revokeObjectURL(url));
       frame.remove();
       setExportingPptx(false);
     }
-  }, [activePagePath, deck, editing, exportingPptx, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx]);
+  }, [activePagePath, client, deck, editing, exportingPptx, isPresentationTemplate, previewLoaded, readLatestCanvasHtml, templateTokenQuery.data, usesNativeEditablePptx, workspaceId]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1154,6 +1327,7 @@ export function DesignPanel({
       setQuickEdit(null);
       setAdvancedOpen(false);
       setPreviewSource(content);
+      setHydratedPreviewSource("");
       setPreviewLoaded(false);
       setPreviewRevision((current) => current + 1);
     } catch (error) {
@@ -1174,6 +1348,45 @@ export function DesignPanel({
       value,
       scope: selection.rangeText && (field === "color" || field === "fontSize" || field === "fontWeight" || field === "letterSpacing") ? "range" : "element",
     }, "*");
+  };
+
+  const deleteSelection = () => {
+    if (!selection || !selection.canDelete || !editing) return;
+    setPendingCanvasChange(true);
+    setHistory((current) => [...current, draft]);
+    setSelection(null);
+    setQuickEdit(null);
+    setAdvancedOpen(false);
+    iframeRef.current?.contentWindow?.postMessage({
+      channel: DESIGN_MESSAGE_CHANNEL,
+      type: "delete",
+      id: selection.id,
+    }, "*");
+  };
+
+  const askAiAboutSelection = async () => {
+    if (!selection || !workspaceId || !activePagePath || !fileQuery.data) return;
+    const selected = selection;
+    const baseUpdatedAt = fileQuery.data.updatedAt;
+    const beforeHtml = await readLatestCanvasHtml();
+    const summary = (selected.text || selected.alt || selected.source).replace(/\s+/g, " ").trim().slice(0, 80);
+    onAskAi({
+      id: `design-ai-${crypto.randomUUID()}`,
+      sessionId,
+      workspaceId,
+      filePath: activePagePath,
+      baseUpdatedAt,
+      beforeHtml,
+      target: {
+        tag: selected.tag,
+        label: summary ? `${selected.tag.toUpperCase()} · ${summary}` : selected.tag.toUpperCase(),
+        locator: selected.locator,
+        text: selected.text,
+        src: selected.source,
+        alt: selected.alt,
+        styles: selected.styles,
+      },
+    });
   };
 
   const applyToken = (name: string, value: string) => {
@@ -1256,18 +1469,57 @@ export function DesignPanel({
     imageInputRef.current?.click();
   };
 
-  const undo = () => {
+  const undo = async () => {
     const previous = history[history.length - 1];
-    if (previous === undefined) return;
-    draftRef.current = previous;
-    setPendingCanvasChange(false);
-    setDraft(previous);
-    setHistory((current) => current.slice(0, -1));
-    setSelection(null);
-    setQuickEdit(null);
-    setPreviewSource(previous);
-    setPreviewLoaded(false);
-    setPreviewRevision((current) => current + 1);
+    if (previous !== undefined) {
+      draftRef.current = previous;
+      setPendingCanvasChange(false);
+      setDraft(previous);
+      setHistory((current) => current.slice(0, -1));
+      setSelection(null);
+      setQuickEdit(null);
+      setPreviewSource(previous);
+      setHydratedPreviewSource("");
+      setPreviewLoaded(false);
+      setPreviewRevision((current) => current + 1);
+      return;
+    }
+    const checkpoint = useDesignAiSelectionStore.getState().latestUndoCheckpoint(sessionId, activePagePath);
+    if (!checkpoint || !client || !workspaceId) return;
+    try {
+      const current = await client.readWorkspaceFile(workspaceId, activePagePath);
+      if (current.content !== checkpoint.afterHtml) {
+        throw new Error("This HTML file changed since the AI update.");
+      }
+      const result = await client.writeWorkspaceFile(workspaceId, {
+        path: activePagePath,
+        content: checkpoint.beforeHtml,
+        baseUpdatedAt: checkpoint.afterUpdatedAt,
+      });
+      const restored = await client.readWorkspaceFile(workspaceId, activePagePath);
+      useDesignAiSelectionStore.getState().popUndoCheckpoint(sessionId, activePagePath);
+      appliedAiCheckpointRef.current = useDesignAiSelectionStore.getState()
+        .latestUndoCheckpoint(sessionId, activePagePath)?.contextId ?? null;
+      queryClient.setQueryData<LoadedHtml>(
+        ["design-html", workspaceId, activePagePath] as const,
+        { content: restored.content, updatedAt: restored.updatedAt ?? result.updatedAt ?? null },
+      );
+      draftRef.current = restored.content;
+      setDraft(restored.content);
+      setSavedSource(restored.content);
+      setPendingCanvasChange(false);
+      setSelection(null);
+      setQuickEdit(null);
+      setPreviewSource(restored.content);
+      setHydratedPreviewSource("");
+      setPreviewLoaded(false);
+      setPreviewRevision((current) => current + 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      toast.error(message.includes("changed since")
+        ? "Could not undo the AI Design change because the file changed. Reload before trying again."
+        : message || "Could not undo the AI Design change.");
+    }
   };
 
   const dirty = pendingCanvasChange || draft !== savedSource;
@@ -1330,16 +1582,14 @@ export function DesignPanel({
   const preview = React.useMemo(
     // The bridge is always present but starts inactive. Toggling Edit page is
     // a message to that bridge, not a new srcDoc, so a deck stays on its slide.
-    () => buildDesignPreviewDocument(previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
-    [isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
+    () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
+    [hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
-  const presentationLeft = Math.max(0, (previewViewport.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
-  const presentationTop = Math.max(0, (previewViewport.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
   const selectionLeft = isPresentationTemplate
-    ? presentationLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2
+    ? presentationCanvasLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2 - presentationScroll.left
     : (iframeRef.current?.offsetLeft ?? 0) + (selection?.rect.left ?? 0) + (selection?.rect.width ?? 0) / 2;
   const selectionTop = isPresentationTemplate
-    ? presentationTop + (selection?.rect.top ?? 0) * presentationScale
+    ? presentationCanvasTop + (selection?.rect.top ?? 0) * presentationScale - presentationScroll.top
     : (iframeRef.current?.offsetTop ?? 0) + (selection?.rect.top ?? 0);
   const floatingStyle = selection ? {
     left: `clamp(112px, ${selectionLeft + 8}px, calc(100% - 112px))`,
@@ -1482,7 +1732,7 @@ export function DesignPanel({
                 <Palette className="size-3.5" />
               </Button>
             ) : null}
-            <Button variant="ghost" size="icon-sm" onClick={undo} disabled={history.length === 0} aria-label="Undo design change">
+            <Button variant="ghost" size="icon-sm" onClick={() => void undo()} disabled={history.length === 0 && !aiUndoCheckpoint} aria-label="Undo design change">
               <Undo2 />
             </Button>
             <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || (!editing && !dirty)}>
@@ -1499,6 +1749,18 @@ export function DesignPanel({
             >
               {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
             </Button>
+            {isPresentationTemplate ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPresentationZoom(1)}
+                disabled={presentationZoom === 1}
+                aria-label="Reset presentation zoom"
+                title="Reset zoom to fit"
+              >
+                <RotateCcw className="size-3.5" />
+              </Button>
+            ) : null}
             {!isPresentationTemplate ? (
               <ToggleGroup
                 value={[previewDevice]}
@@ -1547,31 +1809,48 @@ export function DesignPanel({
                 ref={previewViewportRef}
                 className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", !isPresentationTemplate && previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}
               >
-                <iframe
-                  ref={iframeRef}
-                  key={`${activePagePath}:${previewRevision}`}
-                  srcDoc={preview}
-                  title={`Design preview: ${fileName(activePagePath)}`}
-                  className={cn(
-                    "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
-                    isPresentationTemplate
-                      ? "absolute left-1/2 top-1/2 h-[900px] w-[1600px] origin-center rounded-lg shadow-sm"
-                      : previewDevice === "desktop"
-                      ? "h-full w-full rounded-lg shadow-sm"
-                      : "h-full w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
-                  )}
-                  style={isPresentationTemplate
-                    ? { transform: `translate(-50%, -50%) scale(${presentationScale})` }
+                <div
+                  ref={presentationPanRef}
+                  className={cn(isPresentationTemplate ? "absolute inset-0 overflow-auto" : "contents")}
+                  onScroll={isPresentationTemplate
+                    ? (event) => setPresentationScroll({ left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop })
                     : undefined}
-                  sandbox="allow-scripts"
-                  data-preview-loaded={previewLoaded ? "true" : "false"}
-                  onLoad={() => {
-                    setPreviewLoaded(true);
-                    iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
-                    iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
-                    if (deck) iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "deck-navigate", direction: "index", index: deck.index }, "*");
-                  }}
-                />
+                >
+                  <div
+                    className={cn(isPresentationTemplate ? "relative" : "contents")}
+                    style={isPresentationTemplate ? { width: presentationCanvasStage.width, height: presentationCanvasStage.height } : undefined}
+                  >
+                    <iframe
+                      ref={iframeRef}
+                      key={`${activePagePath}:${previewRevision}`}
+                      srcDoc={preview}
+                      title={`Design preview: ${fileName(activePagePath)}`}
+                      className={cn(
+                        "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
+                        isPresentationTemplate
+                          ? "absolute h-[900px] w-[1600px] origin-top-left rounded-lg shadow-sm"
+                          : previewDevice === "desktop"
+                          ? "h-full w-full rounded-lg shadow-sm"
+                          : "h-full w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
+                      )}
+                      style={isPresentationTemplate
+                        ? {
+                          left: presentationCanvasLeft,
+                          top: presentationCanvasTop,
+                          transform: `scale(${presentationScale})`,
+                        }
+                        : undefined}
+                      sandbox="allow-scripts"
+                      data-preview-loaded={previewLoaded ? "true" : "false"}
+                      onLoad={() => {
+                        setPreviewLoaded(true);
+                        iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
+                        iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
+                        if (deck) iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "deck-navigate", direction: "index", index: deck.index }, "*");
+                      }}
+                    />
+                  </div>
+                </div>
                 {editing && selection ? (
                   <div
                     className="absolute z-20 flex max-w-[calc(100%-24px)] items-center gap-1 rounded-2xl border border-border/80 bg-background/95 p-1 shadow-xl shadow-black/10 backdrop-blur-xl"
@@ -1707,6 +1986,17 @@ export function DesignPanel({
                           </>
                         ) : null}
                         <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={deleteSelection}
+                          disabled={!selection.canDelete}
+                          aria-label="Delete selected element"
+                          title="Delete selected element"
+                        >
+                          <Trash2 />
+                        </Button>
+                        <Button
                           variant={advancedOpen ? "secondary" : "ghost"}
                           size="icon-xs"
                           onClick={() => {
@@ -1717,6 +2007,15 @@ export function DesignPanel({
                           aria-pressed={advancedOpen}
                         >
                           <SlidersHorizontal />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => void askAiAboutSelection()}
+                          disabled={!selection.canDelete}
+                          aria-label="Ask AI about selected element"
+                        >
+                          <Sparkles />
                         </Button>
                       </>
                     )}

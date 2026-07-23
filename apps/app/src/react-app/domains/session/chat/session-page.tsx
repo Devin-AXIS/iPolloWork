@@ -49,7 +49,8 @@ import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
 import { useSessionManagementStore } from "../sidebar/session-management-store";
-import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
+import { replaceDesignSelectionToken, SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
+import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
 import {
   SidebarInset,
   SidebarProvider,
@@ -71,7 +72,10 @@ import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTa
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
-import { isTemplateDesignEntryTarget } from "../design/design-entry-target";
+import { designAiSelectionToken, type DesignAiSelectionContext } from "../design/design-ai-selection";
+import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
+import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
+import { loadTemplateSession } from "../templates/template-session-probe";
 import { VideoPanel } from "../video/video-panel";
 import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, templateColorPaletteLabel, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
@@ -461,6 +465,9 @@ export function SessionPage(props: SessionPageProps) {
   const hasTemplateSession = Boolean(templateSessionData);
   const hasTemplateBrief = templateSessionData?.hasBrief === true;
   const selectedTemplate = templateSessionData?.manifest ?? null;
+  const designTemplateEntryPath = templateSessionData?.manifest.surface === "design"
+    ? templateSessionData.state.entry
+    : undefined;
   const [conversationMessageState, setConversationMessageState] = useState<{ sessionId: string | null; messages: UIMessage[] }>({
     sessionId: null,
     messages: [],
@@ -468,6 +475,18 @@ export function SessionPage(props: SessionPageProps) {
   const [dismissedTemplateBriefSessionIds, setDismissedTemplateBriefSessionIds] = useState<Set<string>>(() => new Set());
   const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
     setConversationMessageState({ sessionId, messages });
+  }, []);
+  const handleDesignAskAi = useCallback((context: DesignAiSelectionContext) => {
+    useDesignAiSelectionStore.getState().createContext(context);
+    const composerStore = useComposerStateStore.getState();
+    composerStore.setDraft(
+      context.sessionId,
+      replaceDesignSelectionToken(
+        getComposerDraft(composerStore, context.sessionId),
+        designAiSelectionToken(context.id),
+      ),
+    );
+    window.dispatchEvent(new Event("ipollowork:focusPrompt"));
   }, []);
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
@@ -505,7 +524,7 @@ export function SessionPage(props: SessionPageProps) {
     return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   useEffect(() => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || (selectedSessionType !== "design" && selectedSessionType !== "video")) {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) {
       setTemplateSessionData(null);
       setTemplateSessionLoading(false);
       return;
@@ -516,17 +535,18 @@ export function SessionPage(props: SessionPageProps) {
     const sessionId = props.selectedSessionId;
     setTemplateSessionLoading(true);
     void (async () => {
+      const result = await loadTemplateSession({
+        client,
+        workspaceId,
+        sessionId,
+        knownSessionType: selectedSessionType,
+      });
+      if (!result) {
+        if (active) setTemplateSessionData(null);
+        if (active) setTemplateSessionLoading(false);
+        return;
+      }
       try {
-        let result: TemplateSessionSnapshot;
-        try {
-          result = await client.getTemplateSession(workspaceId, sessionId);
-        } catch (error) {
-          // Sessions created before template persistence already have exactly
-          // one Studio project at video/<session>. Claim that project once so
-          // future app launches and agent prompts use its stored binding.
-          if (selectedSessionType !== "video") throw error;
-          result = await client.adoptLegacyVideoSession(workspaceId, sessionId);
-        }
         const materializedType = sessionTypeForTemplate(result.manifest);
         if (materializedType !== selectedSessionType) {
           setSessionType(sessionId, materializedType);
@@ -921,7 +941,27 @@ export function SessionPage(props: SessionPageProps) {
 
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
-  const openTarget = useCallback((target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
+  const resolveOpenTargetTemplateSurface = useCallback(async (target: OpenTarget, sourceSessionId: string | null | undefined) => {
+    if (
+      !sourceSessionId
+      || sourceSessionId !== props.selectedSessionId
+      || target.kind !== "file"
+      || !props.ipolloworkServerClient
+      || !props.runtimeWorkspaceId
+    ) {
+      return null;
+    }
+
+    const binding = templateSessionData
+      ? Promise.resolve({ surface: templateSessionData.manifest.surface, entry: templateSessionData.state.entry })
+      : props.ipolloworkServerClient
+        .getTemplateSession(props.runtimeWorkspaceId, sourceSessionId)
+        .then((session) => ({ surface: session.manifest.surface, entry: session.state.entry }))
+        .catch(() => null);
+
+    return waitForTemplateEntrySurface(target, binding);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, templateSessionData]);
+  const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
     // SessionSurface automatically previews newly discovered targets after an
     // agent finishes. Video tasks already have a dedicated preview surface.
     if (isVideoSession && options?.auto) return;
@@ -955,12 +995,9 @@ export function SessionPage(props: SessionPageProps) {
     }
 
     const sourceId = sourceSessionId ?? props.selectedSessionId;
-    if (
-      sourceId === props.selectedSessionId
-      && templateSessionData?.manifest.surface === "design"
-      && isTemplateDesignEntryTarget(target, templateSessionData.state.entry)
-    ) {
-      setCurrentSidePanel("design");
+    const templateSurface = await resolveOpenTargetTemplateSurface(target, sourceId);
+    if (templateSurface) {
+      setCurrentSidePanel(templateSurface);
       return;
     }
 
@@ -986,7 +1023,7 @@ export function SessionPage(props: SessionPageProps) {
     });
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
-  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, isVideoSession, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, setCurrentSidePanel, templateSessionData]);
+  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, isVideoSession, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, setCurrentSidePanel]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;
@@ -1789,7 +1826,7 @@ export function SessionPage(props: SessionPageProps) {
             <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
               <ConversationOutputTrigger
                 active={activeSidePanel === "outputs"}
-                disabled={!conversationMessages.length}
+                disabled={!conversationMessages.length && !designTemplateEntryPath}
                 onClick={() => toggleCurrentSidePanel("outputs")}
               />
               <Tooltip>
@@ -1914,6 +1951,7 @@ export function SessionPage(props: SessionPageProps) {
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
                         onConversationMessagesChange={handleConversationMessagesChange}
+                        templateEntryPath={designTemplateEntryPath}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type, templateId)}
                         onActivateVideoStudio={activateVideoStudio}
                         designTemplates={templateCatalog}
@@ -2074,6 +2112,7 @@ export function SessionPage(props: SessionPageProps) {
                       workspaceId={props.runtimeWorkspaceId}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
                       launcherItems={sidePanelLauncherItems}
+                      onAskAi={handleDesignAskAi}
                       onClose={closeRightPane}
                     />
                   ) : activeSidePanel === "video" && props.selectedSessionId ? (
@@ -2103,6 +2142,7 @@ export function SessionPage(props: SessionPageProps) {
                     <ConversationOutputPanel
                       messages={conversationMessages}
                       openTargets={accessibleTargets}
+                      templateEntryPath={designTemplateEntryPath}
                       onOpenTarget={openTarget}
                       onOpenVideoStudio={openCurrentVideoStudio}
                     />

@@ -205,6 +205,12 @@ function isSessionErrorMessage(message: UIMessage) {
   return message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)
 }
 
+export function getLatestArtifactAssistantMessageId(messages: UIMessage[]) {
+  return messages.findLast(
+    (message) => message.role === "assistant" && !isSessionErrorMessage(message),
+  )?.id
+}
+
 function retryDelaySeconds(status: RetryStatus) {
   return Math.max(0, Math.round((status.next - Date.now()) / 1000))
 }
@@ -348,10 +354,11 @@ type AssistantMessageProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  templateEntryPath?: string
 }
 
 const AssistantMessage = React.memo(
-  ({ message }: AssistantMessageProps) => {
+  ({ message, templateEntryPath }: AssistantMessageProps) => {
     const { showThinking, highlightQuery } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
@@ -405,7 +412,7 @@ const AssistantMessage = React.memo(
               </div>
             )
           })}
-          <ArtifactList messages={[message]} />
+          <ArtifactList messages={[message]} supplementalFiles={templateEntryPath ? [templateEntryPath] : undefined} />
         </div>
       </Message>
     )
@@ -582,10 +589,11 @@ type MessageComponentProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  templateEntryPath?: string
 }
 
 const MessageComponent = React.memo(
-  ({ message, isLastMessage, isStreaming, isLastStep }: MessageComponentProps) => {
+  ({ message, isLastMessage, isStreaming, isLastStep, templateEntryPath }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
     }
@@ -606,6 +614,7 @@ const MessageComponent = React.memo(
           isLastMessage={isLastMessage}
           isStreaming={isStreaming}
           isLastStep={isLastStep}
+          templateEntryPath={templateEntryPath}
         />
       )
     }
@@ -736,12 +745,16 @@ interface AssistantMessageGroupProps {
   items: UIMessageWithIndex[]
   messages: UIMessage[]
   isStreaming: boolean
+  templateEntryPath?: string
+  latestAssistantMessageId?: string
 }
 
 function MessageGroup({
   items,
   messages,
   isStreaming,
+  templateEntryPath,
+  latestAssistantMessageId,
 }: AssistantMessageGroupProps) {
   const { onRevertToUserMessage, onForkAtMessage } = useMessageList()
   const lastItem = items[items.length - 1]
@@ -791,6 +804,7 @@ function MessageGroup({
           isLastMessage={isLastMessage}
           isStreaming={isLastMessage && isStreaming}
           isLastStep={groupIndex === items.length - 1}
+          templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
         />
       </div>
     )
@@ -848,11 +862,16 @@ interface MessageListProps {
   messages: UIMessage[]
   status: ThreadStatus
   retryStatus?: RetryStatus | null
+  templateEntryPath?: string
 }
 
-export function MessageList({ messages, status, retryStatus }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, templateEntryPath }: MessageListProps) {
   const isStreaming = status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages, status), [messages, status]);
+  const latestAssistantMessageId = React.useMemo(
+    () => getLatestArtifactAssistantMessageId(messages),
+    [messages],
+  )
   const error = useSessionErrorMessage();
   const hasSessionErrorMessage = React.useMemo(() => messages.some(isSessionErrorMessage), [messages])
   const liveActionLabel = isStreaming
@@ -869,6 +888,8 @@ export function MessageList({ messages, status, retryStatus }: MessageListProps)
               items={item.messages}
               messages={messages}
               isStreaming={isStreaming}
+              templateEntryPath={templateEntryPath}
+              latestAssistantMessageId={latestAssistantMessageId}
             />
           )
         }
@@ -884,6 +905,7 @@ export function MessageList({ messages, status, retryStatus }: MessageListProps)
               isLastMessage={isLastMessage}
               isStreaming={isLastMessage && isStreaming}
               isLastStep={isLastStep}
+              templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
             />
           </div>
         )

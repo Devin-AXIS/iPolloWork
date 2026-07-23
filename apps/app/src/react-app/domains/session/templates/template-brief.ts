@@ -236,11 +236,14 @@ export function templateBriefConfigFor(template: Pick<TemplateManifestV1, "categ
 }
 
 export function templateBriefPrompt(input: {
-  template: Pick<TemplateManifestV1, "category" | "title" | "applyChecklist"> & Partial<Pick<TemplateManifestV1, "subcategory" | "pptxCompatibility">>;
+  template: Pick<TemplateManifestV1, "category" | "title" | "applyChecklist"> & Partial<Pick<TemplateManifestV1, "id" | "subcategory" | "pptxCompatibility">>;
   entryPath: string;
   briefPath: string;
 }): string {
   const base = `Read \`${input.briefPath}\` and apply it to the selected \`${input.template.title}\` template at \`${input.entryPath}\`. Keep the template's visual language and update every applicable item in this checklist: ${input.template.applyChecklist.join("; ")}.`;
+  if (input.template.id === "ipollowork.wechat-article") {
+    return `${base} This template has locked brand colors and fixed brand images. Ignore the brief's colorPalette completely. Update only the article copy and non-fixed middle article images. Preserve every data-ipw-fixed="true" node exactly, keep fixed-hero.jpg and fixed-footer-cta.jpg unchanged, and only edit the href on a.fixed-footer-cta when a CTA link is provided. Do not write instruction conflicts or process notes into the HTML.`;
+  }
   const colorInstruction = "Use the brief's colorPalette.canvas, colorPalette.text, and colorPalette.accent colors consistently through the template's existing theme tokens; do not introduce an unrelated palette.";
   switch (input.template.category) {
     case "video":
