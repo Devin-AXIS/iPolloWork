@@ -28,7 +28,7 @@ export function DesignExportMenu({
   onExportPptx,
 }: DesignExportMenuProps) {
   const downloadLabel = t("design.export.download");
-  const triggerDisabled = exportingPdf || exportingPptx || !exportReady;
+  const triggerDisabled = (exportingPdf && exportingPptx) || !exportReady;
   const disabledReason = exportDisabledReason || "Preview is still preparing.";
 
   return (
