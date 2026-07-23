@@ -23,6 +23,8 @@ import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
+import type { DesignAiSelectionContext } from "./design-ai-selection";
+import { useDesignAiSelectionStore } from "./design-ai-selection-store";
 import {
   buildDesignPreviewDocument,
   DESIGN_MESSAGE_CHANNEL,
@@ -90,6 +92,7 @@ type DesignPanelProps = {
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
+  onAskAi: (context: DesignAiSelectionContext) => void;
   onClose: () => void;
 };
 
@@ -116,7 +119,7 @@ const TYPE_PRESETS = [
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
 }
 
 function readDesignTokenValues(...sources: string[]): DesignTokenValues {
@@ -519,6 +522,7 @@ export function DesignPanel({
   workspaceId,
   isRemoteWorkspace = false,
   launcherItems = [],
+  onAskAi,
   onClose,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
@@ -590,6 +594,12 @@ export function DesignPanel({
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
+  const aiUndoCheckpoint = useDesignAiSelectionStore((state) => {
+    const checkpoint = state.undoCheckpoints[sessionId]?.[activePagePath]?.at(-1);
+    const context = checkpoint ? state.contexts[checkpoint.contextId] : undefined;
+    return context?.workspaceId === workspaceId ? checkpoint : undefined;
+  });
+  const appliedAiCheckpointRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!lockedPath) {
@@ -620,6 +630,25 @@ export function DesignPanel({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+
+  React.useEffect(() => {
+    if (!aiUndoCheckpoint || appliedAiCheckpointRef.current === aiUndoCheckpoint.contextId) return;
+    appliedAiCheckpointRef.current = aiUndoCheckpoint.contextId;
+    queryClient.setQueryData<LoadedHtml>(
+      ["design-html", workspaceId, activePagePath] as const,
+      { content: aiUndoCheckpoint.afterHtml, updatedAt: aiUndoCheckpoint.afterUpdatedAt },
+    );
+    draftRef.current = aiUndoCheckpoint.afterHtml;
+    setDraft(aiUndoCheckpoint.afterHtml);
+    setSavedSource(aiUndoCheckpoint.afterHtml);
+    setPendingCanvasChange(false);
+    setSelection(null);
+    setQuickEdit(null);
+    setPreviewSource(aiUndoCheckpoint.afterHtml);
+    setHydratedPreviewSource("");
+    setPreviewLoaded(false);
+    setPreviewRevision((current) => current + 1);
+  }, [activePagePath, aiUndoCheckpoint, queryClient, workspaceId]);
   const usesNativeEditablePptx = Boolean(
     designTemplate
     && isPptxCompatibleTemplate(designTemplate)
@@ -771,6 +800,12 @@ export function DesignPanel({
       }
       if (event.data.type === "pan") {
         presentationPanRef.current?.scrollBy({ left: -event.data.deltaX, top: -event.data.deltaY });
+        return;
+      }
+      if (event.data.type === "deselected") {
+        setSelection(null);
+        setQuickEdit(null);
+        setAdvancedOpen(false);
         return;
       }
       if (event.data.type === "document-draft") {
@@ -1329,6 +1364,31 @@ export function DesignPanel({
     }, "*");
   };
 
+  const askAiAboutSelection = async () => {
+    if (!selection || !workspaceId || !activePagePath || !fileQuery.data) return;
+    const selected = selection;
+    const baseUpdatedAt = fileQuery.data.updatedAt;
+    const beforeHtml = await readLatestCanvasHtml();
+    const summary = (selected.text || selected.alt || selected.source).replace(/\s+/g, " ").trim().slice(0, 80);
+    onAskAi({
+      id: `design-ai-${crypto.randomUUID()}`,
+      sessionId,
+      workspaceId,
+      filePath: activePagePath,
+      baseUpdatedAt,
+      beforeHtml,
+      target: {
+        tag: selected.tag,
+        label: summary ? `${selected.tag.toUpperCase()} · ${summary}` : selected.tag.toUpperCase(),
+        locator: selected.locator,
+        text: selected.text,
+        src: selected.source,
+        alt: selected.alt,
+        styles: selected.styles,
+      },
+    });
+  };
+
   const applyToken = (name: string, value: string) => {
     if (!editing) return;
     setPendingCanvasChange(true);
@@ -1409,19 +1469,57 @@ export function DesignPanel({
     imageInputRef.current?.click();
   };
 
-  const undo = () => {
+  const undo = async () => {
     const previous = history[history.length - 1];
-    if (previous === undefined) return;
-    draftRef.current = previous;
-    setPendingCanvasChange(false);
-    setDraft(previous);
-    setHistory((current) => current.slice(0, -1));
-    setSelection(null);
-    setQuickEdit(null);
-    setPreviewSource(previous);
-    setHydratedPreviewSource("");
-    setPreviewLoaded(false);
-    setPreviewRevision((current) => current + 1);
+    if (previous !== undefined) {
+      draftRef.current = previous;
+      setPendingCanvasChange(false);
+      setDraft(previous);
+      setHistory((current) => current.slice(0, -1));
+      setSelection(null);
+      setQuickEdit(null);
+      setPreviewSource(previous);
+      setHydratedPreviewSource("");
+      setPreviewLoaded(false);
+      setPreviewRevision((current) => current + 1);
+      return;
+    }
+    const checkpoint = useDesignAiSelectionStore.getState().latestUndoCheckpoint(sessionId, activePagePath);
+    if (!checkpoint || !client || !workspaceId) return;
+    try {
+      const current = await client.readWorkspaceFile(workspaceId, activePagePath);
+      if (current.content !== checkpoint.afterHtml) {
+        throw new Error("This HTML file changed since the AI update.");
+      }
+      const result = await client.writeWorkspaceFile(workspaceId, {
+        path: activePagePath,
+        content: checkpoint.beforeHtml,
+        baseUpdatedAt: checkpoint.afterUpdatedAt,
+      });
+      const restored = await client.readWorkspaceFile(workspaceId, activePagePath);
+      useDesignAiSelectionStore.getState().popUndoCheckpoint(sessionId, activePagePath);
+      appliedAiCheckpointRef.current = useDesignAiSelectionStore.getState()
+        .latestUndoCheckpoint(sessionId, activePagePath)?.contextId ?? null;
+      queryClient.setQueryData<LoadedHtml>(
+        ["design-html", workspaceId, activePagePath] as const,
+        { content: restored.content, updatedAt: restored.updatedAt ?? result.updatedAt ?? null },
+      );
+      draftRef.current = restored.content;
+      setDraft(restored.content);
+      setSavedSource(restored.content);
+      setPendingCanvasChange(false);
+      setSelection(null);
+      setQuickEdit(null);
+      setPreviewSource(restored.content);
+      setHydratedPreviewSource("");
+      setPreviewLoaded(false);
+      setPreviewRevision((current) => current + 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      toast.error(message.includes("changed since")
+        ? "Could not undo the AI Design change because the file changed. Reload before trying again."
+        : message || "Could not undo the AI Design change.");
+    }
   };
 
   const dirty = pendingCanvasChange || draft !== savedSource;
@@ -1634,7 +1732,7 @@ export function DesignPanel({
                 <Palette className="size-3.5" />
               </Button>
             ) : null}
-            <Button variant="ghost" size="icon-sm" onClick={undo} disabled={history.length === 0} aria-label="Undo design change">
+            <Button variant="ghost" size="icon-sm" onClick={() => void undo()} disabled={history.length === 0 && !aiUndoCheckpoint} aria-label="Undo design change">
               <Undo2 />
             </Button>
             <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || (!editing && !dirty)}>
@@ -1909,6 +2007,15 @@ export function DesignPanel({
                           aria-pressed={advancedOpen}
                         >
                           <SlidersHorizontal />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => void askAiAboutSelection()}
+                          disabled={!selection.canDelete}
+                          aria-label="Ask AI about selected element"
+                        >
+                          <Sparkles />
                         </Button>
                       </>
                     )}

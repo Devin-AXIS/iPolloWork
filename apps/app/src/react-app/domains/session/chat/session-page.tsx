@@ -49,7 +49,8 @@ import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
 import { useSessionManagementStore } from "../sidebar/session-management-store";
-import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
+import { replaceDesignSelectionToken, SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
+import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
 import {
   SidebarInset,
   SidebarProvider,
@@ -71,6 +72,8 @@ import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTa
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
+import { designAiSelectionToken, type DesignAiSelectionContext } from "../design/design-ai-selection";
+import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
 import { VideoPanel } from "../video/video-panel";
@@ -472,6 +475,18 @@ export function SessionPage(props: SessionPageProps) {
   const [dismissedTemplateBriefSessionIds, setDismissedTemplateBriefSessionIds] = useState<Set<string>>(() => new Set());
   const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
     setConversationMessageState({ sessionId, messages });
+  }, []);
+  const handleDesignAskAi = useCallback((context: DesignAiSelectionContext) => {
+    useDesignAiSelectionStore.getState().createContext(context);
+    const composerStore = useComposerStateStore.getState();
+    composerStore.setDraft(
+      context.sessionId,
+      replaceDesignSelectionToken(
+        getComposerDraft(composerStore, context.sessionId),
+        designAiSelectionToken(context.id),
+      ),
+    );
+    window.dispatchEvent(new Event("ipollowork:focusPrompt"));
   }, []);
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
@@ -2096,6 +2111,7 @@ export function SessionPage(props: SessionPageProps) {
                       workspaceId={props.runtimeWorkspaceId}
                       isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
                       launcherItems={sidePanelLauncherItems}
+                      onAskAi={handleDesignAskAi}
                       onClose={closeRightPane}
                     />
                   ) : activeSidePanel === "video" && props.selectedSessionId ? (

@@ -58,6 +58,19 @@ describe("Design deck navigation", () => {
     expect(source).toContain("disabled={!selection.canDelete}");
   });
 
+  test("places AI after every floating toolbar action", async () => {
+    const source = await Bun.file(panelUrl).text();
+    expect(source).toContain('aria-label="Ask AI about selected element"');
+    expect(source.lastIndexOf('aria-label="Ask AI about selected element"')).toBeGreaterThan(source.lastIndexOf('aria-label="Toggle advanced design settings"'));
+  });
+
+  test("keeps protected runtime controls unavailable to AI", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const labelIndex = source.lastIndexOf('aria-label="Ask AI about selected element"');
+    const actionStart = source.lastIndexOf("<Button", labelIndex);
+    expect(source.slice(actionStart, labelIndex)).toContain("disabled={!selection.canDelete}");
+  });
+
   test("pans the overflowed presentation canvas without moving the slide", async () => {
     const source = await Bun.file(panelUrl).text();
 
@@ -65,5 +78,14 @@ describe("Design deck navigation", () => {
     expect(source).toContain("scrollBy({ left: -event.data.deltaX, top: -event.data.deltaY })");
     expect(source).toContain("overflow-auto");
     expect(source).toContain("presentationCanvasStageSize");
+  });
+
+  test("dismisses the floating selection toolbar when the editor deselects", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('event.data.type === "deselected"');
+    expect(source).toContain("setSelection(null);");
+    expect(source).toContain("setQuickEdit(null);");
+    expect(source).toContain("setAdvancedOpen(false);");
   });
 });
