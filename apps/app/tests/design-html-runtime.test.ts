@@ -109,4 +109,36 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain("--ipw-color-primary: #123456");
     expect(preview).toContain("document-draft");
   });
+
+  test("supports text-only div editing and toolbar deletion without keyboard deletion", () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><div>Metric</div></body></html>", true, "", false, false, true);
+
+    expect(preview).toContain('element.tagName === "DIV"');
+    expect(preview).toContain("element.children.length === 0");
+    expect(preview).toContain("Boolean(element.textContent?.trim())");
+    expect(preview).toContain('data.type === "delete"');
+    expect(preview).toContain("canDeleteElement(selected)");
+    expect(preview).toContain("selected.remove()");
+    expect(preview).toContain('type: "zoom"');
+    expect(preview).not.toContain('event.key === "Delete"');
+    expect(preview).not.toContain('event.key === "Backspace"');
+  });
+
+  test("does not select a presentation slide root for transform", () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><section class=\"slide\"><h1>Slide title</h1></section></body></html>", true, "", false, false, true);
+
+    expect(preview).toContain("presentationCanvas && element.matches(\"[data-ipw-slide],section.slide,.slide,.slide-frame\")");
+    expect(preview).toContain("!isPresentationRoot(element)");
+    expect(preview).toContain("slideRoot && !slideRoot.contains(element)");
+    expect(preview).toContain("isPresentationSlideRoot(element)");
+    expect(preview).toContain("],false,false,true);");
+  });
+
+  test("reports a drag on empty presentation canvas space as a pan", () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><section class=\"slide\"><h1>Slide title</h1></section></body></html>", true, "", false, false, true);
+
+    expect(preview).toContain('type: "pan"');
+    expect(preview).toContain("canvasPan");
+    expect(preview).toContain("selectionCandidate(target)");
+  });
 });

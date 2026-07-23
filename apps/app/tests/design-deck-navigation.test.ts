@@ -21,7 +21,7 @@ describe("Design deck navigation", () => {
   test("uses a fixed presentation canvas instead of a mobile document preview", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source).toContain("h-[900px] w-[1600px] origin-center");
+    expect(source).toContain("h-[900px] w-[1600px] origin-top-left");
     expect(source).toContain("presentationCanvasScale(previewViewport.width, previewViewport.height)");
     expect(source).toContain("!isPresentationTemplate ? (");
   });
@@ -39,5 +39,31 @@ describe("Design deck navigation", () => {
 
     expect(measurementEffect?.[1]).toContain("isPresentationTemplate");
     expect(measurementEffect?.[1]).toContain("sourceHydrated");
+  });
+
+  test("applies modifier-wheel zoom from the presentation iframe and exposes reset", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('event.data.type === "zoom"');
+    expect(source).toContain("presentationCanvasWheelZoom(current, event.data.deltaY)");
+    expect(source).toContain('aria-label="Reset presentation zoom"');
+    expect(source).toContain("setPresentationZoom(1)");
+  });
+
+  test("offers selected-element deletion only from the floating toolbar", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('aria-label="Delete selected element"');
+    expect(source).toContain('type: "delete"');
+    expect(source).toContain("disabled={!selection.canDelete}");
+  });
+
+  test("pans the overflowed presentation canvas without moving the slide", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('event.data.type === "pan"');
+    expect(source).toContain("scrollBy({ left: -event.data.deltaX, top: -event.data.deltaY })");
+    expect(source).toContain("overflow-auto");
+    expect(source).toContain("presentationCanvasStageSize");
   });
 });

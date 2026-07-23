@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, RotateCcw, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, RotateCcw, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Trash2, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
@@ -53,6 +53,9 @@ import {
   PRESENTATION_CANVAS_HEIGHT,
   PRESENTATION_CANVAS_WIDTH,
   presentationCanvasScale,
+  presentationCanvasStageSize,
+  presentationCanvasWheelZoom,
+  presentationCanvasZoomedScale,
 } from "./presentation-canvas";
 import {
   collectPptxBackgroundPlan,
@@ -113,7 +116,7 @@ const TYPE_PRESETS = [
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck");
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
 }
 
 function readDesignTokenValues(...sources: string[]): DesignTokenValues {
@@ -521,6 +524,7 @@ export function DesignPanel({
   const queryClient = useQueryClient();
   const iframeRef = React.useRef<any>(null);
   const previewViewportRef = React.useRef<HTMLDivElement>(null);
+  const presentationPanRef = React.useRef<HTMLDivElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
   const templateQuery = useQuery({
     queryKey: ["design-session-template", workspaceId, sessionId] as const,
@@ -563,6 +567,8 @@ export function DesignPanel({
   const [viewedVersionUpdatedAt, setViewedVersionUpdatedAt] = React.useState<number | null>(null);
   const [previewDevice, setPreviewDevice] = React.useState<"desktop" | "mobile">("desktop");
   const [previewViewport, setPreviewViewport] = React.useState({ width: 0, height: 0 });
+  const [presentationZoom, setPresentationZoom] = React.useState(1);
+  const [presentationScroll, setPresentationScroll] = React.useState({ left: 0, top: 0 });
   const [editing, setEditing] = React.useState(false);
   const [deck, setDeck] = React.useState<DesignDeckState | null>(null);
   const hydratedPageRef = React.useRef("");
@@ -620,12 +626,21 @@ export function DesignPanel({
     && hasPptxCompatibleObjectMarkers(fileQuery.data?.content ?? ""),
   );
   const isPresentationTemplate = designTemplate?.category === "slides";
-  const presentationScale = presentationCanvasScale(previewViewport.width, previewViewport.height);
+  const presentationFitScale = presentationCanvasScale(previewViewport.width, previewViewport.height);
+  const presentationScale = presentationCanvasZoomedScale(presentationFitScale, presentationZoom);
+  const presentationCanvasStage = presentationCanvasStageSize(previewViewport.width, previewViewport.height, presentationScale);
+  const presentationCanvasLeft = Math.max(0, (presentationCanvasStage.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
+  const presentationCanvasTop = Math.max(0, (presentationCanvasStage.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
 
   React.useEffect(() => {
     if (!isPresentationTemplate) return;
     setPreviewDevice("desktop");
   }, [isPresentationTemplate]);
+
+  React.useEffect(() => {
+    setPresentationZoom(1);
+    setPresentationScroll({ left: 0, top: 0 });
+  }, [activePagePath, isPresentationTemplate]);
 
   // A presentation is opened to edit slides, not to inspect a static page.
   // The editor bridge supplies click-to-select, drag, resize handles and
@@ -748,6 +763,14 @@ export function DesignPanel({
       }
       if (event.data.type === "deck") {
         setDeck(event.data.deck);
+        return;
+      }
+      if (event.data.type === "zoom") {
+        setPresentationZoom((current) => presentationCanvasWheelZoom(current, event.data.deltaY));
+        return;
+      }
+      if (event.data.type === "pan") {
+        presentationPanRef.current?.scrollBy({ left: -event.data.deltaX, top: -event.data.deltaY });
         return;
       }
       if (event.data.type === "document-draft") {
@@ -1292,6 +1315,20 @@ export function DesignPanel({
     }, "*");
   };
 
+  const deleteSelection = () => {
+    if (!selection || !selection.canDelete || !editing) return;
+    setPendingCanvasChange(true);
+    setHistory((current) => [...current, draft]);
+    setSelection(null);
+    setQuickEdit(null);
+    setAdvancedOpen(false);
+    iframeRef.current?.contentWindow?.postMessage({
+      channel: DESIGN_MESSAGE_CHANNEL,
+      type: "delete",
+      id: selection.id,
+    }, "*");
+  };
+
   const applyToken = (name: string, value: string) => {
     if (!editing) return;
     setPendingCanvasChange(true);
@@ -1450,13 +1487,11 @@ export function DesignPanel({
     () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
     [hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
-  const presentationLeft = Math.max(0, (previewViewport.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
-  const presentationTop = Math.max(0, (previewViewport.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
   const selectionLeft = isPresentationTemplate
-    ? presentationLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2
+    ? presentationCanvasLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2 - presentationScroll.left
     : (iframeRef.current?.offsetLeft ?? 0) + (selection?.rect.left ?? 0) + (selection?.rect.width ?? 0) / 2;
   const selectionTop = isPresentationTemplate
-    ? presentationTop + (selection?.rect.top ?? 0) * presentationScale
+    ? presentationCanvasTop + (selection?.rect.top ?? 0) * presentationScale - presentationScroll.top
     : (iframeRef.current?.offsetTop ?? 0) + (selection?.rect.top ?? 0);
   const floatingStyle = selection ? {
     left: `clamp(112px, ${selectionLeft + 8}px, calc(100% - 112px))`,
@@ -1616,6 +1651,18 @@ export function DesignPanel({
             >
               {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
             </Button>
+            {isPresentationTemplate ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPresentationZoom(1)}
+                disabled={presentationZoom === 1}
+                aria-label="Reset presentation zoom"
+                title="Reset zoom to fit"
+              >
+                <RotateCcw className="size-3.5" />
+              </Button>
+            ) : null}
             {!isPresentationTemplate ? (
               <ToggleGroup
                 value={[previewDevice]}
@@ -1664,31 +1711,48 @@ export function DesignPanel({
                 ref={previewViewportRef}
                 className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", !isPresentationTemplate && previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}
               >
-                <iframe
-                  ref={iframeRef}
-                  key={`${activePagePath}:${previewRevision}`}
-                  srcDoc={preview}
-                  title={`Design preview: ${fileName(activePagePath)}`}
-                  className={cn(
-                    "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
-                    isPresentationTemplate
-                      ? "absolute left-1/2 top-1/2 h-[900px] w-[1600px] origin-center rounded-lg shadow-sm"
-                      : previewDevice === "desktop"
-                      ? "h-full w-full rounded-lg shadow-sm"
-                      : "h-full w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
-                  )}
-                  style={isPresentationTemplate
-                    ? { transform: `translate(-50%, -50%) scale(${presentationScale})` }
+                <div
+                  ref={presentationPanRef}
+                  className={cn(isPresentationTemplate ? "absolute inset-0 overflow-auto" : "contents")}
+                  onScroll={isPresentationTemplate
+                    ? (event) => setPresentationScroll({ left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop })
                     : undefined}
-                  sandbox="allow-scripts"
-                  data-preview-loaded={previewLoaded ? "true" : "false"}
-                  onLoad={() => {
-                    setPreviewLoaded(true);
-                    iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
-                    iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
-                    if (deck) iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "deck-navigate", direction: "index", index: deck.index }, "*");
-                  }}
-                />
+                >
+                  <div
+                    className={cn(isPresentationTemplate ? "relative" : "contents")}
+                    style={isPresentationTemplate ? { width: presentationCanvasStage.width, height: presentationCanvasStage.height } : undefined}
+                  >
+                    <iframe
+                      ref={iframeRef}
+                      key={`${activePagePath}:${previewRevision}`}
+                      srcDoc={preview}
+                      title={`Design preview: ${fileName(activePagePath)}`}
+                      className={cn(
+                        "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
+                        isPresentationTemplate
+                          ? "absolute h-[900px] w-[1600px] origin-top-left rounded-lg shadow-sm"
+                          : previewDevice === "desktop"
+                          ? "h-full w-full rounded-lg shadow-sm"
+                          : "h-full w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
+                      )}
+                      style={isPresentationTemplate
+                        ? {
+                          left: presentationCanvasLeft,
+                          top: presentationCanvasTop,
+                          transform: `scale(${presentationScale})`,
+                        }
+                        : undefined}
+                      sandbox="allow-scripts"
+                      data-preview-loaded={previewLoaded ? "true" : "false"}
+                      onLoad={() => {
+                        setPreviewLoaded(true);
+                        iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
+                        iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
+                        if (deck) iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "deck-navigate", direction: "index", index: deck.index }, "*");
+                      }}
+                    />
+                  </div>
+                </div>
                 {editing && selection ? (
                   <div
                     className="absolute z-20 flex max-w-[calc(100%-24px)] items-center gap-1 rounded-2xl border border-border/80 bg-background/95 p-1 shadow-xl shadow-black/10 backdrop-blur-xl"
@@ -1823,6 +1887,17 @@ export function DesignPanel({
                             </Button>
                           </>
                         ) : null}
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={deleteSelection}
+                          disabled={!selection.canDelete}
+                          aria-label="Delete selected element"
+                          title="Delete selected element"
+                        >
+                          <Trash2 />
+                        </Button>
                         <Button
                           variant={advancedOpen ? "secondary" : "ghost"}
                           size="icon-xs"
