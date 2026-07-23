@@ -82,6 +82,16 @@ export function releaseEndpoint(release) {
   return `${RELEASES_API}/tags/${encodeURIComponent(tag)}`
 }
 
+export function releaseFetchError(status, release) {
+  if (status === 404) {
+    const unavailable = release
+      ? `The iPolloWork release ${release} is not available yet.`
+      : "No published iPolloWork release is available yet."
+    return `${unavailable} This can happen in a development checkout; try again after a GitHub Release is published.`
+  }
+  return `Unable to check iPolloWork releases (HTTP ${status}).`
+}
+
 async function fetchRelease(release) {
   const response = await fetch(releaseEndpoint(release), {
     headers: {
@@ -89,7 +99,7 @@ async function fetchRelease(release) {
       "User-Agent": `ipollowork-installer/${VERSION}`,
     },
   })
-  if (!response.ok) throw new Error(`release_fetch_failed: ${response.status}`)
+  if (!response.ok) throw new Error(releaseFetchError(response.status, release))
   const payload = await response.json()
   if (!Array.isArray(payload.assets)) throw new Error("release_assets_missing")
   return payload

@@ -172,6 +172,7 @@ export type SessionSurfaceProps = {
   workspaceId: string;
   workspaceRoot: string;
   sessionId: string;
+  sessionTitle?: string;
   opencodeBaseUrl: string;
   ipolloworkToken: string;
   developerMode: boolean;
@@ -1619,6 +1620,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                     <MessageListProvider
                       workspaceId={props.workspaceId}
                       sessionId={props.sessionId}
+                      sessionTitle={props.sessionTitle ?? t("session.default_title")}
                       showThinking={showThinking}
                       highlightQuery={findHighlightQuery}
                       developerMode={props.developerMode}

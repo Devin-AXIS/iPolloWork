@@ -226,6 +226,11 @@ button[aria-label="退出全屏"] {
   color: var(--hf-panel-text-0);
 }
 
+.hf-preview-text-toolbar__button[aria-pressed="true"] {
+  background: var(--hf-panel-accent);
+  color: var(--hf-panel-bg-0);
+}
+
 .hf-preview-text-toolbar__input {
   width: min(13rem, 30vw);
   height: 1.75rem;

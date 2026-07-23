@@ -1,5 +1,6 @@
 import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPart, type ToolUIPart, type UIMessage } from "ai"
 import type { ThreadStatus } from "@/lib/messages"
+import { t } from "@/i18n"
 
 interface MessageGroup {
   messages: UIMessageWithIndex[]
@@ -21,6 +22,31 @@ export function getMessagesText(messages: UIMessage[]): string {
     .map(getMessageText)
     .filter(Boolean)
     .join("\n\n")
+}
+
+export function buildAssistantResponseMarkdown(text: string): string {
+  return `${text.trim()}\n`
+}
+
+export function assistantResponseMarkdownFilename(title: string, timestamp = new Date()): string {
+  const safeTitle = title
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "")
+    .slice(0, 80) || "ipollowork-response"
+  const safeTimestamp = timestamp.toISOString().replace(/[:.]/g, "-")
+  return `${safeTitle}-${safeTimestamp}.md`
+}
+
+export function buildQuoteFollowUpPrompt(text: string): string {
+  const quote = text
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => `> ${line}`)
+    .join("\n")
+
+  return `${quote}\n\n${t("message.quote_follow_up_prompt")}`
 }
 
 export function getLastTextPart(message: UIMessage): UIMessage | null {

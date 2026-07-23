@@ -170,6 +170,48 @@ function filterAuthorInteractiveTargets(
   );
 }
 
+function normalizedEffectText(element: HTMLElement): string {
+  return (element.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+function verticallyOverlaps(a: DOMRect, b: DOMRect): boolean {
+  const overlap = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  return overlap >= Math.min(a.height, b.height) * 0.75;
+}
+
+/**
+ * Glitch, shadow, and outline title effects commonly use two or three identical
+ * sibling text nodes layered on top of each other. Treat that stack as one visual
+ * object so dragging a visible layer cannot leave its effect siblings behind.
+ */
+export function resolveEffectStackSelectionTarget(element: HTMLElement): HTMLElement {
+  const parent = element.parentElement;
+  const text = normalizedEffectText(element);
+  if (!parent || !text) return element;
+  const win = element.ownerDocument.defaultView;
+  if (!win) return element;
+  const sourceRect = element.getBoundingClientRect();
+  if (sourceRect.width <= 0 || sourceRect.height <= 0) return element;
+
+  const matches = Array.from(parent.children).filter((entry): entry is HTMLElement => {
+    if (!isHtmlElement(entry)) return false;
+    if (normalizedEffectText(entry) !== text) return false;
+    return verticallyOverlaps(sourceRect, entry.getBoundingClientRect());
+  });
+  if (matches.length < 2) return element;
+
+  const hasEffectLayer = matches.some((entry) => {
+    const style = entry.ownerDocument.defaultView?.getComputedStyle(entry);
+    if (!style) return false;
+    return style.position === "absolute" || style.pointerEvents === "none";
+  });
+  return hasEffectLayer ? parent : element;
+}
+
+function promoteEffectStackTarget(target: HTMLElement): HTMLElement {
+  return resolveEffectStackSelectionTarget(target);
+}
+
 // Animated group members can move outside their wrapper's static layout box, so
 // the empty space inside a group's *visual* bounds (the member-union the overlay
 // draws) doesn't hit-test to the group via elementsFromPoint. Recover it: if the
@@ -231,7 +273,7 @@ export function getPreviewTargetFromPointer(
       const candidates = filterAuthorInteractiveTargets(elements, activeCompositionPath);
       const visualTarget =
         candidates.find((el) => !isFullBleedTarget(el, localPointer.viewport)) ?? null;
-      if (visualTarget) return visualTarget;
+      if (visualTarget) return promoteEffectStackTarget(visualTarget);
     }
 
     // Belt-and-suspenders: elementsFromPoint is universally supported in the
@@ -250,14 +292,14 @@ export function getPreviewTargetFromPointer(
       !hasAuthorPointerEventsNone(groupHit) &&
       getDomLayerPatchTarget(groupHit, activeCompositionPath)
     )
-      return groupHit;
+      return promoteEffectStackTarget(groupHit);
 
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
     if (hasAuthorPointerEventsNone(fallback)) return null;
     if (!isElementComputedVisible(fallback)) return null;
     if (isFullBleedTarget(fallback, localPointer.viewport)) return null;
-    return fallback;
+    return promoteEffectStackTarget(fallback);
   } finally {
     removePointerEventsOverride(overrideStyle);
   }
@@ -289,8 +331,12 @@ export function getAllPreviewTargetsFromPointer(
       const elements = doc.elementsFromPoint(localPointer.x, localPointer.y);
       removePointerEventsOverride(overrideStyle);
       overrideStyle = null;
-      return filterAuthorInteractiveTargets(elements, activeCompositionPath).filter(
-        (el) => !isFullBleedTarget(el, localPointer.viewport),
+      return Array.from(
+        new Set(
+          filterAuthorInteractiveTargets(elements, activeCompositionPath)
+            .filter((el) => !isFullBleedTarget(el, localPointer.viewport))
+            .map(promoteEffectStackTarget),
+        ),
       );
     }
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
@@ -300,7 +346,7 @@ export function getAllPreviewTargetsFromPointer(
     if (hasAuthorPointerEventsNone(fallback)) return [];
     if (!isElementComputedVisible(fallback)) return [];
     if (isFullBleedTarget(fallback, localPointer.viewport)) return [];
-    return [fallback];
+    return [promoteEffectStackTarget(fallback)];
   } finally {
     removePointerEventsOverride(overrideStyle);
   }

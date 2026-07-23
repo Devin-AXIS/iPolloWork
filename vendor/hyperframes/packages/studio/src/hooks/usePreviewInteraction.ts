@@ -4,7 +4,6 @@ import { pauseStudioPreviewPlayback } from "../utils/studioPreviewHelpers";
 import { STUDIO_PREVIEW_SELECTION_ENABLED } from "../components/editor/manualEditingAvailability";
 import { type DomEditSelection } from "../components/editor/domEditing";
 import type { ApplyDomSelectionOptions, ResolveDomSelectionOptions } from "./useDomSelection";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 
 declare global {
   interface Window {
@@ -39,7 +38,7 @@ export interface UsePreviewInteractionParams {
     clientY: number,
   ) => Promise<DomEditSelection[]>;
   updateDomEditHoverSelection: (selection: DomEditSelection | null) => void;
-  /** Drill into a group (double-click on the canvas) so its children become selectable. */
+  /** Clears the active group scope when a click resolves outside it. */
   setActiveGroupElement: (el: HTMLElement | null) => void;
 
   onClickToSource?: (selection: DomEditSelection) => void;
@@ -60,12 +59,6 @@ export interface PreviewMouseDownOptions {
 
 const CYCLE_RADIUS_PX = 6;
 const CYCLE_WINDOW_MS = 600;
-// Manual double-click window. `e.detail` can't be trusted here: the first click
-// selects the group and re-renders the overlay, so the second click lands on a
-// fresh element and the browser's native click-counter resets to 1 — drill-in
-// (which keyed off `e.detail >= 2`) never fired. We track time+position instead.
-const DOUBLE_CLICK_MS = 400;
-const DOUBLE_CLICK_RADIUS_PX = 6;
 
 // ── Hook ──
 
@@ -82,7 +75,6 @@ export function usePreviewInteraction({
   onClickToSource,
 }: UsePreviewInteractionParams) {
   const cycleRef = useRef<ClickCycleState | null>(null);
-  const lastDownRef = useRef<{ t: number; x: number; y: number } | null>(null);
 
   const pausePreviewPlayback = useCallback(() => {
     const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
@@ -105,16 +97,6 @@ export function usePreviewInteraction({
       }
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
 
-      // Manual double-click detection (see DOUBLE_CLICK_MS): the first click
-      // re-renders the overlay so `e.detail` never reaches 2 on the canvas.
-      const downTs = Date.now();
-      const lastDown = lastDownRef.current;
-      const isDoubleClick =
-        e.detail >= 2 ||
-        (lastDown != null &&
-          downTs - lastDown.t < DOUBLE_CLICK_MS &&
-          Math.hypot(e.clientX - lastDown.x, e.clientY - lastDown.y) < DOUBLE_CLICK_RADIUS_PX);
-      lastDownRef.current = { t: downTs, x: e.clientX, y: e.clientY };
       const wasPlaying = usePlayerStore.getState().isPlaying;
       pausePreviewPlayback();
       // A click that resolves to nothing (dead-zone / deselect) shouldn't leave
@@ -123,43 +105,6 @@ export function usePreviewInteraction({
       const resumeIfNothingSelected = () => {
         if (wasPlaying) usePlayerStore.getState().setIsPlaying(true);
       };
-
-      // Double-click a group → drill into it and select the child under the
-      // pointer (resolve with the group as the explicit drill-in scope, since the
-      // activeGroupElement state hasn't re-rendered yet within this handler).
-      if (isDoubleClick && !e.shiftKey) {
-        const hit = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY);
-        const cycle = cycleRef.current;
-        const hasStackCycleAtSpot =
-          cycle !== null &&
-          cycle.candidates.length > 1 &&
-          Math.hypot(e.clientX - cycle.x, e.clientY - cycle.y) < CYCLE_RADIUS_PX &&
-          downTs - cycle.at < CYCLE_WINDOW_MS;
-        if (hit?.element.hasAttribute("data-hf-group")) {
-          e.preventDefault();
-          e.stopPropagation();
-          cycleRef.current = null;
-          trackStudioEvent("group", { action: "drill_in" });
-          setActiveGroupElement(hit.element);
-          const child = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
-            activeGroupElement: hit.element,
-          });
-          applyDomSelection(child ?? hit);
-          return;
-        }
-        if (
-          hit &&
-          !hasStackCycleAtSpot &&
-          !hit.element.hasAttribute("data-composition-src") &&
-          !hit.element.hasAttribute("data-composition-file")
-        ) {
-          e.preventDefault();
-          e.stopPropagation();
-          cycleRef.current = null;
-          applyDomSelection(hit);
-          return;
-        }
-      }
 
       const now = Date.now();
       const prev = cycleRef.current;
@@ -185,7 +130,7 @@ export function usePreviewInteraction({
         }
         e.preventDefault();
         e.stopPropagation();
-        applyDomSelection(nextSelection, { additive: true });
+        applyDomSelection(nextSelection, { additive: true, revealPanel: false });
         return;
       }
 
@@ -196,7 +141,7 @@ export function usePreviewInteraction({
         cycleRef.current = { ...prev, index: nextIndex, at: now };
         e.preventDefault();
         e.stopPropagation();
-        applyDomSelection(nextSel);
+        applyDomSelection(nextSel, { revealPanel: false });
         return;
       }
 
@@ -225,7 +170,7 @@ export function usePreviewInteraction({
       }
       e.preventDefault();
       e.stopPropagation();
-      applyDomSelection(nextSelection);
+      applyDomSelection(nextSelection, { revealPanel: false });
 
       if (!e.shiftKey && e.altKey && onClickToSource) {
         onClickToSource(nextSelection);

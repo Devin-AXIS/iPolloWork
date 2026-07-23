@@ -1957,6 +1957,7 @@ export function SessionPage(props: SessionPageProps) {
                         environmentClient={props.environmentClient}
                         workspaceId={props.runtimeWorkspaceId!}
                         sessionId={props.selectedSessionId!}
+                        sessionTitle={selectedSessionTitle || t("session.default_title")}
                         opencodeBaseUrl={reactSessionBaseUrl}
                         ipolloworkToken={reactSessionToken}
                         todos={props.todos}

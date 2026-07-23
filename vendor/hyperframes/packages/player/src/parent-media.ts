@@ -376,7 +376,7 @@ export class ParentMediaManager {
 
   private _isSynchronizedVoiceover(iframeEl: HTMLMediaElement): boolean {
     const isVoiceover = iframeEl.matches(
-      'audio[data-ipw-voiceover="true"], audio[id^="vo-"], audio[src*="/audio/voice/"]',
+      'audio[data-ipw-voiceover="true"], audio[id^="vo-"], audio[src*="/audio/voice/"], audio[src*="voiceover-"]',
     );
     if (!isVoiceover) return true;
     const sceneId = iframeEl.getAttribute("data-ipw-scene-id")?.trim() ?? "";
@@ -385,6 +385,23 @@ export class ParentMediaManager {
     const timing = readClipTiming(iframeEl);
     const scene = sceneId ? iframeEl.ownerDocument.getElementById(sceneId) : null;
     const sceneTiming = scene ? readClipTiming(scene) : null;
+    const allVoiceovers = Array.from(
+      iframeEl.ownerDocument.querySelectorAll<HTMLAudioElement>(
+        'audio[data-ipw-voiceover="true"], audio[id^="vo-"], audio[src*="/audio/voice/"], audio[src*="voiceover-"]',
+      ),
+    );
+    const currentIndex = allVoiceovers.indexOf(iframeEl as HTMLAudioElement);
+    const overlapsPrevious = allVoiceovers.some((candidate, candidateIndex) => {
+      if (candidate === iframeEl || candidateIndex > currentIndex) return false;
+      const candidateTiming = readClipTiming(candidate);
+      return Boolean(
+        candidateTiming.start != null &&
+        candidateTiming.duration != null &&
+        timing.start != null &&
+        candidateTiming.start <= timing.start &&
+        candidateTiming.start + candidateTiming.duration > timing.start + 0.001
+      );
+    });
     return Boolean(
       scene?.matches(".scene, [data-scene]") &&
       sceneText &&
@@ -393,7 +410,8 @@ export class ParentMediaManager {
       timing.duration != null &&
       timing.duration > 0 &&
       sceneTiming?.start != null &&
-      Math.abs(timing.start - sceneTiming.start) < 0.001,
+      Math.abs(timing.start - sceneTiming.start) < 0.001 &&
+      !overlapsPrevious,
     );
   }
 

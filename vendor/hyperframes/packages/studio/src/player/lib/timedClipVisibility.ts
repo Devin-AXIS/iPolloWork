@@ -7,6 +7,51 @@ type InlineState = { display: string };
 const originalInlineState = new WeakMap<Document, Map<HTMLElement, InlineState>>();
 const visibilityAdapterCache = new WeakMap<PlaybackAdapter, PlaybackAdapter>();
 
+function legacyFrameDuration(frame: HTMLElement): number {
+  const value = Number(frame.getAttribute("data-duration"));
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+/**
+ * Older generated templates run their own `.frame.active` carousel instead of
+ * exposing each scene to the HyperFrames timeline. Studio owns transport, so
+ * map its playhead onto those authored frame-duration weights and force one
+ * exact frame visible. Inline opacity/visibility bypasses cross-fade remnants
+ * when the user seeks while playback is running.
+ */
+export function syncLegacyFrameCarousel(
+  doc: Document | null | undefined,
+  currentTime: number,
+  timelineDuration: number,
+): void {
+  if (!doc || !Number.isFinite(currentTime) || timelineDuration <= 0) return;
+  const frames = Array.from(doc.querySelectorAll<HTMLElement>(".frame"));
+  if (frames.length < 2) return;
+
+  const durations = frames.map(legacyFrameDuration);
+  const authoredDuration = durations.reduce((sum, duration) => sum + duration, 0);
+  const normalizedTime = Math.min(Math.max(currentTime, 0), timelineDuration);
+  const authoredTime = (normalizedTime / timelineDuration) * authoredDuration;
+  let activeIndex = frames.length - 1;
+  let boundary = 0;
+  for (let index = 0; index < durations.length; index++) {
+    boundary += durations[index];
+    if (authoredTime < boundary) {
+      activeIndex = index;
+      break;
+    }
+  }
+
+  frames.forEach((frame, index) => {
+    const active = index === activeIndex;
+    frame.classList.toggle("active", active);
+    frame.style.setProperty("transition", "none", "important");
+    frame.style.setProperty("opacity", active ? "1" : "0", "important");
+    frame.style.setProperty("visibility", active ? "visible" : "hidden", "important");
+    frame.style.setProperty("pointer-events", active ? "auto" : "none", "important");
+  });
+}
+
 function stateForDocument(doc: Document): Map<HTMLElement, InlineState> {
   let state = originalInlineState.get(doc);
   if (!state) {
@@ -130,6 +175,34 @@ function participatesInExclusiveTiming(element: HTMLElement): boolean {
   return element.classList.contains("clip") || element.hasAttribute("data-track-index") || element.hasAttribute("data-track");
 }
 
+function activeNarratedScene(
+  doc: Document,
+  currentTime: number,
+  resolveStart: (element: Element) => number,
+  resolveDuration: (element: Element) => number,
+): HTMLElement | null {
+  let winner: { scene: HTMLElement; start: number } | null = null;
+  const voiceovers = doc.querySelectorAll<HTMLElement>('audio[data-ipw-voiceover="true"]');
+  for (const voiceover of voiceovers) {
+    const sceneId = voiceover.getAttribute("data-ipw-scene-id")?.trim();
+    const sceneText = voiceover.getAttribute("data-ipw-scene-text")?.trim();
+    const narrationText = voiceover.getAttribute("data-ipw-narration-text")?.trim();
+    if (!sceneId || !sceneText || narrationText !== sceneText) continue;
+    const scene = doc.getElementById(sceneId);
+    if (!(scene instanceof HTMLElement) || !scene.matches(".scene, [data-scene]")) continue;
+    const start = resolveStart(voiceover);
+    const duration = resolveDuration(voiceover);
+    if (
+      duration <= 0 ||
+      Math.abs(start - resolveStart(scene)) >= 0.001 ||
+      currentTime < start ||
+      currentTime >= start + duration
+    ) continue;
+    if (!winner || start >= winner.start) winner = { scene, start };
+  }
+  return winner?.scene ?? null;
+}
+
 export function syncTimedClipVisibility(doc: Document | null | undefined, currentTime: number): void {
   if (!doc || !Number.isFinite(currentTime)) return;
   const win = doc.defaultView;
@@ -149,11 +222,21 @@ export function syncTimedClipVisibility(doc: Document | null | undefined, curren
   }
 
   const { resolveDuration, resolveStart } = resolveTimedWindows(doc);
+  const narratedScene = activeNarratedScene(doc, currentTime, resolveStart, resolveDuration);
+  const narratedSceneGroup = narratedScene ? exclusiveGroup(narratedScene) : null;
   const active = new Map<HTMLElement, boolean>();
   for (const element of timed) {
     const start = resolveStart(element);
     const duration = resolveDuration(element);
-    active.set(element, duration > 0 && currentTime >= start && currentTime < start + duration);
+    const retainedByNarration = Boolean(
+      narratedScene &&
+      (element === narratedScene || narratedScene.contains(element)) &&
+      currentTime >= start,
+    );
+    active.set(
+      element,
+      retainedByNarration || (duration > 0 && currentTime >= start && currentTime < start + duration),
+    );
   }
 
   const winningTopLevelClip = new Map<string, { element: HTMLElement; start: number }>();
@@ -166,7 +249,12 @@ export function syncTimedClipVisibility(doc: Document | null | undefined, curren
     const key = exclusiveGroup(element);
     const start = resolveStart(element);
     const winner = winningTopLevelClip.get(key);
-    if (!winner || start >= winner.start) winningTopLevelClip.set(key, { element, start });
+    if (
+      element === narratedScene ||
+      (key !== narratedSceneGroup && (!winner || start >= winner.start))
+    ) {
+      winningTopLevelClip.set(key, { element, start });
+    }
   }
 
   for (const element of timed) {
@@ -211,7 +299,11 @@ export function wrapAdapterWithTimedClipVisibility(
 ): PlaybackAdapter {
   const cached = visibilityAdapterCache.get(adapter);
   if (cached) return cached;
-  const sync = (time = adapter.getTime()) => syncTimedClipVisibility(getDocument(), time);
+  const sync = (time = adapter.getTime()) => {
+    const doc = getDocument();
+    syncTimedClipVisibility(doc, time);
+    syncLegacyFrameCarousel(doc, time, adapter.getDuration());
+  };
   const wrapped: PlaybackAdapter = {
     play: () => {
       sync();
