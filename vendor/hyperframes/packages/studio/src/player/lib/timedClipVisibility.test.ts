@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { syncTimedClipVisibility, wrapAdapterWithTimedClipVisibility } from "./timedClipVisibility";
+import {
+  syncLegacyFrameCarousel,
+  syncTimedClipVisibility,
+  wrapAdapterWithTimedClipVisibility,
+} from "./timedClipVisibility";
 
 function sceneState(id: string) {
   const element = document.getElementById(id) as HTMLElement;
@@ -165,5 +169,28 @@ describe("syncTimedClipVisibility", () => {
     expect(sceneState("proof").visibility).toBe("hidden");
     expect(sceneState("cta").visibility).toBe("visible");
     expect(wrapAdapterWithTimedClipVisibility(source, () => document)).toBe(adapter);
+  });
+});
+
+describe("syncLegacyFrameCarousel", () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-duration="10">
+        <section id="frame-1" class="frame active" data-duration="4000"></section>
+        <section id="frame-2" class="frame active" data-duration="4000"></section>
+        <section id="frame-3" class="frame" data-duration="2000"></section>
+      </main>`;
+  });
+
+  it("forces exactly one legacy frame to match the Studio playhead", () => {
+    syncLegacyFrameCarousel(document, 5, 10);
+
+    expect(document.getElementById("frame-1")?.classList.contains("active")).toBe(false);
+    expect(document.getElementById("frame-2")?.classList.contains("active")).toBe(true);
+    expect(document.getElementById("frame-3")?.classList.contains("active")).toBe(false);
+    expect(sceneState("frame-1").visibility).toBe("hidden");
+    expect(sceneState("frame-2").visibility).toBe("visible");
+    expect((document.getElementById("frame-1") as HTMLElement).style.opacity).toBe("0");
+    expect((document.getElementById("frame-2") as HTMLElement).style.opacity).toBe("1");
   });
 });

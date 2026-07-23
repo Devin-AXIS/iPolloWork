@@ -88,6 +88,116 @@ type PreviewPlayerHost = HTMLElement & {
   pause?: () => void;
 };
 
+type AnimationFrameCallbackRecord = {
+  callback: FrameRequestCallback;
+  nativeId: number | null;
+};
+
+type PreviewAnimationState = {
+  frozen: boolean;
+  nextId: number;
+  frames: Map<number, AnimationFrameCallbackRecord>;
+  nativeRequestAnimationFrame: Window["requestAnimationFrame"];
+  nativeCancelAnimationFrame: Window["cancelAnimationFrame"];
+  pausedAnimations: Set<Animation>;
+};
+
+const previewAnimationStateByWindow = new WeakMap<Window, PreviewAnimationState>();
+
+function schedulePreviewAnimationFrame(
+  state: PreviewAnimationState,
+  id: number,
+  record: AnimationFrameCallbackRecord,
+): void {
+  record.nativeId = state.nativeRequestAnimationFrame((time) => {
+    record.nativeId = null;
+    if (state.frozen) return;
+    state.frames.delete(id);
+    record.callback(time);
+  });
+}
+
+function getPreviewAnimationState(win: Window): PreviewAnimationState | null {
+  const existing = previewAnimationStateByWindow.get(win);
+  if (existing) return existing;
+  try {
+    const state: PreviewAnimationState = {
+      frozen: false,
+      nextId: 1,
+      frames: new Map(),
+      nativeRequestAnimationFrame: win.requestAnimationFrame.bind(win),
+      nativeCancelAnimationFrame: win.cancelAnimationFrame.bind(win),
+      pausedAnimations: new Set(),
+    };
+    win.requestAnimationFrame = (callback: FrameRequestCallback): number => {
+      const id = state.nextId++;
+      const record: AnimationFrameCallbackRecord = { callback, nativeId: null };
+      state.frames.set(id, record);
+      if (!state.frozen) schedulePreviewAnimationFrame(state, id, record);
+      return id;
+    };
+    win.cancelAnimationFrame = (id: number): void => {
+      const record = state.frames.get(id);
+      if (!record) {
+        state.nativeCancelAnimationFrame(id);
+        return;
+      }
+      if (record.nativeId !== null) state.nativeCancelAnimationFrame(record.nativeId);
+      state.frames.delete(id);
+    };
+    previewAnimationStateByWindow.set(win, state);
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function setPreviewAnimationsActive(iframe: HTMLIFrameElement, active: boolean): void {
+  const win = iframe.contentWindow;
+  if (!win) return;
+  const state = getPreviewAnimationState(win);
+  if (!state) return;
+
+  if (!active) {
+    state.frozen = true;
+    for (const record of state.frames.values()) {
+      if (record.nativeId === null) continue;
+      state.nativeCancelAnimationFrame(record.nativeId);
+      record.nativeId = null;
+    }
+    try {
+      for (const animation of iframe.contentDocument?.getAnimations() ?? []) {
+        if (animation.playState !== "running") continue;
+        animation.pause();
+        state.pausedAnimations.add(animation);
+      }
+    } catch {}
+    return;
+  }
+
+  state.frozen = false;
+  for (const animation of state.pausedAnimations) {
+    try {
+      animation.play();
+    } catch {}
+  }
+  state.pausedAnimations.clear();
+  for (const [id, record] of state.frames) {
+    if (record.nativeId === null) schedulePreviewAnimationFrame(state, id, record);
+  }
+}
+
+function stopLegacyFrameCarousel(doc: Document | null | undefined): void {
+  if (!doc || doc.querySelectorAll(".frame").length < 2) return;
+  const root = doc.querySelector<HTMLElement>("[data-composition-id]");
+  if (!root || root.hasAttribute("data-hf-studio-carousel-controlled")) return;
+  root.setAttribute("data-hf-studio-carousel-controlled", "true");
+  const playButton = doc.querySelector<HTMLElement>("#play");
+  try {
+    playButton?.click();
+  } catch {}
+}
+
 function isPreviewPlayerHost(value: unknown): value is PreviewPlayerHost {
   return typeof HTMLElement !== "undefined" && value instanceof HTMLElement;
 }
@@ -171,6 +281,10 @@ function enforceSynchronizedVoiceovers(doc: Document | null | undefined): void {
 
 export function setPreviewPlaybackActive(iframe: HTMLIFrameElement | null, active: boolean): void {
   if (!iframe) return;
+  setPreviewAnimationsActive(iframe, active);
+  try {
+    stopLegacyFrameCarousel(iframe.contentDocument);
+  } catch {}
   try {
     enforceSynchronizedVoiceovers(iframe.contentDocument);
   } catch {}

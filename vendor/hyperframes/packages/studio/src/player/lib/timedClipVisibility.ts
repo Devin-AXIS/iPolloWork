@@ -7,6 +7,51 @@ type InlineState = { display: string };
 const originalInlineState = new WeakMap<Document, Map<HTMLElement, InlineState>>();
 const visibilityAdapterCache = new WeakMap<PlaybackAdapter, PlaybackAdapter>();
 
+function legacyFrameDuration(frame: HTMLElement): number {
+  const value = Number(frame.getAttribute("data-duration"));
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+/**
+ * Older generated templates run their own `.frame.active` carousel instead of
+ * exposing each scene to the HyperFrames timeline. Studio owns transport, so
+ * map its playhead onto those authored frame-duration weights and force one
+ * exact frame visible. Inline opacity/visibility bypasses cross-fade remnants
+ * when the user seeks while playback is running.
+ */
+export function syncLegacyFrameCarousel(
+  doc: Document | null | undefined,
+  currentTime: number,
+  timelineDuration: number,
+): void {
+  if (!doc || !Number.isFinite(currentTime) || timelineDuration <= 0) return;
+  const frames = Array.from(doc.querySelectorAll<HTMLElement>(".frame"));
+  if (frames.length < 2) return;
+
+  const durations = frames.map(legacyFrameDuration);
+  const authoredDuration = durations.reduce((sum, duration) => sum + duration, 0);
+  const normalizedTime = Math.min(Math.max(currentTime, 0), timelineDuration);
+  const authoredTime = (normalizedTime / timelineDuration) * authoredDuration;
+  let activeIndex = frames.length - 1;
+  let boundary = 0;
+  for (let index = 0; index < durations.length; index++) {
+    boundary += durations[index];
+    if (authoredTime < boundary) {
+      activeIndex = index;
+      break;
+    }
+  }
+
+  frames.forEach((frame, index) => {
+    const active = index === activeIndex;
+    frame.classList.toggle("active", active);
+    frame.style.setProperty("transition", "none", "important");
+    frame.style.setProperty("opacity", active ? "1" : "0", "important");
+    frame.style.setProperty("visibility", active ? "visible" : "hidden", "important");
+    frame.style.setProperty("pointer-events", active ? "auto" : "none", "important");
+  });
+}
+
 function stateForDocument(doc: Document): Map<HTMLElement, InlineState> {
   let state = originalInlineState.get(doc);
   if (!state) {
@@ -254,7 +299,11 @@ export function wrapAdapterWithTimedClipVisibility(
 ): PlaybackAdapter {
   const cached = visibilityAdapterCache.get(adapter);
   if (cached) return cached;
-  const sync = (time = adapter.getTime()) => syncTimedClipVisibility(getDocument(), time);
+  const sync = (time = adapter.getTime()) => {
+    const doc = getDocument();
+    syncTimedClipVisibility(doc, time);
+    syncLegacyFrameCarousel(doc, time, adapter.getDuration());
+  };
   const wrapped: PlaybackAdapter = {
     play: () => {
       sync();
