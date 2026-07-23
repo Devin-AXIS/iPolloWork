@@ -29,9 +29,11 @@ export type DesignField = "text" | "href" | "src" | "alt" | DesignStyleField;
 export type DesignSelection = {
   id: string;
   tag: string;
+  locator: string;
   text: string;
   href: string;
   src: string;
+  source: string;
   alt: string;
   canEditText: boolean;
   canDelete: boolean;
@@ -105,7 +107,7 @@ export function buildDesignPreviewDocument(
     ? `<script id="ipollowork-design-fixed-slide-runtime">(${designFixedSlideRuntime.toString()})();<\/script>`
     : "";
   const editingRuntime = includeEditor
-    ? `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"},${isPresentationTemplate ? "true" : "false"});<\/script>`
+    ? `<script id="ipollowork-design-runtime">/* const elementLocator = (element: HTMLElement) */(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"},${isPresentationTemplate ? "true" : "false"});<\/script>`
     : "";
   const runtime = `${tokenStyle}${navigationRuntime}${deckRuntime}${fixedSlideRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
@@ -470,6 +472,23 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     .filter((element) => element !== overlay && !overlay.contains(element) && !isPresentationRoot(element));
   elements.forEach((element, index) => element.setAttribute(idAttribute, String(index + 1)));
 
+  const elementLocator = (element: HTMLElement) => {
+    const segments: string[] = [];
+    let current: HTMLElement | null = element.hasAttribute(textNodeAttribute) ? element.parentElement : element;
+    while (current && current !== document.body) {
+      const tag = current.tagName.toLowerCase();
+      let index = 1;
+      let sibling = current.previousElementSibling;
+      while (sibling) {
+        if (sibling.tagName === current.tagName && !sibling.hasAttribute(textNodeAttribute)) index += 1;
+        sibling = sibling.previousElementSibling;
+      }
+      segments.unshift(`${tag}:nth-of-type(${index})`);
+      current = current.parentElement;
+    }
+    return ["body", ...segments].join(" > ");
+  };
+
   const serialize = () => {
     const clone = document.documentElement.cloneNode(true);
     if (!(clone instanceof HTMLElement)) return "";
@@ -519,9 +538,13 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     return {
       id: element.getAttribute(idAttribute) || "",
       tag: element.tagName.toLowerCase(),
+      locator: elementLocator(element),
       text: element instanceof HTMLImageElement ? "" : element.textContent || "",
       href: navigationHref,
       src: element instanceof HTMLImageElement ? element.getAttribute("src") || "" : "",
+      source: element instanceof HTMLImageElement
+        ? element.getAttribute("data-ipw-preview-src") || element.getAttribute("src") || ""
+        : "",
       alt: element instanceof HTMLImageElement ? element.getAttribute("alt") || "" : "",
       canEditText: isTextEditableElement(element),
       canDelete: canDeleteElement(element),

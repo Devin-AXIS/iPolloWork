@@ -45,6 +45,19 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('selected.style.width = `${width}px`');
   });
 
+  test("describes an editable element with a stable CSS locator", () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><section><h1>Title</h1></section></body></html>", true);
+    expect(preview).toContain("const elementLocator = (element: HTMLElement)");
+    expect(preview).toContain("nth-of-type");
+    expect(preview).toContain("locator: elementLocator(element)");
+  });
+
+  test("keeps locators stable after editor-only control labels are unwrapped", () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><button>Save<span>Now</span></button></body></html>", true);
+    expect(preview).toContain('element.hasAttribute("data-ipollowork-design-text-node") ? element.parentElement : element');
+    expect(preview).toContain('!sibling.hasAttribute("data-ipollowork-design-text-node")');
+  });
+
   test("keeps a dormant editor bridge and deck adapter in the same preview document", () => {
     const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
     const preview = buildDesignPreviewDocument(source, true, "", false, false, true);

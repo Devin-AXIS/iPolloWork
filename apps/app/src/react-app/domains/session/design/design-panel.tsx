@@ -23,6 +23,7 @@ import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
+import type { DesignAiSelectionContext } from "./design-ai-selection";
 import {
   buildDesignPreviewDocument,
   DESIGN_MESSAGE_CHANNEL,
@@ -90,6 +91,7 @@ type DesignPanelProps = {
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
+  onAskAi: (context: DesignAiSelectionContext) => void;
   onClose: () => void;
 };
 
@@ -519,6 +521,7 @@ export function DesignPanel({
   workspaceId,
   isRemoteWorkspace = false,
   launcherItems = [],
+  onAskAi,
   onClose,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
@@ -1329,6 +1332,31 @@ export function DesignPanel({
     }, "*");
   };
 
+  const askAiAboutSelection = async () => {
+    if (!selection || !workspaceId || !activePagePath || !fileQuery.data) return;
+    const selected = selection;
+    const baseUpdatedAt = fileQuery.data.updatedAt;
+    const beforeHtml = await readLatestCanvasHtml();
+    const summary = (selected.text || selected.alt || selected.source).replace(/\s+/g, " ").trim().slice(0, 80);
+    onAskAi({
+      id: `design-ai-${crypto.randomUUID()}`,
+      sessionId,
+      workspaceId,
+      filePath: activePagePath,
+      baseUpdatedAt,
+      beforeHtml,
+      target: {
+        tag: selected.tag,
+        label: summary ? `${selected.tag.toUpperCase()} · ${summary}` : selected.tag.toUpperCase(),
+        locator: selected.locator,
+        text: selected.text,
+        src: selected.source,
+        alt: selected.alt,
+        styles: selected.styles,
+      },
+    });
+  };
+
   const applyToken = (name: string, value: string) => {
     if (!editing) return;
     setPendingCanvasChange(true);
@@ -1909,6 +1937,15 @@ export function DesignPanel({
                           aria-pressed={advancedOpen}
                         >
                           <SlidersHorizontal />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => void askAiAboutSelection()}
+                          disabled={!selection.canDelete}
+                          aria-label="Ask AI about selected element"
+                        >
+                          <Sparkles />
                         </Button>
                       </>
                     )}
