@@ -39,6 +39,7 @@ import { decodeComposerMentionValue, encodeComposerMentionValue, type ComposerMe
 import { desktopBridge } from "@/app/lib/desktop";
 import { publicAssetUrl } from "@/app/lib/public-asset";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
+import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { DevProfiler } from "@/react-app/shell/dev-profiler";
 import { useShellConfig } from "@/react-app/shell/shell-config";
 import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog";
@@ -78,6 +79,66 @@ import { NewConversationStarter, newConversationPlaceholder, type NewConversatio
 import { MessageListProvider, type DispatchAction } from "@/components/chat/message-list-provider";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import type { ThreadStatus } from "@/lib/messages";
+
+type ParseComposerPartsInput = {
+  mentions: Record<string, ComposerMentionKind>;
+  pasteParts: Array<{ id: string; label: string; text: string; lines: number }>;
+  designSelectionLabel: (contextId: string) => string | undefined;
+};
+
+export function parseComposerParts(text: string, input: ParseComposerPartsInput): ComposerPart[] {
+  const parts: ComposerPart[] = [];
+  const segments = text.split(/(\[\[design-ai:[a-zA-Z0-9_-]+\]\]|\[pasted text [^\]]+\]|\[skill [^\]]+\]|@[^\s@]+)/);
+  for (const segment of segments) {
+    if (!segment) continue;
+    const designSelectionMatch = segment.match(/^\[\[design-ai:([a-zA-Z0-9_-]+)\]\]$/);
+    if (designSelectionMatch?.[1]) {
+      const contextId = designSelectionMatch[1];
+      parts.push({
+        type: "design-selection",
+        contextId,
+        label: input.designSelectionLabel(contextId) ?? "Design selection",
+      });
+      continue;
+    }
+    const pasteMatch = segment.match(/^\[pasted text (.+)\]$/);
+    if (pasteMatch) {
+      const target = input.pasteParts.find((item) => item.label === pasteMatch[1]);
+      if (target) {
+        parts.push({ type: "paste", id: target.id, label: target.label, text: target.text, lines: target.lines });
+        continue;
+      }
+    }
+    const skillMatch = segment.match(/^\[skill (.+)\]$/);
+    if (skillMatch?.[1]) {
+      parts.push({ type: "skill", name: skillMatch[1] });
+      continue;
+    }
+    if (segment.startsWith("@")) {
+      const value = decodeComposerMentionValue(segment.slice(1));
+      const kind = input.mentions[value];
+      if (kind === "agent") {
+        parts.push({ type: "agent", name: value });
+        continue;
+      }
+      if (kind === "file") {
+        parts.push({ type: "file", path: value, label: value });
+        continue;
+      }
+      if (kind === "app") {
+        parts.push({ type: "app", name: value });
+        continue;
+      }
+    }
+    parts.push({ type: "text", text: segment });
+  }
+  return parts;
+}
+
+export function replaceDesignSelectionToken(draft: string, token: string) {
+  const withoutPrevious = draft.replace(/\[\[design-ai:[a-zA-Z0-9_-]+\]\]\s*/g, "").trimEnd();
+  return `${withoutPrevious}${withoutPrevious ? "\n" : ""}${token} `;
+}
 import {
   EnvironmentVariableProvider,
   type ApplyEnvironmentChangesResult,
@@ -720,27 +781,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
   });
 
   const buildDraft = useCallback((text: string, nextAttachments: ComposerAttachment[]): ComposerDraft => {
-    const parts: ComposerPart[] = text.split(/(\[pasted text [^\]]+\]|\[skill [^\]]+\]|@[^\s@]+)/).flatMap((segment) => {
-      if (!segment) return [] as ComposerDraft["parts"];
-      const pasteMatch = segment.match(/^\[pasted text (.+)\]$/);
-      if (pasteMatch) {
-        const target = pasteParts.find((item) => item.label === pasteMatch[1]);
-        if (target) {
-          return [{ type: "paste", id: target.id, label: target.label, text: target.text, lines: target.lines }];
-        }
-      }
-      const skillMatch = segment.match(/^\[skill (.+)\]$/);
-      if (skillMatch?.[1]) {
-        return [{ type: "skill", name: skillMatch[1] } satisfies ComposerDraft["parts"][number]];
-      }
-      if (segment.startsWith("@")) {
-        const value = decodeComposerMentionValue(segment.slice(1));
-        const kind = mentions[value];
-        if (kind === "agent") return [{ type: "agent", name: value } satisfies ComposerDraft["parts"][number]];
-        if (kind === "file") return [{ type: "file", path: value, label: value } satisfies ComposerDraft["parts"][number]];
-        if (kind === "app") return [{ type: "app", name: value } satisfies ComposerDraft["parts"][number]];
-      }
-      return [{ type: "text", text: segment } satisfies ComposerDraft["parts"][number]];
+    const parts = parseComposerParts(text, {
+      mentions,
+      pasteParts,
+      designSelectionLabel: (contextId) => (
+        useDesignAiSelectionStore.getState().contexts[contextId]?.target.label
+      ),
     });
     // Expand paste placeholders in resolvedText so the model receives
     // the actual pasted content instead of "[pasted text <label>]".
