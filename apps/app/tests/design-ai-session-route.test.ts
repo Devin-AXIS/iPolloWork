@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 
 import type { ComposerDraft } from "../src/app/types";
 import * as sessionRoute from "../src/react-app/shell/session-route";
+import type { DesignAiSelectionContext } from "../src/react-app/domains/session/design/design-ai-selection";
 import { useDesignAiSelectionStore } from "../src/react-app/domains/session/design/design-ai-selection-store";
 
 const routeUrl = new URL("../src/react-app/shell/session-route.tsx", import.meta.url);
@@ -9,6 +10,24 @@ const runtimeUrl = new URL(
   "../src/react-app/domains/session/sync/runtime-sync.tsx",
   import.meta.url,
 );
+
+const lifecycleContext: DesignAiSelectionContext = {
+  id: "design-ai-lifecycle",
+  sessionId: "ses_1",
+  workspaceId: "workspace_1",
+  filePath: "design/ses_1/index.html",
+  baseUpdatedAt: 11,
+  beforeHtml: "<h1>Original</h1>",
+  target: {
+    tag: "h1",
+    label: "H1 Original",
+    locator: "body > h1:nth-of-type(1)",
+    text: "Original",
+    src: "",
+    alt: "",
+    styles: { color: "black" },
+  },
+};
 
 describe("Design AI session lifecycle", () => {
   beforeEach(() => {
@@ -50,6 +69,7 @@ describe("Design AI session lifecycle", () => {
       draft,
       "C:/workspace",
       useDesignAiSelectionStore,
+      { sessionId: "ses_1", workspaceId: "workspace_1" },
     );
 
     expect(parts[0]).toMatchObject({ type: "text", synthetic: true });
@@ -74,11 +94,85 @@ describe("Design AI session lifecycle", () => {
     expect(markRunning).toBeGreaterThan(preflightRead);
     expect(prompt).toBeGreaterThan(markRunning);
     expect(source).toContain('update.status.type !== "idle"');
-    expect(source).toContain('statuses[context.id] === "running"');
+    expect(source).toContain("claimCompletion(context.id)");
     expect(source).toContain("after.content !== context.beforeHtml");
     expect(source).toContain("afterUpdatedAt: after.updatedAt ?? null");
     expect(source).toContain("completeWithoutChange(context.id)");
     expect(source).toContain("onSessionStatus={handleSessionStatus}");
+  });
+
+  test("rejects missing and foreign Design contexts before synthetic expansion", async () => {
+    const store = useDesignAiSelectionStore.getState();
+    store.createContext(lifecycleContext);
+    const draft = (contextId: string): ComposerDraft => ({
+      mode: "prompt",
+      parts: [{ type: "design-selection", contextId, label: "H1 Original" }],
+      attachments: [],
+      text: "",
+    });
+
+    await expect(sessionRoute.draftToParts(
+      draft(lifecycleContext.id),
+      "C:/workspace",
+      useDesignAiSelectionStore,
+      { sessionId: "ses_2", workspaceId: "workspace_1" },
+    )).rejects.toThrow("does not belong to this session");
+    await expect(sessionRoute.draftToParts(
+      draft(lifecycleContext.id),
+      "C:/workspace",
+      useDesignAiSelectionStore,
+      { sessionId: "ses_1", workspaceId: "workspace_2" },
+    )).rejects.toThrow("does not belong to this workspace");
+    await expect(sessionRoute.draftToParts(
+      draft("missing"),
+      "C:/workspace",
+      useDesignAiSelectionStore,
+      { sessionId: "ses_1", workspaceId: "workspace_1" },
+    )).rejects.toThrow("is no longer available");
+  });
+
+  test("marks all preflighted contexts failed when prompt submission rejects", async () => {
+    const second = { ...lifecycleContext, id: "design-ai-lifecycle-2" };
+    const store = useDesignAiSelectionStore.getState();
+    store.createContext(lifecycleContext);
+    store.createContext(second);
+
+    await expect(sessionRoute.promptDesignSelectionContexts({
+      contexts: [lifecycleContext, second],
+      workspaceClient: {
+        readWorkspaceFile: async () => ({ content: "<h1>Original</h1>", updatedAt: 11 }),
+        writeWorkspaceFile: async () => ({ updatedAt: 12 }),
+      },
+      prompt: async () => { throw new Error("prompt failed"); },
+      designSelectionStore: useDesignAiSelectionStore,
+    })).rejects.toThrow("prompt failed");
+
+    expect(useDesignAiSelectionStore.getState().statuses).toMatchObject({
+      [lifecycleContext.id]: "failed",
+      [second.id]: "failed",
+    });
+  });
+
+  test("marks every selected context failed when preflight cannot read the file", async () => {
+    const second = { ...lifecycleContext, id: "design-ai-lifecycle-3" };
+    const store = useDesignAiSelectionStore.getState();
+    store.createContext(lifecycleContext);
+    store.createContext(second);
+
+    await expect(sessionRoute.promptDesignSelectionContexts({
+      contexts: [lifecycleContext, second],
+      workspaceClient: {
+        readWorkspaceFile: async () => { throw new Error("read failed"); },
+        writeWorkspaceFile: async () => ({ updatedAt: 12 }),
+      },
+      prompt: async () => ({ error: undefined }),
+      designSelectionStore: useDesignAiSelectionStore,
+    })).rejects.toThrow("read failed");
+
+    expect(useDesignAiSelectionStore.getState().statuses).toMatchObject({
+      [lifecycleContext.id]: "failed",
+      [second.id]: "failed",
+    });
   });
 
   test("threads the optional session status callback through the React runtime", async () => {

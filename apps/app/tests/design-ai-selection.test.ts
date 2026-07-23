@@ -51,8 +51,12 @@ describe("Design AI selections", () => {
 
   test("stores an immutable Design selection context", () => {
     const store = useDesignAiSelectionStore.getState();
-    store.createContext(context);
-    context.target.styles.color = "red";
+    const mutableContext = {
+      ...context,
+      target: { ...context.target, styles: { ...context.target.styles } },
+    };
+    store.createContext(mutableContext);
+    mutableContext.target.styles.color = "red";
 
     expect(useDesignAiSelectionStore.getState().contexts["design-ai-1"]?.target.styles.color).toBe("black");
   });
@@ -60,6 +64,8 @@ describe("Design AI selections", () => {
   test("keeps completed checkpoints in LIFO order", () => {
     const store = useDesignAiSelectionStore.getState();
     store.createContext(context);
+    store.markRunning("design-ai-1");
+    store.claimCompletion("design-ai-1");
     store.complete("design-ai-1", { afterHtml: "<h1>One</h1>", afterUpdatedAt: 13 });
 
     const secondContext = {
@@ -69,6 +75,8 @@ describe("Design AI selections", () => {
       baseUpdatedAt: 13,
     };
     store.createContext(secondContext);
+    store.markRunning("design-ai-2");
+    store.claimCompletion("design-ai-2");
     store.complete("design-ai-2", { afterHtml: "<h1>Two</h1>", afterUpdatedAt: 15 });
 
     expect(store.latestUndoCheckpoint("ses_1", "design/ses_1/index.html")?.beforeHtml).toContain("One");
@@ -80,6 +88,7 @@ describe("Design AI selections", () => {
     const store = useDesignAiSelectionStore.getState();
     store.createContext(context);
     store.markRunning("design-ai-1");
+    expect(store.claimCompletion("design-ai-1")).toBe(true);
     store.completeWithoutChange("design-ai-1");
 
     expect(useDesignAiSelectionStore.getState().statuses["design-ai-1"]).toBe("completed");
@@ -90,10 +99,25 @@ describe("Design AI selections", () => {
     const store = useDesignAiSelectionStore.getState();
     store.createContext(context);
     store.markRunning("design-ai-1");
+    expect(store.claimCompletion("design-ai-1")).toBe(true);
+    expect(store.claimCompletion("design-ai-1")).toBe(false);
     store.complete("design-ai-1", { afterHtml: "<h1>One</h1>", afterUpdatedAt: 13 });
     store.complete("design-ai-1", { afterHtml: "<h1>One</h1>", afterUpdatedAt: 13 });
 
     expect(useDesignAiSelectionStore.getState().undoCheckpoints.ses_1?.[context.filePath]).toHaveLength(1);
+  });
+
+  test("does not revive terminal completion after an idle race", () => {
+    const store = useDesignAiSelectionStore.getState();
+    store.createContext(context);
+    store.markRunning("design-ai-1");
+    expect(store.claimCompletion("design-ai-1")).toBe(true);
+    store.complete("design-ai-1", { afterHtml: "<h1>One</h1>", afterUpdatedAt: 13 });
+    store.fail("design-ai-1");
+    store.completeWithoutChange("design-ai-1");
+
+    expect(useDesignAiSelectionStore.getState().statuses["design-ai-1"]).toBe("completed");
+    expect(store.latestUndoCheckpoint("ses_1", context.filePath)?.afterHtml).toContain("One");
   });
 
   test("writes the AI pre-image with the post-agent revision during undo", async () => {
@@ -105,12 +129,14 @@ describe("Design AI selections", () => {
     expect(source).toContain("checkpoint.afterHtml");
     expect(source).toContain("const restored = await client.readWorkspaceFile(workspaceId, activePagePath)");
     expect(source).toContain("setPreviewRevision((current) => current + 1)");
+    expect(source).toContain("context?.workspaceId === workspaceId");
   });
 
   test("removes every context and checkpoint for a reset session", () => {
     const store = useDesignAiSelectionStore.getState();
     store.createContext(context);
     store.markRunning("design-ai-1");
+    store.claimCompletion("design-ai-1");
     store.complete("design-ai-1", { afterHtml: "<h1>One</h1>", afterUpdatedAt: 13 });
     store.fail("design-ai-1");
     store.resetSession("ses_1");

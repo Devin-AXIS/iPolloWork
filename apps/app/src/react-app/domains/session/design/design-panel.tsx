@@ -594,9 +594,11 @@ export function DesignPanel({
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
-  const aiUndoCheckpoint = useDesignAiSelectionStore((state) => (
-    state.undoCheckpoints[sessionId]?.[activePagePath]?.at(-1)
-  ));
+  const aiUndoCheckpoint = useDesignAiSelectionStore((state) => {
+    const checkpoint = state.undoCheckpoints[sessionId]?.[activePagePath]?.at(-1);
+    const context = checkpoint ? state.contexts[checkpoint.contextId] : undefined;
+    return context?.workspaceId === workspaceId ? checkpoint : undefined;
+  });
   const appliedAiCheckpointRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {

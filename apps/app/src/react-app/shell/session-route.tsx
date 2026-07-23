@@ -103,7 +103,10 @@ import {
   applySessionRevert,
 } from "@/react-app/domains/session/sync/session-sync";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
-import { designAiSelectionInstruction } from "@/react-app/domains/session/design/design-ai-selection";
+import {
+  designAiSelectionInstruction,
+  type DesignAiSelectionContext,
+} from "@/react-app/domains/session/design/design-ai-selection";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
 import { useModelBehavior } from "@/react-app/domains/session/surface/use-model-behavior";
@@ -256,10 +259,80 @@ function attachmentMime(attachment: ComposerAttachment) {
   return "text/plain";
 }
 
+type DesignSelectionScope = {
+  sessionId: string;
+  workspaceId: string;
+};
+
+type DesignSelectionWorkspaceClient = {
+  readWorkspaceFile: (workspaceId: string, path: string) => Promise<{ content: string; updatedAt?: number | null }>;
+  writeWorkspaceFile: (workspaceId: string, payload: { path: string; content: string; baseUpdatedAt?: number | null }) => Promise<unknown>;
+};
+
+type DesignSelectionStore = Pick<typeof useDesignAiSelectionStore, "getState">;
+
+export function designSelectionContextsForDraft(
+  draft: ComposerDraft,
+  designSelectionStore: DesignSelectionStore,
+  scope: DesignSelectionScope | undefined,
+) {
+  const contexts = new Map<string, DesignAiSelectionContext>();
+  const errors: string[] = [];
+  for (const part of draft.parts) {
+    if (part.type !== "design-selection") continue;
+    const context = designSelectionStore.getState().contexts[part.contextId];
+    if (!context) {
+      errors.push("The selected Design element is no longer available.");
+      continue;
+    }
+    if (!scope || context.sessionId !== scope.sessionId) {
+      errors.push("The selected Design element does not belong to this session.");
+      continue;
+    }
+    if (context.workspaceId !== scope.workspaceId) {
+      errors.push("The selected Design element does not belong to this workspace.");
+      continue;
+    }
+    contexts.set(context.id, context);
+  }
+  if (errors.length > 0) throw new Error(errors[0]);
+  return [...contexts.values()];
+}
+
+export async function promptDesignSelectionContexts(input: {
+  contexts: DesignAiSelectionContext[];
+  workspaceClient: DesignSelectionWorkspaceClient;
+  prompt: () => Promise<{ error?: unknown }>;
+  designSelectionStore?: DesignSelectionStore;
+}) {
+  const designSelectionStore = input.designSelectionStore ?? useDesignAiSelectionStore;
+  try {
+    for (const context of input.contexts) {
+      const current = await input.workspaceClient.readWorkspaceFile(context.workspaceId, context.filePath);
+      if ((current.updatedAt ?? null) !== context.baseUpdatedAt) {
+        throw new Error("The selected Design file changed before the AI update. Reload it and try again.");
+      }
+      await input.workspaceClient.writeWorkspaceFile(context.workspaceId, {
+        path: context.filePath,
+        content: context.beforeHtml,
+        baseUpdatedAt: current.updatedAt ?? null,
+      });
+      designSelectionStore.getState().markRunning(context.id);
+    }
+    const result = await input.prompt();
+    if (result.error) throw new Error(serializeSDKError(result.error));
+    return result;
+  } catch (error) {
+    for (const context of input.contexts) designSelectionStore.getState().fail(context.id);
+    throw error;
+  }
+}
+
 export async function draftToParts(
   draft: ComposerDraft,
   workspaceRoot: string,
-  designSelectionStore: Pick<typeof useDesignAiSelectionStore, "getState"> = useDesignAiSelectionStore,
+  designSelectionStore: DesignSelectionStore = useDesignAiSelectionStore,
+  scope?: DesignSelectionScope,
 ) {
   const parts: Array<TextPartInput | FilePartInput | AgentPartInput> = [];
   const root = workspaceRoot.trim();
@@ -279,16 +352,18 @@ export async function draftToParts(
     return segments[segments.length - 1] ?? "file";
   };
 
+  const designContexts = new Map(
+    designSelectionContextsForDraft(draft, designSelectionStore, scope).map((context) => [context.id, context]),
+  );
   for (const part of draft.parts) {
     if (part.type === "design-selection") {
-      const context = designSelectionStore.getState().contexts[part.contextId];
-      if (context) {
-        parts.push({
-          type: "text",
-          text: designAiSelectionInstruction(context),
-          synthetic: true,
-        });
-      }
+      const context = designContexts.get(part.contextId);
+      if (!context) throw new Error("The selected Design element is no longer available.");
+      parts.push({
+        type: "text",
+        text: designAiSelectionInstruction(context),
+        synthetic: true,
+      });
       continue;
     }
     if (part.type === "text") {
@@ -831,14 +906,14 @@ export function SessionRoute() {
 
   const handleSessionStatus = useCallback((update: { sessionId: string; status: SessionStatus }) => {
     if (update.status.type !== "idle" || !selectedWorkspaceEndpoint) return;
-    const { contexts, statuses, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
+    const { contexts, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
     const runningContexts = Object.values(contexts).filter((context) => (
       context.sessionId === update.sessionId
       && context.workspaceId === selectedWorkspaceEndpoint.workspaceId
-      && statuses[context.id] === "running"
     ));
 
     for (const context of runningContexts) {
+      if (!useDesignAiSelectionStore.getState().claimCompletion(context.id)) continue;
       void (async () => {
         try {
           const after = await selectedWorkspaceEndpoint.client.readWorkspaceFile(context.workspaceId, context.filePath);
@@ -995,7 +1070,20 @@ export function SessionRoute() {
           return;
         }
 
-        const parts = await draftToParts(draft, selectedWorkspaceRoot);
+        const designSelectionScope = selectedWorkspaceEndpoint
+          ? { sessionId: targetSessionId, workspaceId: selectedWorkspaceEndpoint.workspaceId }
+          : undefined;
+        const designSelectionContexts = designSelectionContextsForDraft(
+          draft,
+          useDesignAiSelectionStore,
+          designSelectionScope,
+        );
+        const parts = await draftToParts(
+          draft,
+          selectedWorkspaceRoot,
+          useDesignAiSelectionStore,
+          designSelectionScope,
+        );
         const envSystemContext = await buildiPolloWorkEnvSystemContext(client, {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
@@ -1063,39 +1151,24 @@ export function SessionRoute() {
           ...capabilityPromptPart,
           ...parts,
         ];
-        const designSelectionContexts = draft.parts.flatMap((part) => {
-          if (part.type !== "design-selection") return [];
-          const context = useDesignAiSelectionStore.getState().contexts[part.contextId];
-          return context?.sessionId === targetSessionId ? [context] : [];
-        });
-        for (const context of designSelectionContexts) {
-          if (!selectedWorkspaceEndpoint || context.workspaceId !== selectedWorkspaceEndpoint.workspaceId) {
-            useDesignAiSelectionStore.getState().fail(context.id);
-            throw new Error("The selected Design element is no longer available in this workspace.");
-          }
-          const current = await selectedWorkspaceEndpoint.client.readWorkspaceFile(context.workspaceId, context.filePath);
-          if ((current.updatedAt ?? null) !== context.baseUpdatedAt) {
-            useDesignAiSelectionStore.getState().fail(context.id);
-            throw new Error("The selected Design file changed before the AI update. Reload it and try again.");
-          }
-          await selectedWorkspaceEndpoint.client.writeWorkspaceFile(context.workspaceId, {
-            path: context.filePath,
-            content: context.beforeHtml,
-            baseUpdatedAt: current.updatedAt ?? null,
-          });
-          useDesignAiSelectionStore.getState().markRunning(context.id);
+        if (designSelectionContexts.length > 0 && !selectedWorkspaceEndpoint) {
+          throw new Error("The selected Design element is no longer available in this workspace.");
         }
-        const result = await opencodeClient.session.promptAsync({
-          sessionID: targetSessionId,
-          parts: promptParts,
-          model: local.prefs.defaultModel ?? undefined,
-          agent: selectedAgent ?? undefined,
-          ...(modelVariantValue ? { variant: modelVariantValue } : {}),
-          ...(systemContext ? { system: systemContext } : {}),
+        const result = await promptDesignSelectionContexts({
+          contexts: designSelectionContexts,
+          workspaceClient: selectedWorkspaceEndpoint?.client ?? {
+            readWorkspaceFile: async () => { throw new Error("The selected Design element is no longer available in this workspace."); },
+            writeWorkspaceFile: async () => { throw new Error("The selected Design element is no longer available in this workspace."); },
+          },
+          prompt: () => opencodeClient.session.promptAsync({
+            sessionID: targetSessionId,
+            parts: promptParts,
+            model: local.prefs.defaultModel ?? undefined,
+            agent: selectedAgent ?? undefined,
+            ...(modelVariantValue ? { variant: modelVariantValue } : {}),
+            ...(systemContext ? { system: systemContext } : {}),
+          }),
         });
-        if (result.error) {
-          throw new Error(serializeSDKError(result.error));
-        }
       },
       onDraftChange: () => {
         // Draft persistence will be wired once the full React shell owns session state.
@@ -2292,6 +2365,7 @@ export function SessionRoute() {
               const endpoint = endpointForWorkspace(selectedWorkspace);
               if (!endpoint) return;
               await endpoint.client.deleteSession(endpoint.workspaceId, sessionId);
+              useDesignAiSelectionStore.getState().resetSession(sessionId);
               if (selectedSessionId === sessionId) {
                 writeLastSessionFor(selectedWorkspaceId, null);
                 navigateToWorkspaceSession(selectedWorkspaceId);

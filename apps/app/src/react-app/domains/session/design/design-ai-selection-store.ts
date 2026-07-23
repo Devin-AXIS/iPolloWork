@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 import type { DesignAiSelectionContext, DesignAiUndoCheckpoint } from "./design-ai-selection";
 
-type DesignAiSelectionStatus = "pending" | "running" | "completed" | "failed";
+type DesignAiSelectionStatus = "pending" | "running" | "completing" | "completed" | "failed";
 
 type CompleteDesignAiSelection = {
   afterHtml: string;
@@ -15,6 +15,7 @@ type DesignAiSelectionStore = {
   undoCheckpoints: Record<string, Record<string, DesignAiUndoCheckpoint[]>>;
   createContext: (context: DesignAiSelectionContext) => void;
   markRunning: (contextId: string) => void;
+  claimCompletion: (contextId: string) => boolean;
   complete: (contextId: string, result: CompleteDesignAiSelection) => void;
   completeWithoutChange: (contextId: string) => void;
   fail: (contextId: string) => void;
@@ -53,17 +54,29 @@ export const useDesignAiSelectionStore = create<DesignAiSelectionStore>((set, ge
   contexts: {},
   statuses: {},
   undoCheckpoints: {},
-  createContext: (context) => set((state) => ({
-    contexts: { ...state.contexts, [context.id]: copyContext(context) },
-    statuses: { ...state.statuses, [context.id]: "pending" },
-  })),
+  createContext: (context) => set((state) => {
+    if (state.contexts[context.id]) return state;
+    return {
+      contexts: { ...state.contexts, [context.id]: copyContext(context) },
+      statuses: { ...state.statuses, [context.id]: "pending" },
+    };
+  }),
   markRunning: (contextId) => set((state) => {
-    if (!state.contexts[contextId]) return state;
+    if (!state.contexts[contextId] || state.statuses[contextId] !== "pending") return state;
     return { statuses: { ...state.statuses, [contextId]: "running" } };
   }),
+  claimCompletion: (contextId) => {
+    let claimed = false;
+    set((state) => {
+      if (!state.contexts[contextId] || state.statuses[contextId] !== "running") return state;
+      claimed = true;
+      return { statuses: { ...state.statuses, [contextId]: "completing" } };
+    });
+    return claimed;
+  },
   complete: (contextId, result) => set((state) => {
     const context = state.contexts[contextId];
-    if (!context || state.statuses[contextId] === "completed") return state;
+    if (!context || state.statuses[contextId] !== "completing") return state;
     const checkpointsForSession = state.undoCheckpoints[context.sessionId] ?? {};
     const checkpointsForFile = checkpointsForSession[context.filePath] ?? [];
 
@@ -79,11 +92,12 @@ export const useDesignAiSelectionStore = create<DesignAiSelectionStore>((set, ge
     };
   }),
   completeWithoutChange: (contextId) => set((state) => {
-    if (!state.contexts[contextId] || state.statuses[contextId] === "completed") return state;
+    if (!state.contexts[contextId] || state.statuses[contextId] !== "completing") return state;
     return { statuses: { ...state.statuses, [contextId]: "completed" } };
   }),
   fail: (contextId) => set((state) => {
-    if (!state.contexts[contextId]) return state;
+    const status = state.statuses[contextId];
+    if (!state.contexts[contextId] || (status !== "pending" && status !== "running" && status !== "completing")) return state;
     return { statuses: { ...state.statuses, [contextId]: "failed" } };
   }),
   latestUndoCheckpoint: (sessionId, filePath) => {
