@@ -47,6 +47,7 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("design/ses_1/index.html");
     expect(instruction).toContain("body > h1:nth-of-type(1)");
     expect(instruction).toContain("Do not modify any other element");
+    expect(instruction).toContain("If the locator no longer resolves");
   });
 
   test("stores an immutable Design selection context", () => {
@@ -59,6 +60,40 @@ describe("Design AI selections", () => {
     mutableContext.target.styles.color = "red";
 
     expect(useDesignAiSelectionStore.getState().contexts["design-ai-1"]?.target.styles.color).toBe("black");
+  });
+
+  test("rebases only a pending Design selection context", () => {
+    const store = useDesignAiSelectionStore.getState();
+    store.createContext(context);
+
+    expect(store.rebasePendingContext("design-ai-1", {
+      beforeHtml: "<h1>Latest</h1>",
+      baseUpdatedAt: 12,
+    })).toBe(true);
+    expect(useDesignAiSelectionStore.getState().contexts["design-ai-1"]).toMatchObject({
+      beforeHtml: "<h1>Latest</h1>",
+      baseUpdatedAt: 12,
+    });
+
+    store.markRunning("design-ai-1");
+    expect(store.rebasePendingContext("design-ai-1", {
+      beforeHtml: "<h1>Too late</h1>",
+      baseUpdatedAt: 13,
+    })).toBe(false);
+    expect(useDesignAiSelectionStore.getState().contexts["design-ai-1"]?.beforeHtml).toBe("<h1>Latest</h1>");
+  });
+
+  test("saves a dirty current Design before creating its AI selection context", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const askAi = source.indexOf("const askAiAboutSelection = async () =>");
+    const saveDirty = source.indexOf("await saveMutation.mutateAsync()", askAi);
+    const createContext = source.indexOf("onAskAi({", askAi);
+
+    expect(askAi).toBeGreaterThan(-1);
+    expect(source.indexOf('viewedVersionPath !== "current"', askAi)).toBeGreaterThan(askAi);
+    expect(source.indexOf("pendingCanvasChange || beforeHtml !== savedSource", askAi)).toBeGreaterThan(askAi);
+    expect(saveDirty).toBeGreaterThan(askAi);
+    expect(createContext).toBeGreaterThan(saveDirty);
   });
 
   test("keeps completed checkpoints in LIFO order", () => {
