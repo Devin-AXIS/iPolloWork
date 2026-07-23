@@ -192,8 +192,8 @@ export function resolveKnownWorkspaceId(
 
 export function isInternalSubtaskSession(session: RouteSession) {
   const parentID = session.parentID?.trim() ?? "";
-  const agent = session.agent?.trim() ?? "";
-  return Boolean(parentID && agent && agent !== "orchestrator");
+  const agent = session.agent ?? "";
+  return Boolean(parentID && agent.trim() && agent !== "orchestrator");
 }
 
 export function userVisibleSessionsByWorkspaceId(

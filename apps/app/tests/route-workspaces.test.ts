@@ -81,6 +81,21 @@ describe("route workspaces", () => {
     ]);
   });
 
+  test("requires an exact orchestrator agent to retain delegated children", () => {
+    const sessions = {
+      ws: [
+        routeSession("whitespace-agent", { parentID: "parent", agent: "   " }),
+        routeSession("wrapped-orchestrator", { parentID: "parent", agent: " orchestrator " }),
+        routeSession("exact-orchestrator", { parentID: "parent", agent: "orchestrator" }),
+      ],
+    };
+
+    expect(userVisibleSessionsByWorkspaceId(sessions).ws.map((session) => session.id)).toEqual([
+      "whitespace-agent",
+      "exact-orchestrator",
+    ]);
+  });
+
   test("provides one visible collection for sidebar, switcher, and search", () => {
     const raw = {
       ws: [
