@@ -430,7 +430,12 @@ export function useTimelineEditing({
         const removeData = (await removeResponse.json()) as {
           changed?: boolean;
           content?: string;
+          version?: string;
         };
+        observeProjectFileVersion?.(
+          targetPath,
+          removeData.version ?? removeResponse.headers.get("etag"),
+        );
         const removedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;
         // Content-driven duration: shrink the composition to the furthest
@@ -449,17 +454,19 @@ export function useTimelineEditing({
 
         domEditSaveTimestampRef.current = Date.now();
         try {
-          await saveProjectFilesWithHistory({
-            projectId: pid,
+          if (patchedContent !== removedContent) {
+            await writeProjectFile(targetPath, patchedContent, removedContent);
+          }
+          await recordEdit({
             label: "Delete timeline clip",
             kind: "timeline",
-            files: { [targetPath]: patchedContent },
-            readFile: async () => originalContent,
-            writeFile: writeProjectFile,
-            recordEdit,
+            files: { [targetPath]: { before: originalContent, after: patchedContent } },
           });
         } catch (error) {
           rollbackDuration();
+          try {
+            await writeProjectFile(targetPath, originalContent, patchedContent);
+          } catch {}
           throw error;
         }
 
@@ -488,6 +495,7 @@ export function useTimelineEditing({
       isRecordingRef,
       forceReloadSdkSession,
       previewIframeRef,
+      observeProjectFileVersion,
     ],
   );
 

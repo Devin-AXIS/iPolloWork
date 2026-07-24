@@ -287,7 +287,7 @@ describe("template installations", () => {
 
   test("ships the reviewed HTML Anything catalog with iPolloWork categories, styles and editable variables", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => name.startsWith("ipollowork.html-anything."));
-    expect(directories).toHaveLength(60);
+    expect(directories).toHaveLength(58);
     const categoryCounts: Record<string, number> = {};
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -296,7 +296,7 @@ describe("template installations", () => {
       expect(TEMPLATE_STYLE_LABELS[manifest.style]).toBeTruthy();
       expect(manifest.source.license).toBe("Apache-2.0");
       expect(manifest.source.revision).toBe("d0efb1eaa3b65c731709981718cd5a0a0d4e8f71");
-      const upgradedCategories = new Set(["site", "other"]);
+      const upgradedCategories = new Set(["site", "other", "video"]);
       const upgradedSlides = manifest.category === "slides" && manifest.id !== "ipollowork.html-anything.weekly-update";
       expect(manifest.version).toBe(upgradedCategories.has(manifest.category) || upgradedSlides ? "1.1.5" : "1.1.4");
       expect(manifest.cover).toBe("cover.png");
@@ -306,6 +306,16 @@ describe("template installations", () => {
       expect(entry).toMatch(manifest.surface === "video" ? /(data-var-src="logoUrl"|data-var-text="brandName")/ : /data-ipw-brand-slot/);
       expect(entry).not.toMatch(/HTML[- ]ANYTHING|OPEN DESIGN|Open Design/i);
       expect(entry).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
+      if (manifest.surface === "video") {
+        const currentLogo = await readFile(join(
+          bundledTemplatesRoot,
+          "ipollowork.hyperframes.course-journey",
+          "assets",
+          "ipollowork-logo.svg",
+        ), "utf8");
+        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260721");
+        expect(await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8")).toBe(currentLogo);
+      }
       if (manifest.category === "slides") {
         const visualTemplateId = manifest.id.replace("ipollowork.html-anything.", "");
         expect(entry).toContain(`data-ipw-template="${visualTemplateId}"`);
@@ -323,18 +333,25 @@ describe("template installations", () => {
         for (const variable of manifest.designSystem.variables) expect(tokens).toContain(variable.id);
       }
     }
-    expect(categoryCounts).toEqual({ article: 4, cards: 7, other: 4, report: 4, slides: 23, video: 8, poster: 2, site: 8 });
+    expect(categoryCounts).toEqual({ article: 4, cards: 6, other: 4, report: 4, slides: 22, video: 8, poster: 2, site: 8 });
   });
 
   test("ships six flagship HyperFrames video templates with local deterministic runtimes", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => name.startsWith("ipollowork.hyperframes."));
     expect(directories).toHaveLength(flagshipVideoTemplateIds.length);
+    const currentLogo = await readFile(join(
+      bundledTemplatesRoot,
+      "ipollowork.hyperframes.course-journey",
+      "assets",
+      "ipollowork-logo.svg",
+    ), "utf8");
     for (const templateId of flagshipVideoTemplateIds) {
       const root = join(bundledTemplatesRoot, templateId);
       const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
       const entry = await readFile(join(root, manifest.entry), "utf8");
       expect(manifest.category).toBe("video");
       expect(manifest.surface).toBe("video");
+      expect(manifest.version).toBe("1.0.1");
       expect(manifest.entry).toBe("index.html");
       expect(manifest.cover).toBe("cover.png");
       expect(manifest.source.license).toBe("Apache-2.0");
@@ -342,6 +359,7 @@ describe("template installations", () => {
       expect(entry).toContain("data-composition-variables");
       expect(entry).toContain("gsap.timeline({ paused: true })");
       expect(entry).toContain("window.__timelines.main");
+      expect(entry).toContain("assets/ipollowork-logo.svg?v=20260721");
       expect(entry).not.toMatch(/(?:src|href)\s*=\s*["']https?:\/\//i);
       for (const variable of manifest.designSystem.variables) expect(entry).toContain(`"id":"${variable.id}"`);
       const cover = await readFile(join(root, manifest.cover));
@@ -353,6 +371,7 @@ describe("template installations", () => {
         expect(() => new Function(script[1])).not.toThrow();
       }
       expect(existsSync(join(root, "assets", "gsap.min.js"))).toBe(true);
+      expect(await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8")).toBe(currentLogo);
     }
     expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "iphone.glb"))).toBe(true);
     expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "macbook.glb"))).toBe(true);
@@ -371,6 +390,23 @@ describe("template installations", () => {
       expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain("window.__timelines.main");
       expect(existsSync(join(ws.path, "video", sessionId, "brief.json"))).toBe(true);
     }
+  });
+
+  test("refreshes the current iPolloWork logo when an existing video session opens", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-video-logo-refresh-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await listTemplates(serverConfig, ws.id);
+    await materializeTemplate(serverConfig, ws, flagshipVideoTemplateIds[0]!, "session_logo");
+    const logoPath = join(ws.path, "video", "session_logo", "assets", "ipollowork-logo.svg");
+    await writeFile(logoPath, '<svg viewBox="-3 0 106 106"><rect fill="white"/></svg>');
+
+    await readTemplateSession(serverConfig, ws, "session_logo");
+
+    const refreshedLogo = await readFile(logoPath, "utf8");
+    expect(refreshedLogo).toContain('viewBox="0 0 476 500"');
+    expect(refreshedLogo).not.toContain('fill="white"');
   });
 
   test("ships every website template with accessible navigation and observable actions", async () => {
@@ -478,7 +514,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(74);
+    expect(directories).toHaveLength(73);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -491,7 +527,7 @@ describe("template installations", () => {
       expect(cover.byteLength).toBeGreaterThan(15_000);
       hashes.add(Bun.hash(cover).toString());
     }
-    expect(hashes.size).toBe(74);
+    expect(hashes.size).toBe(73);
   });
 
   test("ships strict PPTX-compatible slide templates with explicit editable object markers", async () => {
@@ -519,11 +555,23 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(74);
+    expect(first.filter((item) => item.installed)).toHaveLength(73);
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
     expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
+  });
+
+  test("does not ship removed templates into the personal template market", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-templates-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const first = await listTemplates(serverConfig, "alpha");
+    const removedIds = ["ipollowork.html-anything.deck-xhs-post", "ipollowork.html-anything.social-x-post-card"];
+    for (const templateId of removedIds) {
+      expect(existsSync(join(bundledTemplatesRoot, templateId))).toBe(false);
+      expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
+    }
   });
 
   test("materializes a full session snapshot that survives template uninstall", async () => {

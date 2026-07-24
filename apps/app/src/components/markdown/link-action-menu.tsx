@@ -7,6 +7,7 @@ import { getDesktopApplicationsForFile, openDesktopWithApp } from "@/app/lib/des
 import { isElectronRuntime } from "@/app/utils";
 import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 import type { OpenTargetOptions } from "@/lib/target-provider";
+import { t } from "@/i18n";
 
 const SUPPORTED_PANEL_PREVIEWS = new Set(["markdown", "sheet", "slides", "image", "pdf", "html", "text"]);
 
@@ -101,7 +102,7 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
         className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10 disabled:opacity-50"
       >
         <ExternalLink className="size-4 shrink-0" />
-        Open with default app
+        {t("link_action.open_default")}
       </button>
       {canOpenInPanel ? (
         <button
@@ -110,7 +111,7 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
           className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10"
         >
           <Eye className="size-4 shrink-0" />
-          Open in panel
+          {t("link_action.open_panel")}
         </button>
       ) : null}
       <button
@@ -120,7 +121,7 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
         className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10 disabled:opacity-50"
       >
         <FolderOpen className="size-4 shrink-0" />
-        Show in folder
+        {t("link_action.show_in_folder")}
       </button>
       {canOpenExternally && apps && apps.length > 0 ? (
         <>
@@ -148,7 +149,7 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
           <div className="my-1 h-px bg-foreground/5" />
           <div className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground">
             <Loader2 className="size-3.5 shrink-0 animate-spin" />
-            Loading apps…
+            {t("link_action.loading_apps")}
           </div>
         </>
       ) : null}

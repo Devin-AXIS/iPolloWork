@@ -376,20 +376,37 @@ export function StudioHeader({
               STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
             }
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
-            </svg>
             {t("header.inspector")}
           </button>
         </Tooltip>
+        <button
+          type="button"
+          onClick={() => {
+            const target = document.querySelector("[data-studio-fullscreen-target]");
+            target?.dispatchEvent(new CustomEvent("studio-toggle-fullscreen", { bubbles: true }));
+          }}
+          className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold border border-studio-accent/35 bg-studio-accent/12 text-studio-accent hover:bg-studio-accent/20 transition-colors active:scale-[0.98]"
+          aria-label={t("player.enterFullscreen")}
+          title={t("player.enterFullscreen")}
+        >
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+            <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+            <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+          </svg>
+          <span>Full</span>
+        </button>
         <Tooltip
           label={
             isRendering ? t("header.renderInProgress") : t("header.renderExport")

@@ -47,6 +47,7 @@ import {
   mergeRouteWorkspaces,
   orderRouteWorkspaces,
   toSessionGroups,
+  userVisibleSessionsByWorkspaceId,
   workspaceExportFilename,
   workspaceLabel,
 } from "@/react-app/shell/route-workspaces";
@@ -254,7 +255,7 @@ export function parseSettingsPath(pathname: string): {
     .replace(/^\/settings\/?/, "")
     .replace(/^\/+|\/+$/g, "");
   if (!trimmed) {
-    return { tab: "general", redirectPath: "general" };
+    return { tab: "preferences", redirectPath: "preferences" };
   }
 
   const [head, tail] = trimmed.split("/");
@@ -287,7 +288,7 @@ export function parseSettingsPath(pathname: string): {
       if (tail === "plugins") return { tab: "extensions", redirectPath: null, extensionsSection: "plugins" };
       return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
     default:
-      return { tab: "general", redirectPath: "general" };
+      return { tab: "preferences", redirectPath: "preferences" };
   }
 }
 
@@ -357,7 +358,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const checkDesktopRestriction = useCheckDesktopRestriction();
   const restrictionNotice = useRestrictionNotice();
   const reloadCoordinator = useReloadCoordinator();
-  const [embeddedPath, setEmbeddedPath] = useState(props.initialPath ?? "general");
+  const [embeddedPath, setEmbeddedPath] = useState(props.initialPath ?? "preferences");
   const route = props.embedded ? parseSettingsPath(`/settings/${embeddedPath}`) : parseSettingsPath(location.pathname);
   const navigationWorkspaceId = readNavigationWorkspaceId(location.state);
   const navigationSessionId = readNavigationSessionId(location.state);
@@ -783,11 +784,15 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     },
   });
 
+  const visibleSessionsByWorkspaceId = useMemo(
+    () => userVisibleSessionsByWorkspaceId(sessionsByWorkspaceId),
+    [sessionsByWorkspaceId],
+  );
   const workspaceSessionGroups = useMemo(
     // Settings has no per-workspace loading state; the empty set keeps the
     // previous behavior (error -> "error", otherwise "ready").
-    () => toSessionGroups(workspaces, sessionsByWorkspaceId, errorsByWorkspaceId, new Set()),
-    [errorsByWorkspaceId, sessionsByWorkspaceId, workspaces],
+    () => toSessionGroups(workspaces, visibleSessionsByWorkspaceId, errorsByWorkspaceId, new Set()),
+    [errorsByWorkspaceId, visibleSessionsByWorkspaceId, workspaces],
   );
 
   const selectedWorkspaceEndpoint = useMemo(

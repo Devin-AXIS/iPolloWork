@@ -28,6 +28,10 @@ const MAX_EXPANDED_BYTES = 200 * 1024 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES = 1_000;
 export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
+const WITHDRAWN_BUNDLED_TEMPLATE_IDS = new Set([
+  "ipollowork.html-anything.deck-xhs-post",
+  "ipollowork.html-anything.social-x-post-card",
+]);
 // The market is opened from the account menu, so local templates belong to
 // the signed-in desktop profile rather than an individual workstation. The
 // workspace route remains the authorization and materialization boundary.
@@ -422,6 +426,7 @@ async function loadBundledTemplates(): Promise<BundledTemplate[]> {
     const directory = join(root, name);
     if (!(await stat(directory)).isDirectory()) continue;
     const manifest = await readManifest(directory);
+    if (WITHDRAWN_BUNDLED_TEMPLATE_IDS.has(manifest.id)) continue;
     items.push({ manifest, directory, hash: await hashDirectory(directory) });
   }
   return items;
@@ -763,7 +768,15 @@ function snapshotFromRow(row: TemplateSessionRow): TemplateSessionSnapshot {
 export async function readTemplateSession(config: ServerConfig, workspace: WorkspaceInfo, sessionId: string): Promise<TemplateSessionSnapshot> {
   const row = (await templateDb(config)).getSession(workspace.id, sessionId);
   if (!row) throw new ApiError(404, "template_session_not_found", "This session has no template metadata");
-  return snapshotFromRow(row);
+  const snapshot = snapshotFromRow(row);
+  if (snapshot.surface === "video") {
+    const currentLogo = join(await resolveBundledTemplatesRoot(), "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg");
+    const sessionLogo = join(sessionRoot(workspace, sessionId, "video"), "assets", "ipollowork-logo.svg");
+    if (existsSync(currentLogo) && existsSync(dirname(sessionLogo))) {
+      await cp(currentLogo, sessionLogo, { force: true });
+    }
+  }
+  return snapshot;
 }
 
 export async function listTemplateSessions(config: ServerConfig, workspace: WorkspaceInfo): Promise<TemplateSessionSnapshot[]> {

@@ -9,9 +9,72 @@ import {
   groupConversationOutputArtifacts,
   isConversationOutputArtifact,
   isVideoHtmlArtifact,
+  selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
 
 describe("getArtifactsFromMessages", () => {
+  it("lists a Design template entry when the completion omits its path", () => {
+    const messages: UIMessage[] = [{
+      id: "msg_done",
+      role: "assistant",
+      parts: [{ type: "text", text: "The presentation is complete.", state: "done" }],
+    }];
+    const targets: OpenTarget[] = [{
+      id: "file:design/ses_deck/entry.html",
+      kind: "file",
+      value: "design/ses_deck/entry.html",
+      name: "entry.html",
+      preview: "html",
+      confidence: 100,
+      reason: "template entry",
+      exists: true,
+    }];
+
+    expect(getArtifactsFromMessages(messages, targets, {
+      includeTargetFallbacks: false,
+      supplementalFiles: ["design/ses_deck/entry.html"],
+    })[0]).toMatchObject({
+      path: "design/ses_deck/entry.html",
+      type: "html",
+      legacy_target: { exists: true, preview: "html" },
+    });
+  });
+
+  it("keeps only the canonical Design entry when a completion also names template assets", () => {
+    const entryPath = "design/ses_deck/entry.html";
+    const messages: UIMessage[] = [{
+      id: "msg_done",
+      role: "assistant",
+      parts: [{
+        type: "text",
+        text: "Created design/ses_deck/entry.html, design/ses_deck/assets/ipollowork-logo.svg, and entry.html.",
+        state: "done",
+      }],
+    }];
+    const targets: OpenTarget[] = [{
+      id: `file:${entryPath}`,
+      kind: "file",
+      value: entryPath,
+      name: "entry.html",
+      preview: "html",
+      confidence: 100,
+      reason: "template entry",
+      exists: true,
+    }];
+
+    const artifacts = getArtifactsFromMessages(messages, targets, {
+      includeTargetFallbacks: false,
+      supplementalFiles: [entryPath],
+    });
+
+    expect(selectTemplateEntryArtifacts(artifacts, entryPath)).toEqual([
+      expect.objectContaining({
+        path: entryPath,
+        legacy_target: expect.objectContaining({ reason: "template entry", exists: true }),
+      }),
+    ]);
+  });
+
   it("includes verified slide deck targets mentioned in assistant summaries", () => {
     const messages: UIMessage[] = [{
       id: "msg_deck",

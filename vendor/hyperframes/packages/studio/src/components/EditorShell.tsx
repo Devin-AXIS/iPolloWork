@@ -215,39 +215,42 @@ function EditorShellBody({
       {/* Top row: [left | preview | right] — outer padding + the 8px resize
           seams give the panels CapCut-style separation on the dark canvas. */}
       <div className="flex flex-row flex-1 min-h-0 px-px pt-px">
-        {left}
-        <div className="flex-1 min-w-0 flex flex-col relative">
-          <PreviewPane
-            previewOverlay={previewOverlay}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1">
+            {left}
+            <div className="flex-1 min-w-0 flex flex-col relative">
+              <PreviewPane
+                previewOverlay={previewOverlay}
+                onSelectTimelineElement={onSelectTimelineElement}
+                onPreviewBlockDrop={onPreviewBlockDrop}
+              />
+            </div>
+          </div>
+
+          <TimelinePane
+            timelineToolbar={timelineToolbar}
+            renderClipContent={renderClipContent}
+            onFileDrop={onFileDrop}
+            onAssetDrop={onAssetDrop}
+            onBlockDrop={onBlockDrop}
+            onDeleteElement={onDeleteElement}
             onSelectTimelineElement={onSelectTimelineElement}
-            onPreviewBlockDrop={onPreviewBlockDrop}
+            timelineFooter={
+              captionEditMode ? (
+                <div className="border-t border-neutral-800/30 flex-shrink-0" style={{ height: 60 }}>
+                  <div className="flex items-center gap-1.5 px-2 py-0.5">
+                    <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
+                      Captions
+                    </span>
+                  </div>
+                  <CaptionTimeline pixelsPerSecond={100} />
+                </div>
+              ) : undefined
+            }
           />
         </div>
         {right}
       </div>
-
-      {/* Full-width timeline row */}
-      <TimelinePane
-        timelineToolbar={timelineToolbar}
-        renderClipContent={renderClipContent}
-        onFileDrop={onFileDrop}
-        onAssetDrop={onAssetDrop}
-        onBlockDrop={onBlockDrop}
-        onDeleteElement={onDeleteElement}
-        onSelectTimelineElement={onSelectTimelineElement}
-        timelineFooter={
-          captionEditMode ? (
-            <div className="border-t border-neutral-800/30 flex-shrink-0" style={{ height: 60 }}>
-              <div className="flex items-center gap-1.5 px-2 py-0.5">
-                <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
-                  Captions
-                </span>
-              </div>
-              <CaptionTimeline pixelsPerSecond={100} />
-            </div>
-          ) : undefined
-        }
-      />
     </div>
   );
 }

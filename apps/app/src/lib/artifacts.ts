@@ -35,6 +35,7 @@ type ArtifactEntry = ArtifactItem & {
 
 type GetArtifactsOptions = {
   includeTargetFallbacks?: boolean
+  supplementalFiles?: readonly string[]
 }
 
 const WORKSPACES_PREFIX_PATTERN = /^workspaces\/[^/]+\//i;
@@ -147,6 +148,19 @@ export function canPreviewArtifact(artifact: ArtifactItem) {
 
 export function canOpenArtifact(artifact: ArtifactItem) {
   return canPreviewArtifact(artifact) || isOpenableFileTarget(artifact.legacy_target);
+}
+
+/** A template-backed chat turn exposes one Design entry, never its implementation assets. */
+export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
+  const entryName = getArtifactName(normalizeArtifactPath(templateEntryPath)).toLowerCase();
+  const candidates = artifacts.filter((artifact) => (
+    artifact.type === "html" && artifact.name.toLowerCase() === entryName
+  ));
+  const selected = candidates.find(canOpenArtifact)
+    ?? candidates.find((artifact) => normalizeArtifactPath(artifact.path).toLowerCase() === normalizeArtifactPath(templateEntryPath).toLowerCase())
+    ?? candidates[0];
+
+  return selected ? [selected] : [];
 }
 
 function getArtifactName(path: string) {
@@ -429,6 +443,23 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
     }
   });
 
+  const latestAssistantIndex = messages.findLastIndex((message) => message.role === "assistant");
+  const latestAssistantMessage = latestAssistantIndex >= 0 ? messages[latestAssistantIndex] : undefined;
+  for (const path of options.supplementalFiles ?? []) {
+    const normalized = normalizeArtifactPath(path);
+    const target = openTargets.find((item) => artifactPathMatchesTarget(normalized, item.value));
+    addArtifact(
+      artifacts,
+      normalized,
+      latestAssistantMessage?.id ?? target?.id ?? "open-target",
+      latestAssistantIndex >= 0 ? latestAssistantIndex : messages.length,
+      sequence,
+      openTargets,
+      target,
+    );
+    sequence += 1;
+  }
+
   if (options.includeTargetFallbacks ?? true) {
     const fallbackMessageId = messages[messages.length - 1]?.id ?? "open-target";
     for (const target of openTargets) {
@@ -453,10 +484,11 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
 export function useArtifacts(messages: UIMessage[], options: GetArtifactsOptions = {}) {
   const { openTargets } = useOpenTargets();
   const includeTargetFallbacks = options.includeTargetFallbacks ?? false;
+  const supplementalFiles = options.supplementalFiles;
 
   return React.useMemo(
-    () => getArtifactsFromMessages(messages, openTargets, { includeTargetFallbacks }),
-    [includeTargetFallbacks, messages, openTargets],
+    () => getArtifactsFromMessages(messages, openTargets, { includeTargetFallbacks, supplementalFiles }),
+    [includeTargetFallbacks, messages, openTargets, supplementalFiles],
   );
 }
 

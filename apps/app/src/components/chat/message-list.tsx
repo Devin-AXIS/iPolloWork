@@ -5,9 +5,11 @@ import {
   AlertTriangle,
   Check,
   Copy,
+  Download,
   FileIcon,
   LoaderCircle,
   Pencil,
+  Quote,
   Split,
   Undo2,
 } from "lucide-react"
@@ -20,6 +22,7 @@ import {
 } from "ai"
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client"
 import { openDesktopUrl } from "@/app/lib/desktop"
+import { downloadTextAsFile } from "@/app/lib/download"
 import { publicAssetUrl } from "@/app/lib/public-asset"
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
@@ -81,7 +84,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCreated, formatMessageTimestamp, type UIMessageWithIndex, getMessagesText } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCreated, formatMessageTimestamp, type UIMessageWithIndex, getMessagesText } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
@@ -202,6 +205,12 @@ function isSessionErrorMessage(message: UIMessage) {
   return message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)
 }
 
+export function getLatestArtifactAssistantMessageId(messages: UIMessage[]) {
+  return messages.findLast(
+    (message) => message.role === "assistant" && !isSessionErrorMessage(message),
+  )?.id
+}
+
 function retryDelaySeconds(status: RetryStatus) {
   return Math.max(0, Math.round((status.next - Date.now()) / 1000))
 }
@@ -302,15 +311,54 @@ function CopyMessageButton({ messages }: CopyMessageButtonProps) {
   )
 }
 
+function SaveMessageAsMarkdownButton({ messages }: CopyMessageButtonProps) {
+  const { sessionTitle } = useMessageList()
+  const text = React.useMemo(() => getMessagesText(messages), [messages])
+  if (!text) return null
+
+  return (
+    <MessageAction tooltip={t("message.save_markdown")}>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={t("message.save_markdown")}
+        onClick={() => downloadTextAsFile(assistantResponseMarkdownFilename(sessionTitle), buildAssistantResponseMarkdown(text), "text/markdown;charset=utf-8")}
+      >
+        <Download />
+      </Button>
+    </MessageAction>
+  )
+}
+
+function QuoteFollowUpButton({ messages }: CopyMessageButtonProps) {
+  const { setPrompt } = useMessageList()
+  const text = React.useMemo(() => getMessagesText(messages), [messages])
+  if (!text) return null
+
+  return (
+    <MessageAction tooltip={t("message.quote_follow_up")}>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={t("message.quote_follow_up")}
+        onClick={() => setPrompt(buildQuoteFollowUpPrompt(text))}
+      >
+        <Quote />
+      </Button>
+    </MessageAction>
+  )
+}
+
 type AssistantMessageProps = {
   message: UIMessage
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  templateEntryPath?: string
 }
 
 const AssistantMessage = React.memo(
-  ({ message }: AssistantMessageProps) => {
+  ({ message, templateEntryPath }: AssistantMessageProps) => {
     const { showThinking, highlightQuery } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
@@ -364,7 +412,7 @@ const AssistantMessage = React.memo(
               </div>
             )
           })}
-          <ArtifactList messages={[message]} />
+          <ArtifactList messages={[message]} supplementalFiles={templateEntryPath ? [templateEntryPath] : undefined} />
         </div>
       </Message>
     )
@@ -541,10 +589,11 @@ type MessageComponentProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  templateEntryPath?: string
 }
 
 const MessageComponent = React.memo(
-  ({ message, isLastMessage, isStreaming, isLastStep }: MessageComponentProps) => {
+  ({ message, isLastMessage, isStreaming, isLastStep, templateEntryPath }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
     }
@@ -565,6 +614,7 @@ const MessageComponent = React.memo(
           isLastMessage={isLastMessage}
           isStreaming={isStreaming}
           isLastStep={isLastStep}
+          templateEntryPath={templateEntryPath}
         />
       )
     }
@@ -695,12 +745,16 @@ interface AssistantMessageGroupProps {
   items: UIMessageWithIndex[]
   messages: UIMessage[]
   isStreaming: boolean
+  templateEntryPath?: string
+  latestAssistantMessageId?: string
 }
 
 function MessageGroup({
   items,
   messages,
   isStreaming,
+  templateEntryPath,
+  latestAssistantMessageId,
 }: AssistantMessageGroupProps) {
   const { onRevertToUserMessage, onForkAtMessage } = useMessageList()
   const lastItem = items[items.length - 1]
@@ -750,6 +804,7 @@ function MessageGroup({
           isLastMessage={isLastMessage}
           isStreaming={isLastMessage && isStreaming}
           isLastStep={groupIndex === items.length - 1}
+          templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
         />
       </div>
     )
@@ -767,6 +822,8 @@ function MessageGroup({
         <div className="mx-auto flex w-full max-w-[800px] flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">
           <MessageActions className="flex gap-0">
             <CopyMessageButton messages={renderableItems.map((item) => item.message)} />
+            <SaveMessageAsMarkdownButton messages={renderableItems.map((item) => item.message)} />
+            <QuoteFollowUpButton messages={renderableItems.map((item) => item.message)} />
             {lastRealItem ? (
               <>
                 <MessageAction tooltip={t("message.branch_new_chat")}>
@@ -805,11 +862,16 @@ interface MessageListProps {
   messages: UIMessage[]
   status: ThreadStatus
   retryStatus?: RetryStatus | null
+  templateEntryPath?: string
 }
 
-export function MessageList({ messages, status, retryStatus }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, templateEntryPath }: MessageListProps) {
   const isStreaming = status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages, status), [messages, status]);
+  const latestAssistantMessageId = React.useMemo(
+    () => getLatestArtifactAssistantMessageId(messages),
+    [messages],
+  )
   const error = useSessionErrorMessage();
   const hasSessionErrorMessage = React.useMemo(() => messages.some(isSessionErrorMessage), [messages])
   const liveActionLabel = isStreaming
@@ -826,6 +888,8 @@ export function MessageList({ messages, status, retryStatus }: MessageListProps)
               items={item.messages}
               messages={messages}
               isStreaming={isStreaming}
+              templateEntryPath={templateEntryPath}
+              latestAssistantMessageId={latestAssistantMessageId}
             />
           )
         }
@@ -841,6 +905,7 @@ export function MessageList({ messages, status, retryStatus }: MessageListProps)
               isLastMessage={isLastMessage}
               isStreaming={isLastMessage && isStreaming}
               isLastStep={isLastStep}
+              templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
             />
           </div>
         )

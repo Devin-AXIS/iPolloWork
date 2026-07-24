@@ -12,6 +12,7 @@ import type {
   AgentPartInput,
   FilePartInput,
   ProviderListResponse,
+  SessionStatus,
   TextPartInput,
 } from "@opencode-ai/sdk/v2/client";
 
@@ -75,6 +76,7 @@ import { t } from "@/i18n";
 import {
   type RouteWorkspace,
   type RouteSession,
+  buildTaskPaletteSessionOptions,
   describeRouteError,
   describeWorkspaceCreateError,
   downloadWorkspaceJson,
@@ -86,6 +88,7 @@ import {
   mergeRouteWorkspaces,
   orderRouteWorkspaces,
   toSessionGroups,
+  userVisibleSessionsByWorkspaceId,
   workspaceExportFilename,
   workspaceLabel,
 } from "@/react-app/shell/route-workspaces";
@@ -102,6 +105,11 @@ import {
   applySessionRevert,
 } from "@/react-app/domains/session/sync/session-sync";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
+import {
+  designAiSelectionInstruction,
+  type DesignAiSelectionContext,
+} from "@/react-app/domains/session/design/design-ai-selection";
+import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
 import { useModelBehavior } from "@/react-app/domains/session/surface/use-model-behavior";
 import { useSessionFindStore } from "@/react-app/domains/session/surface/find-store";
@@ -139,7 +147,6 @@ import { ModelPickerModal } from "@/react-app/domains/session/modals/model-picke
 import { CommandPalette, type PaletteItem, type SessionGroupOption, type SessionOption as PaletteSessionOption } from "./command-palette";
 import { SessionSearchDialog } from "./session-search-dialog";
 import type { SessionMessageFetcher } from "@/react-app/domains/session/search/session-search";
-import { getDisplaySessionTitle } from "@/app/lib/session-title";
 import { useBootState } from "./boot-state";
 import {
   forgetWorkspaceMemory,
@@ -253,7 +260,84 @@ function attachmentMime(attachment: ComposerAttachment) {
   return "text/plain";
 }
 
-async function draftToParts(draft: ComposerDraft, workspaceRoot: string) {
+type DesignSelectionScope = {
+  sessionId: string;
+  workspaceId: string;
+};
+
+type DesignSelectionWorkspaceClient = {
+  readWorkspaceFile: (workspaceId: string, path: string) => Promise<{ content: string; updatedAt?: number | null }>;
+  writeWorkspaceFile: (workspaceId: string, payload: { path: string; content: string; baseUpdatedAt?: number | null }) => Promise<{ updatedAt?: number | null }>;
+};
+
+type DesignSelectionStore = Pick<typeof useDesignAiSelectionStore, "getState">;
+
+export function designSelectionContextsForDraft(
+  draft: ComposerDraft,
+  designSelectionStore: DesignSelectionStore,
+  scope: DesignSelectionScope | undefined,
+) {
+  const contexts = new Map<string, DesignAiSelectionContext>();
+  const errors: string[] = [];
+  for (const part of draft.parts) {
+    if (part.type !== "design-selection") continue;
+    const context = designSelectionStore.getState().contexts[part.contextId];
+    if (!context) {
+      errors.push("The selected Design element is no longer available.");
+      continue;
+    }
+    if (!scope || context.sessionId !== scope.sessionId) {
+      errors.push("The selected Design element does not belong to this session.");
+      continue;
+    }
+    if (context.workspaceId !== scope.workspaceId) {
+      errors.push("The selected Design element does not belong to this workspace.");
+      continue;
+    }
+    contexts.set(context.id, context);
+  }
+  if (errors.length > 0) throw new Error(errors[0]);
+  if (contexts.size > 1) throw new Error("Only one Design element can be edited at a time.");
+  return [...contexts.values()];
+}
+
+export async function promptDesignSelectionContexts(input: {
+  contexts: DesignAiSelectionContext[];
+  workspaceClient: DesignSelectionWorkspaceClient;
+  prompt: () => Promise<{ error?: unknown }>;
+  designSelectionStore?: DesignSelectionStore;
+}) {
+  const designSelectionStore = input.designSelectionStore ?? useDesignAiSelectionStore;
+  try {
+    for (const context of input.contexts) {
+      const current = await input.workspaceClient.readWorkspaceFile(context.workspaceId, context.filePath);
+      const prepared = await input.workspaceClient.writeWorkspaceFile(context.workspaceId, {
+        path: context.filePath,
+        content: current.content,
+        baseUpdatedAt: current.updatedAt ?? null,
+      });
+      const rebased = designSelectionStore.getState().rebasePendingContext(context.id, {
+        beforeHtml: current.content,
+        baseUpdatedAt: prepared.updatedAt ?? current.updatedAt ?? null,
+      });
+      if (!rebased) throw new Error("The selected Design element is no longer ready for an AI update.");
+      designSelectionStore.getState().markRunning(context.id);
+    }
+    const result = await input.prompt();
+    if (result.error) throw new Error(serializeSDKError(result.error));
+    return result;
+  } catch (error) {
+    for (const context of input.contexts) designSelectionStore.getState().fail(context.id);
+    throw error;
+  }
+}
+
+export async function draftToParts(
+  draft: ComposerDraft,
+  workspaceRoot: string,
+  designSelectionStore: DesignSelectionStore = useDesignAiSelectionStore,
+  scope?: DesignSelectionScope,
+) {
   const parts: Array<TextPartInput | FilePartInput | AgentPartInput> = [];
   const root = workspaceRoot.trim();
 
@@ -272,7 +356,23 @@ async function draftToParts(draft: ComposerDraft, workspaceRoot: string) {
     return segments[segments.length - 1] ?? "file";
   };
 
+  const designContexts = new Map(
+    designSelectionContextsForDraft(draft, designSelectionStore, scope).map((context) => [context.id, context]),
+  );
+  const expandedDesignContextIds = new Set<string>();
   for (const part of draft.parts) {
+    if (part.type === "design-selection") {
+      if (expandedDesignContextIds.has(part.contextId)) continue;
+      const context = designContexts.get(part.contextId);
+      if (!context) throw new Error("The selected Design element is no longer available.");
+      expandedDesignContextIds.add(part.contextId);
+      parts.push({
+        type: "text",
+        text: designAiSelectionInstruction(context),
+        synthetic: true,
+      });
+      continue;
+    }
     if (part.type === "text") {
       parts.push({
         type: "text",
@@ -547,10 +647,13 @@ export function SessionRoute() {
     onSaved: handleRemoteWorkspaceConnectionSaved,
   });
 
-
+  const visibleSessionsByWorkspaceId = useMemo(
+    () => userVisibleSessionsByWorkspaceId(sessionsByWorkspaceId),
+    [sessionsByWorkspaceId],
+  );
   const workspaceSessionGroups = useMemo(
-    () => toSessionGroups(workspaces, sessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
-    [errorsByWorkspaceId, retryingWorkspaceIds, sessionsByWorkspaceId, workspaces],
+    () => toSessionGroups(workspaces, visibleSessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
+    [errorsByWorkspaceId, retryingWorkspaceIds, visibleSessionsByWorkspaceId, workspaces],
   );
   useSessionGroupSync({ workspaces, endpointForWorkspace });
   const selectedWorkspaceGroupState = sessionManagementStore((state) => (
@@ -561,14 +664,15 @@ export function SessionRoute() {
   const sessionActivityByWorkspaceId = useSessionActivityStore((state) => state.statusesByWorkspaceId);
 
   useEffect(() => {
-    for (const group of workspaceSessionGroups) {
-      seedWorkspaceActivitySessions(group.workspace.id, group.sessions);
-      const serverId = workspaceServerId(group.workspace);
-      if (serverId && serverId !== group.workspace.id) {
-        seedWorkspaceActivitySessions(serverId, group.sessions);
+    for (const workspace of workspaces) {
+      const sessions = sessionsByWorkspaceId[workspace.id] ?? [];
+      seedWorkspaceActivitySessions(workspace.id, sessions);
+      const serverId = workspaceServerId(workspace);
+      if (serverId && serverId !== workspace.id) {
+        seedWorkspaceActivitySessions(serverId, sessions);
       }
     }
-  }, [seedWorkspaceActivitySessions, workspaceSessionGroups]);
+  }, [seedWorkspaceActivitySessions, sessionsByWorkspaceId, workspaces]);
 
   const sidebarSessionStatusById = useMemo(() => {
     const next: Record<string, string> = {};
@@ -796,9 +900,9 @@ export function SessionRoute() {
     return list.filter((agent) => !agent.hidden && agent.mode !== "subagent");
   }, [engineReloadVersion, opencodeClient]);
 
-  const handleOpenSettings = useCallback((route = "/settings/general", workspaceId = sidebarActiveWorkspaceId) => {
+  const handleOpenSettings = useCallback((route = "/settings/preferences", workspaceId = sidebarActiveWorkspaceId) => {
     const sessionId = workspaceId === sidebarActiveWorkspaceId ? selectedSessionId : null;
-    const tab = route.replace(/^\/settings\/?/, "").replace(/^\/+|\/+$/g, "") || "general";
+    const tab = route.replace(/^\/settings\/?/, "").replace(/^\/+|\/+$/g, "") || "preferences";
     const target = workspaceId ? workspaceSettingsRoute(workspaceId, tab) : route;
     writeActiveWorkspaceId(workspaceId || null);
     navigate(target, { state: { workspaceId, sessionId } });
@@ -810,6 +914,35 @@ export function SessionRoute() {
       : "/session";
     navigate("/help", { state: { returnTo } });
   }, [navigate, selectedSessionId, sidebarActiveWorkspaceId]);
+
+  const handleSessionStatus = useCallback((update: { sessionId: string; status: SessionStatus }) => {
+    if (update.status.type !== "idle" || !selectedWorkspaceEndpoint) return;
+    const { contexts, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
+    const runningContexts = Object.values(contexts).filter((context) => (
+      context.sessionId === update.sessionId
+      && context.workspaceId === selectedWorkspaceEndpoint.workspaceId
+    ));
+
+    for (const context of runningContexts) {
+      if (!useDesignAiSelectionStore.getState().claimCompletion(context.id)) continue;
+      void (async () => {
+        try {
+          const after = await selectedWorkspaceEndpoint.client.readWorkspaceFile(context.workspaceId, context.filePath);
+          if (after.content !== context.beforeHtml) {
+            complete(context.id, {
+              afterHtml: after.content,
+              afterUpdatedAt: after.updatedAt ?? null,
+            });
+          } else {
+            completeWithoutChange(context.id);
+            toast.info("No Design change was detected.");
+          }
+        } catch {
+          fail(context.id);
+        }
+      })();
+    }
+  }, [selectedWorkspaceEndpoint]);
 
   const surfaceProps = useMemo(() => {
     if (!client || !selectedWorkspaceId || !selectedSessionId || !opencodeBaseUrl || !token || !opencodeClient) {
@@ -868,7 +1001,7 @@ export function SessionRoute() {
       },
       providerConnectedCount: hasUsableModel ? 1 : providerConnectedIds.length,
       onOpenSettingsSection: (section: "commands" | "skills" | "mcps" | "plugins" | "providers") => {
-        handleOpenSettings(section === "skills" ? "/settings/skills" : section === "mcps" ? "/settings/extensions/mcp" : section === "plugins" ? "/settings/extensions/plugins" : section === "providers" ? "/settings/ai" : "/settings/general");
+        handleOpenSettings(section === "skills" ? "/settings/skills" : section === "mcps" ? "/settings/extensions/mcp" : section === "plugins" ? "/settings/extensions/plugins" : section === "providers" ? "/settings/ai" : "/settings/preferences");
       },
       onSendDraft: async (draft: ComposerDraft, sessionId: string) => {
         const targetSessionId = sessionId.trim() || selectedSessionId;
@@ -949,7 +1082,20 @@ export function SessionRoute() {
           return;
         }
 
-        const parts = await draftToParts(draft, selectedWorkspaceRoot);
+        const designSelectionScope = selectedWorkspaceEndpoint
+          ? { sessionId: targetSessionId, workspaceId: selectedWorkspaceEndpoint.workspaceId }
+          : undefined;
+        const designSelectionContexts = designSelectionContextsForDraft(
+          draft,
+          useDesignAiSelectionStore,
+          designSelectionScope,
+        );
+        const parts = await draftToParts(
+          draft,
+          selectedWorkspaceRoot,
+          useDesignAiSelectionStore,
+          designSelectionScope,
+        );
         const envSystemContext = await buildiPolloWorkEnvSystemContext(client, {
           cacheKey: targetSessionId,
           runtimeKey: environmentRuntimeKey,
@@ -1017,17 +1163,24 @@ export function SessionRoute() {
           ...capabilityPromptPart,
           ...parts,
         ];
-        const result = await opencodeClient.session.promptAsync({
-          sessionID: targetSessionId,
-          parts: promptParts,
-          model: local.prefs.defaultModel ?? undefined,
-          agent: selectedAgent ?? undefined,
-          ...(modelVariantValue ? { variant: modelVariantValue } : {}),
-          ...(systemContext ? { system: systemContext } : {}),
-        });
-        if (result.error) {
-          throw new Error(serializeSDKError(result.error));
+        if (designSelectionContexts.length > 0 && !selectedWorkspaceEndpoint) {
+          throw new Error("The selected Design element is no longer available in this workspace.");
         }
+        const result = await promptDesignSelectionContexts({
+          contexts: designSelectionContexts,
+          workspaceClient: selectedWorkspaceEndpoint?.client ?? {
+            readWorkspaceFile: async () => { throw new Error("The selected Design element is no longer available in this workspace."); },
+            writeWorkspaceFile: async () => { throw new Error("The selected Design element is no longer available in this workspace."); },
+          },
+          prompt: () => opencodeClient.session.promptAsync({
+            sessionID: targetSessionId,
+            parts: promptParts,
+            model: local.prefs.defaultModel ?? undefined,
+            agent: selectedAgent ?? undefined,
+            ...(modelVariantValue ? { variant: modelVariantValue } : {}),
+            ...(systemContext ? { system: systemContext } : {}),
+          }),
+        });
       },
       onDraftChange: () => {
         // Draft persistence will be wired once the full React shell owns session state.
@@ -1532,43 +1685,12 @@ export function SessionRoute() {
   useControlAction(addProviderControlAction);
 
   const paletteSessionOptions = useMemo<PaletteSessionOption[]>(() => {
-    const out: PaletteSessionOption[] = [];
-    for (const workspace of workspaces) {
-      const workspaceTitle =
-        workspace.displayName?.trim() ||
-        workspace.name?.trim() ||
-        workspace.path?.trim() ||
-        t("session.workspace_fallback");
-      const list = sessionsByWorkspaceId[workspace.id] ?? [];
-      for (const session of list) {
-        const sessionId = (session as { id?: string }).id?.trim() ?? "";
-        if (!sessionId) continue;
-        const title = getDisplaySessionTitle(
-          (session as { title?: string }).title ?? "",
-        );
-        const updatedAt =
-          (session as { time?: { updated?: number; created?: number } }).time
-            ?.updated ??
-          (session as { time?: { updated?: number; created?: number } }).time
-            ?.created ??
-          0;
-        out.push({
-          workspaceId: workspace.id,
-          sessionId,
-          title,
-          workspaceTitle,
-          updatedAt,
-          searchText: `${title} ${workspaceTitle}`.toLowerCase(),
-          isActive: workspace.id === selectedWorkspaceId,
-        });
-      }
-    }
-    out.sort((a, b) => {
-      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-      return b.updatedAt - a.updatedAt;
-    });
-    return out;
-  }, [sessionsByWorkspaceId, selectedWorkspaceId, workspaces]);
+    return buildTaskPaletteSessionOptions(
+      workspaces,
+      visibleSessionsByWorkspaceId,
+      selectedWorkspaceId,
+    );
+  }, [selectedWorkspaceId, visibleSessionsByWorkspaceId, workspaces]);
 
   const paletteSessionGroups = useMemo<SessionGroupOption[]>(
     () => selectedWorkspaceGroupState?.groups ?? [],
@@ -1966,6 +2088,7 @@ export function SessionRoute() {
         opencodeBaseUrl={opencodeBaseUrl}
         ipolloworkToken={selectedWorkspaceServerToken}
         onSessionUpdated={handleRuntimeSessionUpdated}
+        onSessionStatus={handleSessionStatus}
       />
     ) : null}
     <SessionPage
@@ -1995,7 +2118,7 @@ export function SessionRoute() {
       hasUsableModel={hasUsableModel}
       providers={providers}
       mcpConnectedCount={mcpConnectedCount}
-      onOpenSettings={() => handleOpenSettings("/settings/general")}
+      onOpenSettings={() => handleOpenSettings("/settings/preferences")}
       onOpenHelp={handleOpenHelp}
       onOpenProviderAuth={() => sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" })}
       providerAuthModal={sessionProviderAuthSnapshot.providerAuthModalOpen ? {
@@ -2223,6 +2346,7 @@ export function SessionRoute() {
               const endpoint = endpointForWorkspace(selectedWorkspace);
               if (!endpoint) return;
               await endpoint.client.deleteSession(endpoint.workspaceId, sessionId);
+              useDesignAiSelectionStore.getState().resetSession(sessionId);
               if (selectedSessionId === sessionId) {
                 writeLastSessionFor(selectedWorkspaceId, null);
                 navigateToWorkspaceSession(selectedWorkspaceId);
@@ -2297,7 +2421,7 @@ export function SessionRoute() {
         }
       }}
       onOpenSession={(workspaceId, sessionId) => navigateToWorkspaceSession(workspaceId, sessionId)}
-      onOpenSettings={(route) => handleOpenSettings(route ?? "/settings/general")}
+      onOpenSettings={(route) => handleOpenSettings(route ?? "/settings/preferences")}
       onOpenHelp={handleOpenHelp}
       onOpenModelPicker={() => {
         modelPicker.setQuery("");
@@ -2372,7 +2496,7 @@ export function SessionRoute() {
       }}
       onOpenSettings={() => {
         modelPicker.setOpen(false);
-        handleOpenSettings("/settings/general");
+        handleOpenSettings("/settings/preferences");
       }}
       onClose={() => { modelPicker.setOpen(false); modelPicker.setRecentProviderIds(new Set()); }}
     />

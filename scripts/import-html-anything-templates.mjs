@@ -25,6 +25,14 @@ const CATEGORY_BY_NAME = {
   "frame-liquid-bg-hero": "other",
 };
 
+// These upstream Skills are intentionally not offered in the iPolloWork
+// template market. Keep this source-level denylist so re-importing the
+// upstream catalog cannot restore them.
+const EXCLUDED_TEMPLATE_SKILLS = new Set([
+  "deck-xhs-post",
+  "social-x-post-card",
+]);
+
 // Deliberately explicit: an upstream filename never gets to invent a market
 // style. Each official template is reviewed into one stable iPolloWork family.
 const STYLE_BY_NAME = {
@@ -491,6 +499,7 @@ async function main() {
 
   const imported = [];
   for (const name of (await readdir(skillsRoot)).sort()) {
+    if (EXCLUDED_TEMPLATE_SKILLS.has(name)) continue;
     const directory = join(skillsRoot, name);
     const meta = parseFrontmatter(await readFile(join(directory, "SKILL.md"), "utf8"));
     const category = CATEGORY_BY_NAME[name] ?? SOURCE_CATEGORY[meta.category];
@@ -551,7 +560,7 @@ async function main() {
     imported.push({ id, category, style, destination, entry: manifest.entry });
   }
 
-  if (imported.length !== 60) throw new Error(`Expected 60 selected templates, generated ${imported.length}`);
+  if (imported.length !== 58) throw new Error(`Expected 58 selected templates, generated ${imported.length}`);
   try {
     await renderCovers(imported);
     for (const template of imported) {

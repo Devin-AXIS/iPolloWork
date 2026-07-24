@@ -70,7 +70,7 @@ function isStorageProvider(value: string): value is StorageProviderId {
   return STORAGE_PROVIDERS.some((provider) => provider === value);
 }
 
-function workspaceForContext(config: ServerConfig, context: JsonRecord): WorkspaceInfo {
+export function workspaceForContext(config: ServerConfig, context: JsonRecord): WorkspaceInfo {
   const candidates = [readStringField(context, "directory"), readStringField(context, "worktree")]
     .filter(Boolean)
     .map((value) => resolve(value));
@@ -88,7 +88,7 @@ function workspaceForContext(config: ServerConfig, context: JsonRecord): Workspa
   return { ...workspace, path: resolve(workspace.path) };
 }
 
-function resolveWorkspaceFile(root: string, sourcePath: string): { absolutePath: string; relativePath: string } {
+export function resolveWorkspaceFile(root: string, sourcePath: string): { absolutePath: string; relativePath: string } {
   const trimmed = sourcePath.trim().replace(/\\/g, "/");
   if (!trimmed || trimmed.startsWith("/") || trimmed.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
     throw new ApiError(400, "invalid_path", "sourcePath must be a relative file path inside the active workspace");

@@ -6,6 +6,7 @@ import * as React from "react"
 interface MessageListContextValue {
   workspaceId: string
   sessionId: string
+  sessionTitle: string
   showThinking: boolean
   highlightQuery?: string
   developerMode: boolean
@@ -24,6 +25,7 @@ interface MessageListProviderProps {
   children: React.ReactNode
   workspaceId: string
   sessionId: string
+  sessionTitle: string
   showThinking: boolean
   highlightQuery?: string
   developerMode: boolean
@@ -46,6 +48,7 @@ export function MessageListProvider({
   children,
   workspaceId,
   sessionId,
+  sessionTitle,
   showThinking,
   highlightQuery,
   developerMode,
@@ -61,6 +64,7 @@ export function MessageListProvider({
     () => ({
       workspaceId,
       sessionId,
+      sessionTitle,
       showThinking,
       highlightQuery,
       developerMode,
@@ -75,6 +79,7 @@ export function MessageListProvider({
     [
       workspaceId,
       sessionId,
+      sessionTitle,
       showThinking,
       highlightQuery,
       developerMode,

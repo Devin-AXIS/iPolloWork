@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import {
   Bold,
@@ -35,6 +35,7 @@ import {
   type SlashCommandMatch,
 } from "./markdown-editor-commands";
 import { formatMarkdownImage } from "./markdown-rich-content";
+import { resolveMarkdownOverlayPosition, type MarkdownOverlayRect } from "./markdown-overlay-position";
 
 type MarkdownEditorOverlaysProps = {
   view: EditorView;
@@ -129,7 +130,7 @@ function getSelectionBoundaryCoords(view: EditorView, position: number, directio
   return view.coordsAtPos(fallbackPosition);
 }
 
-function getSlashMenuPosition(editorRect: RectEdges & Pick<DOMRect, "height" | "width">, slashCoords: RectEdges, commandCount: number) {
+export function getSlashMenuPosition(editorRect: RectEdges & Pick<DOMRect, "height" | "width">, slashCoords: RectEdges, commandCount: number) {
   const estimatedHeight = Math.min(
     SLASH_MENU_MAX_HEIGHT,
     commandCount > 0
@@ -139,14 +140,17 @@ function getSlashMenuPosition(editorRect: RectEdges & Pick<DOMRect, "height" | "
   const belowSpace = editorRect.bottom - slashCoords.bottom - SLASH_MENU_GAP - SLASH_MENU_EDGE_PADDING;
   const aboveSpace = slashCoords.top - editorRect.top - SLASH_MENU_GAP - SLASH_MENU_EDGE_PADDING;
   const shouldFlipAbove = belowSpace < estimatedHeight && aboveSpace > belowSpace;
-  const availableHeight = Math.max(
-    72,
-    shouldFlipAbove ? aboveSpace : belowSpace,
+  const innerHeight = Math.max(0, editorRect.height - SLASH_MENU_EDGE_PADDING * 2);
+  const preferredSideHeight = Math.max(0, shouldFlipAbove ? aboveSpace : belowSpace);
+  const availableHeight = Math.min(
+    innerHeight,
+    preferredSideHeight >= 72 ? preferredSideHeight : innerHeight,
   );
   const maxHeight = Math.min(SLASH_MENU_MAX_HEIGHT, availableHeight);
+  const width = Math.min(SLASH_MENU_WIDTH, Math.max(0, editorRect.width - SLASH_MENU_EDGE_PADDING * 2));
   const left = Math.min(
     Math.max(SLASH_MENU_EDGE_PADDING, slashCoords.left - editorRect.left),
-    Math.max(SLASH_MENU_EDGE_PADDING, editorRect.width - SLASH_MENU_WIDTH - SLASH_MENU_EDGE_PADDING),
+    Math.max(SLASH_MENU_EDGE_PADDING, editorRect.width - width - SLASH_MENU_EDGE_PADDING),
   );
   const top = shouldFlipAbove
     ? Math.max(SLASH_MENU_EDGE_PADDING, slashCoords.top - editorRect.top - Math.min(estimatedHeight, maxHeight) - SLASH_MENU_GAP)
@@ -155,7 +159,7 @@ function getSlashMenuPosition(editorRect: RectEdges & Pick<DOMRect, "height" | "
         Math.max(SLASH_MENU_EDGE_PADDING, editorRect.height - maxHeight - SLASH_MENU_EDGE_PADDING),
       );
 
-  return { left, top, maxHeight };
+  return { left, top, width, maxHeight };
 }
 
 function inferImageMimeType(file: File) {
@@ -216,17 +220,18 @@ function imageBlockEdit(document: string, from: number, to: number, markdown: st
 
 export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlaysProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const selectionToolbarRef = useRef<HTMLDivElement>(null);
   const pendingLocalImageRef = useRef<PendingLocalImageTarget>({ kind: "insert" });
   const [activeCommand, setActiveCommand] = useState(0);
   const [slashDismissedAt, setSlashDismissedAt] = useState<number | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [selectionToolbarSize, setSelectionToolbarSize] = useState({ width: 304, height: 40 });
   const [imageEditor, setImageEditor] = useState<{
     from: number;
     to: number;
     alt: string;
     url: string;
-    left: number;
-    top: number;
+    anchor: MarkdownOverlayRect;
   } | null>(null);
   const document = view.state.doc.toString();
   const selection = view.state.selection.main;
@@ -302,6 +307,23 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
     setActiveCommand(0);
   }, [visibleSlash?.query]);
 
+  useLayoutEffect(() => {
+    const toolbar = selectionToolbarRef.current;
+    if (!toolbar) return;
+    const measure = () => {
+      const rect = toolbar.getBoundingClientRect();
+      const width = Math.max(toolbar.scrollWidth, rect.width);
+      const height = Math.max(toolbar.scrollHeight, rect.height);
+      setSelectionToolbarSize((current) => current.width === width && current.height === height
+        ? current
+        : { width, height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, [selection.from, selection.to]);
+
   useEffect(() => {
     if (!visibleSlash) return;
 
@@ -344,8 +366,14 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
         to: Number(figure.dataset.markdownImageTo),
         alt: figure.dataset.markdownImageAlt ?? "",
         url: figure.dataset.markdownImageUrl ?? "",
-        left: Math.max(8, Math.min(editorRect.width - 328, imageRect.right - editorRect.left - 320)),
-        top: Math.max(8, Math.min(editorRect.height - 260, imageRect.top - editorRect.top + 8)),
+        anchor: {
+          left: imageRect.left,
+          top: imageRect.top,
+          right: imageRect.right,
+          bottom: imageRect.bottom,
+          width: imageRect.width,
+          height: imageRect.height,
+        },
       });
     };
 
@@ -358,12 +386,20 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
   const slashMenuPosition = visibleSlash && slashCoords ? getSlashMenuPosition(editorRect, slashCoords, commands.length) : null;
   const selectionStart = !selection.empty ? getSelectionBoundaryCoords(view, selection.from, "start") : null;
   const selectionEnd = !selection.empty ? getSelectionBoundaryCoords(view, selection.to, "end") : null;
-  const selectionToolbarLeft = selectionStart && selectionEnd
-    ? Math.max(152, Math.min(editorRect.width - 152, ((selectionStart.left + selectionEnd.right) / 2) - editorRect.left))
-    : 0;
-  const selectionToolbarTop = selectionStart
-    ? Math.max(8, selectionStart.top - editorRect.top - 48)
-    : 0;
+  const selectionAnchor = selectionStart && selectionEnd ? {
+    left: Math.min(selectionStart.left, selectionEnd.left),
+    top: Math.min(selectionStart.top, selectionEnd.top),
+    right: Math.max(selectionStart.right, selectionEnd.right),
+    bottom: Math.max(selectionStart.bottom, selectionEnd.bottom),
+    width: Math.max(selectionStart.right, selectionEnd.right) - Math.min(selectionStart.left, selectionEnd.left),
+    height: Math.max(selectionStart.bottom, selectionEnd.bottom) - Math.min(selectionStart.top, selectionEnd.top),
+  } : null;
+  const selectionToolbarPosition = selectionAnchor
+    ? resolveMarkdownOverlayPosition(selectionAnchor, editorRect, selectionToolbarSize)
+    : null;
+  const imageEditorPosition = imageEditor
+    ? resolveMarkdownOverlayPosition(imageEditor.anchor, editorRect, { width: 320, height: 320 })
+    : null;
 
   return (
     <>
@@ -383,7 +419,7 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
         <div
           role="listbox"
           aria-label="Insert block"
-          className="absolute z-40 max-h-[min(28rem,calc(100vh-8rem))] w-72 overflow-y-auto rounded-2xl border border-border bg-popover p-1.5 text-popover-foreground shadow-2xl"
+          className="absolute z-40 overflow-y-auto rounded-2xl border border-border bg-popover p-1.5 text-popover-foreground shadow-2xl"
           style={slashMenuPosition}
           data-markdown-slash-menu
         >
@@ -413,12 +449,18 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
         </div>
       ) : null}
 
-      {!selection.empty && selectionStart && selectionEnd ? (
+      {!selection.empty && selectionToolbarPosition ? (
         <div
+          ref={selectionToolbarRef}
           role="toolbar"
           aria-label="Format selected text"
-          className="absolute z-40 flex h-10 items-center rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl"
-          style={{ left: selectionToolbarLeft, top: selectionToolbarTop, transform: "translateX(-50%)" }}
+          className="absolute z-40 flex h-10 items-center overflow-x-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl"
+          style={{
+            left: selectionToolbarPosition.left,
+            top: selectionToolbarPosition.top,
+            maxWidth: selectionToolbarPosition.maxWidth,
+            maxHeight: selectionToolbarPosition.maxHeight,
+          }}
           data-markdown-selection-toolbar
         >
           <button type="button" className="flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium hover:bg-muted" title="Turn into text" onMouseDown={(event) => event.preventDefault()} onClick={() => applyBlock(view, BLOCK_COMMANDS[0], null)}>Text</button>
@@ -436,10 +478,15 @@ export function MarkdownEditorOverlays({ view, revision }: MarkdownEditorOverlay
         </div>
       ) : null}
 
-      {imageEditor ? (
+      {imageEditor && imageEditorPosition ? (
         <form
-          className="absolute z-50 w-80 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl"
-          style={{ left: imageEditor.left, top: imageEditor.top }}
+          className="absolute z-50 overflow-auto rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl"
+          style={{
+            left: imageEditorPosition.left,
+            top: imageEditorPosition.top,
+            width: Math.min(320, imageEditorPosition.maxWidth),
+            maxHeight: imageEditorPosition.maxHeight,
+          }}
           data-markdown-image-editor
           onKeyDown={(event) => {
             if (event.key === "Escape") setImageEditor(null);

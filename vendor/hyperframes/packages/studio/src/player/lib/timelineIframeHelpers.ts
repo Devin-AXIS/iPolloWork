@@ -85,10 +85,121 @@ export function autoHealMissingCompositionIds(doc: Document): void {
 type PreviewPlayerHost = HTMLElement & {
   muted?: boolean;
   playbackRate?: number;
+  pause?: () => void;
 };
 
+type AnimationFrameCallbackRecord = {
+  callback: FrameRequestCallback;
+  nativeId: number | null;
+};
+
+type PreviewAnimationState = {
+  frozen: boolean;
+  nextId: number;
+  frames: Map<number, AnimationFrameCallbackRecord>;
+  nativeRequestAnimationFrame: Window["requestAnimationFrame"];
+  nativeCancelAnimationFrame: Window["cancelAnimationFrame"];
+  pausedAnimations: Set<Animation>;
+};
+
+const previewAnimationStateByWindow = new WeakMap<Window, PreviewAnimationState>();
+
+function schedulePreviewAnimationFrame(
+  state: PreviewAnimationState,
+  id: number,
+  record: AnimationFrameCallbackRecord,
+): void {
+  record.nativeId = state.nativeRequestAnimationFrame((time) => {
+    record.nativeId = null;
+    if (state.frozen) return;
+    state.frames.delete(id);
+    record.callback(time);
+  });
+}
+
+function getPreviewAnimationState(win: Window): PreviewAnimationState | null {
+  const existing = previewAnimationStateByWindow.get(win);
+  if (existing) return existing;
+  try {
+    const state: PreviewAnimationState = {
+      frozen: false,
+      nextId: 1,
+      frames: new Map(),
+      nativeRequestAnimationFrame: win.requestAnimationFrame.bind(win),
+      nativeCancelAnimationFrame: win.cancelAnimationFrame.bind(win),
+      pausedAnimations: new Set(),
+    };
+    win.requestAnimationFrame = (callback: FrameRequestCallback): number => {
+      const id = state.nextId++;
+      const record: AnimationFrameCallbackRecord = { callback, nativeId: null };
+      state.frames.set(id, record);
+      if (!state.frozen) schedulePreviewAnimationFrame(state, id, record);
+      return id;
+    };
+    win.cancelAnimationFrame = (id: number): void => {
+      const record = state.frames.get(id);
+      if (!record) {
+        state.nativeCancelAnimationFrame(id);
+        return;
+      }
+      if (record.nativeId !== null) state.nativeCancelAnimationFrame(record.nativeId);
+      state.frames.delete(id);
+    };
+    previewAnimationStateByWindow.set(win, state);
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function setPreviewAnimationsActive(iframe: HTMLIFrameElement, active: boolean): void {
+  const win = iframe.contentWindow;
+  if (!win) return;
+  const state = getPreviewAnimationState(win);
+  if (!state) return;
+
+  if (!active) {
+    state.frozen = true;
+    for (const record of state.frames.values()) {
+      if (record.nativeId === null) continue;
+      state.nativeCancelAnimationFrame(record.nativeId);
+      record.nativeId = null;
+    }
+    try {
+      for (const animation of iframe.contentDocument?.getAnimations() ?? []) {
+        if (animation.playState !== "running") continue;
+        animation.pause();
+        state.pausedAnimations.add(animation);
+      }
+    } catch {}
+    return;
+  }
+
+  state.frozen = false;
+  for (const animation of state.pausedAnimations) {
+    try {
+      animation.play();
+    } catch {}
+  }
+  state.pausedAnimations.clear();
+  for (const [id, record] of state.frames) {
+    if (record.nativeId === null) schedulePreviewAnimationFrame(state, id, record);
+  }
+}
+
+function stopLegacyFrameCarousel(doc: Document | null | undefined): void {
+  if (!doc || doc.querySelectorAll(".frame").length < 2) return;
+  const root = doc.querySelector<HTMLElement>("[data-composition-id]");
+  if (!root || root.hasAttribute("data-hf-studio-carousel-controlled")) return;
+  root.setAttribute("data-hf-studio-carousel-controlled", "true");
+  const playButton = doc.querySelector<HTMLElement>("#play");
+  try {
+    playButton?.click();
+  } catch {}
+}
+
 function isPreviewPlayerHost(value: unknown): value is PreviewPlayerHost {
-  return value instanceof HTMLElement;
+  return typeof HTMLElement !== "undefined" && value instanceof HTMLElement;
 }
 
 function resolvePreviewPlayerHost(iframe: HTMLIFrameElement): PreviewPlayerHost | null {
@@ -125,6 +236,72 @@ export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: bo
       return;
     }
     postPreviewControl(iframe, "set-muted", { muted });
+  } catch {}
+}
+
+function enforceSynchronizedVoiceovers(doc: Document | null | undefined): void {
+  if (!doc) return;
+  const voiceovers = doc.querySelectorAll<HTMLAudioElement>(
+    'audio[data-ipw-voiceover="true"], audio[id^="vo-"], audio[src*="/audio/voice/"], audio[src*="voiceover-"]',
+  );
+  let previousEnd = Number.NEGATIVE_INFINITY;
+  const ordered = Array.from(voiceovers).sort(
+    (left, right) => Number(left.getAttribute("data-start")) - Number(right.getAttribute("data-start")),
+  );
+  for (const voiceover of ordered) {
+    const sceneId = voiceover.getAttribute("data-ipw-scene-id")?.trim() ?? "";
+    const sceneText = voiceover.getAttribute("data-ipw-scene-text")?.trim() ?? "";
+    const narrationText = voiceover.getAttribute("data-ipw-narration-text")?.trim() ?? "";
+    const start = Number(voiceover.getAttribute("data-start"));
+    const duration = Number(voiceover.getAttribute("data-duration"));
+    const scene = sceneId ? doc.getElementById(sceneId) : null;
+    const sceneStart = Number(scene?.getAttribute("data-start"));
+    const overlapsPrevious = Number.isFinite(start) && start < previousEnd - 0.001;
+    const valid = Boolean(
+      scene?.matches(".scene, [data-scene]") &&
+      sceneText &&
+      narrationText === sceneText &&
+      Number.isFinite(start) &&
+      Number.isFinite(duration) &&
+      duration > 0 &&
+      Number.isFinite(sceneStart) &&
+      Math.abs(start - sceneStart) < 0.001 &&
+      !overlapsPrevious,
+    );
+    if (valid) {
+      voiceover.removeAttribute("data-ipw-sync-invalid");
+      previousEnd = Math.max(previousEnd, start + duration);
+      continue;
+    }
+    voiceover.setAttribute("data-ipw-sync-invalid", "true");
+    voiceover.muted = true;
+    voiceover.pause();
+  }
+}
+
+export function setPreviewPlaybackActive(iframe: HTMLIFrameElement | null, active: boolean): void {
+  if (!iframe) return;
+  setPreviewAnimationsActive(iframe, active);
+  try {
+    stopLegacyFrameCarousel(iframe.contentDocument);
+  } catch {}
+  try {
+    enforceSynchronizedVoiceovers(iframe.contentDocument);
+  } catch {}
+  if (active) return;
+  try {
+    const root = iframe.getRootNode() as ShadowRoot & { host?: PreviewPlayerHost };
+    const host = resolvePreviewPlayerHost(iframe) ?? root.host ?? null;
+    if (host && typeof host.pause === "function") host.pause();
+  } catch {}
+  try {
+    for (const media of iframe.contentDocument?.querySelectorAll<HTMLMediaElement>("audio, video") ?? []) {
+      media.pause();
+    }
+  } catch {}
+  try {
+    postPreviewControl(iframe, "pause", {});
+    postPreviewControl(iframe, "stop-media", {});
   } catch {}
 }
 

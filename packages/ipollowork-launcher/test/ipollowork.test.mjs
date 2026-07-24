@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { assetNamePrefixes, releaseEndpoint, selectReleaseAsset } from "../bin/ipollowork.mjs"
+import { assetNamePrefixes, releaseEndpoint, releaseFetchError, selectReleaseAsset } from "../bin/ipollowork.mjs"
 
 const assets = [
   { name: "ipollowork-mac-arm64-0.17.26.dmg", browser_download_url: "https://example.test/mac-arm64.dmg" },
@@ -29,4 +29,11 @@ test("uses a versioned release endpoint only when requested", () => {
 test("rejects unsupported platforms and absent installers", () => {
   assert.throws(() => assetNamePrefixes("freebsd", "x64"), /unsupported_platform/)
   assert.throws(() => selectReleaseAsset([], "linux", "x64"), /official_installer_not_found/)
+})
+
+test("describes missing releases without exposing the raw fetch error", () => {
+  assert.match(releaseFetchError(404), /No published iPolloWork release is available/)
+  assert.match(releaseFetchError(404, "v9.9.9"), /release v9\.9\.9 is not available/)
+  assert.doesNotMatch(releaseFetchError(404), /release_fetch_failed/)
+  assert.match(releaseFetchError(503), /HTTP 503/)
 })

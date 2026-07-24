@@ -164,6 +164,95 @@ interface ModelSelectProps {
   disabled?: boolean;
 }
 
+export type ModelListContentProps = {
+  value: ModelRef;
+  onChange: (model: ModelRef) => void;
+  onConfigureModels?: () => void;
+  autoFocus?: boolean;
+};
+
+export function ModelListContent({
+  value,
+  onChange,
+  onConfigureModels,
+  autoFocus = true,
+}: ModelListContentProps) {
+  const [search, setSearch] = React.useState("");
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const modelOptions = useModelOptions(true);
+
+  React.useEffect(() => {
+    if (!autoFocus) return;
+    const frame = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [autoFocus]);
+
+  const groups = React.useMemo(() => groupByProvider(modelOptions), [modelOptions]);
+
+  const handleSelect = (option: ModelOption) => {
+    onChange({ providerID: option.providerID, modelID: option.modelID });
+    setSearch("");
+  };
+
+  return (
+    <Command items={groups} value={search} onValueChange={setSearch}>
+      <CommandHeader>
+        <CommandInput ref={searchInputRef} placeholder={t("model_picker.search_models")} />
+      </CommandHeader>
+      <CommandEmpty>{t("model_picker.no_results")}</CommandEmpty>
+      <CommandList>
+        {(group: ModelSelectGroup) => (
+          <CommandGroup key={group.value} items={group.items}>
+            <CommandGroupLabel>{group.value}</CommandGroupLabel>
+            <CommandCollection>
+              {(item: ModelSelectModelItem) => {
+                const option = item.option;
+                return (
+                  <CommandItem
+                    className="gap-2"
+                    key={item.id}
+                    value={`${option.providerID}:${option.modelID} ${option.title} ${option.description ?? ""}`}
+                    onClick={() => handleSelect(option)}
+                    data-checked={isSameModel(value, option)}
+                  >
+                    <ProviderIcon providerId={option.providerID} providerName={option.description} className="size-3.5 opacity-70" size={14} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-foreground">{option.title}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {option.description ?? getProviderDisplayName(option.providerID)}
+                      </span>
+                    </span>
+                  </CommandItem>
+                );
+              }}
+            </CommandCollection>
+          </CommandGroup>
+        )}
+      </CommandList>
+      <div className="border-t border-border px-2 py-1.5">
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          onClick={() => {
+            setSearch("");
+            if (onConfigureModels) {
+              onConfigureModels();
+              return;
+            }
+            window.dispatchEvent(new CustomEvent(openModelPickerEvent));
+          }}
+        >
+          <Settings2 className="size-3.5" />
+          {t("model_picker.configure_models")}
+        </button>
+      </div>
+    </Command>
+  );
+}
+
 export function ModelSelect({
   open,
   value,
@@ -172,57 +261,14 @@ export function ModelSelect({
   onConfigureModels,
   disabled = false,
 }: ModelSelectProps) {
-  const [search, setSearch] = React.useState("");
-  const searchInputRef = React.useRef<HTMLInputElement>(null);
   const modelOptions = useModelOptions(open);
-
-  const focusSearchInput = React.useCallback(() => {
-    window.requestAnimationFrame(() => {
-      const input = searchInputRef.current;
-
-      if (!input) {
-        return;
-      }
-
-      input.focus();
-      input.select();
-    });
-  }, []);
-
-  React.useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    focusSearchInput();
-  }, [focusSearchInput, open]);
-
-  const selectedOption = modelOptions?.find((option) =>
-    isSameModel(value, {
-      providerID: option.providerID,
-      modelID: option.modelID,
-    }),
-  );
-
-  const groups = React.useMemo(() => {
-    return groupByProvider(modelOptions);
-  }, [modelOptions]);
-
-  const handleSelect = (option: ModelOption) => {
-    onChange({ providerID: option.providerID, modelID: option.modelID });
-    setSearch("");
-    onOpenChange(false);
-  };
+  const selectedOption = modelOptions.find((option) => isSameModel(value, option));
 
   return (
     <Popover
       open={open}
       onOpenChange={(nextOpen) => {
         onOpenChange(nextOpen);
-
-        if (!nextOpen) {
-          setSearch("");
-        }
       }}
     >
       <Tooltip>
@@ -251,74 +297,17 @@ export function ModelSelect({
         align="start"
         initialFocus={false}
       >
-        <Command items={groups} value={search} onValueChange={setSearch}>
-          <CommandHeader>
-            <CommandInput
-              ref={searchInputRef}
-              placeholder={t("model_picker.search_models")}
-            />
-          </CommandHeader>
-          <CommandEmpty>{t("model_picker.no_results")}</CommandEmpty>
-          <CommandList>
-            {(group: ModelSelectGroup) => (
-              <CommandGroup
-                key={group.value}
-                items={group.items}
-              >
-                <CommandGroupLabel>{group.value}</CommandGroupLabel>
-                <CommandCollection>
-                  {(item: ModelSelectModelItem) => {
-                    const option = item.option;
-                    return (
-                      <CommandItem
-                        className="gap-2"
-                        key={item.id}
-                        value={`${option.providerID}:${option.modelID} ${option.title} ${option.description ?? ""}`}
-                        onClick={() => handleSelect(option)}
-                        data-checked={isSameModel(value, option)}
-                      >
-                        <ProviderIcon
-                          providerId={option.providerID}
-                          providerName={option.description}
-                          className="size-3.5 opacity-70"
-                          size={14}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-foreground">
-                            {option.title}
-                          </span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {option.description ??
-                              getProviderDisplayName(option.providerID)}
-                          </span>
-                        </span>
-                      </CommandItem>
-                    );
-                  }}
-                </CommandCollection>
-              </CommandGroup>
-            )}
-          </CommandList>
-          {/* Link to model configuration */}
-          <div className="border-t border-border px-2 py-1.5">
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              onClick={() => {
-                onOpenChange(false);
-                setSearch("");
-                if (onConfigureModels) {
-                  onConfigureModels();
-                  return;
-                }
-                window.dispatchEvent(new CustomEvent(openModelPickerEvent));
-              }}
-            >
-              <Settings2 className="size-3.5" />
-              {t("model_picker.configure_models")}
-            </button>
-          </div>
-        </Command>
+        <ModelListContent
+          value={value}
+          onChange={(model) => {
+            onChange(model);
+            onOpenChange(false);
+          }}
+          onConfigureModels={() => {
+            onOpenChange(false);
+            onConfigureModels?.();
+          }}
+        />
       </PopoverContent>
     </Popover>
   );
