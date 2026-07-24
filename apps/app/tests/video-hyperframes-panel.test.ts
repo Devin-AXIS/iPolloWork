@@ -113,7 +113,10 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("seconds-based `data-start`");
     expect(contract).toContain('Do not use legacy `class="frame"` sections');
     expect(contract).toContain("root composition `data-duration` must be the real HyperFrames timeline duration");
-    expect(contract).toContain("assets/ipollowork-logo.svg?v=20260721");
+    expect(contract).toContain("assets/ipollowork-logo.svg?v=20260724");
+    expect(contract).toContain("current transparent-background SVG");
+    expect(contract).toContain("top-left or bottom-right placement");
+    expect(contract).toContain("local error fallback");
     expect(contract).toContain("Never redraw, inline, or regenerate an older iPolloWork logo");
   });
 
