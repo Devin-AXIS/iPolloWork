@@ -74,6 +74,7 @@ import {
   isDesktopProviderBlocked,
   type DesktopAppRestrictionChecker,
 } from "../../../../app/cloud/desktop-app-restrictions";
+import { TOKENSTAR_PROVIDER } from "./tokenstar-provider";
 
 type ProviderReturnFocusTarget = "none" | "composer";
 type CloudProviderSyncReason = "sign_in" | "app_launch" | "interval" | "settings_cloud_opened";
@@ -252,6 +253,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       merged.set(QWEN3_CODER_PROVIDER.providerId, {
         id: QWEN3_CODER_PROVIDER.providerId,
         name: QWEN3_CODER_PROVIDER.name,
+        env: [],
+      });
+    }
+
+    if (
+      !merged.has(TOKENSTAR_PROVIDER.providerId) &&
+      !isDesktopProviderBlocked({
+        providerId: TOKENSTAR_PROVIDER.providerId,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      merged.set(TOKENSTAR_PROVIDER.providerId, {
+        id: TOKENSTAR_PROVIDER.providerId,
+        name: TOKENSTAR_PROVIDER.name,
         env: [],
       });
     }
@@ -1065,6 +1080,25 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
     }
 
+    if (
+      !isDesktopProviderBlocked({
+        providerId: TOKENSTAR_PROVIDER.providerId,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      const existing = merged[TOKENSTAR_PROVIDER.providerId] ?? [];
+      if (!existing.some((method) => method.type === "api")) {
+        merged[TOKENSTAR_PROVIDER.providerId] = [
+          ...existing,
+          {
+            type: "api",
+            label: t("providers.api_key_label"),
+            description: "Connect TokenStar with an API key and choose the models to expose.",
+          },
+        ];
+      }
+    }
+
     const availableProvidersById = new Map((availableProviders ?? []).map((provider) => [provider.id, provider]));
     for (const [id, providerMethods] of Object.entries(merged)) {
       if (isDesktopProviderBlocked({ providerId: id, checkRestriction: options.checkDesktopAppRestriction })) {
@@ -1336,7 +1370,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
   }
 
-  async function submitProviderApiKey(providerId: string, apiKey: string) {
+  async function submitProviderApiKey(providerId: string, apiKey: string, modelIds?: string[]) {
     mutateState((current) => ({
       ...current,
       providerAuthBusy: true,
@@ -1354,7 +1388,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       throw new Error(t("providers.api_key_required"));
     }
     assertProviderAllowedByDesktopPolicy(providerId);
-    const isQwen3Coder = providerId.trim().toLowerCase() === QWEN3_CODER_PROVIDER.providerId;
+    const resolvedProviderId = providerId.trim().toLowerCase();
+    const isQwen3Coder = resolvedProviderId === QWEN3_CODER_PROVIDER.providerId;
+    const isTokenStar = resolvedProviderId === TOKENSTAR_PROVIDER.providerId;
 
     try {
       if (isQwen3Coder) {
@@ -1382,11 +1418,50 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           // Runtime config owns this provider; legacy file cleanup is best-effort.
         }
       }
+      if (isTokenStar) {
+        const selectedModelIds = [
+          ...new Set(
+            (modelIds?.length ? modelIds : TOKENSTAR_PROVIDER.fallbackModels.map((model) => model.id))
+              .map((modelId) => modelId.trim())
+              .filter(Boolean),
+          ),
+        ];
+        const fallbackNames = new Map(
+          TOKENSTAR_PROVIDER.fallbackModels.map((model) => [model.id, model.name]),
+        );
+        await patchRuntimeProviders({
+          [TOKENSTAR_PROVIDER.providerId]: {
+            npm: "@ai-sdk/openai-compatible",
+            name: TOKENSTAR_PROVIDER.name,
+            options: { baseURL: TOKENSTAR_PROVIDER.baseURL },
+            models: Object.fromEntries(
+              selectedModelIds.map((modelId) => [
+                modelId,
+                { name: fallbackNames.get(modelId) ?? modelId },
+              ]),
+            ),
+          },
+        });
+        try {
+          await updateProjectConfigFile((raw) =>
+            formatConfigWithoutCloudProvider(
+              raw,
+              TOKENSTAR_PROVIDER.providerId,
+              options.disabledProviders(),
+            ),
+          );
+        } catch {
+          // Runtime config owns this provider; legacy file cleanup is best-effort.
+        }
+      }
       await c.auth.set({ providerID: providerId, auth: { type: "api", key: trimmed } });
-      if (isQwen3Coder) {
+      if (isQwen3Coder || isTokenStar) {
+        const syntheticProviderId = isTokenStar
+          ? TOKENSTAR_PROVIDER.providerId
+          : QWEN3_CODER_PROVIDER.providerId;
         const nextConnected = [
-          ...options.providerConnectedIds().filter((id) => id !== QWEN3_CODER_PROVIDER.providerId),
-          QWEN3_CODER_PROVIDER.providerId,
+          ...options.providerConnectedIds().filter((id) => id !== syntheticProviderId),
+          syntheticProviderId,
         ];
         options.setProviderConnectedIds(nextConnected);
         refreshSnapshot();

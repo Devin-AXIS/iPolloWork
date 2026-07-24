@@ -42,6 +42,7 @@ export const FRIENDLY_PROVIDER_LABELS: Record<string, string> = {
   mistral: "Mistral",
   groq: "Groq",
   openrouter: "OpenRouter",
+  tokenstar: "TokenStar",
   together: "Together AI",
   fireworks: "Fireworks",
   perplexity: "Perplexity",
@@ -56,6 +57,7 @@ export const FRIENDLY_PROVIDER_LABELS: Record<string, string> = {
  */
 export const FRIENDLY_MODEL_LABELS: [pattern: string, label: string][] = [
   // OpenAI
+  ["gpt-5.6", "GPT 5.6"],
   ["gpt-5.5", "GPT-5.5"],
   ["gpt-5", "GPT-5"],
   ["gpt-4.1-mini", "GPT-4.1 Mini"],
@@ -108,7 +110,7 @@ export const FRIENDLY_MODEL_LABELS: [pattern: string, label: string][] = [
 
   // OpenCode
   ["big-pickle", "Big Pickle"],
-  ["tokenstar", "Tokenstar"],
+  ["kimi-k3", "Kimi K3"],
 ];
 
 /**

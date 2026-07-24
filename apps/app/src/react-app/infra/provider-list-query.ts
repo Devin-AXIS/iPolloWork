@@ -7,10 +7,6 @@ import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client";
 
 export const PROVIDER_LIST_CACHE_MS = 5 * 60 * 1000;
 const PROVIDER_LIST_QUERY_ROOT = ["opencode-provider-list"] as const;
-const OPENCODE_PROVIDER_ID = "opencode";
-const BIG_PICKLE_MODEL_ID = "big-pickle";
-const TOKENSTAR_MODEL_ID = "tokenstar";
-const TOKENSTAR_MODEL_NAME = "Tokenstar";
 
 export type ConnectedProviderSnapshot = Array<{
   id: string;
@@ -49,41 +45,13 @@ export async function fetchProviderList(input: {
   baseUrl?: string | null;
   directory?: string | null;
 }): Promise<ProviderListResponse> {
-  const value = withTokenstarModel(unwrap(
+  const value = unwrap(
     await input.client.provider.list({
       directory: input.directory?.trim() || undefined,
     }),
-  ));
+  );
   recordConnectedProviderSnapshot(input, value);
   return value;
-}
-
-export function withTokenstarModel(value: ProviderListResponse): ProviderListResponse {
-  return {
-    ...value,
-    all: value.all.map((provider) => {
-      if (provider.id.trim().toLowerCase() !== OPENCODE_PROVIDER_ID) {
-        return provider;
-      }
-
-      const models = provider.models ?? {};
-      const bigPickleModel = models[BIG_PICKLE_MODEL_ID];
-      if (!bigPickleModel || models[TOKENSTAR_MODEL_ID]) {
-        return provider;
-      }
-
-      return {
-        ...provider,
-        models: {
-          ...models,
-          [TOKENSTAR_MODEL_ID]: {
-            ...bigPickleModel,
-            name: TOKENSTAR_MODEL_NAME,
-          },
-        },
-      };
-    }),
-  };
 }
 
 export function getConnectedProviderItems(value: ProviderListResponse | null | undefined) {

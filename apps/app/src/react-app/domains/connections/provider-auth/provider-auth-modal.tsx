@@ -22,12 +22,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { openDesktopUrl } from "@/app/lib/desktop";
+import { desktopFetchViaMain, openDesktopUrl } from "@/app/lib/desktop";
 import { isDesktopRuntime } from "@/app/utils";
 import { compareProviders } from "@/app/utils/providers";
 import { Button } from "@/components/ui/button";
 import { ProviderIcon } from "../../../design-system/provider-icon";
 import { TextInput } from "../../../design-system/text-input";
+import {
+  parseTokenStarModels,
+  TOKENSTAR_PROVIDER,
+  type TokenStarModel,
+} from "./tokenstar-provider";
 import type {
   ProviderAuthMethod,
   ProviderAuthProvider,
@@ -55,6 +60,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   google: "Google",
   openrouter: "OpenRouter",
   qwen: "Qwen",
+  tokenstar: "TokenStar",
 };
 
 const IPOLLOWORK_MODELS_PROVIDER_ID = "ipollowork";
@@ -70,7 +76,7 @@ export type ProviderAuthModalProps = {
   connectedProviderIds: string[];
   authMethods: Record<string, ProviderAuthMethod[]>;
   onSelect: (providerId: string, methodIndex?: number) => Promise<ProviderOAuthStartResult>;
-  onSubmitApiKey: (providerId: string, apiKey: string) => Promise<string | void>;
+  onSubmitApiKey: (providerId: string, apiKey: string, modelIds?: string[]) => Promise<string | void>;
   onConnectCloudProvider: (cloudProviderId: string) => Promise<string | void>;
   onSubmitOAuth: (
     providerId: string,
@@ -102,6 +108,13 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   const [oauthAutoBusy, setOauthAutoBusy] = useState(false);
   const [oauthCodeCopied, setOauthCodeCopied] = useState(false);
   const [oauthBrowserOpened, setOauthBrowserOpened] = useState(false);
+  const [tokenStarModels, setTokenStarModels] = useState<TokenStarModel[]>(TOKENSTAR_PROVIDER.fallbackModels);
+  const [tokenStarSelectedModelIds, setTokenStarSelectedModelIds] = useState<Set<string>>(
+    () => new Set(TOKENSTAR_PROVIDER.fallbackModels.map((model) => model.id)),
+  );
+  const [tokenStarManualModelInput, setTokenStarManualModelInput] = useState("");
+  const [tokenStarCheckingModels, setTokenStarCheckingModels] = useState(false);
+  const [tokenStarModelStatus, setTokenStarModelStatus] = useState<string | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const providerPollRef = useRef<number | null>(null);
@@ -151,6 +164,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   };
 
   const isOpencodeZenProvider = (id: string) => id.trim().toLowerCase() === "opencode";
+  const isTokenStarProvider = (id: string) => id.trim().toLowerCase() === TOKENSTAR_PROVIDER.providerId;
 
   const OPENCODE_ZEN_KEY_URL = "https://opencode.ai/auth";
 
@@ -256,6 +270,14 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
 
   const actionDisabled = props.loading || props.submitting;
 
+  const resetTokenStarState = () => {
+    setTokenStarModels(TOKENSTAR_PROVIDER.fallbackModels);
+    setTokenStarSelectedModelIds(new Set(TOKENSTAR_PROVIDER.fallbackModels.map((model) => model.id)));
+    setTokenStarManualModelInput("");
+    setTokenStarCheckingModels(false);
+    setTokenStarModelStatus(null);
+  };
+
   const resetState = () => {
     if (oauthCodeCopiedResetRef.current !== null && typeof window !== "undefined") {
       window.clearTimeout(oauthCodeCopiedResetRef.current);
@@ -272,6 +294,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     setLocalError(null);
     setOauthCodeCopied(false);
     setOauthBrowserOpened(false);
+    resetTokenStarState();
   };
 
   const stopProviderPolling = () => {
@@ -522,6 +545,9 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
 
     setView("api");
+    if (selectedEntry && isTokenStarProvider(selectedEntry.id)) {
+      resetTokenStarState();
+    }
   };
 
   const handleEntrySelect = (entry: ProviderAuthEntry) => {
@@ -558,13 +584,93 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
 
     setLocalError(null);
     try {
-      await props.onSubmitApiKey(selectedEntry.id, trimmed);
+      const selectedModelIds = isTokenStarProvider(selectedEntry.id)
+        ? [...tokenStarSelectedModelIds]
+        : undefined;
+      if (isTokenStarProvider(selectedEntry.id) && selectedModelIds?.length === 0) {
+        setLocalError("Select at least one TokenStar model.");
+        return;
+      }
+      await props.onSubmitApiKey(selectedEntry.id, trimmed, selectedModelIds);
       // Close the modal after a successful save
       props.onClose();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save API key";
       setLocalError(message);
     }
+  };
+
+  const loadTokenStarModels = async () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed || actionDisabled || tokenStarCheckingModels) return;
+    setLocalError(null);
+    setTokenStarCheckingModels(true);
+    setTokenStarModelStatus("Checking available TokenStar models...");
+    try {
+      const response = await desktopFetchViaMain(
+        `${TOKENSTAR_PROVIDER.baseURL}/models`,
+        {
+          headers: {
+            Authorization: `Bearer ${trimmed}`,
+          },
+        },
+        20000,
+      );
+      if (!response.ok) {
+        throw new Error(`TokenStar returned HTTP ${response.status}.`);
+      }
+      const data: unknown = await response.json();
+      const models = parseTokenStarModels(data);
+      if (models.length === 0) {
+        setTokenStarModelStatus("No models were returned. You can add model IDs manually.");
+        return;
+      }
+      setTokenStarModels(models);
+      setTokenStarSelectedModelIds(new Set(models.map((model) => model.id)));
+      setTokenStarModelStatus(`${models.length} model${models.length === 1 ? "" : "s"} found.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to check TokenStar models.";
+      setTokenStarModelStatus(`${message} You can add model IDs manually.`);
+    } finally {
+      setTokenStarCheckingModels(false);
+    }
+  };
+
+  const addTokenStarManualModels = () => {
+    const ids = tokenStarManualModelInput
+      .split(/[\s,]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (ids.length === 0) return;
+
+    setTokenStarModels((current) => {
+      const existing = new Set(current.map((model) => model.id));
+      const additions = ids.flatMap((id) => {
+        if (existing.has(id)) return [];
+        existing.add(id);
+        return [{ id, name: id }];
+      });
+      return additions.length ? [...current, ...additions] : current;
+    });
+    setTokenStarSelectedModelIds((current) => {
+      const next = new Set(current);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+    setTokenStarManualModelInput("");
+    setTokenStarModelStatus("Manual model IDs added.");
+  };
+
+  const toggleTokenStarModel = (modelId: string) => {
+    setTokenStarSelectedModelIds((current) => {
+      const next = new Set(current);
+      if (next.has(modelId)) {
+        next.delete(modelId);
+      } else {
+        next.add(modelId);
+      }
+      return next;
+    });
   };
 
   const handleCloudSubmit = async () => {
@@ -616,6 +722,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
       setView("method");
       setSelectedCloudMethod(null);
       setApiKeyInput("");
+      resetTokenStarState();
       setLocalError(null);
       return;
     }
@@ -693,6 +800,9 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
     if (isOpencodeZenProvider(entry.id)) {
       return "Sign in to OpenCode Zen with an API key to unlock paid models alongside the free tier.";
+    }
+    if (isTokenStarProvider(entry.id)) {
+      return "Connect TokenStar, check available models, and choose which models to show in iPolloWork.";
     }
     return "Paste a secret key that iPolloWork stores locally on this device.";
   };
@@ -856,6 +966,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                       <div className="text-xs text-gray-10 mt-1">
                         {isOpencodeZenProvider(selectedEntry.id)
                           ? "Sign in to OpenCode Zen with an API key from opencode.ai/auth."
+                          : isTokenStarProvider(selectedEntry.id)
+                            ? "Paste your TokenStar API key, then choose the models to enable."
                           : "Paste your API key to connect."}
                       </div>
                     </div>
@@ -891,6 +1003,67 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     spellCheck={false}
                     disabled={actionDisabled}
                   />
+                  {isTokenStarProvider(selectedEntry.id) ? (
+                    <div className="space-y-3 rounded-lg border border-gray-6/60 bg-gray-1/60 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-medium text-gray-12">Models</div>
+                          <div className="text-[11px] text-gray-9">Select the TokenStar models to expose.</div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void loadTokenStarModels()}
+                          disabled={actionDisabled || tokenStarCheckingModels || !apiKeyInput.trim()}
+                        >
+                          {tokenStarCheckingModels ? "Checking..." : "Check models"}
+                        </Button>
+                      </div>
+                      {tokenStarModelStatus ? (
+                        <div className="text-[11px] text-gray-9">{tokenStarModelStatus}</div>
+                      ) : null}
+                      <div className="grid max-h-40 gap-1 overflow-y-auto pr-1">
+                        {tokenStarModels.map((model) => (
+                          <label
+                            key={model.id}
+                            className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-11 hover:bg-gray-3/60"
+                          >
+                            <input
+                              type="checkbox"
+                              className="size-3.5 accent-gray-12"
+                              checked={tokenStarSelectedModelIds.has(model.id)}
+                              onChange={() => toggleTokenStarModel(model.id)}
+                              disabled={actionDisabled}
+                            />
+                            <span className="min-w-0 flex-1 truncate">{model.name}</span>
+                            <span className="max-w-40 truncate font-mono text-[10px] text-gray-8">{model.id}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <div className="min-w-0 flex-1">
+                          <TextInput
+                            label="Add model IDs"
+                            type="text"
+                            placeholder="gpt-5.6, kimi-k3"
+                            value={tokenStarManualModelInput}
+                            onChange={(event) => setTokenStarManualModelInput(event.currentTarget.value)}
+                            autoComplete="off"
+                            autoCapitalize="off"
+                            spellCheck={false}
+                            disabled={actionDisabled}
+                          />
+                        </div>
+                        <Button
+                          variant="outline"
+                          onClick={addTokenStarManualModels}
+                          disabled={actionDisabled || !tokenStarManualModelInput.trim()}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                   {selectedEntry.env.length > 0 ? (
                     <div className="text-[11px] text-gray-9">
                       Env vars: <span className="font-mono">{selectedEntry.env.join(", ")}</span>
@@ -900,7 +1073,11 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     <div className="text-[11px] text-gray-9">Keys are stored locally by OpenCode.</div>
                     <Button
                       onClick={handleApiSubmit}
-                      disabled={actionDisabled || !apiKeyInput.trim()}
+                      disabled={
+                        actionDisabled ||
+                        !apiKeyInput.trim() ||
+                        (isTokenStarProvider(selectedEntry.id) && tokenStarSelectedModelIds.size === 0)
+                      }
                     >
                       {props.submitting ? "Saving…" : "Save key"}
                     </Button>
