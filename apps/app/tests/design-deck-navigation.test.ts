@@ -68,7 +68,7 @@ describe("Design deck navigation", () => {
     const source = await Bun.file(panelUrl).text();
     const labelIndex = source.lastIndexOf('aria-label="Ask AI about selected element"');
     const actionStart = source.lastIndexOf("<Button", labelIndex);
-    expect(source.slice(actionStart, labelIndex)).toContain("disabled={!selection.canDelete}");
+    expect(source.slice(actionStart, labelIndex)).toContain("disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== \"current\"}");
   });
 
   test("pans the overflowed presentation canvas without moving the slide", async () => {

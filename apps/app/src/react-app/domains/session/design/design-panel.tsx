@@ -1341,10 +1341,29 @@ export function DesignPanel({
   };
 
   const askAiAboutSelection = async () => {
-    if (!selection || !workspaceId || !activePagePath || !fileQuery.data) return;
+    if (!selection || !workspaceId || !activePagePath || !fileQuery.data || saveMutation.isPending) return;
+    if (viewedVersionPath !== "current") {
+      toast.info("Switch to the Current design before asking AI about an element.");
+      return;
+    }
     const selected = selection;
-    const baseUpdatedAt = fileQuery.data.updatedAt;
-    const beforeHtml = await readLatestCanvasHtml();
+    let baseUpdatedAt = fileQuery.data.updatedAt;
+    let beforeHtml: string;
+    try {
+      beforeHtml = await readLatestCanvasHtml();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not read the current design.");
+      return;
+    }
+    if (pendingCanvasChange || beforeHtml !== savedSource) {
+      try {
+        const saved = await saveMutation.mutateAsync();
+        beforeHtml = saved.content;
+        baseUpdatedAt = saved.result.updatedAt ?? null;
+      } catch {
+        return;
+      }
+    }
     const summary = (selected.text || selected.alt || selected.source).replace(/\s+/g, " ").trim().slice(0, 80);
     onAskAi({
       id: `design-ai-${crypto.randomUUID()}`,
@@ -1974,7 +1993,7 @@ export function DesignPanel({
                           variant="ghost"
                           size="icon-xs"
                           onClick={() => void askAiAboutSelection()}
-                          disabled={!selection.canDelete}
+                          disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
                           aria-label="Ask AI about selected element"
                         >
                           <Sparkles />

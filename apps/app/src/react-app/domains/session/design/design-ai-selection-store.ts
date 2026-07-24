@@ -9,11 +9,17 @@ type CompleteDesignAiSelection = {
   afterUpdatedAt: number | null;
 };
 
+type RebaseDesignAiSelection = {
+  beforeHtml: string;
+  baseUpdatedAt: number | null;
+};
+
 type DesignAiSelectionStore = {
   contexts: Record<string, DesignAiSelectionContext>;
   statuses: Record<string, DesignAiSelectionStatus>;
   undoCheckpoints: Record<string, Record<string, DesignAiUndoCheckpoint[]>>;
   createContext: (context: DesignAiSelectionContext) => void;
+  rebasePendingContext: (contextId: string, baseline: RebaseDesignAiSelection) => boolean;
   markRunning: (contextId: string) => void;
   claimCompletion: (contextId: string) => boolean;
   complete: (contextId: string, result: CompleteDesignAiSelection) => void;
@@ -61,6 +67,21 @@ export const useDesignAiSelectionStore = create<DesignAiSelectionStore>((set, ge
       statuses: { ...state.statuses, [context.id]: "pending" },
     };
   }),
+  rebasePendingContext: (contextId, baseline) => {
+    let rebased = false;
+    set((state) => {
+      const context = state.contexts[contextId];
+      if (!context || state.statuses[contextId] !== "pending") return state;
+      rebased = true;
+      return {
+        contexts: {
+          ...state.contexts,
+          [contextId]: copyContext({ ...context, ...baseline }),
+        },
+      };
+    });
+    return rebased;
+  },
   markRunning: (contextId) => set((state) => {
     if (!state.contexts[contextId] || state.statuses[contextId] !== "pending") return state;
     return { statuses: { ...state.statuses, [contextId]: "running" } };

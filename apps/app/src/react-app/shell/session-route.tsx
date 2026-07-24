@@ -267,7 +267,7 @@ type DesignSelectionScope = {
 
 type DesignSelectionWorkspaceClient = {
   readWorkspaceFile: (workspaceId: string, path: string) => Promise<{ content: string; updatedAt?: number | null }>;
-  writeWorkspaceFile: (workspaceId: string, payload: { path: string; content: string; baseUpdatedAt?: number | null }) => Promise<unknown>;
+  writeWorkspaceFile: (workspaceId: string, payload: { path: string; content: string; baseUpdatedAt?: number | null }) => Promise<{ updatedAt?: number | null }>;
 };
 
 type DesignSelectionStore = Pick<typeof useDesignAiSelectionStore, "getState">;
@@ -311,14 +311,16 @@ export async function promptDesignSelectionContexts(input: {
   try {
     for (const context of input.contexts) {
       const current = await input.workspaceClient.readWorkspaceFile(context.workspaceId, context.filePath);
-      if ((current.updatedAt ?? null) !== context.baseUpdatedAt) {
-        throw new Error("The selected Design file changed before the AI update. Reload it and try again.");
-      }
-      await input.workspaceClient.writeWorkspaceFile(context.workspaceId, {
+      const prepared = await input.workspaceClient.writeWorkspaceFile(context.workspaceId, {
         path: context.filePath,
-        content: context.beforeHtml,
+        content: current.content,
         baseUpdatedAt: current.updatedAt ?? null,
       });
+      const rebased = designSelectionStore.getState().rebasePendingContext(context.id, {
+        beforeHtml: current.content,
+        baseUpdatedAt: prepared.updatedAt ?? current.updatedAt ?? null,
+      });
+      if (!rebased) throw new Error("The selected Design element is no longer ready for an AI update.");
       designSelectionStore.getState().markRunning(context.id);
     }
     const result = await input.prompt();
