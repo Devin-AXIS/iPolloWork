@@ -27,6 +27,7 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain("onModelVariantChange");
     expect(model).toContain("TokenStar Models");
     expect(model).toContain("TokenStar / GPT / GPT 5.6");
+    expect(model).toContain("openCodeZen.items.unshift(tokenStarEntry)");
     expect(menu).toContain("onConfigureTokenStar");
   });
 });

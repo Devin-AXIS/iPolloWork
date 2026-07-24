@@ -161,7 +161,7 @@ function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
   const tokenStarEntry: TokenStarEntry = { kind: "tokenstar", id: "tokenstar-models" };
 
   if (openCodeZen) {
-    openCodeZen.items.push(tokenStarEntry);
+    openCodeZen.items.unshift(tokenStarEntry);
   } else {
     grouped.unshift({ value: "OpenCode Zen", items: [tokenStarEntry] });
   }
