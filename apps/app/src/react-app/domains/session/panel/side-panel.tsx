@@ -3,8 +3,11 @@ import * as React from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  Code2,
   Globe,
   Loader2,
+  Maximize2,
+  Minimize2,
   Plus,
   RotateCw,
   X,
@@ -35,6 +38,8 @@ import {
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import type { OpenTarget } from "../artifacts/open-target";
 import { useSidePanelTabs } from "./use-side-panel-tabs";
+import { DesignPanel } from "../design/design-panel";
+import type { DesignAiSelectionContext } from "../design/design-ai-selection";
 import {
   computeBounds,
   getElectronBrowser,
@@ -51,6 +56,9 @@ type SidePanelProps = {
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
+  onAskAi?: (context: DesignAiSelectionContext) => void;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 };
 
 export type SidePanelLauncherItem = {
@@ -137,7 +145,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
               <Globe />
             )
           ) : (
-            <ArtifactIcon type={tab.preview} />
+            tab.type === "design" ? <Code2 /> : <ArtifactIcon type={tab.preview} />
           )}
           <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
         </PanelTab>
@@ -407,6 +415,9 @@ export function SidePanel({
   workspaceRoot,
   isRemoteWorkspace = false,
   launcherItems = [],
+  onAskAi,
+  expanded = false,
+  onExpandedChange,
   onClose,
 }: SidePanelProps) {
   const { tabs } = useSessionPanelState(sessionId);
@@ -605,8 +616,7 @@ export function SidePanel({
                         disabled={item.disabled}
                         onClick={item.onClick}
                         className={[
-                          "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424] data-disabled:opacity-40",
-                          item.active ? "bg-[#F5F5F5]" : "",
+                          "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-[#8A8A8A] focus:bg-transparent focus:text-[#8A8A8A] hover:bg-[#F5F5F5] hover:text-[#242424] active:bg-[#EBEBEB] active:text-[#242424] data-highlighted:bg-transparent data-highlighted:text-[#8A8A8A] data-disabled:opacity-40",
                         ].join(" ")}
                       >
                         <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
@@ -629,13 +639,42 @@ export function SidePanel({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
+            {onExpandedChange ? (
+              <Button
+                variant={expanded ? "secondary" : "ghost"}
+                size="icon-sm"
+                onClick={() => onExpandedChange(!expanded)}
+                aria-label={expanded ? "Restore panel width" : "Expand panel"}
+                aria-pressed={expanded}
+              >
+                {expanded ? <Minimize2 /> : <Maximize2 />}
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              aria-label="Close panel"
+              title="Close panel"
+            >
+              <X />
+            </Button>
           </div>
         </div>
         {!activeTab ? (
           <PanelEmpty />
         ) : null}
-        {activeTab?.type === "browser" ? (
-          <BrowserPanelContent tab={activeTab} onClose={onClose} />
+        {activeTab?.type === "design" ? (
+          <DesignPanel
+            sessionId={activeTab.sessionId}
+            client={client}
+            workspaceId={workspaceId}
+            isRemoteWorkspace={isRemoteWorkspace}
+            initialPath={activeTab.path}
+            onAskAi={onAskAi ?? (() => undefined)}
+          />
+        ) : activeTab?.type === "browser" ? (
+          <BrowserPanelContent tab={activeTab} onClose={() => closeTab(activeTab)} />
         ) : activeTab?.type === "artifact" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <ArtifactPanel

@@ -30,7 +30,19 @@ describe("Design deck navigation", () => {
     const source = await Bun.file(panelUrl).text();
 
     expect(source).toContain('setEditing(isPresentationTemplate);');
-    expect(source).toContain('{isPresentationTemplate ? "Canvas edit" : "Edit page"}');
+    expect(source).toContain("Edit");
+  });
+
+  test("keeps the website toolbar compact and ordered", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).not.toContain('>Current design</p>');
+    expect(source).not.toContain("Edit page");
+    expect(source).toContain('className="order-3 shrink-0 rounded-lg"');
+    expect(source).toContain("panelWidth < 360");
+    expect(source).toContain('className="w-14 shrink-0 rounded-lg border-0 bg-transparent');
+    expect(source).toContain("const currentVersionLabel = `V${versionTargets.length + 1}`");
+    expect(source).toContain("<SelectValue>{viewedVersionLabel}</SelectValue>");
   });
 
   test("measures the presentation viewport after the canvas mounts", async () => {
@@ -46,8 +58,25 @@ describe("Design deck navigation", () => {
 
     expect(source).toContain('event.data.type === "zoom"');
     expect(source).toContain("presentationCanvasWheelZoom(current, event.data.deltaY)");
-    expect(source).toContain('aria-label="Reset presentation zoom"');
+    expect(source).toContain('aria-label="Fit canvas to view"');
     expect(source).toContain("setPresentationZoom(1)");
+  });
+
+  test("moves publish and export into more actions below 480px", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("panelWidth < 480");
+    expect(source).toContain("compact={compactToolbar}");
+    expect(source).toContain("showExports={Boolean(deck)}");
+    expect(source).toContain("onPublish={() => publishMutation.mutate()}");
+  });
+
+  test("orders editing actions before sharing and export", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source.indexOf('aria-label="Fit canvas to view"')).toBeLessThan(source.indexOf('aria-label="Save design"'));
+    expect(source.indexOf('aria-label="Save design"')).toBeLessThan(source.indexOf('aria-label="Publish to object storage"'));
+    expect(source.indexOf('aria-label="Publish to object storage"')).toBeLessThan(source.indexOf("<DesignExportMenu"));
   });
 
   test("offers selected-element deletion only from the floating toolbar", async () => {

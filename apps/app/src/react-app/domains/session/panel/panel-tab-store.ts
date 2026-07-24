@@ -5,7 +5,7 @@ import { isCollectibleArtifactTarget, type OpenTarget, type OpenTargetPreview } 
 
 export const PERSISTED_PANEL_TAB_STORE_KEY = "ipollowork:panel-tabs:v1";
 
-export type PanelTabType = "artifact" | "browser";
+export type PanelTabType = "artifact" | "browser" | "design";
 
 export type { BrowserPanelTab } from "../../../../app/lib/desktop-types";
 import type { BrowserPanelTab } from "../../../../app/lib/desktop-types";
@@ -17,7 +17,15 @@ export type ArtifactPanelTab = {
   preview: OpenTargetPreview;
 }
 
-export type PanelTab = BrowserPanelTab | ArtifactPanelTab;
+export type DesignPanelTab = {
+  id: string;
+  type: "design";
+  label: string;
+  sessionId: string;
+  path?: string;
+};
+
+export type PanelTab = BrowserPanelTab | ArtifactPanelTab | DesignPanelTab;
 
 export type SessionPanelState = {
   tabs: PanelTab[];
@@ -149,7 +157,19 @@ function isSameTab(left: PanelTab, right: PanelTab) {
     );
   }
 
+  if (left.type === "design" && right.type === "design") {
+    return left.label === right.label && left.sessionId === right.sessionId && left.path === right.path;
+  }
+
   return false;
+}
+
+function decodeDesignPath(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function isSameSessionPanelState(
@@ -178,17 +198,30 @@ function mergePersistedSessions(
 
   for (const [sessionId, session] of Object.entries(persisted.sessions)) {
     const tabs = session.tabs
-      .filter(({ type }) => type === "browser")
-      .map(({ id }): PanelTab => ({
-        id,
-        type: "browser",
-        label: "New tab",
-        url: "",
-        favicon: null,
-        status: "ready",
-        canGoBack: false,
-        canGoForward: false,
-      }));
+      .flatMap(({ id, type }): PanelTab[] => {
+        if (type === "browser") {
+          return [{
+            id,
+            type: "browser",
+            label: "New tab",
+            url: "",
+            favicon: null,
+            status: "ready",
+            canGoBack: false,
+            canGoForward: false,
+          }];
+        }
+        if (type === "design") {
+          const designId = id.startsWith("design:") ? id.slice("design:".length) : "";
+          const separatorIndex = designId.indexOf(":");
+          const sessionId = separatorIndex >= 0 ? designId.slice(0, separatorIndex) : designId;
+          const encodedPath = separatorIndex >= 0 ? designId.slice(separatorIndex + 1) : "";
+          const path = encodedPath ? decodeDesignPath(encodedPath) : undefined;
+          const tabId = path ? id : `design:${sessionId}:entry`;
+          return sessionId ? [{ id: tabId, type: "design", label: path ? path.split("/").pop() || path : "Design", sessionId, path }] : [];
+        }
+        return [];
+      });
 
     sessions[sessionId] = {
       tabs,
@@ -278,7 +311,7 @@ export const usePanelTabStore = create<PanelTabStore>()(
         const mergedTabs: PanelTab[] = [];
 
         for (const tab of session.tabs) {
-          if (tab.type === "artifact") {
+          if (tab.type === "artifact" || tab.type === "design") {
             mergedTabs.push(tab);
             continue;
           }

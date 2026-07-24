@@ -1,13 +1,12 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Maximize2, Minimize2, Minus, Monitor, MousePointer2, Palette, Plus, RotateCcw, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Trash2, Type, Undo2, Upload, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, Focus, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Trash2, Type, Undo2, Upload } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { downloadBlobAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -39,7 +38,6 @@ import {
 } from "./design-html-runtime";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
-import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
   downgradeUnsupportedPdfExportColors,
   downgradeUnsupportedPdfExportColorText,
@@ -91,11 +89,8 @@ type DesignPanelProps = {
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
-  launcherItems?: SidePanelLauncherItem[];
+  initialPath?: string;
   onAskAi: (context: DesignAiSelectionContext) => void;
-  expanded?: boolean;
-  onExpandedChange?: (expanded: boolean) => void;
-  onClose: () => void;
 };
 
 type LoadedHtml = {
@@ -498,13 +493,11 @@ export function DesignPanel({
   client,
   workspaceId,
   isRemoteWorkspace = false,
-  launcherItems = [],
+  initialPath,
   onAskAi,
-  expanded = false,
-  onExpandedChange,
-  onClose,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
+  const panelRef = React.useRef<HTMLDivElement>(null);
   const iframeRef = React.useRef<any>(null);
   const previewViewportRef = React.useRef<HTMLDivElement>(null);
   const presentationPanRef = React.useRef<HTMLDivElement>(null);
@@ -521,7 +514,7 @@ export function DesignPanel({
     enabled: Boolean(client && workspaceId),
     staleTime: 5_000,
   });
-  const lockedPath = templateQuery.data?.state.entry ?? "";
+  const lockedPath = initialPath || templateQuery.data?.state.entry || "";
   const hasSiteVersioning = templateQuery.data?.manifest.category === "site";
   const designTemplate = templateQuery.data?.manifest ?? null;
   const catalogQuery = useQuery({
@@ -552,6 +545,7 @@ export function DesignPanel({
   const [previewViewport, setPreviewViewport] = React.useState({ width: 0, height: 0 });
   const [presentationZoom, setPresentationZoom] = React.useState(1);
   const [presentationScroll, setPresentationScroll] = React.useState({ left: 0, top: 0 });
+  const [panelWidth, setPanelWidth] = React.useState(480);
   const [editing, setEditing] = React.useState(false);
   const [deck, setDeck] = React.useState<DesignDeckState | null>(null);
   const hydratedPageRef = React.useRef("");
@@ -607,6 +601,16 @@ export function DesignPanel({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+
+  React.useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const sync = () => setPanelWidth(panel.getBoundingClientRect().width);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
 
   React.useEffect(() => {
     if (!aiUndoCheckpoint || appliedAiCheckpointRef.current === aiUndoCheckpoint.contextId) return;
@@ -1537,7 +1541,7 @@ export function DesignPanel({
     },
   });
   const preview = React.useMemo(
-    // The bridge is always present but starts inactive. Toggling Edit page is
+    // The bridge is always present but starts inactive. Toggling editing is
     // a message to that bridge, not a new srcDoc, so a deck stays on its slide.
     () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
     [hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
@@ -1553,9 +1557,15 @@ export function DesignPanel({
     top: `${Math.max(8, selectionTop + 8)}px`,
     transform: selection.rect.top > 58 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
   } satisfies React.CSSProperties : undefined;
+  const compactToolbar = panelWidth < 480;
+  const veryCompactToolbar = panelWidth < 360;
+  const currentVersionLabel = `V${versionTargets.length + 1}`;
+  const viewedVersionLabel = viewedVersionPath === "current"
+    ? currentVersionLabel
+    : `V${versionTargets.length - versionTargets.findIndex((version) => version.path === viewedVersionPath)}`;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background" data-testid="design-panel">
+    <div ref={panelRef} className="flex h-full min-h-0 flex-col bg-background" data-testid="design-panel">
       <input
         ref={imageInputRef}
         type="file"
@@ -1567,68 +1577,6 @@ export function DesignPanel({
           event.currentTarget.value = "";
         }}
       />
-      <div className={cn(
-        "flex h-11 shrink-0 items-center gap-2 px-3 mac:titlebar-drag",
-        expanded && "mac:pl-20",
-        !lockedPath && "border-b border-[#EAEAEA] [border-bottom-width:0.5px]",
-      )}>
-        <Code2 className="size-4 text-primary" />
-        <div className="flex min-w-0 flex-1 items-center mac:titlebar-no-drag">
-          <p className="truncate text-sm font-medium">Design</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2 mac:titlebar-no-drag">
-        {launcherItems.length > 0 ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={(
-                <Button variant="ghost" size="icon-sm" className={DESIGN_ACTION_BUTTON_CLASS} aria-label="Add panel">
-                  <Plus />
-                </Button>
-              )}
-            />
-            <DropdownMenuContent
-              align="end"
-              className="w-[296px] rounded-[18px] border border-[#E5E5E5] bg-white p-3 text-[#242424] shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
-            >
-              {launcherItems.map((item) => (
-                <DropdownMenuItem
-                  key={item.id}
-                  disabled={item.disabled}
-                  onClick={item.onClick}
-                  className={cn(
-                    "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424] data-disabled:opacity-40",
-                    item.active && "bg-[#F5F5F5]",
-                  )}
-                >
-                  <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
-                  <span className="flex-1">{item.label}</span>
-                  {item.shortcut ? (
-                    <span className="text-[12px] tracking-[-0.24px] text-[#8A8A8A]">{item.shortcut}</span>
-                  ) : null}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-        {onExpandedChange ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className={DESIGN_ACTION_BUTTON_CLASS}
-            onClick={() => onExpandedChange(!expanded)}
-            aria-label={expanded ? "恢复面板宽度" : "展开面板"}
-            title={expanded ? "恢复面板宽度" : "展开面板"}
-            aria-pressed={expanded}
-          >
-            {expanded ? <Minimize2 /> : <Maximize2 />}
-          </Button>
-        ) : null}
-        <Button variant="ghost" size="icon-sm" className={DESIGN_ACTION_BUTTON_CLASS} onClick={onClose} aria-label="Close Design">
-          <X />
-        </Button>
-        </div>
-      </div>
-
       {isRemoteWorkspace ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
           Design editing is available for local workspaces only.
@@ -1647,25 +1595,25 @@ export function DesignPanel({
         </div>
       ) : (
         <>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#EAEAEA] px-3 py-2 [border-bottom-width:0.5px]">
+          <div className={cn(
+            "flex min-w-0 shrink-0 flex-wrap items-center border-b border-[#EAEAEA] px-3 py-2 [border-bottom-width:0.5px]",
+            compactToolbar ? "gap-1" : "gap-2",
+          )}>
             {hasSiteVersioning ? (
-              <div className="min-w-0 flex flex-1 items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{fileName(activePagePath)}</p>
-                  <p className="truncate text-[10px] text-muted-foreground">{viewedVersionPath === "current" ? "Current design" : "Version preview"}</p>
-                </div>
+              <div className={cn("order-0 flex min-w-0 flex-1 items-center gap-2", veryCompactToolbar && "hidden")}>
+                <p className="min-w-0 truncate text-sm font-medium">{fileName(activePagePath)}</p>
                 {versionTargets.length > 0 ? (
-                <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}>
-                  <SelectTrigger size="sm" className="w-32 rounded-lg" aria-label="Design version"><SelectValue>Versions</SelectValue></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="current">Current version</SelectItem>
-                    {versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>Version {versionTargets.length - index}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                  <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}>
+                    <SelectTrigger size="sm" className="w-14 shrink-0 rounded-lg border-0 bg-transparent px-2 shadow-none hover:bg-[#F3F4F6] focus-visible:ring-0" aria-label="Design version"><SelectValue>{viewedVersionLabel}</SelectValue></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="current">{currentVersionLabel}</SelectItem>
+                      {versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>V{versionTargets.length - index}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 ) : null}
               </div>
             ) : null}
-            <Label className="flex items-center gap-2 text-xs">
+            <Label className="order-1 flex shrink-0 items-center gap-2 text-xs">
               <Switch
                 size="sm"
                 className="border-[#AEB2B9] bg-transparent shadow-none data-checked:!border-[#0A84FF] data-checked:!bg-[#0A84FF] data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
@@ -1676,12 +1624,12 @@ export function DesignPanel({
                   setQuickEdit(null);
                   setAdvancedOpen(false);
                 }}
-                aria-label="Edit page"
+                aria-label="Edit"
               />
-              {isPresentationTemplate ? "Canvas edit" : "Edit page"}
+              Edit
             </Label>
             {deck ? (
-              <div className="flex h-8 min-w-0 items-center rounded-lg border border-[#D8DADF] bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
+              <div className="order-2 flex h-8 min-w-0 items-center rounded-lg border border-[#D8DADF] bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
                 <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-[#202228] hover:bg-[#F3F4F6]" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
                   <ChevronLeft className="size-4" />
                 </Button>
@@ -1694,30 +1642,32 @@ export function DesignPanel({
               </div>
             ) : null}
             {!isPresentationTemplate ? (
-              <ToggleGroup
-                value={[previewDevice]}
-                onValueChange={(value) => {
-                  const next = value[0];
-                  if (next !== "desktop" && next !== "mobile") return;
-                  setPreviewDevice(next);
-                  setSelection(null);
-                  setQuickEdit(null);
-                  setAdvancedOpen(false);
-                }}
-                variant="outline"
-                size="sm"
-                aria-label="Preview device"
-                className="rounded-lg"
-              >
-                <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label="Desktop preview" title="Desktop">
-                  <Monitor className="size-3.5" />
-                </ToggleGroupItem>
-                <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label="Mobile preview" title="Mobile">
-                  <Smartphone className="size-3.5" />
-                </ToggleGroupItem>
-              </ToggleGroup>
+              compactToolbar ? null : (
+                <ToggleGroup
+                  value={[previewDevice]}
+                  onValueChange={(value) => {
+                    const next = value[0];
+                    if (next !== "desktop" && next !== "mobile") return;
+                    setPreviewDevice(next);
+                    setSelection(null);
+                    setQuickEdit(null);
+                    setAdvancedOpen(false);
+                  }}
+                  variant="outline"
+                  size="sm"
+                  aria-label="Preview device"
+                  className="order-3 shrink-0 rounded-lg"
+                >
+                  <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label="Desktop preview" title="Desktop">
+                    <Monitor className="size-3.5" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label="Mobile preview" title="Mobile">
+                    <Smartphone className="size-3.5" />
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              )
             ) : null}
-            <div className="ml-auto flex shrink-0 items-center gap-2">
+            <div className={cn("ml-auto flex shrink-0 items-center", isPresentationTemplate ? "order-3" : "order-2", compactToolbar ? "gap-1" : "gap-2")}>
               {editing ? (
                 <Button
                   variant="ghost"
@@ -1734,6 +1684,19 @@ export function DesignPanel({
               <Button variant="ghost" size="icon-sm" className={DESIGN_ACTION_BUTTON_CLASS} onClick={() => void undo()} disabled={history.length === 0 && !aiUndoCheckpoint} aria-label="Undo design change">
                 <Undo2 />
               </Button>
+              {isPresentationTemplate ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={DESIGN_ACTION_BUTTON_CLASS}
+                  onClick={() => setPresentationZoom(1)}
+                  disabled={presentationZoom === 1}
+                  aria-label="Fit canvas to view"
+                  title="Fit canvas to view"
+                >
+                  <Focus />
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -1745,37 +1708,38 @@ export function DesignPanel({
               >
                 {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
               </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={DESIGN_ACTION_BUTTON_CLASS}
-                onClick={() => publishMutation.mutate()}
-                disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
-                aria-label="Publish to object storage"
-                title="Publish to object storage"
-              >
-                {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
-              </Button>
-              {isPresentationTemplate ? (
+              {!compactToolbar ? (
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   className={DESIGN_ACTION_BUTTON_CLASS}
-                  onClick={() => setPresentationZoom(1)}
-                  disabled={presentationZoom === 1}
-                  aria-label="Reset presentation zoom"
-                  title="Reset zoom to fit"
+                  onClick={() => publishMutation.mutate()}
+                  disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
+                  aria-label="Publish to object storage"
+                  title="Publish to object storage"
                 >
-                  <RotateCcw />
+                  {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
                 </Button>
               ) : null}
-              {deck ? (
+              {deck || compactToolbar ? (
                 <DesignExportMenu
                   triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
+                  compact={compactToolbar}
+                  showExports={Boolean(deck)}
+                  publishing={publishMutation.isPending}
+                  publishDisabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
                   exportingPdf={exportingPdf}
                   exportingPptx={exportingPptx}
                   exportReady={previewLoaded}
                   exportDisabledReason="Preview is still preparing."
+                  previewDevice={!isPresentationTemplate ? previewDevice : undefined}
+                  onPreviewDeviceChange={!isPresentationTemplate ? (device) => {
+                    setPreviewDevice(device);
+                    setSelection(null);
+                    setQuickEdit(null);
+                    setAdvancedOpen(false);
+                  } : undefined}
+                  onPublish={() => publishMutation.mutate()}
                   onExportPdf={() => void exportDeckToPdf()}
                   onExportPptx={() => setPptxConfirmationOpen(true)}
                 />
