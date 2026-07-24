@@ -12,7 +12,7 @@ Thank you for helping improve iPolloWork. Read `AGENTS.md`, `VISION.md`, `PRINCI
 
 Keep changes focused, preserve the iPolloWork/OpenCode boundary, and include the checks used to validate the change.
 
-## Contribution terms
+## Contribution Terms
 
 By submitting a pull request or other contribution for inclusion in iPolloWork, you represent that you have the right to submit it and agree that:
 
