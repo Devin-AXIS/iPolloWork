@@ -108,6 +108,7 @@ export const FRIENDLY_MODEL_LABELS: [pattern: string, label: string][] = [
 
   // OpenCode
   ["big-pickle", "Big Pickle"],
+  ["tokenstar", "Tokenstar"],
 ];
 
 /**
