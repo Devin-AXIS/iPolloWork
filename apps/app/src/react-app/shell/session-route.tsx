@@ -76,6 +76,7 @@ import { t } from "@/i18n";
 import {
   type RouteWorkspace,
   type RouteSession,
+  buildTaskPaletteSessionOptions,
   describeRouteError,
   describeWorkspaceCreateError,
   downloadWorkspaceJson,
@@ -87,6 +88,7 @@ import {
   mergeRouteWorkspaces,
   orderRouteWorkspaces,
   toSessionGroups,
+  userVisibleSessionsByWorkspaceId,
   workspaceExportFilename,
   workspaceLabel,
 } from "@/react-app/shell/route-workspaces";
@@ -145,7 +147,6 @@ import { ModelPickerModal } from "@/react-app/domains/session/modals/model-picke
 import { CommandPalette, type PaletteItem, type SessionGroupOption, type SessionOption as PaletteSessionOption } from "./command-palette";
 import { SessionSearchDialog } from "./session-search-dialog";
 import type { SessionMessageFetcher } from "@/react-app/domains/session/search/session-search";
-import { getDisplaySessionTitle } from "@/app/lib/session-title";
 import { useBootState } from "./boot-state";
 import {
   forgetWorkspaceMemory,
@@ -644,10 +645,13 @@ export function SessionRoute() {
     onSaved: handleRemoteWorkspaceConnectionSaved,
   });
 
-
+  const visibleSessionsByWorkspaceId = useMemo(
+    () => userVisibleSessionsByWorkspaceId(sessionsByWorkspaceId),
+    [sessionsByWorkspaceId],
+  );
   const workspaceSessionGroups = useMemo(
-    () => toSessionGroups(workspaces, sessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
-    [errorsByWorkspaceId, retryingWorkspaceIds, sessionsByWorkspaceId, workspaces],
+    () => toSessionGroups(workspaces, visibleSessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
+    [errorsByWorkspaceId, retryingWorkspaceIds, visibleSessionsByWorkspaceId, workspaces],
   );
   useSessionGroupSync({ workspaces, endpointForWorkspace });
   const selectedWorkspaceGroupState = sessionManagementStore((state) => (
@@ -658,14 +662,15 @@ export function SessionRoute() {
   const sessionActivityByWorkspaceId = useSessionActivityStore((state) => state.statusesByWorkspaceId);
 
   useEffect(() => {
-    for (const group of workspaceSessionGroups) {
-      seedWorkspaceActivitySessions(group.workspace.id, group.sessions);
-      const serverId = workspaceServerId(group.workspace);
-      if (serverId && serverId !== group.workspace.id) {
-        seedWorkspaceActivitySessions(serverId, group.sessions);
+    for (const workspace of workspaces) {
+      const sessions = sessionsByWorkspaceId[workspace.id] ?? [];
+      seedWorkspaceActivitySessions(workspace.id, sessions);
+      const serverId = workspaceServerId(workspace);
+      if (serverId && serverId !== workspace.id) {
+        seedWorkspaceActivitySessions(serverId, sessions);
       }
     }
-  }, [seedWorkspaceActivitySessions, workspaceSessionGroups]);
+  }, [seedWorkspaceActivitySessions, sessionsByWorkspaceId, workspaces]);
 
   const sidebarSessionStatusById = useMemo(() => {
     const next: Record<string, string> = {};
@@ -1678,43 +1683,12 @@ export function SessionRoute() {
   useControlAction(addProviderControlAction);
 
   const paletteSessionOptions = useMemo<PaletteSessionOption[]>(() => {
-    const out: PaletteSessionOption[] = [];
-    for (const workspace of workspaces) {
-      const workspaceTitle =
-        workspace.displayName?.trim() ||
-        workspace.name?.trim() ||
-        workspace.path?.trim() ||
-        t("session.workspace_fallback");
-      const list = sessionsByWorkspaceId[workspace.id] ?? [];
-      for (const session of list) {
-        const sessionId = (session as { id?: string }).id?.trim() ?? "";
-        if (!sessionId) continue;
-        const title = getDisplaySessionTitle(
-          (session as { title?: string }).title ?? "",
-        );
-        const updatedAt =
-          (session as { time?: { updated?: number; created?: number } }).time
-            ?.updated ??
-          (session as { time?: { updated?: number; created?: number } }).time
-            ?.created ??
-          0;
-        out.push({
-          workspaceId: workspace.id,
-          sessionId,
-          title,
-          workspaceTitle,
-          updatedAt,
-          searchText: `${title} ${workspaceTitle}`.toLowerCase(),
-          isActive: workspace.id === selectedWorkspaceId,
-        });
-      }
-    }
-    out.sort((a, b) => {
-      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-      return b.updatedAt - a.updatedAt;
-    });
-    return out;
-  }, [sessionsByWorkspaceId, selectedWorkspaceId, workspaces]);
+    return buildTaskPaletteSessionOptions(
+      workspaces,
+      visibleSessionsByWorkspaceId,
+      selectedWorkspaceId,
+    );
+  }, [selectedWorkspaceId, visibleSessionsByWorkspaceId, workspaces]);
 
   const paletteSessionGroups = useMemo<SessionGroupOption[]>(
     () => selectedWorkspaceGroupState?.groups ?? [],

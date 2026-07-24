@@ -12,9 +12,8 @@ import { t } from "@/i18n";
 import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
 import { useDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
-import { ModelBehaviorSelect } from "@/components/model-behavior-select";
-import { ModelSelect } from "@/components/model-select";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
+import { ModelBehaviorMenu } from "./model-behavior-menu";
 import { listRunningAppsForMention } from "./app-mentions";
 import type { ComposerMentionKind } from "./mention-encoding";
 import { getSlashCommandQuery } from "./slash-command";
@@ -1656,11 +1655,13 @@ export function ReactSessionComposer(props: ComposerProps) {
                   ) : null}
                 </div>
 
-                <ModelSelect
-                  open={props.modelPickerOpen}
-                  value={props.selectedModel}
-                  onOpenChange={props.onModelPickerOpenChange}
-                  onChange={props.onModelChange}
+                <ModelBehaviorMenu
+                  selectedModel={props.selectedModel}
+                  modelVariant={props.modelVariant}
+                  modelVariantLabel={props.modelVariantLabel}
+                  options={props.modelBehaviorOptions}
+                  onModelChange={props.onModelChange}
+                  onModelVariantChange={props.onModelVariantChange}
                   onConfigureModels={props.onConfigureModels}
                   disabled={props.busy}
                 />
@@ -1673,14 +1674,6 @@ export function ReactSessionComposer(props: ComposerProps) {
                     {t("composer.model_unavailable")}
                   </button>
                 ) : null}
-
-                <ModelBehaviorSelect
-                  value={props.modelVariant}
-                  label={props.modelVariantLabel}
-                  options={props.modelBehaviorOptions}
-                  onChange={props.onModelVariantChange}
-                  disabled={props.busy}
-                />
               </div>
 
               {/*
