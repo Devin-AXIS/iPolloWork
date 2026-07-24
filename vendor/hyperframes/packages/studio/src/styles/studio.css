@@ -231,6 +231,42 @@ button[aria-label="退出全屏"] {
   color: var(--hf-panel-bg-0);
 }
 
+.hf-preview-text-toolbar__icon-button {
+  display: inline-flex;
+  width: 1.5rem;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.hf-preview-text-toolbar__icon-button > svg {
+  display: block;
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: none;
+}
+
+.hf-preview-text-toolbar__delete-button {
+  color: #e5484d;
+}
+
+.hf-preview-text-toolbar__delete-button:hover {
+  background: rgba(229, 72, 77, 0.1);
+  color: #e5484d;
+}
+
+:root:not([data-ipollowork-theme="light"]) .hf-preview-text-toolbar__delete-button {
+  color: #ff6369;
+}
+
+:root:not([data-ipollowork-theme="light"]) .hf-preview-text-toolbar__delete-button:hover {
+  background: rgba(255, 99, 105, 0.1);
+  color: #ff6369;
+}
+
 .hf-preview-text-toolbar__input {
   width: min(13rem, 30vw);
   height: 1.75rem;

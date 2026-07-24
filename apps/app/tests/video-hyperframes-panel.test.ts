@@ -42,6 +42,63 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain("onExpandedChange={setVideoStudioExpanded}");
   });
 
+  test("wires Video Studio selected-element toolbar actions in Design order", () => {
+    const electronSource = readFileSync(
+      new URL("../../../apps/desktop/electron/main.mjs", import.meta.url),
+      "utf8",
+    );
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const nativeToolbarSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/nle/PreviewTextSelectionToolbar.tsx", import.meta.url),
+      "utf8",
+    );
+
+    const deleteIndex = electronSource.indexOf('data-action="delete"');
+    const advancedIndex = electronSource.indexOf('data-action="advanced"');
+    const aiIndex = electronSource.indexOf('data-action="ai"');
+    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label="Delete selected element"');
+    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label="Open Design properties"');
+    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label="Ask AI about selected element"');
+
+    expect(deleteIndex).toBeGreaterThan(-1);
+    expect(advancedIndex).toBeGreaterThan(deleteIndex);
+    expect(aiIndex).toBeGreaterThan(advancedIndex);
+    expect(electronSource).toContain("/file-mutations/remove-element/");
+    expect(electronSource).toContain("deleteSelectedElement");
+    expect(electronSource).toContain("ipollowork:hyperframes:ask-ai-selection");
+    expect(electronSource).toContain("selectedAiPayload");
+    expect(panelSource).toContain("onAskAi?: (context: DesignAiSelectionContext) => void");
+    expect(panelSource).toContain('event.data?.type !== "ipollowork:hyperframes:ask-ai-selection"');
+    expect(panelSource).toContain("video-ai-${crypto.randomUUID()}");
+    expect(sessionPageSource).toContain("onAskAi={handleDesignAskAi}");
+    expect(nativeToolbarSource).toContain("handleDomEditElementDelete");
+    expect(nativeToolbarSource).toContain("window.parent?.postMessage");
+    expect(nativeToolbarSource).toContain("ipollowork:hyperframes:ask-ai-selection");
+    expect(nativeDeleteIndex).toBeGreaterThan(-1);
+    expect(nativeAdvancedIndex).toBeGreaterThan(nativeDeleteIndex);
+    expect(nativeAiIndex).toBeGreaterThan(nativeAdvancedIndex);
+    expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__icon-button");
+    expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__delete-button");
+  });
+
+  test("rebuilds the embedded Studio when its source is newer than the bundled UI", () => {
+    const electronDevSource = readFileSync(
+      new URL("../../../apps/desktop/scripts/electron-dev.mjs", import.meta.url),
+      "utf8",
+    );
+
+    expect(electronDevSource).toContain('const hyperframesStudioBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "studio", "index.html")');
+    expect(electronDevSource).toContain("newestMtimeMs(studioSourceRoot) > studioBuildTime");
+    expect(electronDevSource).toContain('runSync(bunCmd, ["run", "build:local-studio"]');
+  });
+
   test("prevents automatic browser activity from replacing Video Studio", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),

@@ -25,6 +25,7 @@ export {
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
 import {
   getAdapterDuration,
+  shouldUseStudioClockForLegacyFrames,
   wrapTimeline,
   getDefaultStaticSeekPlaybackClock,
   releaseStaticSeekCache,
@@ -155,6 +156,19 @@ export function useTimelinePlayer() {
           docDuration > 0 ? wrapAdapterWithDurationLimit(adapter, docDuration) : adapter,
           () => iframe.contentDocument,
         );
+
+      if (shouldUseStudioClockForLegacyFrames(iframe.contentDocument, playerAdapter, docDuration)) {
+        return withTimedVisibility(resolveStaticSeekFallback({
+          cache: staticSeekAdapterRef,
+          warned: staticSeekWarnedRef,
+          bestAdapter: playerAdapter!,
+          effectiveDuration: docDuration,
+          docDuration,
+          clock: getDefaultStaticSeekPlaybackClock(win),
+          getPlaybackRate: () => usePlayerStore.getState().playbackRate,
+          reason: "legacy-frame-carousel",
+        }));
+      }
 
       if (adapterDur > 0 && docDuration <= adapterDur) {
         releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
@@ -550,6 +564,7 @@ export function useTimelinePlayer() {
 
     const handleVisibilityChange = () => {
       if (document.hidden && usePlayerStore.getState().isPlaying) {
+        stopPreviewMedia();
         const adapter = getAdapterRef.current?.();
         if (adapter) {
           adapter.pause();
@@ -573,6 +588,7 @@ export function useTimelinePlayer() {
       stopRAFLoop();
       stopReverseLoop();
       stopScrubPreviewAudio();
+      stopPreviewMedia();
       releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
       if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
     };

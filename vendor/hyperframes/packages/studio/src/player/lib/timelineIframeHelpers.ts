@@ -187,14 +187,27 @@ function setPreviewAnimationsActive(iframe: HTMLIFrameElement, active: boolean):
   }
 }
 
+function legacyPlayButtonIsRunning(button: HTMLElement): boolean {
+  const ariaLabel = button.getAttribute("aria-label")?.trim().toLowerCase() ?? "";
+  const ariaPressed = button.getAttribute("aria-pressed")?.trim().toLowerCase() ?? "";
+  const dataPlaying = button.getAttribute("data-playing")?.trim().toLowerCase() ?? "";
+  const text = button.textContent?.trim().toLowerCase() ?? "";
+  return ariaLabel.includes("pause") ||
+    ariaLabel.includes("暂停") ||
+    ariaPressed === "true" ||
+    dataPlaying === "true" ||
+    /pause|暂停|⏸|❚❚|Ⅱ/.test(text);
+}
+
 function stopLegacyFrameCarousel(doc: Document | null | undefined): void {
   if (!doc || doc.querySelectorAll(".frame").length < 2) return;
   const root = doc.querySelector<HTMLElement>("[data-composition-id]");
   if (!root || root.hasAttribute("data-hf-studio-carousel-controlled")) return;
   root.setAttribute("data-hf-studio-carousel-controlled", "true");
   const playButton = doc.querySelector<HTMLElement>("#play");
+  if (!playButton || !legacyPlayButtonIsRunning(playButton)) return;
   try {
-    playButton?.click();
+    playButton.click();
   } catch {}
 }
 

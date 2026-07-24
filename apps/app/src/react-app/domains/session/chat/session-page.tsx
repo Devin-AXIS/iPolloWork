@@ -2173,6 +2173,7 @@ export function SessionPage(props: SessionPageProps) {
                         launcherItems={sidePanelLauncherItems}
                         expanded={videoStudioExpanded}
                         onExpandedChange={setVideoStudioExpanded}
+                        onAskAi={handleDesignAskAi}
                         onClose={closeRightPane}
                       />
                     </div>

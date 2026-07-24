@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   Copy,
   Download,
   FileIcon,
@@ -84,9 +85,54 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCreated, formatMessageTimestamp, type UIMessageWithIndex, getMessagesText } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCreated, formatMessageTimestamp, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
+
+type RenderAssistantGroupOptions = {
+  highlightQuery?: string
+}
+
+function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>[number], index: number, options: RenderAssistantGroupOptions = {}) {
+  if (group.kind === "text") {
+    return (
+      <MessageContent
+        key={`text-${index}`}
+        className="text-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
+        markdown
+        highlightQuery={options.highlightQuery}
+      >
+        {group.text}
+      </MessageContent>
+    )
+  }
+
+  if (group.kind === "reasoning") {
+    return (
+      <MessageContent
+        key={`reasoning-${index}`}
+        className="text-muted-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
+        markdown
+      >
+        {group.text}
+      </MessageContent>
+    )
+  }
+
+  if (group.kind === "file") {
+    return (
+      <div key={`file-${index}`} className="w-full">
+        <FileMessage part={group.part} tone="assistant" />
+      </div>
+    )
+  }
+
+  return (
+    <div key={`tool-${index}`} className="w-full">
+      <ToolMessage part={group.part} />
+    </div>
+  )
+}
 
 function MessageTimestamp({ message, className }: { message: UIMessage; className?: string }) {
   const created = getMessageCreated(message)
@@ -358,12 +404,90 @@ type AssistantMessageProps = {
   templateEntryPath?: string
 }
 
+function assistantProcessSummary(groups: AssistantProcessRenderGroup[]) {
+  let reasoningCount = 0
+  let toolCount = 0
+  let fileCount = 0
+
+  for (const group of groups) {
+    if (group.kind === "reasoning") {
+      reasoningCount += 1
+    } else if (group.kind === "tool") {
+      toolCount += 1
+    } else {
+      fileCount += 1
+    }
+  }
+
+  const segments: string[] = []
+  if (reasoningCount > 0) segments.push(t("message.process_reasoning_count", { count: reasoningCount }))
+  if (toolCount > 0) segments.push(t("message.process_tool_count", { count: toolCount }))
+  if (fileCount > 0) segments.push(t("message.process_file_count", { count: fileCount }))
+  return segments.length > 0 ? segments.join(" · ") : t("message.process_steps")
+}
+
+function AssistantProcessSection(props: {
+  groups: AssistantProcessRenderGroup[]
+  isStreaming: boolean
+}) {
+  const { groups, isStreaming } = props
+  const [isOpen, setIsOpen] = React.useState(isStreaming)
+  const previousStreamingRef = React.useRef(isStreaming)
+
+  React.useEffect(() => {
+    if (isStreaming) {
+      setIsOpen(true)
+    } else if (previousStreamingRef.current) {
+      setIsOpen(false)
+    }
+    previousStreamingRef.current = isStreaming
+  }, [isStreaming])
+
+  if (groups.length === 0) {
+    return null
+  }
+
+  const label = isStreaming ? t("message.process_in_progress") : t("message.process_completed")
+
+  return (
+    <div className="w-full">
+      <button
+        type="button"
+        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 rounded-md px-0 py-1 text-left text-sm transition-colors"
+        aria-expanded={isOpen}
+        aria-label={isOpen ? t("message.collapse_process") : t("message.expand_process")}
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        {isStreaming ? (
+          <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
+        ) : (
+          <Check className="size-3.5 shrink-0" aria-hidden />
+        )}
+        <span className="min-w-0 truncate">
+          {label}
+          <span className="ml-1 text-muted-foreground/75">{assistantProcessSummary(groups)}</span>
+        </span>
+        <ChevronDown className={cn("ml-auto size-3.5 shrink-0 transition-transform", isOpen && "rotate-180")} aria-hidden />
+      </button>
+      {isOpen ? (
+        <div className="mt-2 flex w-full flex-col gap-2 border-l border-border/70 pl-4">
+          {groups.map((group, index) => renderAssistantGroup(group, index))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 const AssistantMessage = React.memo(
-  ({ message, showLatestArtifactsTitle = false, templateEntryPath }: AssistantMessageProps) => {
+  ({ message, isStreaming, showLatestArtifactsTitle = false, templateEntryPath }: AssistantMessageProps) => {
     const { showThinking, highlightQuery, sessionId } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
       [message.parts, showThinking]
+    )
+    const assistantRenderSections = React.useMemo(
+      () => splitAssistantRenderGroups(assistantRenderGroups),
+      [assistantRenderGroups]
     )
 
     return (
@@ -373,46 +497,13 @@ const AssistantMessage = React.memo(
         data-message-role={message.role}
       >
         <div className="group flex w-full flex-col gap-0 space-y-2">
-          {assistantRenderGroups.map((group, index) => {
-            if (group.kind === "text") {
-              return (
-                <MessageContent
-                  key={`text-${index}`}
-                  className="text-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
-                  markdown
-                  highlightQuery={highlightQuery}
-                >
-                  {group.text}
-                </MessageContent>
-              )
-            }
-
-            if (group.kind === "reasoning") {
-              return (
-                <MessageContent
-                  key={`reasoning-${index}`}
-                  className="text-muted-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
-                  markdown
-                >
-                  {group.text}
-                </MessageContent>
-              )
-            }
-
-            if (group.kind === "file") {
-              return (
-                <div key={`file-${index}`} className="w-full">
-                  <FileMessage part={group.part} tone="assistant" />
-                </div>
-              )
-            }
-
-            return (
-              <div key={`tool-${index}`} className="w-full">
-                <ToolMessage part={group.part} />
-              </div>
-            )
-          })}
+          <AssistantProcessSection
+            groups={assistantRenderSections.processGroups}
+            isStreaming={isStreaming}
+          />
+          {assistantRenderSections.resultGroups.map((group, index) =>
+            renderAssistantGroup(group, index, { highlightQuery })
+          )}
           <ArtifactList
             messages={[message]}
             sessionId={sessionId}
@@ -438,6 +529,29 @@ function UserSkillChip(props: { name: string }) {
   return (
     <span className="mx-0.5 inline-flex items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11 align-middle" title={`Skill: ${props.name}`}>
       {props.name}
+    </span>
+  )
+}
+
+type DesignSelectionDataPart = UIMessage["parts"][number] & {
+  type: "data-design-selection"
+  data: { contextId: string; label: string }
+}
+
+function isDesignSelectionDataPart(part: UIMessage["parts"][number]): part is DesignSelectionDataPart {
+  if (part.type !== "data-design-selection" || !part.data || typeof part.data !== "object") return false
+  const data = part.data as { contextId?: unknown; label?: unknown }
+  return typeof data.contextId === "string" && typeof data.label === "string" && Boolean(data.label.trim())
+}
+
+function UserDesignSelectionChip(props: { label: string }) {
+  return (
+    <span
+      data-message-design-selection="true"
+      className="inline-flex max-w-full items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11"
+      title={`Design selection: ${props.label}`}
+    >
+      <span className="truncate">{props.label}</span>
     </span>
   )
 }
@@ -506,6 +620,9 @@ const UserMessage = React.memo(
               <div className="group flex w-full flex-col items-end gap-1">
                 {message.parts.filter(isFileUIPart).map((part, index) => (
                   <FileMessage key={`${part.url}-${index}`} part={part} tone="user" />
+                ))}
+                {message.parts.filter(isDesignSelectionDataPart).map((part) => (
+                  <UserDesignSelectionChip key={part.data.contextId} label={part.data.label} />
                 ))}
                 {message.parts.some((part) => part.type === "text" && part.text) ? (
                   <MessageContent
