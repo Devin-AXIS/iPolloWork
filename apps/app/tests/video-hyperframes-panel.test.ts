@@ -10,10 +10,25 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(panelSource).toContain('aria-label="Toggle Video Studio fullscreen"');
+    expect(panelSource).toContain('aria-label={t("video.toggle_fullscreen")}');
     expect(panelSource).toContain("onExpandedChange?.(!expanded)");
     expect(panelSource).not.toContain("requestFullscreen()");
     expect(panelSource).not.toContain("document.exitFullscreen()");
+  });
+
+  test("keeps Video Studio shell copy localized", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain('t("video.title")');
+    expect(panelSource).toContain("studioStartupTitleKey");
+    expect(panelSource).toContain('t("video.status_failed")');
+    expect(panelSource).toContain('t("video.failed_to_start")');
+    expect(panelSource).not.toContain(">Video Studio<");
+    expect(panelSource).not.toContain("Reload Video Studio");
+    expect(panelSource).not.toContain("HyperFrames Studio failed to start</p>");
   });
 
   test("keeps the application sidebar visible while Video Studio is expanded", () => {

@@ -8,6 +8,7 @@ import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2,
 import { MAX_TEMPLATE_PACKAGE_BYTES, isPptxCompatibleTemplate, type TemplateCatalogItem, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateStyle } from "@ipollowork/types/templates";
 
 import { currentLocale, t } from "../../../../i18n";
+import { downloadTextAsFile } from "@/app/lib/download";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
 import { type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
@@ -25,6 +26,7 @@ import type {
 } from "../../../../app/types";
 import type { ShareWorkspaceModalProps } from "../../workspace/types";
 import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
+import { buildSessionMarkdown, sessionMarkdownFilename } from "@/components/chat/utils";
 import { getArtifactsFromMessages, isVideoHtmlArtifact } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -1508,6 +1510,15 @@ export function SessionPage(props: SessionPageProps) {
     [props.selectedSessionId, props.sidebar.workspaceSessionGroups],
   );
   const canSavePromptTemplate = Boolean(props.selectedSessionId && conversationMessages.some((message) => message.role === "user"));
+  const exportSessionMarkdown = useCallback(() => {
+    if (!props.selectedSessionId || conversationMessages.length === 0) return;
+    const title = selectedSessionTitle || t("session.default_title");
+    downloadTextAsFile(
+      sessionMarkdownFilename(title),
+      buildSessionMarkdown(title, conversationMessages),
+      "text/markdown;charset=utf-8",
+    );
+  }, [conversationMessages, props.selectedSessionId, selectedSessionTitle]);
   const saveCurrentTaskAsPromptTemplate = useCallback(() => {
     if (!props.selectedSessionId || !canSavePromptTemplate) return;
     const firstUserMessage = conversationMessages.find((message) => message.role === "user");
@@ -1582,7 +1593,7 @@ export function SessionPage(props: SessionPageProps) {
       props.surface,
   );
   const showHeaderMenu = Boolean(
-    (props.selectedSessionId && (props.onRenameSession || props.onDeleteSession)) || props.developerMode,
+    props.selectedSessionId || props.developerMode,
   );
   const selectedSessionIsDefaultTitle = selectedSessionTitle === t("session.default_title");
   const showMainHeaderTitle = Boolean(
@@ -1799,6 +1810,12 @@ export function SessionPage(props: SessionPageProps) {
                       <DropdownMenuItem disabled={!canSavePromptTemplate} onClick={saveCurrentTaskAsPromptTemplate}>
                         <FileText className="size-4" />
                         {t("prompt_templates.save_task")}
+                      </DropdownMenuItem>
+                    ) : null}
+                    {props.selectedSessionId ? (
+                      <DropdownMenuItem disabled={conversationMessages.length === 0} onClick={exportSessionMarkdown}>
+                        <FileText className="size-4" />
+                        {t("session.export_markdown")}
                       </DropdownMenuItem>
                     ) : null}
                     {props.selectedSessionId && (props.onRenameSession || props.onDeleteSession || props.developerMode) ? <DropdownMenuSeparator /> : null}
@@ -2162,6 +2179,7 @@ export function SessionPage(props: SessionPageProps) {
                   ) : activeSidePanel === "outputs" ? (
                     <ConversationOutputPanel
                       messages={conversationMessages}
+                      sessionId={props.selectedSessionId ?? undefined}
                       openTargets={accessibleTargets}
                       templateEntryPath={designTemplateEntryPath}
                       onOpenTarget={openTarget}

@@ -49,6 +49,36 @@ export function buildQuoteFollowUpPrompt(text: string): string {
   return `${quote}\n\n${t("message.quote_follow_up_prompt")}`
 }
 
+export function sessionMarkdownFilename(title: string, timestamp = new Date()): string {
+  const safeTitle = title
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "")
+    .slice(0, 80) || "ipollowork-session"
+  const safeTimestamp = timestamp.toISOString().replace(/[:.]/g, "-")
+  return `${safeTitle}-${safeTimestamp}.md`
+}
+
+function markdownSection(title: string, body: string) {
+  return `## ${title}\n\n${body.trim() || "_No visible text._"}`
+}
+
+export function buildSessionMarkdown(title: string, messages: UIMessage[]): string {
+  const sections = messages.flatMap((message, index) => {
+    const text = getMessageText(message)
+    if (!text) return []
+    const role = message.role === "assistant" ? "Assistant" : message.role === "user" ? "User" : message.role
+    return [markdownSection(`${index + 1}. ${role}`, text)]
+  })
+  const heading = `# ${title.trim() || "iPolloWork session"}`
+  return `${heading}\n\n${sections.join("\n\n")}\n`
+}
+
+export function buildReviseFilePrompt(path: string): string {
+  return `${t("session.outputs.revise_file_prompt")} ${path}`
+}
+
 export function getLastTextPart(message: UIMessage): UIMessage | null {
   const lastTextPart = message.parts.findLast((part) => part.type === "text")
 
