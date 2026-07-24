@@ -1,11 +1,11 @@
 # Security Policy
 
-## Supported versions
+## Supported Versions
 
 iPolloWork is under active development and we prioritize fixes on the latest release and
 the current `dev` branch.
 
-## Reporting a vulnerability
+## Reporting a Vulnerability
 
 Please do not open public GitHub issues for security vulnerabilities.
 
@@ -20,13 +20,13 @@ Please include:
 - Impact assessment
 - Suggested remediation (if known)
 
-## Response expectations
+## Response Expectations
 
 - We will acknowledge receipt within 3 business days.
 - We will provide an initial triage status within 7 business days.
 - We will share remediation or mitigation guidance as soon as available.
 
-## Disclosure guidance
+## Disclosure Guidance
 
 Please keep details private until a fix or mitigation is available and maintainers
 confirm public disclosure timing.
