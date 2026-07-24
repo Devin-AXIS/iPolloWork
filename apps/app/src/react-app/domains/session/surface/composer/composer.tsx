@@ -62,6 +62,7 @@ type ComposerProps = {
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
   onConfigureModels?: () => void;
+  onConfigureTokenStar?: () => void;
   attachments: ComposerAttachment[];
   onAttachFiles: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
@@ -1663,6 +1664,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                   onModelChange={props.onModelChange}
                   onModelVariantChange={props.onModelVariantChange}
                   onConfigureModels={props.onConfigureModels}
+                  onConfigureTokenStar={props.onConfigureTokenStar}
                   disabled={props.busy}
                 />
                 {props.modelUnavailable ? (

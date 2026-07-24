@@ -191,6 +191,7 @@ export type SessionSurfaceProps = {
   modelVariant: string | null;
   modelBehaviorOptions?: { value: string | null; label: string }[];
   onModelVariantChange: (value: string | null) => void;
+  onConfigureTokenStar?: () => void;
   agentLabel: string;
   selectedAgent: string | null;
   listAgents: () => Promise<import("@opencode-ai/sdk/v2/client").Agent[]>;
@@ -1436,6 +1437,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           modelVariant={props.modelVariant}
           modelBehaviorOptions={props.modelBehaviorOptions}
           onModelVariantChange={props.onModelVariantChange}
+          onConfigureTokenStar={props.onConfigureTokenStar}
           agentLabel={props.agentLabel}
           selectedAgent={props.selectedAgent}
           listAgents={props.listAgents}

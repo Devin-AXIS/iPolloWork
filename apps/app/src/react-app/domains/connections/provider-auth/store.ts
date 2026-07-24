@@ -74,7 +74,7 @@ import {
   isDesktopProviderBlocked,
   type DesktopAppRestrictionChecker,
 } from "../../../../app/cloud/desktop-app-restrictions";
-import { TOKENSTAR_PROVIDER } from "./tokenstar-provider";
+import { TOKENSTAR_PROVIDER, tokenStarRuntimeModels } from "./tokenstar-provider";
 
 type ProviderReturnFocusTarget = "none" | "composer";
 type CloudProviderSyncReason = "sign_in" | "app_launch" | "interval" | "settings_cloud_opened";
@@ -1426,20 +1426,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
               .filter(Boolean),
           ),
         ];
-        const fallbackNames = new Map(
-          TOKENSTAR_PROVIDER.fallbackModels.map((model) => [model.id, model.name]),
-        );
         await patchRuntimeProviders({
           [TOKENSTAR_PROVIDER.providerId]: {
             npm: "@ai-sdk/openai-compatible",
             name: TOKENSTAR_PROVIDER.name,
             options: { baseURL: TOKENSTAR_PROVIDER.baseURL },
-            models: Object.fromEntries(
-              selectedModelIds.map((modelId) => [
-                modelId,
-                { name: fallbackNames.get(modelId) ?? modelId },
-              ]),
-            ),
+            models: tokenStarRuntimeModels(selectedModelIds),
           },
         });
         try {
@@ -1824,6 +1816,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     try {
+      if (resolved.toLowerCase() === TOKENSTAR_PROVIDER.providerId) {
+        await patchRuntimeProviders({ [TOKENSTAR_PROVIDER.providerId]: null });
+        try {
+          await updateProjectConfigFile((raw) =>
+            formatConfigWithoutCloudProvider(
+              raw,
+              TOKENSTAR_PROVIDER.providerId,
+              options.disabledProviders(),
+            ),
+          );
+        } catch {
+          // Runtime config owns this provider; legacy file cleanup is best-effort.
+        }
+      }
       await removeProviderAuthCredentials(resolved);
       const updated = await refreshProviders({ dispose: true });
       if (Array.isArray(updated?.connected) && updated.connected.includes(resolved)) {
