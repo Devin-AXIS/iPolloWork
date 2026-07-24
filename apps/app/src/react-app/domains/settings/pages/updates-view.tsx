@@ -162,6 +162,13 @@ export function UpdatesView(props: UpdatesViewProps) {
                 </Alert>
               ) : null}
 
+              {updateState === "idle" && updateErrorMessage ? (
+                <Alert>
+                  <Info />
+                  <AlertDescription>{updateErrorMessage}</AlertDescription>
+                </Alert>
+              ) : null}
+
               {updateRestartActiveRunsMessage ? (
                 <Alert>
                   <Info />

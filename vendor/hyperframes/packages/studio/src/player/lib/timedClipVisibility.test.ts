@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { syncTimedClipVisibility, wrapAdapterWithTimedClipVisibility } from "./timedClipVisibility";
+import {
+  syncLegacyFrameCarousel,
+  syncTimedClipVisibility,
+  wrapAdapterWithTimedClipVisibility,
+} from "./timedClipVisibility";
 
 function sceneState(id: string) {
   const element = document.getElementById(id) as HTMLElement;
@@ -68,6 +72,41 @@ describe("syncTimedClipVisibility", () => {
     expect(sceneState("image").visibility).toBe("visible");
   });
 
+  it("keeps a narrated scene visible until its slow voiceover finishes", () => {
+    const root = document.getElementById("root")!;
+    root.innerHTML = `
+      <section id="intro" class="scene clip" data-start="0" data-duration="3" data-track-index="2" style="position:absolute">
+        <h1 id="intro-title" data-start="0" data-duration="3" style="position:absolute">Intro copy</h1>
+      </section>
+      <section id="details" class="scene clip" data-start="3" data-duration="4" data-track-index="2" style="position:absolute">
+        <h1>Details copy</h1>
+      </section>
+      <div id="persistent-overlay" class="clip" data-start="0" data-duration="7" data-track-index="1" style="position:absolute"></div>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro copy" data-ipw-narration-text="Intro copy" data-start="0" data-duration="5"></audio>`;
+
+    syncTimedClipVisibility(document, 4.5);
+    expect(sceneState("intro").visibility).toBe("visible");
+    expect(sceneState("intro-title").visibility).toBe("visible");
+    expect(sceneState("details").visibility).toBe("hidden");
+    expect(sceneState("persistent-overlay").visibility).toBe("visible");
+
+    syncTimedClipVisibility(document, 5.1);
+    expect(sceneState("intro").visibility).toBe("hidden");
+    expect(sceneState("details").visibility).toBe("visible");
+  });
+
+  it("does not extend a scene for an invalid or mismatched narration binding", () => {
+    const root = document.getElementById("root")!;
+    root.innerHTML = `
+      <section id="intro" class="scene clip" data-start="0" data-duration="3" data-track-index="2" style="position:absolute"></section>
+      <section id="details" class="scene clip" data-start="3" data-duration="4" data-track-index="2" style="position:absolute"></section>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro copy" data-ipw-narration-text="Different copy" data-start="0" data-duration="5"></audio>`;
+
+    syncTimedClipVisibility(document, 4.5);
+    expect(sceneState("intro").visibility).toBe("hidden");
+    expect(sceneState("details").visibility).toBe("visible");
+  });
+
   it("does not let a child escape an inactive parent window", () => {
     document.getElementById("ui")!.innerHTML = `
       <div id="nested" data-start="0" data-duration="15" style="position:absolute"></div>`;
@@ -130,5 +169,28 @@ describe("syncTimedClipVisibility", () => {
     expect(sceneState("proof").visibility).toBe("hidden");
     expect(sceneState("cta").visibility).toBe("visible");
     expect(wrapAdapterWithTimedClipVisibility(source, () => document)).toBe(adapter);
+  });
+});
+
+describe("syncLegacyFrameCarousel", () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-duration="10">
+        <section id="frame-1" class="frame active" data-duration="4000"></section>
+        <section id="frame-2" class="frame active" data-duration="4000"></section>
+        <section id="frame-3" class="frame" data-duration="2000"></section>
+      </main>`;
+  });
+
+  it("forces exactly one legacy frame to match the Studio playhead", () => {
+    syncLegacyFrameCarousel(document, 5, 10);
+
+    expect(document.getElementById("frame-1")?.classList.contains("active")).toBe(false);
+    expect(document.getElementById("frame-2")?.classList.contains("active")).toBe(true);
+    expect(document.getElementById("frame-3")?.classList.contains("active")).toBe(false);
+    expect(sceneState("frame-1").visibility).toBe("hidden");
+    expect(sceneState("frame-2").visibility).toBe("visible");
+    expect((document.getElementById("frame-1") as HTMLElement).style.opacity).toBe("0");
+    expect((document.getElementById("frame-2") as HTMLElement).style.opacity).toBe("1");
   });
 });

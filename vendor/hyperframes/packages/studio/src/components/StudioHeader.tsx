@@ -376,17 +376,6 @@ export function StudioHeader({
               STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
             }
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
-            </svg>
             {t("header.inspector")}
           </button>
         </Tooltip>

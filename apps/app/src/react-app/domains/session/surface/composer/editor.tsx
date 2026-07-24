@@ -33,6 +33,7 @@ import {
 } from "lexical";
 import type { InitialConfigType } from "@lexical/react/LexicalComposer.js";
 import { decodeComposerMentionValue, encodeComposerMentionValue, type ComposerMentionKind } from "./mention-encoding";
+import { useDesignAiSelectionStore } from "../../design/design-ai-selection-store";
 
 type EditorProps = {
   value: string;
@@ -77,6 +78,16 @@ type SerializedComposerSkillNode = Spread<
   {
     skillName: string;
     type: "composer-skill";
+    version: 1;
+  },
+  SerializedTextNode
+>;
+
+type SerializedComposerDesignSelectionNode = Spread<
+  {
+    contextId: string;
+    label: string;
+    type: "composer-design-selection";
     version: 1;
   },
   SerializedTextNode
@@ -300,6 +311,78 @@ function $createComposerSkillNode(skillName: string) {
   return $applyNodeReplacement(new ComposerSkillNode(skillName));
 }
 
+class ComposerDesignSelectionNode extends TextNode {
+  __contextId: string;
+  __label: string;
+
+  static override getType() {
+    return "composer-design-selection";
+  }
+
+  static override clone(node: ComposerDesignSelectionNode) {
+    return new ComposerDesignSelectionNode(node.__contextId, node.__label, node.__key);
+  }
+
+  static override importJSON(serializedNode: SerializedComposerDesignSelectionNode) {
+    return $createComposerDesignSelectionNode(serializedNode.contextId, serializedNode.label);
+  }
+
+  constructor(contextId = "", label = "Design selection", key?: NodeKey) {
+    super(`[[design-ai:${contextId}]]`, key);
+    this.__contextId = contextId;
+    this.__label = label;
+  }
+
+  override exportJSON(): SerializedComposerDesignSelectionNode {
+    return {
+      ...super.exportJSON(),
+      contextId: this.__contextId,
+      label: this.__label,
+      type: "composer-design-selection",
+      version: 1,
+    };
+  }
+
+  override createDOM(_config: EditorConfig) {
+    const dom = document.createElement("span");
+    dom.className = "inline-flex items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11";
+    dom.textContent = this.__label;
+    dom.contentEditable = "false";
+    dom.setAttribute("data-composer-token", "design-selection");
+    dom.setAttribute("spellcheck", "false");
+    dom.title = `Design selection: ${this.__label}`;
+    return dom;
+  }
+
+  override updateDOM(prevNode: ComposerDesignSelectionNode, dom: HTMLElement) {
+    if (prevNode.__label !== this.__label) {
+      dom.textContent = this.__label;
+      dom.title = `Design selection: ${this.__label}`;
+    }
+    return false;
+  }
+
+  override canInsertTextBefore(): false {
+    return false;
+  }
+
+  override canInsertTextAfter(): false {
+    return false;
+  }
+
+  override isTextEntity(): true {
+    return true;
+  }
+
+  override isToken(): true {
+    return true;
+  }
+}
+
+function $createComposerDesignSelectionNode(contextId: string, label: string) {
+  return $applyNodeReplacement(new ComposerDesignSelectionNode(contextId, label));
+}
+
 function pastedTextChipLabel(lines: number) {
   return `Pasted · ${lines} line${lines === 1 ? "" : "s"}`;
 }
@@ -418,7 +501,7 @@ function $createComposerPastedTextNode(label: string, lines: number) {
   return $applyNodeReplacement(new ComposerPastedTextNode(label, lines));
 }
 
-type ComposerInlineTokenNode = ComposerMentionNode | ComposerSlashCommandNode | ComposerSkillNode | ComposerPastedTextNode;
+type ComposerInlineTokenNode = ComposerMentionNode | ComposerSlashCommandNode | ComposerSkillNode | ComposerPastedTextNode | ComposerDesignSelectionNode;
 
 function setSelectionAfterNode(node: TextNode) {
   const parent = node.getParent();
@@ -480,10 +563,17 @@ function setPrompt(value: string, mentions: Record<string, ComposerMentionKind>,
     value = slashMatch[2] ?? "";
   }
 
-  const segments = value.split(/(\[pasted text [^\]]+\]|\[skill [^\]]+\]|@[^\s@]+)/);
+  const segments = value.split(/(\[\[design-ai:[a-zA-Z0-9_-]+\]\]|\[pasted text [^\]]+\]|\[skill [^\]]+\]|@[^\s@]+)/);
   const pastedTextByLabel = new Map((pastedText ?? []).map((item) => [item.label, item]));
   for (const segment of segments) {
     if (!segment) continue;
+    const designSelectionMatch = segment.match(/^\[\[design-ai:([a-zA-Z0-9_-]+)\]\]$/);
+    if (designSelectionMatch?.[1]) {
+      const contextId = designSelectionMatch[1];
+      const label = useDesignAiSelectionStore.getState().contexts[contextId]?.target.label ?? "Design selection";
+      paragraph.append($createComposerDesignSelectionNode(contextId, label));
+      continue;
+    }
     const pasteMatch = segment.match(/^\[pasted text (.+)\]$/);
     if (pasteMatch?.[1]) {
       const target = pastedTextByLabel.get(pasteMatch[1]);
@@ -712,7 +802,7 @@ function MentionChipNavigationPlugin() {
         // --- Mention / pasted-text chips: atomic delete (same as before) ---
         if ($isTextNode(anchorNode) && selection.anchor.offset === 0) {
           const previous = anchorNode.getPreviousSibling();
-          if (previous instanceof ComposerMentionNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode) {
+          if (previous instanceof ComposerMentionNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode || previous instanceof ComposerDesignSelectionNode) {
             previous.remove();
             return true;
           }
@@ -720,7 +810,7 @@ function MentionChipNavigationPlugin() {
 
         if ($isElementNode(anchorNode)) {
           const previous = anchorNode.getChildAtIndex(selection.anchor.offset - 1);
-          if (previous instanceof ComposerSlashCommandNode || previous instanceof ComposerMentionNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode) {
+          if (previous instanceof ComposerSlashCommandNode || previous instanceof ComposerMentionNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode || previous instanceof ComposerDesignSelectionNode) {
             previous.remove();
             return true;
           }
@@ -740,7 +830,7 @@ function MentionChipNavigationPlugin() {
 
         if ($isTextNode(anchorNode) && selection.anchor.offset === 0) {
           const previous = anchorNode.getPreviousSibling();
-          if (previous instanceof ComposerMentionNode || previous instanceof ComposerSlashCommandNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode) {
+          if (previous instanceof ComposerMentionNode || previous instanceof ComposerSlashCommandNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode || previous instanceof ComposerDesignSelectionNode) {
             setSelectionBeforeNode(previous);
             return true;
           }
@@ -758,14 +848,14 @@ function MentionChipNavigationPlugin() {
         if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
         const anchorNode = selection.anchor.getNode();
 
-        if (anchorNode instanceof ComposerMentionNode || anchorNode instanceof ComposerSlashCommandNode || anchorNode instanceof ComposerSkillNode || anchorNode instanceof ComposerPastedTextNode) {
+        if (anchorNode instanceof ComposerMentionNode || anchorNode instanceof ComposerSlashCommandNode || anchorNode instanceof ComposerSkillNode || anchorNode instanceof ComposerPastedTextNode || anchorNode instanceof ComposerDesignSelectionNode) {
           setSelectionAfterNode(anchorNode);
           return true;
         }
 
         if ($isElementNode(anchorNode)) {
           const current = anchorNode.getChildAtIndex(selection.anchor.offset);
-          if (current instanceof ComposerMentionNode || current instanceof ComposerSlashCommandNode || current instanceof ComposerSkillNode || current instanceof ComposerPastedTextNode) {
+          if (current instanceof ComposerMentionNode || current instanceof ComposerSlashCommandNode || current instanceof ComposerSkillNode || current instanceof ComposerPastedTextNode || current instanceof ComposerDesignSelectionNode) {
             setSelectionAfterNode(current);
             return true;
           }
@@ -818,7 +908,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
         throw error;
       },
         editable: !props.disabled,
-        nodes: [ComposerMentionNode, ComposerSlashCommandNode, ComposerSkillNode, ComposerPastedTextNode],
+        nodes: [ComposerMentionNode, ComposerSlashCommandNode, ComposerSkillNode, ComposerPastedTextNode, ComposerDesignSelectionNode],
         editorState: () => {
           setPrompt(props.value, props.mentions, props.pastedText);
         },

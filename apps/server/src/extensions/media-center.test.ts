@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,6 +10,7 @@ import {
   MEDIA_EXTENSION_ID,
   callMediaExtensionAction,
   planSceneVoiceoverTiming,
+  validateVoiceoverTimelineHtml,
 } from "./media-center.js";
 
 const nativeFetch = globalThis.fetch;
@@ -60,6 +62,227 @@ describe("Media Center extension", () => {
       shiftFollowingBySeconds: 0,
       readingBufferSeconds: 0.25,
     });
+  });
+
+  test("rejects a video that cuts away before slow narration finishes", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="7">
+        <section id="intro" class="scene clip" data-start="0" data-duration="3"></section>
+        <section id="details" class="scene clip" data-start="3" data-duration="4"></section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="details" data-ipw-scene-text="Details" data-ipw-narration-text="Details" data-start="3" data-duration="4.5"></audio>
+      </main>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_exceeds_scene");
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_overlap");
+    expect(result.issues.map((issue) => issue.code)).toContain("composition_too_short");
+  });
+
+  test("accepts a video whose scenes and total duration adapt to narration", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="10">
+        <section id="intro" class="scene clip" data-start="0" data-duration="5.25">Intro</section>
+        <section id="details" class="scene clip" data-start="5.25" data-duration="4.75">Details</section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="details" data-ipw-scene-text="Details" data-ipw-narration-text="Details" data-start="5.25" data-duration="4.5"></audio>
+      </main>
+    </body>`);
+
+    expect(result).toMatchObject({ valid: true, sceneCount: 2, voiceoverCount: 2, issues: [] });
+  });
+
+  test("rejects narration metadata that no longer matches the scene's visible text", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="5.25">
+        <section id="intro" class="scene clip" data-start="0" data-duration="5.25">
+          <h1>Current title</h1>
+          <p>Current subtitle</p>
+        </section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Old title" data-ipw-narration-text="Old title" data-start="0" data-duration="5"></audio>
+      </main>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_scene_text_mismatch");
+  });
+
+  test("rejects legacy and duplicate voiceovers instead of ignoring them", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="8">
+        <section id="intro" class="scene clip" data-start="0" data-duration="4"></section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="4"></audio>
+        <audio id="vo-old-intro" src="assets/audio/voice/old.mp3" data-start="0" data-duration="4"></audio>
+      </main>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.voiceoverCount).toBe(2);
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_binding");
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_overlap");
+  });
+
+  test("rejects generated narration mp3 nodes that are not placed on the HyperFrames timeline", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="11">
+        <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+        <section id="details" class="scene clip" data-start="5" data-duration="6">Details</section>
+        <audio id="narration-01" src="assets/audio/narration-01.mp3"></audio>
+        <audio id="narration-02" src="assets/audio/narration-02.mp3"></audio>
+      </main>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.voiceoverCount).toBe(2);
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_binding");
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_window");
+  });
+
+  test("rejects scripts that manually play or seek voiceover audio", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="5.25">
+        <section id="intro" class="scene clip" data-start="0" data-duration="5.25">Intro</section>
+        <audio id="narration-01" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+      </main>
+      <script>
+        const narrationAudio = document.getElementById("narration-01");
+        narrationAudio.currentTime = 0;
+        narrationAudio.play();
+      </script>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("manual_voiceover_playback");
+  });
+
+  test("rejects legacy frame timelines that only describe a longer narrated video in script", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <div id="root" data-composition-id="main" data-duration="8">
+        <section id="scene-01" class="frame active hook" data-duration="4000">AI related tech</section>
+        <section id="scene-02" class="frame" data-duration="4000">Built for developers</section>
+        <section id="scene-03" class="frame" data-duration="6000">LangChain</section>
+        <section id="scene-04" class="frame" data-duration="6000">LangGraph</section>
+        <section id="scene-05" class="frame" data-duration="5000">Tech Stack</section>
+        <section id="scene-06" class="frame" data-duration="7000">AI Agent</section>
+        <section id="scene-07" class="frame" data-duration="6000">AIGC</section>
+        <section id="scene-08" class="frame" data-duration="4000">CTA</section>
+      </div>
+      <script>
+        const voiceovers = [
+          'assets/vo_01.mp3',
+          'assets/vo_02.mp3',
+          'assets/vo_03.mp3',
+          'assets/vo_04.mp3',
+          'assets/vo_05.mp3',
+          'assets/vo_06.mp3',
+          'assets/vo_07.mp3',
+          'assets/vo_08.mp3'
+        ];
+        const audio = new Audio(voiceovers[0]);
+        audio.play();
+      </script>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.voiceoverCount).toBe(0);
+    expect(result.issues.map((issue) => issue.code)).toContain("missing_hyperframes_scenes");
+    expect(result.issues.map((issue) => issue.code)).toContain("legacy_frame_millisecond_timeline");
+    expect(result.issues.map((issue) => issue.code)).toContain("declared_duration_mismatch");
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_assets_not_on_timeline");
+  });
+
+  test("rejects one hidden player that swaps voiceover underscore files by script", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><head>
+      <link rel="preload" as="audio" href="voiceover_1.mp3">
+      <link rel="preload" as="audio" href="voiceover_2.mp3">
+      <link rel="preload" as="audio" href="voiceover_3.mp3">
+      <link rel="preload" as="audio" href="voiceover_4.mp3">
+    </head><body>
+      <div id="root" data-composition-id="main" data-duration="8">
+        <section id="scene-1" class="frame active hook" data-duration="6000">AI related tech</section>
+        <section id="scene-2" class="frame" data-duration="10000">LangChain</section>
+        <section id="scene-3" class="frame" data-duration="10000">LangGraph</section>
+        <section id="scene-4" class="frame" data-duration="10000">AI Agent</section>
+        <audio id="bgm" src="bgm.mp3" loop></audio>
+        <audio id="voiceover" preload="auto"></audio>
+      </div>
+      <script>
+        const voiceover = document.getElementById("voiceover");
+        const voiceoverSrcs = Array.from({ length: 4 }, (_, index) => "voiceover_" + (index + 1) + ".mp3");
+        function playVoiceover(index) {
+          voiceover.src = voiceoverSrcs[index];
+          voiceover.currentTime = 0;
+          voiceover.play();
+        }
+      </script>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.voiceoverCount).toBe(1);
+    expect(result.issues.map((issue) => issue.code)).toContain("legacy_frame_millisecond_timeline");
+    expect(result.issues.map((issue) => issue.code)).toContain("declared_duration_mismatch");
+    expect(result.issues.map((issue) => issue.code)).toContain("manual_voiceover_playback");
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_binding");
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_window");
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_assets_not_on_timeline");
+  });
+
+  test("rejects generated voiceover assets that are not referenced by index.html", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+    </main>`);
+    await mkdir(join(workspace.root, "assets"), { recursive: true });
+    await writeFile(join(workspace.root, "assets", "vo_01.mp3"), "voice");
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video.html" },
+      { directory: workspace.root },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false, voiceoverAssetCount: 1 } } });
+    expect((result as any).result.output.issues.map((issue: any) => issue.code)).toContain("voiceover_assets_unreferenced");
+  });
+
+  test("rejects underscore voiceover files present in assets but missing from the timeline", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+    </main>`);
+    await mkdir(join(workspace.root, "assets"), { recursive: true });
+    await writeFile(join(workspace.root, "assets", "voiceover_1.mp3"), "voice");
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video.html" },
+      { directory: workspace.root },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false, voiceoverAssetCount: 1 } } });
+    expect((result as any).result.output.issues.map((issue: any) => issue.code)).toContain("voiceover_assets_unreferenced");
+  });
+
+  test("validates a workspace video timeline without requiring provider credentials", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5.25">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5.25">Intro</section>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+    </main>`);
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video.html" },
+      { directory: workspace.root },
+    );
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
   });
 
   test("rejects narration that differs from its visible scene text before calling Model Studio", async () => {
@@ -115,6 +338,7 @@ describe("Media Center extension", () => {
       voice: "longyingmu_v3",
       model: "cosyvoice-v3-flash",
       outputPath: "video/session/assets/voiceover-scene-1.mp3",
+      compositionPath: "video/session/index.html",
     }, { directory: workspace.root });
 
     const measuredDuration = (result as any).result.output.durationSeconds;
@@ -137,6 +361,22 @@ describe("Media Center extension", () => {
         },
       },
     });
+    expect((result as any).result.output.audioElementId).toBe("voiceover-scene-hook-voiceover-scene-1");
+    expect((result as any).result.output.timelinePatch).toMatchObject({
+      setSceneStartSeconds: 0,
+      setSceneDurationSeconds: expect.any(Number),
+      shiftFollowingBySeconds: expect.any(Number),
+      rootDurationMustBeAtLeastSeconds: expect.any(Number),
+      keepSceneVisibleUntilSeconds: expect.any(Number),
+    });
+    const audioElementHtml = (result as any).result.output.audioElementHtml;
+    expect(audioElementHtml).toContain('src="./assets/voiceover-scene-1.mp3"');
+    expect(audioElementHtml).toContain('data-ipw-voiceover="true"');
+    expect(audioElementHtml).toContain('data-ipw-scene-id="scene-hook"');
+    expect(audioElementHtml).toContain('data-ipw-scene-text=');
+    expect(audioElementHtml).toContain('data-ipw-narration-text=');
+    expect(audioElementHtml).toContain('data-start="0"');
+    expect(audioElementHtml).toContain(`data-duration="${Math.round(measuredDuration * 1_000) / 1_000}"`);
     const expectedDuration = 100 * 1152 / 44_100;
     expect(Math.abs(measuredDuration - expectedDuration)).toBeLessThan(0.001);
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-scene-1.mp3"))).toEqual(mp3);

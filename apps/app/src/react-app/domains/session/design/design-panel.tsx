@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Move, Palette, Paintbrush, Plus, RotateCcw, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Square, Type, Undo2, Upload, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, ImagePlus, Link2, Loader2, Maximize2, Minimize2, Minus, Monitor, MousePointer2, Palette, Plus, RotateCcw, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Trash2, Type, Undo2, Upload, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
@@ -23,6 +23,8 @@ import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
+import type { DesignAiSelectionContext } from "./design-ai-selection";
+import { useDesignAiSelectionStore } from "./design-ai-selection-store";
 import {
   buildDesignPreviewDocument,
   DESIGN_MESSAGE_CHANNEL,
@@ -36,7 +38,7 @@ import {
   type DesignStyleField,
 } from "./design-html-runtime";
 import { DesignExportMenu } from "./design-export-menu";
-import { DesignSystemDrawer, type DesignTokenValues } from "./design-system-drawer";
+import { DesignPropertiesInspector } from "./design-properties-inspector";
 import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
   downgradeUnsupportedPdfExportColors,
@@ -53,6 +55,9 @@ import {
   PRESENTATION_CANVAS_HEIGHT,
   PRESENTATION_CANVAS_WIDTH,
   presentationCanvasScale,
+  presentationCanvasStageSize,
+  presentationCanvasWheelZoom,
+  presentationCanvasZoomedScale,
 } from "./presentation-canvas";
 import {
   collectPptxBackgroundPlan,
@@ -87,6 +92,9 @@ type DesignPanelProps = {
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
+  onAskAi: (context: DesignAiSelectionContext) => void;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   onClose: () => void;
 };
 
@@ -102,36 +110,12 @@ const PDF_SLIDE_HEIGHT = 900;
 const PDF_PAGE_WIDTH_MM = 297;
 const PDF_PAGE_HEIGHT_MM = 167.0625;
 const LOCAL_IMAGE_ACCEPT = "image/*";
-const DESIGN_INSPECTOR_WIDTHS = { compact: 256, wide: 384 } as const;
-
-const TYPE_PRESETS = [
-  { label: "Display", sample: "Aa", styles: { fontSize: "48px", fontWeight: "700", lineHeight: "1.05", letterSpacing: "-0.025em" } },
-  { label: "Heading", sample: "Title", styles: { fontSize: "32px", fontWeight: "650", lineHeight: "1.15", letterSpacing: "-0.015em" } },
-  { label: "Body", sample: "Text", styles: { fontSize: "16px", fontWeight: "400", lineHeight: "1.6", letterSpacing: "0em" } },
-] satisfies Array<{ label: string; sample: string; styles: Partial<Record<DesignStyleField, string>> }>;
+const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-[#202228] shadow-none hover:bg-[#F3F4F6] hover:text-[#202228] [&_svg]:!size-[18px]";
 
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck");
-}
-
-function readDesignTokenValues(...sources: string[]): DesignTokenValues {
-  const values: DesignTokenValues = {};
-  const declaration = document.createElement("div").style;
-  const apply = (cssText: string) => {
-    declaration.cssText = cssText;
-    for (let index = 0; index < declaration.length; index += 1) {
-      const name = declaration.item(index);
-      if (name.startsWith("--ipw-")) values[name as keyof DesignTokenValues] = declaration.getPropertyValue(name).trim();
-    }
-  };
-  for (const source of sources) {
-    for (const match of source.matchAll(/:root\s*{([^}]*)}/gi)) apply(match[1] ?? "");
-    const rootStyle = source.match(/<html[^>]*\sstyle=["']([^"']*)["']/i)?.[1];
-    if (rootStyle) apply(rootStyle);
-  }
-  return values;
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
 }
 
 function linkedDesignTokenPath(source: string | undefined): string {
@@ -170,7 +154,6 @@ function sanitizePdfFileBaseName(value: string) {
 function isGenericPdfTitle(value: string) {
   return /^(?:cover|overview|summary|presentation|slides?|pitch deck|deck|untitled|index|entry|ipollowork(?: slide editing demo)?|pitch deck - ipollowork)$/i.test(value.trim());
 }
-
 function isPreviewLocalAssetUrl(value: string) {
   const trimmed = value.trim();
   return Boolean(trimmed)
@@ -516,11 +499,15 @@ export function DesignPanel({
   workspaceId,
   isRemoteWorkspace = false,
   launcherItems = [],
+  onAskAi,
+  expanded = false,
+  onExpandedChange,
   onClose,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
   const iframeRef = React.useRef<any>(null);
   const previewViewportRef = React.useRef<HTMLDivElement>(null);
+  const presentationPanRef = React.useRef<HTMLDivElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
   const templateQuery = useQuery({
     queryKey: ["design-session-template", workspaceId, sessionId] as const,
@@ -563,6 +550,8 @@ export function DesignPanel({
   const [viewedVersionUpdatedAt, setViewedVersionUpdatedAt] = React.useState<number | null>(null);
   const [previewDevice, setPreviewDevice] = React.useState<"desktop" | "mobile">("desktop");
   const [previewViewport, setPreviewViewport] = React.useState({ width: 0, height: 0 });
+  const [presentationZoom, setPresentationZoom] = React.useState(1);
+  const [presentationScroll, setPresentationScroll] = React.useState({ left: 0, top: 0 });
   const [editing, setEditing] = React.useState(false);
   const [deck, setDeck] = React.useState<DesignDeckState | null>(null);
   const hydratedPageRef = React.useRef("");
@@ -579,11 +568,15 @@ export function DesignPanel({
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
-  const [advancedInspectorWidth, setAdvancedInspectorWidth] = React.useState<keyof typeof DESIGN_INSPECTOR_WIDTHS>("compact");
-  const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
+  const aiUndoCheckpoint = useDesignAiSelectionStore((state) => {
+    const checkpoint = state.undoCheckpoints[sessionId]?.[activePagePath]?.at(-1);
+    const context = checkpoint ? state.contexts[checkpoint.contextId] : undefined;
+    return context?.workspaceId === workspaceId ? checkpoint : undefined;
+  });
+  const appliedAiCheckpointRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!lockedPath) {
@@ -614,18 +607,46 @@ export function DesignPanel({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+
+  React.useEffect(() => {
+    if (!aiUndoCheckpoint || appliedAiCheckpointRef.current === aiUndoCheckpoint.contextId) return;
+    appliedAiCheckpointRef.current = aiUndoCheckpoint.contextId;
+    queryClient.setQueryData<LoadedHtml>(
+      ["design-html", workspaceId, activePagePath] as const,
+      { content: aiUndoCheckpoint.afterHtml, updatedAt: aiUndoCheckpoint.afterUpdatedAt },
+    );
+    draftRef.current = aiUndoCheckpoint.afterHtml;
+    setDraft(aiUndoCheckpoint.afterHtml);
+    setSavedSource(aiUndoCheckpoint.afterHtml);
+    setPendingCanvasChange(false);
+    setSelection(null);
+    setQuickEdit(null);
+    setPreviewSource(aiUndoCheckpoint.afterHtml);
+    setHydratedPreviewSource("");
+    setPreviewLoaded(false);
+    setPreviewRevision((current) => current + 1);
+  }, [activePagePath, aiUndoCheckpoint, queryClient, workspaceId]);
   const usesNativeEditablePptx = Boolean(
     designTemplate
     && isPptxCompatibleTemplate(designTemplate)
     && hasPptxCompatibleObjectMarkers(fileQuery.data?.content ?? ""),
   );
   const isPresentationTemplate = designTemplate?.category === "slides";
-  const presentationScale = presentationCanvasScale(previewViewport.width, previewViewport.height);
+  const presentationFitScale = presentationCanvasScale(previewViewport.width, previewViewport.height);
+  const presentationScale = presentationCanvasZoomedScale(presentationFitScale, presentationZoom);
+  const presentationCanvasStage = presentationCanvasStageSize(previewViewport.width, previewViewport.height, presentationScale);
+  const presentationCanvasLeft = Math.max(0, (presentationCanvasStage.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
+  const presentationCanvasTop = Math.max(0, (presentationCanvasStage.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
 
   React.useEffect(() => {
     if (!isPresentationTemplate) return;
     setPreviewDevice("desktop");
   }, [isPresentationTemplate]);
+
+  React.useEffect(() => {
+    setPresentationZoom(1);
+    setPresentationScroll({ left: 0, top: 0 });
+  }, [activePagePath, isPresentationTemplate]);
 
   // A presentation is opened to edit slides, not to inspect a static page.
   // The editor bridge supplies click-to-select, drag, resize handles and
@@ -708,7 +729,6 @@ export function DesignPanel({
     }
     setQuickEdit(null);
     setAdvancedOpen(false);
-    setDesignSystemOpen(false);
     setPreviewSource(fileQuery.data.content);
     setHydratedPreviewSource("");
     setPreviewLoaded(false);
@@ -748,6 +768,20 @@ export function DesignPanel({
       }
       if (event.data.type === "deck") {
         setDeck(event.data.deck);
+        return;
+      }
+      if (event.data.type === "zoom") {
+        setPresentationZoom((current) => presentationCanvasWheelZoom(current, event.data.deltaY));
+        return;
+      }
+      if (event.data.type === "pan") {
+        presentationPanRef.current?.scrollBy({ left: -event.data.deltaX, top: -event.data.deltaY });
+        return;
+      }
+      if (event.data.type === "deselected") {
+        setSelection(null);
+        setQuickEdit(null);
+        setAdvancedOpen(false);
         return;
       }
       if (event.data.type === "document-draft") {
@@ -1292,43 +1326,48 @@ export function DesignPanel({
     }, "*");
   };
 
-  const applyToken = (name: string, value: string) => {
-    if (!editing) return;
+  const deleteSelection = () => {
+    if (!selection || !selection.canDelete || !editing) return;
     setPendingCanvasChange(true);
     setHistory((current) => [...current, draft]);
+    setSelection(null);
+    setQuickEdit(null);
+    setAdvancedOpen(false);
     iframeRef.current?.contentWindow?.postMessage({
       channel: DESIGN_MESSAGE_CHANNEL,
-      type: "set-token",
-      name,
-      value,
+      type: "delete",
+      id: selection.id,
     }, "*");
+  };
+
+  const askAiAboutSelection = async () => {
+    if (!selection || !workspaceId || !activePagePath || !fileQuery.data) return;
+    const selected = selection;
+    const baseUpdatedAt = fileQuery.data.updatedAt;
+    const beforeHtml = await readLatestCanvasHtml();
+    const summary = (selected.text || selected.alt || selected.source).replace(/\s+/g, " ").trim().slice(0, 80);
+    onAskAi({
+      id: `design-ai-${crypto.randomUUID()}`,
+      sessionId,
+      workspaceId,
+      filePath: activePagePath,
+      baseUpdatedAt,
+      beforeHtml,
+      target: {
+        tag: selected.tag,
+        label: summary ? `${selected.tag.toUpperCase()} · ${summary}` : selected.tag.toUpperCase(),
+        locator: selected.locator,
+        text: selected.text,
+        src: selected.source,
+        alt: selected.alt,
+        styles: selected.styles,
+      },
+    });
   };
 
   const beginQuickEdit = (kind: "text" | "href" | "src" | "color" | "fontSize") => {
     setHistory((current) => [...current, draft]);
     setQuickEdit(kind);
-  };
-
-  const applyStyleBatch = (styles: Partial<Record<DesignStyleField, string>>) => {
-    if (!selection || !editing) return;
-    setPendingCanvasChange(true);
-    setHistory((current) => [...current, draft]);
-    setSelection((current) => {
-      if (!current) return current;
-      return Object.entries(styles).reduce(
-        (next, [field, value]) => updateSelectionValue(next, field as DesignStyleField, value),
-        current,
-      );
-    });
-    Object.entries(styles).forEach(([field, value]) => {
-      iframeRef.current?.contentWindow?.postMessage({
-        channel: DESIGN_MESSAGE_CHANNEL,
-        type: "set",
-        id: selection.id,
-        field,
-        value,
-      }, "*");
-    });
   };
 
   const fontSize = Math.max(1, Math.round(Number.parseFloat(selection?.styles.fontSize || "16") || 16));
@@ -1372,19 +1411,57 @@ export function DesignPanel({
     imageInputRef.current?.click();
   };
 
-  const undo = () => {
+  const undo = async () => {
     const previous = history[history.length - 1];
-    if (previous === undefined) return;
-    draftRef.current = previous;
-    setPendingCanvasChange(false);
-    setDraft(previous);
-    setHistory((current) => current.slice(0, -1));
-    setSelection(null);
-    setQuickEdit(null);
-    setPreviewSource(previous);
-    setHydratedPreviewSource("");
-    setPreviewLoaded(false);
-    setPreviewRevision((current) => current + 1);
+    if (previous !== undefined) {
+      draftRef.current = previous;
+      setPendingCanvasChange(false);
+      setDraft(previous);
+      setHistory((current) => current.slice(0, -1));
+      setSelection(null);
+      setQuickEdit(null);
+      setPreviewSource(previous);
+      setHydratedPreviewSource("");
+      setPreviewLoaded(false);
+      setPreviewRevision((current) => current + 1);
+      return;
+    }
+    const checkpoint = useDesignAiSelectionStore.getState().latestUndoCheckpoint(sessionId, activePagePath);
+    if (!checkpoint || !client || !workspaceId) return;
+    try {
+      const current = await client.readWorkspaceFile(workspaceId, activePagePath);
+      if (current.content !== checkpoint.afterHtml) {
+        throw new Error("This HTML file changed since the AI update.");
+      }
+      const result = await client.writeWorkspaceFile(workspaceId, {
+        path: activePagePath,
+        content: checkpoint.beforeHtml,
+        baseUpdatedAt: checkpoint.afterUpdatedAt,
+      });
+      const restored = await client.readWorkspaceFile(workspaceId, activePagePath);
+      useDesignAiSelectionStore.getState().popUndoCheckpoint(sessionId, activePagePath);
+      appliedAiCheckpointRef.current = useDesignAiSelectionStore.getState()
+        .latestUndoCheckpoint(sessionId, activePagePath)?.contextId ?? null;
+      queryClient.setQueryData<LoadedHtml>(
+        ["design-html", workspaceId, activePagePath] as const,
+        { content: restored.content, updatedAt: restored.updatedAt ?? result.updatedAt ?? null },
+      );
+      draftRef.current = restored.content;
+      setDraft(restored.content);
+      setSavedSource(restored.content);
+      setPendingCanvasChange(false);
+      setSelection(null);
+      setQuickEdit(null);
+      setPreviewSource(restored.content);
+      setHydratedPreviewSource("");
+      setPreviewLoaded(false);
+      setPreviewRevision((current) => current + 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      toast.error(message.includes("changed since")
+        ? "Could not undo the AI Design change because the file changed. Reload before trying again."
+        : message || "Could not undo the AI Design change.");
+    }
   };
 
   const dirty = pendingCanvasChange || draft !== savedSource;
@@ -1440,23 +1517,17 @@ export function DesignPanel({
       toast.error(error instanceof Error ? error.message : "Could not publish this design.");
     },
   });
-  const designTokenValues = React.useMemo(
-    () => readDesignTokenValues(templateTokenQuery.data ?? "", draft),
-    [draft, templateTokenQuery.data],
-  );
   const preview = React.useMemo(
     // The bridge is always present but starts inactive. Toggling Edit page is
     // a message to that bridge, not a new srcDoc, so a deck stays on its slide.
     () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
     [hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
-  const presentationLeft = Math.max(0, (previewViewport.width - PRESENTATION_CANVAS_WIDTH * presentationScale) / 2);
-  const presentationTop = Math.max(0, (previewViewport.height - PRESENTATION_CANVAS_HEIGHT * presentationScale) / 2);
   const selectionLeft = isPresentationTemplate
-    ? presentationLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2
+    ? presentationCanvasLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2 - presentationScroll.left
     : (iframeRef.current?.offsetLeft ?? 0) + (selection?.rect.left ?? 0) + (selection?.rect.width ?? 0) / 2;
   const selectionTop = isPresentationTemplate
-    ? presentationTop + (selection?.rect.top ?? 0) * presentationScale
+    ? presentationCanvasTop + (selection?.rect.top ?? 0) * presentationScale - presentationScroll.top
     : (iframeRef.current?.offsetTop ?? 0) + (selection?.rect.top ?? 0);
   const floatingStyle = selection ? {
     left: `clamp(112px, ${selectionLeft + 8}px, calc(100% - 112px))`,
@@ -1477,16 +1548,21 @@ export function DesignPanel({
           event.currentTarget.value = "";
         }}
       />
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px]">
+      <div className={cn(
+        "flex h-11 shrink-0 items-center gap-2 px-3 mac:titlebar-drag",
+        expanded && "mac:pl-20",
+        !lockedPath && "border-b border-[#EAEAEA] [border-bottom-width:0.5px]",
+      )}>
         <Code2 className="size-4 text-primary" />
-        <div className="flex min-w-0 flex-1 items-center">
+        <div className="flex min-w-0 flex-1 items-center mac:titlebar-no-drag">
           <p className="truncate text-sm font-medium">Design</p>
         </div>
+        <div className="flex shrink-0 items-center gap-2 mac:titlebar-no-drag">
         {launcherItems.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={(
-                <Button variant="ghost" size="icon-sm" aria-label="Add panel">
+                <Button variant="ghost" size="icon-sm" className={DESIGN_ACTION_BUTTON_CLASS} aria-label="Add panel">
                   <Plus />
                 </Button>
               )}
@@ -1515,9 +1591,23 @@ export function DesignPanel({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close Design">
+        {onExpandedChange ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={DESIGN_ACTION_BUTTON_CLASS}
+            onClick={() => onExpandedChange(!expanded)}
+            aria-label={expanded ? "恢复面板宽度" : "展开面板"}
+            title={expanded ? "恢复面板宽度" : "展开面板"}
+            aria-pressed={expanded}
+          >
+            {expanded ? <Minimize2 /> : <Maximize2 />}
+          </Button>
+        ) : null}
+        <Button variant="ghost" size="icon-sm" className={DESIGN_ACTION_BUTTON_CLASS} onClick={onClose} aria-label="Close Design">
           <X />
         </Button>
+        </div>
       </div>
 
       {isRemoteWorkspace ? (
@@ -1559,63 +1649,31 @@ export function DesignPanel({
             <Label className="flex items-center gap-2 text-xs">
               <Switch
                 size="sm"
+                className="border-[#AEB2B9] bg-transparent shadow-none data-checked:!border-[#0A84FF] data-checked:!bg-[#0A84FF] data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
                 checked={editing}
                 onCheckedChange={(checked) => {
                   setEditing(checked);
                   setSelection(null);
                   setQuickEdit(null);
                   setAdvancedOpen(false);
-                  setDesignSystemOpen(false);
                 }}
                 aria-label="Edit page"
               />
               {isPresentationTemplate ? "Canvas edit" : "Edit page"}
             </Label>
             {deck ? (
-              <div className="flex h-8 min-w-0 items-center rounded-lg border border-border/80 bg-muted/35 p-0.5 shadow-sm" data-testid="design-deck-navigation">
-                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
-                  <ChevronLeft className="size-3.5" />
+              <div className="flex h-8 min-w-0 items-center rounded-lg border border-[#D8DADF] bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
+                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-[#202228] hover:bg-[#F3F4F6]" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
+                  <ChevronLeft className="size-4" />
                 </Button>
-                <span className="min-w-0 max-w-40 truncate px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground" aria-live="polite">
+                <span className="min-w-0 max-w-40 truncate px-1.5 text-[11px] font-medium tabular-nums text-[#5F636B]" aria-live="polite">
                   {deck.index + 1} / {deck.total}
                 </span>
-                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md" onClick={() => navigateDeck("next")} disabled={deck.index >= deck.total - 1} aria-label="Next slide" title="Next slide">
-                  <ChevronRight className="size-3.5" />
+                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-[#202228] hover:bg-[#F3F4F6]" onClick={() => navigateDeck("next")} disabled={deck.index >= deck.total - 1} aria-label="Next slide" title="Next slide">
+                  <ChevronRight className="size-4" />
                 </Button>
               </div>
             ) : null}
-            {editing && designTemplate ? (
-              <Button
-                variant={designSystemOpen ? "secondary" : "ghost"}
-                size="icon-sm"
-                className={cn("rounded-lg", !deck && "ml-auto")}
-                onClick={() => {
-                  setDesignSystemOpen((current) => !current);
-                  setAdvancedOpen(false);
-                }}
-                aria-label="Open design system"
-                title="Design system"
-              >
-                <Palette className="size-3.5" />
-              </Button>
-            ) : null}
-            <Button variant="ghost" size="icon-sm" onClick={undo} disabled={history.length === 0} aria-label="Undo design change">
-              <Undo2 />
-            </Button>
-            <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || (!editing && !dirty)}>
-              {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
-              Save
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => publishMutation.mutate()}
-              disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
-              aria-label="Publish to object storage"
-              title="Publish to object storage"
-            >
-              {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
-            </Button>
             {!isPresentationTemplate ? (
               <ToggleGroup
                 value={[previewDevice]}
@@ -1640,9 +1698,61 @@ export function DesignPanel({
                 </ToggleGroupItem>
               </ToggleGroup>
             ) : null}
-            {deck ? (
-              <div className="ml-auto">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {editing ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && "bg-[#F3F4F6]")}
+                  onClick={() => setAdvancedOpen((current) => !current)}
+                  aria-label="Toggle design properties"
+                  title="Design properties"
+                  aria-pressed={advancedOpen}
+                >
+                  <SlidersHorizontal />
+                </Button>
+              ) : null}
+              <Button variant="ghost" size="icon-sm" className={DESIGN_ACTION_BUTTON_CLASS} onClick={() => void undo()} disabled={history.length === 0 && !aiUndoCheckpoint} aria-label="Undo design change">
+                <Undo2 />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={DESIGN_ACTION_BUTTON_CLASS}
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending || (!editing && !dirty)}
+                aria-label="Save design"
+                title="Save"
+              >
+                {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={DESIGN_ACTION_BUTTON_CLASS}
+                onClick={() => publishMutation.mutate()}
+                disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
+                aria-label="Publish to object storage"
+                title="Publish to object storage"
+              >
+                {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
+              </Button>
+              {isPresentationTemplate ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={DESIGN_ACTION_BUTTON_CLASS}
+                  onClick={() => setPresentationZoom(1)}
+                  disabled={presentationZoom === 1}
+                  aria-label="Reset presentation zoom"
+                  title="Reset zoom to fit"
+                >
+                  <RotateCcw />
+                </Button>
+              ) : null}
+              {deck ? (
                 <DesignExportMenu
+                  triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
                   exportingPdf={exportingPdf}
                   exportingPptx={exportingPptx}
                   exportReady={previewLoaded}
@@ -1650,8 +1760,8 @@ export function DesignPanel({
                   onExportPdf={() => void exportDeckToPdf()}
                   onExportPptx={() => setPptxConfirmationOpen(true)}
                 />
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
 
           {fileQuery.isLoading || !sourceHydrated ? (
@@ -1664,31 +1774,48 @@ export function DesignPanel({
                 ref={previewViewportRef}
                 className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", !isPresentationTemplate && previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}
               >
-                <iframe
-                  ref={iframeRef}
-                  key={`${activePagePath}:${previewRevision}`}
-                  srcDoc={preview}
-                  title={`Design preview: ${fileName(activePagePath)}`}
-                  className={cn(
-                    "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
-                    isPresentationTemplate
-                      ? "absolute left-1/2 top-1/2 h-[900px] w-[1600px] origin-center rounded-lg shadow-sm"
-                      : previewDevice === "desktop"
-                      ? "h-full w-full rounded-lg shadow-sm"
-                      : "h-full w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
-                  )}
-                  style={isPresentationTemplate
-                    ? { transform: `translate(-50%, -50%) scale(${presentationScale})` }
+                <div
+                  ref={presentationPanRef}
+                  className={cn(isPresentationTemplate ? "absolute inset-0 overflow-auto" : "contents")}
+                  onScroll={isPresentationTemplate
+                    ? (event) => setPresentationScroll({ left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop })
                     : undefined}
-                  sandbox="allow-scripts"
-                  data-preview-loaded={previewLoaded ? "true" : "false"}
-                  onLoad={() => {
-                    setPreviewLoaded(true);
-                    iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
-                    iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
-                    if (deck) iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "deck-navigate", direction: "index", index: deck.index }, "*");
-                  }}
-                />
+                >
+                  <div
+                    className={cn(isPresentationTemplate ? "relative" : "contents")}
+                    style={isPresentationTemplate ? { width: presentationCanvasStage.width, height: presentationCanvasStage.height } : undefined}
+                  >
+                    <iframe
+                      ref={iframeRef}
+                      key={`${activePagePath}:${previewRevision}`}
+                      srcDoc={preview}
+                      title={`Design preview: ${fileName(activePagePath)}`}
+                      className={cn(
+                        "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
+                        isPresentationTemplate
+                          ? "absolute h-[900px] w-[1600px] origin-top-left rounded-lg shadow-sm"
+                          : previewDevice === "desktop"
+                          ? "h-full w-full rounded-lg shadow-sm"
+                          : "h-full w-[390px] max-w-full shrink-0 rounded-[26px] shadow-xl shadow-black/15",
+                      )}
+                      style={isPresentationTemplate
+                        ? {
+                          left: presentationCanvasLeft,
+                          top: presentationCanvasTop,
+                          transform: `scale(${presentationScale})`,
+                        }
+                        : undefined}
+                      sandbox="allow-scripts"
+                      data-preview-loaded={previewLoaded ? "true" : "false"}
+                      onLoad={() => {
+                        setPreviewLoaded(true);
+                        iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
+                        iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
+                        if (deck) iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "deck-navigate", direction: "index", index: deck.index }, "*");
+                      }}
+                    />
+                  </div>
+                </div>
                 {editing && selection ? (
                   <div
                     className="absolute z-20 flex max-w-[calc(100%-24px)] items-center gap-1 rounded-2xl border border-border/80 bg-background/95 p-1 shadow-xl shadow-black/10 backdrop-blur-xl"
@@ -1824,188 +1951,53 @@ export function DesignPanel({
                           </>
                         ) : null}
                         <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={deleteSelection}
+                          disabled={!selection.canDelete}
+                          aria-label="Delete selected element"
+                          title="Delete selected element"
+                        >
+                          <Trash2 />
+                        </Button>
+                        <Button
                           variant={advancedOpen ? "secondary" : "ghost"}
                           size="icon-xs"
-                          onClick={() => {
-                            setAdvancedOpen((current) => !current);
-                            setDesignSystemOpen(false);
-                          }}
+                          onClick={() => setAdvancedOpen((current) => !current)}
                           aria-label="Toggle advanced design settings"
                           aria-pressed={advancedOpen}
                         >
                           <SlidersHorizontal />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => void askAiAboutSelection()}
+                          disabled={!selection.canDelete}
+                          aria-label="Ask AI about selected element"
+                        >
+                          <Sparkles />
                         </Button>
                       </>
                     )}
                   </div>
                 ) : null}
               </div>
-              <DesignSystemDrawer
-                open={editing && designSystemOpen && Boolean(designTemplate)}
-                templateName={designTemplate?.title ?? "Template"}
-                initialValues={designTokenValues}
-                onClose={() => setDesignSystemOpen(false)}
-                onTokenChange={applyToken}
-                onBackgroundImageUpload={async (file) => {
-                  if (!file.type.startsWith("image/")) {
-                    toast.error("Choose an image file for the background.");
-                    throw new Error("Invalid background image");
-                  }
-                  if (file.size > 5 * 1024 * 1024) {
-                    toast.error("Choose a background image smaller than 5 MB.");
-                    throw new Error("Background image too large");
-                  }
-                  return imageFileToPortableDataUrl(file);
-                }}
-              />
               {editing && advancedOpen ? (
-                <aside
-                  className="shrink-0 overflow-y-auto border-l border-[#EAEAEA] bg-background [border-left-width:0.5px]"
-                  style={{ width: DESIGN_INSPECTOR_WIDTHS[advancedInspectorWidth] }}
-                  aria-label="Design inspector"
-                >
-                  {selection ? (
-                    <div className="space-y-1 p-2">
-                      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[#EAEAEA] bg-background/95 px-1 py-2 [border-bottom-width:0.5px] backdrop-blur-xl">
-                        <div className="grid size-6 place-items-center rounded-lg bg-primary/10 text-primary"><SlidersHorizontal className="size-3" /></div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold">Design properties</p>
-                          <p className="truncate text-[10px] text-muted-foreground">{selection.tag.toUpperCase()} · element {selection.id}</p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => setAdvancedInspectorWidth((current) => current === "compact" ? "wide" : "compact")}
-                          aria-label={advancedInspectorWidth === "compact" ? "Widen design inspector" : "Narrow design inspector"}
-                          title={advancedInspectorWidth === "compact" ? "Widen inspector" : "Narrow inspector"}
-                        >
-                          {advancedInspectorWidth === "compact" ? <ChevronLeft /> : <ChevronRight />}
-                        </Button>
-                        <Button variant="ghost" size="icon-xs" onClick={() => setAdvancedOpen(false)} aria-label="Close advanced design settings"><X /></Button>
-                      </div>
-
-                      {selection.rangeText ? (
-                        <div className="rounded-lg border border-primary/15 bg-primary/5 px-2 py-1.5 text-[9px] text-primary">
-                          Formatting selection: “{selection.rangeText.slice(0, 48)}{selection.rangeText.length > 48 ? "…" : ""}”
-                        </div>
-                      ) : null}
-
-                      {selection.canEditText ? (
-                        <InspectorSection icon={<Type />} title="Content">
-                          <Input aria-label="Design text" className="h-7 rounded-lg border-0 bg-muted/55 px-2 text-[11px] shadow-none" value={selection.text} onChange={(event) => applyField("text", event.currentTarget.value)} />
-                        </InspectorSection>
-                      ) : null}
-
-                      {selection.href ? (
-                        <div className="border-b border-[#EAEAEA] px-2 py-2.5 [border-bottom-width:0.5px]">
-                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Link</p>
-                          <Input aria-label="Design link destination" className="h-9 rounded-xl bg-muted/40 px-3 text-xs" value={selection.href} onChange={(event) => applyField("href", event.currentTarget.value)} />
-                        </div>
-                      ) : null}
-
-                      {selection.tag === "img" ? (
-                        <div className="rounded-2xl border border-border/70 bg-background p-3 shadow-xs">
-                          <div className="mb-2 flex items-center justify-between">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Image</p>
-                            <Button variant="secondary" size="xs" onClick={() => void chooseReplacementImage()}><Upload /> Replace</Button>
-                          </div>
-                          <div className="space-y-2">
-                            <Input aria-label="Design image source" className="h-7 rounded-lg border-0 bg-muted/55 px-2 text-[11px] shadow-none" value={selection.src} onChange={(event) => applyField("src", event.currentTarget.value)} />
-                            <Input aria-label="Design alt text" className="h-7 rounded-lg border-0 bg-muted/55 px-2 text-[11px] shadow-none" value={selection.alt} onChange={(event) => applyField("alt", event.currentTarget.value)} placeholder="Describe this image" />
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {selection.canEditText ? (
-                        <InspectorSection icon={<Sparkles />} title="Text styles">
-                          <div className="grid grid-cols-3 gap-1.5">
-                            {TYPE_PRESETS.map((preset) => (
-                              <button
-                                key={preset.label}
-                                type="button"
-                                className="rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-left transition-all hover:-translate-y-px hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm"
-                                onClick={() => applyStyleBatch(preset.styles)}
-                                aria-label={`Apply ${preset.label} text preset`}
-                              >
-                                <span className="block text-sm font-semibold leading-none">{preset.sample}</span>
-                                <span className="mt-1 block text-[9px] text-muted-foreground">{preset.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </InspectorSection>
-                      ) : null}
-
-                      <InspectorSection icon={<Type />} title="Typography">
-                        <div className="flex items-center gap-2">
-                          <div className="flex flex-1 items-center rounded-lg bg-muted/55 p-0.5">
-                            <Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize - 1, true)} aria-label="Decrease advanced font size"><Minus /></Button>
-                            <Input type="number" min={1} max={240} aria-label="Design font size" className="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-center text-xs shadow-none" value={fontSize} onChange={(event) => setFontSize(Number(event.currentTarget.value) || 1, true)} />
-                            <span className="pr-1 text-[9px] text-muted-foreground">px</span>
-                            <Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize + 1, true)} aria-label="Increase advanced font size"><Plus /></Button>
-                          </div>
-                          <div className="flex rounded-lg bg-muted/55 p-0.5">
-                            {(["left", "center", "right"] as const).map((alignment) => {
-                              const Icon = alignment === "left" ? AlignLeft : alignment === "center" ? AlignCenter : AlignRight;
-                              return (
-                                <Button key={alignment} variant={selection.styles.textAlign === alignment ? "secondary" : "ghost"} size="icon-xs" onClick={() => applyField("textAlign", alignment)} aria-label={`Align ${alignment}`}><Icon /></Button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <div className="mt-2 grid grid-cols-3 gap-2">
-                          <InspectorField label="Weight" value={selection.styles.fontWeight} onChange={(value) => applyField("fontWeight", value)} />
-                          <InspectorField label="Line height" value={selection.styles.lineHeight} onChange={(value) => applyField("lineHeight", value)} />
-                          <InspectorField label="Tracking" value={selection.styles.letterSpacing} onChange={(value) => applyField("letterSpacing", value)} />
-                        </div>
-                      </InspectorSection>
-
-
-                      <InspectorSection icon={<Move />} title="Layout & size">
-                        <div className="grid grid-cols-2 gap-2">
-                          <InspectorField label="Left" value={selection.styles.left} onChange={(value) => applyField("left", value)} />
-                          <InspectorField label="Top" value={selection.styles.top} onChange={(value) => applyField("top", value)} />
-                          <InspectorField label="Width" value={selection.styles.width} onChange={(value) => applyField("width", value)} />
-                          <InspectorField label="Height" value={selection.styles.height} onChange={(value) => applyField("height", value)} />
-                          <InspectorField label="Margin" value={selection.styles.margin} onChange={(value) => applyField("margin", value)} />
-                          <InspectorField label="Padding" value={selection.styles.padding} onChange={(value) => applyField("padding", value)} />
-                        </div>
-                      </InspectorSection>
-
-                      <InspectorSection icon={<Square />} title="Appearance">
-                        <div className="grid grid-cols-2 gap-2">
-                          <InspectorField label="Opacity" value={selection.styles.opacity} onChange={(value) => applyField("opacity", value)} />
-                          <InspectorField label="Shadow" value={selection.styles.boxShadow} onChange={(value) => applyField("boxShadow", value)} />
-                          <InspectorField label="Border width" value={selection.styles.borderWidth} onChange={(value) => applyField("borderWidth", value)} />
-                          <InspectorField label="Border style" value={selection.styles.borderStyle} onChange={(value) => applyField("borderStyle", value)} />
-                          <InspectorField label="Border color" value={selection.styles.borderColor} onChange={(value) => applyField("borderColor", value)} />
-                          <InspectorField label="Radius" value={selection.styles.borderRadius} onChange={(value) => applyField("borderRadius", value)} />
-                        </div>
-                      </InspectorSection>
-
-                      <InspectorSection icon={<Paintbrush />} title="Fill & color">
-                        <div className="flex flex-wrap gap-2">
-                          {COLOR_SWATCHES.map((color) => (
-                            <button key={color} type="button" className="size-6 rounded-md border border-black/10 shadow-xs transition-all hover:-translate-y-px hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style={{ backgroundColor: color }} onClick={() => applyField("color", color)} aria-label={`Set advanced text color ${color}`} />
-                          ))}
-                          <label className="relative grid size-6 cursor-pointer place-items-center rounded-md border border-border bg-muted text-muted-foreground" aria-label="Choose advanced custom text color">
-                            <Palette className="size-3.5" />
-                            <input type="color" className="absolute inset-0 cursor-pointer opacity-0" value={normalizeHexColor(selection.styles.color)} onChange={(event) => applyField("color", event.currentTarget.value)} aria-label="Advanced custom text color" />
-                          </label>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <InspectorField label="Text color" value={selection.styles.color} onChange={(value) => applyField("color", value)} />
-                          <InspectorField label="Background" value={selection.styles.backgroundColor} onChange={(value) => applyField("backgroundColor", value)} />
-                        </div>
-                      </InspectorSection>
-
-                    </div>
-                  ) : (
-                    <div className="pt-8 text-center text-xs leading-5 text-muted-foreground">
-                      <MousePointer2 className="mx-auto mb-2 size-5" />
-                      Click an element in the page to edit it.
-                    </div>
-                  )}
-                </aside>
+                selection ? (
+                  <DesignPropertiesInspector
+                    selection={selection}
+                    onClose={() => setAdvancedOpen(false)}
+                    onApplyField={applyField}
+                    onChooseReplacementImage={() => void chooseReplacementImage()}
+                  />
+                ) : (
+                  <aside className="w-[310px] shrink-0 border-l border-[#e8e9ec] bg-white px-6 pt-12 text-center text-xs leading-5 text-muted-foreground" aria-label="Design inspector">
+                    <MousePointer2 className="mx-auto mb-2 size-5" />
+                    Click an element in the page to edit it.
+                  </aside>
+                )
               ) : null}
             </div>
           )}
@@ -2027,26 +2019,5 @@ export function DesignPanel({
         }}
       />
     </div>
-  );
-}
-
-function InspectorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <div className="group/field flex h-7 min-w-0 items-center gap-1 rounded-lg bg-muted/45 px-1.5 transition-colors focus-within:bg-muted/70">
-      <Label className="min-w-0 flex-1 truncate text-[9px] font-medium text-muted-foreground group-focus-within/field:text-foreground">{label}</Label>
-      <Input aria-label={`Design ${label.toLowerCase()}`} className="h-6 w-[58%] min-w-0 rounded-md border-0 bg-transparent px-1 text-right text-[10px] shadow-none focus-visible:ring-1" value={value} onChange={(event) => onChange(event.currentTarget.value)} />
-    </div>
-  );
-}
-
-function InspectorSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
-  return (
-    <section className="border-b border-[#EAEAEA] px-2 py-2.5 [border-bottom-width:0.5px] last:border-b-0">
-      <div className="mb-2 flex items-center gap-1.5 text-muted-foreground [&_svg]:size-3">
-        {icon}
-        <h3 className="text-[9px] font-semibold uppercase tracking-[0.12em]">{title}</h3>
-      </div>
-      {children}
-    </section>
   );
 }

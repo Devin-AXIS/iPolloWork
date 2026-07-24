@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useSyncExternalStore,
   type MutableRefObject,
@@ -11,21 +10,16 @@ import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
 import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
-import { SlideshowPanel } from "./panels/SlideshowPanel";
-import type { SceneInfo } from "./panels/SlideshowPanel";
-import { VariablesPanel } from "./panels/VariablesPanel";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
-import type { IframeWindow } from "../player/lib/playbackTypes";
 import {
-  STUDIO_FLAT_INSPECTOR_ENABLED,
   STUDIO_INSPECTOR_PANELS_ENABLED,
 } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
-import { useSlideshowPersist, type UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
+import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
@@ -174,9 +168,6 @@ export function StudioRightPanel({
     setRightCollapsed,
     rightPanelTab,
     setRightPanelTab,
-    rightInspectorPanes,
-    toggleRightInspectorPane,
-    setExclusiveRightInspectorPane,
     handlePanelResizeStart,
     handlePanelResizeMove,
     handlePanelResizeEnd,
@@ -191,7 +182,7 @@ export function StudioRightPanel({
     waitForPendingDomEditSaves,
     renderQueue,
   } = useStudioShellContext();
-  const { captionEditMode, refreshKey } = useStudioPlaybackContext();
+  const { captionEditMode } = useStudioPlaybackContext();
   const { t } = useStudioI18n();
 
   const {
@@ -250,33 +241,6 @@ export function StudioRightPanel({
     fileTree,
   } = useFileManagerContext();
 
-  // Discrete ops (toggle, reorder, add/delete, hotspot): persist immediately,
-  // no coalescing — each is a distinct user action that deserves its own undo entry.
-  const onPersistSlideshow = useSlideshowPersist({
-    sdkSession,
-    activeCompPath,
-    readProjectFile,
-    writeProjectFile,
-    recordEdit,
-    reloadPreview,
-    domEditSaveTimestampRef,
-    publishSdkSession,
-  });
-
-  // Notes path: persists are debounced in SlideshowPanel; coalesceKey ensures
-  // rapid writes collapse into a single undo entry via the save-queue infra.
-  const onPersistSlideshowNotes = useSlideshowPersist({
-    sdkSession,
-    activeCompPath,
-    readProjectFile,
-    writeProjectFile,
-    recordEdit,
-    reloadPreview,
-    domEditSaveTimestampRef,
-    publishSdkSession,
-    coalesceKey: activeCompPath ? `slideshow-notes:${activeCompPath}` : "slideshow-notes",
-  });
-
   const {
     layersPanePercent,
     splitContainerRef,
@@ -294,42 +258,11 @@ export function StudioRightPanel({
   );
 
   const renderJobs = renderQueue.jobs as RenderJob[];
-  const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
-
-  // Derive scene list from the live clip manifest in the preview iframe.
-  // fallow-ignore-next-line complexity
-  const slideshowScenes = useMemo<SceneInfo[]>(() => {
-    try {
-      const win = previewIframeRef.current?.contentWindow as IframeWindow | null;
-      return (win?.__clipManifest?.scenes ?? []).map((s) => ({
-        id: s.id,
-        label: s.label,
-        start: s.start,
-        duration: s.duration,
-      }));
-    } catch {
-      return [];
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewIframeRef, rightPanelTab, refreshKey]);
-  const designPaneOpen = inspectorTabActive && rightInspectorPanes.design && designPanelActive;
-  const layersPaneOpen =
-    inspectorTabActive && rightInspectorPanes.layers && STUDIO_INSPECTOR_PANELS_ENABLED;
-
-  const handleInspectorPaneButtonClick = (pane: "design" | "layers") => {
-    if (!inspectorTabActive) {
-      setRightPanelTab(pane);
-      return;
-    }
-    // Flat inspector: Layers always renders full-height by itself (see the
-    // render branch below), so the two panes are mutually exclusive here —
-    // otherwise both tabs could show "active" while only one actually shows.
-    if (STUDIO_FLAT_INSPECTOR_ENABLED) {
-      setExclusiveRightInspectorPane(pane);
-      return;
-    }
-    toggleRightInspectorPane(pane);
-  };
+  const inspectorTabActive =
+    rightPanelTab === "design" ||
+    rightPanelTab === "layers" ||
+    rightPanelTab === "slideshow" ||
+    rightPanelTab === "variables";
 
   const handleApplyColorGradingScope = useCallback(
     async (scope: ColorGradingScope, value: string | null) =>
@@ -571,14 +504,8 @@ export function StudioRightPanel({
                   <PanelTabButton
                     label={t("right.design")}
                     tooltip={t("right.designTooltip")}
-                    active={designPaneOpen}
-                    onClick={() => handleInspectorPaneButtonClick("design")}
-                  />
-                  <PanelTabButton
-                    label={t("right.layers")}
-                    tooltip={t("right.layersTooltip")}
-                    active={layersPaneOpen}
-                    onClick={() => handleInspectorPaneButtonClick("layers")}
+                    active={inspectorTabActive}
+                    onClick={() => setRightPanelTab("design")}
                   />
                   <PreviewFullscreenButton />
                 </>
@@ -588,18 +515,6 @@ export function StudioRightPanel({
                 tooltip={t("right.rendersTooltip")}
                 active={rightPanelTab === "renders"}
                 onClick={() => setRightPanelTab("renders")}
-              />
-              <PanelTabButton
-                label={t("right.slideshow")}
-                tooltip={t("right.slideshowTooltip")}
-                active={rightPanelTab === "slideshow"}
-                onClick={() => setRightPanelTab("slideshow")}
-              />
-              <PanelTabButton
-                label={t("right.variables")}
-                tooltip={t("right.variablesTooltip")}
-                active={rightPanelTab === "variables"}
-                onClick={() => setRightPanelTab("variables")}
               />
               <button
                 type="button"
@@ -620,21 +535,7 @@ export function StudioRightPanel({
                   compositionPath={activeBlockParams.compositionPath}
                   onClose={onCloseBlockParams ?? (() => {})}
                 />
-              ) : rightPanelTab === "slideshow" ? (
-                <SlideshowPanel
-                  scenes={slideshowScenes}
-                  onPersist={onPersistSlideshow}
-                  onPersistNotes={onPersistSlideshowNotes}
-                />
-              ) : rightPanelTab === "variables" ? (
-                <VariablesPanel
-                  sdkSession={sdkSession}
-                  publishSdkSession={publishSdkSession}
-                  reloadPreview={reloadPreview}
-                  domEditSaveTimestampRef={domEditSaveTimestampRef}
-                  recordEdit={recordEdit}
-                />
-              ) : layersPaneOpen && designPaneOpen && !STUDIO_FLAT_INSPECTOR_ENABLED ? (
+              ) : inspectorTabActive ? (
                 <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
                   <div
                     className="min-h-[120px] overflow-hidden"
@@ -655,29 +556,8 @@ export function StudioRightPanel({
                   >
                     <div className="h-px w-10 rounded-full bg-white/12 transition-colors group-hover:bg-white/24 group-active:bg-studio-accent/70" />
                   </div>
-                  <div className="min-h-0 flex-1 overflow-hidden">{propertyPanel}</div>
-                </div>
-              ) : layersPaneOpen ? (
-                <LayersPanel />
-              ) : designPaneOpen ? (
-                propertyPanel
-              ) : inspectorTabActive ? (
-                // Inspector tab selected but no pane can render (panes toggled
-                // off, or inspector inactive during playback/recording): show an
-                // explanation instead of silently rendering the render queue
-                // under a highlighted inspector tab.
-                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-                  <p className="text-xs text-neutral-500">
-                    {t("right.inspectorUnavailable")}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setRightPanelTab("renders")}
-                    className="h-7 rounded-md border border-neutral-800 px-3 text-[11px] font-medium text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200 active:scale-[0.98]"
-                  >
-                    {t("right.showRenders")}
-                  </button>
-                </div>
+                    <div className="min-h-0 flex-1 overflow-hidden">{propertyPanel}</div>
+                  </div>
               ) : (
                 renderQueuePanel
               )}

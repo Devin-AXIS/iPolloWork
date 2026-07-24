@@ -4,10 +4,14 @@ export const DESIGN_STYLE_FIELDS = [
   "color",
   "backgroundColor",
   "fontSize",
+  "fontFamily",
   "fontWeight",
+  "fontStyle",
+  "textDecoration",
   "lineHeight",
   "letterSpacing",
   "textAlign",
+  "transform",
   "borderRadius",
   "padding",
   "margin",
@@ -29,11 +33,14 @@ export type DesignField = "text" | "href" | "src" | "alt" | DesignStyleField;
 export type DesignSelection = {
   id: string;
   tag: string;
+  locator: string;
   text: string;
   href: string;
   src: string;
+  source: string;
   alt: string;
   canEditText: boolean;
+  canDelete: boolean;
   colorField: "color" | "backgroundColor";
   rangeText: string;
   rect: { top: number; left: number; width: number; height: number };
@@ -49,11 +56,14 @@ export type DesignDeckState = {
 export type DesignRuntimeMessage =
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "selected"; selection: DesignSelection }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "editing"; selection: DesignSelection }
+  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "deselected" }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "draft"; html: string; selection: DesignSelection }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "document-draft"; html: string }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "snapshot"; requestId: string; html: string }
   | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "navigate"; href: string }
-  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "deck"; deck: DesignDeckState };
+  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "deck"; deck: DesignDeckState }
+  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "zoom"; deltaY: number }
+  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "pan"; deltaX: number; deltaY: number };
 
 export function isLocalHtmlPath(path: string) {
   return /\.html?$/i.test(path.trim());
@@ -102,7 +112,7 @@ export function buildDesignPreviewDocument(
     ? `<script id="ipollowork-design-fixed-slide-runtime">(${designFixedSlideRuntime.toString()})();<\/script>`
     : "";
   const editingRuntime = includeEditor
-    ? `<script id="ipollowork-design-runtime">(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"});<\/script>`
+    ? `<script id="ipollowork-design-runtime">/* const elementLocator = (element: HTMLElement) */(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"},${isPresentationTemplate ? "true" : "false"});<\/script>`
     : "";
   const runtime = `${tokenStyle}${navigationRuntime}${deckRuntime}${fixedSlideRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
@@ -287,6 +297,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
   };
 
   let lastState = "";
+  const notifyNavigation = () => document.dispatchEvent(new Event("ipollowork-design-deck-navigated"));
   const report = () => {
     const index = activeIndex();
     const title = slides[index]?.getAttribute("data-title") || slides[index]?.querySelector("h1,h2,h3")?.textContent?.trim() || "";
@@ -312,6 +323,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
       slides[next]?.scrollIntoView({ block: "nearest", inline: "start", behavior: "smooth" });
       setSlideVisibility(next);
     }
+    notifyNavigation();
     window.setTimeout(report, 0);
   };
 
@@ -322,6 +334,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
         control.click();
         window.setTimeout(() => {
           setSlideVisibility(activeIndex());
+          notifyNavigation();
           report();
         }, 0);
         return;
@@ -342,10 +355,15 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
 
   setSlideVisibility(activeIndex());
 
-  document.addEventListener("click", () => window.setTimeout(() => {
-    setSlideVisibility(activeIndex());
-    report();
-  }, 0), true);
+  document.addEventListener("click", (event) => {
+    const isDeckControl = event.target instanceof Element
+      && Boolean(event.target.closest("[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next'],button[aria-label^='Go to slide']"));
+    window.setTimeout(() => {
+      setSlideVisibility(activeIndex());
+      if (isDeckControl) notifyNavigation();
+      report();
+    }, 0);
+  }, true);
   document.addEventListener("keydown", (event) => {
     const direction = !event.defaultPrevented && !event.altKey && !event.ctrlKey && !event.metaKey && !isEditableTarget(event.target)
       ? keyboardDirection(event)
@@ -374,7 +392,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
   report();
 }
 
-function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, strictPptx = false) {
+function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, strictPptx = false, presentationCanvas = strictPptx) {
   const runtimeId = "ipollowork-design-runtime";
   const styleId = "ipollowork-design-runtime-style";
   const selectedAttribute = "data-ipollowork-design-selected";
@@ -383,9 +401,22 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   const overlayId = "ipollowork-design-transform-overlay";
   const textNodeAttribute = "data-ipollowork-design-text-node";
   const modeAttribute = "data-ipollowork-design-mode";
+  const panningAttribute = "data-ipollowork-design-panning";
   const editableSelector = "h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote,img,div,section,article,header,footer,nav,main";
   const textEditableSelector = "h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote";
   const textColorSelector = "h1,h2,h3,h4,h5,h6,p,span,label,li,blockquote";
+  const slideRootSelector = "[data-ipw-slide],section.slide,.slide,.slide-frame";
+  const presentationRootSelector = `${slideRootSelector},[data-ipw-template-kind='slides'],.deck`;
+  const isPresentationSlideRoot = (element: HTMLElement) => presentationCanvas && element.matches(slideRootSelector);
+  const isPresentationRoot = (element: HTMLElement) => presentationCanvas && element.matches(presentationRootSelector);
+  const isTextOnlyDiv = (element: HTMLElement) => element.tagName === "DIV"
+    && element.children.length === 0
+    && Boolean(element.textContent?.trim());
+  const isTextEditableElement = (element: HTMLElement) => !(element instanceof HTMLImageElement)
+    && (element.matches(textEditableSelector) || element.hasAttribute(textNodeAttribute) || isTextOnlyDiv(element));
+  const canDeleteElement = (element: HTMLElement) => element !== document.body
+    && element !== document.documentElement
+    && !element.matches("[data-ipw-slide],section.slide,.slide,.slide-frame,[data-ipw-template-kind='slides'],.deck,[data-ipw-deck-control],[data-ipw-prev],[data-ipw-next],[data-action='prev'],[data-action='previous'],[data-action='next'],.deck-chrome,.deck-controls,.controls,.dots,.counter,.slide-counter");
   let selected: HTMLElement | null = null;
   let textRange: Range | null = null;
   let editingEnabled = initialEditing;
@@ -402,15 +433,18 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     position: string;
     moved: boolean;
   } | null = null;
+  let canvasPan: { lastX: number; lastY: number; moved: boolean } | null = null;
 
   const style = document.createElement("style");
   style.id = styleId;
   style.textContent = `
     html[${modeAttribute}="editing"] [${idAttribute}] { cursor: pointer !important; }
     html[${modeAttribute}="editing"] [${idAttribute}]:hover { outline: 1px dashed #7c3aed !important; outline-offset: 2px !important; }
+    html[${modeAttribute}="editing"] :is(${slideRootSelector}) { cursor: grab !important; }
+    html[${panningAttribute}="true"] :is(${slideRootSelector}) { cursor: grabbing !important; }
     html[${modeAttribute}="editing"] [${selectedAttribute}] { outline: 2px solid #7c3aed !important; outline-offset: 2px !important; }
     html[${modeAttribute}="editing"] [${editingAttribute}] { cursor: text !important; outline: 2px solid #2563eb !important; }
-    #${overlayId} { position: fixed; z-index: 2147483646; display: none; pointer-events: auto; cursor: move; border: 1px solid #7c3aed; box-sizing: border-box; background: transparent; }
+    #${overlayId} { position: fixed; z-index: 2147483646; display: none; pointer-events: none; cursor: move; border: 1px solid #7c3aed; box-sizing: border-box; background: transparent; }
     #${overlayId} [data-handle] { position: absolute; width: 9px; height: 9px; padding: 0; border: 1.5px solid #7c3aed; border-radius: 3px; background: white; box-shadow: 0 1px 4px rgba(15,23,42,.18); pointer-events: auto; }
     #${overlayId} [data-handle="nw"] { left: -5px; top: -5px; cursor: nwse-resize; }
     #${overlayId} [data-handle="n"] { left: 50%; top: -5px; transform: translateX(-50%); cursor: ns-resize; }
@@ -448,8 +482,25 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   });
 
   const elements = Array.from(document.querySelectorAll<HTMLElement>(`${editableSelector},[${textNodeAttribute}]`))
-    .filter((element) => element !== overlay && !overlay.contains(element));
+    .filter((element) => element !== overlay && !overlay.contains(element) && !isPresentationRoot(element));
   elements.forEach((element, index) => element.setAttribute(idAttribute, String(index + 1)));
+
+  const elementLocator = (element: HTMLElement) => {
+    const segments: string[] = [];
+    let current: HTMLElement | null = element.hasAttribute(textNodeAttribute) ? element.parentElement : element;
+    while (current && current !== document.body) {
+      const tag = current.tagName.toLowerCase();
+      let index = 1;
+      let sibling = current.previousElementSibling;
+      while (sibling) {
+        if (sibling.tagName === current.tagName && !sibling.hasAttribute(textNodeAttribute)) index += 1;
+        sibling = sibling.previousElementSibling;
+      }
+      segments.unshift(`${tag}:nth-of-type(${index})`);
+      current = current.parentElement;
+    }
+    return ["body", ...segments].join(" > ");
+  };
 
   const serialize = () => {
     const clone = document.documentElement.cloneNode(true);
@@ -500,12 +551,17 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     return {
       id: element.getAttribute(idAttribute) || "",
       tag: element.tagName.toLowerCase(),
+      locator: elementLocator(element),
       text: element instanceof HTMLImageElement ? "" : element.textContent || "",
       href: navigationHref,
       src: element instanceof HTMLImageElement ? element.getAttribute("src") || "" : "",
+      source: element instanceof HTMLImageElement
+        ? element.getAttribute("data-ipw-preview-src") || element.getAttribute("src") || ""
+        : "",
       alt: element instanceof HTMLImageElement ? element.getAttribute("alt") || "" : "",
-      canEditText: !(element instanceof HTMLImageElement) && (element.matches(textEditableSelector) || element.hasAttribute(textNodeAttribute)),
-      colorField: element.matches(textColorSelector) || element.hasAttribute(textNodeAttribute) ? "color" : "backgroundColor",
+      canEditText: isTextEditableElement(element),
+      canDelete: canDeleteElement(element),
+      colorField: element.matches(textColorSelector) || element.hasAttribute(textNodeAttribute) || isTextOnlyDiv(element) ? "color" : "backgroundColor",
       rangeText: textRange && element.contains(textRange.commonAncestorContainer) ? textRange.toString() : "",
       rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
       styles,
@@ -571,6 +627,9 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   const selectionCandidate = (target: Element) => {
     const element = target.closest<HTMLElement>(`[${idAttribute}]`);
     if (!element) return null;
+    const slideRoot = presentationCanvas ? target.closest<HTMLElement>(slideRootSelector) : null;
+    if (slideRoot && !slideRoot.contains(element)) return null;
+    if (isPresentationSlideRoot(element)) return null;
     const control = element.closest<HTMLElement>("button,a,[role='button']");
     // Controls use progressive selection: the first click selects the shell
     // (background, size, position); a second click drills into its text label.
@@ -581,7 +640,8 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
 
   const isDeckNavigation = (target: Element) => Boolean(target.closest("[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next'],button[aria-label^='Go to slide']"));
 
-  const clearSelection = () => {
+  const clearSelection = (notify = false) => {
+    const hadSelection = Boolean(selected);
     selected?.removeAttribute(selectedAttribute);
     selected?.removeAttribute(editingAttribute);
     selected?.removeAttribute("contenteditable");
@@ -589,6 +649,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     textRange = null;
     transform = null;
     overlay.style.display = "none";
+    if (notify && hadSelection) window.parent.postMessage({ channel, type: "deselected" }, "*");
   };
 
   const setEditingEnabled = (next: boolean) => {
@@ -598,6 +659,8 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   };
 
   setEditingEnabled(initialEditing);
+
+  document.addEventListener("ipollowork-design-deck-navigated", () => clearSelection(true));
 
   const elementBelowOverlay = (x: number, y: number) => {
     const previous = overlay.style.pointerEvents;
@@ -626,7 +689,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
 
   overlay.addEventListener("dblclick", (event) => {
     if (!editingEnabled) return;
-    if (!selected || selected instanceof HTMLImageElement || !(selected.matches(textEditableSelector) || selected.hasAttribute(textNodeAttribute))) return;
+    if (!selected || !isTextEditableElement(selected)) return;
     event.preventDefault();
     event.stopPropagation();
     selected.setAttribute(editingAttribute, "true");
@@ -637,17 +700,36 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   }, true);
 
   document.addEventListener("pointerdown", (event) => {
-    if (!editingEnabled || !selected || selected.hasAttribute(editingAttribute)) return;
+    if (!editingEnabled || selected?.hasAttribute(editingAttribute)) return;
     const target = event.target;
     if (!(target instanceof Element) || overlay.contains(target)) return;
     if (!event.altKey && isDeckNavigation(target)) return;
     const element = selectionCandidate(target);
-    if (element !== selected) return;
+    if (!element && presentationCanvas && target.closest(slideRootSelector)) {
+      canvasPan = { lastX: event.clientX, lastY: event.clientY, moved: false };
+      target.setPointerCapture?.(event.pointerId);
+      return;
+    }
+    if (!selected || element !== selected) return;
     prepareTransform(selected, "move", "move", event);
   }, true);
 
   document.addEventListener("pointermove", (event) => {
-    if (!editingEnabled || !selected || !transform) return;
+    if (!editingEnabled) return;
+    if (canvasPan) {
+      const deltaX = event.clientX - canvasPan.lastX;
+      const deltaY = event.clientY - canvasPan.lastY;
+      if (!canvasPan.moved && Math.hypot(deltaX, deltaY) < 3) return;
+      canvasPan.moved = true;
+      canvasPan.lastX = event.clientX;
+      canvasPan.lastY = event.clientY;
+      document.documentElement.setAttribute(panningAttribute, "true");
+      window.parent.postMessage({ channel, type: "pan", deltaX, deltaY }, "*");
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (!selected || !transform) return;
     const dx = event.clientX - transform.startX;
     const dy = event.clientY - transform.startY;
     if (!transform.moved && Math.hypot(dx, dy) < 3) return;
@@ -686,6 +768,16 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
 
   const finishTransform = (event: PointerEvent) => {
     if (!editingEnabled) return;
+    if (canvasPan) {
+      const moved = canvasPan.moved;
+      canvasPan = null;
+      document.documentElement.removeAttribute(panningAttribute);
+      if (moved) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if (!transform) return;
     const changed = transform.moved;
     const mode = transform.mode;
@@ -712,7 +804,10 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     if (!(target instanceof Element)) return;
     if (!event.altKey && isDeckNavigation(target)) return;
     const element = selectionCandidate(target);
-    if (!element) return;
+    if (!element) {
+      clearSelection(true);
+      return;
+    }
     if (element.hasAttribute(editingAttribute)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -724,7 +819,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     const target = event.target;
     if (!(target instanceof Element)) return;
     const element = target.closest<HTMLElement>(`[${idAttribute}]`);
-    if (!element || element instanceof HTMLImageElement || !(element.matches(textEditableSelector) || element.hasAttribute(textNodeAttribute))) return;
+    if (!element || !isTextEditableElement(element)) return;
     event.preventDefault();
     event.stopPropagation();
     selected?.removeAttribute(selectedAttribute);
@@ -775,6 +870,12 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   window.addEventListener("resize", () => { if (editingEnabled) { syncOverlay(); post("selected"); } });
   window.addEventListener("scroll", () => { if (editingEnabled) { syncOverlay(); post("selected"); } }, true);
 
+  document.addEventListener("wheel", (event) => {
+    if (!presentationCanvas || (!event.ctrlKey && !event.metaKey)) return;
+    event.preventDefault();
+    window.parent.postMessage({ channel, type: "zoom", deltaY: event.deltaY }, "*");
+  }, { capture: true, passive: false });
+
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent) return;
     const data = event.data;
@@ -792,10 +893,17 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       window.parent.postMessage({ channel, type: "document-draft", html: serialize() }, "*");
       return;
     }
+    if (data.type === "delete" && selected && data.id === selected.getAttribute(idAttribute)) {
+      if (!canDeleteElement(selected)) return;
+      selected.remove();
+      clearSelection();
+      window.parent.postMessage({ channel, type: "document-draft", html: serialize() }, "*");
+      return;
+    }
     if (!selected || data.type !== "set") return;
     if (data.id !== selected.getAttribute(idAttribute) || typeof data.field !== "string" || typeof data.value !== "string") return;
 
-    if (data.field === "text" && !(selected instanceof HTMLImageElement) && (selected.matches(textEditableSelector) || selected.hasAttribute(textNodeAttribute))) {
+    if (data.field === "text" && isTextEditableElement(selected)) {
       selected.textContent = data.value;
     } else if (data.field === "href") {
       const navigationControl = selected.closest<HTMLElement>("a,button,[role='button']");
