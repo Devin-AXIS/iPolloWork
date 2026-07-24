@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iPollo Work</title>
+
+    <link rel="icon" type="image/svg+xml" href="/ipollowork-mark.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem("ipollowork.themePref") || "system";
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var resolved = mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
+          document.documentElement.dataset.theme = resolved;
+          document.documentElement.style.colorScheme = resolved;
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+          document.documentElement.style.colorScheme = "light";
+        }
+      })();
+    </script>
+    <style>
+      #ipollowork-startup-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        place-items: center;
+        background: #ffffff;
+        transition: opacity 160ms ease;
+      }
+
+      #ipollowork-startup-splash[data-hiding="true"] {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #ipollowork-startup-splash img {
+        width: min(288px, 33.6vw);
+        height: auto;
+        display: block;
+      }
+
+      @media (max-width: 640px) {
+        #ipollowork-startup-splash img {
+          width: min(224px, 46.4vw);
+        }
+      }
+    </style>
+  </head>
+  <body class="bg-dls-surface text-dls-text mac:bg-transparent">
+    <div id="ipollowork-startup-splash" aria-label="Loading" role="status">
+      <img src="/ipollowork-app-loading-v3.gif" alt="" aria-hidden="true" />
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/index.react.tsx"></script>
+  </body>
+</html>

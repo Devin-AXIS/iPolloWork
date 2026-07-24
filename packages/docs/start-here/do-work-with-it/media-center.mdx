@@ -1,0 +1,81 @@
+---
+title: Use Media Center
+description: Use the provider-neutral Media Center contract for speech, translation, video, and digital-human capabilities without changing OpenCode.
+---
+
+iPolloWork exposes one local **Media Center** capability contract. Its first provider is Alibaba Model Studio and uses one `DASHSCOPE_API_KEY` from **Settings → Authorizations → Alibaba Model Studio media**. Provider code stays behind the local server: app UI, generated files, and OpenCode never receive the key value.
+
+## What it provides
+
+| Capability | Extension action | Result |
+| --- | --- | --- |
+| Text to speech | `speech_synthesize` | Audio URL from CosyVoice |
+| Voice cloning | `voice_clone` | Reusable Model Studio voice ID |
+| List cloned voices | `voice_list` | Normalized reusable voice metadata |
+| Clone a workspace sample | `voice_clone_workspace_file` | Reusable voice ID from a private temporary object |
+| Recorded transcription | `speech_transcribe` | Asynchronous Fun-ASR task |
+| Low-latency segment recognition | `speech_recognize_realtime` | Fun-ASR realtime response for a short accessible segment |
+| Audio/video file translation | `speech_translate` | Translated text and optional base64 audio chunks |
+| Video generation | `video_generate` | Asynchronous Wan task |
+| Model-specific video edit | `video_edit` | Asynchronous Wan task |
+| Digital human | `digital_human_generate` | Asynchronous Wan lip-sync task |
+| Read task status | `task_get` | Provider task status and result URL |
+
+Model Studio task result URLs are temporary. Use Storage Center when a feature needs to copy a workspace artifact to durable object storage.
+
+Every Media Center call returns the same envelope: `provider`, `operation`, `output`, and `taskId` when the provider creates an asynchronous task. `output` preserves provider-specific fields without putting provider branching into the application call path.
+
+## Call it from an iPolloWork app surface
+
+Use the typed client helper. It always routes through the local iPolloWork server, never from the browser directly to Model Studio.
+
+```ts
+const result = await client.callMedia("speech_synthesize", {
+  text: "欢迎来到 iPolloWork。",
+  voice: "longanyang",
+});
+
+const translation = await client.callMedia("speech_translate", {
+  fileUrl: "https://assets.example.com/meeting.wav",
+  format: "wav",
+  sourceLanguage: "zh",
+  targetLanguage: "en",
+  includeAudio: true,
+});
+```
+
+For an asynchronous task, retain its `result.taskId` in the feature that created it, then poll deliberately instead of submitting duplicate work.
+
+```ts
+const task = await client.callMedia("task_get", { taskId });
+```
+
+For trusted integrations, `voice_clone` accepts an accessible HTTPS URL. Product surfaces should prefer `voice_clone_workspace_file`: pass only a workspace-relative WAV, MP3, or M4A path. The local server uploads a private temporary object to configured OSS or Wasabi, signs a short-lived read URL for Model Studio, then removes the temporary remote object whether cloning succeeds or fails. The returned voice setting stores only its provider, model, voice ID, source, and update time—never a key, sample, or signed URL.
+
+The Video Studio voice control uses this workspace action for samples up to 10 MB and validates the recommended 10–60 second source duration in the desktop app. It saves only the selected profile in the current session's `video/<session>/voiceover.json`.
+
+## Video Agent voiceover contract
+
+For every Video Studio task, iPolloWork adds a small session-scoped contract to the Agent context. When the user explicitly requests narration, dubbing, or a spoken script, the Agent reads `voiceover.json`, calls the existing `media/speech_synthesize` action with that selected `voiceId` and `model`, downloads the short-lived result to a new `video/<session>/assets/voiceover-<revision>.mp3`, updates the one direct-child `<audio>` element to that file, then removes the prior voiceover asset. The immutable filename keeps an already-open Studio from replaying a cached older narration.
+
+It does not generate speech for every video, choose a random fallback voice, put a temporary provider URL into the project, or change HyperFrames playback ownership. If the user has not selected a Studio voice, the Agent asks them to do so and can continue with the requested silent visual video.
+
+## Call it from an agent
+
+The bundled iPolloWork extension plugin exposes the same actions to the runtime. An agent first calls `ipollowork_extension_list_actions` and then calls `ipollowork_extension_call` with `extensionId: "media"`. For the Video Agent contract, that action is `speech_synthesize`; the saved Studio profile supplies its `voice` and `model` arguments.
+
+The agent-facing capability exists in iPolloWork only. It does not add a Model Studio provider to OpenCode, edit OpenCode source files, modify OpenCode configuration, or depend on OpenCode internal data. That separation keeps OpenCode upgrades straightforward.
+
+## Upgrade check
+
+After changing the bundled OpenCode version, verify the local bridge rather than patching OpenCode:
+
+```bash
+pnpm --filter ipollowork-server exec bun test src/extensions/media-center.test.ts src/extensions-connect-gating.test.ts
+```
+
+Then start the desktop development client, open a session, and confirm that `ipollowork_extension_list_actions` includes `media`.
+
+## Realtime boundary
+
+`speech_recognize_realtime` is designed for short, uploaded segments. `speech_translate` consumes Model Studio's streaming response and returns the complete translation through the local gateway. A continuous microphone-to-microphone experience needs a dedicated WebSocket relay with short-lived credentials; keep that relay inside iPolloWork when it is added, rather than exposing the permanent Model Studio key or changing OpenCode.

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en" data-ipw-template="app-device-launch" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Launch what matters"},{"id":"brandName","type":"string","label":"Brand name","default":"Northstar"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260721"},{"id":"accent","type":"color","label":"Accent","default":"#68f6c1"},{"id":"tagline","type":"string","label":"Tagline","default":"A calmer way to move work forward."},{"id":"featureA","type":"string","label":"Feature one","default":"One clear workspace"},{"id":"featureB","type":"string","label":"Feature two","default":"Live team momentum"},{"id":"cta","type":"string","label":"Call to action","default":"Start your next chapter"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>App Device Launch</title>
+    <script src="assets/gsap.min.js"></script>
+    <script src="assets/three.min.js"></script>
+    <script src="assets/GLTFLoader.js"></script>
+    <style>
+      :root { --accent: #68f6c1; --ink: #f5f7fb; --muted: #9aa5b5; --bg: #060910; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      body { -webkit-font-smoothing: antialiased; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .ground { position: absolute; inset: 0; background: radial-gradient(circle at 72% 42%, rgba(48, 226, 174, .18), transparent 36%), radial-gradient(circle at 20% 12%, rgba(88, 104, 255, .16), transparent 30%), #060910; }
+      .grid { position: absolute; inset: 0; opacity: .13; background-image: linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px); background-size: 72px 72px; mask-image: linear-gradient(to bottom, #000, transparent 85%); }
+      .grain { position: absolute; inset: 0; opacity: .1; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E"); pointer-events: none; }
+      .topline { position: absolute; left: 74px; right: 74px; top: 62px; display: flex; align-items: center; justify-content: space-between; z-index: 20; font: 600 18px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; color: rgba(245,247,251,.58); }
+      .brand { display: flex; align-items: center; gap: 14px; color: var(--ink); letter-spacing: .02em; text-transform: none; font: 700 24px/1.1 Inter, sans-serif; }
+      .brand img { width: 32px; height: 32px; object-fit: contain; }
+      .eyebrow { font: 700 18px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .22em; text-transform: uppercase; color: var(--accent); }
+      .hero-copy { position: absolute; left: 124px; top: 214px; width: 720px; z-index: 10; }
+      h1 { margin: 24px 0 28px; max-width: 720px; font-size: 108px; line-height: .94; letter-spacing: -.065em; font-weight: 850; }
+      .hero-copy p { margin: 0; max-width: 560px; color: var(--muted); font-size: 30px; line-height: 1.28; }
+      .label { color: rgba(245,247,251,.58); font: 600 20px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; }
+      .accent { color: var(--accent); }
+      #device-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 5; pointer-events: none; }
+      .fallback-devices { position: absolute; right: 88px; top: 186px; width: 950px; height: 700px; z-index: 4; opacity: .52; perspective: 1600px; }
+      .fallback-phone { position: absolute; right: 394px; top: 66px; width: 244px; height: 500px; border-radius: 42px; border: 10px solid #202b3a; background: linear-gradient(150deg,#172033,#081018); box-shadow: 0 30px 100px rgba(0,0,0,.5), inset 0 0 0 3px rgba(255,255,255,.08); transform: rotateY(-24deg) rotateZ(5deg); }
+      .fallback-phone::after { content: ''; position: absolute; inset: 20px 14px; border-radius: 28px; background: linear-gradient(160deg, rgba(104,246,193,.5), rgba(30,40,70,.7) 38%, #0a101b); }
+      .fallback-laptop { position: absolute; right: 28px; top: 245px; width: 620px; height: 360px; border-radius: 20px 20px 8px 8px; border: 14px solid #253245; background: linear-gradient(135deg, rgba(104,246,193,.42), #101928 55%, #263b52); box-shadow: 0 40px 100px rgba(0,0,0,.48); transform: rotateY(-22deg) rotateX(8deg) rotateZ(-3deg); }
+      .fallback-laptop::after { content: ''; position: absolute; left: -70px; right: -70px; bottom: -62px; height: 32px; border-radius: 0 0 30px 30px; background: #1d2939; box-shadow: 0 28px 40px rgba(0,0,0,.35); }
+      .feature-rail { position: absolute; left: 124px; bottom: 102px; display: flex; align-items: center; gap: 24px; z-index: 20; }
+      .feature-chip { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border: 1px solid rgba(255,255,255,.15); border-radius: 14px; background: rgba(255,255,255,.06); color: rgba(245,247,251,.74); font-size: 18px; }
+      .feature-chip b { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #07110f; font: 800 14px/1 ui-monospace, monospace; }
+      .metric { position: absolute; right: 116px; bottom: 104px; z-index: 20; color: rgba(245,247,251,.62); font: 600 18px/1.3 ui-monospace, monospace; text-align: right; }
+      .metric strong { display: block; margin-bottom: 5px; color: var(--ink); font: 800 58px/.95 Inter, sans-serif; letter-spacing: -.06em; }
+      .scene-copy { position: absolute; left: 124px; top: 190px; width: 670px; z-index: 20; }
+      .scene-copy h2 { margin: 18px 0; font-size: 92px; line-height: .96; letter-spacing: -.06em; }
+      .scene-copy p { margin: 0; color: var(--muted); font-size: 28px; line-height: 1.3; }
+      .device-caption { position: absolute; right: 118px; top: 148px; z-index: 20; width: 300px; color: rgba(245,247,251,.58); font: 600 16px/1.4 ui-monospace, monospace; text-align: right; }
+      .device-caption::before { content: ''; display: inline-block; width: 56px; height: 1px; margin: 0 12px 5px 0; background: var(--accent); }
+      .outro { display: grid; place-items: center; text-align: center; }
+      .outro-inner { position: relative; z-index: 10; }
+      .outro h2 { margin: 26px 0 20px; font-size: 116px; line-height: .92; letter-spacing: -.07em; }
+      .outro p { margin: 0; color: var(--muted); font-size: 28px; }
+      .orbit { position: absolute; width: 720px; height: 720px; right: 220px; top: 138px; border: 1px solid rgba(104,246,193,.32); border-radius: 50%; transform: rotateX(70deg) rotateZ(-18deg); box-shadow: 0 0 100px rgba(104,246,193,.14); }
+      .orbit::after { content: ''; position: absolute; inset: 92px; border: 1px solid rgba(104,246,193,.15); border-radius: 50%; }
+    </style>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="15">
+      <div id="background-layer" class="clip" data-start="0" data-duration="15" data-track-index="0"><div class="ground"></div><div class="grid"></div><div class="grain"></div></div>
+      <div class="topline"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260721" alt="Brand logo" /><span data-var-text="brandName">Northstar</span></div><span>01 — Product film</span></div>
+      <canvas id="device-stage" class="clip" data-start="0" data-duration="15" data-track-index="1" width="1920" height="1080"></canvas>
+      <div class="fallback-devices" id="fallback-devices"><div class="fallback-phone"></div><div class="fallback-laptop"></div></div>
+
+      <section class="scene clip" id="scene-hook" data-start="0" data-duration="3.2" data-track-index="2">
+        <div class="hero-copy"><div class="eyebrow">Introducing <span data-var-text="brandName">Northstar</span></div><h1 data-var-text="title">Launch what matters</h1><p data-var-text="tagline">A calmer way to move work forward.</p></div>
+        <div class="feature-rail"><div class="feature-chip"><b>01</b><span data-var-text="featureA">One clear workspace</span></div><div class="feature-chip"><b>02</b><span data-var-text="featureB">Live team momentum</span></div></div>
+        <div class="metric"><strong>3D</strong>device showcase</div>
+      </section>
+      <section class="scene clip" id="scene-ui" data-start="3.2" data-duration="3.8" data-track-index="3">
+        <div class="scene-copy"><div class="eyebrow">The product, in focus</div><h2><span class="accent">See</span> the work move.</h2><p>Real screens. Real depth. One continuous product story.</p></div>
+        <div class="device-caption">LIVE SCREEN / FEATURE REVEAL</div><div class="orbit" id="orbit-one"></div>
+      </section>
+      <section class="scene clip" id="scene-proof" data-start="7" data-duration="3.8" data-track-index="4">
+        <div class="scene-copy"><div class="eyebrow">Built for momentum</div><h2>Less noise.<br /><span class="accent">More signal.</span></h2><p>Turn the product promise into a moment people can feel.</p></div>
+        <div class="device-caption">DEPTH / DETAIL / MOTION</div><div class="orbit" id="orbit-two"></div>
+      </section>
+      <section class="scene clip" id="scene-cta" data-start="10.8" data-duration="4.2" data-track-index="5">
+        <div class="outro"><div class="outro-inner"><div class="eyebrow">Your next release</div><h2 data-var-text="cta">Start your next chapter</h2><p><span data-var-text="brandName">Northstar</span> · Make the first frame count.</p></div></div>
+      </section>
+    </main>
+    <script>
+      const deviceCanvas = document.getElementById('device-stage');
+      const fallbackDevices = document.getElementById('fallback-devices');
+      const state = { phoneX: -2.8, phoneY: 0.1, phoneZ: 0, phoneRY: -0.28, laptopX: 2.9, laptopY: -0.2, laptopZ: -0.8, laptopRY: -0.2, cameraZ: 7.2, cameraX: 0, time: 0 };
+      let renderer = null;
+      let threeScene = null;
+      let camera = null;
+      let phone = null;
+      let laptop = null;
+      let threeReady = false;
+      try {
+        renderer = new THREE.WebGLRenderer({ canvas: deviceCanvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(1920, 1080, false);
+        renderer.setPixelRatio(1);
+        renderer.setClearColor(0x000000, 0);
+        threeScene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(32, 1920 / 1080, 0.1, 100);
+        camera.position.set(0, 0.1, 7.2);
+        threeScene.add(new THREE.AmbientLight(0x9ac9bb, 1.9));
+        const key = new THREE.DirectionalLight(0xffffff, 2.5); key.position.set(-3, 5, 7); threeScene.add(key);
+        const rim = new THREE.PointLight(0x68f6c1, 12, 12); rim.position.set(3, 1, 3); threeScene.add(rim);
+        const loader = new THREE.GLTFLoader();
+        loader.load('models/iphone.glb', (gltf) => { phone = gltf.scene; phone.scale.setScalar(2.05); threeScene.add(phone); threeReady = true; drawDevices(); }, undefined, () => drawDevices());
+        loader.load('models/macbook.glb', (gltf) => { laptop = gltf.scene; laptop.scale.setScalar(1.55); threeScene.add(laptop); threeReady = true; drawDevices(); }, undefined, () => drawDevices());
+      } catch (error) {
+        deviceCanvas.style.display = 'none';
+        fallbackDevices.style.opacity = '1';
+      }
+      function drawDevices() {
+        if (!renderer || !threeScene || !camera) return;
+        if (phone) { phone.position.set(state.phoneX, state.phoneY, state.phoneZ); phone.rotation.set(0.02, state.phoneRY, 0.02); }
+        if (laptop) { laptop.position.set(state.laptopX, state.laptopY, state.laptopZ); laptop.rotation.set(-0.08, state.laptopRY, -0.04); }
+        camera.position.set(state.cameraX, 0.1, state.cameraZ); camera.lookAt(0, 0, 0);
+        renderer.render(threeScene, camera);
+        fallbackDevices.style.opacity = threeReady ? '0.08' : '0.58';
+      }
+      const tl = gsap.timeline({ paused: true });
+      tl.to(state, { time: 15, duration: 15, ease: 'none', onUpdate: drawDevices }, 0);
+      tl.fromTo('#scene-hook .hero-copy', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .8, ease: 'power3.out' }, .15);
+      tl.fromTo('#scene-hook .feature-chip:nth-child(1)', { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: .55, ease: 'power3.out' }, .85);
+      tl.fromTo('#scene-hook .feature-chip:nth-child(2)', { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: .55, ease: 'power3.out' }, 1.2);
+      tl.to(state, { phoneX: -0.7, phoneRY: -0.08, cameraZ: 6.1, duration: 2.5, ease: 'power3.out', onUpdate: drawDevices }, .3);
+      tl.to(state, { phoneRY: 0.54, cameraX: .2, duration: 2.2, ease: 'sine.inOut', onUpdate: drawDevices }, 3.4);
+      tl.fromTo('#scene-ui .scene-copy', { opacity: 0, x: -42 }, { opacity: 1, x: 0, duration: .75, ease: 'power3.out' }, 3.5);
+      tl.fromTo('#orbit-one', { opacity: 0, scale: .74, rotation: -8 }, { opacity: 1, scale: 1, rotation: 12, duration: 1.4, ease: 'power3.out' }, 3.9);
+      tl.to(state, { phoneX: -1.7, laptopX: 1.1, laptopRY: -0.05, cameraZ: 6.6, duration: 2.0, ease: 'power3.inOut', onUpdate: drawDevices }, 6.2);
+      tl.fromTo('#scene-proof .scene-copy', { opacity: 0, x: 48 }, { opacity: 1, x: 0, duration: .8, ease: 'expo.out' }, 7.15);
+      tl.fromTo('#orbit-two', { opacity: 0, scale: .6, rotation: 16 }, { opacity: 1, scale: 1, rotation: -14, duration: 1.3, ease: 'power3.out' }, 7.6);
+      tl.to(state, { phoneX: -2.2, laptopX: .45, cameraZ: 7.5, duration: 2.4, ease: 'sine.inOut', onUpdate: drawDevices }, 8.2);
+      tl.fromTo('#scene-cta .outro-inner', { opacity: 0, scale: .88, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: 1.0, ease: 'power3.out' }, 11.25);
+      tl.to(state, { phoneX: -2.8, laptopX: 2.9, cameraZ: 7.2, duration: 2.2, ease: 'power3.in', onUpdate: drawDevices }, 12.2);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+      drawDevices();
+    </script>
+  </body>
+</html>

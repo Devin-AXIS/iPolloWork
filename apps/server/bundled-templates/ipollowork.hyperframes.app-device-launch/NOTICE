@@ -1,0 +1,13 @@
+iPolloWork official template
+
+Original composition adapted from HyperFrames 3D device showcase patterns.
+Upstream: https://github.com/heygen-com/hyperframes
+License: Apache-2.0
+
+Local runtime assets:
+- GSAP 3.14.2
+- Three.js 0.147.0
+- HyperFrames catalog iPhone and MacBook GLB models
+
+The composition was rewritten for iPolloWork's local template packaging,
+synchronous seekable timeline registration, and CSS fallback behavior.

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-ipw-template="article-magazine" data-ipw-style="newsprint">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Magazine Article</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Sans+SC:wght@300;400;500;600&family=Noto+Serif+SC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#1a1a1a; --paper:#fafaf7; --line:#e7e5e0; --mute:#6b6760; --accent:#b8553a; --twitter:#1d9bf0; }
+  body { font-family:'Inter','Noto Sans SC',sans-serif; background:var(--paper); color:var(--ink); -webkit-font-smoothing:antialiased; }
+  .serif { font-family:'Noto Serif SC',Georgia,serif; }
+  .ornament { display:flex; align-items:center; justify-content:center; gap:14px; margin:48px 0; color:var(--mute); }
+  .ornament::before, .ornament::after { content:""; flex:1; max-width:60px; height:1px; background:var(--line); }
+  .article p { font-size:1.0625rem; line-height:1.8; color:#262421; margin:1.1em 0; max-width:65ch; }
+  .article h2 { font-family:'Noto Serif SC',serif; font-size:1.875rem; font-weight:700; margin:2.4em 0 0.8em; letter-spacing:-0.01em; }
+  .article blockquote { border-left:3px solid var(--accent); padding:0 0 0 20px; margin:1.6em 0; font-style:italic; color:var(--mute); font-family:'Noto Serif SC',serif; font-size:1.0625rem; line-height:1.7; }
+  .article a { color:var(--accent); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px; }
+  .grain::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:0.4; background-image:radial-gradient(circle at 12% 18%, rgba(106,92,56,0.05), transparent 45%), radial-gradient(circle at 88% 72%, rgba(106,92,56,0.04), transparent 50%); }
+</style>
+<link rel="stylesheet" href="design-tokens.css"></head>
+<body class="grain"><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
+<article class="article max-w-[720px] mx-auto px-6 pt-20 pb-32">
+
+  <!-- Source banner — clearly attributes the inspiration -->
+  <a href="https://x.com/trq212/status/2052809885763747935" target="_blank" rel="noopener" class="!no-underline group block mb-10 rounded-2xl border border-[var(--line)] bg-white/70 hover:bg-white transition-colors p-4 flex items-start gap-4">
+    <div class="shrink-0 w-10 h-10 rounded-full bg-[var(--twitter)] grid place-items-center text-white">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+    </div>
+    <div class="min-w-0 flex-1">
+      <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--mute)] mb-1">Journal</div>
+      <div class="text-[14px] font-medium text-[var(--ink)] leading-snug">Notes on making better work</div>
+      <div class="text-[12px] text-[var(--mute)] mt-1 break-all group-hover:text-[var(--accent)] transition-colors">x.com/trq212/status/2052809885763747935  ↗</div>
+    </div>
+  </a>
+
+  <div class="text-[11px] font-medium tracking-[0.22em] uppercase text-[var(--accent)] mb-5">Where ideas become perspective</div>
+  <h1 class="serif text-[3rem] leading-[1.08] font-black tracking-tight mb-5">
+    Ideas <a href="https://x.com/trq212/status/2052809885763747935" target="_blank" rel="noopener" class="italic font-bold !no-underline" style="color:var(--accent)">@trq212</a> Culture<br/>
+    Designed for thoughtful reading
+  </h1>
+  <p class="text-[1.125rem] leading-relaxed text-[var(--mute)] font-light max-w-[60ch] mb-8">
+    A considered editorial layout that gives long-form writing a calm rhythm and a distinctive point of view.
+  </p>
+  <div class="flex items-center gap-3 text-[12px] text-[var(--mute)] pb-12 border-b border-[var(--line)]">
+    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-[#c96442] to-[#e9b94a]"></div>
+    <span class="font-medium text-[var(--ink)]">Tom Pan</span>
+    <span>·</span><span>Design</span>
+    <span>·</span><span>Research</span>
+  </div>
+
+  <h2>A story with room to breathe</h2>
+  <p><span class="serif font-bold text-[1.5rem] float-left mr-2 leading-none mt-1.5" style="color:var(--accent)">Read</span>Strong typography, generous spacing, and flexible media blocks make every section easy to read and easy to shape.</p>
+  <p>Use this space for essays, interviews, field notes, or a publication with a voice of its own.</p>
+  <p>A considered editorial layout that gives long-form writing a calm rhythm and a distinctive point of view.<strong class="font-semibold text-[var(--ink)]">Notes on making better work</strong>Share</p>
+
+  <h2>Where ideas become perspective</h2>
+  <p><code class="px-1.5 py-0.5 rounded bg-[#f0ece5] text-[0.92em] font-mono text-[#7a3d27]">&lt;div class="..."&gt;</code> Strong typography, generous spacing, and flexible media blocks make every section easy to read and easy to shape.</p>
+  <blockquote>Designed for thoughtful reading<br/>A story with room to breathe</blockquote>
+
+  <h2>Notes on making better work</h2>
+  <p>Where ideas become perspective <a href="#">iPolloWork</a>Use this space for essays, interviews, field notes, or a publication with a voice of its own.<strong class="font-semibold text-[var(--ink)]">Archive</strong>A considered editorial layout that gives long-form writing a calm rhythm and a distinctive point of view.</p>
+  <p>Designed for thoughtful reading</p>
+
+  <h2>Journal</h2>
+  <p>Strong typography, generous spacing, and flexible media blocks make every section easy to read and easy to shape.</p>
+
+  <div class="ornament"><span class="serif italic">·  ·  ·</span></div>
+
+  <div class="rounded-2xl border border-[var(--line)] bg-white/60 p-6 mt-12 flex items-start gap-4">
+    <div class="text-2xl shrink-0">📩</div>
+    <div>
+      <div class="font-semibold text-[var(--ink)] mb-1">A story with room to breathe</div>
+      <div class="text-[13px] text-[var(--mute)]">Ideas <a href="https://x.com/trq212/status/2052809885763747935" target="_blank" rel="noopener" style="color:var(--accent)">x.com/trq212/status/2052809885763747935</a></div>
+    </div>
+  </div>
+</article>
+</body>
+</html>

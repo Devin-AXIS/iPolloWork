@@ -1,0 +1,33 @@
+:root {
+  --ipw-color-primary: #19e6c4;
+  --ipw-color-secondary: #8ea9a3;
+  --ipw-color-accent: #19e6c4;
+  --ipw-color-bg: #07120f;
+  --ipw-color-surface: #0c1d19;
+  --ipw-color-text: #f7f8fb;
+  --ipw-color-muted: #8ea9a3;
+  --ipw-color-border: #303746;
+  --ipw-font-display: Inter, ui-sans-serif, system-ui, sans-serif;
+  --ipw-font-body: Inter, ui-sans-serif, system-ui, sans-serif;
+  --ipw-type-scale: 1;
+  --ipw-body-line-height: 1.55;
+  --ipw-content-width: 1200px;
+  --ipw-page-padding: clamp(20px, 4vw, 56px);
+  --ipw-section-space: clamp(48px, 8vw, 112px);
+  --ipw-button-radius: 12px;
+  --ipw-card-bg: #0c1d19;
+  --ipw-card-border: #303746;
+  --ipw-card-radius: 20px;
+  --ipw-card-shadow: 0 18px 54px rgba(15, 23, 42, .1);
+}
+html { color-scheme: dark; }
+body { background-color: var(--ipw-color-bg) !important; color: var(--ipw-color-text); font-family: var(--ipw-font-body); line-height: var(--ipw-body-line-height); }
+h1, h2, h3, h4 { font-family: var(--ipw-font-display); }
+a, button, [role="button"] { border-radius: var(--ipw-button-radius); }
+::selection { background: color-mix(in srgb, var(--ipw-color-accent) 32%, transparent); }
+:is([class*="eyebrow"], [class*="kicker"], [class*="accent"]) { color: var(--ipw-color-accent) !important; }
+:is(button, [role="button"], a[class*="button"], a[class*="btn"], a[class*="cta"]) { border-color: var(--ipw-color-primary); }
+:is(article, [class*="card"]) { border-color: var(--ipw-card-border); border-radius: var(--ipw-card-radius); }
+.ipw-brand-slot { position: fixed; right: 18px; bottom: 18px; z-index: 2147483000; display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--ipw-color-primary) 35%, var(--ipw-color-border)); border-radius: 999px; background: color-mix(in srgb, var(--ipw-color-surface) 84%, transparent); color: var(--ipw-color-text); box-shadow: 0 12px 44px color-mix(in srgb, var(--ipw-color-primary) 18%, transparent); font: 600 11px/1 var(--ipw-font-body); letter-spacing: -.01em; backdrop-filter: blur(14px); }
+.ipw-brand-slot img { width: 18px; height: 18px; object-fit: contain; }
+@media (max-width: 640px) { .ipw-brand-slot { right: 10px; bottom: 10px; } }

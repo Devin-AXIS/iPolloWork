@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pitch Deck - iPolloWork</title>
+  <meta name="description" content="A decision-ready 16:9 HTML pitch deck adapted from Open Design html-ppt." />
+  <style>
+    :root {
+      --ipw-color-bg: #0b1020;
+      --ipw-color-surface: #151b30;
+      --ipw-color-text: #f7f8fc;
+      --ipw-color-muted: #9ea8c6;
+      --ipw-color-border: rgba(255,255,255,.12);
+      --ipw-color-primary: #7c5cff;
+      --ipw-color-secondary: #2563eb;
+      --ipw-color-accent: #35d0ba;
+      --ipw-color-success: #22c55e;
+      --ipw-color-warning: #f59e0b;
+      --ipw-color-danger: #ef4444;
+      --ipw-font-display: Inter, ui-sans-serif, system-ui, sans-serif;
+      --ipw-font-body: Inter, ui-sans-serif, system-ui, sans-serif;
+      --ipw-type-scale: 1;
+      --ipw-body-line-height: 1.5;
+      --ipw-content-width: 100%;
+      --ipw-page-padding: clamp(42px, 6.2vw, 96px);
+      --ipw-section-space: clamp(34px, 5vw, 72px);
+      --ipw-button-radius: 9px;
+      --ipw-card-bg: rgba(21,27,48,.88);
+      --ipw-card-border: rgba(255,255,255,.12);
+      --ipw-card-radius: 22px;
+      --ipw-card-shadow: inset 0 1px rgba(255,255,255,.04);
+      --ipw-card-blur: 0px;
+      --ipw-bg-gradient: none;
+      --ipw-bg-image: none;
+      --ipw-bg-overlay: linear-gradient(rgba(11,16,32,0), rgba(11,16,32,0));
+      --ipw-bg-overlay-color: #0b1020;
+      --ipw-bg-overlay-opacity: 0;
+      --ipw-radius: 22px;
+      --ipw-shadow: 0 30px 90px rgba(0,0,0,.38);
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body { display: grid; place-items: center; color: var(--ipw-color-text); background: #070a13; font-family: var(--ipw-font-body); font-size: calc(16px * var(--ipw-type-scale)); line-height: var(--ipw-body-line-height); }
+    button { font: inherit; }
+    .deck {
+      position: relative;
+      width: min(100vw, calc(100vh * 16 / 9));
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      isolation: isolate;
+      background: var(--ipw-color-bg);
+      background-image: var(--ipw-bg-overlay), var(--ipw-bg-image), var(--ipw-bg-gradient);
+      background-size: cover;
+      background-position: center;
+      box-shadow: var(--ipw-shadow);
+    }
+    .deck::before { content: ""; position: absolute; inset: -35%; z-index: -1; background: radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--ipw-color-primary) 35%, transparent), transparent 30%), radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--ipw-color-accent) 22%, transparent), transparent 27%); filter: blur(20px); }
+    .slide { position: absolute; inset: 0; display: flex; width: var(--ipw-content-width); max-width: 100%; margin-inline: auto; padding: var(--ipw-section-space) var(--ipw-page-padding); flex-direction: column; justify-content: center; opacity: 0; pointer-events: none; transform: translateX(28px); transition: opacity .35s ease, transform .35s ease; }
+    .slide.is-active { opacity: 1; pointer-events: auto; transform: translateX(0); }
+    .slide.is-before { transform: translateX(-28px); }
+    .eyebrow { margin: 0 0 18px; color: var(--ipw-color-accent); font-size: clamp(10px, 1.1vw, 15px); font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+    h1, h2, h3 { margin: 0; font-family: var(--ipw-font-display); letter-spacing: -.04em; }
+    h1 { max-width: 12ch; font-size: clamp(42px, 7.2vw, 104px); line-height: .98; }
+    h2 { max-width: 15ch; font-size: clamp(34px, 5.2vw, 72px); line-height: 1.03; }
+    h3 { font-size: clamp(18px, 2vw, 30px); line-height: 1.12; }
+    .lede { max-width: 60ch; margin: 22px 0 0; color: var(--ipw-color-muted); font-size: clamp(15px, 1.7vw, 24px); line-height: 1.55; }
+    .accent { color: var(--ipw-color-primary); }
+    .grid { display: grid; gap: clamp(14px, 2vw, 28px); margin-top: clamp(24px, 3vw, 42px); }
+    .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card { min-width: 0; padding: clamp(18px, 2.3vw, 34px); border: 1px solid var(--ipw-card-border); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); box-shadow: var(--ipw-card-shadow); backdrop-filter: blur(var(--ipw-card-blur)); -webkit-backdrop-filter: blur(var(--ipw-card-blur)); }
+    .card p { margin: 10px 0 0; color: var(--ipw-color-muted); font-size: clamp(12px, 1.25vw, 18px); line-height: 1.5; }
+    .metric { font-size: clamp(36px, 5vw, 72px); font-weight: 800; line-height: 1; letter-spacing: -.06em; }
+    .metric-label { margin-top: 10px; color: var(--ipw-color-muted); font-size: clamp(11px, 1.15vw, 16px); }
+    .pill { display: inline-flex; width: fit-content; margin-top: 30px; padding: 8px 13px; border: 1px solid color-mix(in srgb, var(--ipw-color-primary) 45%, transparent); border-radius: 999px; color: #ddd7ff; background: color-mix(in srgb, var(--ipw-color-primary) 14%, transparent); font-size: clamp(10px, 1vw, 14px); }
+    .timeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 40px; }
+    .step { position: relative; padding-top: 20px; border-top: 2px solid var(--ipw-color-border); }
+    .step::before { content: ""; position: absolute; top: -6px; left: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--ipw-color-primary); box-shadow: 0 0 18px var(--ipw-color-primary); }
+    .step strong { display: block; font-size: clamp(13px, 1.3vw, 19px); }
+    .step span { display: block; margin-top: 6px; color: var(--ipw-color-muted); font-size: clamp(10px, 1vw, 14px); }
+    .notes { display: none !important; }
+    .deck-chrome { position: absolute; z-index: 10; left: 24px; right: 24px; bottom: 18px; display: flex; align-items: center; justify-content: space-between; color: var(--ipw-color-muted); font-size: 12px; }
+    .deck-controls { display: flex; align-items: center; gap: 7px; }
+    .deck-controls button { display: grid; width: 30px; height: 30px; padding: 0; place-items: center; border: 1px solid var(--ipw-color-border); border-radius: var(--ipw-button-radius); color: var(--ipw-color-text); background: color-mix(in srgb, var(--ipw-color-surface) 85%, transparent); cursor: pointer; }
+    .dots { display: flex; gap: 5px; }
+    .dot { width: 5px; height: 5px; padding: 0; border: 0; border-radius: 50%; background: var(--ipw-color-muted); opacity: .35; cursor: pointer; }
+    .dot.is-active { width: 18px; border-radius: 4px; background: var(--ipw-color-primary); opacity: 1; }
+    @media (max-width: 720px) {
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .card { padding: 14px; border-radius: 14px; }
+      .timeline { margin-top: 20px; }
+      .deck-chrome { left: 12px; right: 12px; bottom: 8px; transform: scale(.8); transform-origin: bottom right; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" data-ipw-template-kind="slides" aria-label="Pitch deck">
+    <section class="slide is-active" data-title="Cover">
+      <p class="eyebrow">Pitch Deck / 2026</p>
+      <h1>Turn ideas into <span class="accent">work that ships.</span></h1>
+      <p class="lede">A local-first AI workspace that connects research, code, design and delivery in one continuous flow.</p>
+      <span class="pill">iPolloWork / Confidential</span>
+      <div class="notes">Explain what the company does and why the timing matters in one sentence.</div>
+    </section>
+
+    <section class="slide" data-title="Problem">
+      <p class="eyebrow">01 / Problem</p>
+      <h2>More AI tools.<br />Still a <span class="accent">broken workflow.</span></h2>
+      <div class="grid g3">
+        <article class="card"><h3>Lost context</h3><p>Conversations, files and execution environments live in separate tools.</p></article>
+        <article class="card"><h3>Broken handoff</h3><p>Generated work still needs manual transfer, editing and validation.</p></article>
+        <article class="card"><h3>No reuse</h3><p>The best workflows rarely become repeatable team capabilities.</p></article>
+      </div>
+      <div class="notes">Use real team examples to explain each problem.</div>
+    </section>
+
+    <section class="slide" data-title="Solution">
+      <p class="eyebrow">02 / Solution</p>
+      <h2>One workspace,<br /><span class="accent">from thought to delivery.</span></h2>
+      <div class="grid g2">
+        <article class="card"><h3>Native AI tasks</h3><p>Work, Code, Design and Video share one conversation and file context.</p></article>
+        <article class="card"><h3>Editable outcomes</h3><p>Continue changing copy, color, layout and pages directly on the canvas.</p></article>
+      </div>
+      <div class="notes">Make clear that this is an operational workspace, not another chat box.</div>
+    </section>
+
+    <section class="slide" data-title="Traction">
+      <p class="eyebrow">03 / Traction</p>
+      <h2>Turn product signals into <span class="accent">credible evidence.</span></h2>
+      <div class="grid g3">
+        <article class="card"><div class="metric">18K</div><div class="metric-label">Monthly active tasks</div></article>
+        <article class="card"><div class="metric">42%</div><div class="metric-label">Four-week retention</div></article>
+        <article class="card"><div class="metric">3.6x</div><div class="metric-label">Quarterly task growth</div></article>
+      </div>
+      <div class="notes">Replace every sample metric with verified company data before presenting.</div>
+    </section>
+
+    <section class="slide" data-title="Business model">
+      <p class="eyebrow">04 / Business Model</p>
+      <h2>Grow from personal leverage to <span class="accent">team infrastructure.</span></h2>
+      <div class="grid g3">
+        <article class="card"><h3>Personal</h3><p>Core workspace and local models with a low-friction starting point.</p></article>
+        <article class="card"><h3>Professional</h3><p>Advanced models, design templates, video and automation.</p></article>
+        <article class="card"><h3>Enterprise</h3><p>Permissions, private deployment, governance and shared knowledge.</p></article>
+      </div>
+      <div class="notes">Explain how value and revenue expand from one user to the whole team.</div>
+    </section>
+
+    <section class="slide" data-title="Roadmap">
+      <p class="eyebrow">05 / Roadmap</p>
+      <h2>Four stages of expansion.</h2>
+      <div class="timeline">
+        <div class="step"><strong>Now</strong><span>Design and video workspaces</span></div>
+        <div class="step"><strong>Next</strong><span>Template and skill marketplace</span></div>
+        <div class="step"><strong>Scale</strong><span>Team collaboration and governance</span></div>
+        <div class="step"><strong>Vision</strong><span>A self-improving work system</span></div>
+      </div>
+      <div class="notes">Connect one clear capability to one business outcome at each stage.</div>
+    </section>
+
+    <section class="slide" data-title="The ask">
+      <p class="eyebrow">06 / The Ask</p>
+      <h1>Build the next way <span class="accent">AI work gets done.</span></h1>
+      <p class="lede">A $3M round funds product, model infrastructure and the design ecosystem through the next 18 months.</p>
+      <span class="pill">hello@ipollowork.ai</span>
+      <div class="notes">State the amount, use of funds and milestone this round is designed to reach.</div>
+    </section>
+
+    <div class="deck-chrome" aria-label="Slide controls">
+      <div class="dots" aria-label="Slides"></div>
+      <div class="deck-controls"><span class="counter">1 / 7</span><button type="button" data-action="prev" aria-label="Previous slide">←</button><button type="button" data-action="next" aria-label="Next slide">→</button></div>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const slides = [...document.querySelectorAll('.slide')];
+      const dots = document.querySelector('.dots');
+      const counter = document.querySelector('.counter');
+      let index = Math.max(0, Math.min(slides.length - 1, Number(location.hash.slice(1)) - 1 || 0));
+      slides.forEach((slide, slideIndex) => {
+        const dot = document.createElement('button');
+        dot.type = 'button'; dot.className = 'dot'; dot.setAttribute('aria-label', `Go to slide ${slideIndex + 1}`);
+        dot.addEventListener('click', () => show(slideIndex)); dots.appendChild(dot);
+      });
+      const show = (next) => {
+        index = (next + slides.length) % slides.length;
+        slides.forEach((slide, slideIndex) => {
+          slide.classList.toggle('is-active', slideIndex === index);
+          slide.classList.toggle('is-before', slideIndex < index);
+          slide.setAttribute('aria-hidden', String(slideIndex !== index));
+        });
+        [...dots.children].forEach((dot, dotIndex) => dot.classList.toggle('is-active', dotIndex === index));
+        counter.textContent = `${index + 1} / ${slides.length}`;
+        history.replaceState(null, '', `#${index + 1}`);
+      };
+      document.querySelector('[data-action="prev"]').addEventListener('click', () => show(index - 1));
+      document.querySelector('[data-action="next"]').addEventListener('click', () => show(index + 1));
+      document.addEventListener('keydown', (event) => {
+        if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) return;
+        if (['ArrowRight', 'PageDown', ' '].includes(event.key)) { event.preventDefault(); show(index + 1); }
+        if (['ArrowLeft', 'PageUp'].includes(event.key)) { event.preventDefault(); show(index - 1); }
+        if (event.key === 'Home') show(0);
+        if (event.key === 'End') show(slides.length - 1);
+      });
+      show(index);
+    })();
+  </script>
+</body>
+</html>

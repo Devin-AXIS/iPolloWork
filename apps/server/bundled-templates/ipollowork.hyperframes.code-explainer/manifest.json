@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.code-explainer",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "technical-explainer",
+  "style": "technical",
+  "tags": ["video", "code", "technical", "tutorial", "diff", "developer"],
+  "surface": "video",
+  "title": "Code Explainer",
+  "description": "A technical teaching template with code typing, diff highlights, decoded terminology, and a measurable result card.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork · HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition inspired by HyperFrames code animation and text effect patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "accent", "label": "Accent", "type": "color", "group": "theme" },
+      { "id": "question", "label": "Question", "type": "text", "group": "content" },
+      { "id": "codeLabel", "label": "Code label", "type": "text", "group": "content" },
+      { "id": "result", "label": "Result", "type": "text", "group": "content" },
+      { "id": "metric", "label": "Metric", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the question, code label, result, and metric with a real technical narrative.",
+    "Keep code lines large enough for video and use the diff highlight only for the changed lines.",
+    "Sequence the code reveal with the explanation instead of showing the entire answer at once.",
+    "Verify that all code remains readable in the rendered contact sheet."
+  ],
+  "minimumAppVersion": "0.17.24"
+}

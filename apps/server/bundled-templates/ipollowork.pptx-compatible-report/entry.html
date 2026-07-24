@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quarterly Report</title>
+  <link rel="stylesheet" href="design-tokens.css" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { display: grid; place-items: center; background: #dce6e4; font-family: var(--ipw-font-body); }
+    .deck { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; overflow: hidden; background: var(--ipw-color-bg); }
+    .slide { position: absolute; inset: 0; display: none; flex-direction: column; padding: 66px 86px; background: var(--ipw-color-bg); color: var(--ipw-color-text); }
+    .slide.is-active { display: flex; }
+    .slide.cover { background: var(--ipw-color-primary); color: #ffffff; }
+    .label { margin: 0 0 17px; color: var(--ipw-color-accent); font-size: 16px; font-weight: 700; letter-spacing: 2.4px; text-transform: uppercase; }
+    .cover .label { color: #f0c6aa; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { max-width: 980px; font-size: 76px; line-height: 1.01; letter-spacing: -2.2px; }
+    h2 { max-width: 950px; font-size: 51px; line-height: 1.07; letter-spacing: -1.4px; }
+    h3 { font-size: 22px; line-height: 1.2; }
+    .accent { color: var(--ipw-color-accent); }
+    .summary { max-width: 850px; margin-top: 24px; color: var(--ipw-color-muted); font-size: 24px; line-height: 1.42; }
+    .cover .summary { color: #d6e7e5; }
+    .grid { display: grid; gap: 18px; margin-top: 34px; }
+    .grid.three { grid-template-columns: repeat(3, 1fr); }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .card { min-width: 0; padding: 23px 25px; border: 1px solid var(--ipw-color-border); border-radius: var(--ipw-card-radius); background: var(--ipw-color-surface); }
+    .metric { margin-top: 22px; color: var(--ipw-color-primary); font-size: 60px; font-weight: 700; line-height: 1; letter-spacing: -2.4px; }
+    .detail { margin-top: 10px; color: var(--ipw-color-muted); font-size: 18px; line-height: 1.38; }
+    .bar-row { display: grid; grid-template-columns: 200px 1fr 90px; align-items: center; gap: 18px; padding: 18px 0; border-top: 1px solid var(--ipw-color-border); }
+    .bar-label { font-size: 21px; font-weight: 700; }
+    .bar-track { height: 18px; background: #dce9e6; }
+    .bar-fill { height: 18px; background: var(--ipw-color-primary); }
+    .bar-fill.accent { background: var(--ipw-color-accent); }
+    .bar-value { color: var(--ipw-color-muted); font-size: 20px; text-align: right; }
+    .footer { margin-top: auto; color: var(--ipw-color-muted); font-size: 16px; }
+    @media (max-width: 720px) { .slide { padding: 34px 40px; } h1 { font-size: 42px; } h2 { font-size: 32px; } .summary { font-size: 17px; } .card { padding: 14px; } .metric { font-size: 36px; } .detail { font-size: 13px; } .bar-row { grid-template-columns: 90px 1fr 42px; gap: 8px; } .bar-label, .bar-value { font-size: 12px; } }
+  </style>
+</head>
+<body>
+  <main class="deck" data-ipw-template-kind="slides" aria-label="Quarterly report">
+    <section class="slide cover is-active" data-ipw-slide="1" data-title="Quarterly report">
+      <p class="label" data-pptx-text>Quarterly Report / Q3</p>
+      <h1 data-pptx-text>What changed, what matters, and what we do <span class="accent">next.</span></h1>
+      <p class="summary" data-pptx-text>Use this report to turn a period of work into a small set of decisions, evidence, and owners.</p>
+      <p class="footer" data-pptx-text>Prepared by Operations / Replace with your reporting period</p>
+    </section>
+
+    <section class="slide" data-ipw-slide="2" data-title="Headline metrics">
+      <p class="label" data-pptx-text>01 / Headline Metrics</p>
+      <h2 data-pptx-text>Three numbers should explain the <span class="accent">quarter.</span></h2>
+      <div class="grid three">
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Revenue</h3><div class="metric" data-pptx-text>$4.8M</div><p class="detail" data-pptx-text>18% higher than last quarter</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Retention</h3><div class="metric" data-pptx-text>94%</div><p class="detail" data-pptx-text>2 points above target</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Efficiency</h3><div class="metric" data-pptx-text>31%</div><p class="detail" data-pptx-text>Reduction in cycle time</p></article>
+      </div>
+      <p class="footer" data-pptx-text>Sample values only. Replace with sourced operating data.</p>
+    </section>
+
+    <section class="slide" data-ipw-slide="3" data-title="Performance">
+      <p class="label" data-pptx-text>02 / Performance</p>
+      <h2 data-pptx-text>Show the movement, not just the <span class="accent">total.</span></h2>
+      <div class="grid">
+        <div class="bar-row"><div class="bar-label" data-pptx-text>North America</div><div class="bar-track" data-pptx-shape="rect"><div class="bar-fill" data-pptx-shape="rect" style="width:84%"></div></div><div class="bar-value" data-pptx-text>84%</div></div>
+        <div class="bar-row"><div class="bar-label" data-pptx-text>Europe</div><div class="bar-track" data-pptx-shape="rect"><div class="bar-fill accent" data-pptx-shape="rect" style="width:63%"></div></div><div class="bar-value" data-pptx-text>63%</div></div>
+        <div class="bar-row"><div class="bar-label" data-pptx-text>Asia Pacific</div><div class="bar-track" data-pptx-shape="rect"><div class="bar-fill" data-pptx-shape="rect" style="width:48%"></div></div><div class="bar-value" data-pptx-text>48%</div></div>
+      </div>
+      <p class="footer" data-pptx-text>Native shapes keep each bar editable after export.</p>
+    </section>
+
+    <section class="slide" data-ipw-slide="4" data-title="What we learned">
+      <p class="label" data-pptx-text>03 / What We Learned</p>
+      <h2 data-pptx-text>Translate data into <span class="accent">operating choices.</span></h2>
+      <div class="grid two">
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Continue</h3><p class="detail" data-pptx-text>Scale the channel that pairs high retention with low implementation effort.</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Change</h3><p class="detail" data-pptx-text>Stop measuring activity as a proxy for durable customer value.</p></article>
+      </div>
+    </section>
+
+    <section class="slide cover" data-ipw-slide="5" data-title="Next quarter">
+      <p class="label" data-pptx-text>04 / Next Quarter</p>
+      <h1 data-pptx-text>Turn this quarter's evidence into <span class="accent">next quarter's focus.</span></h1>
+      <p class="summary" data-pptx-text>Name the one target, the one owner, and the one date that matter most.</p>
+      <p class="footer" data-pptx-text>Quarterly Report / Native Editable PPTX</p>
+    </section>
+  </main>
+</body>
+</html>

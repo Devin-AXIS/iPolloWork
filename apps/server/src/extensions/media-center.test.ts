@@ -1,0 +1,563 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import type { EnvService } from "../env-file.js";
+import type { ServerConfig } from "../types.js";
+import {
+  MEDIA_EXTENSION_ID,
+  callMediaExtensionAction,
+  planSceneVoiceoverTiming,
+  validateVoiceoverTimelineHtml,
+} from "./media-center.js";
+
+const nativeFetch = globalThis.fetch;
+const directories: string[] = [];
+
+const config = {
+  workspaces: [],
+} as unknown as ServerConfig;
+
+function env(values: Record<string, string>): EnvService {
+  return {
+    list: async () => Object.entries(values).map(([key, value]) => ({ key, value, updatedAt: 0 })),
+  } as unknown as EnvService;
+}
+
+afterEach(async () => {
+  globalThis.fetch = nativeFetch;
+  while (directories.length) {
+    const directory = directories.pop();
+    if (directory) await rm(directory, { recursive: true, force: true });
+  }
+});
+
+async function workspaceConfig() {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-media-"));
+  directories.push(root);
+  await writeFile(join(root, "sample.wav"), "voice sample");
+  return {
+    root,
+    config: {
+      workspaces: [{ id: "workspace-voice", path: root, name: "Voice test" }],
+    } as unknown as ServerConfig,
+  };
+}
+
+describe("Media Center extension", () => {
+  test("allocates narration inside its scene and reports the exact downstream shift", () => {
+    expect(planSceneVoiceoverTiming(4, 3, 4.5)).toEqual({
+      startSeconds: 4,
+      endSeconds: 8.5,
+      requiredSceneDurationSeconds: 4.75,
+      shiftFollowingBySeconds: 1.75,
+      readingBufferSeconds: 0.25,
+    });
+    expect(planSceneVoiceoverTiming(10, 5, 2)).toEqual({
+      startSeconds: 10,
+      endSeconds: 12,
+      requiredSceneDurationSeconds: 5,
+      shiftFollowingBySeconds: 0,
+      readingBufferSeconds: 0.25,
+    });
+  });
+
+  test("rejects a video that cuts away before slow narration finishes", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="7">
+        <section id="intro" class="scene clip" data-start="0" data-duration="3"></section>
+        <section id="details" class="scene clip" data-start="3" data-duration="4"></section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="details" data-ipw-scene-text="Details" data-ipw-narration-text="Details" data-start="3" data-duration="4.5"></audio>
+      </main>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_exceeds_scene");
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_overlap");
+    expect(result.issues.map((issue) => issue.code)).toContain("composition_too_short");
+  });
+
+  test("accepts a video whose scenes and total duration adapt to narration", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="10">
+        <section id="intro" class="scene clip" data-start="0" data-duration="5.25">Intro</section>
+        <section id="details" class="scene clip" data-start="5.25" data-duration="4.75">Details</section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="details" data-ipw-scene-text="Details" data-ipw-narration-text="Details" data-start="5.25" data-duration="4.5"></audio>
+      </main>
+    </body>`);
+
+    expect(result).toMatchObject({ valid: true, sceneCount: 2, voiceoverCount: 2, issues: [] });
+  });
+
+  test("rejects narration metadata that no longer matches the scene's visible text", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="5.25">
+        <section id="intro" class="scene clip" data-start="0" data-duration="5.25">
+          <h1>Current title</h1>
+          <p>Current subtitle</p>
+        </section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Old title" data-ipw-narration-text="Old title" data-start="0" data-duration="5"></audio>
+      </main>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_scene_text_mismatch");
+  });
+
+  test("rejects legacy and duplicate voiceovers instead of ignoring them", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="8">
+        <section id="intro" class="scene clip" data-start="0" data-duration="4"></section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="4"></audio>
+        <audio id="vo-old-intro" src="assets/audio/voice/old.mp3" data-start="0" data-duration="4"></audio>
+      </main>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.voiceoverCount).toBe(2);
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_binding");
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_overlap");
+  });
+
+  test("rejects generated narration mp3 nodes that are not placed on the HyperFrames timeline", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="11">
+        <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+        <section id="details" class="scene clip" data-start="5" data-duration="6">Details</section>
+        <audio id="narration-01" src="assets/audio/narration-01.mp3"></audio>
+        <audio id="narration-02" src="assets/audio/narration-02.mp3"></audio>
+      </main>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.voiceoverCount).toBe(2);
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_binding");
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_window");
+  });
+
+  test("rejects scripts that manually play or seek voiceover audio", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="5.25">
+        <section id="intro" class="scene clip" data-start="0" data-duration="5.25">Intro</section>
+        <audio id="narration-01" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+      </main>
+      <script>
+        const narrationAudio = document.getElementById("narration-01");
+        narrationAudio.currentTime = 0;
+        narrationAudio.play();
+      </script>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("manual_voiceover_playback");
+  });
+
+  test("rejects legacy frame timelines that only describe a longer narrated video in script", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <div id="root" data-composition-id="main" data-duration="8">
+        <section id="scene-01" class="frame active hook" data-duration="4000">AI related tech</section>
+        <section id="scene-02" class="frame" data-duration="4000">Built for developers</section>
+        <section id="scene-03" class="frame" data-duration="6000">LangChain</section>
+        <section id="scene-04" class="frame" data-duration="6000">LangGraph</section>
+        <section id="scene-05" class="frame" data-duration="5000">Tech Stack</section>
+        <section id="scene-06" class="frame" data-duration="7000">AI Agent</section>
+        <section id="scene-07" class="frame" data-duration="6000">AIGC</section>
+        <section id="scene-08" class="frame" data-duration="4000">CTA</section>
+      </div>
+      <script>
+        const voiceovers = [
+          'assets/vo_01.mp3',
+          'assets/vo_02.mp3',
+          'assets/vo_03.mp3',
+          'assets/vo_04.mp3',
+          'assets/vo_05.mp3',
+          'assets/vo_06.mp3',
+          'assets/vo_07.mp3',
+          'assets/vo_08.mp3'
+        ];
+        const audio = new Audio(voiceovers[0]);
+        audio.play();
+      </script>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.voiceoverCount).toBe(0);
+    expect(result.issues.map((issue) => issue.code)).toContain("missing_hyperframes_scenes");
+    expect(result.issues.map((issue) => issue.code)).toContain("legacy_frame_millisecond_timeline");
+    expect(result.issues.map((issue) => issue.code)).toContain("declared_duration_mismatch");
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_assets_not_on_timeline");
+  });
+
+  test("rejects one hidden player that swaps voiceover underscore files by script", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><head>
+      <link rel="preload" as="audio" href="voiceover_1.mp3">
+      <link rel="preload" as="audio" href="voiceover_2.mp3">
+      <link rel="preload" as="audio" href="voiceover_3.mp3">
+      <link rel="preload" as="audio" href="voiceover_4.mp3">
+    </head><body>
+      <div id="root" data-composition-id="main" data-duration="8">
+        <section id="scene-1" class="frame active hook" data-duration="6000">AI related tech</section>
+        <section id="scene-2" class="frame" data-duration="10000">LangChain</section>
+        <section id="scene-3" class="frame" data-duration="10000">LangGraph</section>
+        <section id="scene-4" class="frame" data-duration="10000">AI Agent</section>
+        <audio id="bgm" src="bgm.mp3" loop></audio>
+        <audio id="voiceover" preload="auto"></audio>
+      </div>
+      <script>
+        const voiceover = document.getElementById("voiceover");
+        const voiceoverSrcs = Array.from({ length: 4 }, (_, index) => "voiceover_" + (index + 1) + ".mp3");
+        function playVoiceover(index) {
+          voiceover.src = voiceoverSrcs[index];
+          voiceover.currentTime = 0;
+          voiceover.play();
+        }
+      </script>
+    </body>`);
+
+    expect(result.valid).toBe(false);
+    expect(result.voiceoverCount).toBe(1);
+    expect(result.issues.map((issue) => issue.code)).toContain("legacy_frame_millisecond_timeline");
+    expect(result.issues.map((issue) => issue.code)).toContain("declared_duration_mismatch");
+    expect(result.issues.map((issue) => issue.code)).toContain("manual_voiceover_playback");
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_binding");
+    expect(result.issues.map((issue) => issue.code)).toContain("invalid_voiceover_window");
+    expect(result.issues.map((issue) => issue.code)).toContain("voiceover_assets_not_on_timeline");
+  });
+
+  test("rejects generated voiceover assets that are not referenced by index.html", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+    </main>`);
+    await mkdir(join(workspace.root, "assets"), { recursive: true });
+    await writeFile(join(workspace.root, "assets", "vo_01.mp3"), "voice");
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video.html" },
+      { directory: workspace.root },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false, voiceoverAssetCount: 1 } } });
+    expect((result as any).result.output.issues.map((issue: any) => issue.code)).toContain("voiceover_assets_unreferenced");
+  });
+
+  test("rejects underscore voiceover files present in assets but missing from the timeline", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+    </main>`);
+    await mkdir(join(workspace.root, "assets"), { recursive: true });
+    await writeFile(join(workspace.root, "assets", "voiceover_1.mp3"), "voice");
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video.html" },
+      { directory: workspace.root },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false, voiceoverAssetCount: 1 } } });
+    expect((result as any).result.output.issues.map((issue: any) => issue.code)).toContain("voiceover_assets_unreferenced");
+  });
+
+  test("validates a workspace video timeline without requiring provider credentials", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5.25">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5.25">Intro</section>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+    </main>`);
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video.html" },
+      { directory: workspace.root },
+    );
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
+  });
+
+  test("rejects narration that differs from its visible scene text before calling Model Studio", async () => {
+    const workspace = await workspaceConfig();
+    let requested = false;
+    globalThis.fetch = ((() => {
+      requested = true;
+      throw new Error("provider must not be called");
+    }) as unknown) as typeof fetch;
+
+    await expect(callMediaExtensionAction(
+      workspace.config,
+      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      "speech_synthesize_workspace_file",
+      {
+        text: "unrelated narration",
+        sceneId: "scene-hook",
+        sceneText: "visible scene title",
+        sceneStart: 0,
+        sceneDuration: 3,
+        outputPath: "video/session/assets/voiceover-scene-1.mp3",
+      },
+      { directory: workspace.root },
+    )).rejects.toMatchObject({ code: "voiceover_scene_text_mismatch" });
+    expect(requested).toBe(false);
+  });
+
+  test("saves synthesized MP3 in the workspace and reports its real frame duration", async () => {
+    const workspace = await workspaceConfig();
+    const frame = Buffer.alloc(417);
+    frame.set([0xff, 0xfb, 0x90, 0x00]); // MPEG-1 Layer III, 128 kbps, 44.1 kHz.
+    const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
+    let request = 0;
+    globalThis.fetch = ((input) => {
+      request += 1;
+      if (request === 1) {
+        expect(String(input)).toContain("SpeechSynthesizer");
+        return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://audio.example.test/scene.mp3" } } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }
+      expect(String(input)).toBe("https://audio.example.test/scene.mp3");
+      return Promise.resolve(new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(workspace.config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize_workspace_file", {
+      text: "第一段旁白",
+      sceneId: "scene-hook",
+      sceneText: "第一段旁白",
+      sceneStart: 0,
+      sceneDuration: 1,
+      voice: "longyingmu_v3",
+      model: "cosyvoice-v3-flash",
+      outputPath: "video/session/assets/voiceover-scene-1.mp3",
+      compositionPath: "video/session/index.html",
+    }, { directory: workspace.root });
+
+    const measuredDuration = (result as any).result.output.durationSeconds;
+    expect(result).toMatchObject({
+      result: {
+        output: {
+          sourcePath: "video/session/assets/voiceover-scene-1.mp3",
+          durationSeconds: expect.any(Number),
+          bytes: mp3.byteLength,
+          sceneId: "scene-hook",
+          sceneText: "第一段旁白",
+          sceneStart: 0,
+          timing: {
+            startSeconds: 0,
+            endSeconds: expect.any(Number),
+            requiredSceneDurationSeconds: expect.any(Number),
+            shiftFollowingBySeconds: expect.any(Number),
+            readingBufferSeconds: 0.25,
+          },
+        },
+      },
+    });
+    expect((result as any).result.output.audioElementId).toBe("voiceover-scene-hook-voiceover-scene-1");
+    expect((result as any).result.output.timelinePatch).toMatchObject({
+      setSceneStartSeconds: 0,
+      setSceneDurationSeconds: expect.any(Number),
+      shiftFollowingBySeconds: expect.any(Number),
+      rootDurationMustBeAtLeastSeconds: expect.any(Number),
+      keepSceneVisibleUntilSeconds: expect.any(Number),
+    });
+    const audioElementHtml = (result as any).result.output.audioElementHtml;
+    expect(audioElementHtml).toContain('src="./assets/voiceover-scene-1.mp3"');
+    expect(audioElementHtml).toContain('data-ipw-voiceover="true"');
+    expect(audioElementHtml).toContain('data-ipw-scene-id="scene-hook"');
+    expect(audioElementHtml).toContain('data-ipw-scene-text=');
+    expect(audioElementHtml).toContain('data-ipw-narration-text=');
+    expect(audioElementHtml).toContain('data-start="0"');
+    expect(audioElementHtml).toContain(`data-duration="${Math.round(measuredDuration * 1_000) / 1_000}"`);
+    const expectedDuration = 100 * 1152 / 44_100;
+    expect(Math.abs(measuredDuration - expectedDuration)).toBeLessThan(0.001);
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-scene-1.mp3"))).toEqual(mp3);
+  });
+
+  test("keeps the Model Studio key server-side while synthesizing speech", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer");
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-bailian-secret" });
+      expect(String(init?.body)).toContain("cosyvoice-v3-flash");
+      expect(String(init?.body)).toContain("hello");
+      return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://audio.example.test/a.wav" } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize", {
+      text: "hello",
+    }, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      extensionId: MEDIA_EXTENSION_ID,
+      action: "speech_synthesize",
+      result: {
+        provider: "aliyun-bailian",
+        operation: "speech_synthesize",
+        output: { output: { audio: { url: "https://audio.example.test/a.wav" } } },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+  });
+
+  test("explains CosyVoice 418 responses without exposing provider internals", async () => {
+    globalThis.fetch = ((_input, init) => {
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        model: "cosyvoice-v3-flash",
+        input: { voice: "longyingmu_v3" },
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        message: "[cosyvoice:]Engine return error code: 418",
+      }), { status: 418, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize", {
+      text: "hello",
+      voice: "longwan",
+      model: "cosyvoice-v3-flash",
+    }, {})).rejects.toMatchObject({
+      status: 422,
+      code: "bailian_voice_incompatible",
+      message: expect.stringContaining("compatible v3 voice"),
+    });
+  });
+
+  test("uses the asynchronous task endpoint for a digital human", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://dashscope.aliyuncs.com/api/v1/services/aigc/image2video/video-synthesis");
+      expect(init?.headers).toMatchObject({ "X-DashScope-Async": "enable" });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        model: "wan2.2-s2v",
+        input: { image_url: "https://assets.example.test/person.png", audio_url: "https://assets.example.test/voice.mp3" },
+      });
+      return Promise.resolve(new Response(JSON.stringify({ output: { task_id: "task_123", task_status: "PENDING" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "digital_human_generate", {
+      imageUrl: "https://assets.example.test/person.png",
+      audioUrl: "https://assets.example.test/voice.mp3",
+    }, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        provider: "aliyun-bailian",
+        operation: "digital_human_generate",
+        taskId: "task_123",
+      },
+    });
+  });
+
+  test("lists only reusable custom voice metadata", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        model: "voice-enrollment",
+        input: { action: "list_voice", page_index: 0, page_size: 100 },
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        output: {
+          voice_list: [{ voice_id: "ipw-voice-a", target_model: "cosyvoice-v3-flash", status: "OK" }],
+          total_count: 1,
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "voice_list", {}, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        output: {
+          items: [{ id: "ipw-voice-a", model: "cosyvoice-v3-flash", status: "OK" }],
+          totalCount: 1,
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+  });
+
+  test("clones a workspace sample through a private temporary OSS object and always removes it", async () => {
+    const { root, config: workspace } = await workspaceConfig();
+    const requests: Array<{ url: string; method: string; body: string }> = [];
+    globalThis.fetch = ((input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      requests.push({ url, method, body: String(init?.body ?? "") });
+      if (url.includes("dashscope.aliyuncs.com")) {
+        const body = JSON.parse(String(init?.body));
+        expect(body.input.prefix).toMatch(/^ipw[a-z0-9]{1,7}$/);
+        expect(body.input.url).toContain("x-oss-signature=");
+        expect(body.input.url).not.toContain("oss-secret");
+        return Promise.resolve(new Response(JSON.stringify({ output: { voice_id: "ipw-new-voice" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }
+      return Promise.resolve(new Response(null, { status: 200 }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(workspace, env({
+      DASHSCOPE_API_KEY: "sk-bailian-secret",
+      ALIYUN_OSS_ACCESS_KEY_ID: "LTAIvoice",
+      ALIYUN_OSS_ACCESS_KEY_SECRET: "oss-secret",
+      ALIYUN_OSS_BUCKET: "private-assets",
+      ALIYUN_OSS_REGION: "cn-hangzhou",
+    }), "voice_clone_workspace_file", { sourcePath: "sample.wav" }, { directory: root });
+
+    expect(result).toMatchObject({ ok: true, result: { output: { voiceId: "ipw-new-voice", model: "cosyvoice-v3-flash" } } });
+    expect(requests.map((request) => request.method)).toEqual(["PUT", "POST", "DELETE"]);
+    expect(requests[0]?.url).toContain("/ipollowork/temp/voice-clone/");
+    expect(requests[2]?.url).toContain("/ipollowork/temp/voice-clone/");
+    expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+    expect(JSON.stringify(result)).not.toContain("oss-secret");
+    expect(JSON.stringify(result)).not.toContain("x-oss-signature=");
+  });
+
+  test("collects the documented streaming file-translation response without exposing the key", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-bailian-secret" });
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        model: "qwen3-livetranslate-flash",
+        stream: true,
+        translation_options: { source_lang: "zh", target_lang: "en" },
+      });
+      return Promise.resolve(new Response([
+        'data: {"choices":[{"delta":{"content":"Hello"}}]}',
+        "",
+        'data: {"choices":[{"delta":{"content":" world"}}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_translate", {
+      fileUrl: "https://assets.example.test/input.wav",
+      format: "wav",
+      sourceLanguage: "zh",
+      targetLanguage: "en",
+    }, {});
+
+    expect(result).toMatchObject({ ok: true, result: { provider: "aliyun-bailian", output: { text: "Hello world" } } });
+    expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+  });
+});

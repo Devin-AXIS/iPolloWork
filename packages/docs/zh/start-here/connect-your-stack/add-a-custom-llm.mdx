@@ -1,0 +1,58 @@
+---
+title: "添加自定义 LLM"
+description: "如何在 iPolloWork 中连接自定义模型提供方。"
+---
+
+`iPolloWork` 基于 `OpenCode` 的基础能力构建，因此支持你可以在 `.opencode.json` 中配置的内容，例如添加一个[模型](https://opencode.ai/docs/models/)。不过建议把配置放在 `/path-to-your-workspace/.config/opencode/opencode.json`，而不是修改全局的 `~/.config/opencode/opencode.json`。
+
+在 `/path-to-your-workspace/.config/opencode/opencode.json` 中添加：
+
+```json
+{
+  "provider": {
+    "my-api": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "My model",
+      "options": {
+        "baseURL": "https://your API address/v1"
+      },
+      "models": {
+        "model-name": {
+          "name": "Model name"
+        }
+      }
+    }
+  }
+}
+```
+
+也可以创建一个工作空间内的 Skill，让团队成员按同一方式接入提供方；可参考[导入 Skill 指南](/start-here/do-work-with-it/import-a-skill)。
+
+### 可用示例：Ollama（Qwen3 8B）
+
+下面的配置连接本地运行 `qwen3:8b` 的 [Ollama](https://docs.ollama.com/api/openai-compatibility)：
+
+```json
+{
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "qwen3:8b": {
+          "name": "Qwen3 8B"
+        }
+      }
+    }
+  }
+}
+```
+
+先运行 `ollama pull qwen3:8b` 下载模型，再用 `ollama serve` 启动服务，并确认 `http://localhost:11434` 可以访问。
+
+回到桌面应用，切换到这个提供方，即可在自己的机器上运行完全本地的 LLM。
+
+团队可在 iPolloWork Cloud 的 `LLM Providers` 中统一管理模型提供方，再从 `Settings -> Cloud` 导入到每个工作空间。Cloud 管理文档目前为英文版。

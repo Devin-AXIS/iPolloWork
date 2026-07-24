@@ -1,0 +1,38 @@
+---
+title: "添加 MCP 服务器"
+description: "如何在 iPolloWork 中连接自定义 MCP 服务器。"
+---
+
+在 iPolloWork 中连接自定义 MCP 服务器只需四次点击：
+
+- 在工作空间内依次打开 `Extensions` > `Advanced Settings` > `Add MCP server`。
+
+<Frame>
+  ![含 Advanced Settings 链接的 Extensions 页面](/images/mcp-extensions-advanced-settings.png)
+</Frame>
+
+你可以选择只为当前工作空间添加，或为所有工作空间添加（全局 OpenCode 配置）。
+
+<Frame>
+  ![含名称、URL 与 OAuth 开关的 Add MCP Server 对话框](/images/mcp-add-server-dialog.png)
+
+  请标明该服务器是否需要 OAuth。
+</Frame>
+
+这套流程面向支持动态客户端注册的服务器，例如基于 OAuth 的 MCP。
+
+<Frame>
+  ![MCP 服务器的 OAuth 授权页面](/images/mcp-oauth-approval-page.png)
+</Frame>
+
+进入 OAuth 页面后，按服务方要求完成注册或自定义配置。完成后应自动跳回 iPolloWork。若需要当前尚未支持的自定义 MCP，可[提交 Issue](https://github.com/Devin-AXIS/iPolloWork/issues/)。
+
+### 排查问题
+
+部分 MCP 服务器不支持动态客户端注册。如果服务方提供预注册的 OAuth client ID 和 client secret，请通过 `Add Custom App` > `Advanced OAuth` 添加。
+
+Slack 的连接方式请查看英文版 [Connect Slack MCP](/start-here/connect-your-stack/connect-slack-mcp)。
+
+<Frame>
+  ![MCP 服务器不支持动态客户端注册时的错误](/images/mcp-dynamic-registration-error.png)
+</Frame>

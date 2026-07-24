@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.app-finance-dashboard",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "app",
+  "subcategory": "dashboard",
+  "style": "editorial",
+  "tags": [
+    "finance",
+    "dashboard"
+  ],
+  "surface": "design",
+  "title": "Finance Dashboard",
+  "description": "A desktop dashboard prototype for balances, trends and actions.",
+  "cover": "cover.png",
+  "entry": "entry.html",
+  "source": {
+    "name": "iPolloWork",
+    "license": "Built-in"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": []
+  },
+  "applyChecklist": [
+    "Replace the inherited copy and assets.",
+    "Keep the core visual system consistent.",
+    "Verify the final result at its intended size."
+  ],
+  "minimumAppVersion": "0.17.20"
+}
