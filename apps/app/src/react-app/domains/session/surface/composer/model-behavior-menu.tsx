@@ -6,6 +6,7 @@ import { resolveModelDisplayName } from "@/app/utils";
 import { t } from "@/i18n";
 import { ModelListContent } from "@/components/model-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
 
 type ModelBehaviorOption = {
   value: string | null;
@@ -22,6 +23,7 @@ type ModelBehaviorMenuProps = {
   onModelChange: (model: ModelRef) => void;
   onModelVariantChange: (value: string | null) => void;
   onConfigureModels?: () => void;
+  onConfigureTokenStar?: () => void;
   disabled?: boolean;
 };
 
@@ -33,6 +35,7 @@ export function ModelBehaviorMenu({
   onModelChange,
   onModelVariantChange,
   onConfigureModels,
+  onConfigureTokenStar,
   disabled = false,
 }: ModelBehaviorMenuProps) {
   const [open, setOpen] = useState(false);
@@ -49,6 +52,10 @@ export function ModelBehaviorMenu({
 
   const selectModel = (model: ModelRef) => {
     onModelChange(model);
+    if (model.providerID === "tokenstar" && tokenStarModelSupportsEffort(model.modelID)) {
+      onModelVariantChange("medium");
+      return;
+    }
     close();
   };
 
@@ -109,6 +116,10 @@ export function ModelBehaviorMenu({
                 onConfigureModels={() => {
                   close();
                   onConfigureModels?.();
+                }}
+                onConfigureTokenStar={() => {
+                  close();
+                  onConfigureTokenStar?.();
                 }}
               />
             </div>

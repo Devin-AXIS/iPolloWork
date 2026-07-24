@@ -112,6 +112,7 @@ import {
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
 import { useModelBehavior } from "@/react-app/domains/session/surface/use-model-behavior";
+import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
 import { useSessionFindStore } from "@/react-app/domains/session/surface/find-store";
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
 import { appMentionInstruction } from "@/react-app/domains/session/surface/composer/app-mentions";
@@ -999,6 +1000,12 @@ export function SessionRoute() {
       onConfigureModels: () => {
         void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
       },
+      onConfigureTokenStar: () => {
+        void sessionProviderAuthStore.openProviderAuthModal({
+          returnFocusTarget: "composer",
+          preferredProviderId: "tokenstar",
+        });
+      },
       providerConnectedCount: hasUsableModel ? 1 : providerConnectedIds.length,
       onOpenSettingsSection: (section: "commands" | "skills" | "mcps" | "plugins" | "providers") => {
         handleOpenSettings(section === "skills" ? "/settings/skills" : section === "mcps" ? "/settings/extensions/mcp" : section === "plugins" ? "/settings/extensions/plugins" : section === "providers" ? "/settings/ai" : "/settings/preferences");
@@ -1177,7 +1184,11 @@ export function SessionRoute() {
             parts: promptParts,
             model: local.prefs.defaultModel ?? undefined,
             agent: selectedAgent ?? undefined,
-            ...(modelVariantValue ? { variant: modelVariantValue } : {}),
+            ...(local.prefs.defaultModel?.providerID === "tokenstar" && modelVariantValue && tokenStarModelSupportsEffort(local.prefs.defaultModel.modelID)
+              ? { reasoning_effort: modelVariantValue }
+              : modelVariantValue
+                ? { variant: modelVariantValue }
+                : {}),
             ...(systemContext ? { system: systemContext } : {}),
           }),
         });
@@ -2138,8 +2149,8 @@ export function SessionRoute() {
           ),
         ),
         onSelect: sessionProviderAuthStore.startProviderAuth,
-        onSubmitApiKey: async (providerId, apiKey) => {
-          const result = await sessionProviderAuthStore.submitProviderApiKey(providerId, apiKey);
+        onSubmitApiKey: async (providerId, apiKey, modelIds) => {
+          const result = await sessionProviderAuthStore.submitProviderApiKey(providerId, apiKey, modelIds);
           modelPicker.setRecentProviderIds(new Set([providerId]));
           modelPicker.setQuery("");
           modelPicker.setOpen(true);
@@ -2153,6 +2164,7 @@ export function SessionRoute() {
           return result;
         },
         onSubmitOAuth: sessionProviderAuthStore.completeProviderAuthOAuth,
+        onDisconnectProvider: sessionProviderAuthStore.disconnectProvider,
         onRefreshProviders: sessionProviderAuthStore.refreshProviders,
         onClose: () => sessionProviderAuthStore.closeProviderAuthModal(),
       } : null}

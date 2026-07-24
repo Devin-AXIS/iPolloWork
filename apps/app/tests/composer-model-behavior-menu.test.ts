@@ -17,6 +17,7 @@ describe("Composer model and reasoning menu", () => {
   test("Composer uses one combined model and reasoning menu", () => {
     const composer = readFileSync(composerPath, "utf8");
     const menu = readFileSync(menuPath, "utf8");
+    const model = readFileSync(modelSelectPath, "utf8");
 
     expect(composer).toContain("<ModelBehaviorMenu");
     expect(composer).not.toContain("<ModelSelect");
@@ -24,5 +25,9 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain('type MenuView = "root" | "model" | "behavior"');
     expect(menu).toContain("modelVariantLabel");
     expect(menu).toContain("onModelVariantChange");
+    expect(model).toContain("TokenStar Models");
+    expect(model).toContain("TokenStar / GPT / GPT 5.6");
+    expect(model).toContain("openCodeZen.items.unshift(tokenStarEntry)");
+    expect(menu).toContain("onConfigureTokenStar");
   });
 });

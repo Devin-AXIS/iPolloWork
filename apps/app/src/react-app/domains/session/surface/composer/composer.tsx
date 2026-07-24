@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent } from "@opencode-ai/sdk/v2/client";
-import { AppWindowMac, ArrowUp, Check, ChevronRight, FileText, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Check, ChevronRight, Clock3, FileText, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
@@ -62,6 +62,7 @@ type ComposerProps = {
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
   onConfigureModels?: () => void;
+  onConfigureTokenStar?: () => void;
   attachments: ComposerAttachment[];
   onAttachFiles: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
@@ -1663,6 +1664,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                   onModelChange={props.onModelChange}
                   onModelVariantChange={props.onModelVariantChange}
                   onConfigureModels={props.onConfigureModels}
+                  onConfigureTokenStar={props.onConfigureTokenStar}
                   disabled={props.busy}
                 />
                 {props.modelUnavailable ? (
@@ -1706,7 +1708,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={canSend ? props.onSteer : undefined}
+                      onClick={() => void props.onSteer()}
                       disabled={!canSend}
                       aria-label={t("composer.steer")}
                       className={`inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
@@ -1717,6 +1719,20 @@ export function ReactSessionComposer(props: ComposerProps) {
                       title={t("composer.steer_hint")}
                     >
                       <ArrowUp size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={canSend ? props.onQueue : undefined}
+                      disabled={!canSend}
+                      aria-label={t("composer.queue")}
+                      className={`inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
+                        canSend
+                          ? "bg-gray-3 text-gray-11 hover:bg-gray-4"
+                          : "bg-gray-4 text-gray-10"
+                      }`}
+                      title={t("composer.queue_hint")}
+                    >
+                      <Clock3 size={15} />
                     </button>
                   </>
                 ) : (
