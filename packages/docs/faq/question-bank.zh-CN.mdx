@@ -1,0 +1,931 @@
+---
+title: "iPolloWork 中文问答知识库（100 问）"
+description: "面向官网、文档搜索和后续 AI 检索的 iPolloWork 中文问答底稿。"
+---
+
+# iPolloWork 中文问答知识库（100 问）
+
+这是一份待产品与工程复核的知识库底稿，暂不加入公开导航。每条内容均
+采用“直接回答、适用范围、能力状态、依据”的统一结构。Work、Code、
+Create、Video 在这里作为检索分类使用；正式上线前仍需确认它们的最终
+中英文产品名称。
+
+## 一、产品定位
+
+<a id="faq-001"></a>
+### 001. iPolloWork 是什么？
+
+**简答：** iPolloWork 是一个本地优先的可视化 AI 工作台，Agent 可以在同一工作区中处理代码、文件、浏览器任务、文档、演示文稿、网站、设计和视频。
+
+**范围 / 状态：** 全产品 · Live
+
+**依据：** [开始使用](/start-here/get-started)
+
+<a id="faq-002"></a>
+### 002. iPolloWork 适合哪些人使用？
+
+**简答：** 它适合希望让 Agent 实际执行任务、同时保留文件控制权和结果编辑能力的个人、开发者、创作者及团队；团队管理能力由 iPolloWork Cloud 提供。
+
+**范围 / 状态：** 本地与 Cloud · Live
+
+**依据：** [产品说明](/start-here/get-started)
+
+<a id="faq-003"></a>
+### 003. iPolloWork 只是一个聊天机器人吗？
+
+**简答：** 不是。聊天是下达目标的入口，Agent 还可以读取和修改文件、运行命令、使用浏览器与扩展，并把结果留在可继续编辑的工作区中。
+
+**范围 / 状态：** 桌面端与远程 Worker · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-004"></a>
+### 004. iPolloWork 和 Codex、Claude Code 是什么关系？
+
+**简答：** iPolloWork 将自己定位为本地优先的 Codex/Claude Code 替代选择，但产品范围不止代码，还覆盖办公、设计和视频等可编辑结果。
+
+**范围 / 状态：** 产品定位 · Live
+
+**依据：** [开始使用](/start-here/get-started)
+
+<a id="faq-005"></a>
+### 005. 不连接 iPolloWork Cloud 可以使用吗？
+
+**简答：** 可以。本地 iPolloWork 不依赖 Cloud；Cloud 主要增加组织、共享资源、托管 Worker、权限和企业管理能力。
+
+**范围 / 状态：** 本地端 · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-006"></a>
+### 006. 使用本地版必须注册账号吗？
+
+**简答：** 本地工作区不要求 iPolloWork Cloud 账号；连接 Cloud 组织、共享资源或使用托管能力时需要登录对应的 Cloud 账号。
+
+**范围 / 状态：** 本地与 Cloud · Live
+
+**依据：** [开始使用](/start-here/get-started)
+
+<a id="faq-007"></a>
+### 007. Work、Code、Create、Video 是四套独立应用吗？
+
+**简答：** 当前更适合把它们理解为同一工作区里的四类任务入口，而不是彼此隔离的四套运行时；它们共享会话、工作区文件、模型和扩展能力。
+
+**范围 / 状态：** 官网信息架构 · 待确认命名
+
+**依据：** [产品说明](/start-here/get-started)
+
+<a id="faq-008"></a>
+### 008. iPolloWork 可以生成哪些类型的结果？
+
+**简答：** 当前产品说明覆盖代码、文档、网站、演示文稿、设计和视频；具体格式和编辑能力取决于对应的工作区表面与已启用扩展。
+
+**范围 / 状态：** 全产品 · Live
+
+**依据：** [开始使用](/start-here/get-started)
+
+<a id="faq-009"></a>
+### 009. AI 生成的结果还能继续编辑吗？
+
+**简答：** 可以。可编辑结果是 iPolloWork 的核心定位，代码和文件保留在工作区，设计与视频也有对应的编辑表面，而不是只返回一段聊天文本。
+
+**范围 / 状态：** Code、Create、Video · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-010"></a>
+### 010. iPolloWork 是开源软件吗？
+
+**简答：** iPolloWork 是 source-available（源码可用）软件，不应描述为 OSI 认可的开源软件；可用范围和商业使用条件以仓库 LICENSE 为准。
+
+**范围 / 状态：** 授权政策 · Policy
+
+**依据：** [iPolloWork License](https://github.com/Devin-AXIS/iPolloWork/blob/dev/LICENSE)
+
+## 二、安装与系统
+
+<a id="faq-011"></a>
+### 011. iPolloWork 支持哪些电脑操作系统？
+
+**简答：** 官方构建矩阵覆盖 Windows、macOS 和 Linux。
+
+**范围 / 状态：** 桌面端 · Live
+
+**依据：** [安装说明](https://github.com/Devin-AXIS/iPolloWork#install-ipollowork)
+
+<a id="faq-012"></a>
+### 012. iPolloWork 支持 Intel、AMD 和 ARM 电脑吗？
+
+**简答：** 支持。macOS 提供 Apple Silicon 与 Intel 构建，Windows 和 Linux 提供 x64 与 ARM64 构建；下载时需要同时匹配操作系统和 CPU 架构。
+
+**范围 / 状态：** 桌面端 · Live
+
+**依据：** [安装矩阵](https://github.com/Devin-AXIS/iPolloWork#download-the-desktop-app)
+
+<a id="faq-013"></a>
+### 013. 应该下载哪个安装文件？
+
+**简答：** macOS 普通用户选择 DMG，Windows 选择 EXE，Linux 选择 AppImage；文件名中的 mac/win/linux 与 arm64/x64 必须与设备匹配。
+
+**范围 / 状态：** 桌面端 · Live
+
+**依据：** [安装矩阵](https://github.com/Devin-AXIS/iPolloWork#download-the-desktop-app)
+
+<a id="faq-014"></a>
+### 014. ZIP、tar.gz 和安装包有什么区别？
+
+**简答：** DMG、EXE、AppImage 是多数用户的推荐入口；macOS ZIP 和 Linux tar.gz 主要是便携或更新产物，不是首选安装方式。
+
+**范围 / 状态：** 桌面端 · Live
+
+**依据：** [安装说明](https://github.com/Devin-AXIS/iPolloWork#download-the-desktop-app)
+
+<a id="faq-015"></a>
+### 015. macOS 上如何安装 iPolloWork？
+
+**简答：** 打开下载的 DMG，然后把 iPolloWork 拖入 Applications；需要按 Intel 或 Apple Silicon 选择对应安装包。
+
+**范围 / 状态：** macOS · Live
+
+**依据：** [安装说明](https://github.com/Devin-AXIS/iPolloWork#download-the-desktop-app)
+
+<a id="faq-016"></a>
+### 016. Windows 安装时 SmartScreen 警告代表什么？
+
+**简答：** 本地构建且未签名的安装包可能触发 Microsoft Defender SmartScreen。正式用户应优先使用官方 Release 安装包，并核对下载来源。
+
+**范围 / 状态：** Windows · Live
+
+**依据：** [安装说明](https://github.com/Devin-AXIS/iPolloWork#download-the-desktop-app)
+
+<a id="faq-017"></a>
+### 017. Linux AppImage 如何运行？
+
+**简答：** 下载与 CPU 架构匹配的 AppImage，赋予执行权限后运行；tar.gz 也可解压后便携运行。
+
+**范围 / 状态：** Linux · Live
+
+**依据：** [安装说明](https://github.com/Devin-AXIS/iPolloWork#download-the-desktop-app)
+
+<a id="faq-018"></a>
+### 018. 从源码开发 iPolloWork 需要什么环境？
+
+**简答：** 基础要求包括 Git、Node.js 22 或更高版本、pnpm 11、Bun 1.3.10 或更高版本，以及各平台对应的原生构建工具链。
+
+**范围 / 状态：** 开发环境 · Live
+
+**依据：** [源码开发要求](https://github.com/Devin-AXIS/iPolloWork#requirements-for-source-development-and-packaging)
+
+<a id="faq-019"></a>
+### 019. 从源码启动 iPolloWork 的标准命令是什么？
+
+**简答：** 克隆仓库并启用 Corepack 后，macOS/Linux 使用 ./ipollowork setup 与 ./ipollowork dev，Windows PowerShell 使用对应的 ipollowork.cmd 命令。
+
+**范围 / 状态：** 开发环境 · Live
+
+**依据：** [从源码启动](https://github.com/Devin-AXIS/iPolloWork#start-from-source)
+
+<a id="faq-020"></a>
+### 020. 开发模式会覆盖用户正常的 OpenCode 配置吗？
+
+**简答：** 不会。项目说明明确指出开发模式使用隔离的 iPolloWork/OpenCode 状态，不覆盖用户的正常 OpenCode 配置。
+
+**范围 / 状态：** 开发环境 · Live
+
+**依据：** [从源码启动](https://github.com/Devin-AXIS/iPolloWork#start-from-source)
+
+## 三、Work
+
+<a id="faq-021"></a>
+### 021. Work 在知识库中代表什么？
+
+**简答：** Work 是办公与通用任务方向，覆盖文件、文档、演示文稿、网页操作、研究和会话工作流。
+
+**范围 / 状态：** 官网信息架构 · 待确认命名
+
+**依据：** [产品说明](/start-here/get-started)
+
+<a id="faq-022"></a>
+### 022. iPolloWork 可以直接处理本地文件吗？
+
+**简答：** 可以。工作区围绕本地文件和仓库运行，Agent 可在授权范围内读取、创建和修改文件，结果继续保留在工作区。
+
+**范围 / 状态：** 本地工作区 · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-023"></a>
+### 023. iPolloWork 可以创建和修改文档吗？
+
+**简答：** 可以，文档是产品明确支持的结果类型之一；具体格式和可编辑方式由当前任务、工具和文件类型决定。
+
+**范围 / 状态：** Work · Live
+
+**依据：** [开始使用](/start-here/get-started)
+
+<a id="faq-024"></a>
+### 024. iPolloWork 可以制作演示文稿吗？
+
+**简答：** 可以。演示文稿属于可生成并继续编辑的结果类型，也可通过 Create 模板体系复用幻灯片设计。
+
+**范围 / 状态：** Work、Create · Live
+
+**依据：** [开始使用](/start-here/get-started)
+
+<a id="faq-025"></a>
+### 025. iPolloWork 能处理电子表格吗？
+
+**简答：** Agent 可以处理工作区中的表格文件和数据，但官网不应承诺所有电子表格格式都具有相同的可视化编辑深度；应按具体文件格式和当前版本说明。
+
+**范围 / 状态：** Work · 能力依格式而定
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-026"></a>
+### 026. iPolloWork 可以自动操作网页吗？
+
+**简答：** 可以。内置 iPolloWork Browser 支持打开网页、点击、填写表单、读取页面内容和截图。
+
+**范围 / 状态：** 内置浏览器 · Live
+
+**依据：** [控制浏览器](/start-here/do-work-with-it/control-the-browser)
+
+<a id="faq-027"></a>
+### 027. 浏览器控制等于控制整台电脑吗？
+
+**简答：** 不等于。当前文档明确限定为 iPolloWork 内置浏览器中的 computer-use，不代表可以完整控制 Windows、macOS 或 Linux 的所有桌面应用。
+
+**范围 / 状态：** 内置浏览器 · Live，桌面全控未承诺
+
+**依据：** [控制浏览器](/start-here/do-work-with-it/control-the-browser)
+
+<a id="faq-028"></a>
+### 028. 什么是 iPolloWork Workflows？
+
+**简答：** Workflows 是利用聊天、会话状态和分组把日常任务组织成可重复流程的方式，不是强制用户采用固定项目管理模型。
+
+**范围 / 状态：** 会话管理 · Live
+
+**依据：** [Workflows](/start-here/do-work-with-it/workflows)
+
+<a id="faq-029"></a>
+### 029. 会话可以怎样整理？
+
+**简答：** 会话可以重命名、置顶、归档、排序或移动到工作区内的自定义分组；Agent 也可以按用户指令执行这些组织动作。
+
+**范围 / 状态：** 会话管理 · Live
+
+**依据：** [Workflows](/start-here/do-work-with-it/workflows)
+
+<a id="faq-030"></a>
+### 030. iPolloWork 有跨会话长期记忆吗？
+
+**简答：** 当前跨会话能力来自已保存的会话历史，不是独立的长期记忆数据库，也不会自动把所有旧聊天注入每个新会话。
+
+**范围 / 状态：** 会话历史 · Live，能力有限
+
+**依据：** [跨会话记忆](/start-here/do-work-with-it/cross-chat-memory)
+
+## 四、Code
+
+<a id="faq-031"></a>
+### 031. iPolloWork 可以打开现有代码仓库吗？
+
+**简答：** 可以。产品以工作区为边界，可围绕已有仓库和本地文件运行 Agent 任务。
+
+**范围 / 状态：** Code · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-032"></a>
+### 032. Agent 可以读取和修改项目代码吗？
+
+**简答：** 可以，但修改范围受当前工作区和权限审批约束；用户可以检查修改结果并继续编辑。
+
+**范围 / 状态：** Code · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-033"></a>
+### 033. iPolloWork 可以运行终端命令吗？
+
+**简答：** 可以。Agent 执行流程包含运行命令，桌面界面也包含会话终端能力；高风险操作仍应经过权限控制。
+
+**范围 / 状态：** Code · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-034"></a>
+### 034. iPolloWork 只支持 TypeScript 项目吗？
+
+**简答：** 不是。iPolloWork 自身主要使用 TypeScript，但 Agent 工作区不限定用户项目语言；实际能力取决于本机或远程 Worker 已安装的工具链。
+
+**范围 / 状态：** Code · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-035"></a>
+### 035. iPolloWork 能执行 Git 操作吗？
+
+**简答：** 可以通过 Agent 和终端使用工作区现有的 Git，但提交、推送和破坏性操作应按用户授权和仓库流程执行。
+
+**范围 / 状态：** Code · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-036"></a>
+### 036. Agent 修改代码前会不会直接获得所有权限？
+
+**简答：** 不应这样理解。iPolloWork 的产品定位包含用户检查与批准操作，实际权限由运行环境、工作区边界和具体授权策略共同决定。
+
+**范围 / 状态：** Code、权限 · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-037"></a>
+### 037. Code 任务必须在本机运行吗？
+
+**简答：** 不必须。任务既可以在本地工作区运行，也可以连接自托管的远程 iPolloWork Server 或 Cloud Shared Workspace。
+
+**范围 / 状态：** 本地与远程 · Live
+
+**依据：** [共享工作区](/cloud/run-in-the-cloud/shared-workspace)
+
+<a id="faq-038"></a>
+### 038. 远程工作区适合什么开发任务？
+
+**简答：** 适合需要稳定在线环境、长时间运行、团队共享或消息连接器的任务；远程环境中可用的语言和工具仍取决于 Worker 配置。
+
+**范围 / 状态：** 远程 Worker · Live；Cloud Shared Workspace 为 Alpha
+
+**依据：** [共享工作区](/cloud/run-in-the-cloud/shared-workspace)
+
+<a id="faq-039"></a>
+### 039. iPolloWork 自己的开发检查命令是什么？
+
+**简答：** 仓库提供统一的 check 命令执行类型检查和桌面相关测试；开发者应使用 pnpm 和项目包装命令，而不是 npm 或 yarn。
+
+**范围 / 状态：** iPolloWork 开发 · Live
+
+**依据：** [开发命令](https://github.com/Devin-AXIS/iPolloWork#development-commands)
+
+<a id="faq-040"></a>
+### 040. iPolloWork 是否修改或分叉了 OpenCode？
+
+**简答：** 没有。OpenCode 作为独立 sidecar，通过受支持的 API、CLI、插件和配置与 iPolloWork 集成，可独立升级。
+
+**范围 / 状态：** 架构边界 · Live
+
+**依据：** [架构边界](https://github.com/Devin-AXIS/iPolloWork#architecture-boundary)
+
+## 五、Create
+
+<a id="faq-041"></a>
+### 041. Create 可以制作哪些内容？
+
+**简答：** Create 可覆盖网站、应用原型、幻灯片、海报、卡片、报告、文章及其他设计类结果，最终能力取决于当前模板和编辑表面。
+
+**范围 / 状态：** Create · Live
+
+**依据：** [构建模板](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-042"></a>
+### 042. Create 生成的是图片还是可编辑页面？
+
+**简答：** 设计模板推荐使用结构化 HTML、CSS 和资源文件，保留文本、布局和样式的可编辑性，而不是把整个结果压成单张图片。
+
+**范围 / 状态：** Create · Live
+
+**依据：** [构建模板](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-043"></a>
+### 043. Create 的网站和设计必须使用特定前端框架吗？
+
+**简答：** 模板契约支持自包含的静态 HTML、CSS、JavaScript 和资源文件，不要求必须使用某个前端框架。
+
+**范围 / 状态：** Create 模板 · Live
+
+**依据：** [构建模板](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-044"></a>
+### 044. 什么是 Template Market？
+
+**简答：** Template Market 用于安装和复用设计或视频起点。导入后模板进入个人库，使用模板时会为当前会话创建独立副本。
+
+**范围 / 状态：** Create、Video · Live
+
+**依据：** [构建模板](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-045"></a>
+### 045. iPolloWork 模板使用什么文件格式？
+
+**简答：** 当前本地模板格式是 .ipwt，本质上是包含 manifest.json、入口文件、封面和资源的 ZIP 归档。
+
+**范围 / 状态：** 模板开发 · Live
+
+**依据：** [模板包结构](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-046"></a>
+### 046. 模板市场支持哪些分类？
+
+**简答：** 当前契约包含 site、video、app、slides、poster、cards、report、article 和 other 九类。
+
+**范围 / 状态：** Create、Video · Live
+
+**依据：** [模板分类](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-047"></a>
+### 047. 导入模板有大小限制吗？
+
+**简答：** 当前限制为上传包 50 MB、解压后 200 MB、最多 1,000 个文件、单文件最多 25 MB，并拒绝符号链接、可执行文件和路径穿越。
+
+**范围 / 状态：** 模板导入 · Live
+
+**依据：** [模板包结构](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-048"></a>
+### 048. 卸载模板会删除已经创建的作品吗？
+
+**简答：** 不会。应用模板时会创建会话拥有的副本，卸载个人模板库中的模板不会删除既有会话作品。
+
+**范围 / 状态：** Template Market · Live
+
+**依据：** [构建模板](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-049"></a>
+### 049. Create 支持哪些导出格式？
+
+**简答：** 导出选项取决于具体表面、内容类型和应用版本，官网应在对应功能页列出实际菜单能力，不应把所有设计统一承诺为同一组格式。
+
+**范围 / 状态：** Create · 依表面与版本而定
+
+**依据：** [产品路线图](/roadmap)
+
+<a id="faq-050"></a>
+### 050. 模板可以暴露品牌颜色和字体供用户编辑吗？
+
+**简答：** 可以。设计模板可在 manifest 中声明 design system variables，并通过 --ipw-* CSS 自定义属性暴露颜色、字体和其他可编辑变量。
+
+**范围 / 状态：** Create 模板 · Live
+
+**依据：** [设计模板规范](/start-here/do-work-with-it/build-a-template)
+
+## 六、Video
+
+<a id="faq-051"></a>
+### 051. iPolloWork 的 Video 能做什么？
+
+**简答：** Video 面向会话内的视频项目，可结合可编辑时间线模板、视频生成、配音、转录、翻译和数字人等能力完成视频任务。
+
+**范围 / 状态：** Video · Live，具体能力依提供商配置
+
+**依据：** [Media Center](/start-here/do-work-with-it/media-center)
+
+<a id="faq-052"></a>
+### 052. Video 项目使用什么编辑技术？
+
+**简答：** 当前视频模板使用 HyperFrames 项目契约，以 HTML、场景、轨道、时间和变量描述可播放、可继续修改的视频组合。
+
+**范围 / 状态：** Video 模板 · Live
+
+**依据：** [视频模板规范](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-053"></a>
+### 053. 不同会话的视频项目会互相覆盖吗？
+
+**简答：** 不会按设计互相共用。每个已应用的视频模板都有会话级记录，并编辑该会话自己的 `video/{session-id}/index.html`。
+
+**范围 / 状态：** Video · Live
+
+**依据：** [模板会话记录](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-054"></a>
+### 054. 视频模板必须包含哪些关键内容？
+
+**简答：** 视频模板必须使用 category 为 video、surface 为 video，并在包根目录提供 index.html；入口还需要声明非空的 composition variables。
+
+**范围 / 状态：** Video 模板开发 · Live
+
+**依据：** [视频模板规范](/start-here/do-work-with-it/build-a-template)
+
+<a id="faq-055"></a>
+### 055. iPolloWork 可以用 AI 生成视频吗？
+
+**简答：** 可以。Media Center 提供异步 video_generate 能力；是否可用取决于本地是否配置了对应媒体提供商和凭据。
+
+**范围 / 状态：** Media Center · Live
+
+**依据：** [Media Center](/start-here/do-work-with-it/media-center)
+
+<a id="faq-056"></a>
+### 056. Video 可以自动生成配音吗？
+
+**简答：** 可以。用户明确要求旁白、配音或口播稿时，Agent 可调用语音合成并把音频保存为会话视频资产；没有选择语音时不应随机代选。
+
+**范围 / 状态：** Video、Media Center · Live
+
+**依据：** [Video voiceover contract](/start-here/do-work-with-it/media-center)
+
+<a id="faq-057"></a>
+### 057. iPolloWork 支持声音克隆吗？
+
+**简答：** 支持。Media Center 可从工作区中的 WAV、MP3 或 M4A 样本创建可复用 voice ID；当前 Video Studio 对样本设置了 10 MB 上限。
+
+**范围 / 状态：** Media Center · Live
+
+**依据：** [Media Center](/start-here/do-work-with-it/media-center)
+
+<a id="faq-058"></a>
+### 058. iPolloWork 能做录音转写和音视频翻译吗？
+
+**简答：** 可以。Media Center 提供录音转写、短片段低延迟识别，以及音频或视频文件翻译能力。
+
+**范围 / 状态：** Media Center · Live
+
+**依据：** [Media Center](/start-here/do-work-with-it/media-center)
+
+<a id="faq-059"></a>
+### 059. iPolloWork 支持视频编辑和数字人吗？
+
+**简答：** Media Center 契约包含模型特定的视频编辑和数字人口型同步任务；实际效果、输入限制和可用模型由当前媒体提供商决定。
+
+**范围 / 状态：** Media Center · Live，依提供商而定
+
+**依据：** [Media Center](/start-here/do-work-with-it/media-center)
+
+<a id="faq-060"></a>
+### 060. AI 视频任务返回的链接会永久有效吗？
+
+**简答：** 不一定。当前 Model Studio 任务结果 URL 是临时的，需要长期保存时应使用 Storage Center 把工作区产物复制到持久对象存储。
+
+**范围 / 状态：** Video、Storage Center · Live
+
+**依据：** [Media Center](/start-here/do-work-with-it/media-center)
+
+## 七、模型、MCP 与 Skills
+
+<a id="faq-061"></a>
+### 061. iPolloWork 支持哪些大模型？
+
+**简答：** iPolloWork 支持连接多个模型提供商，也可通过 OpenCode 兼容配置使用自定义模型、LiteLLM、Cloudflare Gateway 或本地模型；最终模型列表取决于用户实际连接的提供商。
+
+**范围 / 状态：** 模型连接 · Live
+
+**依据：** [添加自定义 LLM](/start-here/connect-your-stack/add-a-custom-llm)
+
+<a id="faq-062"></a>
+### 062. 可以用 ChatGPT 账号登录模型吗？
+
+**简答：** 可以。桌面端提供 OpenAI 的 ChatGPT Pro/Plus 登录流程，完成授权后可在聊天中的模型选择器切换可用模型。
+
+**范围 / 状态：** OpenAI 连接 · Live
+
+**依据：** [使用 ChatGPT 登录](/start-here/connect-your-stack/sign-in-with-chatgpt)
+
+<a id="faq-063"></a>
+### 063. 可以使用自己的模型 API Key 吗？
+
+**简答：** 可以。用户可以连接支持的模型提供商或配置自定义 OpenAI-compatible 提供商；密钥应保存在授权或配置边界中，不要写进聊天和知识文档。
+
+**范围 / 状态：** 模型连接 · Live
+
+**依据：** [添加自定义 LLM](/start-here/connect-your-stack/add-a-custom-llm)
+
+<a id="faq-064"></a>
+### 064. 如何接入自定义 OpenAI-compatible 模型？
+
+**简答：** 推荐在当前工作区的 .config/opencode/opencode.json 中声明 provider、baseURL 和 models，避免为了单个工作区修改全局 OpenCode 配置。
+
+**范围 / 状态：** 高级模型配置 · Live
+
+**依据：** [添加自定义 LLM](/start-here/connect-your-stack/add-a-custom-llm)
+
+<a id="faq-065"></a>
+### 065. iPolloWork 可以连接本地 Ollama 吗？
+
+**简答：** 可以。文档提供了使用 OpenAI-compatible 配置连接本机 Ollama 的示例，前提是模型已拉取且 Ollama 服务地址可访问。
+
+**范围 / 状态：** 本地模型 · Live
+
+**依据：** [Ollama 示例](/start-here/connect-your-stack/add-a-custom-llm)
+
+<a id="faq-066"></a>
+### 066. 一个工作区可以使用多个模型提供商吗？
+
+**简答：** 可以。连接多个提供商后，聊天中的模型选择器会展示这些提供商当前可用的模型。
+
+**范围 / 状态：** 模型连接 · Live
+
+**依据：** [使用 ChatGPT 登录](/start-here/connect-your-stack/sign-in-with-chatgpt)
+
+<a id="faq-067"></a>
+### 067. MCP 在 iPolloWork 中有什么作用？
+
+**简答：** MCP 用于把外部工具或服务以标准接口接入 Agent，例如搜索、协作平台或企业系统；它扩展能力，但不取代 Skill 的使用说明和工作流知识。
+
+**范围 / 状态：** 扩展生态 · Live
+
+**依据：** [添加 MCP Server](/start-here/connect-your-stack/add-an-mcp-server)
+
+<a id="faq-068"></a>
+### 068. 如何添加自定义 MCP Server？
+
+**简答：** 在工作区中打开 Extensions、进入 Advanced Settings、选择 Add MCP server，然后配置服务器地址、作用范围和是否需要 OAuth。
+
+**范围 / 状态：** MCP · Live
+
+**依据：** [添加 MCP Server](/start-here/connect-your-stack/add-an-mcp-server)
+
+<a id="faq-069"></a>
+### 069. iPolloWork 支持需要 OAuth 的 MCP 吗？
+
+**简答：** 支持动态客户端注册型 OAuth；如果服务商提供预注册 client ID 和 secret，则应使用 Add Custom App 中的 Advanced OAuth 配置。
+
+**范围 / 状态：** MCP OAuth · Live
+
+**依据：** [MCP OAuth](/start-here/connect-your-stack/add-an-mcp-server)
+
+<a id="faq-070"></a>
+### 070. Skill、MCP 和插件有什么区别？
+
+**简答：** Skill 主要告诉 Agent 何时及如何完成任务，MCP 提供标准工具服务，iPolloWork 插件则可把 Skill、MCP、OpenCode 插件、本地服务和授权组合成一个可安装产品。
+
+**范围 / 状态：** 开发者生态 · Live
+
+**依据：** [导入 Skill](/start-here/do-work-with-it/import-a-skill)
+
+## 八、开发者与技术栈
+
+<a id="faq-071"></a>
+### 071. iPolloWork 项目主要使用了哪些技术和库？
+
+**简答：** 主要技术包括 TypeScript、React 19、Vite、Electron、Bun、OpenCode SDK、TanStack Query、Zustand、Zod、Drizzle 和 SQLite；设计、终端、文档与导出功能还使用 CodeMirror、Lexical、xterm、PptxGenJS、jsPDF、SheetJS 等库。
+
+**范围 / 状态：** 开发者 · 随版本更新
+
+**依据：** [应用 package.json](https://github.com/Devin-AXIS/iPolloWork/blob/dev/apps/app/package.json)
+
+<a id="faq-072"></a>
+### 072. iPolloWork 仓库由哪些主要应用组成？
+
+**简答：** 主要包括共享 React UI、Electron 桌面壳、本地 Server API、Orchestrator 运行时，以及安装器和共享 packages。
+
+**范围 / 状态：** 开发者 · Live
+
+**依据：** [仓库结构](https://github.com/Devin-AXIS/iPolloWork#repository-layout)
+
+<a id="faq-073"></a>
+### 073. 项目使用 npm、yarn 还是 pnpm？
+
+**简答：** 项目使用 pnpm 工作区；贡献和开发命令应使用 pnpm，不使用 npm 或 yarn 代替。
+
+**范围 / 状态：** 开发者规范 · Policy
+
+**依据：** [源码开发要求](https://github.com/Devin-AXIS/iPolloWork#requirements-for-source-development-and-packaging)
+
+<a id="faq-074"></a>
+### 074. iPolloWork 前端使用什么框架？
+
+**简答：** 共享应用 UI 使用 React 19 和 Vite，Electron 桌面端与普通 Web 表面复用同一套 React UI。
+
+**范围 / 状态：** 前端架构 · Live
+
+**依据：** [应用 package.json](https://github.com/Devin-AXIS/iPolloWork/blob/dev/apps/app/package.json)
+
+<a id="faq-075"></a>
+### 075. 桌面应用使用什么技术？
+
+**简答：** 桌面壳使用 Electron，负责原生窗口、打包、更新、本地 sidecar 和操作系统集成。
+
+**范围 / 状态：** 桌面架构 · Live
+
+**依据：** [桌面 package.json](https://github.com/Devin-AXIS/iPolloWork/blob/dev/apps/desktop/package.json)
+
+<a id="faq-076"></a>
+### 076. Server 和 Orchestrator 分别负责什么？
+
+**简答：** Server 提供文件系统支持的 iPolloWork API 和运行时适配，Orchestrator 负责托管并协调 OpenCode 与 iPolloWork Server；桌面应用通过这些边界使用 Agent 运行时。
+
+**范围 / 状态：** 运行时架构 · Live
+
+**依据：** [架构边界](https://github.com/Devin-AXIS/iPolloWork#architecture-boundary)
+
+<a id="faq-077"></a>
+### 077. iPolloWork 有 API 文档吗？
+
+**简答：** 有。现有 Docs 配置包含 OpenAPI 文档入口；具体接口以当前部署公开的 OpenAPI 规范和服务端版本为准。
+
+**范围 / 状态：** API · Live
+
+**依据：** [iPolloWork Docs](/start-here/get-started)
+
+<a id="faq-078"></a>
+### 078. 开发 iPolloWork 插件必须使用 React 或 Next.js 吗？
+
+**简答：** 不必须。插件首先是目录约定和 ipollowork.plugin.json 清单；没有自定义网页界面时不需要 React、Next.js 或专用 UI 框架。
+
+**范围 / 状态：** 插件开发 · Live
+
+**依据：** [插件开发指南](https://github.com/Devin-AXIS/iPolloWork/blob/dev/docs/plugin-packages.md)
+
+<a id="faq-079"></a>
+### 079. 一个可安装插件包需要包含什么？
+
+**简答：** 根目录需要 ipollowork.plugin.json，并显式声明版本、发布者、兼容范围、入口、权限、授权方式和资源；资源路径不能逃出插件目录。
+
+**范围 / 状态：** 插件开发 · Live
+
+**依据：** [插件包格式](https://github.com/Devin-AXIS/iPolloWork/blob/dev/docs/plugin-packages.md)
+
+<a id="faq-080"></a>
+### 080. 插件支持哪些授权方式？
+
+**简答：** 当前契约支持 secret-form、OAuth PKCE、device code 和 hosted browser。凭据按工作区安装、插件、账号和授权方式隔离并加密保存。
+
+**范围 / 状态：** 插件授权 · Live
+
+**依据：** [插件授权](https://github.com/Devin-AXIS/iPolloWork/blob/dev/docs/plugin-packages.md)
+
+## 九、Cloud 与团队
+
+<a id="faq-081"></a>
+### 081. iPolloWork Cloud 是什么？
+
+**简答：** iPolloWork Cloud 是团队控制平面，用于组织身份、成员与 RBAC、共享 Skills/MCP/配置、托管 Worker、共享模型和桌面策略。
+
+**范围 / 状态：** Cloud · Live
+
+**依据：** [Cloud 开始使用](/cloud/get-started)
+
+<a id="faq-082"></a>
+### 082. iPolloWork Cloud 是使用桌面端的必需条件吗？
+
+**简答：** 不是。本地桌面端可以独立使用；只有组织共享、托管能力和集中管理等 Cloud 功能需要连接 Cloud。
+
+**范围 / 状态：** 本地与 Cloud · Live
+
+**依据：** [项目 README](https://github.com/Devin-AXIS/iPolloWork)
+
+<a id="faq-083"></a>
+### 083. 使用 iPolloWork Cloud 需要订阅吗？
+
+**简答：** 当前 Cloud 文档说明需要有效订阅，并在 app.ipolloworklabs.com 创建组织；实际价格、席位和套餐限制应以 Cloud 结账页为准。
+
+**范围 / 状态：** Cloud · Policy
+
+**依据：** [Cloud 开始使用](/cloud/get-started)
+
+<a id="faq-084"></a>
+### 084. 什么是 Shared Workspace？
+
+**简答：** Shared Workspace 是 Cloud 中托管的 iPolloWork 运行时，可用于长时间任务、消息连接器或多人打开同一远程工作区。
+
+**范围 / 状态：** Cloud Worker · Alpha
+
+**依据：** [共享工作区](/cloud/run-in-the-cloud/shared-workspace)
+
+<a id="faq-085"></a>
+### 085. 如何从桌面端连接 Shared Workspace？
+
+**简答：** 等待 Cloud 工作区状态变为 Ready，复制 Connection URL 与 Owner/Client token，然后在桌面端通过 Add workspace、Connect custom remote 完成连接。
+
+**范围 / 状态：** Cloud Worker · Alpha
+
+**依据：** [共享工作区](/cloud/run-in-the-cloud/shared-workspace)
+
+<a id="faq-086"></a>
+### 086. Cloud 默认有哪些组织角色？
+
+**简答：** 默认角色是 Owner、Admin 和 Member。Owner 拥有完整组织控制权，Admin 负责日常管理，Member 使用已共享的资源。
+
+**范围 / 状态：** Cloud RBAC · Live
+
+**依据：** [成员与 RBAC](/cloud/members-and-rbac)
+
+<a id="faq-087"></a>
+### 087. Team 和 Role 有什么区别？
+
+**简答：** Role 决定一个人可以管理什么，Team 用于把 Marketplace、模型提供商等资源分配给一组成员；组织成员身份与团队归属是分开的。
+
+**范围 / 状态：** Cloud RBAC · Live
+
+**依据：** [成员与 RBAC](/cloud/members-and-rbac)
+
+<a id="faq-088"></a>
+### 088. 团队可以统一管理模型提供商吗？
+
+**简答：** 可以。组织可在 Cloud 创建 Managed LLM Provider，统一维护凭据、模型清单和人员/团队访问，再由桌面工作区导入和同步。
+
+**范围 / 状态：** Cloud Providers · Live
+
+**依据：** [Managed LLM Provider](/cloud/share-with-your-team/managed-llm-provider)
+
+<a id="faq-089"></a>
+### 089. 管理员能限制桌面端功能吗？
+
+**简答：** 可以。Desktop Policies 可控制自定义提供商、OpenCode 模型、多工作区、设置、扩展和欢迎页等能力，并按组织、成员或团队应用。
+
+**范围 / 状态：** Cloud Desktop Policies · Live
+
+**依据：** [Desktop Policies](/cloud/share-with-your-team/desktop-policies)
+
+<a id="faq-090"></a>
+### 090. iPolloWork Connect MCP 可以连接哪些客户端？
+
+**简答：** 文档列出的目标包括 Codex、ChatGPT Desktop、OpenCode、Cursor、Claude Code、VS Code 及其他支持远程 Streamable HTTP MCP 与 OAuth 的客户端。
+
+**范围 / 状态：** Cloud MCP · Live
+
+**依据：** [iPolloWork Connect MCP](/cloud/run-in-the-cloud/cloud-mcp)
+
+## 十、安全、授权与支持
+
+<a id="faq-091"></a>
+### 091. 模型和媒体 API Key 会发送到生成文件或 OpenCode 吗？
+
+**简答：** 按当前本地能力契约，Media Center 等提供商凭据保存在本地 iPolloWork Server 边界，不返回给应用 UI、生成文件或 OpenCode。
+
+**范围 / 状态：** 本地凭据 · Live
+
+**依据：** [Media Center](/start-here/do-work-with-it/media-center)
+
+<a id="faq-092"></a>
+### 092. Storage Center 会替代本地工作区文件吗？
+
+**简答：** 不会。它只在功能明确需要时把一个工作区文件复制到对象存储，本地工作区文件、预览和下载仍保持本地优先。
+
+**范围 / 状态：** Storage Center · Live
+
+**依据：** [Storage Center](/start-here/do-work-with-it/storage-center)
+
+<a id="faq-093"></a>
+### 093. Storage Center 上传有什么安全和大小限制？
+
+**简答：** sourcePath 必须位于当前工作区内且为普通文件，路径穿越会被拒绝；当前每次调用最多上传 100 MB，并且 API 不返回存储凭据。
+
+**范围 / 状态：** Storage Center · Live
+
+**依据：** [Storage Center](/start-here/do-work-with-it/storage-center)
+
+<a id="faq-094"></a>
+### 094. 第三方插件是否运行在完全隔离的安全沙箱中？
+
+**简答：** 不能这样承诺。当前版本提供存储和 API 边界隔离，但原生 OpenCode 插件仍共享操作系统进程，不构成针对恶意原生插件的硬沙箱。
+
+**范围 / 状态：** 插件安全 · 当前限制
+
+**依据：** [插件授权与隔离](https://github.com/Devin-AXIS/iPolloWork/blob/dev/docs/plugin-packages.md)
+
+<a id="faq-095"></a>
+### 095. 个人可以免费使用和修改 iPolloWork 吗？
+
+**简答：** 许可证允许一个自然人将软件用于自己的非商业工作、学习、研究、评估或测试；最终判断应以 LICENSE 原文为准。
+
+**范围 / 状态：** 授权政策 · Policy
+
+**依据：** [iPolloWork License](https://github.com/Devin-AXIS/iPolloWork/blob/dev/LICENSE)
+
+<a id="faq-096"></a>
+### 096. 三人以上的团队可以直接使用源码版吗？
+
+**简答：** 不能默认直接使用。许可证要求三名或更多总用户的任何使用事先获得书面授权，不论是本地、托管、商业或非商业场景。
+
+**范围 / 状态：** 授权政策 · Policy
+
+**依据：** [iPolloWork License](https://github.com/Devin-AXIS/iPolloWork/blob/dev/LICENSE)
+
+<a id="faq-097"></a>
+### 097. 可以把 iPolloWork 做成 SaaS、白标产品或收费服务吗？
+
+**简答：** 未经书面授权不可以。托管、SaaS、转售、付费客户交付、白标和其他商业使用均属于需要事先授权的范围。
+
+**范围 / 状态：** 授权政策 · Policy
+
+**依据：** [iPolloWork License](https://github.com/Devin-AXIS/iPolloWork/blob/dev/LICENSE)
+
+<a id="faq-098"></a>
+### 098. 企业可以私有化部署并使用 SSO 吗？
+
+**简答：** 可以与团队讨论 VPC 或本地部署方案，包括 SSO、审计日志以及模型和工具控制；具体许可、架构和支持范围需要企业方案确认。
+
+**范围 / 状态：** Enterprise · 需联系团队
+
+**依据：** [Enterprise](/cloud/enterprise)
+
+<a id="faq-099"></a>
+### 099. 遇到问题时应该提供哪些信息？
+
+**简答：** 提交 Issue 前应搜索重复问题，并提供 iPolloWork/OpenCode 版本、操作系统、复现步骤；桌面、Worker 或会话问题还应附运行时调试报告和开发者日志导出。
+
+**范围 / 状态：** 支持流程 · Policy
+
+**依据：** [GitHub Issues](https://github.com/Devin-AXIS/iPolloWork/issues)
+
+<a id="faq-100"></a>
+### 100. 如何确认某项功能已经上线，而不是仍在路线图中？
+
+**简答：** 优先查看当前应用行为、正式文档和 Changelog，再参考 Roadmap；FAQ 必须明确标记 Live、Beta、Alpha 或 Roadmap，并记录最后复核日期。
+
+**范围 / 状态：** 知识库治理 · Policy
+
+**依据：** [Changelog](/changelog) · [Roadmap](/roadmap)

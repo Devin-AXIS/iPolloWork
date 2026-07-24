@@ -1,0 +1,849 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Studio is a dark-only UI — pin the user-agent color scheme to dark so that
+ * browser-native chrome (scrollbars, form controls, focus rings) picks the
+ * matching palette instead of defaulting to light against our #0a0a0a body.
+ */
+:root {
+  color-scheme: dark;
+  --hf-studio-bg: #0a0a0a;
+  --hf-studio-surface: #141414;
+  --hf-studio-border: #262626;
+  --hf-studio-text: #e5e5e5;
+  --hf-studio-muted: #737373;
+  --hf-panel-bg: #0c0c0e;
+  --hf-panel-bg-inset: #121214;
+  --hf-panel-input: #161618;
+  --hf-panel-surface: #18181b;
+  --hf-panel-hover: #27272a;
+  --hf-panel-border: #1e1e1e;
+  --hf-panel-border-input: #27272a;
+  --hf-panel-hairline: #1a1a1c;
+  --hf-panel-text-0: #fafafa;
+  --hf-panel-text-1: #e4e4e7;
+  --hf-panel-text-2: #a1a1aa;
+  --hf-panel-text-3: #71717a;
+  --hf-panel-text-4: #52525b;
+  --hf-panel-text-5: #3f3f46;
+  --hf-shortcuts-bg: #161618;
+  --hf-shortcuts-border: rgba(255, 255, 255, 0.08);
+  --hf-shortcuts-divider: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-ipollowork-theme="light"] {
+  color-scheme: light;
+  --hf-studio-bg: #ffffff;
+  --hf-studio-surface: #fafafa;
+  --hf-studio-border: #e5e7eb;
+  --hf-studio-text: #18181b;
+  --hf-studio-muted: #71717a;
+  --hf-panel-bg: #ffffff;
+  --hf-panel-bg-inset: #f7f7f8;
+  --hf-panel-input: #f4f4f5;
+  --hf-panel-surface: #fafafa;
+  --hf-panel-hover: #e9eaec;
+  --hf-panel-border: #e5e7eb;
+  --hf-panel-border-input: #d8dadd;
+  --hf-panel-hairline: #eceef0;
+  --hf-panel-text-0: #09090b;
+  --hf-panel-text-1: #18181b;
+  --hf-panel-text-2: #3f3f46;
+  --hf-panel-text-3: #52525b;
+  --hf-panel-text-4: #71717a;
+  --hf-panel-text-5: #a1a1aa;
+  --hf-workspace-bg: #eef1f4;
+  --hf-workspace-surface: #f8fafb;
+  --hf-workspace-inset: #e7ebef;
+  --hf-workspace-border: #d7dde3;
+  --hf-workspace-hairline: #e1e6eb;
+  --hf-workspace-muted: #64707d;
+  --hf-shortcuts-bg: #ffffff;
+  --hf-shortcuts-border: #d8dde3;
+  --hf-shortcuts-divider: #e5e7eb;
+}
+
+:root:not([data-ipollowork-theme="light"]) {
+  --hf-workspace-bg: #0a0a0a;
+  --hf-workspace-surface: #141414;
+  --hf-workspace-inset: #0c0c0e;
+  --hf-workspace-border: #262626;
+  --hf-workspace-hairline: #1a1a1c;
+  --hf-workspace-muted: #a1a1aa;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #0a0a0a;
+  color: #e5e5e5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+}
+
+:root[data-ipollowork-theme="light"] body {
+  background: var(--hf-studio-bg);
+  color: var(--hf-studio-text);
+}
+
+/* HyperFrames predates host themes and still uses Tailwind's neutral palette
+   directly in several panels. Scope the semantic inversion to host light mode. */
+:root[data-ipollowork-theme="light"] .bg-neutral-950 { background-color: #ffffff !important; }
+:root[data-ipollowork-theme="light"] .bg-neutral-900 { background-color: #fafafa !important; }
+:root[data-ipollowork-theme="light"] .bg-neutral-800 { background-color: #f4f4f5 !important; }
+:root[data-ipollowork-theme="light"] .bg-neutral-700 { background-color: #e4e4e7 !important; }
+:root[data-ipollowork-theme="light"] .text-white,
+:root[data-ipollowork-theme="light"] .text-neutral-100,
+:root[data-ipollowork-theme="light"] .text-neutral-200 { color: #18181b !important; }
+:root[data-ipollowork-theme="light"] .text-neutral-300 { color: #3f3f46 !important; }
+:root[data-ipollowork-theme="light"] .text-neutral-400 { color: #52525b !important; }
+:root[data-ipollowork-theme="light"] .text-neutral-500 { color: #71717a !important; }
+:root[data-ipollowork-theme="light"] .text-neutral-600 { color: #a1a1aa !important; }
+:root[data-ipollowork-theme="light"] .border-neutral-800 { border-color: #e5e7eb !important; }
+:root[data-ipollowork-theme="light"] .border-neutral-700 { border-color: #d4d4d8 !important; }
+:root[data-ipollowork-theme="light"] .border-neutral-600 { border-color: #c4c4c8 !important; }
+:root[data-ipollowork-theme="light"] .hover\:bg-neutral-900:hover,
+:root[data-ipollowork-theme="light"] .hover\:bg-neutral-800:hover { background-color: #e9eaec !important; }
+:root[data-ipollowork-theme="light"] input,
+:root[data-ipollowork-theme="light"] textarea,
+:root[data-ipollowork-theme="light"] select { color: #18181b; }
+
+/* Keep the primary transport control readable against the pale preview
+   surface; the icon inherits this semantic foreground color. */
+:root[data-ipollowork-theme="light"] .hf-studio-play-control {
+  background: #ffffff !important;
+  border-color: #b8c3cf !important;
+  color: #0f172a !important;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+
+:root:not([data-ipollowork-theme="light"]) .hf-studio-play-control {
+  background: #27272a !important;
+  border-color: #52525b !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.hf-studio-play-control {
+  min-width: 2rem;
+  min-height: 2rem;
+  border-radius: 9999px !important;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+.hf-studio-play-control:hover {
+  transform: translateY(-1px);
+}
+
+.hf-studio-play-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+
+button[aria-label="Enter fullscreen"],
+button[aria-label="Exit fullscreen"],
+button[aria-label="进入全屏"],
+button[aria-label="退出全屏"] {
+  display: none !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-studio-play-icon {
+  color: #0f172a !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel {
+  color: var(--hf-panel-text-1);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .bg-neutral-900 {
+  background-color: #f4f4f5 !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .bg-neutral-800,
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .hover\:bg-neutral-800:hover {
+  background-color: #e9eaec !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-200,
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-300 {
+  color: #18181b !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-400 {
+  color: #52525b !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-500,
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .text-neutral-600 {
+  color: #71717a !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .border-neutral-700,
+:root[data-ipollowork-theme="light"] .hf-shortcuts-panel .border-neutral-800 {
+  border-color: #d4d4d8 !important;
+}
+
+.hf-shortcuts-divider {
+  border-top: 1px solid var(--hf-shortcuts-divider);
+}
+
+:root:not([data-ipollowork-theme="light"]) .hf-studio-play-icon {
+  color: #ffffff !important;
+}
+
+.hf-preview-text-toolbar {
+  background: var(--hf-shortcuts-bg);
+  border-color: var(--hf-shortcuts-border);
+  color: var(--hf-panel-text-1);
+  backdrop-filter: blur(12px);
+}
+
+.hf-preview-text-toolbar__button {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  color: var(--hf-panel-text-2);
+  font-size: 0.6875rem;
+  line-height: 1;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.hf-preview-text-toolbar__button:hover {
+  background: var(--hf-panel-hover);
+  color: var(--hf-panel-text-0);
+}
+
+.hf-preview-text-toolbar__button[aria-pressed="true"] {
+  background: var(--hf-panel-accent);
+  color: var(--hf-panel-bg-0);
+}
+
+.hf-preview-text-toolbar__input {
+  width: min(13rem, 30vw);
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--hf-shortcuts-border);
+  background: var(--hf-panel-bg-1);
+  color: var(--hf-panel-text-0);
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  outline: none;
+}
+
+.hf-preview-text-toolbar__input:focus {
+  border-color: var(--hf-panel-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--hf-panel-accent) 45%, transparent);
+}
+
+html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+}
+
+/* The embedded Studio has a few intentionally dark Tailwind surfaces. Give
+   the host light theme one continuous, pale workspace so the preview, timeline,
+   and their gutters do not expose black seams between panels. */
+:root[data-ipollowork-theme="light"] .hf-studio-shell,
+:root[data-ipollowork-theme="light"] .hf-preview-pane,
+:root[data-ipollowork-theme="light"] .hf-preview-surface,
+:root[data-ipollowork-theme="light"] .hf-timeline-pane {
+  background: var(--hf-workspace-bg) !important;
+  color: var(--hf-panel-text-1);
+}
+
+:root[data-ipollowork-theme="light"] .hf-preview-pane,
+:root[data-ipollowork-theme="light"] .hf-timeline-pane {
+  border-color: var(--hf-workspace-border) !important;
+}
+
+.hf-preview-pane--studio-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483000 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #0a0a0a !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-preview-pane--studio-fullscreen {
+  background: var(--hf-workspace-bg) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-pane > :first-child,
+:root[data-ipollowork-theme="light"] .hf-timeline-pane [class*="border-b"] {
+  border-color: var(--hf-workspace-hairline) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-neutral-900\/50,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-neutral-900\/90 {
+  background-color: var(--hf-workspace-surface) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-black\/18,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-black\/20,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-black\/50,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .bg-black\/60 {
+  background-color: rgba(255, 255, 255, 0.62) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-studio-shell .text-white\/80,
+:root[data-ipollowork-theme="light"] .hf-studio-shell .text-white\/90 {
+  color: var(--hf-panel-text-2) !important;
+}
+
+/* Timeline rows and the ruler use inline colors from TimelineTheme, so the
+   semantic theme needs a small light-mode bridge for the actual NLE surfaces. */
+:root[data-ipollowork-theme="light"] .hf-timeline-section,
+:root[data-ipollowork-theme="light"] .hf-timeline-root,
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll,
+:root[data-ipollowork-theme="light"] .hf-timeline-lane,
+:root[data-ipollowork-theme="light"] .hf-timeline-row,
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter {
+  background-color: var(--hf-workspace-surface) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-root {
+  border-top-color: var(--hf-workspace-border) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-divider {
+  background-color: var(--hf-workspace-border) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll {
+  scrollbar-color: #b8c1ca var(--hf-workspace-inset);
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll::-webkit-scrollbar-track {
+  background: var(--hf-workspace-inset);
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll::-webkit-scrollbar-thumb {
+  background: #b8c1ca;
+  border: 2px solid var(--hf-workspace-inset);
+  border-radius: 8px;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-scroll::-webkit-scrollbar-thumb:hover {
+  background: #98a4af;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter {
+  color: var(--hf-workspace-muted);
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter .text-white\/35,
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter .text-white\/75 {
+  color: #7a8793 !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-gutter,
+:root[data-ipollowork-theme="light"] .hf-timeline-row {
+  border-right-color: var(--hf-workspace-border) !important;
+  border-bottom-color: var(--hf-workspace-hairline) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler,
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler-gutter,
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler-pad,
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler-content {
+  background-color: var(--hf-workspace-surface) !important;
+}
+
+/* The empty timeline has its own hard-coded dark surface and therefore needs
+   an explicit light-theme bridge, just like the populated timeline lanes. */
+:root[data-ipollowork-theme="light"] .hf-timeline-empty {
+  background-color: var(--hf-workspace-surface) !important;
+  border-top-color: var(--hf-workspace-border) !important;
+  color: var(--hf-panel-text-1);
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty > :first-child {
+  border-bottom-color: var(--hf-workspace-hairline) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty .text-neutral-600 {
+  color: var(--hf-panel-text-3) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty .text-neutral-500 {
+  color: var(--hf-panel-text-2) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty .bg-neutral-700\/40 {
+  background-color: #b8c1ca !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-empty .border-neutral-700\/50 {
+  border-color: var(--hf-workspace-border) !important;
+}
+
+.hf-color-grading-number::-webkit-outer-spin-button,
+.hf-color-grading-number::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.hf-color-grading-number {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.hf-color-grading-range {
+  height: 1.5rem;
+  cursor: default;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.hf-color-grading-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.hf-color-grading-range::-webkit-slider-runnable-track {
+  height: 1.25rem;
+  border: 0;
+  background: transparent;
+}
+
+.hf-color-grading-range::-webkit-slider-thumb {
+  width: 0.625rem;
+  height: 1rem;
+  margin-top: 0.125rem;
+  border: 0;
+  border-radius: 999px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 2px #0c0c0e,
+    0 1px 4px rgba(0, 0, 0, 0.55);
+  cursor: default;
+}
+
+.hf-color-grading-range::-moz-range-track {
+  height: 1.25rem;
+  border: 0;
+  background: transparent;
+}
+
+.hf-color-grading-range::-moz-range-thumb {
+  width: 0.625rem;
+  height: 1rem;
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 2px #0c0c0e,
+    0 1px 4px rgba(0, 0, 0, 0.55);
+  cursor: default;
+}
+
+.hf-color-grading-range:focus-visible {
+  outline: none;
+}
+
+.hf-color-grading-range:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 2px #0c0c0e,
+    0 0 0 4px rgba(60, 230, 172, 0.22),
+    0 1px 4px rgba(0, 0, 0, 0.55);
+}
+
+.hf-color-grading-range:focus-visible::-moz-range-thumb {
+  box-shadow:
+    0 0 0 2px #0c0c0e,
+    0 0 0 4px rgba(60, 230, 172, 0.22),
+    0 1px 4px rgba(0, 0, 0, 0.55);
+}
+
+#root {
+  width: 100vw;
+  /*
+   * 100vh on iOS Safari measures the LARGEST viewport (toolbars hidden) and
+   * stays fixed at that value, so when the toolbar is visible the bottom of
+   * the layout sits *under* it and anything at flex-end — the player
+   * controls row, notably — becomes untappable. `100dvh` follows the
+   * dynamic viewport, shrinking when the toolbar is shown so the bottom of
+   * #root lines up with the bottom of the visible area. Fallback to 100vh
+   * keeps older browsers (pre-Safari 15.4 / Firefox 101 / Chrome 108) on
+   * the existing behaviour.
+   */
+  height: 100vh;
+  height: 100dvh;
+}
+
+.timeline-clip {
+  background-color: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+}
+
+.timeline-clip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(60, 230, 172, 0.2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.timeline-clip[data-active] {
+  border-color: rgba(60, 230, 172, 0.55);
+}
+
+.timeline-clip[data-active]::before {
+  opacity: 1;
+}
+
+/* Audio clips read as a distinct kind — a persistent violet tint vs the teal-
+   accented visual clips — so the audio zone at the bottom is visually separate
+   at a glance (the timeline's kinds: visual on top, audio below). */
+.timeline-clip.is-audio {
+  background-color: rgba(167, 139, 250, 0.16);
+  border-color: rgba(167, 139, 250, 0.4);
+}
+
+.timeline-clip.is-audio.is-hovered {
+  background-color: rgba(167, 139, 250, 0.24);
+}
+
+.timeline-clip.is-audio.is-dragging {
+  background-color: rgba(60, 52, 84, 0.96);
+}
+
+.timeline-clip.is-hovered {
+  background-color: rgba(255, 255, 255, 0.09);
+}
+
+.timeline-clip[data-active].is-hovered {
+  border-color: rgba(60, 230, 172, 0.75);
+}
+
+.timeline-clip.is-selected {
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.85);
+}
+
+.timeline-clip[data-active].is-selected {
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.85);
+}
+
+.timeline-clip.is-dragging {
+  /* Solid background so the picked-up clip reads clearly while dragging — audio
+     clips (waveform drawn on a separate layer) would otherwise look transparent. */
+  background-color: rgba(38, 42, 52, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Keep the white selection outline while dragging (a plain box-shadow alone gets
+   overridden by .is-dragging's drop shadow, so re-state both together). */
+.timeline-clip.is-selected.is-dragging {
+  box-shadow:
+    0 0 0 1.5px rgba(255, 255, 255, 0.85),
+    0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.timeline-clip[data-active].is-selected.is-dragging {
+  box-shadow:
+    0 0 0 1.5px rgba(255, 255, 255, 0.85),
+    0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.timeline-clip__label {
+  position: absolute;
+  top: 6px;
+  left: 12px;
+  right: 10px;
+  z-index: 6;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-clip[data-active] .timeline-clip__label {
+  color: rgba(232, 255, 247, 0.95);
+}
+
+.timeline-clip__timecode {
+  position: absolute;
+  bottom: 6px;
+  left: 12px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.34);
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .timeline-clip {
+    transition:
+      background-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .timeline-clip::before {
+    transition: opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .timeline-clip__label {
+    transition: color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .timeline-clip__handle-bar {
+    transition: opacity 120ms ease-out;
+  }
+}
+
+/* CodeMirror overrides */
+.cm-editor {
+  height: 100%;
+  font-size: 13px;
+}
+
+.cm-editor .cm-scroller {
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", monospace;
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+/*
+ * HyperFrames brand loader. Shared by preview overlays that need a calm,
+ * branded loading state instead of a generic spinner.
+ */
+.hf-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: min(34rem, 100%);
+  padding: 1.5rem;
+  box-sizing: border-box;
+  text-align: center;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+.hf-frame {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 12rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.52);
+}
+
+.hf-loader-mark-frame {
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  transform-origin: 50% 50%;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+.hf-loader-mark {
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 0 7px rgba(79, 219, 94, 0.2));
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+.hf-loader-title {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--hf-heading, #f4f4f5);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hf-loader-detail {
+  max-width: 32rem;
+  min-height: 2.5rem;
+  overflow: hidden;
+  color: var(--hf-text-secondary, rgba(244, 244, 245, 0.68));
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.hf-loader-mono {
+  width: min(36rem, 100%);
+  min-height: 1.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hf-text-tertiary, rgba(244, 244, 245, 0.46));
+  font-family: "IBM Plex Mono", "SF Mono", "Fira Code", monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.hf-loader-progress {
+  width: min(18rem, 72vw);
+  height: 0.375rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes hf-thumb-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hf-loader-progress__fill {
+  width: 100%;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #06e3fa, #4fdb5e);
+  transition: transform 160ms ease;
+}
+
+/* Toast enter/exit (StudioToast) */
+@keyframes hf-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hf-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.hf-toast-enter {
+  animation: hf-toast-in 160ms ease-out;
+}
+
+.hf-toast-exit {
+  animation: hf-toast-out 160ms ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-toast-enter,
+  .hf-toast-exit {
+    animation: none;
+  }
+  .hf-toast-exit {
+    opacity: 0;
+  }
+}
+
+/* Overlay/backdrop entrance — the heaviest visual changes shouldn't pop in */
+@keyframes hf-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hf-backdrop-in {
+  animation: hf-backdrop-in 150ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-backdrop-in {
+    animation: none;
+  }
+}
+
+/* Flat inspector group header/body entrance (FlatGroupHeader) */
+@keyframes hf-flat-group-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hf-flat-group-enter {
+  animation: hf-flat-group-in 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-flat-group-enter {
+    animation: none;
+  }
+}

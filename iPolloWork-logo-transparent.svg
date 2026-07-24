@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="476" height="500" viewBox="-150 -150 776 800" role="img" aria-label="iPollo logo">
+  <title>iPollo logo</title>
+  <rect x="193.000" y="200.000" width="90" height="300" rx="45" ry="45" fill="#C5C4C4"/>
+  <rect x="0.309" y="143.436" width="300" height="90" rx="45" ry="45" fill="#000000" transform="rotate(33 150.309 188.436)"/>
+  <rect x="174.827" y="143.436" width="300" height="90" rx="45" ry="45" fill="#000000" transform="rotate(-33 324.827 188.436)"/>
+  <rect x="195.000" y="0.000" width="86" height="86" rx="13" ry="13" fill="#000000"/>
+  <rect x="4.309" y="261.436" width="300" height="90" rx="45" ry="45" fill="#C5C4C4" transform="rotate(-33 154.309 306.436)"/>
+  <rect x="171.535" y="261.436" width="300" height="90" rx="45" ry="45" fill="#C5C4C4" transform="rotate(33 321.535 306.436)"/>
+</svg>

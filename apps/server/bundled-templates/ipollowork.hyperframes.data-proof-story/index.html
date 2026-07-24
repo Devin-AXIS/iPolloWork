@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" data-ipw-template="data-proof-story" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Proof changes the conversation"},{"id":"brandName","type":"string","label":"Brand name","default":"Signal Lab"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260721"},{"id":"accent","type":"color","label":"Accent","default":"#ffcf5c"},{"id":"metric","type":"string","label":"Metric","default":"72%"},{"id":"metricLabel","type":"string","label":"Metric label","default":"more qualified conversations"},{"id":"insight","type":"string","label":"Insight","default":"The signal compounds when the story is clear."},{"id":"source","type":"string","label":"Source","default":"Source: Q2 customer study / n=184"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Data Proof Story</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      :root { --accent: #ffcf5c; --bg: #111315; --ink: #f4f4ed; --muted: #9ba09b; --line: rgba(244,244,237,.15); }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: radial-gradient(circle at 78% 36%, rgba(255,207,92,.12), transparent 35%), var(--bg); }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .grid { position: absolute; inset: 0; opacity: .12; background-image: linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px); background-size: 80px 80px; mask-image: linear-gradient(to bottom, #000, transparent 86%); }
+      .grain { position: absolute; inset: 0; opacity: .1; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E"); }
+      .mast { position: absolute; left: 84px; right: 84px; top: 60px; z-index: 20; display: flex; align-items: center; justify-content: space-between; }
+      .brand { display: flex; align-items: center; gap: 12px; font: 850 24px/1 Inter, sans-serif; letter-spacing: -.04em; }
+      .brand img { width: 30px; height: 30px; object-fit: contain; }
+      .mast span { color: rgba(244,244,237,.8); font: 700 16px/1.2 ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase; }
+      .copy { position: absolute; left: 124px; top: 212px; z-index: 15; width: 680px; }
+      .kicker { color: var(--accent); font: 800 17px/1.2 ui-monospace, monospace; letter-spacing: .2em; text-transform: uppercase; }
+      h1 { margin: 25px 0 26px; max-width: 720px; font-size: 103px; line-height: .92; letter-spacing: -.08em; }
+      .copy p { margin: 0; max-width: 570px; color: var(--muted); font-size: 28px; line-height: 1.32; }
+      .accent { color: var(--accent); }
+      .big-stat { position: absolute; right: 132px; top: 220px; z-index: 12; width: 730px; }
+      .big-stat strong { display: block; color: var(--accent); font: 900 250px/.82 Inter, sans-serif; letter-spacing: -.14em; }
+      .big-stat span { display: block; margin-top: 78px; color: rgba(244,244,237,.78); font: 700 25px/1.2 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+      .chart { position: absolute; right: 116px; top: 214px; width: 800px; height: 560px; z-index: 10; border-bottom: 2px solid rgba(244,244,237,.35); border-left: 2px solid rgba(244,244,237,.35); background: repeating-linear-gradient(to bottom, transparent 0, transparent 110px, rgba(244,244,237,.1) 111px, transparent 112px); }
+      .bar { position: absolute; bottom: 0; width: 100px; height: 0; transform-origin: bottom center; border-radius: 14px 14px 0 0; background: linear-gradient(to top, rgba(255,207,92,.42), var(--accent)); box-shadow: 0 -14px 40px rgba(255,207,92,.14); }
+      .bar::after { content: attr(data-label); position: absolute; bottom: -44px; left: 50%; transform: translateX(-50%); color: rgba(244,244,237,.52); font: 700 15px/1 ui-monospace, monospace; }
+      .bar-1 { left: 90px; }.bar-2 { left: 246px; }.bar-3 { left: 402px; }.bar-4 { left: 558px; }
+      .insight-card { position: absolute; left: 124px; bottom: 148px; z-index: 15; width: 620px; padding: 34px; border: 1px solid rgba(255,207,92,.38); background: rgba(20,24,23,.86); box-shadow: 18px 20px 0 rgba(255,207,92,.12); }
+      .insight-card small { color: var(--accent); font: 800 15px/1.2 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+      .insight-card h2 { margin: 22px 0 0; font-size: 45px; line-height: .98; letter-spacing: -.06em; }
+      .source { position: absolute; left: 124px; bottom: 76px; z-index: 15; color: rgba(244,244,237,.72); font: 600 15px/1.2 ui-monospace, monospace; }
+      .map { position: absolute; right: 148px; top: 170px; width: 740px; height: 610px; z-index: 10; }
+      .map svg { width: 100%; height: 100%; overflow: visible; }
+      .map .node { fill: var(--accent); stroke: #111315; stroke-width: 7; }
+      .map .route { fill: none; stroke: rgba(255,207,92,.48); stroke-width: 4; stroke-dasharray: 12 14; }
+      .map .label { fill: rgba(244,244,237,.68); font: 700 20px ui-monospace, monospace; letter-spacing: .08em; }
+      .outro { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; z-index: 12; }
+      .outro-inner { width: 1240px; }
+      .outro h2 { margin: 26px 0; font-size: 112px; line-height: .9; letter-spacing: -.085em; }
+      .outro p { margin: 0; color: var(--muted); font-size: 28px; }
+      .footer { position: absolute; right: 84px; bottom: 65px; z-index: 20; color: rgba(244,244,237,.8); font: 700 15px/1.2 ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="18">
+      <div id="background-layer" class="clip" data-start="0" data-duration="18" data-track-index="0"><div class="grid"></div><div class="grain"></div></div>
+      <header class="mast"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260721" alt="Brand logo" /><span data-var-text="brandName">Signal Lab</span></div><span>Data proof / 06</span></header>
+      <section class="scene clip" id="s-hook" data-start="0" data-duration="3.2" data-track-index="1"><div class="copy"><div class="kicker">The claim</div><h1 data-var-text="title">Proof changes the conversation</h1><p>Make the outcome visible before asking the audience to believe it.</p></div><div class="big-stat"><strong data-var-text="metric">72%</strong><span data-var-text="metricLabel">more qualified conversations</span></div></section>
+      <section class="scene clip" id="s-chart" data-start="3.2" data-duration="4.2" data-track-index="2"><div class="copy"><div class="kicker">The pattern</div><h1>Signal is a <span class="accent">curve.</span></h1><p>The story gets stronger when each proof point arrives in order.</p></div><div class="chart"><i class="bar bar-1" data-label="Q1"></i><i class="bar bar-2" data-label="Q2"></i><i class="bar bar-3" data-label="Q3"></i><i class="bar bar-4" data-label="Q4"></i></div></section>
+      <section class="scene clip" id="s-map" data-start="7.4" data-duration="3.5" data-track-index="3"><div class="copy"><div class="kicker">The network</div><h1>One insight.<br /><span class="accent">Many paths.</span></h1><p>Show where the result travels, not only where it starts.</p></div><div class="map"><svg viewBox="0 0 740 610" role="img" aria-label="Data network"><path class="route" d="M130 392 C210 310 252 330 334 250 S493 122 588 185"/><path class="route" d="M130 392 C228 424 286 494 394 462 S560 364 620 430"/><path class="route" d="M334 250 C362 344 440 340 620 430"/><circle class="node" cx="130" cy="392" r="22"/><circle class="node" cx="334" cy="250" r="19"/><circle class="node" cx="588" cy="185" r="25"/><circle class="node" cx="620" cy="430" r="20"/><text class="label" x="90" y="458">origin</text><text class="label" x="550" y="144">signal</text><text class="label" x="563" y="485">impact</text></svg></div></section>
+      <section class="scene clip" id="s-insight" data-start="10.9" data-duration="3.2" data-track-index="4"><div class="copy"><div class="kicker">The insight</div><h1>Now make the proof <span class="accent">useful.</span></h1><p>Translate the number into a decision the viewer can take.</p></div><div class="insight-card"><small>What the data says</small><h2 data-var-text="insight">The signal compounds when the story is clear.</h2></div><div class="source" data-var-text="source">Source: Q2 customer study / n=184</div></section>
+      <section class="scene clip outro" id="s-outro" data-start="14.1" data-duration="3.9" data-track-index="5"><div class="outro-inner"><div class="kicker">The conclusion</div><h2>Make every <span class="accent">number</span> mean something.</h2><p><span data-var-text="brandName">Signal Lab</span> · Proof is a motion system.</p></div></section>
+      <div class="footer">Data Proof Story / 06</div>
+    </main>
+    <script>
+      const bars = ['.bar-1', '.bar-2', '.bar-3', '.bar-4'];
+      const heights = [0.28, 0.46, 0.7, 0.92];
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#s-hook .copy', { opacity: 0, x: -46 }, { opacity: 1, x: 0, duration: .75, ease: 'power3.out' }, .15);
+      tl.fromTo('#s-hook .big-stat', { opacity: 0, scale: .74, x: 50 }, { opacity: 1, scale: 1, x: 0, duration: 1.0, ease: 'expo.out' }, .5);
+      tl.fromTo('#s-chart .copy', { opacity: 0, x: -46 }, { opacity: 1, x: 0, duration: .72, ease: 'power3.out' }, 3.35);
+      bars.forEach((selector, index) => tl.to(selector, { height: `${heights[index] * 440}px`, duration: .72, ease: index === 3 ? 'expo.out' : 'power3.out' }, 3.7 + index * .22));
+      tl.fromTo('#s-map .copy', { opacity: 0, x: -46 }, { opacity: 1, x: 0, duration: .72, ease: 'power3.out' }, 7.55);
+      tl.fromTo('#s-map .route', { strokeDashoffset: 900, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: .95, stagger: .15, ease: 'power2.out' }, 8.05);
+      tl.fromTo('#s-map .node', { opacity: 0, scale: .3, transformOrigin: 'center' }, { opacity: 1, scale: 1, duration: .55, stagger: .18, ease: 'power3.out' }, 8.45);
+      tl.fromTo('#s-insight .copy', { opacity: 0, x: -46 }, { opacity: 1, x: 0, duration: .72, ease: 'power3.out' }, 11.05);
+      tl.fromTo('.insight-card', { opacity: 0, y: 56, rotation: 3 }, { opacity: 1, y: 0, rotation: 0, duration: .86, ease: 'expo.out' }, 11.45);
+      tl.fromTo('.source', { opacity: 0 }, { opacity: 1, duration: .4, ease: 'power2.out' }, 12.55);
+      tl.fromTo('#s-outro .outro-inner', { opacity: 0, scale: .86, y: 28 }, { opacity: 1, scale: 1, y: 0, duration: 1.0, ease: 'power3.out' }, 14.3);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

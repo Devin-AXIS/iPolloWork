@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en" data-ipw-template="brand-liquid-sizzle" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Make the signal impossible to miss"},{"id":"brandName","type":"string","label":"Brand name","default":"Arc"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260721"},{"id":"accent","type":"color","label":"Accent","default":"#d8ff5f"},{"id":"descriptor","type":"string","label":"Descriptor","default":"A new visual language for ambitious work."},{"id":"keyword","type":"string","label":"Keyword","default":"Momentum"},{"id":"cta","type":"string","label":"Call to action","default":"Move with intent"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Brand Liquid Sizzle</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      :root { --accent: #d8ff5f; --bg: #08090b; --ink: #f4f6ef; --muted: #a6aa9f; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      #liquid-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 2; }
+      .fallback-liquid { position: absolute; inset: -120px; z-index: 1; background: radial-gradient(ellipse at 64% 42%, rgba(216,255,95,.72), transparent 24%), radial-gradient(ellipse at 30% 64%, rgba(66,114,255,.5), transparent 27%), radial-gradient(ellipse at 78% 78%, rgba(236,95,145,.46), transparent 24%), #11131a; filter: blur(42px) saturate(1.2); transform: rotate(-8deg) scale(1.08); }
+      .vignette { position: absolute; inset: 0; z-index: 8; background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,.62) 100%); pointer-events: none; }
+      .grain { position: absolute; inset: 0; z-index: 9; opacity: .12; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='.4'/%3E%3C/svg%3E"); }
+      .mast { position: absolute; left: 88px; right: 88px; top: 62px; z-index: 20; display: flex; align-items: center; justify-content: space-between; }
+      .brand { display: flex; align-items: center; gap: 13px; font: 850 25px/1 Inter, sans-serif; letter-spacing: -.04em; }
+      .brand img { width: 32px; height: 32px; object-fit: contain; }
+      .mast span { color: rgba(244,246,239,.82); font: 700 16px/1.2 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+      .copy { position: absolute; left: 128px; top: 240px; z-index: 15; width: 840px; }
+      .kicker { color: var(--accent); font: 800 18px/1.2 ui-monospace, monospace; letter-spacing: .23em; text-transform: uppercase; }
+      h1 { margin: 28px 0 26px; max-width: 900px; font-size: 112px; line-height: .89; letter-spacing: -.085em; }
+      .copy p { margin: 0; max-width: 620px; color: var(--muted); font-size: 29px; line-height: 1.3; }
+      .word { position: absolute; right: 110px; top: 190px; z-index: 13; color: rgba(244,246,239,.5); font: 900 230px/.8 Inter, sans-serif; letter-spacing: -.14em; }
+      .streak { position: absolute; z-index: 14; height: 3px; width: 560px; background: linear-gradient(90deg, transparent, var(--accent), transparent); transform: rotate(-22deg); opacity: .7; }
+      .streak-a { right: 88px; top: 330px; }.streak-b { right: 260px; top: 710px; width: 430px; transform: rotate(28deg); }.streak-c { left: 52px; top: 820px; width: 340px; transform: rotate(-18deg); }
+      .scene { z-index: 10; }
+      .scene::before { content: ''; position: absolute; left: 70px; right: 70px; top: 132px; bottom: 102px; border: 1px solid rgba(244,246,239,.1); border-radius: 32px; background: rgba(0,0,0,.62); z-index: 0; }
+      .glass-card { position: absolute; right: 168px; top: 244px; z-index: 15; width: 555px; padding: 34px; border: 1px solid rgba(244,246,239,.32); border-radius: 28px; background: rgba(5,7,8,.84); box-shadow: 0 30px 110px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.22); backdrop-filter: blur(22px); }
+      .glass-card small { color: var(--accent); font: 800 16px/1.2 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+      .glass-card h2 { margin: 24px 0 17px; font-size: 62px; line-height: .92; letter-spacing: -.075em; }
+      .glass-card p { margin: 0; color: rgba(244,246,239,.62); font-size: 23px; line-height: 1.32; }
+      .pill { display: inline-block; margin-top: 28px; padding: 10px 16px; border: 1px solid rgba(216,255,95,.55); border-radius: 999px; color: var(--accent); font: 700 15px/1.2 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+      .statement { position: absolute; left: 128px; top: 230px; z-index: 15; width: 900px; }
+      .statement h2 { margin: 24px 0; max-width: 900px; font-size: 112px; line-height: .9; letter-spacing: -.09em; }
+      .statement p { margin: 0; color: var(--muted); font-size: 29px; }
+      .outro { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; z-index: 15; }
+      .outro-inner { width: 1120px; }
+      .outro h2 { margin: 24px 0; font-size: 128px; line-height: .86; letter-spacing: -.1em; }
+      .outro p { margin: 0; color: var(--muted); font-size: 29px; }
+      .footer { position: absolute; left: 128px; right: 128px; bottom: 64px; z-index: 20; display: flex; justify-content: space-between; color: rgba(244,246,239,.76); font: 700 15px/1.2 ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; }
+      .accent { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="15">
+      <div id="background-layer" class="clip" data-start="0" data-duration="15" data-track-index="0"><div class="fallback-liquid" id="fallback-liquid"></div></div>
+      <canvas id="liquid-stage" class="clip" data-start="0" data-duration="15" data-track-index="1" width="1920" height="1080"></canvas><div class="vignette"></div><div class="grain"></div>
+      <header class="mast"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260721" alt="Brand logo" /><span data-var-text="brandName">Arc</span></div><span>Brand film / 05</span></header>
+      <section class="scene clip" id="s-reveal" data-start="0" data-duration="3.5" data-track-index="2"><div class="copy"><div class="kicker">A new signal</div><h1 data-var-text="title">Make the signal impossible to miss</h1><p data-var-text="descriptor">A new visual language for ambitious work.</p></div><div class="word" data-var-text="keyword">Momentum</div><i class="streak streak-a"></i><i class="streak streak-b"></i></section>
+      <section class="scene clip" id="s-glass" data-start="3.5" data-duration="3.7" data-track-index="3"><div class="statement"><div class="kicker">Liquid / Light / Logic</div><h2>Give the idea a surface people can <span class="accent">feel.</span></h2><p>Material depth without losing the message.</p></div><div class="glass-card"><small>html-in-canvas / 01</small><h2>Clarity, with atmosphere.</h2><p>Every layer moves toward the same focal point.</p><span class="pill">depth enabled</span></div><i class="streak streak-c"></i></section>
+      <section class="scene clip" id="s-keyword" data-start="7.2" data-duration="3.8" data-track-index="4"><div class="statement"><div class="kicker">The signature move</div><h2><span class="accent" data-var-text="keyword">Momentum</span> is a design decision.</h2><p>Let the hero word land, then hold it long enough to be remembered.</p></div><div class="word">/ / /</div><i class="streak streak-a"></i><i class="streak streak-c"></i></section>
+      <section class="scene clip" id="s-outro" data-start="11" data-duration="4" data-track-index="5"><div class="outro"><div class="outro-inner"><div class="kicker">The next frame</div><h2 data-var-text="cta">Move with intent</h2><p><span data-var-text="brandName">Arc</span> · A brand people can feel.</p></div></div></section>
+      <div class="footer"><span>Brand Liquid Sizzle / 05</span><span>WebGL fallback ready</span></div>
+    </main>
+    <script>
+      const canvas = document.getElementById('liquid-stage');
+      const fallback = document.getElementById('fallback-liquid');
+      const state = { time: 0, warp: .48, scale: 1 };
+      let gl = null;
+      let program = null;
+      let timeLocation = null;
+      let warpLocation = null;
+      try {
+        gl = canvas.getContext('webgl', { alpha: true, antialias: true, preserveDrawingBuffer: true });
+        const vertex = 'attribute vec2 a_position; void main(){ gl_Position=vec4(a_position,0.0,1.0); }';
+        const fragment = 'precision highp float; uniform float u_time; uniform float u_warp; void main(){ vec2 uv=gl_FragCoord.xy/vec2(1920.0,1080.0); vec2 p=uv-.5; p.x*=1.78; float wave=sin(p.x*5.4+u_time*.34)+cos(p.y*6.0-u_time*.27); float swirl=sin((p.x*p.x+p.y*p.y)*18.0-u_time*.5+wave*u_warp*2.0); float glow=smoothstep(1.05,.05,length(p+vec2(.18*sin(u_time*.18),.08*cos(u_time*.22)))); vec3 a=vec3(.84,.99,.37); vec3 b=vec3(.18,.32,.94); vec3 c=vec3(.93,.24,.51); vec3 col=mix(b,a,smoothstep(-1.0,1.0,wave*.44+swirl*.22)); col=mix(col,c,smoothstep(.35,1.0,swirl*.35+length(p))); col*=.38+glow*.82; gl_FragColor=vec4(col,1.0); }';
+        function compile(type, source) { const shader = gl.createShader(type); gl.shaderSource(shader, source); gl.compileShader(shader); return shader; }
+        program = gl.createProgram(); gl.attachShader(program, compile(gl.VERTEX_SHADER, vertex)); gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragment)); gl.linkProgram(program); gl.useProgram(program);
+        const buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+        const position = gl.getAttribLocation(program, 'a_position'); gl.enableVertexAttribArray(position); gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+        timeLocation = gl.getUniformLocation(program, 'u_time'); warpLocation = gl.getUniformLocation(program, 'u_warp');
+      } catch (error) { canvas.style.display = 'none'; }
+      function draw() {
+        if (!gl || !program) return;
+        gl.viewport(0, 0, 1920, 1080); gl.clearColor(.03, .035, .045, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.useProgram(program); gl.uniform1f(timeLocation, state.time); gl.uniform1f(warpLocation, state.warp); gl.drawArrays(gl.TRIANGLES, 0, 6); fallback.style.opacity = '.12';
+      }
+      const tl = gsap.timeline({ paused: true });
+      tl.to(state, { time: 15, duration: 15, ease: 'none', onUpdate: draw }, 0);
+      tl.to(state, { warp: .9, duration: 3.5, ease: 'sine.inOut', onUpdate: draw }, 0);
+      tl.to(state, { warp: .28, duration: 3.7, ease: 'power3.inOut', onUpdate: draw }, 3.5);
+      tl.to(state, { warp: .68, duration: 3.8, ease: 'power2.inOut', onUpdate: draw }, 7.2);
+      tl.to(state, { warp: .42, duration: 4, ease: 'sine.inOut', onUpdate: draw }, 11);
+      tl.fromTo('#s-reveal .copy', { opacity: 0, x: -52 }, { opacity: 1, x: 0, duration: .82, ease: 'power3.out' }, .18);
+      tl.fromTo('#s-reveal .word', { opacity: 0, scale: .72, x: 80 }, { opacity: 1, scale: 1, x: 0, duration: 1.1, ease: 'power3.out' }, .54);
+      tl.fromTo('#s-reveal .streak', { opacity: 0, scaleX: 0 }, { opacity: .7, scaleX: 1, duration: .8, stagger: .18, ease: 'power2.out' }, 1.3);
+      tl.fromTo('#s-glass .statement', { opacity: 0, x: -42 }, { opacity: 1, x: 0, duration: .8, ease: 'power3.out' }, 3.7);
+      tl.fromTo('.glass-card', { opacity: 0, y: 60, rotation: 4 }, { opacity: 1, y: 0, rotation: 0, duration: .9, ease: 'expo.out' }, 4.1);
+      tl.fromTo('#s-keyword .statement', { opacity: 0, x: 50 }, { opacity: 1, x: 0, duration: .78, ease: 'power3.out' }, 7.45);
+      tl.fromTo('#s-keyword .word', { opacity: 0, scale: .5 }, { opacity: 1, scale: 1, duration: .9, ease: 'power3.out' }, 8.1);
+      tl.fromTo('#s-keyword .streak', { opacity: 0, scaleX: 0 }, { opacity: .7, scaleX: 1, duration: .76, stagger: .18, ease: 'power2.out' }, 8.65);
+      tl.fromTo('#s-outro .outro-inner', { opacity: 0, scale: .84, y: 30 }, { opacity: 1, scale: 1, y: 0, duration: 1.05, ease: 'power3.out' }, 11.25);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+      draw();
+    </script>
+  </body>
+</html>

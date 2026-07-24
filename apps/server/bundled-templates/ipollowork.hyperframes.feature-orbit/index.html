@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en" data-ipw-template="feature-orbit" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Features that move with you"},{"id":"brandName","type":"string","label":"Brand name","default":"Orbit"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260721"},{"id":"accent","type":"color","label":"Accent","default":"#ffb86b"},{"id":"featureA","type":"string","label":"Feature one","default":"Capture the signal"},{"id":"featureB","type":"string","label":"Feature two","default":"Align the team"},{"id":"featureC","type":"string","label":"Feature three","default":"Ship with confidence"},{"id":"metric","type":"string","label":"Metric","default":"4.8x faster"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Feature Orbit</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      :root { --accent: #ffb86b; --bg: #111016; --paper: #f7f3ee; --ink: #19161b; --muted: #aaa0ab; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--paper); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .bg { position: absolute; inset: 0; background: radial-gradient(circle at 70% 50%, rgba(255,184,107,.18), transparent 34%), radial-gradient(circle at 10% 84%, rgba(157,113,255,.16), transparent 28%), #111016; }
+      .grid { position: absolute; inset: 0; opacity: .1; background-image: linear-gradient(rgba(255,255,255,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.09) 1px, transparent 1px); background-size: 80px 80px; }
+      .nav { position: absolute; left: 86px; right: 86px; top: 62px; z-index: 15; display: flex; justify-content: space-between; align-items: center; }
+      .brand { display: flex; gap: 12px; align-items: center; font-weight: 800; font-size: 24px; letter-spacing: -.03em; }
+      .brand img { width: 30px; height: 30px; object-fit: contain; }
+      .nav-meta { color: rgba(247,243,238,.78); font: 600 16px/1.2 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+      .copy { position: absolute; left: 124px; top: 224px; width: 650px; z-index: 10; }
+      .kicker { color: var(--accent); font: 700 17px/1.2 ui-monospace, monospace; letter-spacing: .22em; text-transform: uppercase; }
+      h1 { margin: 24px 0 24px; font-size: 104px; line-height: .93; letter-spacing: -.07em; }
+      .copy p { max-width: 520px; margin: 0; color: var(--muted); font-size: 28px; line-height: 1.32; }
+      .accent { color: var(--accent); }
+      .orbit-world { position: absolute; right: 32px; top: 122px; width: 1140px; height: 820px; perspective: 1300px; }
+      .ring { position: absolute; left: 120px; top: 120px; width: 800px; height: 480px; border: 1px solid rgba(255,184,107,.35); border-radius: 50%; transform: rotateX(63deg) rotateZ(-7deg); box-shadow: 0 0 120px rgba(255,184,107,.15); }
+      .ring::after { content: ''; position: absolute; inset: 72px; border: 1px solid rgba(255,184,107,.15); border-radius: 50%; }
+      .card { position: absolute; width: 320px; min-height: 300px; padding: 28px; border: 1px solid rgba(255,255,255,.18); border-radius: 26px; background: linear-gradient(145deg, rgba(255,255,255,.15), rgba(255,255,255,.04)); box-shadow: 0 34px 80px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.16); backdrop-filter: blur(18px); transform-style: preserve-3d; }
+      .card-a { left: 70px; top: 230px; transform: rotateY(-13deg) rotateZ(-7deg); }
+      .card-b { left: 420px; top: 90px; transform: rotateY(10deg) rotateZ(4deg); }
+      .card-c { left: 660px; top: 390px; transform: rotateY(-8deg) rotateZ(7deg); }
+      .card .small { display: block; color: rgba(247,243,238,.78); font: 600 14px/1.2 ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; }
+      .card h3 { margin: 48px 0 26px; font-size: 34px; line-height: 1.05; letter-spacing: -.05em; }
+      .card p { margin: 0; color: rgba(247,243,238,.82); font-size: 18px; line-height: 1.34; }
+      .card .dot { position: absolute; right: 25px; top: 26px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 28px var(--accent); }
+      .cursor { position: absolute; z-index: 12; width: 30px; height: 42px; border: 3px solid var(--paper); border-radius: 7px 7px 16px 7px; transform: rotate(-28deg); filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
+      .cursor::after { content: ''; position: absolute; left: 20px; top: 22px; width: 66px; height: 66px; border: 2px solid var(--accent); border-radius: 50%; transform: translate(-50%,-50%) scale(.3); opacity: 0; }
+      .metric { position: absolute; left: 124px; bottom: 106px; z-index: 15; display: flex; align-items: baseline; gap: 16px; color: rgba(247,243,238,.82); font: 600 16px/1.2 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+      .metric strong { color: var(--paper); font: 850 58px/.95 Inter, sans-serif; letter-spacing: -.07em; }
+      .bar { position: absolute; left: 124px; bottom: 71px; width: 510px; height: 3px; background: rgba(255,255,255,.12); overflow: hidden; }
+      .bar i { display: block; width: 100%; height: 100%; background: var(--accent); transform-origin: left center; transform: scaleX(.08); }
+      .chapter { position: absolute; right: 116px; bottom: 70px; z-index: 15; color: rgba(247,243,238,.5); font: 600 16px/1.2 ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; }
+      .feature-copy { position: absolute; left: 124px; top: 190px; z-index: 15; width: 650px; }
+      .feature-copy h2 { margin: 20px 0 18px; font-size: 94px; line-height: .94; letter-spacing: -.07em; }
+      .feature-copy p { margin: 0; color: var(--muted); font-size: 27px; line-height: 1.3; }
+      .number { position: absolute; right: 125px; top: 168px; color: rgba(247,243,238,.38); font: 850 220px/.8 Inter, sans-serif; letter-spacing: -.12em; }
+      .outro { display: grid; place-items: center; text-align: center; }
+      .outro-inner { position: relative; z-index: 10; }
+      .outro h2 { margin: 22px 0; font-size: 118px; line-height: .9; letter-spacing: -.08em; }
+      .outro p { margin: 0; color: var(--muted); font-size: 28px; }
+    </style>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="12">
+      <div id="background-layer" class="clip" data-start="0" data-duration="12" data-track-index="0"><div class="bg"></div><div class="grid"></div></div>
+      <div class="nav"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260721" alt="Brand logo" /><span data-var-text="brandName">Orbit</span></div><div class="nav-meta">Motion system / 02</div></div>
+      <section class="scene clip" id="s-hook" data-start="0" data-duration="2.8" data-track-index="1"><div class="copy"><div class="kicker">Product feature film</div><h1 data-var-text="title">Features that move with you</h1><p>Turn every capability into a moment your audience understands.</p></div><div class="orbit-world"><div class="ring"></div><div class="card card-a"><span class="small">01 / signal</span><span class="dot"></span><h3 data-var-text="featureA">Capture the signal</h3><p>Make the important thing impossible to miss.</p></div><div class="card card-b"><span class="small">02 / alignment</span><span class="dot"></span><h3 data-var-text="featureB">Align the team</h3><p>Give every handoff a visible next step.</p></div><div class="card card-c"><span class="small">03 / momentum</span><span class="dot"></span><h3 data-var-text="featureC">Ship with confidence</h3><p>Turn decisions into motion.</p></div></div><div class="metric"><strong data-var-text="metric">4.8x faster</strong><span>after one focused sprint</span></div><div class="bar"><i id="bar-hook"></i></div></section>
+      <section class="scene clip" id="s-one" data-start="2.8" data-duration="2.7" data-track-index="2"><div class="feature-copy"><div class="kicker">Feature one</div><h2 data-var-text="featureA">Capture the signal</h2><p>Highlight the first value with a single visual focal point.</p></div><div class="number">01</div><div class="orbit-world"><div class="ring"></div><div class="card card-a"><span class="small">focus mode</span><span class="dot"></span><h3>One clear view</h3><p>Prioritize what needs attention now.</p></div></div><div class="cursor" id="cursor-one"></div></section>
+      <section class="scene clip" id="s-two" data-start="5.5" data-duration="2.7" data-track-index="3"><div class="feature-copy"><div class="kicker">Feature two</div><h2 data-var-text="featureB">Align the team</h2><p>A visual handoff turns context into momentum.</p></div><div class="number">02</div><div class="orbit-world"><div class="ring"></div><div class="card card-b"><span class="small">shared context</span><span class="dot"></span><h3>Always in sync</h3><p>Make progress legible from every angle.</p></div></div><div class="cursor" id="cursor-two"></div></section>
+      <section class="scene clip" id="s-three" data-start="8.2" data-duration="2.4" data-track-index="4"><div class="feature-copy"><div class="kicker">Feature three</div><h2 data-var-text="featureC">Ship with confidence</h2><p>Close with the proof point that makes the promise real.</p></div><div class="number">03</div><div class="orbit-world"><div class="ring"></div><div class="card card-c"><span class="small">measured impact</span><span class="dot"></span><h3 data-var-text="metric">4.8x faster</h3><p>Confidence that compounds.</p></div></div><div class="cursor" id="cursor-three"></div></section>
+      <section class="scene clip outro" id="s-cta" data-start="10.6" data-duration="1.4" data-track-index="5"><div class="outro-inner"><div class="kicker">Make the feature felt</div><h2><span class="accent" data-var-text="brandName">Orbit</span> in motion.</h2><p>One product. Three reasons to move.</p></div></section>
+      <div class="chapter">02 — Feature orbit</div>
+    </main>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#s-hook .copy', { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: .75, ease: 'power3.out' }, .12);
+      tl.fromTo('.card-a', { opacity: 0, x: -70, y: 50, rotationY: -28 }, { opacity: 1, x: 0, y: 0, rotationY: -13, duration: .7, ease: 'power3.out' }, .42);
+      tl.fromTo('.card-b', { opacity: 0, x: 30, y: -58, rotationY: 24 }, { opacity: 1, x: 0, y: 0, rotationY: 10, duration: .75, ease: 'expo.out' }, .7);
+      tl.fromTo('.card-c', { opacity: 0, x: 80, y: 64, rotationY: -24 }, { opacity: 1, x: 0, y: 0, rotationY: -8, duration: .75, ease: 'power3.out' }, 1.0);
+      tl.to('#bar-hook', { scaleX: 1, duration: 1.5, ease: 'power2.out' }, .9);
+      tl.fromTo('#s-one .feature-copy', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .65, ease: 'power3.out' }, 2.95);
+      tl.fromTo('#s-one .card', { opacity: 0, scale: .7, rotationY: -32 }, { opacity: 1, scale: 1, rotationY: -13, duration: .8, ease: 'power3.out' }, 3.2);
+      tl.fromTo('#cursor-one', { opacity: 0, x: 220, y: 160 }, { opacity: 1, x: 70, y: 100, duration: .7, ease: 'power3.out' }, 3.8);
+      tl.to('#cursor-one', { x: 152, y: 80, duration: .42, ease: 'power2.inOut' }, 4.52);
+      tl.to('#cursor-one', { scale: 1.18, boxShadow: '0 0 0 18px rgba(255,184,107,.2)', duration: .3, ease: 'power2.out' }, 4.92);
+      tl.fromTo('#s-two .feature-copy', { opacity: 0, x: 48 }, { opacity: 1, x: 0, duration: .65, ease: 'expo.out' }, 5.65);
+      tl.fromTo('#s-two .card', { opacity: 0, scale: .72, rotationY: 30 }, { opacity: 1, scale: 1, rotationY: 10, duration: .8, ease: 'power3.out' }, 5.95);
+      tl.fromTo('#cursor-two', { opacity: 0, x: 40, y: 150 }, { opacity: 1, x: 190, y: 84, duration: .7, ease: 'power3.out' }, 6.5);
+      tl.to('#cursor-two', { x: 260, y: 30, duration: .4, ease: 'power2.inOut' }, 7.22);
+      tl.fromTo('#s-three .feature-copy', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .65, ease: 'power3.out' }, 8.35);
+      tl.fromTo('#s-three .card', { opacity: 0, scale: .64, rotationY: -25 }, { opacity: 1, scale: 1, rotationY: -8, duration: .82, ease: 'power3.out' }, 8.62);
+      tl.fromTo('#cursor-three', { opacity: 0, x: 240, y: 130 }, { opacity: 1, x: 108, y: 66, duration: .68, ease: 'expo.out' }, 9.2);
+      tl.to('#cursor-three', { x: 168, y: 22, duration: .35, ease: 'power2.inOut' }, 9.92);
+      tl.fromTo('#s-cta .outro-inner', { opacity: 0, scale: .82, y: 26 }, { opacity: 1, scale: 1, y: 0, duration: .72, ease: 'power3.out' }, 10.72);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

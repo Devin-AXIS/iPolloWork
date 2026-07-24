@@ -1,0 +1,79 @@
+---
+title: 使用媒体中心
+description: 通过 Provider 无关的媒体中心接入语音、翻译、视频和数字人能力，不修改 OpenCode。
+---
+
+iPolloWork 提供一个本地的**媒体中心能力契约**。第一批接入的是阿里百炼，只需在 **设置 → 授权中心 → 阿里百炼媒体服务** 配置一个 `DASHSCOPE_API_KEY`。Provider 实现在本地服务端：前端、生成文件和 OpenCode 都不会拿到密钥值。
+
+## 已统一的能力
+
+| 能力 | 调用动作 | 返回结果 |
+| --- | --- | --- |
+| 文本转语音 | `speech_synthesize` | CosyVoice 的音频 URL |
+| 声音克隆 | `voice_clone` | 可复用的百炼音色 ID |
+| 获取已复刻音色 | `voice_list` | 规范化的可复用音色元数据 |
+| 从工作区样本复刻声音 | `voice_clone_workspace_file` | 通过私有临时对象得到可复用音色 ID |
+| 录音转写 | `speech_transcribe` | Fun-ASR 异步任务 |
+| 短音频低延迟识别 | `speech_recognize_realtime` | Fun-ASR 实时模型响应 |
+| 音视频文件翻译 | `speech_translate` | 翻译文本，可选 Base64 音频分片 |
+| 视频生成 | `video_generate` | 万相异步任务 |
+| 模型级视频编辑 | `video_edit` | 万相异步任务 |
+| 数字人 | `digital_human_generate` | 万相对口型异步任务 |
+| 查询任务 | `task_get` | 任务状态与结果 URL |
+
+百炼返回的媒体 URL 有效期有限。功能需要把工作区产物长期保存时，再调用存储中心上传到对象存储。
+
+每个媒体中心调用都返回同一层结构：`provider`、`operation`、`output`，异步任务还会返回 `taskId`。`output` 保留 Provider 特有字段，但业务调用路径无需分支判断厂商。
+
+## 前端调用
+
+使用 iPolloWork 客户端的统一方法。它始终经由本地 iPolloWork 服务调用，浏览器不会直连百炼。
+
+```ts
+const result = await client.callMedia("speech_synthesize", {
+  text: "欢迎来到 iPolloWork。",
+  voice: "longanyang",
+});
+
+const translation = await client.callMedia("speech_translate", {
+  fileUrl: "https://assets.example.com/meeting.wav",
+  format: "wav",
+  sourceLanguage: "zh",
+  targetLanguage: "en",
+  includeAudio: true,
+});
+```
+
+异步任务创建后，保存 `result.taskId`，通过 `task_get` 主动轮询，避免重复提交：
+
+```ts
+const task = await client.callMedia("task_get", { taskId });
+```
+
+对于受信任的集成，`voice_clone` 可以接受可访问的 HTTPS URL。产品界面应优先使用 `voice_clone_workspace_file`：只传入工作区内的 WAV、MP3 或 M4A 相对路径。本地服务会将样本上传为已配置 OSS 或 Wasabi 中的私有临时对象，给百炼生成短时只读 URL，并在复刻成功或失败后都删除远端临时对象。返回的音色设置仅保存 Provider、模型、音色 ID、来源和更新时间，绝不保存 Key、样本或签名 URL。
+
+Video Studio 的配音设置会用这个工作区动作处理最大 10 MB 的样本，并在桌面端校验 10–60 秒的建议样本时长。它只在当前会话的 `video/<session>/voiceover.json` 保存已选声音配置。
+
+## 视频智能体的配音契约
+
+每个 Video Studio 任务都会向智能体注入一段会话级契约。只有用户明确要求旁白、配音、配音翻译或口播稿时，智能体才读取 `voiceover.json`，以其中的 `voiceId` 与 `model` 调用既有的 `media/speech_synthesize`，立刻把短时音频结果下载到新的 `video/<session>/assets/voiceover-<revision>.mp3`，将 HyperFrames 根合成中唯一的直接子级 `<audio>` 更新到这个文件，再删除旧旁白文件。不可变文件名能避免已经打开的 Studio 重放浏览器缓存的旧旁白。
+
+它不会为每个视频自动生成语音、随机换一个兜底音色、把临时 Provider URL 写进工程，也不会接管 HyperFrames 的播放逻辑。尚未在 Studio 选择声音时，智能体会提示用户选择，同时仍可继续完成无声的视觉视频。
+
+## 智能体调用与 OpenCode 边界
+
+iPolloWork 随包附带的扩展插件向智能体暴露相同动作。智能体先调用 `ipollowork_extension_list_actions`，再以 `extensionId: "media"` 调用 `ipollowork_extension_call`。视频智能体的配音契约使用 `speech_synthesize`；`voice` 与 `model` 参数直接来自已保存的 Studio 音色配置。
+
+这套能力只属于 iPolloWork：不会向 OpenCode 增加百炼 Provider，不修改 OpenCode 源码、配置或内部数据。因此升级 OpenCode 时不需要迁移百炼逻辑。
+
+升级后运行：
+
+```bash
+pnpm --filter ipollowork-server exec bun test src/extensions/media-center.test.ts src/extensions-connect-gating.test.ts
+```
+
+然后启动桌面开发版，在会话里确认 `ipollowork_extension_list_actions` 能列出 `media`。
+
+## 实时边界
+
+`speech_recognize_realtime` 适用于已上传的短音频分片；`speech_translate` 会消费百炼的流式响应，并通过本地网关返回完整翻译结果。连续麦克风到麦克风的同传需要单独的 WebSocket 中继和短期凭证。后续增加时也应放在 iPolloWork 内，不暴露永久 Key，也不改动 OpenCode。

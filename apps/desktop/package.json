@@ -1,0 +1,48 @@
+{
+  "name": "@ipollowork/desktop",
+  "private": true,
+  "version": "0.17.29",
+  "description": "iPolloWork desktop shell",
+  "author": {
+    "name": "iPolloWork",
+    "email": "support@ipolloworklabs.com"
+  },
+  "main": "electron/main.mjs",
+  "type": "module",
+  "scripts": {
+    "dev": "node ./scripts/electron-dev.mjs",
+    "dev:electron": "node ./scripts/electron-dev.mjs",
+    "build": "node ./scripts/electron-build.mjs",
+    "build:electron": "node ./scripts/electron-build.mjs",
+    "icons": "node ./scripts/generate-icons.mjs",
+    "package:electron": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --publish never",
+    "package:electron:dir": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --dir --publish never",
+    "package:mac:release": "node ./scripts/package-mac-release.mjs",
+    "package:windows": "cross-env IPOLLOWORK_WINDOWS_INSTALLER=1 node ./scripts/package-windows.mjs",
+    "electron": "pnpm exec electron ./electron/main.mjs",
+    "check:electron": "node ./scripts/check-electron-bridge.mjs",
+    "typecheck:electron": "pnpm --dir ../server exec tsc -p ../desktop/tsconfig.electron.json --noEmit",
+    "prepare:sidecar": "node ./scripts/prepare-sidecar.mjs",
+    "test": "node --test electron/brand-icon-windows.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@opencode-ai/sdk": "^1.17.11",
+    "better-sqlite3": "^11.10.0",
+    "drizzle-orm": "^0.45.1",
+    "electron-updater": "^6.3.9",
+    "jsonc-parser": "^3.2.1",
+    "minimatch": "^10.0.1",
+    "node-pty": "npm:@lydell/node-pty@1.2.0-beta.12",
+    "yaml": "^2.6.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@ipollowork/types": "workspace:*",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-devtools-installer": "^4.0.0"
+  },
+  "packageManager": "pnpm@10.27.0"
+}

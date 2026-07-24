@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.pitch-deck",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "slides",
+  "subcategory": "pitch",
+  "title": "Pitch Deck",
+  "description": "A decision-ready 16:9 presentation with editable slides, notes and keyboard navigation.",
+  "cover": "cover.png",
+  "entry": "entry.html",
+  "source": {
+    "name": "Open Design · html-ppt",
+    "repository": "https://github.com/lewislulu/html-ppt-skill",
+    "license": "MIT"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"]
+  },
+  "applyChecklist": [
+    "deck title, audience and decision goal",
+    "a coherent 6 to 10 slide narrative",
+    "16:9 composition with safe margins",
+    "cover, problem, solution, evidence, plan and closing layouts",
+    "real metrics with no invented claims",
+    "speaker notes separate from audience content",
+    "keyboard navigation, slide counter and controls",
+    "global deck theme token values"
+  ],
+  "minimumAppVersion": "0.17.20"
+}

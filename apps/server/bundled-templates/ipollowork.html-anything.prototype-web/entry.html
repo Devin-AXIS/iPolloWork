@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en" data-ipw-template="prototype-web" data-ipw-style="minimal" data-ipw-mobile-ready="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Web Prototype</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; font-family:'Inter Tight','Noto Sans SC',sans-serif; background:#fafaf7; color:#15140f; -webkit-font-smoothing:antialiased; }
+  .accent { color:#c96442; }
+  .glass { background:rgba(255,255,255,0.7); backdrop-filter:blur(14px); border:1px solid rgba(21,20,15,0.06); }
+  .grad-text { background:linear-gradient(120deg,#15140f 0%,#c96442 60%,#e9b94a 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .gradient-bg { background:radial-gradient(ellipse at 20% 0%, rgba(201,100,66,0.18), transparent 55%), radial-gradient(ellipse at 80% 60%, rgba(233,185,74,0.15), transparent 55%); }
+  details summary::-webkit-details-marker { display:none; }
+  details summary { cursor:pointer; list-style:none; }
+  .card-rise { transition:transform 0.25s ease, box-shadow 0.25s ease; }
+  .card-rise:hover { transform:translateY(-4px); box-shadow:0 30px 60px -30px rgba(21,20,15,0.2); }
+  .demo-play { border:0; background:transparent; color:white; cursor:pointer; }
+  .action-status { min-height:24px; margin:16px auto 0; text-align:center; color:#c96442; font-weight:600; }
+  .mobile-nav-toggle { display:none; position:relative; width:42px; height:42px; flex:0 0 42px; border:1px solid #e7e5e0; border-radius:12px; background:rgba(255,255,255,.82); color:#15140f; }
+  .mobile-nav-toggle span, .mobile-nav-toggle::before, .mobile-nav-toggle::after { content:""; position:absolute; left:12px; width:16px; height:1.5px; border-radius:2px; background:currentColor; transition:top .2s ease, transform .2s ease, opacity .2s ease; }
+  .mobile-nav-toggle::before { top:13px; }
+  .mobile-nav-toggle span { top:20px; }
+  .mobile-nav-toggle::after { top:27px; }
+  @media (max-width:767px) {
+    body { overflow-x:hidden; }
+    .nav-inner { position:relative; height:64px; padding-inline:16px; }
+    .nav-inner > .flex:last-child > a { display:none; }
+    .mobile-nav-toggle { display:block; }
+    .mobile-menu { display:none !important; position:absolute; top:calc(100% + 8px); left:12px; right:12px; padding:8px; flex-direction:column; align-items:stretch; gap:2px; border:1px solid rgba(21,20,15,.08); border-radius:16px; background:rgba(255,255,255,.96); box-shadow:0 18px 48px rgba(21,20,15,.14); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
+    nav[data-menu-open="true"] .mobile-menu { display:flex !important; }
+    .mobile-menu a { display:flex; min-height:44px; padding:10px 12px; align-items:center; border-radius:10px; }
+    nav[data-menu-open="true"] .mobile-nav-toggle span { opacity:0; }
+    nav[data-menu-open="true"] .mobile-nav-toggle::before { top:20px; transform:rotate(45deg); }
+    nav[data-menu-open="true"] .mobile-nav-toggle::after { top:20px; transform:rotate(-45deg); }
+    .gradient-bg { padding:72px 18px 80px !important; }
+    .gradient-bg h1 { font-size:clamp(38px,10.5vw,46px) !important; line-height:1.06 !important; overflow-wrap:anywhere; }
+    .gradient-bg p { font-size:16px !important; }
+    .gradient-bg .flex.items-center.justify-center { width:100%; flex-direction:column; align-items:stretch; }
+    .gradient-bg .flex.items-center.justify-center a { min-height:46px; justify-content:center; }
+    section { scroll-margin-top:76px; }
+    section[class*="py-24"], section[class*="py-32"] { padding-top:64px !important; padding-bottom:64px !important; }
+    section[class*="px-6"], footer[class*="px-6"] { padding-left:18px !important; padding-right:18px !important; }
+    footer .flex.gap-5 { flex-wrap:wrap; justify-content:center; }
+    footer a { min-height:40px; display:inline-flex; align-items:center; }
+  }
+</style>
+<link rel="stylesheet" href="design-tokens.css"></head>
+<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
+
+<nav class="sticky top-0 z-30 glass">
+  <div class="nav-inner max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <a href="#top" class="flex items-center gap-2.5 font-bold tracking-tight">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#c96442] to-[#e9b94a] grid place-items-center text-white font-black">Ⅰ</div>
+      <span>Inkstack</span>
+    </a>
+    <div class="mobile-menu hidden md:flex items-center gap-7 text-sm text-[#5a564e]">
+      <a href="#features" class="hover:text-[#15140f]">Home</a>
+      <a href="#how" class="hover:text-[#15140f]">Product</a>
+      <a href="#voices" class="hover:text-[#15140f]">Solutions</a>
+      <a href="#pricing" class="hover:text-[#15140f]">Customers</a>
+      <a href="#cta" class="hover:text-[#15140f] md:hidden">Contact</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="#features" class="hidden sm:inline text-sm font-medium text-[#5a564e] hover:text-[#15140f] px-3 py-2">About</a>
+      <a href="#cta" class="text-sm font-semibold bg-[#15140f] text-white px-4 py-2 rounded-full hover:bg-[#2a2620] transition-colors">Contact</a>
+      <button class="mobile-nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"><span></span></button>
+    </div>
+  </div>
+</nav>
+
+<section id="top" class="gradient-bg pt-24 pb-32 px-6">
+  <div class="max-w-5xl mx-auto text-center">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/70 border border-[#e7e5e0] text-xs font-medium text-[#5a564e] mb-7">
+      <span class="w-1.5 h-1.5 rounded-full bg-[#c96442]"></span>
+      A clearer way to move forward
+    </div>
+    <h1 class="text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.05] mb-6">
+      Build what <span class="grad-text">matters.</span><br/>Made for ambitious teams
+    </h1>
+    <p class="text-lg md:text-xl text-[#5a564e] max-w-2xl mx-auto leading-relaxed mb-10">
+      Turn a strong idea into a polished digital experience designed for clarity, speed, and focus.
+    </p>
+    <div class="flex items-center justify-center gap-3">
+      <a href="#cta" class="inline-flex items-center gap-2 bg-[#c96442] text-white font-semibold px-6 py-3 rounded-full hover:bg-[#b25737] transition-colors shadow-[0_14px_32px_-16px_rgba(201,100,66,0.85)]">
+        Build what matters.
+      </a>
+      <a href="#how" class="inline-flex items-center gap-2 bg-white border border-[#e7e5e0] font-medium text-[#15140f] px-6 py-3 rounded-full hover:border-[#15140f]/40 transition-colors">
+        Solutions
+      </a>
+    </div>
+    <div class="mt-14 mx-auto max-w-3xl">
+      <div class="rounded-2xl bg-white shadow-[0_50px_100px_-30px_rgba(21,20,15,0.25)] border border-[#e7e5e0] p-2">
+        <div class="rounded-xl bg-[#15140f] aspect-video grid place-items-center relative overflow-hidden">
+          <div class="absolute inset-0 opacity-20" style="background-image:linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px); background-size:32px 32px;"></div>
+          <button type="button" class="demo-play text-center relative z-10" data-ipw-action-message="Demo only — no video is connected yet. Add your product video before publishing.">
+            <span class="block text-7xl mb-3" aria-hidden="true">▶</span>
+            <span class="block text-white/60 text-sm">Play: A clearer way to move forward</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<p class="action-status" data-ipw-action-status role="status" aria-live="polite"></p>
+
+<section id="features" class="py-24 px-6">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <div class="text-xs font-semibold tracking-[0.22em] uppercase text-[#c96442] mb-3">Customers</div>
+      <h2 class="text-4xl md:text-5xl font-extrabold tracking-tight">Made for ambitious teams</h2>
+    </div>
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+
+        <div class="card-rise p-7 rounded-2xl bg-white border border-[#e7e5e0]">
+          <div class="text-3xl mb-4 accent">✦</div>
+          <div class="text-lg font-bold mb-2">About</div>
+          <div class="text-sm leading-relaxed text-[#5a564e]">Everything you need to grow</div>
+        </div>
+
+        <div class="card-rise p-7 rounded-2xl bg-white border border-[#e7e5e0]">
+          <div class="text-3xl mb-4 accent">⌗</div>
+          <div class="text-lg font-bold mb-2">Contact</div>
+          <div class="text-sm leading-relaxed text-[#5a564e]">Build what matters.</div>
+        </div>
+
+        <div class="card-rise p-7 rounded-2xl bg-white border border-[#e7e5e0]">
+          <div class="text-3xl mb-4 accent">↗</div>
+          <div class="text-lg font-bold mb-2">Get started</div>
+          <div class="text-sm leading-relaxed text-[#5a564e]">A clearer way to move forward</div>
+        </div>
+
+        <div class="card-rise p-7 rounded-2xl bg-white border border-[#e7e5e0]">
+          <div class="text-3xl mb-4 accent">◐</div>
+          <div class="text-lg font-bold mb-2">Learn more</div>
+          <div class="text-sm leading-relaxed text-[#5a564e]">Made for ambitious teams</div>
+        </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="how" class="py-24 px-6 bg-[#f4f1ec] border-y border-[#e7e5e0]">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-16">
+      <div class="text-xs font-semibold tracking-[0.22em] uppercase text-[#c96442] mb-3">Home</div>
+      <h2 class="text-4xl md:text-5xl font-extrabold tracking-tight">Everything you need to grow</h2>
+    </div>
+    <div class="grid md:grid-cols-3 gap-8">
+
+        <div>
+          <div class="text-5xl font-extrabold accent" style="font-family:Georgia,serif;font-style:italic">01</div>
+          <div class="text-xl font-bold mt-2 mb-1.5">Product</div>
+          <div class="text-sm leading-relaxed text-[#5a564e]">Build what matters.</div>
+        </div>
+
+        <div>
+          <div class="text-5xl font-extrabold accent" style="font-family:Georgia,serif;font-style:italic">02</div>
+          <div class="text-xl font-bold mt-2 mb-1.5">Solutions</div>
+          <div class="text-sm leading-relaxed text-[#5a564e]">A clearer way to move forward</div>
+        </div>
+
+        <div>
+          <div class="text-5xl font-extrabold accent" style="font-family:Georgia,serif;font-style:italic">03</div>
+          <div class="text-xl font-bold mt-2 mb-1.5">Customers</div>
+          <div class="text-sm leading-relaxed text-[#5a564e]">Made for ambitious teams</div>
+        </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="voices" class="py-24 px-6">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-12">
+      <div class="text-xs font-semibold tracking-[0.22em] uppercase text-[#c96442] mb-3">About</div>
+      <h2 class="text-4xl md:text-5xl font-extrabold tracking-tight">Contact</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-5">
+      <div class="p-7 rounded-2xl bg-white border border-[#e7e5e0]">
+        <div class="text-2xl accent mb-3">"</div>
+        <div class="text-lg font-medium leading-snug mb-5">Bring your product, story, and brand together in one flexible space that is easy to edit and ready to share.</div>
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[#c96442] to-[#e9b94a]"></div>
+          <div><div class="font-semibold">Get started</div><div class="text-xs text-[#5a564e]">Everything you need to grow</div></div>
+        </div>
+      </div>
+      <div class="p-7 rounded-2xl bg-white border border-[#e7e5e0]">
+        <div class="text-2xl accent mb-3">"</div>
+        <div class="text-lg font-medium leading-snug mb-5">Thoughtful details and reusable sections help every page feel consistent from the first screen to the final call to action.</div>
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[#6c3aa6] to-[#2348b8]"></div>
+          <div><div class="font-semibold">Learn more</div><div class="text-xs text-[#5a564e]">Build what matters.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing" class="py-24 px-6 bg-[#f4f1ec] border-y border-[#e7e5e0]">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-12">
+      <div class="text-xs font-semibold tracking-[0.22em] uppercase text-[#c96442] mb-3">Home</div>
+      <h2 class="text-4xl md:text-5xl font-extrabold tracking-tight">A clearer way to move forward</h2>
+    </div>
+    <div class="grid md:grid-cols-3 gap-5">
+      <div class="p-8 rounded-2xl bg-white border border-[#e7e5e0]">
+        <div class="text-sm font-semibold text-[#5a564e] mb-2">Product</div>
+        <div class="text-5xl font-extrabold tracking-tight">¥0</div>
+        <div class="text-xs text-[#5a564e] mt-1 mb-6">Solutions</div>
+        <ul class="space-y-2 text-sm text-[#262421] mb-6">
+          <li>Customers</li><li>About</li><li>Contact</li>
+        </ul>
+        <a href="#cta" class="block w-full py-2.5 rounded-full border border-[#15140f]/15 hover:border-[#15140f]/40 font-medium text-sm text-center">Get started</a>
+      </div>
+      <div class="p-8 rounded-2xl bg-[#15140f] text-white border border-[#15140f] ring-2 ring-[#c96442]/30 relative">
+        <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-[#c96442] text-white text-[10px] font-bold tracking-wider">Learn more</div>
+        <div class="text-sm font-semibold opacity-70 mb-2">Pro</div>
+        <div class="text-5xl font-extrabold tracking-tight">¥39<span class="text-base opacity-60 font-medium">Home</span></div>
+        <div class="text-xs opacity-60 mt-1 mb-6">Made for ambitious teams</div>
+        <ul class="space-y-2 text-sm opacity-90 mb-6">
+          <li>Product</li><li>Solutions</li><li>Customers</li>
+        </ul>
+        <a href="#features" class="block w-full py-2.5 rounded-full bg-[#c96442] hover:bg-[#b25737] font-semibold text-sm text-center">About</a>
+      </div>
+      <div class="p-8 rounded-2xl bg-white border border-[#e7e5e0]">
+        <div class="text-sm font-semibold text-[#5a564e] mb-2">Team</div>
+        <div class="text-5xl font-extrabold tracking-tight">¥99<span class="text-base text-[#5a564e] font-medium">Contact</span></div>
+        <div class="text-xs text-[#5a564e] mt-1 mb-6">Get started</div>
+        <ul class="space-y-2 text-sm text-[#262421] mb-6">
+          <li>Learn more</li><li>Home</li><li>Product</li>
+        </ul>
+        <a href="#voices" class="block w-full py-2.5 rounded-full border border-[#15140f]/15 hover:border-[#15140f]/40 font-medium text-sm text-center">Solutions</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="cta" class="py-32 px-6 text-center">
+  <h2 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-5">Everything you need to grow</h2>
+  <p class="text-lg text-[#5a564e] mb-8">Build what matters.</p>
+  <a href="#pricing" class="inline-flex items-center gap-2 bg-[#c96442] text-white font-semibold px-7 py-3.5 rounded-full hover:bg-[#b25737] transition-colors shadow-[0_14px_32px_-16px_rgba(201,100,66,0.85)]">
+    Customers
+  </a>
+</section>
+
+<footer class="border-t border-[#e7e5e0] py-10 px-6">
+  <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-[#5a564e]">
+    <div class="flex items-center gap-2.5">
+      <div class="w-7 h-7 rounded-md bg-gradient-to-br from-[#c96442] to-[#e9b94a] grid place-items-center text-white text-xs font-black">Ⅰ</div>
+      <span class="font-semibold text-[#15140f]">Inkstack</span>
+      <span class="opacity-50">© 2026</span>
+    </div>
+    <div class="flex gap-5">
+      <a href="#features" class="hover:text-[#15140f]">About</a>
+      <a href="#voices" class="hover:text-[#15140f]">Contact</a>
+      <a href="#cta" class="hover:text-[#15140f]">Get started</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (() => {
+    const nav = document.querySelector('nav');
+    const toggle = nav?.querySelector('.mobile-nav-toggle');
+    if (!nav || !toggle) return;
+    const setOpen = (open) => {
+      nav.dataset.menuOpen = String(open);
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+    };
+    toggle.addEventListener('click', () => setOpen(nav.dataset.menuOpen !== 'true'));
+    nav.querySelectorAll('.mobile-menu a').forEach((item) => item.addEventListener('click', () => setOpen(false)));
+    document.addEventListener('click', (event) => { if (!nav.contains(event.target)) setOpen(false); });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
+    const status = document.querySelector('[data-ipw-action-status]');
+    document.querySelectorAll('[data-ipw-action-message]').forEach((button) => {
+      button.addEventListener('click', () => { if (status) status.textContent = button.dataset.ipwActionMessage || ''; });
+    });
+  })();
+</script>
+
+</body>
+</html>

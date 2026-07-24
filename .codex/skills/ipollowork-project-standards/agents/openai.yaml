@@ -1,0 +1,4 @@
+interface:
+  display_name: "iPolloWork Project Standards"
+  short_description: "Modern minimal implementation standards for iPolloWork"
+  default_prompt: "Apply the iPolloWork project standards to this change."

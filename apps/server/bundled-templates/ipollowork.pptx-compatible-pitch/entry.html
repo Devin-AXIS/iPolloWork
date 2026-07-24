@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Investor Pitch</title>
+  <link rel="stylesheet" href="design-tokens.css" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { display: grid; place-items: center; background: #d9dce3; font-family: var(--ipw-font-body); }
+    .deck { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; overflow: hidden; background: var(--ipw-color-bg); }
+    .slide { position: absolute; inset: 0; display: none; flex-direction: column; padding: 68px 88px; background: var(--ipw-color-bg); color: var(--ipw-color-text); }
+    .slide.is-active { display: flex; }
+    .slide.dark { background: var(--ipw-color-primary); color: #ffffff; }
+    .kicker { margin: 0 0 22px; color: var(--ipw-color-accent); font-size: 17px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { max-width: 1040px; font-size: 82px; line-height: .98; letter-spacing: -2.6px; }
+    h2 { max-width: 980px; font-size: 56px; line-height: 1.04; letter-spacing: -1.6px; }
+    h3 { font-size: 24px; line-height: 1.2; }
+    .accent { color: var(--ipw-color-accent); }
+    .lede { max-width: 830px; margin-top: 24px; color: var(--ipw-color-muted); font-size: 25px; line-height: 1.42; }
+    .dark .lede { color: #d5d9e4; }
+    .line { width: 108px; height: 10px; margin-top: 30px; background: var(--ipw-color-accent); }
+    .grid { display: grid; gap: 20px; margin-top: 38px; }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .grid.three { grid-template-columns: repeat(3, 1fr); }
+    .card { min-width: 0; padding: 25px 27px; border: 1px solid var(--ipw-color-border); border-radius: var(--ipw-card-radius); background: var(--ipw-color-surface); }
+    .card p { margin-top: 12px; color: var(--ipw-color-muted); font-size: 19px; line-height: 1.4; }
+    .dark .card { border-color: #53607d; background: #202e4d; }
+    .dark .card p { color: #c6cede; }
+    .metric { margin-top: 22px; color: var(--ipw-color-accent); font-size: 62px; font-weight: 700; letter-spacing: -2.4px; }
+    .metric-label { margin-top: 8px; color: var(--ipw-color-muted); font-size: 17px; }
+    .dark .metric-label { color: #c6cede; }
+    .timeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 42px; }
+    .phase { position: relative; padding: 20px 0 0; }
+    .phase-rule { position: absolute; top: 0; left: 0; width: 100%; height: 6px; background: var(--ipw-color-accent); }
+    .phase p { margin-top: 10px; color: var(--ipw-color-muted); font-size: 18px; line-height: 1.38; }
+    .footer { margin-top: auto; color: var(--ipw-color-muted); font-size: 16px; }
+    .dark .footer { color: #c6cede; }
+    @media (max-width: 720px) { .slide { padding: 34px 40px; } h1 { font-size: 44px; } h2 { font-size: 33px; } .lede { font-size: 17px; } .card { padding: 15px; } .card p, .phase p { font-size: 13px; } .metric { font-size: 38px; } }
+  </style>
+</head>
+<body>
+  <main class="deck" data-ipw-template-kind="slides" aria-label="Investor pitch">
+    <section class="slide dark is-active" data-ipw-slide="1" data-title="Thesis">
+      <p class="kicker" data-pptx-text>Investor Pitch / 2026</p>
+      <h1 data-pptx-text>Build the <span class="accent">essential layer</span> for modern work.</h1>
+      <p class="lede" data-pptx-text>Replace fragmented execution with a product that turns context into repeatable, trusted outcomes.</p>
+      <div class="line" data-pptx-shape="rect"></div>
+      <p class="footer" data-pptx-text>Confidential / Replace with your company and round details</p>
+    </section>
+
+    <section class="slide" data-ipw-slide="2" data-title="Problem">
+      <p class="kicker" data-pptx-text>01 / Problem</p>
+      <h2 data-pptx-text>Teams have more tools, but <span class="accent">less continuity.</span></h2>
+      <div class="grid three">
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Fragmented context</h3><p data-pptx-text>Research, decisions, and execution disappear across disconnected systems.</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Slow handoffs</h3><p data-pptx-text>Useful work has to be copied, rebuilt, checked, and explained again.</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Weak learning loop</h3><p data-pptx-text>Good workflows are rarely captured as durable team capability.</p></article>
+      </div>
+    </section>
+
+    <section class="slide dark" data-ipw-slide="3" data-title="Opportunity">
+      <p class="kicker" data-pptx-text>02 / Opportunity</p>
+      <h2 data-pptx-text>One system can turn <span class="accent">intent into delivery.</span></h2>
+      <div class="grid three">
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>18K</h3><p data-pptx-text>Monthly active work sessions</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>42%</h3><p data-pptx-text>Four-week retained users</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>3.6x</h3><p data-pptx-text>Quarterly workflow growth</p></article>
+      </div>
+      <p class="footer" data-pptx-text>Sample metrics only. Use audited business evidence in a real pitch.</p>
+    </section>
+
+    <section class="slide" data-ipw-slide="4" data-title="Model">
+      <p class="kicker" data-pptx-text>03 / Model</p>
+      <h2 data-pptx-text>Land with personal leverage. Expand into <span class="accent">team infrastructure.</span></h2>
+      <div class="grid three">
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Personal</h3><p data-pptx-text>Start with individual work that is immediately useful and easy to share.</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Professional</h3><p data-pptx-text>Add reusable skills, templates, design, and controlled automation.</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>Enterprise</h3><p data-pptx-text>Scale with governance, private deployment, and shared organizational knowledge.</p></article>
+      </div>
+    </section>
+
+    <section class="slide" data-ipw-slide="5" data-title="Plan">
+      <p class="kicker" data-pptx-text>04 / Plan</p>
+      <h2 data-pptx-text>Use this round to reach the next <span class="accent">proof point.</span></h2>
+      <div class="timeline">
+        <article class="phase"><div class="phase-rule" data-pptx-shape="rect"></div><h3 data-pptx-text>Now</h3><p data-pptx-text>Refine the core workflow.</p></article>
+        <article class="phase"><div class="phase-rule" data-pptx-shape="rect"></div><h3 data-pptx-text>Next</h3><p data-pptx-text>Expand trusted integrations.</p></article>
+        <article class="phase"><div class="phase-rule" data-pptx-shape="rect"></div><h3 data-pptx-text>Scale</h3><p data-pptx-text>Enable team-level governance.</p></article>
+        <article class="phase"><div class="phase-rule" data-pptx-shape="rect"></div><h3 data-pptx-text>Proof</h3><p data-pptx-text>Demonstrate repeatable revenue.</p></article>
+      </div>
+    </section>
+
+    <section class="slide dark" data-ipw-slide="6" data-title="Ask">
+      <p class="kicker" data-pptx-text>05 / Ask</p>
+      <h1 data-pptx-text>Fund the next category of <span class="accent">AI-native work.</span></h1>
+      <p class="lede" data-pptx-text>State the amount, use of funds, runway, and milestone this round is designed to reach.</p>
+      <p class="footer" data-pptx-text>Investor Pitch / Native Editable PPTX</p>
+    </section>
+  </main>
+</body>
+</html>
