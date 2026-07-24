@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "id": "acme-research",
+  "name": "Acme Research",
+  "description": "Minimal independent plugin package for local development.",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "local",
+    "trusted": false
+  },
+  "package": {
+    "version": "1.0.0",
+    "publisher": {
+      "id": "acme",
+      "name": "Acme"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.17.0",
+      "opencode": ">=1.18.0"
+    },
+    "updateId": "acme/research",
+    "entrypoints": {
+      "opencode": ".opencode/plugins/acme-research.ts",
+      "service": "service/acme-research.ts"
+    }
+  },
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "Connect to the Acme research API."
+    }
+  ],
+  "authorization": {
+    "required": true,
+    "methods": [
+      {
+        "id": "api-key",
+        "kind": "secret-form",
+        "label": "API key",
+        "description": "Paste a key created in your Acme account.",
+        "fields": [
+          {
+            "id": "apiKey",
+            "label": "API key",
+            "placeholder": "acme_…",
+            "secret": true,
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  "resources": [
+    {
+      "type": "opencode-plugin",
+      "id": "acme-runtime",
+      "label": "Acme OpenCode integration",
+      "path": ".opencode/plugins/acme-research.ts",
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "acme-search",
+      "label": "Acme research workflow",
+      "path": ".opencode/skills/acme-research/SKILL.md",
+      "requires": [
+        "service:acme-service",
+        "authorization:api-key"
+      ],
+      "provides": [
+        "workflow:research"
+      ],
+      "required": true
+    },
+    {
+      "type": "local-service",
+      "id": "acme-service",
+      "label": "Acme credential-aware service",
+      "path": "service/acme-research.ts",
+      "requires": [
+        "authorization:api-key"
+      ],
+      "provides": [
+        "action:connection-status",
+        "action:search"
+      ],
+      "required": true,
+      "actions": [
+        {
+          "id": "connection-status",
+          "title": "Acme connection status",
+          "description": "Check whether this plugin installation can use its Acme credential.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "search",
+          "title": "Search Acme research",
+          "description": "Search the connected Acme private research library.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "Research query."
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  ]
+}

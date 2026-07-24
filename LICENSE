@@ -1,39 +1,145 @@
-AINO License
+iPolloWork Source Available License
+Version 1.0, 13 July 2026
 
-Copyright (c) 2025 Devin-AXIS
+Copyright (c) 2026 Different AI, Inc. All rights reserved.
 
-This software is provided "as is", without warranty of any kind, express or
-implied, including but not limited to the warranties of merchantability,
-fitness for a particular purpose and noninfringement.
+By using, copying, modifying, or distributing the Software, You accept this
+License.
 
-TERMS OF USE:
+1. License Grant
 
-1. PERSONAL USE: You are free to use this software for personal, non-commercial
-   purposes without any restrictions.
+Subject to this License, the Licensor grants You a non-exclusive,
+royalty-free, worldwide, non-sublicensable, and non-transferable license to
+use, copy, modify, and distribute the Software solely as permitted below.
 
-2. COMMERCIAL USE: For commercial use, including but not limited to:
-   - Business operations
-   - Enterprise deployments
-   - Commercial software integration
-   - SaaS offerings
-   - Revenue-generating activities
-   
-   You must contact the author (Devin-AXIS) for licensing terms and permission.
+2. Permitted Uses
 
-3. REDISTRIBUTION: You may not redistribute, sell, or commercialize this software
-   without explicit written permission from the author.
+You may use and modify the Software without prior written authorization only
+for the limited uses below:
 
-4. MODIFICATIONS: You may modify this software for personal use, but any
-   distribution of modified versions requires permission from the author.
+  a. Individual Personal Use by one natural person for that person's own
+     non-commercial work, learning, research, evaluation, or testing; and
+  b. Small Internal Use by fewer than three total Users solely for internal,
+     non-commercial evaluation, testing, or operations.
 
-5. LIABILITY: In no event shall the authors or copyright holders be liable for
-   any claim, damages or other liability, whether in an action of contract,
-   tort or otherwise, arising from, out of or in connection with the software
-   or the use or other dealings in the software.
+Small Internal Use is permitted only when the Software and its functionality
+are not sold, hosted for, provided to, or otherwise made available to
+customers, clients, or other external third parties. The three-User threshold
+is measured across all people who access, operate, deploy, administer, or
+benefit from a shared deployment of the Software, whether they are employees,
+contractors, founders, collaborators, or other personnel.
 
-For commercial licensing inquiries, please contact:
-- GitHub: https://github.com/Devin-AXIS
-- Email: [Your contact email]
+3. Prior Written Authorization Required
 
-This license is designed to support open source development while ensuring
-fair compensation for commercial use.
+You must obtain prior written authorization from the Licensor before You do
+any of the following:
+
+  a. use the Software with three or more total Users, regardless of whether
+     the use is personal, internal, commercial, non-commercial, individual,
+     organizational, hosted, local, private, or public;
+  b. provide the Software or its functionality to any external third party as
+     a hosted, managed, cloud, SaaS, single-tenant, or multi-tenant service;
+  c. sell, rent, lease, sublicense, resell, or distribute the Software for a
+     fee or other commercial advantage, whether by an individual or an
+     organization;
+  d. incorporate the Software as a material component of a product or service
+     offered to external third parties for revenue or other commercial
+     advantage;
+  e. use the Software to provide paid customer delivery, implementation,
+     customization, operation, consulting, or outsourcing services;
+  f. use the Software in any paid, revenue-generating, resale, white-label,
+     agency, marketplace, or customer-facing context; or
+  g. remove, alter, obscure, hide, or replace the iPolloWork brand attribution
+     required by Section 4.
+
+Written authorization may grant some or all of these rights under separate
+terms. To request authorization, contact the repository owner through
+https://github.com/Devin-AXIS/iPolloWork.
+
+4. Required Brand Attribution
+
+All copies, deployments, and modified versions of the Software must preserve
+the iPolloWork name, logo, product attribution, copyright notice, and license
+notice in the source code, documentation, about screens, settings screens, and
+other user-facing frontend displays where the Software identifies itself or is
+presented to users. You may not remove, hide, obscure, replace, or make the
+iPolloWork brand attribution materially less visible without the Licensor's
+prior written authorization.
+
+This brand attribution requirement applies to all permitted and authorized
+uses, including Individual Personal Use, Small Internal Use, internal
+deployments, modified versions, and any separately authorized commercial use,
+unless the written authorization expressly permits different branding.
+
+5. Non-Commercial Redistribution
+
+You may distribute unmodified or modified copies of the Software only free of
+charge and for non-commercial purposes. Every copy must include this License
+and all copyright, attribution, trademark, and third-party notices. Modified
+copies must prominently state that You changed the Software. You may not
+impose terms that weaken or bypass this License.
+
+6. Third-Party and Previously Licensed Code
+
+Third-party components, templates, dependencies, and other portions identified
+by a separate license remain governed by that license. Nothing in this License
+restricts rights already granted under an earlier license. In particular,
+versions or portions previously released under the MIT License remain
+available under those prior, irrevocable terms. A copy of the historical MIT
+notice is included in LICENSES/MIT-legacy.txt.
+
+This License applies only to portions for which the Licensor owns or controls
+the necessary rights and that are first released under this License.
+
+7. Patents
+
+The Licensor grants You a patent license only to the extent necessary for the
+Permitted Uses. If You or Your Company assert in writing that the Software
+infringes a patent, any patent license granted under this License terminates
+immediately.
+
+8. No Trademark License
+
+This License does not grant permission to use the Licensor's names, logos, or
+trademarks except as required to preserve notices and accurately describe the
+origin of the Software.
+
+9. Termination
+
+Any use outside this License is unlicensed and automatically terminates Your
+rights. If this is Your first violation and You cure it within 30 days after
+written notice, the Licensor may reinstate Your rights. A later violation
+terminates them permanently unless the Licensor agrees otherwise in writing.
+
+10. No Warranty and Limitation of Liability
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, TITLE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT PERMITTED BY LAW,
+THE LICENSOR AND CONTRIBUTORS WILL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+11. Definitions
+
+"Licensor" means Different AI, Inc. or a successor authorized to license the
+applicable Software.
+
+"Software" means the iPolloWork source code, object code, documentation, and
+other materials made available with this License, excluding separately
+licensed portions.
+
+"You" means the individual or legal entity exercising rights under this
+License.
+
+"Individual Personal Use" means use by one natural person for that person's
+own purposes, without selling, hosting, sublicensing, reselling, providing
+services, or making the Software or its functionality available to any external
+third party.
+
+"Small Internal Use" means use by fewer than three total Users solely for
+internal purposes and not to provide the Software or its functionality to
+external third parties.
+
+"User" means any individual who accesses, operates, deploys, administers,
+modifies, receives output from, or otherwise benefits from a shared deployment
+or coordinated use of the Software.

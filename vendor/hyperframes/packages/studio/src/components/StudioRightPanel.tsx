@@ -1,0 +1,570 @@
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+  type MutableRefObject,
+} from "react";
+import { PropertyPanel } from "./editor/PropertyPanel";
+import { LayersPanel } from "./editor/LayersPanel";
+import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
+import { BlockParamsPanel } from "./editor/BlockParamsPanel";
+import { RenderQueue } from "./renders/RenderQueue";
+import { PanelTabButton } from "./PanelTabButton";
+import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
+import type { RenderJob } from "./renders/useRenderQueue";
+import type { BlockParam } from "@hyperframes/core/registry";
+import {
+  STUDIO_INSPECTOR_PANELS_ENABLED,
+} from "./editor/manualEditingAvailability";
+import type { Composition } from "@hyperframes/sdk";
+import type { EditHistoryKind } from "../utils/editHistory";
+import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
+import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
+
+import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
+import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
+import { useFileManagerContext } from "../contexts/FileManagerContext";
+import { useDomEditContext } from "../contexts/DomEditContext";
+import { usePlayerStore } from "../player";
+import { waitForMediaJob } from "./studioMediaJobs";
+import {
+  applyColorGradingScopeUpdate,
+  EMPTY_COLOR_GRADING_SCOPE_RESULT,
+  type ColorGradingScope,
+} from "./studioColorGradingScope";
+import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
+import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
+import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
+import { useStudioI18n } from "../i18n";
+import { X } from "../icons/SystemIcons";
+
+function subscribePreviewFullscreen(callback: () => void) {
+  const observer = new MutationObserver(callback);
+  observer.observe(document.body, {
+    attributes: true,
+    attributeFilter: ["data-studio-preview-fullscreen"],
+  });
+  return () => observer.disconnect();
+}
+
+function getPreviewFullscreenSnapshot() {
+  return document.body.hasAttribute("data-studio-preview-fullscreen");
+}
+
+function PreviewFullscreenButton() {
+  const { t } = useStudioI18n();
+  const isFullscreen = useSyncExternalStore(
+    subscribePreviewFullscreen,
+    getPreviewFullscreenSnapshot,
+    () => false,
+  );
+  const label = isFullscreen ? t("player.exitFullscreen") : t("player.enterFullscreen");
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const target = document.querySelector("[data-studio-fullscreen-target]");
+        target?.dispatchEvent(new CustomEvent("studio-toggle-fullscreen", { bubbles: true }));
+      }}
+      aria-label={label}
+      aria-pressed={isFullscreen}
+      title={`${label} (F)`}
+      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl transition-colors active:scale-[0.98] ${
+        isFullscreen
+          ? "bg-neutral-800 text-white"
+          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+      }`}
+    >
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {isFullscreen ? (
+          <>
+            <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+            <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+            <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+            <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+          </>
+        ) : (
+          <>
+            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+            <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+            <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
+}
+
+export interface StudioRightPanelProps {
+  designPanelActive: boolean;
+  activeBlockParams?: {
+    blockName: string;
+    blockTitle: string;
+    params: BlockParam[];
+    compositionPath: string;
+  } | null;
+  onCloseBlockParams?: () => void;
+  recordingState?: "idle" | "recording" | "preview";
+  recordingDuration?: number;
+  onToggleRecording?: () => void;
+  /** Dependencies for the Slideshow persist callback, threaded from App.tsx. */
+  sdkSession: Composition | null;
+  publishSdkSession: NonNullable<UseSlideshowPersistParams["publishSdkSession"]>;
+  /**
+   * Forces THIS `sdkSession` to re-open from disk. DesignPanelPromoteProvider
+   * opens its own separate SDK session scoped to the selected element's own
+   * file (needed so promoting inside a sub-composition binds a variable there,
+   * not on the host) — for a top-level selection that's the SAME file this
+   * session already has open, so a write through that other session leaves
+   * this one holding stale in-memory content. The self-write-echo registry
+   * that normally suppresses redundant reloads is keyed by file path only, not
+   * by session instance, so it wrongly treats the sibling session's write as
+   * "our own echo" and never reloads on its own — this must be called
+   * explicitly after such a write.
+   */
+  forceReloadSdkSession?: () => void;
+  reloadPreview: () => void;
+  domEditSaveTimestampRef: MutableRefObject<number>;
+  recordEdit: (entry: {
+    label: string;
+    kind: EditHistoryKind;
+    files: Record<string, { before: string; after: string }>;
+  }) => Promise<void>;
+  onToggleElementHidden?: ToggleHiddenHandler;
+}
+
+// fallow-ignore-next-line complexity
+export function StudioRightPanel({
+  designPanelActive,
+  activeBlockParams,
+  onCloseBlockParams,
+  recordingState,
+  recordingDuration,
+  onToggleRecording,
+  sdkSession,
+  publishSdkSession,
+  forceReloadSdkSession,
+  reloadPreview,
+  domEditSaveTimestampRef,
+  recordEdit,
+  onToggleElementHidden,
+}: StudioRightPanelProps) {
+  const {
+    rightWidth,
+    setRightWidth,
+    setRightCollapsed,
+    rightPanelTab,
+    setRightPanelTab,
+    handlePanelResizeStart,
+    handlePanelResizeMove,
+    handlePanelResizeEnd,
+  } = usePanelLayoutContext();
+
+  const {
+    previewIframeRef,
+    projectId,
+    activeCompPath,
+    showToast,
+    compositionDimensions,
+    waitForPendingDomEditSaves,
+    renderQueue,
+  } = useStudioShellContext();
+  const { captionEditMode } = useStudioPlaybackContext();
+  const { t } = useStudioI18n();
+
+  const {
+    domEditSelection,
+    domEditGroupSelections,
+    copiedAgentPrompt,
+    clearDomSelection,
+    handleUngroupSelection,
+    handleGroupSelection,
+    handleDomStyleCommit,
+    handleDomAttributeCommit,
+    handleDomAttributeLiveCommit,
+    handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
+    handleDomPathOffsetCommit,
+    handleDomBoxSizeCommit,
+    handleDomRotationCommit,
+    handleDomTextCommit,
+    handleDomTextFieldStyleCommit,
+    handleDomAddTextField,
+    handleDomRemoveTextField,
+    handleAskAgent,
+    selectedGsapAnimations,
+    gsapMultipleTimelines,
+    gsapUnsupportedTimelinePattern,
+    handleGsapUpdateProperty,
+    handleGsapUpdateMeta,
+    handleGsapDeleteAnimation,
+    handleGsapAddAnimation,
+    handleGsapAddProperty,
+    handleGsapRemoveProperty,
+    handleGsapUpdateFromProperty,
+    handleGsapAddFromProperty,
+    handleGsapRemoveFromProperty,
+    commitAnimatedProperty,
+    commitAnimatedProperties,
+    handleSetArcPath,
+    handleUpdateArcSegment,
+    handleUnroll,
+    handleUpdateKeyframeEase,
+    handleSetAllKeyframeEases,
+    handleGsapAddKeyframe,
+    handleGsapRemoveKeyframe,
+    handleGsapConvertToKeyframes,
+  } = useDomEditContext();
+
+  const {
+    assets,
+    fontAssets,
+    projectDir,
+    handleImportFiles,
+    handleImportFonts,
+    refreshFileTree,
+    readProjectFile,
+    writeProjectFile,
+    fileTree,
+  } = useFileManagerContext();
+
+  const {
+    layersPanePercent,
+    splitContainerRef,
+    handleInspectorSplitResizeStart,
+    handleInspectorSplitResizeMove,
+    handleInspectorSplitResizeEnd,
+  } = useInspectorSplitResize();
+  const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      backgroundRemovalAbortRef.current?.abort();
+    },
+    [],
+  );
+
+  const renderJobs = renderQueue.jobs as RenderJob[];
+  const inspectorTabActive =
+    rightPanelTab === "design" ||
+    rightPanelTab === "layers" ||
+    rightPanelTab === "slideshow" ||
+    rightPanelTab === "variables";
+
+  const handleApplyColorGradingScope = useCallback(
+    async (scope: ColorGradingScope, value: string | null) =>
+      applyColorGradingScopeUpdate({
+        scope,
+        value,
+        selectedSourceFile: domEditSelection?.sourceFile || activeCompPath || "index.html",
+        fileTree,
+        projectId,
+        domEditSaveTimestampRef,
+        waitForPendingDomEditSaves,
+        readProjectFile,
+        writeProjectFile,
+        recordEdit,
+        reloadPreview,
+        showToast,
+      }).catch((error) => {
+        showToast(
+          `Couldn't apply color grading: ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
+        return EMPTY_COLOR_GRADING_SCOPE_RESULT;
+      }),
+    [
+      activeCompPath,
+      domEditSaveTimestampRef,
+      domEditSelection?.sourceFile,
+      fileTree,
+      projectId,
+      readProjectFile,
+      recordEdit,
+      reloadPreview,
+      showToast,
+      waitForPendingDomEditSaves,
+      writeProjectFile,
+    ],
+  );
+
+  const handleRemoveBackground = useCallback(
+    // fallow-ignore-next-line complexity
+    async (
+      inputPath: string,
+      options: {
+        createBackgroundPlate?: boolean;
+        quality?: "fast" | "balanced" | "best";
+        onProgress?: (progress: BackgroundRemovalProgress) => void;
+      },
+    ) => {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/media/remove-background`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            inputPath,
+            createBackgroundPlate: options.createBackgroundPlate === true,
+            quality: options.quality ?? "balanced",
+          }),
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        jobId?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.jobId) {
+        throw new Error(data.error || `Background removal failed (${response.status})`);
+      }
+      showToast("Removing background...", "info");
+      backgroundRemovalAbortRef.current?.abort();
+      const controller = new AbortController();
+      backgroundRemovalAbortRef.current = controller;
+      try {
+        const result = await waitForMediaJob(data.jobId, options.onProgress, controller.signal);
+        await refreshFileTree();
+        showToast(`Created transparent asset: ${result.outputPath.split("/").pop()}`, "info");
+        return result;
+      } finally {
+        if (backgroundRemovalAbortRef.current === controller) {
+          backgroundRemovalAbortRef.current = null;
+        }
+      }
+    },
+    [projectId, refreshFileTree, showToast],
+  );
+  const handleHideAllSelected = () => {
+    const { elements } = usePlayerStore.getState();
+    const keys = timelineKeysForSelections(domEditGroupSelections, elements, activeCompPath);
+    if (keys.length > 0) void onToggleElementHidden?.(keys, true);
+  };
+  const propertyPanel = (
+    <DesignPanelPromoteProvider
+      selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
+      projectId={projectId}
+      activeCompPath={activeCompPath}
+      showToast={showToast}
+      readProjectFile={readProjectFile}
+      writeProjectFile={writeProjectFile}
+      recordEdit={recordEdit}
+      reloadPreview={reloadPreview}
+      domEditSaveTimestampRef={domEditSaveTimestampRef}
+      forceReloadSharedSdkSession={forceReloadSdkSession}
+    >
+      <PropertyPanel
+        projectId={projectId}
+        projectDir={projectDir}
+        assets={assets}
+        element={domEditGroupSelections.length > 1 ? null : domEditSelection}
+        multiSelectCount={domEditGroupSelections.length}
+        multiSelectedElements={domEditGroupSelections}
+        onGroupSelection={handleGroupSelection}
+        onHideAllSelected={handleHideAllSelected}
+        copiedAgentPrompt={copiedAgentPrompt}
+        onClearSelection={clearDomSelection}
+        onToggleElementHidden={onToggleElementHidden}
+        onUngroup={handleUngroupSelection}
+        onSetStyle={handleDomStyleCommit}
+        onSetAttribute={handleDomAttributeCommit}
+        onSetAttributes={handleDomAttributesCommit}
+        onSetAttributeLive={handleDomAttributeLiveCommit}
+        onApplyColorGradingScope={handleApplyColorGradingScope}
+        onSetHtmlAttribute={handleDomHtmlAttributeCommit}
+        onRemoveBackground={handleRemoveBackground}
+        onSetManualOffset={handleDomPathOffsetCommit}
+        onSetManualSize={handleDomBoxSizeCommit}
+        onSetManualRotation={handleDomRotationCommit}
+        onSetText={handleDomTextCommit}
+        onSetTextFieldStyle={handleDomTextFieldStyleCommit}
+        onAddTextField={handleDomAddTextField}
+        onRemoveTextField={handleDomRemoveTextField}
+        onAskAgent={handleAskAgent}
+        onImportAssets={handleImportFiles}
+        fontAssets={fontAssets}
+        onImportFonts={handleImportFonts}
+        previewIframeRef={previewIframeRef}
+        gsapAnimations={selectedGsapAnimations}
+        gsapMultipleTimelines={gsapMultipleTimelines}
+        gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+        onUpdateGsapProperty={handleGsapUpdateProperty}
+        onUpdateGsapMeta={handleGsapUpdateMeta}
+        onDeleteGsapAnimation={handleGsapDeleteAnimation}
+        onAddGsapProperty={handleGsapAddProperty}
+        onRemoveGsapProperty={handleGsapRemoveProperty}
+        onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
+        onAddGsapFromProperty={handleGsapAddFromProperty}
+        onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
+        onAddGsapAnimation={handleGsapAddAnimation}
+        onCommitAnimatedProperty={commitAnimatedProperty}
+        onCommitAnimatedProperties={commitAnimatedProperties}
+        onAddKeyframe={handleGsapAddKeyframe}
+        onRemoveKeyframe={handleGsapRemoveKeyframe}
+        onConvertToKeyframes={(animId, duration) =>
+          handleGsapConvertToKeyframes(animId, undefined, duration)
+        }
+        onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
+        onSetArcPath={handleSetArcPath}
+        onUpdateArcSegment={handleUpdateArcSegment}
+        onUnroll={handleUnroll}
+        onUpdateKeyframeEase={handleUpdateKeyframeEase}
+        onSetAllKeyframeEases={handleSetAllKeyframeEases}
+        recordingState={recordingState}
+        recordingDuration={recordingDuration}
+        onToggleRecording={onToggleRecording}
+      />
+    </DesignPanelPromoteProvider>
+  );
+
+  const renderQueuePanel = (
+    <RenderQueue
+      jobs={renderJobs}
+      projectId={projectId}
+      onDelete={renderQueue.deleteRender}
+      onCancel={renderQueue.cancelRender}
+      loadError={renderQueue.loadError}
+      onRetryLoad={renderQueue.reloadRenders}
+      actionError={renderQueue.actionError}
+      onDismissActionError={renderQueue.dismissActionError}
+      onClearCompleted={renderQueue.clearCompleted}
+      onStartRender={async (format, quality, resolution, fps, outputSize, captureSize) => {
+        await waitForPendingDomEditSaves();
+        const composition =
+          activeCompPath && activeCompPath !== "index.html" ? activeCompPath : undefined;
+        await renderQueue.startRender({
+          fps,
+          quality,
+          format,
+          resolution,
+          outputSize,
+          captureSize,
+          composition,
+          // Render what the user is previewing: active variable overrides
+          // from the Variables panel ride along (undefined = defaults).
+          variables: usePreviewVariablesStore.getState().values ?? undefined,
+        });
+      }}
+      compositionDimensions={compositionDimensions}
+      isRendering={renderQueue.isRendering}
+    />
+  );
+
+  return (
+    <>
+      {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via
+          the absolutely-positioned inner hit area. */}
+      <div
+        role="separator"
+        aria-label={t("right.resizeInspector")}
+        aria-orientation="vertical"
+        tabIndex={0}
+        className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
+        style={{ touchAction: "none" }}
+        onPointerDown={(e) => handlePanelResizeStart("right", e)}
+        onPointerMove={handlePanelResizeMove}
+        onPointerUp={handlePanelResizeEnd}
+        onPointerCancel={handlePanelResizeEnd}
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          e.preventDefault();
+          // Panel is right-anchored: ArrowLeft grows it, ArrowRight shrinks it.
+          const delta = e.key === "ArrowLeft" ? 16 : -16;
+          setRightWidth(Math.max(160, Math.min(600, rightWidth + delta)));
+        }}
+      >
+        {/* Expanded hit zone: 8px wide, centered on the 3px seam */}
+        <div className="absolute inset-y-0 -left-[2.5px] w-2" />
+        {/* Visible hairline */}
+        <div className="absolute top-1/2 left-0 h-[52px] w-[3px] -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
+      </div>
+      <div
+        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900"
+        style={{ width: rightWidth }}
+      >
+        {captionEditMode ? (
+          <CaptionPropertyPanel iframeRef={previewIframeRef} />
+        ) : (
+          <>
+            <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
+              {STUDIO_INSPECTOR_PANELS_ENABLED && (
+                <>
+                  <PanelTabButton
+                    label={t("right.design")}
+                    tooltip={t("right.designTooltip")}
+                    active={inspectorTabActive}
+                    onClick={() => setRightPanelTab("design")}
+                  />
+                  <PreviewFullscreenButton />
+                </>
+              )}
+              <PanelTabButton
+                label={renderJobs.length > 0 ? t("right.rendersCount", { count: renderJobs.length }) : t("right.renders")}
+                tooltip={t("right.rendersTooltip")}
+                active={rightPanelTab === "renders"}
+                onClick={() => setRightPanelTab("renders")}
+              />
+              <button
+                type="button"
+                onClick={() => setRightCollapsed(true)}
+                className="ml-auto flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 active:scale-[0.96]"
+                aria-label="Close right panel"
+                title="Close right panel"
+              >
+                <X size={14} weight="bold" />
+              </button>
+            </div>
+            <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+              {rightPanelTab === "block-params" && activeBlockParams ? (
+                <BlockParamsPanel
+                  blockName={activeBlockParams.blockName}
+                  blockTitle={activeBlockParams.blockTitle}
+                  params={activeBlockParams.params}
+                  compositionPath={activeBlockParams.compositionPath}
+                  onClose={onCloseBlockParams ?? (() => {})}
+                />
+              ) : inspectorTabActive ? (
+                <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
+                  <div
+                    className="min-h-[120px] overflow-hidden"
+                    style={{ flexBasis: `${layersPanePercent}%`, flexShrink: 0 }}
+                  >
+                    <LayersPanel />
+                  </div>
+                  <div
+                    role="separator"
+                    aria-label={t("right.resizePanes")}
+                    aria-orientation="horizontal"
+                    className="group flex h-2 flex-shrink-0 cursor-row-resize items-center justify-center border-y border-neutral-800 bg-neutral-900"
+                    style={{ touchAction: "none" }}
+                    onPointerDown={handleInspectorSplitResizeStart}
+                    onPointerMove={handleInspectorSplitResizeMove}
+                    onPointerUp={handleInspectorSplitResizeEnd}
+                    onPointerCancel={handleInspectorSplitResizeEnd}
+                  >
+                    <div className="h-px w-10 rounded-full bg-white/12 transition-colors group-hover:bg-white/24 group-active:bg-studio-accent/70" />
+                  </div>
+                    <div className="min-h-0 flex-1 overflow-hidden">{propertyPanel}</div>
+                  </div>
+              ) : (
+                renderQueuePanel
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.app-device-launch",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "product-launch",
+  "style": "cinematic",
+  "tags": ["video", "app", "product", "3d", "gltf", "webgl", "showcase"],
+  "surface": "video",
+  "title": "App Device Launch",
+  "description": "A cinematic app launch with real 3D device models, live product UI, depth choreography, and a decisive brand outro.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork · HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames 3D device showcase patterns; local models and runtime assets are vendored for deterministic rendering."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "accent", "label": "Accent", "type": "color", "group": "theme" },
+      { "id": "tagline", "label": "Tagline", "type": "text", "group": "content" },
+      { "id": "featureA", "label": "Feature one", "type": "text", "group": "content" },
+      { "id": "featureB", "label": "Feature two", "type": "text", "group": "content" },
+      { "id": "cta", "label": "Call to action", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the product story and feature copy without changing the device choreography.",
+    "Replace the brand logo through the editable logo slot when needed.",
+    "Keep product UI inside the device stage and keep the primary message above the caption-safe band.",
+    "Verify local model files, WebGL preview, CSS fallback, and final render before delivery."
+  ],
+  "minimumAppVersion": "0.17.24"
+}

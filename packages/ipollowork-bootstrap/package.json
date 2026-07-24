@@ -1,0 +1,22 @@
+{
+  "name": "ipollowork-bootstrap",
+  "version": "0.1.0",
+  "description": "Script-installable iPolloWork bootstrap CLI for agents",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ipollowork-bootstrap": "bin/ipollowork.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md",
+    "start.md"
+  ],
+  "scripts": {
+    "check": "node --check bin/ipollowork.mjs && node --check evals/agent-fraimz-ipollowork-bootstrap.mjs && node --check evals/agent-fraimz-ipollowork-app-install.mjs && node --check evals/agent-fraimz-linux-container.mjs",
+    "test": "node test/ipollowork-bootstrap.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

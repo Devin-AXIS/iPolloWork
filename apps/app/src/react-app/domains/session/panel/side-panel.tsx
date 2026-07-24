@@ -1,0 +1,702 @@
+/** @jsxImportSource react */
+import * as React from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Code2,
+  Globe,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Plus,
+  RotateCw,
+  X,
+} from "lucide-react";
+import { useDragControls } from "motion/react";
+
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import { PanelTab, PanelTabClose, PanelTabItem, PanelTabList } from "@/components/panel-tabs";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { t } from "@/i18n";
+
+import { ArtifactIcon } from "../artifacts/artifact-icon";
+import { ArtifactPanel } from "../artifacts/artifact-panel";
+import {
+  type BrowserPanelTab,
+  usePanelTabStore,
+  type PanelTab as PanelTabEntry,
+  useActivePanelTab,
+  useSessionPanelState,
+} from "./panel-tab-store";
+import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
+import type { OpenTarget } from "../artifacts/open-target";
+import { useSidePanelTabs } from "./use-side-panel-tabs";
+import { DesignPanel } from "../design/design-panel";
+import type { DesignAiSelectionContext } from "../design/design-ai-selection";
+import {
+  computeBounds,
+  getElectronBrowser,
+  getNativeMenuPoint,
+  hasNativeBrowserOccluder,
+  sameBounds,
+} from "./utils";
+
+type SidePanelProps = {
+  sessionId: string;
+  client: iPolloWorkServerClient | null;
+  workspaceId: string | null;
+  workspaceRoot: string;
+  isRemoteWorkspace?: boolean;
+  launcherItems?: SidePanelLauncherItem[];
+  onClose: () => void;
+  onAskAi?: (context: DesignAiSelectionContext) => void;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+};
+
+export type SidePanelLauncherItem = {
+  id: string;
+  label: string;
+  shortcut?: string;
+  iconSrc: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+};
+
+// HMR can remount this module without unmounting BrowserPanelContent, leaving
+// the native Electron browser overlay visible — hide it before the module reloads.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    getElectronBrowser()?.hide?.();
+  });
+}
+
+type SidePanelTabProps = {
+  tab: PanelTabEntry;
+  active: boolean;
+  onSelect: (tabId: string) => void;
+  onClose: (tab: PanelTabEntry) => void;
+};
+
+function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
+  const dragControls = useDragControls();
+  const tabRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (active) {
+      tabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [active]);
+
+  const showBrowserTabContextMenu = (point?: { clientX: number; clientY: number }) => {
+    void getElectronBrowser()?.showTabContextMenu?.(
+      tab.id,
+      getNativeMenuPoint(tabRef.current, point),
+    );
+  };
+
+  return (
+    <PanelTabItem
+      value={tab.id}
+      id={tab.id}
+      dragControls={tab.type === "browser" ? dragControls : undefined}
+      onContextMenu={tab.type === "browser" ? (event: React.MouseEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showBrowserTabContextMenu({ clientX: event.clientX, clientY: event.clientY });
+      } : undefined}
+    >
+      <div ref={tabRef} className="relative">
+        <PanelTab
+          active={active}
+          onClick={() => onSelect(tab.id)}
+          onPointerDown={tab.type === "browser" ? (event) => {
+            if (event.button !== 0) {
+              return;
+            }
+
+            dragControls.start(event);
+          } : undefined}
+          onKeyDown={tab.type === "browser" ? (event: React.KeyboardEvent<HTMLButtonElement>) => {
+            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
+              return;
+            }
+
+            event.preventDefault();
+            showBrowserTabContextMenu();
+          } : undefined}
+          title={tab.label}
+          aria-label={`Select tab: ${tab.label}`}
+        >
+          {tab.type === "browser" ? (
+            tab.favicon ? (
+              <img src={tab.favicon} alt="" className="size-3.5 shrink-0 rounded-[2px]" />
+            ) : tab.status === "loading" ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Globe />
+            )
+          ) : (
+            tab.type === "design" ? <Code2 /> : <ArtifactIcon type={tab.preview} />
+          )}
+          <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
+        </PanelTab>
+        <PanelTabClose
+          active={active}
+          label={tab.label}
+          onClose={() => onClose(tab)}
+        />
+      </div>
+    </PanelTabItem>
+  );
+}
+
+type BrowserPanelContentProps = {
+  tab: BrowserPanelTab;
+  onClose: () => void;
+};
+
+function BrowserPanelContent({
+  tab,
+  onClose,
+}: BrowserPanelContentProps) {
+  const isAvailable = Boolean(getElectronBrowser());
+  const [urlInput, setUrlInput] = React.useState(tab.url);
+  const urlFocusedRef = React.useRef(false);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const urlInputRef = React.useRef<HTMLInputElement>(null);
+  const shownRef = React.useRef(false);
+  const boundsFrameRef = React.useRef<number | null>(null);
+  const lastBoundsRef = React.useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+
+  React.useEffect(() => {
+    if (!urlFocusedRef.current) {
+      setUrlInput(tab.url);
+    }
+  }, [tab.id, tab.url]);
+
+  const navigate = React.useCallback(() => {
+    void getElectronBrowser()?.navigate?.(urlInput);
+  }, [urlInput]);
+
+  const back = React.useCallback(() => {
+    void getElectronBrowser()?.back?.();
+  }, []);
+
+  const forward = React.useCallback(() => {
+    void getElectronBrowser()?.forward?.();
+  }, []);
+
+  const reload = React.useCallback(() => {
+    void getElectronBrowser()?.reload?.();
+  }, []);
+
+  const handleUrlKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      navigate();
+      urlInputRef.current?.blur();
+    }
+  }, [navigate]);
+
+  React.useLayoutEffect(() => {
+    const browser = getElectronBrowser();
+    const content = contentRef.current;
+    if (!browser || !content || !isAvailable) {
+      return;
+    }
+
+    const bounds = computeBounds(content);
+    if (bounds.width < 1 || bounds.height < 1) {
+      return;
+    }
+
+    browser.setBounds?.(bounds);
+    lastBoundsRef.current = bounds;
+  });
+
+  React.useLayoutEffect(() => {
+    const browser = getElectronBrowser();
+    const content = contentRef.current;
+
+    if (!browser || !content || !isAvailable) {
+      browser?.hide?.();
+      shownRef.current = false;
+      lastBoundsRef.current = null;
+
+      if (boundsFrameRef.current != null) {
+        window.cancelAnimationFrame(boundsFrameRef.current);
+        boundsFrameRef.current = null;
+      }
+
+      return;
+    }
+
+    let disposed = false;
+
+    const resetNativeView = async () => {
+      await browser.hide?.();
+
+      if (disposed) {
+        return;
+      }
+
+      shownRef.current = false;
+      lastBoundsRef.current = null;
+      boundsFrameRef.current = window.requestAnimationFrame(watchBounds);
+    };
+
+    const syncBounds = () => {
+      const bounds = computeBounds(content);
+
+      if (bounds.width < 1 || bounds.height < 1 || hasNativeBrowserOccluder()) {
+        if (shownRef.current) {
+          browser.hide?.();
+          shownRef.current = false;
+          lastBoundsRef.current = null;
+        }
+
+        return;
+      }
+
+      if (!shownRef.current) {
+        browser.show?.(bounds);
+        shownRef.current = true;
+        lastBoundsRef.current = bounds;
+        return;
+      }
+
+      if (!sameBounds(lastBoundsRef.current, bounds)) {
+        browser.setBounds?.(bounds);
+        lastBoundsRef.current = bounds;
+      }
+    };
+
+    const watchBounds = () => {
+      syncBounds();
+      boundsFrameRef.current = window.requestAnimationFrame(watchBounds);
+    };
+
+    void resetNativeView();
+
+    const observer = new ResizeObserver(syncBounds);
+
+    observer.observe(content);
+    window.addEventListener("resize", syncBounds);
+    window.addEventListener("scroll", syncBounds, true);
+
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      window.removeEventListener("resize", syncBounds);
+      window.removeEventListener("scroll", syncBounds, true);
+
+      if (boundsFrameRef.current != null) {
+        window.cancelAnimationFrame(boundsFrameRef.current);
+        boundsFrameRef.current = null;
+      }
+
+      browser.hide?.();
+      shownRef.current = false;
+      lastBoundsRef.current = null;
+    };
+  }, [isAvailable]);
+
+  return (
+    <>
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#EAEAEA] bg-background px-2 [border-bottom-width:0.5px] mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
+        {isAvailable ? (
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                render={(
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={back}
+                    disabled={!tab.canGoBack}
+                    aria-label={t("side_panel.back")}
+                  >
+                    <ArrowLeft />
+                  </Button>
+                )}
+              />
+              <TooltipContent>{t("side_panel.back")}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={(
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={forward}
+                    disabled={!tab.canGoForward}
+                    aria-label={t("side_panel.forward")}
+                  >
+                    <ArrowRight />
+                  </Button>
+                )}
+              />
+              <TooltipContent>{t("side_panel.forward")}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={(
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={reload}
+                    aria-label={t("side_panel.reload_page")}
+                  >
+                    {tab.status === "loading" ? <Loader2 className="animate-spin" /> : <RotateCw />}
+                  </Button>
+                )}
+              />
+              <TooltipContent>{t("side_panel.reload")}</TooltipContent>
+            </Tooltip>
+            <InputGroup className="mx-1 h-7 flex-1 rounded-md">
+              <InputGroupInput
+                ref={urlInputRef}
+                type="text"
+                className="h-7"
+                value={urlInput}
+                onChange={(event) => setUrlInput(event.target.value)}
+                onKeyDown={handleUrlKeyDown}
+                onFocus={() => {
+                  urlFocusedRef.current = true;
+                  urlInputRef.current?.select();
+                }}
+                onBlur={() => {
+                  urlFocusedRef.current = false;
+                }}
+                placeholder={t("side_panel.enter_url")}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <InputGroupAddon align="inline-start" className="ps-2">
+                <Globe />
+              </InputGroupAddon>
+            </InputGroup>
+          </>
+        ) : (
+          <p className="px-2 text-sm text-muted-foreground">
+            {t("side_panel.desktop_only")}
+          </p>
+        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          title={t("side_panel.close_panel")}
+          aria-label={t("side_panel.close_panel")}
+        >
+          <X />
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {isAvailable ? <div ref={contentRef} className="h-full overflow-hidden" /> : null}
+      </div>
+    </>
+  );
+}
+
+export function SidePanel({
+  sessionId,
+  client,
+  workspaceId,
+  workspaceRoot,
+  isRemoteWorkspace = false,
+  launcherItems = [],
+  onAskAi,
+  expanded = false,
+  onExpandedChange,
+  onClose,
+}: SidePanelProps) {
+  const { tabs } = useSessionPanelState(sessionId);
+  const activeTab = useActivePanelTab(sessionId);
+  const isBrowserAvailable = Boolean(getElectronBrowser());
+
+  const { createTab, closeTab, selectTab, reorderTabs } = useSidePanelTabs(sessionId);
+
+  const seedArtifactOverflowControlAction = React.useMemo<iPolloWorkControlAction | null>(() => {
+    if (!import.meta.env.DEV) return null;
+
+    return {
+      id: "eval.artifact_tabs.seed_overflow",
+      label: "Seed artifact tab overflow eval data",
+      description: "Create many markdown artifacts and open them in the right-side artifact tab strip.",
+      sideEffect: "mutation",
+      disabled: !client || !workspaceId,
+      args: [
+        { name: "count", type: "number", description: "Number of artifact tabs to create." },
+        { name: "longNameLast", type: "boolean", description: "Give the last (active) artifact a very long filename to exercise header truncation." },
+        { name: "prefix", type: "string", description: "Optional unique filename prefix for isolated editor evals." },
+      ],
+      previewArgs: { count: 18 },
+      execute: async (args) => {
+        if (!client || !workspaceId) return { ok: false, error: "Workspace client is not ready." };
+
+        let count = 18;
+        if (args && typeof args === "object" && "count" in args && typeof args.count === "number") {
+          count = Math.max(12, Math.min(30, Math.floor(args.count)));
+        }
+        const longNameLast = Boolean(args && typeof args === "object" && "longNameLast" in args && args.longNameLast);
+        const requestedPrefix = args && typeof args === "object" && "prefix" in args && typeof args.prefix === "string"
+          ? args.prefix.trim().replace(/[^a-z0-9-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 48)
+          : "";
+
+        const targets: OpenTarget[] = [];
+        const store = usePanelTabStore.getState();
+
+        for (let index = 1; index <= count; index += 1) {
+          const padded = String(index).padStart(2, "0");
+          const baseName = longNameLast && index === count
+            ? `ipollowork-self-managed-subscription-and-licensing-overview-very-long-${padded}`
+            : requestedPrefix ? `${requestedPrefix}-${padded}` : `overflow-tab-${padded}`;
+          const value = `artifacts/${baseName}.md`;
+          const label = `${baseName}.md`;
+          const content = requestedPrefix
+            ? `# ${baseName}\n\nGenerated by the Markdown editor eval.\n`
+            : `# Overflow tab ${padded}\n\nGenerated by the artifact tab overflow eval.\n`;
+
+          await client.writeWorkspaceFile(workspaceId, { path: value, content, baseUpdatedAt: null });
+
+          const target: OpenTarget = {
+            id: `file:${value}`,
+            kind: "file",
+            value,
+            name: label,
+            preview: "markdown",
+            confidence: 100,
+            reason: "eval",
+            exists: true,
+            size: content.length,
+          };
+
+          targets.push(target);
+          store.openTab(sessionId, {
+            id: target.id,
+            type: "artifact",
+            label: target.name,
+            preview: target.preview,
+          });
+        }
+
+        store.syncTranscriptArtifacts(sessionId, targets);
+        store.selectTab(sessionId, targets[targets.length - 1]?.id ?? "");
+
+        return { ok: true, count: targets.length, activeTabId: targets[targets.length - 1]?.id ?? null };
+      },
+    };
+  }, [client, sessionId, workspaceId]);
+  useControlAction(seedArtifactOverflowControlAction);
+
+  const seedPdfArtifactControlAction = React.useMemo<iPolloWorkControlAction | null>(() => {
+    if (!import.meta.env.DEV) return null;
+
+    return {
+      id: "eval.artifact_tabs.seed_pdf",
+      label: "Seed a PDF artifact",
+      description: "Write a small valid PDF and open it as an artifact tab to verify inline PDF rendering.",
+      sideEffect: "mutation",
+      disabled: !client || !workspaceId,
+      execute: async () => {
+        if (!client || !workspaceId) return { ok: false, error: "Workspace client is not ready." };
+
+        // Minimal single-page PDF that draws "iPolloWork PDF" — base64 encoded.
+        const pdfBase64 =
+          "JVBERi0xLjQKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PgplbmRvYmoKMyAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50IDIgMCBSL01lZGlhQm94WzAgMCAzMDAgMTQ0XS9SZXNvdXJjZXM8PC9Gb250PDwvRjEgNCAwIFI+Pj4+L0NvbnRlbnRzIDUgMCBSPj4KZW5kb2JqCjQgMCBvYmoKPDwvVHlwZS9Gb250L1N1YnR5cGUvVHlwZTEvQmFzZUZvbnQvSGVsdmV0aWNhPj4KZW5kb2JqCjUgMCBvYmoKPDwvTGVuZ3RoIDQ0Pj4Kc3RyZWFtCkJUCi9GMSAyNCBUZgo3MiA3MCBUZAooT3BlbldvcmsgUERGKSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0MSAwMDAwMCBuIAowMDAwMDAwMzEyIDAwMDAwIG4gCnRyYWlsZXIKPDwvU2l6ZSA2L1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKNDA2CiUlRU9G";
+        const binary = atob(pdfBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+
+        const value = "artifacts/sample-document.pdf";
+        await client.writeWorkspaceBinaryFile(workspaceId, { path: value, data: bytes.buffer, baseUpdatedAt: null });
+
+        const target: OpenTarget = {
+          id: `file:${value}`,
+          kind: "file",
+          value,
+          name: "sample-document.pdf",
+          preview: "pdf",
+          confidence: 100,
+          reason: "eval",
+          exists: true,
+          size: bytes.length,
+        };
+
+        const store = usePanelTabStore.getState();
+        store.syncTranscriptArtifacts(sessionId, [target]);
+        store.openTab(sessionId, { id: target.id, type: "artifact", label: target.name, preview: target.preview });
+        store.selectTab(sessionId, target.id);
+
+        return { ok: true, activeTabId: target.id };
+      },
+    };
+  }, [client, sessionId, workspaceId]);
+  useControlAction(seedPdfArtifactControlAction);
+
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.altKey || event.metaKey || event.key !== "Tab" || tabs.length < 2) {
+        return;
+      }
+
+      const activeIndex = activeTab ? tabs.findIndex((tab) => tab.id === activeTab.id) : -1;
+      if (activeIndex === -1) {
+        return;
+      }
+
+      event.preventDefault();
+      const offset = event.shiftKey ? -1 : 1;
+      selectTab(tabs[(activeIndex + offset + tabs.length) % tabs.length].id);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeTab, selectTab, tabs]);
+
+  return (
+    <TooltipProvider delay={1000}>
+      <div className="flex h-full flex-col">
+        <div className="shrink-0 bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
+          <div className="flex h-10 items-center gap-1 px-2">
+            <div className="no-scrollbar min-w-0 flex-1 overflow-x-auto">
+              <PanelTabList
+                values={tabs.map((tab) => tab.id)}
+                onReorder={reorderTabs}
+              >
+                {tabs.map((tab) => (
+                  <SidePanelTab
+                    key={tab.id}
+                    tab={tab}
+                    active={tab.id === activeTab?.id}
+                    onSelect={selectTab}
+                    onClose={closeTab}
+                  />
+                ))}
+              </PanelTabList>
+            </div>
+            {isBrowserAvailable || launcherItems.length > 0 ? (
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={(
+                      <DropdownMenuTrigger
+                        render={(
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t("side_panel.add_entry")}
+                          >
+                            <Plus />
+                          </Button>
+                        )}
+                      />
+                    )}
+                  />
+                  <TooltipContent>{t("side_panel.add_entry")}</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-[296px] rounded-[18px] border border-[#E5E5E5] bg-white p-3 text-[#242424] shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
+                >
+                  {launcherItems.map((item) => {
+                    return (
+                      <DropdownMenuItem
+                        key={item.id}
+                        disabled={item.disabled}
+                        onClick={item.onClick}
+                        className={[
+                          "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-[#8A8A8A] focus:bg-transparent focus:text-[#8A8A8A] hover:bg-[#F5F5F5] hover:text-[#242424] active:bg-[#EBEBEB] active:text-[#242424] data-highlighted:bg-transparent data-highlighted:text-[#8A8A8A] data-disabled:opacity-40",
+                        ].join(" ")}
+                      >
+                        <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
+                        <span className="flex-1">{item.label}</span>
+                        {item.shortcut ? (
+                          <span className="text-[12px] tracking-[-0.24px] text-[#8A8A8A]">{item.shortcut}</span>
+                        ) : null}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                  {launcherItems.length === 0 && isBrowserAvailable ? (
+                    <DropdownMenuItem
+                      onClick={() => createTab()}
+                      className="h-11 rounded-xl px-2 text-[20px] font-normal tracking-[-0.8px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424]"
+                    >
+                      <Globe className="size-6 stroke-[1.8] text-[#666666]" />
+                      <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            {onExpandedChange ? (
+              <Button
+                variant={expanded ? "secondary" : "ghost"}
+                size="icon-sm"
+                onClick={() => onExpandedChange(!expanded)}
+                aria-label={expanded ? "Restore panel width" : "Expand panel"}
+                aria-pressed={expanded}
+              >
+                {expanded ? <Minimize2 /> : <Maximize2 />}
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              aria-label="Close panel"
+              title="Close panel"
+            >
+              <X />
+            </Button>
+          </div>
+        </div>
+        {!activeTab ? (
+          <PanelEmpty />
+        ) : null}
+        {activeTab?.type === "design" ? (
+          <DesignPanel
+            sessionId={activeTab.sessionId}
+            client={client}
+            workspaceId={workspaceId}
+            isRemoteWorkspace={isRemoteWorkspace}
+            initialPath={activeTab.path}
+            onAskAi={onAskAi ?? (() => undefined)}
+          />
+        ) : activeTab?.type === "browser" ? (
+          <BrowserPanelContent tab={activeTab} onClose={() => closeTab(activeTab)} />
+        ) : activeTab?.type === "artifact" ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ArtifactPanel
+              sessionId={sessionId}
+              tab={activeTab}
+              client={client}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              isRemoteWorkspace={isRemoteWorkspace}
+              onClose={onClose}
+            />
+          </div>
+        ) : null}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+function PanelEmpty() {
+  return (
+    <div className="flex h-full items-center justify-center p-4 text-center">
+      <p className="text-sm text-muted-foreground">{t("side_panel.empty_state")}</p>
+    </div>
+  );
+}

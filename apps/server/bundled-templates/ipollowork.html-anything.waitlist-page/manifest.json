@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.html-anything.waitlist-page",
+  "version": "1.1.5",
+  "kind": "design",
+  "category": "site",
+  "subcategory": "marketing",
+  "style": "soft",
+  "tags": [
+    "marketing",
+    "waitlist",
+    "launch"
+  ],
+  "surface": "design",
+  "title": "Waitlist Page",
+  "description": "Waitlist Page is an editable website template with a soft visual system, reusable brand controls, and polished sample content.",
+  "cover": "cover.png",
+  "entry": "entry.html",
+  "source": {
+    "name": "iPolloWork · HTML Anything",
+    "repository": "https://github.com/nexu-io/html-anything",
+    "license": "Apache-2.0",
+    "revision": "d0efb1eaa3b65c731709981718cd5a0a0d4e8f71",
+    "attribution": "Adapted from HTML Anything / waitlist-page; visual system and editable variables added by iPolloWork."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "tokens": "design-tokens.css",
+    "variables": [
+      {
+        "id": "--ipw-color-primary",
+        "label": "Primary",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-secondary",
+        "label": "Secondary",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-accent",
+        "label": "Accent",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-bg",
+        "label": "Page background",
+        "type": "color",
+        "group": "background"
+      },
+      {
+        "id": "--ipw-color-surface",
+        "label": "Surface",
+        "type": "color",
+        "group": "background"
+      },
+      {
+        "id": "--ipw-color-text",
+        "label": "Text",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-muted",
+        "label": "Muted text",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-border",
+        "label": "Border",
+        "type": "color",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-font-display",
+        "label": "Display font",
+        "type": "font",
+        "group": "typography"
+      },
+      {
+        "id": "--ipw-font-body",
+        "label": "Body font",
+        "type": "font",
+        "group": "typography"
+      },
+      {
+        "id": "--ipw-type-scale",
+        "label": "Type scale",
+        "type": "number",
+        "group": "typography"
+      },
+      {
+        "id": "--ipw-body-line-height",
+        "label": "Line height",
+        "type": "number",
+        "group": "typography"
+      },
+      {
+        "id": "--ipw-content-width",
+        "label": "Content width",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-page-padding",
+        "label": "Page padding",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-section-space",
+        "label": "Section spacing",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-button-radius",
+        "label": "Button radius",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-card-bg",
+        "label": "Card background",
+        "type": "color",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-card-border",
+        "label": "Card border",
+        "type": "color",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-card-radius",
+        "label": "Card radius",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-card-shadow",
+        "label": "Card shadow",
+        "type": "text",
+        "group": "components"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Replace all sample copy with the user's complete brief.",
+    "Replace the iPolloWork demo logo through the editable brand slot when needed.",
+    "Apply the selected palette through declared variables without breaking the template hierarchy.",
+    "Keep the soft visual language and site composition coherent.",
+    "Verify responsive layout, links, overflow and editable text before finishing."
+  ],
+  "minimumAppVersion": "0.17.20"
+}

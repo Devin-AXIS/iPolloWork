@@ -1,69 +1,72 @@
-# macOS 系统文件
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Node.js 依赖
+.turbo/
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# 构建产物
-dist/
-build/
+apps/desktop/dist-electron/
+packages/*/node_modules/
+apps/*/node_modules/
 .next/
 out/
-*.tsbuildinfo
+dist/
+packages/*/dist/
+apps/*/dist/
+tmp/
 
-# 日志文件
-*.log
-*.pid
-logs/
-*.log.*
+# Local git worktrees
+_worktrees/
+.worktrees/
 
-# 环境变量
+# Desktop sidecars
+apps/desktop/resources/sidecars/
+apps/desktop/server/
+apps/desktop/.hyperframes-build-stamp.json
+apps/desktop/dist-electron-test-filter/
+apps/desktop/hyperframes-runtime/
+apps/desktop/video/
+# Runtime video-session projects created by the desktop app.
+/video/
+
+# Env
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+# Committed local-dev defaults (throwaway secrets) loaded by scripts/dev-local.mjs.
+!.env.dev
+# The migration-release fragment is committed only on the tagged
+# migration-release commit and removed by 03-post-migration-cleanup.mjs.
+# Allow git to see it so `cut-migration-release` can commit it.
+!.env.migration-release
 
-# IDE 和编辑器
+# Bun build artifacts
+*.bun-build
+apps/server/cli
+
+# pnpm store (created by Docker volume mounts)
+.pnpm-store/
+
+# Docker dev workspace (ephemeral mount point)
+packaging/docker/workspace/
+
+# OS
+.DS_Store
+
+# OpenCode mirror
+vendor/opencode/
+
+# OpenCode local deps
+.opencode/node_modules/
+.opencode/bun.lock
+
+# iPolloWork workspace-local artifacts
+.opencode/ipollowork/
+.opencode/agents/ipollowork.md
+.opencode/ipollowork.json
+opencode.jsonc
+.vercel
+.env*.local
+.claude/*
+.security
+transcript-analysis
+# Eval runner output
+evals/results/
+.playwright-mcp/
 .vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# 临时文件
-*.tmp
-*.temp
-.cache/
-
-# 数据库文件
-*.db
-*.sqlite
-*.sqlite3
-
-# 测试覆盖率
-coverage/
-.nyc_output/
-
-# 运行时文件
-.pnp
-.pnp.js
-
-# 其他
-*.tgz
-*.tar.gz
-
-node_modules
-AINO-server/node_modules
-AINO-studio/node_modules.DS_Store
+.ipollowork-dev/

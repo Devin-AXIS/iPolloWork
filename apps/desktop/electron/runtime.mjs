@@ -1,0 +1,2035 @@
+import { randomUUID } from "node:crypto";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import tls from "node:tls";
+import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
+
+const __runtimeDir = path.dirname(fileURLToPath(import.meta.url));
+
+const DIRECT_RUNTIME = "direct";
+const ORCHESTRATOR_RUNTIME = "ipollowork-orchestrator";
+const IPOLLOWORK_SERVER_PORT_RANGE_START = 48_000;
+const IPOLLOWORK_SERVER_PORT_RANGE_END = 51_000;
+
+function truncateOutput(value, limit = 8000) {
+  const text = String(value ?? "");
+  return text.length <= limit ? text : text.slice(text.length - limit);
+}
+
+function appendOutput(state, key, chunk) {
+  const next = `${state[key] ?? ""}${String(chunk ?? "")}`;
+  state[key] = truncateOutput(next);
+}
+
+function normalizeWorkspaceKey(value) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return "";
+  return path.resolve(trimmed).replace(/\\/g, "/").toLowerCase();
+}
+
+export function prioritizeWorkspacePaths(preferredPath, workspacePaths = []) {
+  const preferred = String(preferredPath ?? "").trim();
+  const paths = [];
+  const seen = new Set();
+  const add = (value) => {
+    const workspacePath = String(value ?? "").trim();
+    const key = normalizeWorkspaceKey(workspacePath);
+    if (!workspacePath || !key || seen.has(key)) return;
+    paths.push(workspacePath);
+    seen.add(key);
+  };
+  add(preferred);
+  for (const workspacePath of workspacePaths) add(workspacePath);
+  return paths;
+}
+
+export function resolveiPolloWorkServerConfigPath(env = process.env) {
+  const override = String(env.IPOLLOWORK_SERVER_CONFIG ?? "").trim();
+  if (override) return path.resolve(override);
+  if (process.platform === "win32") {
+    const appData = String(env.APPDATA ?? "").trim();
+    const root = appData || path.join(os.homedir(), "AppData", "Roaming");
+    return path.join(root, "ipollowork", "server.json");
+  }
+  const xdgConfigHome = String(env.XDG_CONFIG_HOME ?? "").trim();
+  const root = xdgConfigHome || path.join(os.homedir(), ".config");
+  return path.join(root, "ipollowork", "server.json");
+}
+
+export function seedWorkspacePathsForEmbeddedServer(workspacePaths, serverConfigExists) {
+  return serverConfigExists ? [] : workspacePaths;
+}
+
+export function applyEmbeddedServerEnvironment(targetEnv, sourceEnv) {
+  const desktopOnlyKeys = new Set([
+    "HOME",
+    "USERPROFILE",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_STATE_HOME",
+    "OPENCODE_CONFIG_DIR",
+    "OPENCODE_TEST_HOME",
+  ]);
+  for (const [key, value] of Object.entries(sourceEnv ?? {})) {
+    if (!desktopOnlyKeys.has(key)) targetEnv[key] = value;
+  }
+  return targetEnv;
+}
+
+export function devModeHomeDirectoryPaths(homeDir) {
+  return ["Desktop", "Downloads", "Documents"].map((name) => path.join(homeDir, name));
+}
+
+export function selectStickyiPolloWorkPortWorkspace(requestedWorkspacePaths = [], serverWorkspacePaths = []) {
+  for (const value of [...requestedWorkspacePaths, ...serverWorkspacePaths]) {
+    const workspacePath = String(value ?? "").trim();
+    if (workspacePath) return workspacePath;
+  }
+  return "";
+}
+
+export function commandMatchesPackagedSidecar(command, sidecarDirs = []) {
+  const value = String(command ?? "");
+  if (!sidecarDirs.some((dir) => String(dir ?? "").trim() && value.includes(dir))) {
+    return false;
+  }
+  return value.includes("ipollowork-orchestrator") ||
+    value.includes("ipollowork-server") ||
+    /(?:^|[/\\])opencode[^/\\\s]*\s+serve\b/.test(value);
+}
+
+export function embeddedServerImportUrl(embeddedPath) {
+  const url = pathToFileURL(embeddedPath);
+  try {
+    const stats = statSync(embeddedPath);
+    url.searchParams.set("mtimeMs", String(stats.mtimeMs));
+    url.searchParams.set("size", String(stats.size));
+  } catch {
+    // Fall back to the deterministic file URL if stat fails; startup can continue.
+  }
+  return url.href;
+}
+
+function nowMs() {
+  return Date.now();
+}
+
+function createEngineState() {
+  return {
+    child: null,
+    childExited: true,
+    runtime: DIRECT_RUNTIME,
+    projectDir: null,
+    hostname: null,
+    port: null,
+    baseUrl: null,
+    opencodeUsername: null,
+    opencodePassword: null,
+    opencodeBinPath: null,
+    opencodeBinSource: null,
+    lastStdout: null,
+    lastStderr: null,
+    execution: null,
+  };
+}
+
+function snapshotEngineState(state) {
+  const child = state.childExited ? null : state.child;
+  return {
+    running: Boolean(child && child.exitCode === null && !child.killed),
+    runtime: state.runtime,
+    baseUrl: state.baseUrl,
+    projectDir: state.projectDir,
+    hostname: state.hostname,
+    port: state.port,
+    opencodeUsername: state.opencodeUsername,
+    opencodePassword: state.opencodePassword,
+    opencodeBinPath: state.opencodeBinPath,
+    opencodeBinSource: state.opencodeBinSource,
+    pid: child?.pid ?? null,
+    lastStdout: state.lastStdout,
+    lastStderr: state.lastStderr,
+    execution: state.execution,
+  };
+}
+
+function createiPolloWorkServerState() {
+  return {
+    child: null,
+    childExited: true,
+    inProcess: false,
+    remoteAccessEnabled: false,
+    host: null,
+    port: null,
+    baseUrl: null,
+    connectUrl: null,
+    mdnsUrl: null,
+    lanUrl: null,
+    clientToken: null,
+    ownerToken: null,
+    hostToken: null,
+    managedOpencodeBinPath: null,
+    managedOpencodeBinSource: null,
+    lastStdout: null,
+    lastStderr: null,
+    managedOpencodeExecution: null,
+  };
+}
+
+function snapshotiPolloWorkServerState(state) {
+  const child = state.childExited ? null : state.child;
+  const running = state.inProcess || Boolean(child && child.exitCode === null && !child.killed);
+  return {
+    running,
+    remoteAccessEnabled: state.remoteAccessEnabled,
+    host: state.host,
+    port: state.port,
+    baseUrl: state.baseUrl,
+    connectUrl: state.connectUrl,
+    mdnsUrl: state.mdnsUrl,
+    lanUrl: state.lanUrl,
+    clientToken: state.clientToken,
+    ownerToken: state.ownerToken,
+    hostToken: state.hostToken,
+    managedOpencodeBinPath: state.managedOpencodeBinPath,
+    managedOpencodeBinSource: state.managedOpencodeBinSource,
+    pid: child?.pid ?? null,
+    lastStdout: state.lastStdout,
+    lastStderr: state.lastStderr,
+    managedOpencodeExecution: state.managedOpencodeExecution,
+  };
+}
+
+const SECRET_ENV_PATTERN = /(TOKEN|PASSWORD|USERNAME|AUTH|SECRET|KEY|CREDENTIAL)/i;
+
+function redactedExecutionSnapshot(command, args, cwd, injectedEnv) {
+  return {
+    command,
+    args: [...args],
+    cwd,
+    env: Object.entries(injectedEnv ?? {})
+      .filter((entry) => typeof entry[1] === "string")
+      .map(([name, value]) => ({
+        name,
+        value: SECRET_ENV_PATTERN.test(name) ? "<redacted>" : value,
+        redacted: SECRET_ENV_PATTERN.test(name),
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  };
+}
+
+function assertiPolloWorkServerReady(snapshot) {
+  if (!snapshot?.running) {
+    throw new Error("iPolloWork server did not stay running after startup.");
+  }
+  if (!snapshot.baseUrl) {
+    throw new Error("iPolloWork server did not report a base URL after startup.");
+  }
+  if (!snapshot.ownerToken && !snapshot.clientToken) {
+    throw new Error("iPolloWork server did not report an access token after startup.");
+  }
+  return snapshot;
+}
+
+function createOrchestratorState() {
+  return {
+    child: null,
+    childExited: true,
+    dataDir: null,
+    baseUrl: null,
+    daemonPort: null,
+    lastStdout: null,
+    lastStderr: null,
+  };
+}
+
+async function fileExists(targetPath) {
+  try {
+    await readFile(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readJsonFile(targetPath, fallback) {
+  try {
+    const raw = await readFile(targetPath, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function selectLanAddress() {
+  const interfaces = os.networkInterfaces();
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries ?? []) {
+      if (entry && entry.family === "IPv4" && entry.internal === false) {
+        return entry.address;
+      }
+    }
+  }
+  return null;
+}
+
+function buildConnectUrls(port) {
+  const hostname = os.hostname().trim();
+  const mdnsUrl = hostname ? `http://${hostname.replace(/\.local$/i, "")}.local:${port}` : null;
+  const lan = selectLanAddress();
+  const lanUrl = lan ? `http://${lan}:${port}` : null;
+  return {
+    connectUrl: lanUrl ?? mdnsUrl,
+    mdnsUrl,
+    lanUrl,
+  };
+}
+
+function targetTriple() {
+  if (process.platform === "darwin") {
+    return process.arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
+  }
+  if (process.platform === "linux") {
+    return process.arch === "arm64" ? "aarch64-unknown-linux-gnu" : "x86_64-unknown-linux-gnu";
+  }
+  if (process.platform === "win32") {
+    return process.arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
+  }
+  return null;
+}
+
+function binaryFileNames(baseName) {
+  const ext = process.platform === "win32" ? ".exe" : "";
+  const triple = targetTriple();
+  return [
+    triple ? `${baseName}-${triple}${ext}` : null,
+    `${baseName}${ext}`,
+  ].filter(Boolean);
+}
+
+function isDirectory(targetPath) {
+  try {
+    return statSync(targetPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function nvmVersionBinPaths(home) {
+  const base = path.join(home, ".nvm", "versions", "node");
+  try {
+    return readdirSync(base, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(base, entry.name, "bin"))
+      .filter(isDirectory)
+      .sort()
+      .reverse();
+  } catch {
+    return [];
+  }
+}
+
+function pathHelperEntries() {
+  if (process.platform !== "darwin") return [];
+  const result = spawnSync("/usr/libexec/path_helper", ["-s"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (result.status !== 0) return [];
+  const stdout = String(result.stdout ?? "");
+  const match = stdout.match(/PATH="([^"]+)"/) ?? stdout.match(/PATH=([^;\n]+)/);
+  return match?.[1]?.split(path.delimiter).filter(Boolean) ?? [];
+}
+
+function extraPathEntries() {
+  const home = os.homedir();
+  const candidates = [];
+
+  if (process.platform === "darwin") {
+    candidates.push(
+      ...pathHelperEntries(),
+      "/opt/homebrew/bin",
+      "/opt/homebrew/sbin",
+      "/usr/local/bin",
+      "/usr/local/sbin",
+      path.join(home, ".nvm", "current", "bin"),
+      ...nvmVersionBinPaths(home),
+      path.join(home, ".fnm", "current", "bin"),
+      path.join(home, ".volta", "bin"),
+      path.join(home, "Library", "pnpm"),
+      path.join(home, ".bun", "bin"),
+      path.join(home, ".cargo", "bin"),
+      path.join(home, ".pyenv", "shims"),
+      path.join(home, ".local", "bin"),
+    );
+  }
+
+  if (process.platform === "linux") {
+    candidates.push(
+      "/usr/local/bin",
+      "/usr/local/sbin",
+      path.join(home, ".nvm", "current", "bin"),
+      ...nvmVersionBinPaths(home),
+      path.join(home, ".fnm", "current", "bin"),
+      path.join(home, ".volta", "bin"),
+      path.join(home, ".local", "share", "pnpm"),
+      path.join(home, ".bun", "bin"),
+      path.join(home, ".cargo", "bin"),
+      path.join(home, ".pyenv", "shims"),
+      path.join(home, ".local", "bin"),
+    );
+  }
+
+  if (process.platform === "win32") {
+    candidates.push(
+      path.join(home, ".volta", "bin"),
+      path.join(home, ".bun", "bin"),
+      path.join(home, ".cargo", "bin"),
+      process.env.APPDATA ? path.join(process.env.APPDATA, "npm") : null,
+      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "pnpm") : null,
+    );
+  }
+
+  return candidates.filter((entry) => entry && isDirectory(entry));
+}
+
+function enrichedPath(sidecarDirs, currentPath) {
+  const entries = [
+    ...sidecarDirs.filter(isDirectory),
+    ...extraPathEntries(),
+    ...String(currentPath ?? "").split(path.delimiter).filter(Boolean),
+  ];
+  const deduped = entries.filter((entry, index) => entries.indexOf(entry) === index);
+  return deduped.length > 0 ? deduped.join(path.delimiter) : null;
+}
+
+async function portAvailable(host, port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", () => resolve(false));
+    server.listen({ host, port }, () => {
+      server.close(() => resolve(true));
+    });
+  });
+}
+
+async function findFreePort(host = "127.0.0.1") {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen({ host, port: 0 }, () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to allocate a free port.")));
+        return;
+      }
+      const { port } = address;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function waitForHttpOk(url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "Request did not succeed.";
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        return response;
+      }
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  throw new Error(lastError);
+}
+
+async function fetchJson(url, options = {}, timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        ...(options.headers ?? {}),
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Resolves ~/.config/ipollowork/env.json (or %APPDATA%\ipollowork\env.json on
+// Windows) — must agree byte-for-byte with apps/server/src/env-file.ts and
+// apps/orchestrator/src/cli.ts. Honor IPOLLOWORK_ENV_STORE override.
+function resolveUserEnvFilePath() {
+  const override = String(process.env.IPOLLOWORK_ENV_STORE ?? "").trim();
+  if (override) return path.resolve(override);
+  if (process.platform === "win32") {
+    const appData = String(process.env.APPDATA ?? "").trim();
+    const root = appData || path.join(os.homedir(), "AppData", "Roaming");
+    return path.join(root, "ipollowork", "env.json");
+  }
+  return path.join(os.homedir(), ".config", "ipollowork", "env.json");
+}
+
+const USER_ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const USER_ENV_RESERVED_PREFIXES = ["IPOLLOWORK_", "OPENCODE_"];
+
+// Synchronous, best-effort; absent or malformed returns {}. Reserved prefixes
+// are stripped so a tampered file can never shadow IPOLLOWORK_* / OPENCODE_*.
+function loadUserEnvFile() {
+  try {
+    const raw = readFileSync(resolveUserEnvFilePath(), "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.variables)) return {};
+    const out = {};
+    for (const entry of parsed.variables) {
+      if (!entry || typeof entry !== "object") continue;
+      const { key, value } = entry;
+      if (typeof key !== "string" || typeof value !== "string") continue;
+      if (!USER_ENV_KEY_PATTERN.test(key)) continue;
+      if (USER_ENV_RESERVED_PREFIXES.some((p) => key.startsWith(p))) continue;
+      out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * @typedef {Object} RuntimeSystemCaTlsModule
+ * @property {(type?: string) => string[]} [getCACertificates]
+ */
+
+/**
+ * @typedef {Object} ResolveSystemCaEnvOptions
+ * @property {RuntimeSystemCaTlsModule} [tlsModule]
+ * @property {string} userDataDir
+ * @property {NodeJS.ProcessEnv} [parentEnv]
+ * @property {(...args: unknown[]) => void} [logInfo]
+ */
+
+/**
+ * @param {ResolveSystemCaEnvOptions} options
+ * @returns {Promise<NodeJS.ProcessEnv>}
+ */
+export async function resolveSystemCaEnv({
+  tlsModule = tls,
+  userDataDir,
+  parentEnv = process.env,
+  logInfo = console.info,
+}) {
+  const env = parentEnv ?? {};
+  if (Object.prototype.hasOwnProperty.call(env, "NODE_EXTRA_CA_CERTS")) {
+    if (typeof logInfo === "function") {
+      logInfo("iPolloWork runtime: NODE_EXTRA_CA_CERTS is already set; skipping system CA bundle export.");
+    }
+    return {};
+  }
+
+  try {
+    if (typeof tlsModule?.getCACertificates !== "function") return {};
+    const certs = tlsModule.getCACertificates("system");
+    if (!Array.isArray(certs) || certs.length === 0) return {};
+    const pem = certs.filter((cert) => typeof cert === "string" && cert.trim()).join("\n");
+    if (!pem) return {};
+    const bundlePath = path.join(userDataDir, "system-ca-bundle.pem");
+    await mkdir(path.dirname(bundlePath), { recursive: true });
+    await writeFile(bundlePath, `${pem}\n`, "utf8");
+    return { NODE_EXTRA_CA_CERTS: bundlePath };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} [baseEnv]
+ * @param {NodeJS.ProcessEnv} [caEnv]
+ * @param {NodeJS.ProcessEnv} [extra]
+ * @returns {NodeJS.ProcessEnv}
+ */
+export function mergeSystemCaChildEnv(baseEnv = {}, caEnv = {}, extra = {}) {
+  return {
+    ...baseEnv,
+    ...(Object.prototype.hasOwnProperty.call(baseEnv, "NODE_EXTRA_CA_CERTS") ? {} : caEnv),
+    ...extra,
+  };
+}
+
+export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths }) {
+  const engineState = createEngineState();
+  const ipolloworkServerState = createiPolloWorkServerState();
+  const orchestratorState = createOrchestratorState();
+
+  // Serialize engine lifecycle operations. Without this, concurrent renderer
+  // invocations of engineStart/engineStop/engineRestart race: each call's
+  // stopAllRuntimeChildren kills the previous call's freshly-spawned
+  // orchestrator daemon, and the prior call then times out its /health probe.
+  /** @type {Promise<unknown>} */
+  let runtimeLifecycleQueue = Promise.resolve();
+  let lifecycleState = "idle";
+  /**
+   * Serialize engine lifecycle operations; preserves the wrapped function's
+   * return type (untyped, this collapsed runtime-manager inference to
+   * Promise<void> and blocked tightening the DesktopCommandMap results).
+   * @template T
+   * @param {() => Promise<T>} fn
+   * @returns {Promise<T>}
+   */
+  function withRuntimeLifecycle(fn) {
+    const next = runtimeLifecycleQueue.then(fn, fn);
+    runtimeLifecycleQueue = next.catch(() => {});
+    return next;
+  }
+
+  const userDataDir = app.getPath("userData");
+  const sidecarDirs = [
+    path.join(desktopRoot, "resources", "sidecars"),
+    process.resourcesPath ? path.join(process.resourcesPath, "sidecars") : null,
+    path.join(path.dirname(app.getPath("exe")), "sidecars"),
+  ].filter(Boolean);
+  let systemCaEnvPromise = null;
+
+  function systemCaEnv() {
+    systemCaEnvPromise ??= resolveSystemCaEnv({ tlsModule: tls, userDataDir, parentEnv: process.env });
+    return systemCaEnvPromise;
+  }
+
+  function ipolloworkServerTokenStorePath() {
+    return path.join(userDataDir, "ipollowork-server-tokens.json");
+  }
+
+  function ipolloworkServerStatePath() {
+    return path.join(userDataDir, "ipollowork-server-state.json");
+  }
+
+  function managedOpencodeWorkdir() {
+    return path.join(userDataDir, "managed-opencode-workdir");
+  }
+
+  function orchestratorDataDir() {
+    const envDir = process.env.IPOLLOWORK_DATA_DIR?.trim();
+    if (envDir) return envDir;
+    return path.join(app.getPath("home"), ".ipollowork", "ipollowork-orchestrator");
+  }
+
+  function orchestratorStatePath(dataDir) {
+    return path.join(dataDir, "ipollowork-orchestrator-state.json");
+  }
+
+  function orchestratorAuthPath(dataDir) {
+    return path.join(dataDir, "ipollowork-orchestrator-auth.json");
+  }
+
+  async function readOrchestratorStateFile(dataDir) {
+    return readJsonFile(orchestratorStatePath(dataDir), null);
+  }
+
+  async function readOrchestratorAuthFile(dataDir) {
+    return readJsonFile(orchestratorAuthPath(dataDir), null);
+  }
+
+  async function writeOrchestratorAuthFile(dataDir, auth) {
+    const filePath = orchestratorAuthPath(dataDir);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, `${JSON.stringify({ ...auth, updatedAt: nowMs() }, null, 2)}\n`, "utf8");
+  }
+
+  async function clearOrchestratorAuthFile(dataDir) {
+    await rm(orchestratorAuthPath(dataDir), { force: true });
+  }
+
+  async function requestOrchestratorShutdown(dataDir) {
+    const state = await readOrchestratorStateFile(dataDir);
+    const baseUrl = state?.daemon?.baseUrl?.trim();
+    if (!baseUrl) return false;
+    try {
+      await fetch(`${baseUrl.replace(/\/+$/, "")}/shutdown`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function loadTokenStore() {
+    return readJsonFile(ipolloworkServerTokenStorePath(), { version: 1, workspaces: {} });
+  }
+
+  async function saveTokenStore(store) {
+    const filePath = ipolloworkServerTokenStorePath();
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+  }
+
+  async function loadPortState() {
+    return readJsonFile(ipolloworkServerStatePath(), {
+      version: 3,
+      workspacePorts: {},
+      preferredPort: null,
+    });
+  }
+
+  async function savePortState(state) {
+    const filePath = ipolloworkServerStatePath();
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  }
+
+  async function loadOrCreateWorkspaceTokens(workspaceKey) {
+    const store = await loadTokenStore();
+    const normalized = normalizeWorkspaceKey(workspaceKey);
+    if (store.workspaces?.[normalized]) {
+      return store.workspaces[normalized];
+    }
+    const next = {
+      clientToken: randomUUID(),
+      hostToken: randomUUID(),
+      ownerToken: null,
+      updatedAt: nowMs(),
+    };
+    store.workspaces ??= {};
+    store.workspaces[normalized] = next;
+    await saveTokenStore(store);
+    return next;
+  }
+
+  async function persistWorkspaceOwnerToken(workspaceKey, ownerToken) {
+    const store = await loadTokenStore();
+    const normalized = normalizeWorkspaceKey(workspaceKey);
+    if (!store.workspaces?.[normalized]) return;
+    store.workspaces[normalized].ownerToken = ownerToken;
+    store.workspaces[normalized].updatedAt = nowMs();
+    await saveTokenStore(store);
+  }
+
+  async function readPreferrediPolloWorkPort(workspaceKey) {
+    const state = await loadPortState();
+    const normalized = normalizeWorkspaceKey(workspaceKey);
+    if (normalized && state.workspacePorts?.[normalized]) {
+      return state.workspacePorts[normalized];
+    }
+    return state.preferredPort ?? null;
+  }
+
+  async function persistPreferrediPolloWorkPort(workspaceKey, port) {
+    const state = await loadPortState();
+    const normalized = normalizeWorkspaceKey(workspaceKey);
+    state.version = 3;
+    state.workspacePorts ??= {};
+    if (normalized) {
+      state.workspacePorts[normalized] = port;
+      state.preferredPort = null;
+    } else {
+      state.preferredPort = port;
+    }
+    await savePortState(state);
+  }
+
+  async function waitForPortAvailable(host, port, timeoutMs = 2000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (await portAvailable(host, port)) return true;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return portAvailable(host, port);
+  }
+
+  async function resolveiPolloWorkPort(host, workspaceKey, currentPort = null) {
+    const preferredPort = await readPreferrediPolloWorkPort(workspaceKey);
+    if (currentPort && (await waitForPortAvailable(host, currentPort))) {
+      return { port: currentPort, preferredPort };
+    }
+    if (preferredPort && (await waitForPortAvailable(host, preferredPort))) {
+      return { port: preferredPort, preferredPort };
+    }
+    return { port: await findFreePort(host), preferredPort };
+  }
+
+  async function ensureDevModePaths() {
+    const root = path.join(userDataDir, "ipollowork-dev-data");
+    const paths = {
+      homeDir: path.join(root, "home"),
+      xdgConfigHome: path.join(root, "xdg", "config"),
+      xdgDataHome: path.join(root, "xdg", "data"),
+      xdgCacheHome: path.join(root, "xdg", "cache"),
+      xdgStateHome: path.join(root, "xdg", "state"),
+      opencodeConfigDir: path.join(root, "config", "opencode"),
+    };
+
+    for (const dir of Object.values(paths)) {
+      await mkdir(dir, { recursive: true });
+    }
+    for (const dir of devModeHomeDirectoryPaths(paths.homeDir)) {
+      await mkdir(dir, { recursive: true });
+    }
+    await mkdir(path.join(paths.xdgDataHome, "opencode"), { recursive: true });
+    return paths;
+  }
+
+  async function buildChildEnv(extra = {}) {
+    /** @type {NodeJS.ProcessEnv} */
+    // User env is layered first so process.env + any caller overrides always
+    // win. See apps/server/src/env-file.ts and apps/orchestrator/src/cli.ts —
+    // all loaders must agree on path + reserved-keys policy.
+    const baseEnv = {
+      ...loadUserEnvFile(),
+      ...process.env,
+      BUN_CONFIG_DNS_RESULT_ORDER: "verbatim",
+    };
+    const caEnv = Object.prototype.hasOwnProperty.call(baseEnv, "NODE_EXTRA_CA_CERTS") ? {} : await systemCaEnv();
+    // Bun honors Node's NODE_EXTRA_CA_CERTS, so bundled Bun sidecars inherit
+    // the exported OS trust store through the same child env variable.
+    const env = mergeSystemCaChildEnv(baseEnv, caEnv, extra);
+    const pathKey =
+      Object.prototype.hasOwnProperty.call(env, "PATH") ||
+      !Object.prototype.hasOwnProperty.call(env, "Path")
+        ? "PATH"
+        : "Path";
+    const pathEnv = enrichedPath(sidecarDirs, env[pathKey]);
+    if (pathEnv) {
+      env[pathKey] = pathEnv;
+    }
+    if (process.env.IPOLLOWORK_DEV_MODE === "1") {
+      const devPaths = await ensureDevModePaths();
+      env.IPOLLOWORK_DEV_MODE = "1";
+      env.HOME = devPaths.homeDir;
+      env.USERPROFILE = devPaths.homeDir;
+      env.XDG_CONFIG_HOME = devPaths.xdgConfigHome;
+      env.XDG_DATA_HOME = devPaths.xdgDataHome;
+      env.XDG_CACHE_HOME = devPaths.xdgCacheHome;
+      env.XDG_STATE_HOME = devPaths.xdgStateHome;
+      env.OPENCODE_CONFIG_DIR = devPaths.opencodeConfigDir;
+      env.OPENCODE_TEST_HOME = devPaths.homeDir;
+    }
+    return env;
+  }
+
+  function resolveBinaryInfo(baseName, extraPaths = []) {
+    for (const directory of [...sidecarDirs, ...extraPaths]) {
+      for (const fileName of binaryFileNames(baseName)) {
+        const candidate = path.join(directory, fileName);
+        if (existsSync(candidate)) {
+          return { path: candidate, source: "bundled" };
+        }
+      }
+    }
+
+    const pathEntries = (enrichedPath([], process.env.PATH) ?? "")
+      .split(path.delimiter)
+      .filter(Boolean);
+    for (const entry of pathEntries) {
+      for (const fileName of binaryFileNames(baseName)) {
+        const candidate = path.join(entry, fileName);
+        if (existsSync(candidate)) {
+          return { path: candidate, source: "path" };
+        }
+      }
+    }
+
+    if (baseName === "opencode") {
+      for (const candidate of [
+        path.join(app.getPath("home"), ".opencode", "bin", process.platform === "win32" ? "opencode.exe" : "opencode"),
+        path.join("/opt/homebrew/bin", process.platform === "win32" ? "opencode.exe" : "opencode"),
+        path.join("/usr/local/bin", process.platform === "win32" ? "opencode.exe" : "opencode"),
+        path.join("/usr/bin", process.platform === "win32" ? "opencode.exe" : "opencode"),
+      ]) {
+        if (existsSync(candidate)) {
+          return { path: candidate, source: "known-location" };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function resolveBinary(baseName, extraPaths = []) {
+    return resolveBinaryInfo(baseName, extraPaths)?.path ?? null;
+  }
+
+  function resolveOpencodeBinary(opencodeBinPath) {
+    const explicitPath = typeof opencodeBinPath === "string" ? opencodeBinPath.trim() : "";
+    return explicitPath ? { path: explicitPath, source: "custom" } : resolveBinaryInfo("opencode");
+  }
+
+  function resolveDockerCandidates() {
+    const candidates = [];
+    const seen = new Set();
+
+    for (const key of ["IPOLLOWORK_DOCKER_BIN", "OPENWRK_DOCKER_BIN", "DOCKER_BIN"]) {
+      const value = process.env[key]?.trim();
+      if (value && !seen.has(value)) {
+        seen.add(value);
+        candidates.push(value);
+      }
+    }
+
+    for (const entry of (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)) {
+      const candidate = path.join(entry, process.platform === "win32" ? "docker.exe" : "docker");
+      if (!seen.has(candidate)) {
+        seen.add(candidate);
+        candidates.push(candidate);
+      }
+    }
+
+    for (const candidate of [
+      "/opt/homebrew/bin/docker",
+      "/usr/local/bin/docker",
+      "/Applications/Docker.app/Contents/Resources/bin/docker",
+    ]) {
+      if (!seen.has(candidate)) {
+        seen.add(candidate);
+        candidates.push(candidate);
+      }
+    }
+
+    return candidates.filter((candidate) => existsSync(candidate));
+  }
+
+  function runDockerCommandDetailed(args, timeoutMs = 8000) {
+    const tried = [...resolveDockerCandidates(), process.platform === "win32" ? "docker.exe" : "docker"];
+    const errors = [];
+
+    for (const program of tried) {
+      try {
+        const result = spawnSync(program, args, {
+          encoding: "utf8",
+          timeout: timeoutMs,
+          windowsHide: true,
+        });
+        return {
+          program,
+          status: typeof result.status === "number" ? result.status : -1,
+          stdout: result.stdout ?? "",
+          stderr: result.stderr ?? "",
+        };
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    throw new Error(
+      `Failed to run docker: ${errors.join("; ")} (Set IPOLLOWORK_DOCKER_BIN to your docker binary if needed)`,
+    );
+  }
+
+  function parseDockerClientVersion(stdout) {
+    const line = String(stdout ?? "").split(/\r?\n/)[0]?.trim() ?? "";
+    return line.toLowerCase().startsWith("docker version") ? line : null;
+  }
+
+  function parseDockerServerVersion(stdout) {
+    for (const line of String(stdout ?? "").split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("Server Version:")) {
+        return trimmed.slice("Server Version:".length).trim() || null;
+      }
+    }
+    return null;
+  }
+
+  function deriveOrchestratorContainerName(runId) {
+    const sanitized = String(runId ?? "")
+      .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+      .slice(0, 24);
+    return `ipollowork-orchestrator-${sanitized}`;
+  }
+
+  async function listiPolloWorkManagedContainers() {
+    const result = runDockerCommandDetailed(["ps", "-a", "--format", "{{.Names}}"], 8000);
+    if (result.status !== 0) {
+      const combined = `${result.stdout.trim()}\n${result.stderr.trim()}`.trim();
+      throw new Error(combined || `docker ps -a failed (status ${result.status})`);
+    }
+    return result.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((name) => name && (name.startsWith("ipollowork-orchestrator-") || name.startsWith("ipollowork-dev-") || name.startsWith("openwrk-")))
+      .sort();
+  }
+
+  async function runShellCommand(program, args, options = {}) {
+    const result = spawnSync(program, args, {
+      encoding: "utf8",
+      cwd: options.cwd,
+      env: options.env,
+      shell: false,
+      windowsHide: true,
+      timeout: options.timeoutMs,
+    });
+    return {
+      status: typeof result.status === "number" ? result.status : -1,
+      stdout: result.stdout ?? "",
+      stderr: result.stderr ?? "",
+    };
+  }
+
+  function engineDoctor(options = {}) {
+    const resolved = resolveOpencodeBinary(options?.opencodeBinPath);
+    if (!resolved?.path) {
+      return {
+        found: false,
+        inPath: false,
+        resolvedPath: null,
+        resolvedSource: null,
+        version: null,
+        supportsServe: false,
+        notes: ["OpenCode binary not found in bundled sidecars or PATH."],
+        serveHelpStatus: null,
+        serveHelpStdout: null,
+        serveHelpStderr: null,
+      };
+    }
+
+    const versionResult = spawnSync(resolved.path, ["--version"], { encoding: "utf8" });
+    const helpResult = spawnSync(resolved.path, ["serve", "--help"], { encoding: "utf8" });
+    const notes = [`Using ${resolved.source}: ${resolved.path}`];
+    if (versionResult.status !== 0) {
+      notes.push("OpenCode version probe failed.");
+    }
+    if (helpResult.status !== 0) {
+      notes.push("OpenCode serve --help probe failed.");
+    }
+
+    return {
+      found: true,
+      inPath: resolved.source === "path",
+      resolvedPath: resolved.path,
+      resolvedSource: resolved.source,
+      version: versionResult.stdout?.trim() || versionResult.stderr?.trim() || null,
+      supportsServe: helpResult.status === 0,
+      notes,
+      serveHelpStatus: typeof helpResult.status === "number" ? helpResult.status : null,
+      serveHelpStdout: helpResult.stdout?.trim() || null,
+      serveHelpStderr: helpResult.stderr?.trim() || null,
+    };
+  }
+
+  async function pinnedOpencodeInstallCommand() {
+    const constantsPath = path.resolve(desktopRoot, "../../constants.json");
+    const payload = JSON.parse(await readFile(constantsPath, "utf8"));
+    const version = String(payload?.opencodeVersion ?? "").trim().replace(/^v/, "");
+    if (!version) {
+      throw new Error("constants.json is missing opencodeVersion");
+    }
+    return `curl -fsSL https://opencode.ai/install | bash -s -- --version ${version} --no-modify-path`;
+  }
+
+  function spawnManagedChild(state, program, args, options = {}) {
+    const child = spawn(program, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    state.child = child;
+    state.childExited = false;
+    state.lastStdout = null;
+    state.lastStderr = null;
+
+    child.stdout?.on("data", (chunk) => appendOutput(state, "lastStdout", chunk.toString()));
+    child.stderr?.on("data", (chunk) => appendOutput(state, "lastStderr", chunk.toString()));
+    child.on("exit", (code) => {
+      state.childExited = true;
+      if (code != null && code !== 0) {
+        appendOutput(state, "lastStderr", `Process exited with code ${code}.\n`);
+      }
+      options.onExit?.(code);
+    });
+    child.on("error", (error) => {
+      state.childExited = true;
+      appendOutput(state, "lastStderr", `${error instanceof Error ? error.message : String(error)}\n`);
+    });
+
+    return child;
+  }
+
+  function processMatchesSidecar(command) {
+    return commandMatchesPackagedSidecar(command, sidecarDirs);
+  }
+
+  function killProcessId(pid, signal = "SIGTERM") {
+    if (!Number.isFinite(pid) || pid <= 0 || pid === process.pid) return;
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // Process already exited or is not ours.
+    }
+  }
+
+  async function cleanupPackagedSidecars() {
+    if (!app.isPackaged) return;
+
+    // First ask the previously recorded orchestrator daemon to shut itself and
+    // its OpenCode child down. This handles the happy path without relying on
+    // process-list parsing.
+    await requestOrchestratorShutdown(orchestratorState.dataDir || orchestratorDataDir()).catch(() => false);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    // Safety net: an unclean Electron quit can orphan sidecars. Packaged builds
+    // should always own a fresh runtime per app launch, so remove any leftover
+    // sidecars from this app bundle before choosing ports for the new runtime.
+    const result = spawnSync("ps", ["-Ao", "pid=,command="], { encoding: "utf8" });
+    const rows = String(result.stdout ?? "").split(/\r?\n/);
+    const pids = [];
+    for (const row of rows) {
+      const match = row.match(/^\s*(\d+)\s+(.+)$/);
+      if (!match) continue;
+      const pid = Number(match[1]);
+      const command = match[2] ?? "";
+      if (processMatchesSidecar(command)) pids.push(pid);
+    }
+    for (const pid of pids) killProcessId(pid, "SIGTERM");
+    if (pids.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      for (const pid of pids) killProcessId(pid, "SIGKILL");
+    }
+  }
+
+  async function stopChild(state, options = {}) {
+    const child = state.child;
+    state.child = null;
+    state.childExited = true;
+    if (!child || child.exitCode != null || child.killed) return;
+
+    if (options.requestShutdown) {
+      try {
+        const shutdownRequested = await options.requestShutdown();
+        if (shutdownRequested) {
+          await new Promise((resolve) => setTimeout(resolve, 750));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (child.exitCode == null && !child.killed) {
+      child.kill("SIGTERM");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (child.exitCode == null && !child.killed) {
+        child.kill("SIGKILL");
+      }
+    }
+  }
+
+  async function ensureOpencodeConfig(projectDir) {
+    const jsoncPath = path.join(projectDir, "opencode.jsonc");
+    const jsonPath = path.join(projectDir, "opencode.json");
+    if ((await fileExists(jsoncPath)) || (await fileExists(jsonPath))) return;
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(
+      jsoncPath,
+      `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`,
+      "utf8",
+    );
+  }
+
+  function generateManagedCredentials() {
+    return [randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, ""), randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "")];
+  }
+
+  async function issueOwnerToken(baseUrl, hostToken) {
+    const payload = await fetchJson(
+      `${baseUrl.replace(/\/+$/, "")}/tokens`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-iPolloWork-Host-Token": hostToken,
+        },
+        body: JSON.stringify({ scope: "owner", label: "iPolloWork desktop owner token" }),
+      },
+      5000,
+    );
+    const token = typeof payload?.token === "string" ? payload.token.trim() : "";
+    return token || null;
+  }
+
+  // In-process server handle. Kept alive across restarts so we can stop it.
+  let inProcessServer = null;
+
+  async function startiPolloWorkServer(options) {
+    const currentPort = ipolloworkServerState.port;
+    // Stop any previously running in-process server
+    if (inProcessServer) {
+      try { await inProcessServer.stop(); } catch { /* ignore */ }
+      inProcessServer = null;
+    }
+    await stopChild(ipolloworkServerState);
+
+    const host = options.remoteAccessEnabled ? "0.0.0.0" : "127.0.0.1";
+
+    const managedOpencode = options.manageOpencode ? resolveOpencodeBinary(options.opencodeBinPath) : null;
+    ipolloworkServerState.managedOpencodeBinPath = managedOpencode?.path ?? null;
+    ipolloworkServerState.managedOpencodeBinSource = managedOpencode?.source ?? null;
+    if (options.manageOpencode) {
+      engineState.opencodeBinPath = managedOpencode?.path ?? null;
+      engineState.opencodeBinSource = managedOpencode?.source ?? null;
+    }
+
+    // Apply user env vars for the in-process server without leaking the
+    // development child sandbox's home/config paths into Electron itself.
+    // Electron relaunches inherit process.env, so copying HOME here would make
+    // the next desktop instance create a nested, empty workspace.
+    const serverEnv = await buildChildEnv({});
+    applyEmbeddedServerEnvironment(process.env, serverEnv);
+
+    // Once the embedded server has a persisted registry, it is the source of
+    // truth. Do not pass Electron's legacy workspace list as CLI workspaces or
+    // the server config loader will ignore server.json and lose server-created
+    // workspaces after restart.
+    const serverConfigPath = resolveiPolloWorkServerConfigPath(process.env);
+    const requestedWorkspacePaths = (options.workspacePaths ?? []).filter((value) => value.trim().length > 0);
+    const workspacePaths = seedWorkspacePathsForEmbeddedServer(
+      requestedWorkspacePaths,
+      existsSync(serverConfigPath),
+    );
+    const activeWorkspace = selectStickyiPolloWorkPortWorkspace(requestedWorkspacePaths, workspacePaths);
+    const portSelection = await resolveiPolloWorkPort(host, activeWorkspace, currentPort);
+    const tokens = await loadOrCreateWorkspaceTokens(activeWorkspace);
+
+    // One call: resolve config, spawn managed OpenCode, start HTTP server.
+    // Dev must prefer apps/server/dist; build output also stages a packaged
+    // copy under apps/desktop/server for electron-builder.
+    const devPath = path.resolve(__runtimeDir, "..", "..", "server", "dist", "embedded.js");
+    const packagedPaths = [
+      path.resolve(__runtimeDir, "..", "server", "dist", "embedded.js"),
+      ...(process.resourcesPath ? [path.resolve(process.resourcesPath, "server", "dist", "embedded.js")] : []),
+    ];
+    const candidates = process.env.IPOLLOWORK_DEV_MODE === "1"
+      ? [devPath, ...packagedPaths]
+      : [...packagedPaths, devPath];
+    const embeddedPath = candidates.find((candidate) => existsSync(candidate));
+    if (!embeddedPath) {
+      throw new Error(`Cannot find iPolloWork embedded server bundle. Checked: ${candidates.join(", ")}`);
+    }
+    const { startEmbeddedServer } = await import(embeddedServerImportUrl(embeddedPath));
+    // startEmbeddedServer falls back to an OS-assigned port if `port` races
+    // into EADDRINUSE (see apps/server/src/serve-node.ts), so the bound port
+    // below is authoritative.
+    const handle = await startEmbeddedServer({
+      host,
+      port: portSelection.port,
+      corsOrigins: ["*"],
+      approvalMode: "auto",
+      configPath: serverConfigPath,
+      workspaces: workspacePaths,
+      token: tokens.clientToken,
+      hostToken: tokens.hostToken,
+      opencodeBaseUrl: options.opencodeBaseUrl ?? undefined,
+      opencodeDirectory: activeWorkspace || undefined,
+      manageOpencode: options.manageOpencode === true,
+      opencodeBin: managedOpencode?.path ?? undefined,
+      opencodeCwd: managedOpencodeWorkdir(),
+    });
+    inProcessServer = handle;
+    ipolloworkServerState.managedOpencodeExecution = handle.managedOpencodeExecution ?? null;
+
+    const boundPort = handle.port;
+    const baseUrl = handle.url;
+
+    ipolloworkServerState.inProcess = true;
+    ipolloworkServerState.remoteAccessEnabled = options.remoteAccessEnabled;
+    ipolloworkServerState.host = host;
+    ipolloworkServerState.port = boundPort;
+    ipolloworkServerState.baseUrl = baseUrl;
+    ipolloworkServerState.clientToken = tokens.clientToken;
+    ipolloworkServerState.hostToken = tokens.hostToken;
+
+    const connectUrls = options.remoteAccessEnabled ? buildConnectUrls(boundPort) : { connectUrl: null, mdnsUrl: null, lanUrl: null };
+    ipolloworkServerState.connectUrl = connectUrls.connectUrl;
+    ipolloworkServerState.mdnsUrl = connectUrls.mdnsUrl;
+    ipolloworkServerState.lanUrl = connectUrls.lanUrl;
+
+    // No health check needed -- startServer() resolves only after the listener is bound.
+    let workspaceList = null;
+    let ownerToken = tokens.ownerToken?.trim() || null;
+    if (ownerToken) {
+      try {
+        workspaceList = await fetchJson(`${baseUrl}/workspaces`, {
+          headers: { Authorization: `Bearer ${ownerToken}` },
+        }, 5000);
+      } catch {
+        ownerToken = null;
+      }
+    }
+    ownerToken ||= await issueOwnerToken(baseUrl, tokens.hostToken);
+    ipolloworkServerState.ownerToken = ownerToken;
+    if (ownerToken) {
+      await persistWorkspaceOwnerToken(activeWorkspace, ownerToken);
+    }
+    if (ownerToken) {
+      try {
+        const list = workspaceList ?? await fetchJson(`${baseUrl}/workspaces`, {
+          headers: { Authorization: `Bearer ${ownerToken}` },
+        }, 5000);
+        const first = Array.isArray(list?.items) ? list.items[0] : undefined;
+        const opencode = first?.opencode;
+        if (opencode?.baseUrl) {
+          engineState.runtime = DIRECT_RUNTIME;
+          engineState.projectDir = opencode.directory ?? activeWorkspace ?? null;
+          engineState.hostname = new URL(opencode.baseUrl).hostname;
+          engineState.port = Number(new URL(opencode.baseUrl).port) || null;
+          engineState.baseUrl = opencode.baseUrl;
+          engineState.opencodeUsername = opencode.username ?? null;
+          engineState.opencodePassword = opencode.password ?? null;
+          engineState.execution = handle.managedOpencodeExecution ?? null;
+          engineState.child = null;
+          engineState.childExited = false;
+        }
+      } catch (error) {
+        appendOutput(ipolloworkServerState, "lastStderr", `iPolloWork server workspace probe: ${error instanceof Error ? error.message : String(error)}\n`);
+      }
+    }
+    if (!portSelection.preferredPort || boundPort === portSelection.preferredPort) {
+      await persistPreferrediPolloWorkPort(activeWorkspace, boundPort);
+    }
+    return snapshotiPolloWorkServerState(ipolloworkServerState);
+  }
+
+  async function resolveOrchestratorBaseUrl() {
+    if (orchestratorState.baseUrl) {
+      return orchestratorState.baseUrl;
+    }
+    const stateFile = await readOrchestratorStateFile(orchestratorState.dataDir || orchestratorDataDir());
+    const baseUrl = stateFile?.daemon?.baseUrl?.trim();
+    if (!baseUrl) {
+      throw new Error("orchestrator daemon is not running");
+    }
+    return baseUrl;
+  }
+
+  async function startOrchestratorRuntime(projectDir, options = {}) {
+    const dataDir = orchestratorDataDir();
+    await mkdir(dataDir, { recursive: true });
+    const daemonPort = await findFreePort("127.0.0.1");
+    const opencodePort = await findFreePort("127.0.0.1");
+    const [username, password] = generateManagedCredentials();
+
+    const orchestratorProgram = resolveBinary("ipollowork-orchestrator") ?? resolveBinary("ipollowork");
+    if (!orchestratorProgram) {
+      throw new Error("Failed to locate ipollowork-orchestrator.");
+    }
+
+    const opencodeBinary = resolveOpencodeBinary(options.opencodeBinPath);
+    if (!opencodeBinary?.path) {
+      throw new Error("Failed to locate opencode.");
+    }
+
+    const env = await buildChildEnv({
+      IPOLLOWORK_INTERNAL_ALLOW_OPENCODE_CREDENTIALS: "1",
+      IPOLLOWORK_OPENCODE_USERNAME: username,
+      IPOLLOWORK_OPENCODE_PASSWORD: password,
+      ...(options.opencodeEnableExa !== false ? { OPENCODE_ENABLE_EXA: "1" } : {}),
+    });
+
+    const args = [
+      "daemon",
+      "run",
+      "--data-dir",
+      dataDir,
+      "--daemon-host",
+      "127.0.0.1",
+      "--daemon-port",
+      String(daemonPort),
+      "--opencode-bin",
+      opencodeBinary.path,
+      "--opencode-host",
+      "127.0.0.1",
+      "--opencode-workdir",
+      projectDir,
+      "--opencode-port",
+      String(opencodePort),
+      "--allow-external",
+      "--cors",
+      "*",
+    ];
+
+    spawnManagedChild(orchestratorState, orchestratorProgram, args, { env });
+    orchestratorState.dataDir = dataDir;
+    orchestratorState.daemonPort = daemonPort;
+    orchestratorState.baseUrl = `http://127.0.0.1:${daemonPort}`;
+
+    await writeOrchestratorAuthFile(dataDir, {
+      opencodeUsername: username,
+      opencodePassword: password,
+      projectDir,
+    });
+
+    const health = await waitForHttpOk(`${orchestratorState.baseUrl}/health`, 180_000).then((response) => response.json());
+    const opencode = health?.opencode;
+    if (!opencode?.port) {
+      throw new Error("Orchestrator did not report OpenCode status.");
+    }
+
+    engineState.runtime = ORCHESTRATOR_RUNTIME;
+    engineState.projectDir = projectDir;
+    engineState.hostname = "127.0.0.1";
+    engineState.port = opencode.port;
+    engineState.baseUrl = `http://127.0.0.1:${opencode.port}`;
+    engineState.opencodeUsername = username;
+    engineState.opencodePassword = password;
+    engineState.opencodeBinPath = opencodeBinary.path;
+    engineState.opencodeBinSource = opencodeBinary.source;
+
+    return snapshotEngineState(engineState);
+  }
+
+  async function startDirectRuntime(projectDir, options = {}) {
+    const opencodeBinary = resolveOpencodeBinary(options.opencodeBinPath);
+    if (!opencodeBinary?.path) {
+      throw new Error("Failed to locate opencode.");
+    }
+
+    const port = await findFreePort("127.0.0.1");
+    const [username, password] = generateManagedCredentials();
+    const env = await buildChildEnv({
+      OPENCODE_SERVER_USERNAME: username,
+      OPENCODE_SERVER_PASSWORD: password,
+    });
+
+    const args = ["serve", "--hostname", "127.0.0.1", "--port", String(port), "--cors", "*"];
+    engineState.execution = redactedExecutionSnapshot(opencodeBinary.path, args, projectDir, {
+      OPENCODE_SERVER_USERNAME: username,
+      OPENCODE_SERVER_PASSWORD: password,
+    });
+
+    spawnManagedChild(
+      engineState,
+      opencodeBinary.path,
+      args,
+      {
+        cwd: projectDir,
+        env,
+      },
+    );
+
+    engineState.runtime = DIRECT_RUNTIME;
+    engineState.projectDir = projectDir;
+    engineState.hostname = "127.0.0.1";
+    engineState.port = port;
+    engineState.baseUrl = `http://127.0.0.1:${port}`;
+    engineState.opencodeUsername = username;
+    engineState.opencodePassword = password;
+    engineState.opencodeBinPath = opencodeBinary.path;
+    engineState.opencodeBinSource = opencodeBinary.source;
+
+    await waitForHttpOk(`${engineState.baseUrl}/health`, 10_000).catch(() => undefined);
+    return snapshotEngineState(engineState);
+  }
+
+  async function stopAllRuntimeChildren() {
+    // Stop the in-process server (and its managed OpenCode child) if running.
+    if (inProcessServer) {
+      try { await inProcessServer.stop(); } catch { /* ignore */ }
+      inProcessServer = null;
+    }
+    await stopChild(ipolloworkServerState);
+    await stopChild(orchestratorState, {
+      requestShutdown: () => requestOrchestratorShutdown(orchestratorState.dataDir || orchestratorDataDir()),
+    });
+    await clearOrchestratorAuthFile(orchestratorState.dataDir || orchestratorDataDir()).catch(() => undefined);
+    await stopChild(engineState);
+
+    Object.assign(engineState, createEngineState());
+    Object.assign(ipolloworkServerState, createiPolloWorkServerState());
+    Object.assign(orchestratorState, createOrchestratorState());
+  }
+
+  async function prepareFreshRuntime() {
+    lifecycleState = "cleaning";
+    await stopAllRuntimeChildren();
+    await cleanupPackagedSidecars();
+    lifecycleState = "idle";
+  }
+
+  async function ensureiPolloWork(options) {
+    let ipolloworkServer;
+    try {
+      ipolloworkServer = await startiPolloWorkServer({
+        workspacePaths: options.workspacePaths,
+        opencodeBaseUrl: engineState.baseUrl,
+        opencodeUsername: engineState.opencodeUsername,
+        opencodePassword: engineState.opencodePassword,
+        remoteAccessEnabled: options.remoteAccessEnabled,
+        manageOpencode: options.manageOpencode === true,
+        opencodeBinPath: options.opencodeBinPath,
+      });
+    } catch (error) {
+      appendOutput(engineState, "lastStderr", `iPolloWork server: ${error instanceof Error ? error.message : String(error)}\n`);
+      throw error;
+    }
+
+    assertiPolloWorkServerReady(ipolloworkServer);
+  }
+
+  async function engineStart(projectDir, options = {}) {
+    const safeProjectDir = String(projectDir ?? "").trim();
+    if (!safeProjectDir) {
+      throw new Error("projectDir is required");
+    }
+
+    // Reuse a healthy server instead of tearing it down. During boot the
+    // main process kicks off bootRuntimeForSelectedWorkspace while renderer
+    // routes independently call ensureDesktopLocaliPolloWorkConnection. Both go
+    // through this serialized path; without this guard the second call runs
+    // prepareFreshRuntime (killing the freshly bound server) and then rebinds
+    // the sticky preferred port, racing the not-yet-released socket into
+    // EADDRINUSE and leaving the runtime in error -> boot screen.
+    const requestedRemoteAccess = options.ipolloworkRemoteAccess === true;
+    if (
+      options.forceRestart !== true &&
+      ipolloworkServerState.inProcess &&
+      lifecycleState === "healthy" &&
+      normalizeWorkspaceKey(engineState.projectDir) === normalizeWorkspaceKey(safeProjectDir) &&
+      ipolloworkServerState.remoteAccessEnabled === requestedRemoteAccess
+    ) {
+      const existing = snapshotiPolloWorkServerState(ipolloworkServerState);
+      if (existing.running && existing.baseUrl && (existing.ownerToken || existing.clientToken)) {
+        return snapshotEngineState(engineState);
+      }
+    }
+
+    await mkdir(safeProjectDir, { recursive: true });
+    await ensureOpencodeConfig(safeProjectDir);
+    await prepareFreshRuntime();
+
+    const workspacePaths = [safeProjectDir, ...((options.workspacePaths ?? []).filter(Boolean))].filter(
+      (value, index, list) => list.indexOf(value) === index,
+    );
+    const runtime = DIRECT_RUNTIME;
+
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        lifecycleState = "starting";
+        engineState.runtime = runtime;
+        engineState.projectDir = safeProjectDir;
+        engineState.child = null;
+        engineState.childExited = true;
+
+        await ensureiPolloWork({
+          projectDir: safeProjectDir,
+          workspacePaths,
+          remoteAccessEnabled: options.ipolloworkRemoteAccess === true,
+          manageOpencode: true,
+          opencodeBinPath: options.opencodeBinPath,
+        });
+
+        lifecycleState = "healthy";
+        return snapshotEngineState(engineState);
+      } catch (error) {
+        lastError = error;
+        appendOutput(engineState, "lastStderr", `Startup attempt ${attempt + 1}: ${error instanceof Error ? error.message : String(error)}\n`);
+        if (attempt === 0) {
+          // A just-exited sidecar or a port released a fraction too late is
+          // common on slower user machines. Clean every child and retry once
+          // before exposing a startup failure to the UI.
+          await new Promise((resolve) => setTimeout(resolve, 750));
+          await prepareFreshRuntime();
+        }
+      }
+    }
+    lifecycleState = "error";
+    throw lastError;
+  }
+
+  async function engineStop() {
+    lifecycleState = "stopping";
+    await stopAllRuntimeChildren();
+    lifecycleState = "idle";
+    return snapshotEngineState(engineState);
+  }
+
+  async function engineRestart(options = {}) {
+    const projectDir = engineState.projectDir;
+    if (!projectDir) {
+      throw new Error("OpenCode is not configured for a local workspace");
+    }
+    const ipolloworkRemoteAccess = typeof options.ipolloworkRemoteAccess === "boolean"
+      ? options.ipolloworkRemoteAccess
+      : ipolloworkServerState.remoteAccessEnabled;
+    return engineStart(projectDir, {
+      runtime: engineState.runtime,
+      workspacePaths: [projectDir],
+      opencodeEnableExa: options.opencodeEnableExa,
+      ipolloworkRemoteAccess,
+      forceRestart: true,
+    });
+  }
+
+  async function engineInfo() {
+    return { ...snapshotEngineState(engineState), lifecycleState };
+  }
+
+  async function runtimeStatus() {
+    return {
+      lifecycleState,
+      engine: await engineInfo(),
+      ipolloworkServer: snapshotiPolloWorkServerState(ipolloworkServerState),
+    };
+  }
+
+  async function ipolloworkServerInfo() {
+    return snapshotiPolloWorkServerState(ipolloworkServerState);
+  }
+
+  async function ipolloworkServerRestart(options = {}) {
+    const workspacePaths = prioritizeWorkspacePaths(engineState.projectDir, await listLocalWorkspacePaths());
+    const shouldManageOpencode = Boolean(
+      ipolloworkServerState.managedOpencodeBinPath || engineState.opencodeBinPath || !engineState.baseUrl,
+    );
+    return startiPolloWorkServer({
+      workspacePaths,
+      opencodeBaseUrl: shouldManageOpencode ? null : engineState.baseUrl,
+      opencodeUsername: shouldManageOpencode ? null : engineState.opencodeUsername,
+      opencodePassword: shouldManageOpencode ? null : engineState.opencodePassword,
+      remoteAccessEnabled: options.remoteAccessEnabled === true,
+      manageOpencode: shouldManageOpencode,
+      opencodeBinPath: engineState.opencodeBinPath ?? ipolloworkServerState.managedOpencodeBinPath,
+    });
+  }
+
+  async function orchestratorStatus() {
+    const engine = snapshotEngineState(engineState);
+    const ipolloworkServer = snapshotiPolloWorkServerState(ipolloworkServerState);
+    const workspaces = engine.projectDir
+      ? [{ id: normalizeWorkspaceKey(engine.projectDir), path: engine.projectDir, name: path.basename(engine.projectDir) || "Workspace" }]
+      : [];
+    return {
+      running: engine.running,
+      dataDir: null,
+      daemon: ipolloworkServer.running
+        ? { baseUrl: ipolloworkServer.baseUrl, port: ipolloworkServer.port, pid: ipolloworkServer.pid, runtime: "direct" }
+        : null,
+      opencode: engine.running
+        ? { baseUrl: engine.baseUrl, port: engine.port, pid: engine.pid, projectDir: engine.projectDir, runtime: "direct" }
+        : null,
+      cliVersion: null,
+      sidecar: null,
+      binaries: null,
+      activeId: workspaces[0]?.id ?? null,
+      workspaceCount: workspaces.length,
+      workspaces,
+      lastError: engine.lastStderr,
+    };
+  }
+
+  async function orchestratorWorkspaceActivate(input) {
+    const workspacePath = String(input?.workspacePath ?? "").trim();
+    if (!workspacePath) {
+      throw new Error("workspacePath is required");
+    }
+    const resolved = path.resolve(workspacePath);
+    if (normalizeWorkspaceKey(engineState.projectDir) !== normalizeWorkspaceKey(resolved)) {
+      await engineStart(resolved, {
+        runtime: DIRECT_RUNTIME,
+        workspacePaths: [resolved],
+      });
+    }
+    return {
+      id: normalizeWorkspaceKey(resolved),
+      path: resolved,
+      name: input?.name ?? (path.basename(resolved) || "Workspace"),
+    };
+  }
+
+  async function orchestratorInstanceDispose(workspacePath) {
+    if (normalizeWorkspaceKey(engineState.projectDir) === normalizeWorkspaceKey(workspacePath)) {
+      return true;
+    }
+    return true;
+  }
+
+  async function engineInstall() {
+    if (process.platform === "win32") {
+      return {
+        ok: false,
+        status: -1,
+        stdout: "",
+        stderr:
+          "Guided install is not supported on Windows yet. Install the iPolloWork-pinned OpenCode version manually, then restart iPolloWork.",
+      };
+    }
+
+    const installDir = path.join(app.getPath("home"), ".opencode", "bin");
+    const command = await pinnedOpencodeInstallCommand();
+    const result = await runShellCommand("bash", ["-lc", command], {
+      env: { ...(await buildChildEnv()), OPENCODE_INSTALL_DIR: installDir },
+      timeoutMs: 180_000,
+    });
+    return {
+      ok: result.status === 0,
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  }
+
+  async function opencodeMcpAuth(projectDir, serverName) {
+    const safeProjectDir = String(projectDir ?? "").trim();
+    const safeServerName = String(serverName ?? "").trim();
+    if (!safeProjectDir) {
+      throw new Error("project_dir is required");
+    }
+    if (!safeServerName) {
+      throw new Error("server_name is required");
+    }
+
+    const program = resolveBinary("opencode");
+    if (!program) {
+      throw new Error("Failed to locate opencode.");
+    }
+
+    const result = await runShellCommand(program, ["mcp", "auth", safeServerName], {
+      cwd: safeProjectDir,
+      env: await buildChildEnv(),
+      timeoutMs: 120_000,
+    });
+    return {
+      ok: result.status === 0,
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  }
+
+  async function sandboxDoctor() {
+    const candidates = resolveDockerCandidates();
+    const debug = {
+      candidates,
+      selectedBin: null,
+      versionCommand: null,
+      infoCommand: null,
+    };
+
+    let version;
+    try {
+      version = runDockerCommandDetailed(["--version"], 2000);
+    } catch (error) {
+      return {
+        installed: false,
+        daemonRunning: false,
+        permissionOk: false,
+        ready: false,
+        clientVersion: null,
+        serverVersion: null,
+        error: error instanceof Error ? error.message : String(error),
+        debug,
+      };
+    }
+
+    debug.selectedBin = version.program;
+    debug.versionCommand = {
+      status: version.status,
+      stdout: truncateOutput(version.stdout, 1200),
+      stderr: truncateOutput(version.stderr, 1200),
+    };
+
+    const clientVersion = parseDockerClientVersion(version.stdout);
+    if (version.status !== 0) {
+      return {
+        installed: false,
+        daemonRunning: false,
+        permissionOk: false,
+        ready: false,
+        clientVersion: null,
+        serverVersion: null,
+        error: `docker --version failed (status ${version.status}): ${version.stderr.trim()}`,
+        debug,
+      };
+    }
+
+    let info;
+    try {
+      info = runDockerCommandDetailed(["info"], 8000);
+    } catch (error) {
+      return {
+        installed: true,
+        daemonRunning: false,
+        permissionOk: false,
+        ready: false,
+        clientVersion,
+        serverVersion: null,
+        error: error instanceof Error ? error.message : String(error),
+        debug,
+      };
+    }
+
+    debug.infoCommand = {
+      status: info.status,
+      stdout: truncateOutput(info.stdout, 1200),
+      stderr: truncateOutput(info.stderr, 1200),
+    };
+
+    if (info.status === 0) {
+      return {
+        installed: true,
+        daemonRunning: true,
+        permissionOk: true,
+        ready: true,
+        clientVersion,
+        serverVersion: parseDockerServerVersion(info.stdout),
+        error: null,
+        debug,
+      };
+    }
+
+    const combined = `${info.stdout.trim()}\n${info.stderr.trim()}`.trim().toLowerCase();
+    const permissionOk = !combined.includes("permission denied") && !combined.includes("access is denied");
+    const daemonRunning = !combined.includes("cannot connect to the docker daemon") && !combined.includes("is the docker daemon running") && !combined.includes("connection refused") && !combined.includes("no such file or directory");
+
+    return {
+      installed: true,
+      daemonRunning,
+      permissionOk,
+      ready: false,
+      clientVersion,
+      serverVersion: null,
+      error: `${info.stdout.trim()}\n${info.stderr.trim()}`.trim() || `docker info failed (status ${info.status})`,
+      debug,
+    };
+  }
+
+  async function sandboxStop(containerName) {
+    const name = String(containerName ?? "").trim();
+    if (!name) {
+      throw new Error("containerName is required");
+    }
+    if (!name.startsWith("ipollowork-orchestrator-")) {
+      throw new Error("Refusing to stop container: expected name starting with 'ipollowork-orchestrator-'");
+    }
+    if (!/^[A-Za-z0-9_.-]+$/.test(name)) {
+      throw new Error("containerName contains invalid characters");
+    }
+    const result = runDockerCommandDetailed(["stop", name], 15_000);
+    return {
+      ok: result.status === 0,
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  }
+
+  async function sandboxCleanupiPolloWorkContainers() {
+    const candidates = await listiPolloWorkManagedContainers().catch((error) => {
+      throw error;
+    });
+    const removed = [];
+    const errors = [];
+
+    for (const name of candidates) {
+      try {
+        const result = runDockerCommandDetailed(["rm", "-f", name], 20_000);
+        if (result.status === 0) {
+          removed.push(name);
+        } else {
+          errors.push(`${name}: exit ${result.status}: ${(result.stdout + "\n" + result.stderr).trim()}`);
+        }
+      } catch (error) {
+        errors.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return { candidates, removed, errors };
+  }
+
+  async function orchestratorStartDetached(options = {}) {
+    const workspacePath = String(options.workspacePath ?? "").trim();
+    if (!workspacePath) {
+      throw new Error("workspacePath is required");
+    }
+
+    const sandboxBackend = String(options.sandboxBackend ?? "none").trim().toLowerCase();
+    if (!["none", "docker", "microsandbox"].includes(sandboxBackend)) {
+      throw new Error("sandboxBackend must be one of: none, docker, microsandbox");
+    }
+
+    const wantsDockerSandbox = sandboxBackend === "docker" || sandboxBackend === "microsandbox";
+    const runId = String(options.runId ?? randomUUID()).trim();
+    const containerName = wantsDockerSandbox ? deriveOrchestratorContainerName(runId) : null;
+    const port = await findFreePort("127.0.0.1");
+    const token = String(options.ipolloworkToken ?? randomUUID()).trim();
+    const hostToken = String(options.ipolloworkHostToken ?? randomUUID()).trim();
+    const ipolloworkUrl = `http://127.0.0.1:${port}`;
+    const program = resolveBinary("ipollowork-orchestrator") ?? resolveBinary("ipollowork");
+    if (!program) {
+      throw new Error("Failed to locate ipollowork orchestrator.");
+    }
+
+    const args = [
+      "start",
+      "--workspace",
+      workspacePath,
+      "--approval",
+      "auto",
+      "--detach",
+      "--ipollowork-port",
+      String(port),
+      "--run-id",
+      runId,
+      ...(wantsDockerSandbox ? ["--sandbox", "docker"] : []),
+      ...(options.sandboxImageRef ? ["--sandbox-image", String(options.sandboxImageRef)] : []),
+    ];
+
+    const child = spawn(program, args, {
+      env: { ...(await buildChildEnv()), IPOLLOWORK_TOKEN: token, IPOLLOWORK_HOST_TOKEN: hostToken },
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+
+    await waitForHttpOk(`${ipolloworkUrl}/health`, wantsDockerSandbox ? 90_000 : 12_000);
+    const ownerToken = await issueOwnerToken(ipolloworkUrl, hostToken).catch(() => null);
+
+    return {
+      ipolloworkUrl,
+      token,
+      ownerToken,
+      hostToken,
+      port,
+      sandboxBackend: wantsDockerSandbox ? sandboxBackend : null,
+      sandboxRunId: wantsDockerSandbox ? runId : null,
+      sandboxContainerName: containerName,
+    };
+  }
+
+  async function sandboxDebugProbe() {
+    const startedAt = nowMs();
+    const runId = `probe-${randomUUID()}`;
+    const workspacePath = path.join(os.tmpdir(), `ipollowork-sandbox-probe-${randomUUID()}`);
+    await mkdir(workspacePath, { recursive: true });
+
+    const doctor = await sandboxDoctor();
+    let detachedHost = null;
+    let dockerInspect = null;
+    let dockerLogs = null;
+    let error = null;
+    const cleanupErrors = [];
+    let containerRemoved = false;
+    let workspaceRemoved = false;
+    let removeResult = null;
+
+    if (doctor.ready) {
+      try {
+        detachedHost = await orchestratorStartDetached({
+          workspacePath,
+          sandboxBackend: "docker",
+          runId,
+        });
+        const containerName = detachedHost.sandboxContainerName ?? deriveOrchestratorContainerName(runId);
+        try {
+          const inspectResult = runDockerCommandDetailed(["inspect", containerName], 6000);
+          dockerInspect = {
+            status: inspectResult.status,
+            stdout: truncateOutput(inspectResult.stdout, 48000),
+            stderr: truncateOutput(inspectResult.stderr, 48000),
+          };
+        } catch (inspectError) {
+          cleanupErrors.push(`docker inspect failed: ${inspectError instanceof Error ? inspectError.message : String(inspectError)}`);
+        }
+        try {
+          const logsResult = runDockerCommandDetailed(["logs", "--timestamps", "--tail", "400", containerName], 8000);
+          dockerLogs = {
+            status: logsResult.status,
+            stdout: truncateOutput(logsResult.stdout, 48000),
+            stderr: truncateOutput(logsResult.stderr, 48000),
+          };
+        } catch (logsError) {
+          cleanupErrors.push(`docker logs failed: ${logsError instanceof Error ? logsError.message : String(logsError)}`);
+        }
+
+        try {
+          const rmResult = runDockerCommandDetailed(["rm", "-f", containerName], 20_000);
+          containerRemoved = rmResult.status === 0;
+          removeResult = {
+            status: rmResult.status,
+            stdout: truncateOutput(rmResult.stdout, 48000),
+            stderr: truncateOutput(rmResult.stderr, 48000),
+          };
+        } catch (removeError) {
+          cleanupErrors.push(`docker rm -f ${containerName} failed: ${removeError instanceof Error ? removeError.message : String(removeError)}`);
+        }
+      } catch (probeError) {
+        error = `Sandbox probe failed to start: ${probeError instanceof Error ? probeError.message : String(probeError)}`;
+      }
+    } else {
+      error = doctor.error ?? "Docker is not ready for sandbox creation";
+    }
+
+    try {
+      await rm(workspacePath, { recursive: true, force: true });
+      workspaceRemoved = true;
+    } catch (workspaceError) {
+      cleanupErrors.push(`Failed to remove probe workspace: ${workspaceError instanceof Error ? workspaceError.message : String(workspaceError)}`);
+    }
+
+    return {
+      startedAt,
+      finishedAt: nowMs(),
+      runId,
+      workspacePath,
+      ready: doctor.ready && !error,
+      doctor,
+      detachedHost,
+      dockerInspect,
+      dockerLogs,
+      cleanup: {
+        containerName: detachedHost?.sandboxContainerName ?? null,
+        containerRemoved,
+        removeResult,
+        workspaceRemoved,
+        errors: cleanupErrors,
+      },
+      error,
+    };
+  }
+
+  return {
+    engineStart: (projectDir, options) => withRuntimeLifecycle(() => engineStart(projectDir, options)),
+    engineStop: () => withRuntimeLifecycle(() => engineStop()),
+    engineRestart: (options) => withRuntimeLifecycle(() => engineRestart(options)),
+    prepareFreshRuntime: () => withRuntimeLifecycle(() => prepareFreshRuntime()),
+    dispose: () => withRuntimeLifecycle(() => stopAllRuntimeChildren()),
+    runtimeStatus,
+    engineInfo,
+    engineDoctor,
+    engineInstall,
+    ipolloworkServerInfo,
+    ipolloworkServerRestart: (options) => withRuntimeLifecycle(() => ipolloworkServerRestart(options)),
+    orchestratorStatus,
+    orchestratorWorkspaceActivate,
+    orchestratorInstanceDispose,
+    orchestratorStartDetached,
+    opencodeMcpAuth,
+    sandboxDoctor,
+    sandboxStop,
+    sandboxCleanupiPolloWorkContainers,
+    sandboxDebugProbe,
+  };
+}

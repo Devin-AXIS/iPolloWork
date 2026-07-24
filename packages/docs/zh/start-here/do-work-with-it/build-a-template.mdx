@@ -1,0 +1,163 @@
+---
+title: "开发模板"
+description: "为 iPolloWork 打包可复用的设计与 HyperFrames 视频模板"
+---
+
+模板市场让开发者和设计团队把成熟的作品沉淀为起点，而不是手动复制旧项目。导入后的模板会安装到桌面端个人模板库，可在该用户的任意工作站使用。每次“使用”都会复制出独立会话；之后卸载模板也不会删除已经创建的作品。
+
+本文说明当前本地 `.ipwt` 格式。托管模板市场的公开发布 API 尚未开放。
+
+## 选择模板类型
+
+| 用途 | `category` | `surface` | 必须的入口 |
+| --- | --- | --- | --- |
+| 网站、App 原型、幻灯片、海报、卡片、数据报告、杂志文章或其他设计 | `site`、`app`、`slides`、`poster`、`cards`、`report`、`article` 或 `other` | `design` | 任意静态 HTML，建议使用 `entry.html` |
+| HyperFrames 视频 | `video` | `video` | 根目录的 `index.html` |
+
+支持的九个分类为：`site`、`video`、`app`、`slides`、`poster`、`cards`、`report`、`article`、`other`。`other` 用于简历、文档、素材及尚不适合独立分类的设计。视频模板必须同时使用 `category: "video"` 与 `surface: "video"`，入口只能是 `index.html`；导入器会拒绝不匹配的组合。
+
+## 包目录
+
+`.ipwt` 是 ZIP 压缩包。`manifest.json` 必须直接位于压缩包根目录，不能再包一层文件夹。
+
+```text
+acme-growth-brief.ipwt
+├── manifest.json
+├── cover.svg
+├── entry.html                 # 设计模板
+├── design-tokens.css          # 可选，但建议用于设计模板
+└── assets/
+    └── chart.png
+```
+
+视频模板以 `index.html` 代替 `entry.html`：
+
+```text
+acme-product-reveal.ipwt
+├── manifest.json
+├── cover.svg
+├── index.html
+└── assets/
+    └── product.png
+```
+
+当前导入器接受静态 `.html`、`.css`、`.js`、`.mjs`、`.json`、图片、字体、`.txt`、`.md`、`LICENSE` 和 `NOTICE` 文件；会拒绝符号链接、可执行文件、绝对路径、`..` 路径穿越和重复路径。
+
+限制为：压缩包最多 50 MB、解压后最多 200 MB、最多 1,000 个文件，单个文件最多 25 MB。
+
+## 编写 `manifest.json`
+
+每个包都必须有版本化清单。在 v1 中，设计与视频模板的 `kind` 都保持为 `"design"`；由 `surface` 决定进入 iPolloWork 的设计编辑器还是视频编辑器。
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "acme.growth-brief",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "report",
+  "subcategory": "kpi",
+  "style": "editorial",
+  "tags": ["growth", "weekly"],
+  "surface": "design",
+  "title": "Growth Brief",
+  "description": "A concise weekly operating report for product and growth teams.",
+  "cover": "cover.svg",
+  "entry": "entry.html",
+  "source": {
+    "name": "Acme Design",
+    "repository": "https://github.com/acme/design-templates",
+    "license": "MIT"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "--ipw-color-primary", "label": "主色", "type": "color", "group": "theme" },
+      { "id": "--ipw-font-display", "label": "标题字体", "type": "font", "group": "typography" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the sample metrics and date range.",
+    "Update the visual tokens and brand mark.",
+    "Check the final report at its intended width."
+  ],
+  "minimumAppVersion": "0.17.20"
+}
+```
+
+`id` 必须小写，且至少包含一个 `.` 或 `-`，例如 `acme.growth-brief`。本地包不能使用保留命名空间 `ipollowork.*`。版本使用语义化版本号，例如 `1.2.0`；修改已发布的模板时请增加版本号。
+
+`style`、`tags` 和 `surface` 在 v1 中可省略，默认分别为 `"minimal"`、`[]`、`"design"`。仍建议明确填写，以便模板市场正确筛选和展示。受控主风格包括：`minimal`（极简）、`editorial`（编辑感）、`newsprint`（新闻纸）、`swiss`（瑞士网格）、`bold`（大胆）、`soft`（柔和）、`pastel`（粉彩）、`glass`（玻璃感）、`dark`（深色）、`cyber`（赛博科技）、`technical`（技术制图）、`playful`（趣味）、`cinematic`（电影感）、`data`（数据专业）、`brutalist`（粗野主义）、`retro`（复古）、`sketch`（手绘）和 `custom`。每个模板只选一个主风格，次要特征放进 `tags`。
+
+`designSystem.variables` 是模板公开的编辑契约。设计模板的变量 ID 必须是已写入指定 token 样式表的 `--ipw-*` 自定义属性；视频模板变量还必须同时存在于 `data-composition-variables`。这样模板市场、Design 抽屉与 Video Studio 使用同一份声明，不会维护三套互相失效的配置。
+
+## 让设计模板易于编辑
+
+使用自包含的 HTML 入口；可复用视觉变量尽量放到独立样式表。Design 面板更适合语义明确、拥有稳定 ID 与响应式 CSS 的页面，而不是只有一张栅格化大图。
+
+下面的约定不是导入必需项，但有利于智能体和编辑工具理解页面：
+
+```html
+<link rel="stylesheet" href="design-tokens.css" />
+<h1 data-ipw-text="hero.title">Make the signal visible.</h1>
+<article data-ipw-card>...</article>
+```
+
+图片和字体请使用相对路径。建议使用 16:9 SVG 或 PNG 作为封面，以获得干净的市场卡片展示；当前不会强制封面尺寸。
+
+## 开发视频模板
+
+视频模板是 HyperFrames 工程。右侧视频工作室只会读取会话内的 `video/<session-id>/index.html`，因此模板被应用后，可播放的主合成必须位于这个确定路径。只有视频分类使用 HyperFrames 变量；网站、App 原型、幻灯片等其他分类仍是普通 HTML、CSS 与打包资源。
+
+每个视频模板都必须在 `<html>` 上声明非空的 `data-composition-variables` 数组。每个变量必须包含 `id`、`type`、`label` 和 `default`；`enum` 类型还必须提供 `options`。标量变量会自动成为合成根节点上的 CSS 变量；`data-var-text` 与 `data-var-src` 用于直接绑定。
+
+```html
+<html data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Product Reveal"},{"id":"accent","type":"color","label":"Accent","default":"#7c3aed"}]'>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="6">
+      <section id="scene-main" class="clip" data-start="0" data-duration="6" data-track-index="1" style="color: var(--accent)">
+        <h1 id="title" data-var-text="title">Product Reveal</h1>
+      </section>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
+```
+
+不要从模板或 Agent 指令启动第二个预览服务器，内置视频工作室负责预览。导入前请运行与内置视频模板相同的严格校验：
+
+```bash
+npx hyperframes check . --strict --at-transitions
+```
+
+视频素材应放在包内，避免依赖外部浏览器窗口。整个工程被复制到独立会话后也应能独立理解和编辑。网站、App 原型、幻灯片、海报、卡片、数据报告与杂志文章不应加入 `data-composition-variables` 或 HyperFrames 运行时；它们按内置设计模板的方式编写为普通静态 HTML/CSS/资源包即可。
+
+## 打包与导入
+
+在包含 `manifest.json` 的目录中创建 ZIP，并保证文件位于压缩包根目录，然后使用 `.ipwt` 扩展名：
+
+```bash
+zip -r acme-growth-brief.ipwt manifest.json cover.svg entry.html design-tokens.css assets
+```
+
+在 iPolloWork 中点击个人头像，进入 **模板市场**，选择 **导入 .ipwt**。安装前必须选择模板类型，且它必须与包内 `manifest.json` 一致，否则导入会被拒绝。模板会安装到个人库。点击 **使用** 可创建新的会话副本，因此之后卸载或更新库内模板都不会影响已经完成的作品。
+
+## 唯一的会话记录
+
+每次应用模板都会在本地运行时数据库中创建一条唯一的模板会话记录。其中包含会话 ID、界面类型（`design` 或 `video`）、模板 ID 与版本、入口路径、Brief 路径和清单快照。左侧会话图标、右侧编辑器和 Agent 指令都只读取这同一条记录。
+
+不存在浏览器端回退逻辑，也不存在另一套“设计会话”接口。升级后的首次启动会把旧 `template.json` 元数据迁移到这条唯一记录中，并删除旧文件。因此视频模板始终只会打开和编辑自己的 `video/<session-id>/index.html`，不会继承其他对话的工程。
+
+## 发布前检查清单
+
+- 入口、封面与可选 token 文件必须在压缩包内，并使用相对路径引用。
+- 不要放入密钥、凭据、可执行文件、符号链接或构建缓存。
+- 每个包都必须标注真实许可，只能包含有权再分发的资源。
+- 设计模板要测试桌面端和窄屏布局。
+- 视频模板必须执行 `hyperframes check`，只使用 `index.html` 作为工程入口，并确认每个 HyperFrames 变量都有合法类型和默认值。
+- 更新同一模板时保持同一 `id` 并提高 `version`；完全不同的模板使用新的 `id`。

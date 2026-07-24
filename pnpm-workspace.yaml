@@ -1,0 +1,42 @@
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - "@opencode-ai/sdk"
+
+# macOS release jobs build both Apple Silicon and Intel installers on the
+# same runner. Keep both optional native packages available so electron-builder
+# can place the binary that matches the installer target into the app bundle.
+supportedArchitectures:
+  os:
+    - current
+  cpu:
+    - x64
+    - arm64
+
+packages:
+  - "apps/*"
+  - "packages/*"
+
+catalog:
+  react: 19.2.4
+  react-dom: 19.2.4
+
+catalogs:
+  react18:
+    react: 18.2.0
+    react-dom: 18.2.0
+linkWorkspacePackages: true
+preferWorkspacePackages: true
+allowBuilds:
+  "@ffmpeg-installer/darwin-arm64": false
+  "@ffmpeg-installer/darwin-x64": false
+  "@ffprobe-installer/darwin-arm64": false
+  "@ffprobe-installer/darwin-x64": false
+  "@whiskeysockets/baileys": true
+  better-sqlite3: true
+  core-js: true
+  electron: true
+  esbuild: true
+  msw: false
+  node-pty: true
+  protobufjs: true
+  sharp: true

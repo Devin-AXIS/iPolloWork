@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.html-anything.motion-frames",
+  "version": "1.1.5",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "marketing",
+  "style": "cinematic",
+  "tags": [
+    "marketing",
+    "motion",
+    "title card",
+    "loop",
+    "video poster"
+  ],
+  "surface": "video",
+  "title": "Motion Frames",
+  "description": "Motion Frames is an editable video template with a cinematic visual system, reusable brand controls, and polished sample content.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork · HTML Anything",
+    "repository": "https://github.com/nexu-io/html-anything",
+    "license": "Apache-2.0",
+    "revision": "d0efb1eaa3b65c731709981718cd5a0a0d4e8f71",
+    "attribution": "Adapted from HTML Anything / motion-frames; visual system and editable variables added by iPolloWork."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": [
+      {
+        "id": "title",
+        "label": "Title",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "accent",
+        "label": "Accent",
+        "type": "color",
+        "group": "theme"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Replace all sample copy with the user's complete brief.",
+    "Replace the iPolloWork demo logo through the editable brand slot when needed.",
+    "Apply the selected palette through declared variables without breaking the template hierarchy.",
+    "Keep the cinematic visual language and video composition coherent.",
+    "Verify responsive layout, links, overflow and editable text before finishing."
+  ],
+  "minimumAppVersion": "0.17.20"
+}
