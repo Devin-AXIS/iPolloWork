@@ -1,6 +1,6 @@
 # Support
 
-## Where to ask for help
+## Where to Ask for Help
 
 Use the right channel to get faster help:
 
@@ -9,7 +9,7 @@ Use the right channel to get faster help:
 - **Feature requests**: use the Feature issue template.
 - **Security reports**: follow `SECURITY.md` and report privately.
 
-## Before opening an issue
+## Before Opening an Issue
 
 - Search existing issues to avoid duplicates.
 - Include exact iPolloWork/OpenCode versions, OS, and reproduction steps.
@@ -18,6 +18,6 @@ Use the right channel to get faster help:
   - the developer log export
 - Add screenshots when they help explain the flow or failure state.
 
-## Maintainer triage
+## Maintainer Triage
 
 Maintainers use the rubric in `TRIAGE.md` to label and route issues.
