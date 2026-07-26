@@ -100,8 +100,8 @@ type OrgMcpMarketplaceRow = {
 
 type MarketplaceRow = MarketplacePackageRow | BuiltInMarketplaceRow | OrgMcpMarketplaceRow;
 
-export function shouldShowMarketplaceRows(isSignedIn: boolean, activeOrgId: string) {
-  return isSignedIn && activeOrgId.trim().length > 0;
+export function shouldShowMarketplaceRows(isSignedIn: boolean) {
+  return isSignedIn;
 }
 
 export type CloudMarketplacesViewProps = {
@@ -214,7 +214,7 @@ export function CloudMarketplacesView({
   refreshOrgMcpConnections,
   setBuiltInEnabled,
 }: CloudMarketplacesViewProps) {
-  const { activeOrganization: activeOrg, authToken, client, isSignedIn, user } = useCloudSession();
+  const { authToken, client, isSignedIn, user } = useCloudSession();
   const connectEnabled = useConnectEnabled();
   const [busy, setBusy] = React.useState(false);
   const [actionId, setActionId] = React.useState<string | null>(null);
@@ -228,8 +228,7 @@ export function CloudMarketplacesView({
   const [detailLoadingId, setDetailLoadingId] = React.useState<string | null>(null);
   const [detailError, setDetailError] = React.useState<string | null>(null);
   const [highlightPluginName, setHighlightPluginName] = React.useState<string | null>(null);
-  const activeOrgId = activeOrg?.id ?? "";
-  const canShowRows = shouldShowMarketplaceRows(isSignedIn, activeOrgId);
+  const canShowRows = shouldShowMarketplaceRows(isSignedIn);
 
   // Listen for "open marketplace plugin" requests from notifications.
   React.useEffect(() => {
@@ -377,7 +376,7 @@ export function CloudMarketplacesView({
 
   const refresh = React.useCallback(
     async (quiet = false) => {
-      if (!authToken.trim() || !activeOrgId) return;
+      if (!authToken.trim()) return;
 
       setBusy(true);
       if (!quiet) setActionError(null);
@@ -390,8 +389,8 @@ export function CloudMarketplacesView({
           const count = extensions.cloudOrgMarketplaces().reduce((total, marketplace) => total + marketplace.plugins.length, 0);
           toast.info(
             count > 0
-              ? `Loaded ${count} marketplace extension${count === 1 ? "" : "s"} for ${activeOrg?.name ?? t("den.active_org_title")}.`
-              : `No marketplace extensions are available for ${activeOrg?.name ?? t("den.active_org_title")}.`,
+              ? `Loaded ${count} marketplace extension${count === 1 ? "" : "s"}.`
+              : "No marketplace extensions are available.",
           );
         }
       } catch (error) {
@@ -404,8 +403,6 @@ export function CloudMarketplacesView({
     },
     [
       extensions,
-      activeOrg,
-      activeOrgId,
       authToken,
       session.syncCurrentDenSettings,
       refreshOrgMcpConnections,
@@ -413,18 +410,18 @@ export function CloudMarketplacesView({
   );
 
   React.useEffect(() => {
-    if (!user || !activeOrgId) return;
+    if (!user) return;
     void refresh(true);
-  }, [activeOrgId, refresh, user]);
+  }, [refresh, user]);
 
   React.useEffect(() => {
-    if (!detailRow || detailRow.source !== "cloud" || !isSignedIn || !activeOrgId) return;
+    if (!detailRow || detailRow.source !== "cloud" || !isSignedIn) return;
     if (resolvedPlugins[detailRow.plugin.id]) return;
 
     let cancelled = false;
     setDetailLoadingId(detailRow.plugin.id);
     setDetailError(null);
-    void client.getOrgPluginResolved(activeOrgId, detailRow.plugin)
+    void client.getOrgPluginResolved("", detailRow.plugin)
       .then((resolved) => {
         if (cancelled) return;
         setResolvedPlugins((current) => ({ ...current, [detailRow.plugin.id]: resolved }));
@@ -439,7 +436,7 @@ export function CloudMarketplacesView({
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, client, detailRow, isSignedIn, resolvedPlugins]);
+  }, [client, detailRow, isSignedIn, resolvedPlugins]);
 
   const importPlugin = React.useCallback(
     async (marketplaceId: string | null, plugin: DenOrgPlugin) => {
@@ -629,7 +626,7 @@ export function CloudMarketplacesView({
 
       {!busy && displayRows.length === 0 ? (
         <SettingsListEmptyState>
-          {!isSignedIn ? t("settings.marketplace.signin_empty") : activeOrgId ? t("settings.marketplace.empty") : t("settings.marketplace.choose_org")}
+          {!isSignedIn ? t("settings.marketplace.signin_empty") : t("settings.marketplace.empty")}
         </SettingsListEmptyState>
       ) : null}
 

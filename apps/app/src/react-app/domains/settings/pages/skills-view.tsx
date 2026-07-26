@@ -319,18 +319,9 @@ export function SkillsView(props: SkillsViewProps) {
 
   const shareTeamOrgLabel = useMemo(() => {
     cloudSessionNonce;
-    const name = readDenSettings().activeOrgName?.trim();
-    return name || t("skills.share_team_org_fallback");
+    return "公共市场";
   }, [cloudSessionNonce]);
 
-  const shareTeamDisabledReason = useMemo(() => {
-    if (!shareCloudSignedIn) return null;
-    const settings = readDenSettings();
-    if (!settings.activeOrgId?.trim() && !settings.activeOrgSlug?.trim()) {
-      return t("skills.share_team_choose_org");
-    }
-    return null;
-  }, [shareCloudSignedIn]);
 
   const skills = extensions.skills();
   const hubSkills = extensions.hubSkills();
@@ -406,14 +397,12 @@ export function SkillsView(props: SkillsViewProps) {
 
   const cloudOrgLabel = useMemo(() => {
     denUiTick;
-    const name = readDenSettings().activeOrgName?.trim();
-    return name || t("skills.cloud_org_fallback");
+    return "公共市场";
   }, [denUiTick]);
 
   const cloudSessionReady = useMemo(() => {
     denUiTick;
-    const settings = readDenSettings();
-    return Boolean(settings.authToken?.trim() && settings.activeOrgId?.trim());
+    return Boolean(readDenSettings().authToken?.trim());
   }, [denUiTick]);
 
   const cloudNeedsSignIn = useMemo(() => {
@@ -564,7 +553,7 @@ export function SkillsView(props: SkillsViewProps) {
   }, [props]);
 
   const publishSkillToTeam = useCallback(async () => {
-    if (!shareTarget || props.busy || shareTeamBusy || shareTeamDisabledReason) return;
+    if (!shareTarget || props.busy || shareTeamBusy) return;
     setShareTeamBusy(true);
     setShareTeamError(null);
     setShareTeamSuccess(null);
@@ -588,7 +577,7 @@ export function SkillsView(props: SkillsViewProps) {
     } finally {
       setShareTeamBusy(false);
     }
-  }, [extensions, maskError, props.busy, shareTarget, shareTeamBusy, shareTeamDisabledReason]);
+  }, [extensions, maskError, props.busy, shareTarget, shareTeamBusy]);
 
   const openSkill = useCallback(
     async (skill: SkillCard) => {
@@ -1212,9 +1201,6 @@ export function SkillsView(props: SkillsViewProps) {
                 </div>
                 {shareTeamError?.trim() ? <div className={`mt-4 ${modalNoticeErrorClass}`}>{shareTeamError}</div> : null}
                 {shareTeamSuccess?.trim() ? <div className={`mt-4 ${modalNoticeSuccessClass}`}>{shareTeamSuccess}</div> : null}
-                {shareCloudSignedIn && shareTeamDisabledReason?.trim() ? (
-                  <div className="mt-4 text-[12px] text-dls-secondary">{shareTeamDisabledReason}</div>
-                ) : null}
                 {shareCloudSignedIn ? (
                   <div className="mt-4">
                     <span id="skills-share-hub-label" className="mb-1.5 block text-[13px] font-medium text-dls-text">
@@ -1238,7 +1224,7 @@ export function SkillsView(props: SkillsViewProps) {
                     }
                     void publishSkillToTeam();
                   }}
-                  disabled={shareCloudSignedIn ? Boolean(shareTeamDisabledReason) || shareTeamBusy || Boolean(shareTeamSuccess?.trim()) : false}
+                  disabled={shareCloudSignedIn ? shareTeamBusy || Boolean(shareTeamSuccess?.trim()) : false}
                   className={`${pillPrimaryClass} mt-4 w-full`}
                 >
                   {!shareCloudSignedIn

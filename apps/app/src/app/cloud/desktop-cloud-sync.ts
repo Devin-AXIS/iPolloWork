@@ -106,13 +106,12 @@ async function runDesktopCloudSync(input: {
 }): Promise<iPolloWorkDesktopCloudSyncResult | null> {
   const settings = readDenSettings();
   const token = settings.authToken?.trim() ?? "";
-  const activeOrgId = settings.activeOrgId?.trim() ?? "";
-  if (!token || !activeOrgId) return null;
+  if (!token) return null;
 
   const snapshot = await createDenClient({
     baseUrl: settings.baseUrl,
     token,
-  }).getResourceSnapshot(activeOrgId);
+  }).getResourceSnapshot("");
 
   return input.ipolloworkClient.syncDesktopCloud(input.workspaceId, snapshot);
 }

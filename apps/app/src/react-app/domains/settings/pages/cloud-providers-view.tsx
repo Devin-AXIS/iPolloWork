@@ -46,12 +46,11 @@ export function CloudProvidersView({
   removeCloudProvider,
   session,
 }: CloudProvidersViewProps) {
-  const { activeOrganization: activeOrg, authToken, isSignedIn, user } = useCloudSession();
+  const { authToken, isSignedIn, user } = useCloudSession();
   const [busy, setBusy] = React.useState(false);
   const [actionId, setActionId] = React.useState<string | null>(null);
   const [actionKind, setActionKind] = React.useState<ProviderActionKind | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
-  const activeOrgId = activeOrg?.id ?? "";
 
   const rows = React.useMemo<CloudProviderRow[]>(() => {
     const nextRows: CloudProviderRow[] = cloudOrgProviders.map((provider) => {
@@ -92,7 +91,7 @@ export function CloudProvidersView({
 
   const refresh = React.useCallback(
     async (quiet = false) => {
-      if (!authToken.trim() || !activeOrgId) return;
+      if (!authToken.trim()) return;
 
       setBusy(true);
       setActionError(null);
@@ -106,8 +105,8 @@ export function CloudProvidersView({
         if (!quiet) {
           toast.info(
             items.length > 0
-              ? `Loaded ${items.length} cloud provider${items.length === 1 ? "" : "s"} for ${activeOrg?.name ?? t("den.active_org_title")}.`
-              : `No cloud providers are available for ${activeOrg?.name ?? t("den.active_org_title")}.`,
+              ? `Loaded ${items.length} cloud provider${items.length === 1 ? "" : "s"}.`
+              : "No cloud providers are available.",
           );
         }
       } catch (error) {
@@ -121,17 +120,15 @@ export function CloudProvidersView({
     [
       refreshCloudOrgProviders,
       refreshImportedCloudProviders,
-      activeOrg,
-      activeOrgId,
       authToken,
       session.syncCurrentDenSettings,
     ],
   );
 
   React.useEffect(() => {
-    if (!user || !activeOrgId) return;
+    if (!user) return;
     void refresh(true);
-  }, [activeOrgId, refresh, user]);
+  }, [refresh, user]);
 
   const importProvider = React.useCallback(
     async (cloudProviderId: string, providerName: string) => {

@@ -12,7 +12,7 @@ describe("Den desktop config client", () => {
     });
   });
 
-  test("pins desktop config requests to the active organization", async () => {
+  test("does not send a Cloud organization header", async () => {
     const headers: Headers[] = [];
     const fetchMock: typeof fetch = async (_input, init) => {
       headers.push(new Headers(init?.headers));
@@ -29,6 +29,6 @@ describe("Den desktop config client", () => {
 
     await createDenClient({ baseUrl: "https://den.test", token: "tok_test" }).getDesktopConfig("org_test");
 
-    expect(headers[0]?.get("x-ipollowork-legacy-org-id")).toBe("org_test");
+    expect(headers[0]?.get("x-ipollowork-legacy-org-id")).toBeNull();
   });
 });

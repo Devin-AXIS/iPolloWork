@@ -369,7 +369,7 @@ export function CloudSkillsSection({
   onRemoveSkill,
   onSyncSkill,
 }: CloudSkillsSectionProps) {
-  const { hasActiveOrg } = useCloudSession();
+  const { isSignedIn } = useCloudSession();
   const [searchQuery, setSearchQuery] = React.useState("");
   const visibleRows = useSearch({ items: rows, keys: skillSearchKeys, query: searchQuery });
   const skillGroups = [
@@ -391,7 +391,7 @@ export function CloudSkillsSection({
         <SettingsSectionHeaderActions>
           <RefreshButton
             busy={busy}
-            disabled={[busy, !hasActiveOrg].some(Boolean)}
+            disabled={[busy, !isSignedIn].some(Boolean)}
             onRefresh={onRefresh}
           >
             {t("den.refresh")}
@@ -405,7 +405,7 @@ export function CloudSkillsSection({
 
       {!busy && rows.length === 0 ? (
         <SettingsListEmptyState>
-          {hasActiveOrg ? t("den.no_cloud_skills") : t("den.choose_org_for_skills")}
+          {isSignedIn ? t("den.no_cloud_skills") : t("den.signin_title")}
         </SettingsListEmptyState>
       ) : null}
 
@@ -483,7 +483,7 @@ export function MarketplacePluginsSection({
   onRefresh,
   onSelectMarketplace,
 }: MarketplacePluginsSectionProps) {
-  const { hasActiveOrg } = useCloudSession();
+  const { isSignedIn } = useCloudSession();
   const [searchQuery, setSearchQuery] = React.useState("");
   const selectedMarketplace =
     marketplaces.find((entry) => entry.marketplace.id === activeMarketplaceId) ?? marketplaces[0] ?? null;
@@ -509,7 +509,7 @@ export function MarketplacePluginsSection({
         <SettingsSectionHeaderActions>
           <RefreshButton
             busy={busy}
-            disabled={[busy, !hasActiveOrg].some(Boolean)}
+            disabled={[busy, !isSignedIn].some(Boolean)}
             onRefresh={onRefresh}
           >
             {t("den.refresh")}
@@ -523,7 +523,7 @@ export function MarketplacePluginsSection({
 
       {!busy && marketplaces.length === 0 ? (
         <SettingsListEmptyState>
-          {hasActiveOrg ? t("settings.cloud.no_marketplaces") : t("settings.cloud.choose_org_for_marketplaces")}
+          {isSignedIn ? t("settings.cloud.no_marketplaces") : t("den.signin_title")}
         </SettingsListEmptyState>
       ) : null}
 
@@ -620,7 +620,7 @@ export function CloudProvidersSection({
   onRemove,
   onSync,
 }: CloudProvidersSectionProps) {
-  const { hasActiveOrg } = useCloudSession();
+  const { isSignedIn } = useCloudSession();
   const [searchQuery, setSearchQuery] = React.useState("");
   const visibleRows = useSearch({ items: rows, keys: nameSearchKeys, query: searchQuery });
   const providerGroups = [
@@ -642,7 +642,7 @@ export function CloudProvidersSection({
         <SettingsSectionHeaderActions>
           <RefreshButton
             busy={busy}
-            disabled={[busy, !hasActiveOrg].some(Boolean)}
+            disabled={[busy, !isSignedIn].some(Boolean)}
             onRefresh={onRefresh}
           >
             {t("den.refresh")}
@@ -654,7 +654,7 @@ export function CloudProvidersSection({
 
       {!busy && rows.length === 0 ? (
         <SettingsListEmptyState>
-          {hasActiveOrg ? t("den.no_cloud_providers") : t("den.choose_org_for_providers")}
+          {isSignedIn ? t("den.no_cloud_providers") : t("den.signin_title")}
         </SettingsListEmptyState>
       ) : null}
 

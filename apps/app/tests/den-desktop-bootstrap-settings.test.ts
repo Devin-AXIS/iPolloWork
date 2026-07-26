@@ -97,9 +97,6 @@ describe("desktop Den bootstrap settings", () => {
     writeDenSettings({
       baseUrl: "https://saved.example.com",
       authToken: "tok_test",
-      activeOrgId: null,
-      activeOrgSlug: null,
-      activeOrgName: null,
     });
 
     expect(bootstrapConfig.baseUrl).toBe("https://saved.example.com");
@@ -115,9 +112,6 @@ describe("desktop Den bootstrap settings", () => {
     writeDenSettings({
       baseUrl: "https://bootstrap.example.com",
       authToken: "first-session",
-      activeOrgId: "org_test",
-      activeOrgSlug: null,
-      activeOrgName: null,
     });
     expect(window.localStorage.getItem(CLOUD_MCP_SYNC_MARKER_STORAGE_KEY)).toBeNull();
 
@@ -125,9 +119,6 @@ describe("desktop Den bootstrap settings", () => {
     writeDenSettings({
       baseUrl: "https://bootstrap.example.com",
       authToken: "next-session",
-      activeOrgId: "org_test",
-      activeOrgSlug: null,
-      activeOrgName: null,
     });
     expect(window.localStorage.getItem(CLOUD_MCP_SYNC_MARKER_STORAGE_KEY)).toBeNull();
 
@@ -135,9 +126,6 @@ describe("desktop Den bootstrap settings", () => {
     writeDenSettings({
       baseUrl: "https://next.example.com",
       authToken: "next-session",
-      activeOrgId: "org_test",
-      activeOrgSlug: null,
-      activeOrgName: null,
     });
     expect(window.localStorage.getItem(CLOUD_MCP_SYNC_MARKER_STORAGE_KEY)).toBeNull();
 

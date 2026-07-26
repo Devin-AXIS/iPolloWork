@@ -17,7 +17,6 @@ const WORKSPACE_ID = "workspace_1";
 const SETTINGS: DenSettings = {
   baseUrl: "https://app.ipollowork.test",
   authToken: "session-token",
-  activeOrgId: "organization_1",
 };
 const MINTED: DenMcpToken = {
   token: "mcp-token",
@@ -78,12 +77,12 @@ describe("session MCP maintenance", () => {
     expect(readCloudMcpSyncMarker({
       denBaseUrl: SETTINGS.baseUrl,
       serverBaseUrl: client.baseUrl,
-      orgId: SETTINGS.activeOrgId ?? "",
+      orgId: "personal",
       workspaceId: WORKSPACE_ID,
     })).toEqual({
       denBaseUrl: SETTINGS.baseUrl,
       serverBaseUrl: client.baseUrl,
-      orgId: "organization_1",
+      orgId: "personal",
       workspaceId: WORKSPACE_ID,
       expiresAt: MINTED.expiresAt,
     });

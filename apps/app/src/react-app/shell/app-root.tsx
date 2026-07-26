@@ -12,7 +12,6 @@ import {
   setDenBootstrapConfig,
   writeDenSettings,
 } from "../../app/lib/den";
-import { organizationForWorkspace, shouldSyncOrganizationForWorkspace } from "../../app/cloud/organization-workspaces";
 import { exchangeHandoffAndSignIn } from "../../app/lib/den-handoff";
 import {
   denSettingsChangedEvent,
@@ -24,7 +23,6 @@ import { localeChangedEvent, t } from "../../i18n";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { ForcedSigninPage } from "../domains/cloud/forced-signin-page";
 import { HelpRoute } from "../domains/help/help-route";
-import { OrgOnboardingPage } from "../domains/cloud/org-onboarding-page";
 import { NewProvidersListener } from "./new-providers-listener";
 import { useDesktopFontZoomBehavior } from "./font-zoom";
 import { LoadingOverlay } from "./loading-overlay";
@@ -46,33 +44,6 @@ import { WelcomeRoute } from "./welcome-route";
 type DenSigninGateProps = {
   children: ReactNode;
 };
-
-function CloudWorkspaceRouteSync() {
-  const location = useLocation();
-  const denAuth = useDenAuth();
-
-  useEffect(() => {
-    if (!denAuth.isSignedIn) return;
-    const match = location.pathname.match(/^\/workspace\/([^/]+)/);
-    const workspaceId = match?.[1] ? decodeURIComponent(match[1]) : "";
-    const organization = workspaceId ? organizationForWorkspace(workspaceId) : null;
-    if (!organization) return;
-    if (!shouldSyncOrganizationForWorkspace(organization.id)) return;
-    const settings = readDenSettings();
-    if (settings.activeOrgId === organization.id) return;
-
-    writeDenSettings({
-      ...settings,
-      activeOrgId: organization.id,
-      activeOrgSlug: organization.slug,
-      activeOrgName: organization.name,
-    });
-    void createDenClient({ baseUrl: settings.baseUrl, token: settings.authToken })
-      .setActiveOrganization({ organizationId: organization.id });
-  }, [denAuth.isSignedIn, location.pathname]);
-
-  return null;
-}
 
 const readRequireSigninSnapshot = () => readDenBootstrapConfig().requireSignin;
 
@@ -115,25 +86,14 @@ function DenSigninGate({ children }: DenSigninGateProps) {
     const path = location.pathname.toLowerCase();
     const onSignin = path === "/signin" || path.startsWith("/signin/");
 
-    const onOnboarding = path === "/onboarding" || path.startsWith("/onboarding/");
-    const hasPreparedBootstrap = Boolean(readDenBootstrapConfig().prepared);
-
     if (requireSignin) {
       if (!denAuth.isSignedIn && !onSignin) {
         navigate("/signin", { replace: true });
       } else if (denAuth.isSignedIn && onSignin) {
-        // Signed in — route to onboarding so the user sees their org resources.
-        navigate("/onboarding", { replace: true });
+        navigate("/session", { replace: true });
       }
     } else if (onSignin) {
       navigate("/session", { replace: true });
-    } else if (!denAuth.isSignedIn && hasPreparedBootstrap && !onOnboarding) {
-      navigate("/onboarding", { replace: true });
-    }
-
-    // If on /onboarding but not signed in, bounce to signin or session
-    if (onOnboarding && !denAuth.isSignedIn && !hasPreparedBootstrap) {
-      navigate(requireSignin ? "/signin" : "/session", { replace: true });
     }
   }, [
     denAuth.isSignedIn,
@@ -143,26 +103,10 @@ function DenSigninGate({ children }: DenSigninGateProps) {
     requireSignin,
   ]);
 
-  // After a fresh sign-in, navigate to the onboarding page so the
-  // user sees what their org provides.
-  // Poll for activeOrgId (set asynchronously by refreshOrgs) rather
-  // than using a fixed delay — handles both fast and slow org lookups.
   useEffect(() => {
     const handler = (event: WindowEventMap[typeof denSessionUpdatedEvent]) => {
       if (event.detail?.status !== "success") return;
-      let attempts = 0;
-      const check = () => {
-        attempts++;
-        const settings = readDenSettings();
-        if (settings.authToken?.trim() && settings.activeOrgId?.trim()) {
-          navigate("/onboarding", { replace: true });
-        } else if (attempts < 10) {
-          // Org not selected yet — retry (max ~5 seconds)
-          setTimeout(check, 500);
-        }
-      };
-      // First check after a short delay for the auth to settle
-      setTimeout(check, 500);
+      navigate("/session", { replace: true });
     };
     window.addEventListener(denSessionUpdatedEvent, handler);
     return () => window.removeEventListener(denSessionUpdatedEvent, handler);
@@ -180,7 +124,6 @@ function DenSigninGate({ children }: DenSigninGateProps) {
 
   return (
     <>
-      <CloudWorkspaceRouteSync />
       {denAuth.status === "unavailable" && !cloudUnavailableDismissed ? (
         <div className="pointer-events-none fixed inset-x-0 top-3 z-[100] flex justify-center px-4">
           <div
@@ -380,14 +323,6 @@ export function AppRoot() {
                 element={
                   <DevProfiler id="SigninRoute">
                     <ForcedSigninPage developerMode={false} />
-                  </DevProfiler>
-                }
-              />
-              <Route
-                path="/onboarding"
-                element={
-                  <DevProfiler id="OrgOnboarding">
-                    <OrgOnboardingPage />
                   </DevProfiler>
                 }
               />

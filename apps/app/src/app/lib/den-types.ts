@@ -11,9 +11,6 @@ export type DenSettings = {
   baseUrl: string;
   apiBaseUrl?: string;
   authToken?: string | null;
-  activeOrgId?: string | null;
-  activeOrgSlug?: string | null;
-  activeOrgName?: string | null;
 };
 
 export type DenUser = {

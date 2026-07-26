@@ -807,7 +807,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const settings = readDenSettings();
     return [
       settings.baseUrl,
-      settings.activeOrgId?.trim() ?? "",
+      "personal",
       settings.authToken?.trim() ?? "",
     ].join("::");
   };
@@ -816,7 +816,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const settings = readDenSettings();
     const loadKey = getCloudOrgProvidersKey();
     const token = settings.authToken?.trim() ?? "";
-    const orgId = settings.activeOrgId?.trim() ?? "";
 
     if (!optionsArg?.force && cloudOrgProvidersLoadKey === loadKey) {
       return state.cloudOrgProviders;
@@ -826,7 +825,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       return cloudOrgProvidersInFlight;
     }
 
-    if (!token || !orgId) {
+    if (!token) {
       setStateField("cloudOrgProviders", []);
       cloudOrgProvidersLoadKey = loadKey;
       return [];
@@ -837,7 +836,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       token,
     });
     const request = client
-      .listOrgLlmProviders(orgId)
+      .listOrgLlmProviders("")
       .then((providers) => {
         setStateField("cloudOrgProviders", providers);
         cloudOrgProvidersLoadKey = loadKey;
@@ -1486,9 +1485,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
     const settings = readDenSettings();
     const token = settings.authToken?.trim() ?? "";
-    const orgId = settings.activeOrgId?.trim() ?? "";
-    if (!token || !orgId) {
-      throw new Error("Sign in to iPolloWork Cloud and choose an organization first.");
+    if (!token) {
+      throw new Error("Sign in to iPolloWork Cloud first.");
     }
 
     try {
@@ -1496,7 +1494,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         baseUrl: settings.baseUrl,
         token,
       });
-      const provider = await den.getOrgLlmProviderConnection(orgId, cloudProviderId);
+      const provider = await den.getOrgLlmProviderConnection("", cloudProviderId);
       assertProviderAllowedByDesktopPolicy(provider.providerId);
       const existingImported = state.importedCloudProviders[cloudProviderId] ?? null;
       const localProviderId = getCloudManagedProviderId(provider);
@@ -1645,7 +1643,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const settings = readDenSettings();
     return [
       settings.baseUrl,
-      settings.activeOrgId?.trim() ?? "",
+      "personal",
       settings.authToken?.trim() ?? "",
       options.selectedWorkspaceDisplay().workspaceType,
       options.selectedWorkspaceRoot().trim(),
@@ -1661,7 +1659,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     return Boolean(
       options.client() &&
         settings.authToken?.trim() &&
-        settings.activeOrgId?.trim() &&
         workspaceTarget,
     );
   };

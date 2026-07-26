@@ -155,15 +155,13 @@ export function writeWorkspaceProjectDimension(
   safeSet(WORKSPACE_PROJECT_DIMENSION_KEY, Object.keys(map).length ? JSON.stringify(map) : null);
 }
 
-// Provider/org onboarding flags owned elsewhere but cleared together with the
+// Provider onboarding flags owned elsewhere but cleared together with the
 // workspace-memory keys so a "reset onboarding" (Settings → Recovery) or a
 // recovery-disabled dev launch produces a genuinely fresh first run — the
 // first-run loader arms, the first session auto-creates, and the provider step
 // (not the iPolloWork Models startup promo) shows on the first send.
 const ONBOARDING_FLAG_KEYS = [
   "ipollowork.acknowledgedProviders",
-  "ipollowork.orgOnboardingSeen",
-  "ipollowork.reloadAfterOrgOnboarding",
   "ipollowork.seenProviderIds",
 ];
 const PREFERENCES_KEY = "ipollowork.preferences";

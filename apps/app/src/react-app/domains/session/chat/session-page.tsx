@@ -1918,7 +1918,6 @@ export function SessionPage(props: SessionPageProps) {
                           onClick={() => {
                             try {
                               window.localStorage.removeItem("ipollowork.acknowledgedProviders");
-                              window.localStorage.removeItem("ipollowork.orgOnboardingSeen");
                             } catch {
                               // Browser storage may be unavailable in hardened runtimes.
                             }

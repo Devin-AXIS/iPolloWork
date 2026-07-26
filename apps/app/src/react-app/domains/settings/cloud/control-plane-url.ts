@@ -47,9 +47,6 @@ export async function saveControlPlaneUrl(value: string) {
     {
       baseUrl: persisted.baseUrl,
       authToken: null,
-      activeOrgId: null,
-      activeOrgSlug: null,
-      activeOrgName: null,
     },
     { persistBootstrap: false },
   );

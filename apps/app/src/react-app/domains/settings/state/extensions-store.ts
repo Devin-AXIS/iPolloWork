@@ -511,7 +511,7 @@ export function createExtensionsStore(options: {
 
   const refreshSnapshot = () => {
     const workspaceContextKey = getWorkspaceContextKey();
-    const orgId = readDenSettings().activeOrgId?.trim() ?? "";
+    const accountScope = "personal";
     snapshot = {
       workspaceContextKey,
       skills: state.skills,
@@ -540,7 +540,7 @@ export function createExtensionsStore(options: {
       skillsStale: state.skillsContextKey !== workspaceContextKey,
       pluginsStale: state.pluginsContextKey !== workspaceContextKey,
       hubSkillsStale: state.hubSkillsContextKey !== workspaceContextKey,
-      cloudOrgSkillsStale: state.cloudOrgSkillsContextKey !== `${workspaceContextKey}::${orgId}`,
+      cloudOrgSkillsStale: state.cloudOrgSkillsContextKey !== `${workspaceContextKey}::${accountScope}`,
     };
   };
 
@@ -1351,8 +1351,7 @@ export function createExtensionsStore(options: {
   };
 
   const getCurrentCloudOrgLoadKey = () => {
-    const orgId = readDenSettings().activeOrgId?.trim() ?? "";
-    return `${getWorkspaceContextKey()}::${orgId}`;
+    return `${getWorkspaceContextKey()}::personal`;
   };
 
   const touch = () => {
@@ -1471,8 +1470,7 @@ export function createExtensionsStore(options: {
     const wk = getWorkspaceContextKey();
     const settings = readDenSettings();
     const token = settings.authToken?.trim() ?? "";
-    const orgId = settings.activeOrgId?.trim() ?? "";
-    const loadKey = `${wk}::${orgId}`;
+    const loadKey = `${wk}::personal`;
 
     if (!root) {
       mutateState((current) => ({
@@ -1503,7 +1501,7 @@ export function createExtensionsStore(options: {
     try {
       setStateField("cloudOrgSkillsStatus", null);
 
-      if (!token || !orgId) {
+      if (!token) {
         mutateState((current) => ({
           ...current,
           cloudOrgSkills: [],
@@ -1517,7 +1515,7 @@ export function createExtensionsStore(options: {
       }
 
       const client = createDenClient({ baseUrl: settings.baseUrl, token });
-      const catalog = await fetchDenOrgSkillsCatalog(client, orgId);
+      const catalog = await fetchDenOrgSkillsCatalog(client, "");
       if (refreshCloudOrgSkillsAborted || getCurrentCloudOrgLoadKey() !== loadKey) return;
       mutateState((current) => ({
         ...current,
@@ -1548,8 +1546,7 @@ export function createExtensionsStore(options: {
     const wk = getWorkspaceContextKey();
     const settings = readDenSettings();
     const token = settings.authToken?.trim() ?? "";
-    const orgId = settings.activeOrgId?.trim() ?? "";
-    const loadKey = `${wk}::${orgId}`;
+    const loadKey = `${wk}::personal`;
 
     if (loadKey !== cloudOrgMarketplacesLoadKey) {
       cloudOrgMarketplacesLoaded = false;
@@ -1568,7 +1565,7 @@ export function createExtensionsStore(options: {
     try {
       setStateField("cloudOrgMarketplacesStatus", null);
 
-      if (!token || !orgId) {
+      if (!token) {
         mutateState((current) => ({
           ...current,
           cloudOrgMarketplaces: [],
@@ -1581,9 +1578,9 @@ export function createExtensionsStore(options: {
       }
 
       const client = createDenClient({ baseUrl: settings.baseUrl, token });
-      const marketplaces = await client.listOrgMarketplaces(orgId);
+      const marketplaces = await client.listOrgMarketplaces("");
       const resolved = await Promise.all(
-        marketplaces.map((marketplace) => client.getOrgMarketplaceResolved(orgId, marketplace.id)),
+        marketplaces.map((marketplace) => client.getOrgMarketplaceResolved("", marketplace.id)),
       );
       if (refreshCloudOrgMarketplacesAborted || getCurrentCloudOrgLoadKey() !== loadKey) return;
       mutateState((current) => ({
@@ -1654,10 +1651,9 @@ export function createExtensionsStore(options: {
     try {
       const settings = readDenSettings();
       const token = settings.authToken?.trim() ?? "";
-      const orgId = settings.activeOrgId?.trim() ?? "";
-      if (!token || !orgId) throw new Error("Sign in to iPolloWork Cloud and choose an organization first.");
+      if (!token) throw new Error("Sign in to iPolloWork Cloud first.");
       const client = createDenClient({ baseUrl: settings.baseUrl, token });
-      const resolved = await client.getOrgPluginResolved(orgId, plugin);
+      const resolved = await client.getOrgPluginResolved("", plugin);
       const target = await resolveWorkspaceServerTarget();
       if (target.ipolloworkClient && target.ipolloworkWorkspaceId) {
         const marketplace = marketplaceId ? findCloudMarketplace(marketplaceId) : null;

@@ -9,7 +9,6 @@ import {
 import { t } from "@/i18n";
 import { useNotificationStore } from "@/react-app/kernel/notification-store";
 import { notifyEvent } from "./notifications";
-import { orgOnboardingVisibilityEvent } from "./reload-coordinator";
 
 const SEEN_KEY = "ipollowork.seenProviderIds";
 const PENDING_MODEL_PICKER_KEY = "ipollowork.pendingModelPickerProviderIds";
@@ -87,8 +86,6 @@ const EMPTY_STATE: ListenerState = {
  */
 export function NewProvidersListener() {
   const [state, setState] = useState<ListenerState>(EMPTY_STATE);
-  const [orgOnboardingVisible, setOrgOnboardingVisible] = useState(false);
-  const [pendingProviders, setPendingProviders] = useState<NewProviderInfo[]>([]);
 
   const showProviders = useCallback((detail: NewProvidersEventDetail) => {
     const seen = readSeenProviderIds();
@@ -115,32 +112,11 @@ export function NewProvidersListener() {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<NewProvidersEventDetail>).detail;
       if (detail.providers.length === 0 && !detail.newModelCount) return;
-      if (orgOnboardingVisible) {
-        setPendingProviders((current) => [
-          ...current,
-          ...detail.providers.filter((p) => !current.some((existing) => existing.id === p.id)),
-        ]);
-        return;
-      }
       showProviders(detail);
     };
     window.addEventListener(newProvidersEvent, handler);
     return () => window.removeEventListener(newProvidersEvent, handler);
-  }, [orgOnboardingVisible, showProviders]);
-
-  useEffect(() => {
-    const handler = (event: Event) => {
-      setOrgOnboardingVisible(Boolean((event as CustomEvent<{ visible?: boolean }>).detail?.visible));
-    };
-    window.addEventListener(orgOnboardingVisibilityEvent, handler);
-    return () => window.removeEventListener(orgOnboardingVisibilityEvent, handler);
-  }, []);
-
-  useEffect(() => {
-    if (orgOnboardingVisible || pendingProviders.length === 0) return;
-    showProviders({ providers: pendingProviders, source: "cloud_sync" });
-    setPendingProviders([]);
-  }, [orgOnboardingVisible, pendingProviders, showProviders]);
+  }, [showProviders]);
 
   // Write the accumulated summary into the notification center. The dedupe
   // key keeps one unread entry that absorbs repeated provider syncs.

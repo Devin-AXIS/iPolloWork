@@ -102,8 +102,7 @@ export function useOrgMcpConnections() {
   const refresh = useCallback(async () => {
     const settings = readDenSettings();
     const token = settings.authToken?.trim() ?? "";
-    const orgId = settings.activeOrgId?.trim() ?? "";
-    if (!token || !orgId) {
+    if (!token) {
       setConnections([]);
       return;
     }
@@ -112,7 +111,7 @@ export function useOrgMcpConnections() {
     setError(null);
     try {
       const client = createDenClient({ baseUrl: settings.baseUrl, token });
-      const result = await client.listMcpConnections(orgId, "usable");
+      const result = await client.listMcpConnections("", "usable");
       setConnections(result);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load organization MCP connections.");
@@ -124,13 +123,12 @@ export function useOrgMcpConnections() {
   const connect = useCallback(async (connectionId: string) => {
     const settings = readDenSettings();
     const token = settings.authToken?.trim() ?? "";
-    const orgId = settings.activeOrgId?.trim() ?? "";
-    if (!token || !orgId) return;
+    if (!token) return;
 
     setConnectingId(connectionId);
     try {
       const client = createDenClient({ baseUrl: settings.baseUrl, token });
-      const result = await client.startMcpConnectionConnect(orgId, connectionId);
+      const result = await client.startMcpConnectionConnect("", connectionId);
       if (result.status === "connected") {
         await refresh();
         setConnectingId(null);
@@ -153,8 +151,7 @@ export function useOrgMcpConnections() {
         }
         const refreshedSettings = readDenSettings();
         const refreshedToken = refreshedSettings.authToken?.trim() ?? "";
-        const refreshedOrgId = refreshedSettings.activeOrgId?.trim() ?? "";
-        if (!refreshedToken || !refreshedOrgId) {
+        if (!refreshedToken) {
           stopPolling();
           setConnectingId(null);
           return;
@@ -164,7 +161,7 @@ export function useOrgMcpConnections() {
             baseUrl: refreshedSettings.baseUrl,
             token: refreshedToken,
           });
-          const polled = await pollClient.listMcpConnections(refreshedOrgId, "usable");
+          const polled = await pollClient.listMcpConnections("", "usable");
           setConnections(polled);
           const match = polled.find((entry) => entry.id === connectionId);
           if (match?.connectedForMe && match.needsReconnect !== true) {
@@ -186,14 +183,13 @@ export function useOrgMcpConnections() {
 
     const settings = readDenSettings();
     const token = settings.authToken?.trim() ?? "";
-    const orgId = settings.activeOrgId?.trim() ?? "";
-    if (!token || !orgId) return;
+    if (!token) return;
 
     setDisconnectingId(connectionId);
     setError(null);
     try {
       const client = createDenClient({ baseUrl: settings.baseUrl, token });
-      await client.disconnectOauthProviderAccount(orgId, connectionId);
+      await client.disconnectOauthProviderAccount("", connectionId);
       await refresh();
     } catch (disconnectError) {
       setError(disconnectError instanceof Error ? disconnectError.message : "Failed to disconnect the account.");

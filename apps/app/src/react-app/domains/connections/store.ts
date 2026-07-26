@@ -875,8 +875,8 @@ export function createConnectionsStore(options: {
    */
   async function syncCloudControlMcp(options?: { force?: boolean }): Promise<"synced" | "unchanged" | "skipped"> {
     const settings = readDenSettings();
-    const orgId = settings.activeOrgId?.trim() ?? "";
-    if (!orgId || !settings.authToken?.trim()) return "skipped";
+    const accountScope = "personal";
+    if (!settings.authToken?.trim()) return "skipped";
     const workspaceId = await resolveiPolloWorkWorkspaceId();
     if (!workspaceId) return "skipped";
     const serverBaseUrl = getiPolloWorkSnapshot().ipolloworkServerClient?.baseUrl.trim() ?? "";
@@ -901,12 +901,12 @@ export function createConnectionsStore(options: {
     const marker = readCloudMcpSyncMarker({
       denBaseUrl: settings.baseUrl,
       serverBaseUrl,
-      orgId,
+      orgId: accountScope,
       workspaceId,
     });
     const markerFresh =
       marker !== null &&
-      marker.orgId === orgId &&
+      marker.orgId === accountScope &&
       marker.workspaceId === workspaceId &&
       isCloudMcpSyncMarkerFresh({
         expiresAt: marker.expiresAt,
@@ -923,7 +923,7 @@ export function createConnectionsStore(options: {
       clearCloudMcpUnhealthyRemintAttempt();
     }
     const entryUnhealthy = entryStatus === "needs_auth" || entryStatus === "failed";
-    const attempted = cloudMcpUnhealthyRemintAttempted || readCloudMcpUnhealthyRemintAttempt()?.orgId === orgId;
+    const attempted = cloudMcpUnhealthyRemintAttempted || readCloudMcpUnhealthyRemintAttempt()?.orgId === accountScope;
     const shouldRemintForHealth = entryUnhealthy && !attempted;
 
     // Builds before #2116's follow-up wrote the MCP URL against the bare
@@ -944,7 +944,7 @@ export function createConnectionsStore(options: {
     }
     if (shouldRemintForHealth) {
       cloudMcpUnhealthyRemintAttempted = true;
-      writeCloudMcpUnhealthyRemintAttempt({ orgId });
+      writeCloudMcpUnhealthyRemintAttempt({ orgId: accountScope });
     }
 
     // Validate the session up front so a failed mint never reaches
@@ -962,7 +962,7 @@ export function createConnectionsStore(options: {
     writeCloudMcpSyncMarker({
       denBaseUrl: settings.baseUrl,
       serverBaseUrl,
-      orgId,
+      orgId: accountScope,
       workspaceId,
       expiresAt: minted.expiresAt,
     });

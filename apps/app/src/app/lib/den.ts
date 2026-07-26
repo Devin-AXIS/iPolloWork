@@ -38,11 +38,7 @@ import type {
 export const STORAGE_BASE_URL = "ipollowork.den.baseUrl";
 const LEGACY_STORAGE_API_BASE_URL = "ipollowork.den.apiBaseUrl";
 const STORAGE_AUTH_TOKEN = "ipollowork.den.authToken";
-const STORAGE_ACTIVE_ORG_ID = "ipollowork.den.activeOrgId";
-const STORAGE_ACTIVE_ORG_SLUG = "ipollowork.den.activeOrgSlug";
-const STORAGE_ACTIVE_ORG_NAME = "ipollowork.den.activeOrgName";
 export const CLOUD_MCP_SYNC_MARKER_STORAGE_KEY = "ipollowork.den.mcp.sync";
-const ORG_PROXY_HEADER = "x-ipollowork-legacy-org-id";
 const DEFAULT_DEN_TIMEOUT_MS = 12_000;
 
 export const DEFAULT_DEN_AUTH_NAME = "iPolloWork User";
@@ -125,14 +121,6 @@ export type DenBootstrapConfig = DenBaseUrls & {
 
 export type DenDesktopConfig = SharedDesktopConfig;
 
-export type DenOrgSummary = {
-  id: string;
-  name: string;
-  slug: string;
-  kind?: "personal" | "team";
-  role: "owner" | "admin" | "member";
-};
-
 export type DenWorkerSummary = {
   workerId: string;
   workerName: string;
@@ -211,7 +199,6 @@ export type DenExternalMcpConnection = {
   missingFeatures?: string[];
   externalAccountId?: string | null;
   grantedScopes?: string[];
-  tenantId?: string | null;
 };
 
 export type DenMcpConnectionConnectStart = {
@@ -711,9 +698,6 @@ export function readDenSettings(): DenSettings {
     return {
       ...readDenBootstrapConfig(),
       authToken: null,
-      activeOrgId: null,
-      activeOrgSlug: null,
-      activeOrgName: null,
     };
   }
 
@@ -726,9 +710,6 @@ export function readDenSettings(): DenSettings {
   return {
     ...baseUrls,
     authToken: (window.localStorage.getItem(STORAGE_AUTH_TOKEN) ?? "").trim() || null,
-    activeOrgId: (window.localStorage.getItem(STORAGE_ACTIVE_ORG_ID) ?? "").trim() || null,
-    activeOrgSlug: (window.localStorage.getItem(STORAGE_ACTIVE_ORG_SLUG) ?? "").trim() || null,
-    activeOrgName: (window.localStorage.getItem(STORAGE_ACTIVE_ORG_NAME) ?? "").trim() || null,
   };
 }
 
@@ -743,17 +724,11 @@ export function writeDenSettings(next: DenSettings, options?: { persistBootstrap
   const baseUrl = resolved.baseUrl;
   const apiBaseUrl = resolved.apiBaseUrl;
   const authToken = next.authToken?.trim() ?? "";
-  const activeOrgId = next.activeOrgId?.trim() ?? "";
-  const activeOrgSlug = next.activeOrgSlug?.trim() ?? "";
-  const activeOrgName = next.activeOrgName?.trim() ?? "";
 
   if (
     previous.baseUrl === baseUrl &&
     (previous.apiBaseUrl ?? "") === apiBaseUrl &&
-    (previous.authToken ?? "") === authToken &&
-    (previous.activeOrgId ?? "") === activeOrgId &&
-    (previous.activeOrgSlug ?? "") === activeOrgSlug &&
-    (previous.activeOrgName ?? "") === activeOrgName
+    (previous.authToken ?? "") === authToken
   ) {
     return;
   }
@@ -771,24 +746,6 @@ export function writeDenSettings(next: DenSettings, options?: { persistBootstrap
     window.localStorage.setItem(STORAGE_AUTH_TOKEN, authToken);
   } else {
     window.localStorage.removeItem(STORAGE_AUTH_TOKEN);
-  }
-
-  if (activeOrgId) {
-    window.localStorage.setItem(STORAGE_ACTIVE_ORG_ID, activeOrgId);
-  } else {
-    window.localStorage.removeItem(STORAGE_ACTIVE_ORG_ID);
-  }
-
-  if (activeOrgSlug) {
-    window.localStorage.setItem(STORAGE_ACTIVE_ORG_SLUG, activeOrgSlug);
-  } else {
-    window.localStorage.removeItem(STORAGE_ACTIVE_ORG_SLUG);
-  }
-
-  if (activeOrgName) {
-    window.localStorage.setItem(STORAGE_ACTIVE_ORG_NAME, activeOrgName);
-  } else {
-    window.localStorage.removeItem(STORAGE_ACTIVE_ORG_NAME);
   }
 
   if (options?.persistBootstrap !== false && pendingBootstrap) {
@@ -821,64 +778,11 @@ export function clearDenSession(options?: { includeBaseUrls?: boolean }) {
   }
 
   window.localStorage.removeItem(STORAGE_AUTH_TOKEN);
-  window.localStorage.removeItem(STORAGE_ACTIVE_ORG_ID);
-  window.localStorage.removeItem(STORAGE_ACTIVE_ORG_SLUG);
-  window.localStorage.removeItem(STORAGE_ACTIVE_ORG_NAME);
   window.localStorage.removeItem(CLOUD_MCP_SYNC_MARKER_STORAGE_KEY);
 
   dispatchDenSettingsChanged({
     settings: readDenSettings(),
   });
-}
-
-export async function ensureDenActiveOrganization(options?: { forceServerSync?: boolean }) {
-  const settings = readDenSettings();
-  const token = settings.authToken?.trim() ?? "";
-  if (!token) {
-    return null;
-  }
-
-  const client = createDenClient({
-    baseUrl: settings.baseUrl,
-    token,
-  });
-
-  const response = await client.listOrgs();
-  const selectedOrgId = settings.activeOrgId?.trim() ?? "";
-  const selectedOrgSlug = settings.activeOrgSlug?.trim() ?? "";
-  const targetOrg =
-    response.orgs.find((org) => org.id === selectedOrgId) ??
-    response.orgs.find((org) => org.slug === selectedOrgSlug) ??
-    response.orgs.find((org) => org.id === response.activeOrgId) ??
-    response.orgs.find((org) => org.slug === response.activeOrgSlug) ??
-    response.orgs[0] ??
-    null;
-
-  if (!targetOrg) {
-    writeDenSettings({
-      ...settings,
-      activeOrgId: null,
-      activeOrgSlug: null,
-      activeOrgName: null,
-    }, { persistBootstrap: false });
-    return null;
-  }
-
-  if (
-    options?.forceServerSync &&
-    (!response.activeOrgId || response.activeOrgId !== targetOrg.id)
-  ) {
-    await client.setActiveOrganization({ organizationId: targetOrg.id });
-  }
-
-  writeDenSettings({
-    ...settings,
-    activeOrgId: targetOrg.id,
-    activeOrgSlug: targetOrg.slug,
-    activeOrgName: targetOrg.name,
-  }, { persistBootstrap: false });
-
-  return targetOrg;
 }
 
 function getErrorMessage(payload: unknown, fallback: string): string {
@@ -923,34 +827,6 @@ function getToken(payload: unknown): string | null {
     return null;
   }
   return payload.token.trim() || null;
-}
-
-function getOrgList(payload: unknown): DenOrgSummary[] {
-  if (!isRecord(payload) || !Array.isArray(payload.orgs)) {
-    return [];
-  }
-
-  return payload.orgs.flatMap((entry) => {
-    if (!isRecord(entry)) return [];
-    if (
-      typeof entry.id !== "string" ||
-      typeof entry.name !== "string" ||
-      typeof entry.slug !== "string" ||
-      (entry.role !== "owner" && entry.role !== "admin" && entry.role !== "member")
-    ) {
-      return [];
-    }
-
-    return [
-      {
-        id: entry.id,
-        name: entry.name,
-        slug: entry.slug,
-        ...(entry.kind === "personal" || entry.kind === "team" ? { kind: entry.kind } : {}),
-        role: entry.role,
-      } satisfies DenOrgSummary,
-    ];
-  });
 }
 
 function getWorkers(payload: unknown): DenWorkerSummary[] {
@@ -1171,7 +1047,6 @@ function parseDenExternalMcpConnection(value: unknown): DenExternalMcpConnection
     ...(Array.isArray(value.missingFeatures) ? { missingFeatures: readStringArray(value.missingFeatures) } : {}),
     ...(typeof value.externalAccountId === "string" || value.externalAccountId === null ? { externalAccountId: value.externalAccountId } : {}),
     ...(Array.isArray(value.grantedScopes) ? { grantedScopes: readStringArray(value.grantedScopes) } : {}),
-    ...(typeof value.tenantId === "string" || value.tenantId === null ? { tenantId: value.tenantId } : {}),
   };
 }
 
@@ -1808,10 +1683,6 @@ async function requestJsonRaw<T>(
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  const organizationId = options.organizationId?.trim() ?? "";
-  if (organizationId) {
-    headers[ORG_PROXY_HEADER] = organizationId;
-  }
   if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
@@ -1853,27 +1724,6 @@ async function requestJson<T>(
   return raw.json as T;
 }
 
-async function ensureActiveOrganization(
-  baseUrls: DenBaseUrls,
-  token: string | null,
-  input: { organizationId?: string | null; organizationSlug?: string | null },
-) {
-  const organizationId = input.organizationId?.trim() ?? "";
-  const organizationSlug = input.organizationSlug?.trim() ?? "";
-  if (!token || (!organizationId && !organizationSlug)) {
-    return;
-  }
-
-  await requestJson<unknown>(baseUrls, "/v1/me/active-organization", {
-    method: "POST",
-    token,
-    body: {
-      organizationId: organizationId || undefined,
-      organizationSlug: organizationSlug || undefined,
-    },
-  });
-}
-
 export function createDenClient(options: { baseUrl: string; token?: string | null }) {
   const baseUrls = resolveDenBaseUrls({
     baseUrl: options.baseUrl,
@@ -1883,10 +1733,6 @@ export function createDenClient(options: { baseUrl: string; token?: string | nul
   return {
     /** The resolved web base URL and its derived `/api/den` proxy URL. */
     baseUrls,
-
-    async setActiveOrganization(input: { organizationId?: string | null; organizationSlug?: string | null }): Promise<void> {
-      await ensureActiveOrganization(baseUrls, token, input);
-    },
 
     async signInEmail(email: string, password: string): Promise<DenAuthResult> {
       const payload = await requestJson<unknown>(baseUrls, "/api/auth/sign-in/email", {
@@ -1970,45 +1816,6 @@ export function createDenClient(options: { baseUrl: string; token?: string | nul
         body: { grant },
       });
       return { user: getUser(payload), token: getToken(payload) };
-    },
-
-    async listOrgs(): Promise<{ orgs: DenOrgSummary[]; activeOrgId: string | null; activeOrgSlug: string | null; defaultOrgId: string | null }> {
-      const payload = await requestJson<unknown>(baseUrls, "/v1/me/orgs", {
-        method: "GET",
-        token,
-      });
-
-      const activeOrgId = isRecord(payload) && typeof payload.activeOrgId === "string"
-        ? payload.activeOrgId
-        : null;
-      const activeOrgSlug = isRecord(payload) && typeof payload.activeOrgSlug === "string"
-        ? payload.activeOrgSlug
-        : null;
-
-      return {
-        orgs: getOrgList(payload),
-        activeOrgId,
-        activeOrgSlug,
-        defaultOrgId: activeOrgId,
-      };
-    },
-
-    async createTeam(name: string): Promise<DenOrgSummary> {
-      const payload = await requestJson<unknown>(baseUrls, "/v1/teams", {
-        method: "POST",
-        token,
-        body: { name },
-      });
-      const team = isRecord(payload) ? getOrgList({ orgs: [payload.team] })[0] : null;
-      if (!team) throw new DenApiError(500, "invalid_team_payload", "Team response was invalid.");
-      return team;
-    },
-
-    async deleteTeam(teamId: string): Promise<void> {
-      await requestJson<unknown>(baseUrls, `/v1/teams/${encodeURIComponent(teamId)}`, {
-        method: "DELETE",
-        token,
-      });
     },
 
     async listWorkers(orgId: string, limit = 20): Promise<DenWorkerSummary[]> {
@@ -2252,13 +2059,12 @@ export async function fetchDenOrgSkillsCatalog(
 export async function mintCloudControlMcpToken(): Promise<DenMcpToken | null> {
   const settings = readDenSettings();
   const token = settings.authToken?.trim() ?? "";
-  const orgId = settings.activeOrgId?.trim() ?? "";
-  if (!token || !orgId) {
+  if (!token) {
     return null;
   }
   const client = createDenClient({
     baseUrl: settings.baseUrl,
     token,
   });
-  return client.mintMcpToken(orgId);
+  return client.mintMcpToken("");
 }

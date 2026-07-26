@@ -18,8 +18,6 @@ import {
 } from "../../../app/cloud/desktop-app-restrictions";
 import {
   createDenClient,
-  DenApiError,
-  ensureDenActiveOrganization,
   normalizeDenDesktopConfig,
   readDenSettings,
   type DenDesktopConfig,
@@ -72,9 +70,8 @@ type DesktopConfigAction = {
 function getDesktopConfigCacheKey(): string {
   const settings = readDenSettings();
   const baseUrl = settings.baseUrl.trim();
-  const activeOrgId = settings.activeOrgId?.trim() ?? "";
   if (!baseUrl) return "";
-  return `${DESKTOP_CONFIG_CACHE_PREFIX}${baseUrl}::${activeOrgId}`;
+  return `${DESKTOP_CONFIG_CACHE_PREFIX}${baseUrl}::personal`;
 }
 
 function readCachedDesktopConfig(key: string): DenDesktopConfig | null {
@@ -141,7 +138,7 @@ type DesktopConfigState = {
  * React port of the Solid `DesktopConfigProvider`
  * (`apps/app/src/app/cloud/desktop-config-provider.tsx` on dev).
  *
- * Fetches the org-scoped desktop policy config
+ * Fetches the personal Cloud desktop policy config
  * (`packages/types/den/desktop-policies.ts` shape) and caches it in
  * localStorage so gates like `allowZenModel` can apply immediately on the
  * next boot without waiting for the HTTP round-trip. Re-fetches on Den
@@ -205,10 +202,9 @@ export function DesktopConfigProvider({ children }: DesktopConfigProviderProps) 
     const currentRun = ++refreshRunRef.current;
     const settings = readDenSettings();
     const token = settings.authToken?.trim() ?? "";
-    const activeOrgId = settings.activeOrgId?.trim() ?? "";
     const cacheKey = getDesktopConfigCacheKey();
 
-    if (!isSignedIn || !token || !activeOrgId) {
+    if (!isSignedIn || !token) {
       applyDesktopConfigActions(DEFAULT_DESKTOP_CONFIG);
       setDesktopConfigState((current) => ({ ...current, loading: false }));
       return;
@@ -227,27 +223,14 @@ export function DesktopConfigProvider({ children }: DesktopConfigProviderProps) 
       const nextConfig = await createDenClient({
         baseUrl: settings.baseUrl,
         token,
-      }).getDesktopConfig(activeOrgId);
+      }).getDesktopConfig("");
 
       if (currentRun !== refreshRunRef.current) return;
 
       writeCachedDesktopConfig(cacheKey, nextConfig);
       applyDesktopConfigActions(nextConfig);
-    } catch (error) {
+    } catch {
       if (currentRun !== refreshRunRef.current) return;
-
-      // If the server says the active org doesn't exist, re-sync Better Auth
-      // so the next refresh hits a valid org. Same recovery path as Solid.
-      if (
-        error instanceof DenApiError &&
-        error.status === 404 &&
-        error.code === "organization_not_found"
-      ) {
-        await ensureDenActiveOrganization({ forceServerSync: true }).catch(
-          () => null,
-        );
-      }
-
       applyDesktopConfigActions(cached ?? DEFAULT_DESKTOP_CONFIG);
     } finally {
       if (currentRun === refreshRunRef.current) {

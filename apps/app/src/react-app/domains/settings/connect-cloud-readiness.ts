@@ -1,13 +1,12 @@
 import type {
   DenExternalMcpConnection,
   DenOrgPlugin,
-  DenOrgSummary,
   DenPluginCloudReadiness,
 } from "@/app/lib/den";
 import { t } from "@/i18n";
 
 export type ConnectRowGroup = "needs_signin" | "ready" | "needs_admin_setup" | "excluded";
-export type ConnectOrgRole = DenOrgSummary["role"] | null | undefined;
+export type ConnectOrgRole = "owner" | "admin" | "member" | null | undefined;
 
 const instructionalTypes = new Set(["agent", "command", "context", "custom", "skill"]);
 const desktopInstallTypes = new Set(["hook", "tool"]);

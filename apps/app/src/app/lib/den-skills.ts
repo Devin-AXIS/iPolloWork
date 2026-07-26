@@ -1,4 +1,4 @@
-import { createDenClient, readDenSettings, writeDenSettings } from "./den";
+import { createDenClient, readDenSettings } from "./den";
 
 export async function saveInstalledSkillToiPolloWorkOrg(input: {
   skillText: string;
@@ -11,35 +11,10 @@ export async function saveInstalledSkillToiPolloWorkOrg(input: {
   }
 
   const cloudClient = createDenClient({ baseUrl: settings.baseUrl, token });
-  let orgId = settings.activeOrgId?.trim() ?? "";
-  let orgSlug = settings.activeOrgSlug?.trim() ?? "";
-  let orgName = settings.activeOrgName?.trim() ?? "";
-
-  if (!orgSlug || !orgName || !orgId) {
-    const response = await cloudClient.listOrgs();
-    const match = orgId
-      ? response.orgs.find((org) => org.id === orgId)
-      : response.orgs.find((org) => org.slug === orgSlug) ?? response.orgs[0];
-    if (!match) {
-      throw new Error("Choose an organization in Settings -> Cloud before sharing with your team.");
-    }
-    orgId = match.id;
-    orgSlug = match.slug;
-    orgName = match.name;
-    writeDenSettings({
-      ...settings,
-      baseUrl: settings.baseUrl,
-      authToken: token,
-      activeOrgId: orgId,
-      activeOrgSlug: orgSlug,
-      activeOrgName: orgName,
-    });
-  }
-
-  const created = await cloudClient.createOrgSkill(orgId, {
+  const created = await cloudClient.createOrgSkill("", {
     skillText: input.skillText,
     shared: input.shared === undefined ? null : input.shared,
   });
 
-  return { skillId: created.id, orgId, orgName };
+  return { skillId: created.id, orgId: "personal", orgName: "公共市场" };
 }

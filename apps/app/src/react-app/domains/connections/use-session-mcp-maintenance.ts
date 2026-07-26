@@ -66,8 +66,8 @@ export async function syncCloudControlMcpInBackground(input: {
 }): Promise<"synced" | "unchanged" | "skipped"> {
   const workspaceId = input.workspaceId.trim();
   const settings = input.settings ?? readDenSettings();
-  const orgId = settings.activeOrgId?.trim() ?? "";
-  if (!workspaceId || !orgId || !settings.authToken?.trim()) return "skipped";
+  const accountScope = "personal";
+  if (!workspaceId || !settings.authToken?.trim()) return "skipped";
   if (readCloudMcpUserState() !== null) return "skipped";
 
   const cloudEntry = MCP_QUICK_CONNECT.find((entry) => entry.serverName === CLOUD_MCP_SERVER_NAME);
@@ -80,12 +80,12 @@ export async function syncCloudControlMcpInBackground(input: {
   const marker = readCloudMcpSyncMarker({
     denBaseUrl: settings.baseUrl,
     serverBaseUrl: input.client.baseUrl,
-    orgId,
+    orgId: accountScope,
     workspaceId,
   });
   const markerFresh =
     marker !== null &&
-    marker.orgId === orgId &&
+    marker.orgId === accountScope &&
     marker.workspaceId === workspaceId &&
     isCloudMcpSyncMarkerFresh({
       expiresAt: marker.expiresAt,
@@ -113,7 +113,7 @@ export async function syncCloudControlMcpInBackground(input: {
   writeCloudMcpSyncMarker({
     denBaseUrl: settings.baseUrl,
     serverBaseUrl: input.client.baseUrl,
-    orgId,
+    orgId: accountScope,
     workspaceId,
     expiresAt: minted.expiresAt,
   });

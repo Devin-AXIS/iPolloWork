@@ -1,7 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { ArrowUpRight } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,23 +36,15 @@ type CloudAccountSession = Pick<
   | "baseUrlBusy"
   | "baseUrlDraft"
   | "baseUrlError"
-  | "needsOrgSelection"
-  | "orgs"
-  | "orgsBusy"
-  | "orgsError"
   | "sessionBusy"
   | "signinFallbackUrl"
   | "summaryLabel"
   | "summaryTone"
-  | "onActiveOrgChange"
-  | "onCreateTeam"
-  | "onDeleteTeam"
   | "onApplyBaseUrl"
   | "onBaseUrlDraftChange"
   | "onClearAuthError"
   | "onOpenBrowserAuth"
   | "onOpenControlPlane"
-  | "onRefreshOrgs"
   | "onResetBaseUrl"
   | "onSignOut"
   | "onSubmitManualAuth"
@@ -174,13 +165,7 @@ function DenSignedOutPanel({
 }
 
 export function CloudAccountView({ developerMode, session }: CloudAccountViewProps) {
-  const { activeOrganization, isSignedIn, statusMessage } = useCloudSession();
-  const navigate = useNavigate();
-
-  React.useEffect(() => {
-    if (!isSignedIn || !session.needsOrgSelection) return;
-    navigate("/onboarding", { replace: true });
-  }, [isSignedIn, navigate, session.needsOrgSelection]);
+  const { isSignedIn, statusMessage } = useCloudSession();
 
   return (
     <SettingsStack>
@@ -223,23 +208,14 @@ export function CloudAccountView({ developerMode, session }: CloudAccountViewPro
           <SettingsNotice tone="error">{session.authError}</SettingsNotice>
         ) : null}
 
-        {statusMessage && !session.authError && !session.orgsError ? (
+        {statusMessage && !session.authError ? (
           <SettingsNotice>{statusMessage}</SettingsNotice>
         ) : null}
 
         {isSignedIn ? (
           <CloudAccountSection
-            activeOrgId={activeOrganization?.id ?? ""}
             authBusy={session.authBusy}
-            needsOrgSelection={session.needsOrgSelection}
-            orgs={session.orgs}
-            orgsBusy={session.orgsBusy}
-            orgsError={session.orgsError}
             sessionBusy={session.sessionBusy}
-            onActiveOrgChange={session.onActiveOrgChange}
-            onCreateTeam={session.onCreateTeam}
-            onDeleteTeam={session.onDeleteTeam}
-            onRefreshOrgs={session.onRefreshOrgs}
             onSignOut={session.onSignOut}
           />
         ) : null}

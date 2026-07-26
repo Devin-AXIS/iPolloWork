@@ -1,7 +1,5 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
-import { toast } from "@/components/ui/sonner";
 
 import {
   buildDenAuthUrl,
@@ -9,16 +7,13 @@ import {
   createDenClient,
   DEFAULT_DEN_BASE_URL,
   DenApiError,
-  ensureDenActiveOrganization,
   initializeDenBootstrapConfig,
   normalizeDenBaseUrl,
   readDenSettings,
   resolveDenBaseUrls,
   writeDenSettings,
-  type DenOrgSummary,
 } from "@/app/lib/den";
 import { clearDesktopBootstrapConfig } from "@/app/lib/desktop";
-import { activateOrganizationWorkspace, removeOrganizationWorkspace } from "@/app/cloud/organization-workspaces";
 import { exchangeHandoffAndSignIn } from "@/app/lib/den-handoff";
 import {
   denSessionUpdatedEvent,
@@ -30,7 +25,6 @@ import { useDenAuth } from "../../cloud/den-auth-provider";
 import { tryOpenBrowserAuthUrl } from "../../cloud/open-browser-auth";
 import { useCloudSession } from "./cloud-session-provider";
 import { defaultControlPlaneUrl, saveControlPlaneUrl } from "./control-plane-url";
-import { workspaceSessionRoute } from "../../../shell/workspace-routes";
 
 type SettingsTone = "ready" | "warning" | "neutral" | "error";
 
@@ -76,13 +70,11 @@ export function useDenSession({
   developerMode,
   openLink,
 }: UseDenSessionProps) {
-  const navigate = useNavigate();
   const denAuth = useDenAuth();
   const {
     authToken,
     baseUrl,
     client,
-    setActiveOrganization,
     setAuthToken,
     setBaseUrl,
     setIsSignedIn,
@@ -90,8 +82,6 @@ export function useDenSession({
     setUser,
     user,
   } = useCloudSession();
-  const initial = React.useMemo(() => readDenSettings(), []);
-
   const [baseUrlDraft, setBaseUrlDraft] = React.useState(baseUrl);
   const [baseUrlBusy, setBaseUrlBusy] = React.useState(false);
   const [baseUrlError, setBaseUrlError] = React.useState<string | null>(null);
@@ -101,27 +91,18 @@ export function useDenSession({
   const [authError, setAuthError] = React.useState<string | null>(null);
   const [signinFallbackUrl, setSigninFallbackUrl] = React.useState<string | null>(null);
 
-  const [activeOrgId, setActiveOrgId] = React.useState(initial.activeOrgId?.trim() || "");
-  const [orgsBusy, setOrgsBusy] = React.useState(false);
-  const [orgs, setOrgs] = React.useState<DenOrgSummary[]>([]);
-  const [orgsError, setOrgsError] = React.useState<string | null>(null);
-  const activeOrg = React.useMemo(
-    () => orgs.find((org) => org.id === activeOrgId) ?? null,
-    [activeOrgId, orgs],
-  );
-
   const isSignedIn = Boolean(authToken.trim()) && (Boolean(user) || denAuth.isSignedIn);
 
   const summaryTone = React.useMemo<SettingsTone>(() => {
-    if (authError || orgsError) {
+    if (authError) {
       return "error";
     }
-    if (sessionBusy || orgsBusy) {
+    if (sessionBusy) {
       return "warning";
     }
     if (isSignedIn) return "ready";
     return "neutral";
-  }, [authError, isSignedIn, orgsBusy, orgsError, sessionBusy]);
+  }, [authError, isSignedIn, sessionBusy]);
 
   const summaryLabel = React.useMemo(() => {
     if (authError) return t("den.needs_attention");
@@ -135,11 +116,8 @@ export function useDenSession({
     writeDenSettings({
       baseUrl: resolved.baseUrl,
       authToken: authToken || null,
-      activeOrgId: activeOrgId || null,
-      activeOrgSlug: activeOrg?.slug ?? null,
-      activeOrgName: activeOrg?.name ?? null,
     });
-  }, [activeOrg, activeOrgId, authToken, baseUrl]);
+  }, [authToken, baseUrl]);
 
   React.useEffect(() => {
     if (authToken.trim() && denAuth.user) {
@@ -149,16 +127,10 @@ export function useDenSession({
 
   React.useEffect(() => {
     setIsSignedIn(isSignedIn);
-    if (activeOrg || !activeOrgId.trim()) {
-      setActiveOrganization(activeOrg);
-    }
-  }, [activeOrg, activeOrgId, isSignedIn, setActiveOrganization, setIsSignedIn]);
+  }, [isSignedIn, setIsSignedIn]);
 
   const clearSessionState = React.useCallback(() => {
     setUser(null);
-    setOrgs([]);
-    setActiveOrgId("");
-    setOrgsError(null);
   }, []);
 
   const clearSignedInState = React.useCallback(
@@ -305,9 +277,6 @@ export function useDenSession({
         {
           baseUrl: resolved.baseUrl,
           authToken: null,
-          activeOrgId: null,
-          activeOrgSlug: null,
-          activeOrgName: null,
         },
         { persistBootstrap: false },
       );
@@ -361,75 +330,6 @@ export function useDenSession({
     };
   }, [authToken, clearSessionState, clearSignedInState, client]);
 
-  const refreshOrgs = React.useCallback(
-    async (quiet = false) => {
-      if (!authToken.trim()) {
-        setOrgs([]);
-        setActiveOrgId("");
-        return;
-      }
-
-      setOrgsBusy(true);
-      if (!quiet) setOrgsError(null);
-
-      try {
-        const response = await client.listOrgs();
-        setOrgs(response.orgs);
-        const current = activeOrgId.trim();
-
-        // Determine the next org to select:
-        // - If the user already had an org selected and it still exists, keep it.
-        // - If there's exactly one org, auto-select it (no choice needed).
-        // - Otherwise, leave blank so the user is prompted to choose.
-        let next = "";
-        if (response.activeOrgId && response.orgs.some((org) => org.id === response.activeOrgId)) {
-          next = response.activeOrgId;
-        } else if (current && response.orgs.some((org) => org.id === current)) {
-          next = current;
-        } else {
-          next = response.orgs.find((org) => org.id === response.activeOrgId)?.id
-            ?? response.orgs.find((org) => org.kind === "personal")?.id
-            ?? response.orgs[0]?.id
-            ?? "";
-        }
-        // else: leave next = "" so the org picker is shown
-
-        const nextOrg = next ? (response.orgs.find((org) => org.id === next) ?? null) : null;
-        setActiveOrgId(next);
-        writeDenSettings({
-          baseUrl,
-          authToken: authToken || null,
-          activeOrgId: next || null,
-          activeOrgSlug: nextOrg?.slug ?? null,
-          activeOrgName: nextOrg?.name ?? null,
-        });
-        // Push to context immediately so consumers see the new org
-        if (nextOrg) {
-          setActiveOrganization({ id: nextOrg.id, name: nextOrg.name, role: nextOrg.role, slug: nextOrg.slug });
-        } else if (!next) {
-          setActiveOrganization(null);
-        }
-        if (next) {
-          await ensureDenActiveOrganization({ forceServerSync: true }).catch(() => null);
-          if (nextOrg) await activateOrganizationWorkspace(nextOrg).catch(() => null);
-        }
-        if (!quiet && response.orgs.length > 0) {
-          toast.info(t("den.status_loaded_orgs", { count: response.orgs.length }));
-        }
-      } catch (error) {
-        setOrgsError(error instanceof Error ? error.message : t("den.error_load_orgs"));
-      } finally {
-        setOrgsBusy(false);
-      }
-    },
-    [activeOrgId, authToken, baseUrl, client, setActiveOrganization],
-  );
-
-  React.useEffect(() => {
-    if (!user) return;
-    void refreshOrgs(true);
-  }, [refreshOrgs, user]);
-
   React.useEffect(() => {
     const handler = (event: WindowEventMap[typeof denSessionUpdatedEvent]) => {
       const nextSettings = readDenSettings();
@@ -440,7 +340,6 @@ export function useDenSession({
       setBaseUrl(nextBaseUrl);
       setBaseUrlDraft(nextBaseUrl);
       setAuthToken(nextToken);
-      setActiveOrgId(nextSettings.activeOrgId?.trim() || "");
       if (event.detail?.status === "success") {
         clearSessionState();
         setSigninFallbackUrl(null);
@@ -519,120 +418,6 @@ export function useDenSession({
     }
   }, [authBusy, authToken, clearSignedInState, client]);
 
-  const handleActiveOrgChange = React.useCallback(
-    async (nextId: string) => {
-      const nextOrg = orgs.find((org) => org.id === nextId) ?? null;
-      if (!nextOrg) {
-        setOrgsError(t("den.error_load_orgs"));
-        return;
-      }
-
-      setOrgsBusy(true);
-      setOrgsError(null);
-
-      try {
-        // 1. Sync Den server-side (cookie/session)
-        await client.setActiveOrganization({ organizationId: nextOrg.id });
-      } catch (error) {
-        setOrgsError(error instanceof Error ? error.message : t("den.error_load_orgs"));
-        setOrgsBusy(false);
-        return;
-      }
-
-      // 2. Persist to localStorage FIRST so any code that reads from settings
-      //    (e.g. refreshCloudOrgProviders which reads readDenSettings()) sees
-      //    the new org immediately.
-      writeDenSettings({
-        baseUrl,
-        authToken: authToken ? authToken : null,
-        activeOrgId: nextId ? nextId : null,
-        activeOrgSlug: nextOrg?.slug ?? null,
-        activeOrgName: nextOrg?.name ?? null,
-      });
-
-      // 3. Update local state
-      setActiveOrgId(nextId);
-
-      // 4. Update CloudSessionProvider context IMMEDIATELY so consumers
-      //    (cloud providers / marketplace / workers views) re-fetch with
-      //    the new org without waiting for the sync effect to fire.
-      setActiveOrganization({
-        id: nextOrg.id,
-        name: nextOrg.name,
-        role: nextOrg.role,
-        slug: nextOrg.slug,
-      });
-
-      // 5. Force a full server sync (Den + localStorage reconciliation)
-      try {
-        await ensureDenActiveOrganization({ forceServerSync: true });
-      } catch {
-        // Best-effort; the explicit setActiveOrganization above already
-        // covered the critical path.
-      }
-
-      try {
-        const workspaceId = await activateOrganizationWorkspace(nextOrg);
-        if (workspaceId) navigate(workspaceSessionRoute(workspaceId), { replace: true });
-      } catch (error) {
-        setOrgsError(error instanceof Error ? error.message : "工作站切换失败");
-        setOrgsBusy(false);
-        return;
-      }
-
-      setOrgsBusy(false);
-    },
-    [authToken, baseUrl, client, navigate, orgs, setActiveOrganization],
-  );
-
-  // User is signed in, orgs loaded, multiple orgs available, but none selected yet.
-  // The UI should prompt the user to pick an org before cloud features activate.
-  const needsOrgSelection =
-    !!authToken.trim() && !!user && !orgsBusy && orgs.length > 1 && !activeOrgId;
-
-  const createTeam = React.useCallback(async (name: string) => {
-    setOrgsBusy(true);
-    setOrgsError(null);
-    try {
-      const created = await client.createTeam(name);
-      await client.setActiveOrganization({ organizationId: created.id });
-      setOrgs((current) => [created, ...current.filter((org) => org.id !== created.id)]);
-      setActiveOrgId(created.id);
-      writeDenSettings({
-        baseUrl,
-        authToken: authToken || null,
-        activeOrgId: created.id,
-        activeOrgSlug: created.slug,
-        activeOrgName: created.name,
-      });
-      setActiveOrganization({ id: created.id, name: created.name, role: created.role, slug: created.slug });
-      const workspaceId = await activateOrganizationWorkspace(created);
-      if (workspaceId) navigate(workspaceSessionRoute(workspaceId), { replace: true });
-    } catch (error) {
-      setOrgsError(error instanceof Error ? error.message : "团队创建失败");
-      throw error;
-    } finally {
-      setOrgsBusy(false);
-    }
-  }, [authToken, baseUrl, client, navigate, setActiveOrganization]);
-
-  const deleteTeam = React.useCallback(async (teamId: string) => {
-    setOrgsBusy(true);
-    setOrgsError(null);
-    try {
-      await client.deleteTeam(teamId);
-      const workspaceId = await removeOrganizationWorkspace(teamId);
-      setActiveOrgId("");
-      await refreshOrgs(true);
-      if (workspaceId) navigate(workspaceSessionRoute(workspaceId), { replace: true });
-    } catch (error) {
-      setOrgsError(error instanceof Error ? error.message : "团队删除失败");
-      throw error;
-    } finally {
-      setOrgsBusy(false);
-    }
-  }, [client, navigate, refreshOrgs]);
-
   return {
     authBusy,
     authError,
@@ -640,25 +425,17 @@ export function useDenSession({
     baseUrlBusy,
     baseUrlDraft,
     baseUrlError,
-    needsOrgSelection,
-    orgs,
-    orgsBusy,
-    orgsError,
     sessionBusy,
     signinFallbackUrl,
     summaryLabel,
     summaryTone,
     syncCurrentDenSettings,
-    onActiveOrgChange: handleActiveOrgChange,
-    onCreateTeam: createTeam,
-    onDeleteTeam: deleteTeam,
     onApplyBaseUrl: applyBaseUrl,
     onBaseUrlDraftChange: setBaseUrlDraft,
     onClearServerConfiguration: clearServerConfiguration,
     onClearAuthError: () => setAuthError(null),
     onOpenBrowserAuth: openBrowserAuth,
     onOpenControlPlane: openControlPlane,
-    onRefreshOrgs: refreshOrgs,
     onResetBaseUrl: () => setBaseUrlDraft(baseUrl),
     onResetBaseUrlToDefault: resetBaseUrlToDefault,
     onSignOut: signOut,

@@ -1,6 +1,6 @@
 // Engine reload wiring for the session route: UI-triggered engine reload,
-// reload-coordinator registration, the post-org-onboarding reload latch,
-// server reload-event polling, and desktop engine info. Extracted verbatim
+// reload-coordinator registration, server reload-event polling, and desktop
+// engine info. Extracted verbatim
 // from session-route.tsx; reload events are now typed (iPolloWorkReloadEvent)
 // instead of `any`.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -16,8 +16,6 @@ import { refreshProviderListQueries } from "@/react-app/infra/provider-list-quer
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import type { RouteWorkspace } from "./route-workspaces";
 import { toast } from "@/components/ui/sonner";
-
-const reloadAfterOrgOnboardingKey = "ipollowork.reloadAfterOrgOnboarding";
 
 function taskCreateUnavailableToastId(workspaceId: string) {
   return `opencode-unavailable:${workspaceId}`;
@@ -99,22 +97,6 @@ export function useEngineReload(input: UseEngineReloadInput) {
       activeSessions: () => activeReloadBlockingSessions,
     });
   }, [activeReloadBlockingSessions, client, reloadCoordinator, reloadWorkspaceEngineFromUi, workspaceId]);
-
-  useEffect(() => {
-    if (!reloadCoordinator.canReloadWorkspaceEngine) return;
-    try {
-      if (window.localStorage.getItem(reloadAfterOrgOnboardingKey) !== "1") return;
-      window.localStorage.removeItem(reloadAfterOrgOnboardingKey);
-    } catch {
-      return;
-    }
-    // Marking is enough: the reload coordinator auto-reloads once idle.
-    reloadCoordinator.markReloadRequired("config", {
-      type: "config",
-      name: "opencode.json",
-      action: "updated",
-    });
-  }, [reloadCoordinator, reloadCoordinator.canReloadWorkspaceEngine]);
 
   useEffect(() => {
     if (!client || !workspaceId) return;

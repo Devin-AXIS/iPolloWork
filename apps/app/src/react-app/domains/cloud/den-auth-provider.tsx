@@ -14,7 +14,6 @@ import {
   clearDenSession,
   createDenClient,
   DenApiError,
-  ensureDenActiveOrganization,
   readDenBootstrapConfig,
   readDenSettings,
   setDenBootstrapConfig,
@@ -126,13 +125,6 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
         baseUrl: settings.baseUrl,
         token,
       }).getSession();
-
-      if (currentRun !== refreshTokenRef.current) return;
-
-      await ensureDenActiveOrganization({
-        forceServerSync:
-          !settings.activeOrgId?.trim() || !settings.activeOrgSlug?.trim(),
-      }).catch(() => null);
 
       if (currentRun !== refreshTokenRef.current) return;
 
@@ -249,7 +241,6 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
     void exchangeHandoffAndSignIn(handoff.grant, {
       baseUrl: handoff.denBaseUrl,
       client,
-      activeOrg: { id: handoff.orgId, slug: handoff.orgSlug || null, name: handoff.orgName || null },
     }).then((result) => {
       if (!result.ok) {
         handledGrantsRef.current.delete(handoff.grant);

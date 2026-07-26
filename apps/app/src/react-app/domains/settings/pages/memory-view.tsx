@@ -40,15 +40,14 @@ export type MemoryViewProps = {
 };
 
 export function MemoryView({ onOpenAccount }: MemoryViewProps) {
-  const { activeOrganization, authToken, client, isSignedIn } = useCloudSession();
+  const { authToken, client, isSignedIn } = useCloudSession();
   const queryClient = useQueryClient();
-  const activeOrgId = activeOrganization?.id ?? "";
-  const queryKey = React.useMemo(() => ["memory", activeOrgId] as const, [activeOrgId]);
+  const queryKey = React.useMemo(() => ["memory", "personal"] as const, []);
 
   const memoriesQuery = useQuery<DenMemory[]>({
     queryKey,
-    enabled: Boolean(authToken.trim() && activeOrgId),
-    queryFn: () => client.listMemory(activeOrgId),
+    enabled: Boolean(authToken.trim()),
+    queryFn: () => client.listMemory(""),
     staleTime: 30_000,
   });
 
@@ -78,11 +77,8 @@ export function MemoryView({ onOpenAccount }: MemoryViewProps) {
     (memory: DenMemory) => {
       const timers = timersRef.current;
       if (!timers) return;
-      // Capture org/client/key NOW so the deferred delete (timer OR unmount flush) always targets
-      // the org the user deleted in — even if they switch orgs during the undo window.
-      const capturedOrgId = activeOrgId;
       const capturedClient = client;
-      const capturedKey = ["memory", capturedOrgId] as const;
+      const capturedKey = ["memory", "personal"] as const;
       const toastKey = `memory-delete-${memory.id}`;
 
       const existing = timers.get(memory.id);
@@ -92,7 +88,7 @@ export function MemoryView({ onOpenAccount }: MemoryViewProps) {
       const commit = async () => {
         timers.delete(memory.id);
         try {
-          await capturedClient.deleteMemory(capturedOrgId, memory.id);
+          await capturedClient.deleteMemory("", memory.id);
           // Committed on the server: drop it from the cache and lift the veil.
           queryClient.setQueryData<DenMemory[]>(capturedKey, (prev) => (prev ?? []).filter((m) => m.id !== memory.id));
           if (mountedRef.current) unveil(memory.id);
@@ -129,7 +125,7 @@ export function MemoryView({ onOpenAccount }: MemoryViewProps) {
       // modal closes and restores focus, so keyboard users are not stranded on the removed row.
       requestAnimationFrame(() => toolbarRef.current?.focus());
     },
-    [activeOrgId, client, queryClient, unveil],
+    [client, queryClient, unveil],
   );
 
   // On unmount, flush pending deletes so they persist even if the user navigates away during the
@@ -174,15 +170,6 @@ export function MemoryView({ onOpenAccount }: MemoryViewProps) {
             </Button>
           </div>
         </SettingsNotice>
-      </SettingsStack>
-    );
-  }
-
-  if (!activeOrgId) {
-    return (
-      <SettingsStack>
-        <Separator />
-        <SettingsNotice>{t("memory.no_active_org")}</SettingsNotice>
       </SettingsStack>
     );
   }

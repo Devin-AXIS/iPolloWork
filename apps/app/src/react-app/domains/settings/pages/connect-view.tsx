@@ -415,9 +415,6 @@ function ConnectActivePanel(props: {
   onConnect: (connectionId: string) => void;
   onDisconnect: (connectionId: string) => void;
 }) {
-  const { activeOrganization } = useCloudSession();
-  const activeOrgName = activeOrganization?.name.trim();
-
   return (
     <SettingsSection>
       <div
@@ -425,9 +422,7 @@ function ConnectActivePanel(props: {
         className="flex items-center gap-2 rounded-2xl border border-green-6/30 bg-green-2 px-4 py-3 text-sm font-medium text-green-11"
       >
         <span className="size-2 rounded-full bg-green-9" />
-        {activeOrgName
-          ? t("connect.connected_to_org", { name: activeOrgName })
-          : t("connect.connected_to_cloud")}
+        {t("connect.connected_to_cloud")}
       </div>
 
       {props.error ? <SettingsNotice tone="error">{props.error}</SettingsNotice> : null}
@@ -436,7 +431,7 @@ function ConnectActivePanel(props: {
       <ConnectOrganizationList
         connections={props.connections}
         items={props.marketplaceItems}
-        role={activeOrganization?.role}
+        role="owner"
         connectingId={props.connectingId}
         disconnectingId={props.disconnectingId}
         onConnect={props.onConnect}

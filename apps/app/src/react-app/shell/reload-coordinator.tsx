@@ -146,14 +146,11 @@ type ReloadCoordinatorContextValue = {
   registerWorkspaceReloadControls: (controls: WorkspaceReloadControls | null) => () => void;
 };
 
-export const orgOnboardingVisibilityEvent = "ipollowork-org-onboarding-visibility";
-
 const ReloadCoordinatorContext = createContext<ReloadCoordinatorContextValue | null>(null);
 
 export function ReloadCoordinatorProvider({ children }: { children: ReactNode }) {
   const controlsRef = useRef<WorkspaceReloadControls | null>(null);
   const [activeSessions, setActiveSessions] = useState<ReloadSession[]>([]);
-  const [orgOnboardingVisible, setOrgOnboardingVisible] = useState(false);
   const pendingReloadTriggerRef = useRef<ReloadTrigger | null>(null);
   const hadPendingReloadRef = useRef(false);
   const lastAutoReloadAtRef = useRef(0);
@@ -213,18 +210,6 @@ export function ReloadCoordinatorProvider({ children }: { children: ReactNode })
   const systemState = useSystemState(systemStateOptions);
 
   useEffect(() => {
-    const update = (event: Event) => {
-      setOrgOnboardingVisible(Boolean((event as CustomEvent<{ visible?: boolean }>).detail?.visible));
-    };
-
-    window.addEventListener(orgOnboardingVisibilityEvent, update);
-
-    return () => {
-      window.removeEventListener(orgOnboardingVisibilityEvent, update);
-    };
-  }, []);
-
-  useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ reason?: ReloadReason; trigger?: ReloadTrigger }>).detail;
       systemState.markReloadRequired(detail?.reason ?? "config", detail?.trigger);
@@ -250,8 +235,7 @@ export function ReloadCoordinatorProvider({ children }: { children: ReactNode })
   const reloadIdle =
     systemState.reload.reloadPending &&
     activeSessions.length === 0 &&
-    !activityBlocked &&
-    !orgOnboardingVisible;
+    !activityBlocked;
 
   // Auto-reload when idle. Reloading is a cheap in-process engine rebuild
   // (no window reload, drafts survive), so instead of nagging with a
