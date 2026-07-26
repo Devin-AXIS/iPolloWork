@@ -16,7 +16,6 @@ import { organizationForWorkspace, shouldSyncOrganizationForWorkspace } from "..
 import { exchangeHandoffAndSignIn } from "../../app/lib/den-handoff";
 import {
   denSettingsChangedEvent,
-  denSessionUpdatedEvent,
 } from "../../app/lib/den-session-events";
 import { evalRelaunchDesktopApp } from "../../app/lib/desktop";
 import { Button } from "../../components/ui/button";
@@ -396,6 +395,14 @@ export function AppRoot() {
                 element={
                   <DevProfiler id="WelcomeRoute">
                     <WelcomeRoute />
+                  </DevProfiler>
+                }
+              />
+              <Route
+                path="/onboarding"
+                element={
+                  <DevProfiler id="WorkContextEntry">
+                    <WorkContextEntryPage />
                   </DevProfiler>
                 }
               />
