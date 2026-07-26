@@ -23,7 +23,6 @@ import { localeChangedEvent, t } from "../../i18n";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { ForcedSigninPage } from "../domains/cloud/forced-signin-page";
 import { HelpRoute } from "../domains/help/help-route";
-import { OrgOnboardingPage } from "../domains/cloud/org-onboarding-page";
 import { NewProvidersListener } from "./new-providers-listener";
 import { useDesktopFontZoomBehavior } from "./font-zoom";
 import { LoadingOverlay } from "./loading-overlay";
@@ -121,8 +120,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
       if (!denAuth.isSignedIn && !onSignin) {
         navigate("/signin", { replace: true });
       } else if (denAuth.isSignedIn && onSignin) {
-        // Signed in — route to onboarding so the user sees their org resources.
-        navigate("/onboarding", { replace: true });
+        navigate("/session", { replace: true });
       }
     } else if (onSignin) {
       navigate("/session", { replace: true });
@@ -383,26 +381,10 @@ export function AppRoot() {
                 }
               />
               <Route
-                path="/onboarding"
-                element={
-                  <DevProfiler id="OrgOnboarding">
-                    <OrgOnboardingPage />
-                  </DevProfiler>
-                }
-              />
-              <Route
                 path="/welcome"
                 element={
                   <DevProfiler id="WelcomeRoute">
                     <WelcomeRoute />
-                  </DevProfiler>
-                }
-              />
-              <Route
-                path="/onboarding"
-                element={
-                  <DevProfiler id="WorkContextEntry">
-                    <WorkContextEntryPage />
                   </DevProfiler>
                 }
               />

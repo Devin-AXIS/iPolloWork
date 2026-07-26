@@ -22,6 +22,7 @@ import {
   FolderOpen,
   Tag,
   UserRound,
+  Building2,
 } from "lucide-react";
 import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
@@ -113,6 +114,8 @@ import { WorkspaceIcon } from "../../../design-system/workspace-icon";
 import { MarbleAvatar } from "../../../design-system/marble-avatar";
 import { getSessionActivityStatusLabel, type SessionActivityStatus } from "../status/session-activity-store";
 import { NotificationBell } from "../../../shell/notification-center";
+import { readEnterpriseConnections, type EnterpriseConnection } from "../../../../app/lib/enterprise-connections";
+import { EnterpriseServerDialog } from "./enterprise-server-dialog";
 
 interface SessionStatusIndicatorProps {
   className?: string;
@@ -635,6 +638,10 @@ export function AppSidebar(props: AppSidebarProps) {
     () => new Set(),
   );
   const [language, setLanguage] = React.useState<Language>(() => currentLocale());
+  const [enterpriseDialogOpen, setEnterpriseDialogOpen] = React.useState(false);
+  const [enterpriseConnection, setEnterpriseConnection] = React.useState<EnterpriseConnection | null>(
+    () => readEnterpriseConnections()[0] ?? null,
+  );
 
   const switchLanguage = React.useCallback((nextLanguage: Language) => {
     setLanguage(nextLanguage);
@@ -907,6 +914,13 @@ export function AppSidebar(props: AppSidebarProps) {
                   <Settings className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="end" className="w-44 min-w-44">
+                  <DropdownMenuItem onClick={() => setEnterpriseDialogOpen(true)}>
+                    <Building2 className="size-4" />
+                    {enterpriseConnection
+                      ? t("enterprise_connection.connected_menu", { name: enterpriseConnection.shortName })
+                      : t("enterprise_connection.menu")}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => props.onOpenSettings("/settings/general")}>
                     <Settings className="size-4" />
                     {t("status.settings")}
@@ -946,6 +960,11 @@ export function AppSidebar(props: AppSidebarProps) {
             event.preventDefault();
           } : undefined}
           onPointerDown={props.onStartResize}
+        />
+        <EnterpriseServerDialog
+          open={enterpriseDialogOpen}
+          onOpenChange={setEnterpriseDialogOpen}
+          onConnected={setEnterpriseConnection}
         />
       </Sidebar>
     </SidebarContext.Provider>
