@@ -26,4 +26,13 @@ describe("settings route parsing", () => {
       redirectPath: null,
     });
   });
+
+  test("recognizes an installed plugin detail as its own extensions route", () => {
+    expect(parseSettingsPath("/workspace/workspace_1/settings/extensions/plugin/figma")).toEqual({
+      tab: "extensions",
+      redirectPath: null,
+      extensionsSection: "all",
+      pluginPackageId: "figma",
+    });
+  });
 });

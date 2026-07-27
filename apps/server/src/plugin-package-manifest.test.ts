@@ -56,6 +56,47 @@ describe("plugin package manifest", () => {
     expect(result.manifest.resources.some((resource) => resource.type === "mcp" && resource.mcpServerName === "figma")).toBe(true);
   });
 
+  test("accepts the bundled GitHub service with four independently managed skills", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/github/ipollowork.plugin.json", import.meta.url)).json();
+
+    const result = validatePluginPackageManifest(manifest);
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(JSON.stringify(result.issues));
+    expect(result.manifest.id).toBe("github");
+    expect(result.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(4);
+    const service = result.manifest.resources.find((resource) => resource.type === "local-service");
+    expect(service?.actions).toHaveLength(11);
+    expect(service?.actions?.filter((action) => action.effect === "write").map((action) => action.id)).toEqual([
+      "create-pull-request",
+      "post-comment",
+      "resolve-review-thread",
+    ]);
+    expect(result.manifest.authorization?.methods.map((method) => method.id)).toEqual(["github-token"]);
+  });
+
+  test("accepts the bundled WeChat Official Account service with seven independently managed skills", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/wechat-official/ipollowork.plugin.json", import.meta.url)).json();
+
+    const result = validatePluginPackageManifest(manifest);
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(JSON.stringify(result.issues));
+    expect(result.manifest.id).toBe("wechat-official");
+    expect(result.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(7);
+    const service = result.manifest.resources.find((resource) => resource.type === "local-service");
+    expect(service?.actions).toHaveLength(18);
+    expect(service?.actions?.find((action) => action.id === "reply-comment")).toMatchObject({ effect: "write" });
+    expect(service?.actions?.find((action) => action.id === "delete-comment")).toMatchObject({ effect: "destructive" });
+    expect(result.manifest.authorization?.methods).toMatchObject([{
+      id: "wechat-official-account",
+      kind: "secret-form",
+      fields: [{ id: "appId", secret: false }, { id: "appSecret", secret: true }],
+    }]);
+  });
+
   test("accepts current extension manifests and additive self-contained packages", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
 

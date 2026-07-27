@@ -44,6 +44,7 @@ type ProjectedAuthorizationMethod = { id: string; kind: string; label: string; d
 export type PluginPackageDetails = {
   version: string | null;
   publisher: string | null;
+  category: string | null;
   permissions: ProjectedPermission[];
   resources: ProjectedResource[];
   authorizationRequired: boolean;
@@ -60,7 +61,7 @@ function text(value: unknown): string | null {
 
 export function projectPluginPackageDetails(manifest: unknown): PluginPackageDetails {
   if (!isRecord(manifest)) {
-    return { version: null, publisher: null, permissions: [], resources: [], authorizationRequired: false, authorizationMethods: [] };
+    return { version: null, publisher: null, category: null, permissions: [], resources: [], authorizationRequired: false, authorizationMethods: [] };
   }
   const packageMetadata = isRecord(manifest.package) ? manifest.package : null;
   const publisher = packageMetadata && isRecord(packageMetadata.publisher) ? packageMetadata.publisher : null;
@@ -95,6 +96,7 @@ export function projectPluginPackageDetails(manifest: unknown): PluginPackageDet
   return {
     version: packageMetadata ? text(packageMetadata.version) : null,
     publisher: publisher ? text(publisher.name) : null,
+    category: text(manifest.category),
     permissions,
     resources,
     authorizationRequired,

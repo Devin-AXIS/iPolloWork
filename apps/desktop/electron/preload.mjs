@@ -56,6 +56,9 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
     openExternal(url) {
       return ipcRenderer.invoke("ipollowork:shell:openExternal", url);
     },
+    openAuth(url) {
+      return ipcRenderer.invoke("ipollowork:shell:openAuth", url);
+    },
     relaunch() {
       return ipcRenderer.invoke("ipollowork:shell:relaunch");
     },

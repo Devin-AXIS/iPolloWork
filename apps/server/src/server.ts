@@ -33,14 +33,17 @@ import {
 } from "./desktop-cloud-sync.js";
 import { installCloudPlugin, readCloudPluginResolved, readInstalledCloudPlugins, removeCloudPlugin } from "./cloud-plugins.js";
 import {
+  assertPluginPackageSafeForImport,
   installPluginPackage,
   listInstalledPluginPackages,
   previewPluginPackage,
   rollbackPluginPackage,
   setPluginPackageEnabled,
+  setPluginPackageResourceEnabled,
   uninstallPluginPackage,
   updatePluginPackage,
 } from "./plugin-package-lifecycle.js";
+import { withMaterializedPluginPackageUpload } from "./plugin-package-upload.js";
 import { bundledPluginPackageIds, resolveBundledPluginPackageRoot } from "./plugin-package-catalog.js";
 import {
   cancelPluginAuthorizationFlow,
@@ -1821,12 +1824,63 @@ function createRoutes(
     return jsonResponse({ result, item });
   });
 
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/import/validate", "client", async (ctx) => {
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readPluginPackageUploadBody(ctx.request);
+    return withMaterializedPluginPackageUpload(body, async ({ packageRoot }) => {
+      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+      const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
+      return jsonResponse({ preview: { ...preview, safety } });
+    });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/plugin-packages/import", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readPluginPackageUploadBody(ctx.request);
+    return withMaterializedPluginPackageUpload(body, async ({ archiveName, packageRoot }) => {
+      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+      const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
+      await requireApproval(ctx, {
+        workspaceId: workspace.id,
+        action: "plugin_packages.install",
+        summary: `Import declarative plugin package ${preview.manifest.name}`,
+        paths: preview.writes.map((file) => join(workspace.path, file.path)),
+      });
+      const current = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id }))
+        .find((item) => item.pluginId === preview.manifest.id);
+      const result = current && current.version !== preview.manifest.package?.version
+        ? await updatePluginPackage({ serverConfig: config, workspaceId: workspace.id, packageRoot, workspaceRoot: workspace.path })
+        : await installPluginPackage({ serverConfig: config, workspaceId: workspace.id, packageRoot, workspaceRoot: workspace.path });
+      await recordAudit(workspace.path, {
+        id: shortId(),
+        workspaceId: workspace.id,
+        actor: ctx.actor ?? { type: "remote" },
+        action: "plugin_packages.import",
+        target: archiveName,
+        summary: `Imported declarative plugin package ${preview.manifest.name} ${preview.manifest.package?.version ?? ""}`.trim(),
+        timestamp: Date.now(),
+      });
+      emitReloadEvent(ctx.reloadEvents, workspace, "plugins", {
+        type: "plugin",
+        name: preview.manifest.id,
+        action: current ? "updated" : "added",
+      });
+      const item = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id }))
+        .find((entry) => entry.pluginId === preview.manifest.id);
+      return jsonResponse({ result, item, safety });
+    });
+  });
+
   addRoute(routes, "POST", "/workspace/:id/plugin-packages/validate", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
     const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
-    return jsonResponse({ preview });
+    const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
+    return jsonResponse({ preview: { ...preview, safety } });
   });
 
   addRoute(routes, "POST", "/workspace/:id/plugin-packages", "client", async (ctx) => {
@@ -1836,6 +1890,7 @@ function createRoutes(
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
     const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    await assertPluginPackageSafeForImport({ packageRoot, preview });
     await requireApproval(ctx, {
       workspaceId: workspace.id,
       action: "plugin_packages.install",
@@ -1864,6 +1919,7 @@ function createRoutes(
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
     const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    await assertPluginPackageSafeForImport({ packageRoot, preview });
     if (preview.manifest.id !== ctx.params.pluginId) throw new ApiError(400, "plugin_package_id_mismatch", "Update package ID does not match the installed plugin");
     await requireApproval(ctx, {
       workspaceId: workspace.id,
@@ -1911,6 +1967,28 @@ function createRoutes(
     });
     if (result.changed && !body.enabled) await disposePluginServices(config, workspace.id, result.pluginId);
     if (result.changed) emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: result.pluginId, action: body.enabled ? "added" : "removed" });
+    return jsonResponse({ result });
+  });
+
+  addRoute(routes, "PATCH", "/workspace/:id/plugin-packages/:pluginId/resources/:resourceId", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    if (typeof body.enabled !== "boolean") throw new ApiError(400, "invalid_payload", "enabled must be a boolean");
+    const result = await setPluginPackageResourceEnabled({
+      serverConfig: config,
+      workspaceId: workspace.id,
+      pluginId: ctx.params.pluginId ?? "",
+      resourceId: ctx.params.resourceId ?? "",
+      workspaceRoot: workspace.path,
+      enabled: body.enabled,
+    });
+    if (result.changed) emitReloadEvent(ctx.reloadEvents, workspace, "skills", {
+      type: "skill",
+      name: result.resourceId,
+      action: body.enabled ? "added" : "removed",
+    });
     return jsonResponse({ result });
   });
 
@@ -3100,6 +3178,19 @@ async function readJsonBody(request: Request): Promise<Record<string, unknown>> 
     return json as Record<string, unknown>;
   } catch {
     throw new ApiError(400, "invalid_json", "Invalid JSON body");
+  }
+}
+
+async function readPluginPackageUploadBody(request: Request): Promise<unknown> {
+  const bytes = await readLimitedRequestBody(request, 15 * 1024 * 1024, {
+    code: "plugin_package_upload_too_large",
+    message: "Plugin package upload exceeds 15 MB",
+  });
+  try {
+    const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return value;
+  } catch {
+    throw new ApiError(400, "invalid_json", "Invalid plugin package upload");
   }
 }
 

@@ -1,9 +1,13 @@
 import { ApiError } from "./errors.js";
 
-export async function readLimitedRequestBody(request: Request, maxBytes: number): Promise<Uint8Array> {
+export async function readLimitedRequestBody(
+  request: Request,
+  maxBytes: number,
+  error = { code: "template_package_too_large", message: "Template package exceeds 50 MB" },
+): Promise<Uint8Array> {
   const declaredBytes = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
-    throw new ApiError(413, "template_package_too_large", "Template package exceeds 50 MB");
+    throw new ApiError(413, error.code, error.message);
   }
   if (!request.body) return new Uint8Array();
 
@@ -16,7 +20,7 @@ export async function readLimitedRequestBody(request: Request, maxBytes: number)
     totalBytes += next.value.byteLength;
     if (totalBytes > maxBytes) {
       await reader.cancel().catch(() => undefined);
-      throw new ApiError(413, "template_package_too_large", "Template package exceeds 50 MB");
+      throw new ApiError(413, error.code, error.message);
     }
     chunks.push(next.value);
   }

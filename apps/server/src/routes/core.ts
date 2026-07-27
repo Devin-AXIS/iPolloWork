@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { recordAudit } from "../audit.js";
 import {
   getConnectSnapshot,
   googleWorkspaceStatusConnectExtra,
@@ -21,6 +22,7 @@ import {
   googleWorkspaceTestConnection,
 } from "../extensions/google-workspace.js";
 import { callExperimentalExtensionAction, listExperimentalExtensionActions } from "../extensions/index.js";
+import { workspaceIdForPluginContext } from "../plugin-service-runtime.js";
 import type { TokenService } from "../tokens.js";
 import {
   TOY_UI_CSS,
@@ -33,6 +35,7 @@ import {
   svgResponse,
 } from "../toy-ui.js";
 import type { Capabilities, ServerConfig, WorkspaceInfo } from "../types.js";
+import { shortId } from "../utils.js";
 import { addRoute, type Route } from "./registry.js";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
@@ -303,7 +306,46 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       throw new ApiError(403, "forbidden", "Viewer tokens cannot call extension actions");
     }
     const body = await readJsonBody(ctx.request);
-    return jsonResponse(await callExperimentalExtensionAction(config, env, body, await getConnectSnapshot(config)));
+    const extensionId = typeof body.extensionId === "string" ? body.extensionId.trim() : "";
+    const actionId = typeof body.action === "string" ? body.action.trim() : "";
+    const context = isRecord(body.context) ? body.context : {};
+    const connectSnapshot = await getConnectSnapshot(config);
+    const declared = (await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot))
+      .find((action) => action.extensionId === extensionId && action.action === actionId);
+    const effect = declared && "effect" in declared ? declared.effect : "read";
+    const requiresConfirmation = effect === "write" || effect === "destructive";
+    let approvedWorkspace: WorkspaceInfo | null = null;
+    if (requiresConfirmation && declared) {
+      ensureWritable(config);
+      const workspaceId = workspaceIdForPluginContext(config, context);
+      approvedWorkspace = await resolveWorkspace(config, workspaceId);
+      const approval = await ctx.approvals.requestApproval({
+        workspaceId,
+        action: `plugin_service.${extensionId}.${actionId}`,
+        summary: `${declared.title} (${extensionId})`,
+        paths: [],
+        actor: ctx.actor ?? { type: "remote" },
+      });
+      if (!approval.allowed) {
+        throw new ApiError(403, "write_denied", "Plugin write action denied", {
+          requestId: approval.id,
+          reason: approval.reason,
+        });
+      }
+    }
+    const result = await callExperimentalExtensionAction(config, env, body, connectSnapshot);
+    if (approvedWorkspace && declared) {
+      await recordAudit(approvedWorkspace.path, {
+        id: shortId(),
+        workspaceId: approvedWorkspace.id,
+        actor: ctx.actor ?? { type: "remote" },
+        action: `plugin_service.${extensionId}.${actionId}`,
+        target: `${extensionId}:${actionId}`,
+        summary: declared.title,
+        timestamp: Date.now(),
+      });
+    }
+    return jsonResponse(result);
   });
 
   addRoute(routes, "GET", "/experimental/google-workspace/status", "client", async () => {

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 
 import { ApiError } from "./errors.js";
@@ -24,6 +25,7 @@ const installedVersionSchema = z.object({
 const installedPackageSchema = z.object({
   pluginId: z.string(),
   enabled: z.boolean(),
+  disabledResourceIds: z.array(z.string()).default([]),
   currentVersion: z.string(),
   previousVersion: z.string().nullable(),
   versions: z.record(z.string(), installedVersionSchema),
@@ -40,8 +42,15 @@ type LifecycleState = z.infer<typeof lifecycleStateSchema>;
 
 export type PluginPackagePreview = {
   manifest: PluginPackageManifest;
+  files: OwnedFile[];
   writes: OwnedFile[];
   integrity: { sha256: string; status: "verified" | "unsigned" };
+};
+
+export type PluginPackageImportSafety = {
+  level: "declarative";
+  localCode: false;
+  allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
 };
 
 export type InstalledPluginPackageSummary = {
@@ -49,6 +58,7 @@ export type InstalledPluginPackageSummary = {
   name: string;
   version: string;
   enabled: boolean;
+  disabledResourceIds: string[];
   previousVersion: string | null;
   manifest: PluginPackageManifest;
   integrity: { sha256: string; status: "verified" | "unsigned" };
@@ -298,30 +308,76 @@ async function mcpEntriesForVersion(
   for (const resource of manifest.resources) {
     if (resource.type !== "mcp" || !resource.path) continue;
     const payload: unknown = JSON.parse(await readFile(resolveWithin(root, resource.path), "utf8"));
-    if (!isRecord(payload)) throw new ApiError(400, "plugin_package_mcp_invalid", `MCP resource must contain a JSON object: ${resource.path}`);
-    const nested = isRecord(payload.mcpServers) ? payload.mcpServers : isRecord(payload.mcp) ? payload.mcp : null;
-    if (nested) {
-      for (const [name, value] of Object.entries(nested)) {
-        if (!isRecord(value)) throw new ApiError(400, "plugin_package_mcp_invalid", `MCP config must be an object: ${name}`);
-        entries.push({ name, config: value });
-      }
-    } else {
-      entries.push({ name: resource.mcpServerName ?? resource.id, config: payload });
-    }
+    entries.push(...mcpEntriesFromPayload(payload, resource.mcpServerName ?? resource.id, resource.path));
   }
   return entries;
 }
 
-function opencodeSpec(workspaceRoot: string, manifest: PluginPackageManifest): string | null {
-  const path = manifest.package?.entrypoints.opencode;
-  return path ? `file://${resolveWithin(workspaceRoot, path)}` : null;
+function mcpEntriesFromPayload(
+  payload: unknown,
+  fallbackName: string,
+  sourcePath: string,
+): Array<{ name: string; config: Record<string, unknown> }> {
+  if (!isRecord(payload)) {
+    throw new ApiError(400, "plugin_package_mcp_invalid", `MCP resource must contain a JSON object: ${sourcePath}`);
+  }
+  const nested = isRecord(payload.mcpServers) ? payload.mcpServers : isRecord(payload.mcp) ? payload.mcp : null;
+  if (!nested) return [{ name: fallbackName, config: payload }];
+  return Object.entries(nested).map(([name, value]) => {
+    if (!isRecord(value)) throw new ApiError(400, "plugin_package_mcp_invalid", `MCP config must be an object: ${name}`);
+    return { name, config: value };
+  });
 }
 
-async function assertOwnedFilesUnchanged(workspaceRoot: string, version: InstalledVersion): Promise<void> {
+function opencodeSpecForVersion(
+  config: ServerConfig,
+  workspaceId: string,
+  pluginId: string,
+  version: InstalledVersion,
+): string | null {
+  const path = manifestFromVersion(version).package?.entrypoints.opencode;
+  return path ? pathToFileURL(resolveWithin(artifactRoot(config, workspaceId, pluginId, version.version), path)).href : null;
+}
+
+const WORKSPACE_ACTIVATION_PREFIXES = [".opencode/skills/", ".opencode/agents/", ".opencode/commands/"];
+
+function workspaceActivationFiles(version: InstalledVersion): OwnedFile[] {
+  return version.files.filter((file) => WORKSPACE_ACTIVATION_PREFIXES.some((prefix) => file.path.startsWith(prefix)));
+}
+
+function workspaceActivationPaths(version: InstalledVersion): Set<string> {
+  return new Set(workspaceActivationFiles(version).map((file) => file.path));
+}
+
+function skillActivationPaths(version: InstalledVersion, resourceIds?: ReadonlySet<string>): Set<string> {
+  const ownedPaths = new Set(version.files.map((file) => file.path));
+  return new Set(manifestFromVersion(version).resources.flatMap((resource) => {
+    if (resource.type !== "skill" || !resource.path || (resourceIds && !resourceIds.has(resource.id))) return [];
+    if (ownedPaths.has(resource.path) && (resource.path === "SKILL.md" || resource.path.endsWith("/SKILL.md"))) return [resource.path];
+    const nestedPath = `${resource.path.replace(/\/$/, "")}/SKILL.md`;
+    return ownedPaths.has(nestedPath) ? [nestedPath] : [];
+  }));
+}
+
+function inactiveActivationPaths(installed: InstalledPackage, version: InstalledVersion): Set<string> {
+  if (!installed.enabled) return workspaceActivationPaths(version);
+  return skillActivationPaths(version, new Set(installed.disabledResourceIds));
+}
+
+async function assertOwnedFilesUnchanged(
+  workspaceRoot: string,
+  version: InstalledVersion,
+  expectedMissing = new Set<string>(),
+): Promise<void> {
   const conflicts: string[] = [];
-  for (const file of version.files) {
+  for (const file of workspaceActivationFiles(version)) {
     const target = resolveWithin(workspaceRoot, file.path);
-    if (!(await fileExists(target)) || await sha256(target) !== file.sha256) conflicts.push(file.path);
+    const exists = await fileExists(target);
+    if (expectedMissing.has(file.path)) {
+      if (exists) conflicts.push(file.path);
+    } else if (!exists || await sha256(target) !== file.sha256) {
+      conflicts.push(file.path);
+    }
   }
   if (conflicts.length) {
     throw new ApiError(409, "plugin_package_conflict", "Plugin-owned files were modified outside the package manager", { paths: conflicts });
@@ -336,7 +392,7 @@ async function snapshotPackage(
 ): Promise<InstalledVersion> {
   if (!preview.manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const destinationRoot = artifactRoot(config, workspaceId, preview.manifest.id, preview.manifest.package.version);
-  for (const file of preview.writes) {
+  for (const file of preview.files) {
     const source = resolveWithin(packageRoot, file.path);
     const destination = resolveWithin(destinationRoot, file.path);
     if (await fileExists(destination)) {
@@ -353,7 +409,7 @@ async function snapshotPackage(
   return {
     version: preview.manifest.package.version,
     manifest: preview.manifest,
-    files: preview.writes,
+    files: preview.files,
     installedAt: Date.now(),
   };
 }
@@ -365,52 +421,59 @@ async function applyVersion(
   pluginId: string,
   next: InstalledVersion,
   current: InstalledVersion | null,
+  installed?: InstalledPackage,
 ): Promise<void> {
-  if (current) await assertOwnedFilesUnchanged(workspaceRoot, current);
-  const currentPaths = new Set(current?.files.map((file) => file.path) ?? []);
-  const nextPaths = new Set(next.files.map((file) => file.path));
-  for (const file of next.files) {
+  const currentInactivePaths = current && installed ? inactiveActivationPaths(installed, current) : new Set<string>();
+  const nextInactivePaths = installed ? inactiveActivationPaths(installed, next) : new Set<string>();
+  if (current) await assertOwnedFilesUnchanged(workspaceRoot, current, currentInactivePaths);
+  const currentActivationFiles = current ? workspaceActivationFiles(current) : [];
+  const nextActivationFiles = workspaceActivationFiles(next);
+  const currentPaths = new Set(currentActivationFiles.map((file) => file.path));
+  const nextPaths = new Set(nextActivationFiles.map((file) => file.path));
+  for (const file of nextActivationFiles) {
     const target = resolveWithin(workspaceRoot, file.path);
     if (!currentPaths.has(file.path) && await fileExists(target)) {
       throw new ApiError(409, "plugin_package_conflict", `Install target already exists: ${file.path}`, { paths: [file.path] });
     }
   }
 
-  const nextManifest = manifestFromVersion(next);
-  const currentManifest = current ? manifestFromVersion(current) : null;
   const nextArtifactRoot = artifactRoot(config, workspaceId, pluginId, next.version);
   const nextMcpEntries = await mcpEntriesForVersion(config, workspaceId, pluginId, next);
   const currentMcpEntries = current ? await mcpEntriesForVersion(config, workspaceId, pluginId, current) : [];
   const nextMcpNames = new Set(nextMcpEntries.map((entry) => entry.name));
   try {
-    for (const file of next.files) {
+    for (const file of nextActivationFiles) {
       const source = resolveWithin(nextArtifactRoot, file.path);
       const target = resolveWithin(workspaceRoot, file.path);
       await mkdir(dirname(target), { recursive: true });
       await copyFile(source, target);
     }
-    for (const file of current?.files ?? []) {
+    for (const path of nextInactivePaths) await rm(resolveWithin(workspaceRoot, path), { force: true });
+    for (const file of currentActivationFiles) {
       if (!nextPaths.has(file.path)) await rm(resolveWithin(workspaceRoot, file.path), { force: true });
     }
 
-    const currentSpec = currentManifest ? opencodeSpec(workspaceRoot, currentManifest) : null;
-    const nextSpec = opencodeSpec(workspaceRoot, nextManifest);
-    if (currentSpec && currentSpec !== nextSpec) await removePlugin(config, workspaceId, currentSpec);
-    if (nextSpec) await addPlugin(config, workspaceId, nextSpec);
+    const currentSpec = current ? opencodeSpecForVersion(config, workspaceId, pluginId, current) : null;
+    const nextSpec = opencodeSpecForVersion(config, workspaceId, pluginId, next);
+    if (currentSpec && (currentSpec !== nextSpec || installed?.enabled === false)) await removePlugin(config, workspaceId, currentSpec);
+    if (nextSpec && installed?.enabled !== false) await addPlugin(config, workspaceId, nextSpec);
     for (const entry of currentMcpEntries) {
-      if (!nextMcpNames.has(entry.name)) await removeMcp(config, workspaceId, entry.name);
+      if (installed?.enabled === false || !nextMcpNames.has(entry.name)) await removeMcp(config, workspaceId, entry.name);
     }
-    for (const entry of nextMcpEntries) await addMcp(config, workspaceId, entry.name, entry.config);
+    if (installed?.enabled !== false) {
+      for (const entry of nextMcpEntries) await addMcp(config, workspaceId, entry.name, entry.config);
+    }
   } catch (error) {
     if (current) {
       const currentArtifactRoot = artifactRoot(config, workspaceId, pluginId, current.version);
-      for (const file of current.files) {
+      for (const file of currentActivationFiles) {
         const source = resolveWithin(currentArtifactRoot, file.path);
         const target = resolveWithin(workspaceRoot, file.path);
         await mkdir(dirname(target), { recursive: true });
         await copyFile(source, target);
       }
-      for (const file of next.files) {
+      for (const path of currentInactivePaths) await rm(resolveWithin(workspaceRoot, path), { force: true });
+      for (const file of nextActivationFiles) {
         if (!currentPaths.has(file.path)) await rm(resolveWithin(workspaceRoot, file.path), { force: true });
       }
       for (const entry of nextMcpEntries) {
@@ -438,9 +501,96 @@ export async function previewPluginPackage(input: { packageRoot: string; workspa
   for (const resourcePath of resourcePaths) {
     for (const path of await packageResourceFiles(input.packageRoot, resourcePath)) paths.add(path);
   }
-  const writes: OwnedFile[] = [];
-  for (const path of [...paths].sort()) writes.push({ path, sha256: await sha256(resolveWithin(input.packageRoot, path)) });
-  return { manifest, writes, integrity: integrityForManifest(manifest, writes) };
+  const files: OwnedFile[] = [];
+  for (const path of [...paths].sort()) files.push({ path, sha256: await sha256(resolveWithin(input.packageRoot, path)) });
+  const writes = files.filter((file) => WORKSPACE_ACTIVATION_PREFIXES.some((prefix) => file.path.startsWith(prefix)));
+  return { manifest, files, writes, integrity: integrityForManifest(manifest, files) };
+}
+
+const SAFE_IMPORT_RESOURCE_TYPES = new Set(["skill", "agent", "command", "file", "mcp"]);
+
+function safeImportResourcePath(type: string, path: string): boolean {
+  if (type === "skill") return path.startsWith(".opencode/skills/");
+  if (type === "agent") return path.startsWith(".opencode/agents/");
+  if (type === "command") return path.startsWith(".opencode/commands/");
+  if (type === "mcp") return path.startsWith(".opencode/mcps/") && path.endsWith(".json");
+  return type === "file" && WORKSPACE_ACTIVATION_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+function unsafeRemoteMcpField(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const field = unsafeRemoteMcpField(item);
+      if (field) return field;
+    }
+    return null;
+  }
+  if (!isRecord(value)) return null;
+  for (const [key, entry] of Object.entries(value)) {
+    if (["command", "env", "environment", "headers"].includes(key.toLowerCase())) return key;
+    const field = unsafeRemoteMcpField(entry);
+    if (field) return field;
+  }
+  return null;
+}
+
+export async function assertPluginPackageSafeForImport(input: {
+  packageRoot: string;
+  preview: PluginPackagePreview;
+}): Promise<PluginPackageImportSafety> {
+  const { manifest } = input.preview;
+  const reasons: string[] = [];
+  if (manifest.source.trusted) reasons.push("Imported packages cannot declare themselves trusted");
+  if (manifest.package?.entrypoints.opencode || manifest.package?.entrypoints.service) {
+    reasons.push("Imported packages cannot include executable entrypoints");
+  }
+  if ((manifest.permissions?.length ?? 0) > 0) reasons.push("Imported packages cannot request native runtime permissions");
+  if ((manifest.authorization?.methods.length ?? 0) > 0) {
+    reasons.push("Imported packages must use remote MCP OAuth instead of collecting credentials");
+  }
+
+  for (const resource of manifest.resources) {
+    if (!SAFE_IMPORT_RESOURCE_TYPES.has(resource.type)) {
+      reasons.push(`Resource ${resource.id} uses blocked executable type ${resource.type}`);
+      continue;
+    }
+    if (!resource.path || !safeImportResourcePath(resource.type, resource.path)) {
+      reasons.push(`Resource ${resource.id} must stay inside its .opencode activation directory`);
+      continue;
+    }
+    if (resource.type !== "mcp") continue;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(await readFile(resolveWithin(input.packageRoot, resource.path), "utf8"));
+    } catch {
+      reasons.push(`MCP resource ${resource.id} must contain valid JSON`);
+      continue;
+    }
+    const entries = mcpEntriesFromPayload(payload, resource.mcpServerName ?? resource.id, resource.path);
+    for (const entry of entries) {
+      const type = entry.config.type;
+      const url = entry.config.url;
+      if (type !== "remote" || typeof url !== "string" || !url.startsWith("https://")) {
+        reasons.push(`MCP ${entry.name} must be a remote HTTPS server`);
+      }
+      const unsafeField = unsafeRemoteMcpField(entry.config);
+      if (unsafeField) reasons.push(`MCP ${entry.name} cannot declare ${unsafeField}`);
+    }
+  }
+
+  if (reasons.length > 0) {
+    throw new ApiError(
+      400,
+      "plugin_package_import_unsafe",
+      "This plugin contains local code or privileged capabilities that are only allowed in reviewed official packages",
+      { reasons: [...new Set(reasons)] },
+    );
+  }
+  return {
+    level: "declarative",
+    localCode: false,
+    allowedResourceTypes: ["skill", "agent", "command", "file", "mcp"],
+  };
 }
 
 export async function listInstalledPluginPackages(input: { serverConfig: ServerConfig; workspaceId: string }): Promise<InstalledPluginPackageSummary[]> {
@@ -454,6 +604,7 @@ export async function listInstalledPluginPackages(input: { serverConfig: ServerC
       name: manifest.name,
       version: installed.currentVersion,
       enabled: installed.enabled,
+      disabledResourceIds: installed.disabledResourceIds,
       previousVersion: installed.previousVersion,
       manifest,
       integrity: integrityForManifest(manifest, version.files),
@@ -498,7 +649,7 @@ export async function installPluginPackage(input: {
     }
     const current = existing.versions[existing.currentVersion];
     if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
-    await assertOwnedFilesUnchanged(input.workspaceRoot, current);
+    await assertOwnedFilesUnchanged(input.workspaceRoot, current, inactiveActivationPaths(existing, current));
     return { status: "unchanged", pluginId: existing.pluginId, version: existing.currentVersion };
   }
   const version = await snapshotPackage(input.serverConfig, input.workspaceId, input.packageRoot, preview);
@@ -506,6 +657,7 @@ export async function installPluginPackage(input: {
   state.packages[preview.manifest.id] = {
     pluginId: preview.manifest.id,
     enabled: true,
+    disabledResourceIds: [],
     currentVersion: version.version,
     previousVersion: null,
     versions: { [version.version]: version },
@@ -528,11 +680,14 @@ export async function updatePluginPackage(input: {
   const current = installed.versions[installed.currentVersion];
   if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
   if (installed.currentVersion === preview.manifest.package.version) {
-    await assertOwnedFilesUnchanged(input.workspaceRoot, current);
+    await assertOwnedFilesUnchanged(input.workspaceRoot, current, inactiveActivationPaths(installed, current));
     return { status: "unchanged", pluginId: installed.pluginId, version: installed.currentVersion };
   }
   const next = await snapshotPackage(input.serverConfig, input.workspaceId, input.packageRoot, preview);
-  await applyVersion(input.serverConfig, input.workspaceId, input.workspaceRoot, installed.pluginId, next, current);
+  await applyVersion(input.serverConfig, input.workspaceId, input.workspaceRoot, installed.pluginId, next, current, installed);
+  installed.disabledResourceIds = installed.disabledResourceIds.filter((resourceId) =>
+    preview.manifest.resources.some((resource) => resource.type === "skill" && resource.id === resourceId)
+  );
   const previousVersion = installed.currentVersion;
   installed.versions[next.version] = next;
   installed.currentVersion = next.version;
@@ -554,7 +709,10 @@ export async function rollbackPluginPackage(input: {
   const current = installed.versions[installed.currentVersion];
   const previous = installed.versions[installed.previousVersion];
   if (!current || !previous) throw new ApiError(500, "plugin_package_state_invalid", "Rollback package version is missing");
-  await applyVersion(input.serverConfig, input.workspaceId, input.workspaceRoot, installed.pluginId, previous, current);
+  await applyVersion(input.serverConfig, input.workspaceId, input.workspaceRoot, installed.pluginId, previous, current, installed);
+  installed.disabledResourceIds = installed.disabledResourceIds.filter((resourceId) =>
+    manifestFromVersion(previous).resources.some((resource) => resource.type === "skill" && resource.id === resourceId)
+  );
   const previousVersion = installed.currentVersion;
   installed.currentVersion = previous.version;
   installed.previousVersion = previousVersion;
@@ -575,7 +733,21 @@ export async function setPluginPackageEnabled(input: {
   if (installed.enabled === input.enabled) return { pluginId: installed.pluginId, enabled: installed.enabled, changed: false };
   const current = installed.versions[installed.currentVersion];
   if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
-  const spec = opencodeSpec(input.workspaceRoot, manifestFromVersion(current));
+  await assertOwnedFilesUnchanged(input.workspaceRoot, current, inactiveActivationPaths(installed, current));
+  const allActivationPaths = workspaceActivationPaths(current);
+  const disabledSkillPaths = skillActivationPaths(current, new Set(installed.disabledResourceIds));
+  const currentArtifactRoot = artifactRoot(input.serverConfig, input.workspaceId, installed.pluginId, current.version);
+  const activationPathsToRestore = [...allActivationPaths].filter((path) => !disabledSkillPaths.has(path));
+  if (input.enabled) {
+    const conflicts: string[] = [];
+    for (const path of activationPathsToRestore) {
+      if (await fileExists(resolveWithin(input.workspaceRoot, path))) conflicts.push(path);
+    }
+    if (conflicts.length > 0) {
+      throw new ApiError(409, "plugin_package_conflict", "Plugin skill targets already exist", { paths: conflicts });
+    }
+  }
+  const spec = opencodeSpecForVersion(input.serverConfig, input.workspaceId, installed.pluginId, current);
   if (spec) {
     if (input.enabled) await addPlugin(input.serverConfig, input.workspaceId, spec);
     else await removePlugin(input.serverConfig, input.workspaceId, spec);
@@ -585,9 +757,64 @@ export async function setPluginPackageEnabled(input: {
     if (input.enabled) await addMcp(input.serverConfig, input.workspaceId, entry.name, entry.config);
     else await removeMcp(input.serverConfig, input.workspaceId, entry.name);
   }
+  if (input.enabled) {
+    for (const path of activationPathsToRestore) {
+      const target = resolveWithin(input.workspaceRoot, path);
+      await mkdir(dirname(target), { recursive: true });
+      await copyFile(resolveWithin(currentArtifactRoot, path), target);
+    }
+  } else {
+    for (const path of allActivationPaths) await rm(resolveWithin(input.workspaceRoot, path), { force: true });
+  }
   installed.enabled = input.enabled;
   await writeState(input.serverConfig, input.workspaceId, state);
   return { pluginId: installed.pluginId, enabled: installed.enabled, changed: true };
+}
+
+export async function setPluginPackageResourceEnabled(input: {
+  serverConfig: ServerConfig;
+  workspaceId: string;
+  pluginId: string;
+  resourceId: string;
+  workspaceRoot: string;
+  enabled: boolean;
+}) {
+  const state = await readState(input.serverConfig, input.workspaceId);
+  const installed = state.packages[input.pluginId];
+  if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
+  const current = installed.versions[installed.currentVersion];
+  if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
+  const manifest = manifestFromVersion(current);
+  const resource = manifest.resources.find((entry) => entry.id === input.resourceId);
+  if (!resource || resource.type !== "skill") {
+    throw new ApiError(404, "plugin_package_resource_not_found", "Plugin skill resource is not installed");
+  }
+  const activationPath = [...skillActivationPaths(current, new Set([input.resourceId]))][0];
+  if (!activationPath) throw new ApiError(409, "plugin_package_skill_invalid", "Plugin skill does not contain a SKILL.md activation file");
+  const currentlyEnabled = !installed.disabledResourceIds.includes(input.resourceId);
+  if (currentlyEnabled === input.enabled) {
+    return { pluginId: installed.pluginId, resourceId: input.resourceId, enabled: currentlyEnabled, changed: false };
+  }
+
+  await assertOwnedFilesUnchanged(input.workspaceRoot, current, inactiveActivationPaths(installed, current));
+  if (installed.enabled && input.enabled) {
+    const target = resolveWithin(input.workspaceRoot, activationPath);
+    if (await fileExists(target)) {
+      throw new ApiError(409, "plugin_package_conflict", `Install target already exists: ${activationPath}`, { paths: [activationPath] });
+    }
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(
+      resolveWithin(artifactRoot(input.serverConfig, input.workspaceId, installed.pluginId, current.version), activationPath),
+      target,
+    );
+  } else if (installed.enabled) {
+    await rm(resolveWithin(input.workspaceRoot, activationPath), { force: true });
+  }
+  installed.disabledResourceIds = input.enabled
+    ? installed.disabledResourceIds.filter((resourceId) => resourceId !== input.resourceId)
+    : [...installed.disabledResourceIds, input.resourceId];
+  await writeState(input.serverConfig, input.workspaceId, state);
+  return { pluginId: installed.pluginId, resourceId: input.resourceId, enabled: input.enabled, changed: true };
 }
 
 export async function uninstallPluginPackage(input: {
@@ -601,14 +828,13 @@ export async function uninstallPluginPackage(input: {
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
   const current = installed.versions[installed.currentVersion];
   if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
-  await assertOwnedFilesUnchanged(input.workspaceRoot, current);
-  const manifest = manifestFromVersion(current);
-  const spec = opencodeSpec(input.workspaceRoot, manifest);
+  await assertOwnedFilesUnchanged(input.workspaceRoot, current, inactiveActivationPaths(installed, current));
+  const spec = opencodeSpecForVersion(input.serverConfig, input.workspaceId, installed.pluginId, current);
   if (spec) await removePlugin(input.serverConfig, input.workspaceId, spec);
   for (const entry of await mcpEntriesForVersion(input.serverConfig, input.workspaceId, installed.pluginId, current)) {
     await removeMcp(input.serverConfig, input.workspaceId, entry.name);
   }
-  for (const file of current.files) await rm(resolveWithin(input.workspaceRoot, file.path), { force: true });
+  for (const file of workspaceActivationFiles(current)) await rm(resolveWithin(input.workspaceRoot, file.path), { force: true });
   delete state.packages[input.pluginId];
   await writeState(input.serverConfig, input.workspaceId, state);
   await rm(join(stateDirectory(input.serverConfig, input.workspaceId), "artifacts", safeSegment(input.pluginId)), { recursive: true, force: true });
