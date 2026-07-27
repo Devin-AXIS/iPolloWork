@@ -1,0 +1,24 @@
+{
+  "templateId": "ipollowork.pptx-compatible-brief",
+  "template": "Executive Brief",
+  "category": "slides",
+  "surface": "design",
+  "pptxCompatibility": "native-editable",
+  "sourcePath": "design/ses_06e1c3399ffeYu05PgtiaRi57y/entry.html",
+  "applyChecklist": [
+    "Replace the decision title, owner and date.",
+    "Use verified evidence for every metric and statement.",
+    "Keep each recommendation short enough for a single slide.",
+    "Preserve the native PPTX object markers when editing HTML."
+  ],
+  "title": "nba",
+  "audience": "篮球爱好者",
+  "details": "介绍nba历史和nba球星",
+  "colorPalette": {
+    "id": "violet",
+    "label": "Violet",
+    "canvas": "#faf5ff",
+    "text": "#2e1065",
+    "accent": "#7c3aed"
+  }
+}

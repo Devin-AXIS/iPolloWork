@@ -354,12 +354,13 @@ type AssistantMessageProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  showLatestArtifactsTitle?: boolean
   templateEntryPath?: string
 }
 
 const AssistantMessage = React.memo(
-  ({ message, templateEntryPath }: AssistantMessageProps) => {
-    const { showThinking, highlightQuery } = useMessageList()
+  ({ message, showLatestArtifactsTitle = false, templateEntryPath }: AssistantMessageProps) => {
+    const { showThinking, highlightQuery, sessionId } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
       [message.parts, showThinking]
@@ -412,7 +413,12 @@ const AssistantMessage = React.memo(
               </div>
             )
           })}
-          <ArtifactList messages={[message]} supplementalFiles={templateEntryPath ? [templateEntryPath] : undefined} />
+          <ArtifactList
+            messages={[message]}
+            sessionId={sessionId}
+            title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}
+            supplementalFiles={templateEntryPath ? [templateEntryPath] : undefined}
+          />
         </div>
       </Message>
     )
@@ -589,11 +595,12 @@ type MessageComponentProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  showLatestArtifactsTitle?: boolean
   templateEntryPath?: string
 }
 
 const MessageComponent = React.memo(
-  ({ message, isLastMessage, isStreaming, isLastStep, templateEntryPath }: MessageComponentProps) => {
+  ({ message, isLastMessage, isStreaming, isLastStep, showLatestArtifactsTitle, templateEntryPath }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
     }
@@ -614,6 +621,7 @@ const MessageComponent = React.memo(
           isLastMessage={isLastMessage}
           isStreaming={isStreaming}
           isLastStep={isLastStep}
+          showLatestArtifactsTitle={showLatestArtifactsTitle}
           templateEntryPath={templateEntryPath}
         />
       )
@@ -804,6 +812,7 @@ function MessageGroup({
           isLastMessage={isLastMessage}
           isStreaming={isLastMessage && isStreaming}
           isLastStep={groupIndex === items.length - 1}
+          showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}
           templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
         />
       </div>
@@ -905,6 +914,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath }
               isLastMessage={isLastMessage}
               isStreaming={isLastMessage && isStreaming}
               isLastStep={isLastStep}
+              showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}
               templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
             />
           </div>

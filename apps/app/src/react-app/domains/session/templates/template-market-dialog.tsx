@@ -63,17 +63,35 @@ const templateStyleLabel = (style: TemplateStyle) => t(`template_market.style.${
 
 function TemplateCover({ template, getCover, className, alt = "" }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; className?: string; alt?: string }) {
   const [src, setSrc] = React.useState("");
+  const [failed, setFailed] = React.useState(false);
+  const [retry, setRetry] = React.useState(0);
   React.useEffect(() => {
     let active = true;
     let objectUrl = "";
     setSrc("");
+    setFailed(false);
     void getCover(template.manifest.id).then(({ data, contentType }) => {
       if (!active) return;
       objectUrl = URL.createObjectURL(new Blob([data], { type: contentType ?? "image/svg+xml" }));
       setSrc(objectUrl);
-    }).catch(() => undefined);
+    }).catch(() => {
+      if (active) setFailed(true);
+    });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [getCover, template.installedVersion, template.manifest.id, template.manifest.version]);
+  }, [getCover, retry, template.installedVersion, template.manifest.id, template.manifest.version]);
+  if (failed) {
+    return (
+      <div className={cn("grid h-full w-full place-items-center bg-muted p-4 text-center", className)}>
+        <div className="max-w-full">
+          <p className="truncate text-xs font-medium text-foreground">{template.manifest.title}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">{t("template_market.cover_failed")}</p>
+          <Button type="button" variant="outline" size="sm" className="mt-3 h-7 rounded-lg px-2 text-[11px]" onClick={(event) => { event.stopPropagation(); setRetry((value) => value + 1); }}>
+            {t("template_market.retry_cover")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
   return src ? <img src={src} alt={alt} className={cn("h-full w-full object-cover", className)} /> : <div className={cn("h-full w-full animate-pulse bg-muted", className)} />;
 }
 

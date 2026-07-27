@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Executive Brief</title>
+  <link rel="stylesheet" href="design-tokens.css" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { display: grid; place-items: center; background: #dfe8e8; font-family: var(--ipw-font-body); }
+    .deck { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; overflow: hidden; background: var(--ipw-color-bg); }
+    .slide { position: absolute; inset: 0; display: none; flex-direction: column; padding: 68px 88px; background: var(--ipw-color-bg); color: var(--ipw-color-text); }
+    .slide.is-active { display: flex; }
+    .slide.cover { background: var(--ipw-color-primary); color: #ffffff; }
+    .eyebrow { margin: 0 0 20px; color: var(--ipw-color-accent); font-size: 17px; font-weight: 700; letter-spacing: 2.4px; text-transform: uppercase; }
+    .cover .eyebrow { color: #ddd6fe; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { max-width: 980px; font-family: var(--ipw-font-display); font-size: 78px; line-height: 1.02; letter-spacing: -2px; }
+    h2 { max-width: 970px; font-family: var(--ipw-font-display); font-size: 54px; line-height: 1.08; letter-spacing: -1.3px; }
+    h3 { font-size: 24px; line-height: 1.2; }
+    .lede { max-width: 860px; margin-top: 24px; color: var(--ipw-color-muted); font-size: 25px; line-height: 1.42; }
+    .cover .lede { color: #ddd6fe; }
+    .accent { color: var(--ipw-color-accent); }
+    .cover .accent { color: #ddd6fe; }
+    .meta { display: flex; gap: 14px; margin-top: auto; }
+    .meta-item { padding: 12px 16px; border: 1px solid #a78bfa; border-radius: var(--ipw-card-radius); color: #ddd6fe; font-size: 17px; }
+    .grid { display: grid; gap: 22px; margin-top: 38px; }
+    .grid.three { grid-template-columns: repeat(3, 1fr); }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .card { min-width: 0; padding: 26px 28px; border: 1px solid var(--ipw-color-border); border-radius: var(--ipw-card-radius); background: var(--ipw-color-surface); }
+    .card p { margin-top: 12px; color: var(--ipw-color-muted); font-size: 20px; line-height: 1.38; }
+    .metric { margin-top: 20px; color: var(--ipw-color-primary); font-size: 58px; font-weight: 700; letter-spacing: -2px; }
+    .metric-label { margin-top: 8px; color: var(--ipw-color-muted); font-size: 18px; }
+    .rule { width: 112px; height: 8px; margin: 28px 0 0; background: var(--ipw-color-accent); }
+    .step-row { position: relative; display: grid; grid-template-columns: 110px 1fr; gap: 22px; padding: 20px 0; }
+    .step-rule { position: absolute; top: 0; left: 0; width: 100%; height: 1px; border-top: 1px solid var(--ipw-color-border); }
+    .step-index { color: var(--ipw-color-accent); font-size: 22px; font-weight: 700; }
+    .step-copy { color: var(--ipw-color-muted); font-size: 22px; line-height: 1.4; }
+    .footer { margin-top: auto; color: var(--ipw-color-muted); font-size: 16px; }
+    @media (max-width: 720px) { .slide { padding: 34px 40px; } h1 { font-size: 42px; } h2 { font-size: 32px; } .lede { font-size: 17px; } .card { padding: 16px; } .card p, .step-copy { font-size: 14px; } .metric { font-size: 36px; } }
+  </style>
+</head>
+<body>
+  <main class="deck" data-ipw-template-kind="slides" aria-label="Executive brief">
+    <section class="slide cover is-active" data-ipw-slide="1" data-title="Decision brief">
+      <p class="eyebrow" data-pptx-text>NBA / Executive Brief</p>
+      <h1 data-pptx-text>The <span class="accent">NBA</span> — 七十余年的篮球传奇.</h1>
+      <p class="lede" data-pptx-text>从1946年至今，NBA已成为全球最具影响力的职业篮球联盟，汇聚了无数传奇球星与经典时刻。</p>
+      <div class="meta"><span class="meta-item" data-pptx-shape="roundRect"><span data-pptx-text>面向：篮球爱好者</span></span><span class="meta-item" data-pptx-shape="roundRect"><span data-pptx-text>NBA历史与球星专题</span></span></div>
+    </section>
+
+    <section class="slide" data-ipw-slide="2" data-title="Decision">
+      <p class="eyebrow" data-pptx-text>01 / 概览</p>
+      <h2 data-pptx-text>理解NBA的<span class="accent">核心价值</span>与历史脉络.</h2>
+      <div class="rule" data-pptx-shape="rect"></div>
+      <div class="grid two">
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>联盟简介</h3><p data-pptx-text>NBA成立于1946年（原名BAA），1949年与NBL合并后正式更名，是全球顶级职业篮球联赛，覆盖美国与加拿大共30支球队。</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>为何值得关注</h3><p data-pptx-text>NBA不仅是竞技赛场，更是文化现象——从乔丹到詹姆斯，从魔术师到库里，球星影响力跨越体育、商业与流行文化。</p></article>
+      </div>
+      <p class="footer" data-pptx-text>本简介为篮球爱好者提供NBA历史与球星的决策参考框架。</p>
+    </section>
+
+    <section class="slide" data-ipw-slide="3" data-title="Evidence">
+      <p class="eyebrow" data-pptx-text>02 / 关键数据</p>
+      <h2 data-pptx-text>用数据见证<span class="accent">篮球传奇</span>.</h2>
+      <div class="grid three">
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>历史跨度</h3><div class="metric" data-pptx-text>80年</div><p class="metric-label" data-pptx-text>自1946年至今的NBA发展历程</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>球队规模</h3><div class="metric" data-pptx-text>30支</div><p class="metric-label" data-pptx-text>分布在北美两地的职业球队</p></article>
+        <article class="card" data-pptx-shape="roundRect"><h3 data-pptx-text>总冠军</h3><div class="metric" data-pptx-text>78届</div><p class="metric-label" data-pptx-text>NBA总决赛累计诞生的冠军</p></article>
+      </div>
+      <p class="footer" data-pptx-text>以上数据基于公开资料整理，供篮球爱好者参考。</p>
+    </section>
+
+    <section class="slide" data-ipw-slide="4" data-title="Plan">
+      <p class="eyebrow" data-pptx-text>03 / 探索路径</p>
+      <h2 data-pptx-text>三步走进<span class="accent">NBA世界</span>.</h2>
+      <div class="grid">
+        <div class="step-row"><div class="step-rule" data-pptx-shape="line"></div><div class="step-index" data-pptx-text>01</div><div class="step-copy" data-pptx-text>了解联盟起源：从BAA到NBA的合并历程，关键转折点与规则演变。</div></div>
+        <div class="step-row"><div class="step-rule" data-pptx-shape="line"></div><div class="step-index" data-pptx-text>02</div><div class="step-copy" data-pptx-text>认识传奇球星：乔丹、科比、詹姆斯、库里等不同时代的代表性球员及其成就。</div></div>
+        <div class="step-row"><div class="step-rule" data-pptx-shape="line"></div><div class="step-index" data-pptx-text>03</div><div class="step-copy" data-pptx-text>感受经典时刻：回顾总决赛名场面，理解比赛对文化与社会的深远影响。</div></div>
+      </div>
+    </section>
+
+    <section class="slide cover" data-ipw-slide="5" data-title="Close">
+      <p class="eyebrow" data-pptx-text>结语</p>
+      <h1 data-pptx-text>篮球不止于比赛，<span class="accent">传奇仍在续写.</span></h1>
+      <p class="lede" data-pptx-text>感谢阅读。希望这份简介能帮助您更深入地了解NBA的历史与球星故事。</p>
+      <p class="footer" data-pptx-text>NBA Executive Brief / 篮球爱好者专题</p>
+    </section>
+  </main>
+</body>
+</html>
