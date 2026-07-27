@@ -17,7 +17,11 @@ describe("setPreviewPlaybackActive", () => {
         querySelectorAll: (selector: string) =>
           selector === ".frame" ? [{}, {}] : selector === "audio, video" ? [] : [],
         querySelector: (selector: string) =>
-          selector === "[data-composition-id]" ? root : selector === "#play" ? { click } : null,
+          selector === "[data-composition-id]"
+            ? root
+            : selector === "#play"
+              ? { click, textContent: "Pause", getAttribute: () => null }
+              : null,
       },
       contentWindow: {
         requestAnimationFrame: vi.fn(() => 1),
@@ -30,6 +34,34 @@ describe("setPreviewPlaybackActive", () => {
     setPreviewPlaybackActive(iframe, false);
 
     expect(click).toHaveBeenCalledOnce();
+    expect(root.setAttribute).toHaveBeenCalledWith("data-hf-studio-carousel-controlled", "true");
+  });
+
+  it("does not start a paused legacy carousel while taking control", () => {
+    const click = vi.fn();
+    const root = { setAttribute: vi.fn(), hasAttribute: vi.fn(() => false) };
+    const iframe = {
+      getRootNode: () => ({}),
+      contentDocument: {
+        getAnimations: () => [],
+        querySelectorAll: (selector: string) => selector === ".frame" ? [{}, {}] : [],
+        querySelector: (selector: string) =>
+          selector === "[data-composition-id]"
+            ? root
+            : selector === "#play"
+              ? { click, textContent: "Play", getAttribute: () => null }
+              : null,
+      },
+      contentWindow: {
+        requestAnimationFrame: vi.fn(() => 1),
+        cancelAnimationFrame: vi.fn(),
+        postMessage: vi.fn(),
+      },
+    } as unknown as HTMLIFrameElement;
+
+    setPreviewPlaybackActive(iframe, false);
+
+    expect(click).not.toHaveBeenCalled();
     expect(root.setAttribute).toHaveBeenCalledWith("data-hf-studio-carousel-controlled", "true");
   });
 

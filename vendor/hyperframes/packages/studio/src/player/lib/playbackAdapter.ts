@@ -36,6 +36,20 @@ export function getAdapterDuration(adapter: PlaybackAdapter | null | undefined):
   }
 }
 
+export function shouldUseStudioClockForLegacyFrames(
+  doc: Document | null | undefined,
+  adapter: PlaybackAdapter | null | undefined,
+  duration: number,
+): boolean {
+  if (!doc || !adapter || !isFinitePositive(duration)) return false;
+  try {
+    return doc.querySelectorAll(".frame").length >= 2 &&
+      ("renderSeek" in adapter || typeof adapter.seek === "function");
+  } catch {
+    return false;
+  }
+}
+
 const durationLimitAdapterCache = new WeakMap<PlaybackAdapter, Map<number, PlaybackAdapter>>();
 
 export function wrapAdapterWithDurationLimit(adapter: PlaybackAdapter, duration: number): PlaybackAdapter {
@@ -200,6 +214,7 @@ export function resolveStaticSeekFallback(opts: {
   docDuration: number;
   clock: StaticSeekPlaybackClock;
   getPlaybackRate: () => number;
+  reason?: "duration-mismatch" | "legacy-frame-carousel";
 }): PlaybackAdapter {
   const { cache, warned, bestAdapter, effectiveDuration, docDuration } = opts;
   const cached = cache.current;
@@ -207,7 +222,7 @@ export function resolveStaticSeekFallback(opts: {
     return cached.adapter;
   }
   cached?.adapter.pause();
-  if (!warned.current) {
+  if (!warned.current && opts.reason !== "legacy-frame-carousel") {
     warned.current = true;
     console.warn(
       `[useTimelinePlayer] Selected adapter duration (${getAdapterDuration(bestAdapter)}s) does not cover the document duration (${docDuration}s); falling back to seek-driven playback, which never starts media elements or WebAudio. Audio will not play in preview — extend the GSAP timeline to cover the declared data-duration.`,

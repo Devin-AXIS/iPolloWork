@@ -249,6 +249,7 @@ export function parseSettingsPath(pathname: string): {
   tab: SettingsTab;
   redirectPath: string | null;
   extensionsSection?: "all" | "mcp" | "plugins";
+  pluginPackageId?: string;
 } {
   const trimmed = pathname
     .replace(/^\/workspace\/[^/]+\/settings\/?/, "")
@@ -258,7 +259,7 @@ export function parseSettingsPath(pathname: string): {
     return { tab: "preferences", redirectPath: "preferences" };
   }
 
-  const [head, tail] = trimmed.split("/");
+  const [head, tail, detailId] = trimmed.split("/");
   switch (head) {
     case "general":
     case "ai":
@@ -283,6 +284,14 @@ export function parseSettingsPath(pathname: string): {
     case "cloud-workers":
       return { tab: "cloud-account", redirectPath: "cloud-account" };
     case "extensions":
+      if (tail === "plugin" && detailId) {
+        return {
+          tab: "extensions",
+          redirectPath: null,
+          extensionsSection: "all",
+          pluginPackageId: decodeURIComponent(detailId),
+        };
+      }
       if (tail === "mcp") return { tab: "extensions", redirectPath: null, extensionsSection: "mcp" };
       if (tail === "skills") return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
       if (tail === "plugins") return { tab: "extensions", redirectPath: null, extensionsSection: "plugins" };
@@ -334,6 +343,9 @@ function findSessionWorkspaceId(
 }
 
 function settingsPathForRoute(route: ReturnType<typeof parseSettingsPath>) {
+  if (route.tab === "extensions" && route.pluginPackageId) {
+    return `extensions/plugin/${encodeURIComponent(route.pluginPackageId)}`;
+  }
   if (route.tab === "extensions" && route.extensionsSection && route.extensionsSection !== "all") {
     return `extensions/${route.extensionsSection}`;
   }
@@ -2051,7 +2063,22 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             }}
           />
         );
-      case "extensions":
+      case "extensions": {
+        const pluginPackagesView = (
+          <PluginPackagesPanel
+            client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+            workspaceId={runtimeWorkspaceId}
+            selectedPluginId={route.pluginPackageId ?? null}
+            onSelectPlugin={(pluginId) => {
+              navigateSettingsPath(pluginId ? `extensions/plugin/${encodeURIComponent(pluginId)}` : "extensions");
+            }}
+            onOpenUrl={(url) => platform.openLink(url)}
+            onConnectFigma={() => {
+              void connectionsStore.connectMcp(FIGMA_MCP_QUICK_CONNECT);
+            }}
+          />
+        );
+        if (route.pluginPackageId) return pluginPackagesView;
         return (
           <ExtensionsView
             busy={busy}
@@ -2080,16 +2107,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               void extensionsStore.refreshCloudOrgMarketplaces({ force: true });
               void orgMcpConnections.refresh();
             }}
-            pluginPackagesView={
-              <PluginPackagesPanel
-                client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
-                workspaceId={runtimeWorkspaceId}
-                onOpenUrl={(url) => platform.openLink(url)}
-                onConnectFigma={() => {
-                  void connectionsStore.connectMcp(FIGMA_MCP_QUICK_CONNECT);
-                }}
-              />
-            }
+            pluginPackagesView={pluginPackagesView}
             mcpView={
               <McpView
                 busy={busy}
@@ -2165,6 +2183,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             }
           />
         );
+      }
       case "cloud-account":
         return (
           <CloudAccountView
@@ -2357,6 +2376,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         busyHint={loading ? t("session.loading_detail") : busyLabel}
         onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId) : "/session"))}
         compact={props.embedded}
+        hidePageHeader={Boolean(route.pluginPackageId)}
+        hideShellHeader={Boolean(route.pluginPackageId)}
       >
         {settingsView}
       </SettingsShell>

@@ -38,6 +38,7 @@ import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/st
 import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
 import { useStudioI18n } from "../i18n";
 import { X } from "../icons/SystemIcons";
+import { BlocksTab, type BlockPreviewInfo } from "./sidebar/BlocksTab";
 
 function subscribePreviewFullscreen(callback: () => void) {
   const observer = new MutationObserver(callback);
@@ -144,6 +145,8 @@ export interface StudioRightPanelProps {
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
+  onAddBlock?: (blockName: string) => void;
+  onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -161,6 +164,8 @@ export function StudioRightPanel({
   domEditSaveTimestampRef,
   recordEdit,
   onToggleElementHidden,
+  onAddBlock,
+  onPreviewBlock,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -511,6 +516,12 @@ export function StudioRightPanel({
                 </>
               )}
               <PanelTabButton
+                label={t("right.catalog")}
+                tooltip={t("right.catalogTooltip")}
+                active={rightPanelTab === "catalog"}
+                onClick={() => setRightPanelTab("catalog")}
+              />
+              <PanelTabButton
                 label={renderJobs.length > 0 ? t("right.rendersCount", { count: renderJobs.length }) : t("right.renders")}
                 tooltip={t("right.rendersTooltip")}
                 active={rightPanelTab === "renders"}
@@ -535,6 +546,8 @@ export function StudioRightPanel({
                   compositionPath={activeBlockParams.compositionPath}
                   onClose={onCloseBlockParams ?? (() => {})}
                 />
+              ) : rightPanelTab === "catalog" ? (
+                <BlocksTab onAddBlock={onAddBlock} onPreviewBlock={onPreviewBlock} />
               ) : inspectorTabActive ? (
                 <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
                   <div

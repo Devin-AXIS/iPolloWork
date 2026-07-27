@@ -1,10 +1,22 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import {
+  constants as fsConstants,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const desktopRoot = resolve(__dirname, "..");
 const repoRoot = resolve(desktopRoot, "../..");
 const electronSidecarDir = resolve(desktopRoot, "resources", "sidecars");
@@ -13,6 +25,7 @@ const hyperframesRoot = resolve(repoRoot, "vendor", "hyperframes");
 const hyperframesCli = resolve(hyperframesRoot, "packages", "cli", "bin", "hyperframes.mjs");
 const hyperframesCliBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "cli.js");
 const hyperframesRuntimeVersion = resolve(hyperframesRoot, "packages", "cli", "dist", "runtimeVersion.js");
+const hyperframesStudioBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "studio", "index.html");
 const hyperframesDependencies = resolve(hyperframesRoot, "node_modules", ".bun");
 const hyperframesDevProjectDir = resolve(repoRoot, ".ipollowork-dev", "hyperframes-preview");
 const hyperframesDevProjectName = ".ipollowork-dev/hyperframes-preview";
@@ -21,6 +34,11 @@ const defaultDevDataDir = resolve(
   ".ipollowork",
   "ipollowork-orchestrator-dev",
 );
+const macDevElectronRoot = resolve(repoRoot, ".ipollowork-dev", "electron-runtime");
+const macDevElectronApp = resolve(macDevElectronRoot, "iPollo Dev.app");
+const macDevElectronExecutable = resolve(macDevElectronApp, "Contents", "MacOS", "Electron");
+const macDevElectronInfoPlist = resolve(macDevElectronApp, "Contents", "Info.plist");
+const macLaunchServicesRegister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
 const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const bunCmd = process.platform === "win32" ? "bun.exe" : "bun";
@@ -65,6 +83,52 @@ function runSync(command, args, options = {}) {
   }
 }
 
+function prepareMacDevelopmentElectron() {
+  if (process.platform !== "darwin") return null;
+
+  const sourceExecutable = String(require("electron"));
+  const sourceApp = resolve(dirname(sourceExecutable), "../..");
+  rmSync(macDevElectronApp, { recursive: true, force: true });
+  mkdirSync(macDevElectronRoot, { recursive: true });
+  cpSync(sourceApp, macDevElectronApp, {
+    recursive: true,
+    force: true,
+    mode: fsConstants.COPYFILE_FICLONE,
+  });
+
+  runSync("plutil", [
+    "-replace",
+    "CFBundleIdentifier",
+    "-string",
+    "com.differentai.ipollowork.dev",
+    macDevElectronInfoPlist,
+  ]);
+  runSync("plutil", [
+    "-replace",
+    "CFBundleName",
+    "-string",
+    "iPollo - Dev",
+    macDevElectronInfoPlist,
+  ]);
+  spawnSync("plutil", ["-remove", "CFBundleURLTypes", macDevElectronInfoPlist], {
+    stdio: "ignore",
+  });
+  runSync("plutil", [
+    "-insert",
+    "CFBundleURLTypes",
+    "-json",
+    JSON.stringify([{
+      CFBundleTypeRole: "Editor",
+      CFBundleURLName: "iPolloWork Development",
+      CFBundleURLSchemes: ["ipollowork-dev"],
+    }]),
+    macDevElectronInfoPlist,
+  ]);
+  runSync(macLaunchServicesRegister, ["-f", macDevElectronApp]);
+  console.log(`[electron-dev] Registered ipollowork-dev:// with ${macDevElectronApp}`);
+  return macDevElectronExecutable;
+}
+
 function ensureHyperframesDevProject() {
   if (existsSync(resolve(hyperframesDevProjectDir, "index.html"))) {
     ensureVisibleHyperframesStarter(hyperframesDevProjectDir);
@@ -94,10 +158,28 @@ function ensureHyperframesDevBuild() {
     console.log("[electron-dev] Installing HyperFrames dependencies...");
     runSync(bunCmd, ["install", "--frozen-lockfile"], { cwd: hyperframesRoot });
   }
-  if (!existsSync(hyperframesCliBuild) || !existsSync(hyperframesRuntimeVersion)) {
+  const studioSourceRoot = resolve(hyperframesRoot, "packages", "studio", "src");
+  const studioBuildTime = existsSync(hyperframesStudioBuild) ? statSync(hyperframesStudioBuild).mtimeMs : 0;
+  if (
+    !existsSync(hyperframesCliBuild)
+    || !existsSync(hyperframesRuntimeVersion)
+    || newestMtimeMs(studioSourceRoot) > studioBuildTime
+  ) {
     console.log("[electron-dev] Building HyperFrames Studio...");
     runSync(bunCmd, ["run", "build:local-studio"], { cwd: hyperframesRoot });
   }
+}
+
+function newestMtimeMs(root) {
+  if (!existsSync(root)) return 0;
+  const stat = statSync(root);
+  if (!stat.isDirectory()) return stat.mtimeMs;
+  let newest = stat.mtimeMs;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === "dist") continue;
+    newest = Math.max(newest, newestMtimeMs(resolve(root, entry.name)));
+  }
+  return newest;
 }
 
 function ensureVisibleHyperframesStarter(projectDir) {
@@ -356,6 +438,7 @@ if (!viteReady) {
 }
 
 const resolvedStartUrl = await waitForVite(startUrl);
+const developmentElectronExecutable = prepareMacDevelopmentElectron();
 
 // Optional Electron CDP for external debugging / raw CDP clients.
 // NOT required for the built-in browser (uses native webContents APIs).
@@ -363,7 +446,9 @@ const resolvedStartUrl = await waitForVite(startUrl);
 const cdpPortRaw = process.env.IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT?.trim() ?? "";
 const cdpPort = cdpPortRaw === "" || cdpPortRaw === "0" ? "" : cdpPortRaw;
 
-electronChild = run(pnpmCmd, ["exec", "electron", "./electron/main.mjs"], {
+electronChild = run(developmentElectronExecutable ?? pnpmCmd, developmentElectronExecutable
+  ? ["./electron/main.mjs"]
+  : ["exec", "electron", "./electron/main.mjs"], {
   cwd: desktopRoot,
   env: {
     ...process.env,

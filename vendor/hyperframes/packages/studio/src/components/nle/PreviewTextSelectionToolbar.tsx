@@ -6,7 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { SlidersHorizontal } from "@phosphor-icons/react";
+import { SlidersHorizontal, Sparkle, Trash } from "@phosphor-icons/react";
 import { type DomEditSelection } from "../editor/domEditing";
 import { useDomEditActionsContext } from "../../contexts/DomEditContext";
 import { resolveBoundedOverlayPosition } from "./boundedOverlay";
@@ -291,7 +291,7 @@ export function PreviewTextSelectionToolbar({
   activeSelection,
   hidden,
 }: PreviewTextSelectionToolbarProps) {
-  const { applyDomSelection, buildDomSelectionFromTarget, handleDomInnerHtmlCommit } =
+  const { applyDomSelection, buildDomSelectionFromTarget, handleDomEditElementDelete, handleDomInnerHtmlCommit } =
     useDomEditActionsContext();
   const [state, setState] = useState<TextSelectionState | null>(null);
   const [replacementText, setReplacementText] = useState("");
@@ -451,6 +451,41 @@ export function PreviewTextSelectionToolbar({
     applyDomSelection(activeSelection, { revealPanel: true });
   }, [activeSelection, applyDomSelection]);
 
+  const deleteSelectedElement = useCallback(() => {
+    if (!activeSelection) return;
+    void handleDomEditElementDelete(activeSelection);
+    stateRef.current = null;
+    setState(null);
+  }, [activeSelection, handleDomEditElementDelete]);
+
+  const askAiAboutSelection = useCallback(() => {
+    if (!activeSelection) return;
+    const element = activeSelection.element;
+    const computed = element.ownerDocument.defaultView?.getComputedStyle(element);
+    window.parent?.postMessage({
+      type: "ipollowork:hyperframes:ask-ai-selection",
+      target: {
+        file: activeSelection.sourceFile || "index.html",
+        selector: activeSelection.selector,
+        selectorIndex: activeSelection.selectorIndex,
+        id: activeSelection.id ?? undefined,
+      },
+      tag: element.tagName.toLowerCase(),
+      text: element.textContent || "",
+      src: element.getAttribute("src") || "",
+      alt: element.getAttribute("alt") || "",
+      styles: {
+        color: computed?.color ?? "",
+        backgroundColor: computed?.backgroundColor ?? "",
+        fontSize: computed?.fontSize ?? "",
+        fontWeight: computed?.fontWeight ?? "",
+        opacity: computed?.opacity ?? "",
+      },
+    }, "*");
+    stateRef.current = null;
+    setState(null);
+  }, [activeSelection]);
+
   if (!state || hidden || !containerRef.current) return null;
 
   return (
@@ -502,12 +537,30 @@ export function PreviewTextSelectionToolbar({
       )}
       <button
         type="button"
-        className="hf-preview-text-toolbar__button"
+        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button hf-preview-text-toolbar__delete-button"
+        aria-label="Delete selected element"
+        title="Delete"
+        onClick={deleteSelectedElement}
+      >
+        <Trash size={12} weight="bold" />
+      </button>
+      <button
+        type="button"
+        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
         aria-label="Open Design properties"
         title="Design"
         onClick={openDesignProperties}
       >
-        <SlidersHorizontal size={16} weight="bold" />
+        <SlidersHorizontal size={12} weight="bold" />
+      </button>
+      <button
+        type="button"
+        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
+        aria-label="Ask AI about selected element"
+        title="Ask AI"
+        onClick={askAiAboutSelection}
+      >
+        <Sparkle size={12} weight="bold" />
       </button>
     </div>
   );

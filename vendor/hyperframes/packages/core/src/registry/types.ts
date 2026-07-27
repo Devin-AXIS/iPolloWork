@@ -192,15 +192,16 @@ export interface BlockCategoryMeta {
 }
 
 export const BLOCK_CATEGORIES: BlockCategoryMeta[] = [
-  { id: "captions", label: "Captions", color: "cyan" },
-  { id: "code-animation", label: "Code Animations", color: "emerald" },
-  { id: "vfx", label: "VFX", color: "purple" },
-  { id: "transitions", label: "Transitions", color: "blue" },
-  { id: "effects", label: "Effects", color: "rose" },
-  { id: "text-effects", label: "Text Effects", color: "violet" },
-  { id: "social", label: "Social", color: "pink" },
-  { id: "data", label: "Data", color: "green" },
+  // Structure-shaping categories come first; finishing overlays follow.
   { id: "scenes", label: "Scenes", color: "amber" },
+  { id: "data", label: "Data", color: "green" },
+  { id: "code-animation", label: "Code Animations", color: "emerald" },
+  { id: "social", label: "Social", color: "pink" },
+  { id: "text-effects", label: "Text Effects", color: "violet" },
+  { id: "transitions", label: "Transitions", color: "blue" },
+  { id: "captions", label: "Captions", color: "cyan" },
+  { id: "effects", label: "Effects", color: "rose" },
+  { id: "vfx", label: "VFX", color: "purple" },
 ];
 
 export function resolveBlockCategory(tags: string[] | undefined): BlockCategory {

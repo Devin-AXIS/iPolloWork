@@ -1,0 +1,26 @@
+:root {
+  --ipw-color-bg: #ffffff;
+  --ipw-color-surface: #fafafa;
+  --ipw-color-text: #000000;
+  --ipw-color-muted: #93939f;
+  --ipw-color-border: #d9d9dd;
+  --ipw-color-primary: #1863dc;
+  --ipw-color-secondary: color-mix(in oklab, var(--accent), black 8%);
+  --ipw-color-accent: var(--muted);
+  --ipw-color-success: #16a34a;
+  --ipw-color-warning: #eab308;
+  --ipw-color-danger: #ef4444;
+  --ipw-font-display: "CohereText", "Space Grotesk", Inter, ui-sans-serif, sans-serif;
+  --ipw-font-body: "Unica77 Cohere Web", Inter, Arial, ui-sans-serif, sans-serif;
+  --ipw-type-scale: 1;
+  --ipw-body-line-height: 1.5;
+  --ipw-content-width: 1440px;
+  --ipw-page-padding: 32px;
+  --ipw-section-space: 60px;
+  --ipw-button-radius: 9999px;
+  --ipw-card-bg: #fafafa;
+  --ipw-card-border: #d9d9dd;
+  --ipw-card-radius: 22px;
+  --ipw-card-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --ipw-card-blur: 0px;
+}
