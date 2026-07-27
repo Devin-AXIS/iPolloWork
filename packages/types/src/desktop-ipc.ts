@@ -422,6 +422,7 @@ export type DesktopCommandMap = {
     args: [input: DesktopNotificationInput];
     result: DesktopNotificationResult;
   };
+  listSystemFontFamilies: { args: []; result: string[] };
   getUiControlBridgeInfo: { args: []; result: UiControlBridgeInfo | null };
   getiPolloWorkUiMcpCommand: { args: []; result: string[] };
   getComputerUseMcpCommand: { args: []; result: string[] };

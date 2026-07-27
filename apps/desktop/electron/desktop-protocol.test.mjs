@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import path from "node:path";
 
 import {
   registerDesktopProtocolClient,
@@ -19,16 +20,17 @@ test("packaged apps keep the production protocol", () => {
 });
 
 test("development apps register an isolated protocol with the Electron entrypoint", () => {
+  const entryPath = path.resolve("repo/apps/desktop/electron/main.mjs");
   const registration = resolveDesktopProtocolRegistration({
     isDevMode: true,
     isPackaged: false,
     execPath: "/repo/node_modules/electron/Electron",
-    entryPath: "/repo/apps/desktop/electron/main.mjs",
+    entryPath,
   });
   assert.deepEqual(registration, {
     scheme: "ipollowork-dev",
     executablePath: "/repo/node_modules/electron/Electron",
-    args: ["/repo/apps/desktop/electron/main.mjs"],
+    args: [entryPath],
   });
 
   const calls = [];
@@ -42,7 +44,7 @@ test("development apps register an isolated protocol with the Electron entrypoin
   assert.deepEqual(calls, [[
     "ipollowork-dev",
     "/repo/node_modules/electron/Electron",
-    ["/repo/apps/desktop/electron/main.mjs"],
+    [entryPath],
   ]]);
 });
 
