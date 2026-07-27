@@ -76,6 +76,7 @@ import { t } from "@/i18n";
 import {
   type RouteWorkspace,
   type RouteSession,
+  buildTaskPaletteSessionOptions,
   describeRouteError,
   describeWorkspaceCreateError,
   downloadWorkspaceJson,
@@ -87,6 +88,7 @@ import {
   mergeRouteWorkspaces,
   orderRouteWorkspaces,
   toSessionGroups,
+  userVisibleSessionsByWorkspaceId,
   workspaceExportFilename,
   workspaceLabel,
 } from "@/react-app/shell/route-workspaces";
@@ -110,6 +112,7 @@ import {
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
 import { useModelBehavior } from "@/react-app/domains/session/surface/use-model-behavior";
+import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
 import { useSessionFindStore } from "@/react-app/domains/session/surface/find-store";
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
 import { appMentionInstruction } from "@/react-app/domains/session/surface/composer/app-mentions";
@@ -145,7 +148,6 @@ import { ModelPickerModal } from "@/react-app/domains/session/modals/model-picke
 import { CommandPalette, type PaletteItem, type SessionGroupOption, type SessionOption as PaletteSessionOption } from "./command-palette";
 import { SessionSearchDialog } from "./session-search-dialog";
 import type { SessionMessageFetcher } from "@/react-app/domains/session/search/session-search";
-import { getDisplaySessionTitle } from "@/app/lib/session-title";
 import { useBootState } from "./boot-state";
 import {
   forgetWorkspaceMemory,
@@ -266,7 +268,7 @@ type DesignSelectionScope = {
 
 type DesignSelectionWorkspaceClient = {
   readWorkspaceFile: (workspaceId: string, path: string) => Promise<{ content: string; updatedAt?: number | null }>;
-  writeWorkspaceFile: (workspaceId: string, payload: { path: string; content: string; baseUpdatedAt?: number | null }) => Promise<unknown>;
+  writeWorkspaceFile: (workspaceId: string, payload: { path: string; content: string; baseUpdatedAt?: number | null }) => Promise<{ updatedAt?: number | null }>;
 };
 
 type DesignSelectionStore = Pick<typeof useDesignAiSelectionStore, "getState">;
@@ -310,14 +312,16 @@ export async function promptDesignSelectionContexts(input: {
   try {
     for (const context of input.contexts) {
       const current = await input.workspaceClient.readWorkspaceFile(context.workspaceId, context.filePath);
-      if ((current.updatedAt ?? null) !== context.baseUpdatedAt) {
-        throw new Error("The selected Design file changed before the AI update. Reload it and try again.");
-      }
-      await input.workspaceClient.writeWorkspaceFile(context.workspaceId, {
+      const prepared = await input.workspaceClient.writeWorkspaceFile(context.workspaceId, {
         path: context.filePath,
-        content: context.beforeHtml,
+        content: current.content,
         baseUpdatedAt: current.updatedAt ?? null,
       });
+      const rebased = designSelectionStore.getState().rebasePendingContext(context.id, {
+        beforeHtml: current.content,
+        baseUpdatedAt: prepared.updatedAt ?? current.updatedAt ?? null,
+      });
+      if (!rebased) throw new Error("The selected Design element is no longer ready for an AI update.");
       designSelectionStore.getState().markRunning(context.id);
     }
     const result = await input.prompt();
@@ -644,10 +648,13 @@ export function SessionRoute() {
     onSaved: handleRemoteWorkspaceConnectionSaved,
   });
 
-
+  const visibleSessionsByWorkspaceId = useMemo(
+    () => userVisibleSessionsByWorkspaceId(sessionsByWorkspaceId),
+    [sessionsByWorkspaceId],
+  );
   const workspaceSessionGroups = useMemo(
-    () => toSessionGroups(workspaces, sessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
-    [errorsByWorkspaceId, retryingWorkspaceIds, sessionsByWorkspaceId, workspaces],
+    () => toSessionGroups(workspaces, visibleSessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
+    [errorsByWorkspaceId, retryingWorkspaceIds, visibleSessionsByWorkspaceId, workspaces],
   );
   useSessionGroupSync({ workspaces, endpointForWorkspace });
   const selectedWorkspaceGroupState = sessionManagementStore((state) => (
@@ -658,14 +665,15 @@ export function SessionRoute() {
   const sessionActivityByWorkspaceId = useSessionActivityStore((state) => state.statusesByWorkspaceId);
 
   useEffect(() => {
-    for (const group of workspaceSessionGroups) {
-      seedWorkspaceActivitySessions(group.workspace.id, group.sessions);
-      const serverId = workspaceServerId(group.workspace);
-      if (serverId && serverId !== group.workspace.id) {
-        seedWorkspaceActivitySessions(serverId, group.sessions);
+    for (const workspace of workspaces) {
+      const sessions = sessionsByWorkspaceId[workspace.id] ?? [];
+      seedWorkspaceActivitySessions(workspace.id, sessions);
+      const serverId = workspaceServerId(workspace);
+      if (serverId && serverId !== workspace.id) {
+        seedWorkspaceActivitySessions(serverId, sessions);
       }
     }
-  }, [seedWorkspaceActivitySessions, workspaceSessionGroups]);
+  }, [seedWorkspaceActivitySessions, sessionsByWorkspaceId, workspaces]);
 
   const sidebarSessionStatusById = useMemo(() => {
     const next: Record<string, string> = {};
@@ -992,6 +1000,12 @@ export function SessionRoute() {
       onConfigureModels: () => {
         void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
       },
+      onConfigureTokenStar: () => {
+        void sessionProviderAuthStore.openProviderAuthModal({
+          returnFocusTarget: "composer",
+          preferredProviderId: "tokenstar",
+        });
+      },
       providerConnectedCount: hasUsableModel ? 1 : providerConnectedIds.length,
       onOpenSettingsSection: (section: "commands" | "skills" | "mcps" | "plugins" | "providers") => {
         handleOpenSettings(section === "skills" ? "/settings/skills" : section === "mcps" ? "/settings/extensions/mcp" : section === "plugins" ? "/settings/extensions/plugins" : section === "providers" ? "/settings/ai" : "/settings/preferences");
@@ -1170,7 +1184,11 @@ export function SessionRoute() {
             parts: promptParts,
             model: local.prefs.defaultModel ?? undefined,
             agent: selectedAgent ?? undefined,
-            ...(modelVariantValue ? { variant: modelVariantValue } : {}),
+            ...(local.prefs.defaultModel?.providerID === "tokenstar" && modelVariantValue && tokenStarModelSupportsEffort(local.prefs.defaultModel.modelID)
+              ? { reasoning_effort: modelVariantValue }
+              : modelVariantValue
+                ? { variant: modelVariantValue }
+                : {}),
             ...(systemContext ? { system: systemContext } : {}),
           }),
         });
@@ -1678,43 +1696,12 @@ export function SessionRoute() {
   useControlAction(addProviderControlAction);
 
   const paletteSessionOptions = useMemo<PaletteSessionOption[]>(() => {
-    const out: PaletteSessionOption[] = [];
-    for (const workspace of workspaces) {
-      const workspaceTitle =
-        workspace.displayName?.trim() ||
-        workspace.name?.trim() ||
-        workspace.path?.trim() ||
-        t("session.workspace_fallback");
-      const list = sessionsByWorkspaceId[workspace.id] ?? [];
-      for (const session of list) {
-        const sessionId = (session as { id?: string }).id?.trim() ?? "";
-        if (!sessionId) continue;
-        const title = getDisplaySessionTitle(
-          (session as { title?: string }).title ?? "",
-        );
-        const updatedAt =
-          (session as { time?: { updated?: number; created?: number } }).time
-            ?.updated ??
-          (session as { time?: { updated?: number; created?: number } }).time
-            ?.created ??
-          0;
-        out.push({
-          workspaceId: workspace.id,
-          sessionId,
-          title,
-          workspaceTitle,
-          updatedAt,
-          searchText: `${title} ${workspaceTitle}`.toLowerCase(),
-          isActive: workspace.id === selectedWorkspaceId,
-        });
-      }
-    }
-    out.sort((a, b) => {
-      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-      return b.updatedAt - a.updatedAt;
-    });
-    return out;
-  }, [sessionsByWorkspaceId, selectedWorkspaceId, workspaces]);
+    return buildTaskPaletteSessionOptions(
+      workspaces,
+      visibleSessionsByWorkspaceId,
+      selectedWorkspaceId,
+    );
+  }, [selectedWorkspaceId, visibleSessionsByWorkspaceId, workspaces]);
 
   const paletteSessionGroups = useMemo<SessionGroupOption[]>(
     () => selectedWorkspaceGroupState?.groups ?? [],
@@ -2162,8 +2149,8 @@ export function SessionRoute() {
           ),
         ),
         onSelect: sessionProviderAuthStore.startProviderAuth,
-        onSubmitApiKey: async (providerId, apiKey) => {
-          const result = await sessionProviderAuthStore.submitProviderApiKey(providerId, apiKey);
+        onSubmitApiKey: async (providerId, apiKey, modelIds) => {
+          const result = await sessionProviderAuthStore.submitProviderApiKey(providerId, apiKey, modelIds);
           modelPicker.setRecentProviderIds(new Set([providerId]));
           modelPicker.setQuery("");
           modelPicker.setOpen(true);
@@ -2177,6 +2164,7 @@ export function SessionRoute() {
           return result;
         },
         onSubmitOAuth: sessionProviderAuthStore.completeProviderAuthOAuth,
+        onDisconnectProvider: sessionProviderAuthStore.disconnectProvider,
         onRefreshProviders: sessionProviderAuthStore.refreshProviders,
         onClose: () => sessionProviderAuthStore.closeProviderAuthModal(),
       } : null}

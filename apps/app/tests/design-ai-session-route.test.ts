@@ -83,7 +83,8 @@ describe("Design AI session lifecycle", () => {
   test("preflights the Design snapshot before prompt submission and completes only on idle", async () => {
     const source = await Bun.file(routeUrl).text();
     const preflightRead = source.indexOf("readWorkspaceFile(context.workspaceId, context.filePath)");
-    const preflightWrite = source.indexOf("content: context.beforeHtml");
+    const preflightWrite = source.indexOf("content: current.content");
+    const rebase = source.indexOf("rebasePendingContext(context.id");
     const markRunning = source.indexOf("markRunning(context.id)");
     const prompt = source.indexOf("session.promptAsync({");
 
@@ -91,7 +92,8 @@ describe("Design AI session lifecycle", () => {
     expect(source).toContain("current.updatedAt ?? null");
     expect(source).toContain("baseUpdatedAt: current.updatedAt ?? null");
     expect(preflightWrite).toBeGreaterThan(preflightRead);
-    expect(markRunning).toBeGreaterThan(preflightRead);
+    expect(rebase).toBeGreaterThan(preflightWrite);
+    expect(markRunning).toBeGreaterThan(rebase);
     expect(prompt).toBeGreaterThan(markRunning);
     expect(source).toContain('update.status.type !== "idle"');
     expect(source).toContain("claimCompletion(context.id)");
@@ -99,6 +101,54 @@ describe("Design AI session lifecycle", () => {
     expect(source).toContain("afterUpdatedAt: after.updatedAt ?? null");
     expect(source).toContain("completeWithoutChange(context.id)");
     expect(source).toContain("onSessionStatus={handleSessionStatus}");
+  });
+
+  test("rebases a stale Design selection to the latest file before prompting", async () => {
+    const store = useDesignAiSelectionStore.getState();
+    store.createContext(lifecycleContext);
+    let writePayload: { content: string; baseUpdatedAt?: number | null } | undefined;
+
+    await sessionRoute.promptDesignSelectionContexts({
+      contexts: [lifecycleContext],
+      workspaceClient: {
+        readWorkspaceFile: async () => ({ content: "<h1>Latest</h1>", updatedAt: 12 }),
+        writeWorkspaceFile: async (_workspaceId, payload) => {
+          writePayload = payload;
+          return { updatedAt: 13 };
+        },
+      },
+      prompt: async () => ({ error: undefined }),
+      designSelectionStore: useDesignAiSelectionStore,
+    });
+
+    expect(writePayload).toMatchObject({ content: "<h1>Latest</h1>", baseUpdatedAt: 12 });
+    expect(useDesignAiSelectionStore.getState().contexts[lifecycleContext.id]).toMatchObject({
+      beforeHtml: "<h1>Latest</h1>",
+      baseUpdatedAt: 13,
+    });
+    expect(useDesignAiSelectionStore.getState().statuses[lifecycleContext.id]).toBe("running");
+  });
+
+  test("keeps a real concurrent write conflict from starting the AI prompt", async () => {
+    const store = useDesignAiSelectionStore.getState();
+    store.createContext(lifecycleContext);
+    let prompted = false;
+
+    await expect(sessionRoute.promptDesignSelectionContexts({
+      contexts: [lifecycleContext],
+      workspaceClient: {
+        readWorkspaceFile: async () => ({ content: "<h1>Latest</h1>", updatedAt: 12 }),
+        writeWorkspaceFile: async () => { throw new Error("File changed since it was loaded"); },
+      },
+      prompt: async () => {
+        prompted = true;
+        return { error: undefined };
+      },
+      designSelectionStore: useDesignAiSelectionStore,
+    })).rejects.toThrow("changed since");
+
+    expect(prompted).toBe(false);
+    expect(useDesignAiSelectionStore.getState().statuses[lifecycleContext.id]).toBe("failed");
   });
 
   test("rejects missing and foreign Design contexts before synthetic expansion", async () => {

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getModelBehaviorSummary } from "@/app/lib/model-behavior";
 import type { ModelRef, ProviderListItem } from "@/app/types";
 import { t } from "@/i18n";
+import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
 
 type ProviderModel = ProviderListItem["models"][string];
 
@@ -50,11 +51,18 @@ export function useModelBehavior(input: UseModelBehaviorInput) {
       };
     }
     const model = providerCatalog[defaultModel.providerID]?.[defaultModel.modelID];
+    const tokenStarEffortModel = defaultModel.providerID === "tokenstar" && tokenStarModelSupportsEffort(defaultModel.modelID);
     if (!model) {
       return {
-        modelVariantLabel: variant ?? t("settings.default_label"),
-        modelBehaviorOptions: emptyModelBehaviorOptions,
-        modelVariantValue: variant,
+        modelVariantLabel: tokenStarEffortModel ? variant ?? "Medium" : variant ?? t("settings.default_label"),
+        modelBehaviorOptions: tokenStarEffortModel
+          ? [
+              { value: "low", label: "Low" },
+              { value: "medium", label: "Medium" },
+              { value: "high", label: "High" },
+            ]
+          : emptyModelBehaviorOptions,
+        modelVariantValue: tokenStarEffortModel ? variant ?? "medium" : variant,
       };
     }
     const summary = getModelBehaviorSummary(defaultModel.providerID, model, variant);

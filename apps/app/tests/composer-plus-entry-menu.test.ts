@@ -10,7 +10,7 @@ const composerSource = readFileSync(
 function actionRowSource() {
   const marker = "{/* Action row";
   const start = composerSource.indexOf(marker);
-  const end = composerSource.indexOf("<ModelSelect", start);
+  const end = composerSource.indexOf("<ModelBehaviorMenu", start);
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   return composerSource.slice(start, end);
