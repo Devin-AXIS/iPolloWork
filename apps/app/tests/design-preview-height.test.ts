@@ -39,4 +39,13 @@ describe("Design property number fields", () => {
     expect(source).toContain("const FONT_WEIGHT_PRESETS");
     expect(source).toContain("<SelectContent align=\"end\">");
   });
+
+  test("toggles each mirror direction without dropping rotation or the other axis", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+
+    expect(source).toContain('toggleTransformScale(selection.styles.transform, "x")');
+    expect(source).toContain('toggleTransformScale(selection.styles.transform, "y")');
+    expect(source).not.toContain('onApplyField("transform", "scaleX(-1)")');
+    expect(source).not.toContain('onApplyField("transform", "scaleY(-1)")');
+  });
 });

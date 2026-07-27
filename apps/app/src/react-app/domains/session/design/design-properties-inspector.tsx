@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { DesignField, DesignSelection, DesignStyleField } from "./design-html-runtime";
+import { toggleTransformScale } from "./design-transform";
 
 type DesignPropertiesInspectorProps = {
   selection: DesignSelection;
@@ -108,8 +109,8 @@ export function DesignPropertiesInspector({
         <div className="mt-2 grid grid-cols-[1fr_42px_42px_42px] gap-1">
           <DragNumberField label="Rotation" value={`${rotation}°`} suffix="°" onChange={(value) => onApplyField("transform", `rotate(${value}deg)`)} />
           <PropertyButton aria-label="Rotate clockwise" onClick={() => onApplyField("transform", `rotate(${rotation + 90}deg)`)}><RotateCw /></PropertyButton>
-          <PropertyButton aria-label="Flip horizontal" onClick={() => onApplyField("transform", "scaleX(-1)")}><FlipHorizontal2 /></PropertyButton>
-          <PropertyButton aria-label="Flip vertical" onClick={() => onApplyField("transform", "scaleY(-1)")}><SeparatorHorizontal /></PropertyButton>
+          <PropertyButton aria-label="Flip horizontal" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "x"))}><FlipHorizontal2 /></PropertyButton>
+          <PropertyButton aria-label="Flip vertical" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "y"))}><SeparatorHorizontal /></PropertyButton>
         </div>
       </InspectorSection>
 
