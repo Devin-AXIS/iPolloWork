@@ -63,7 +63,7 @@ describe("Design property number fields", () => {
   });
 
   test("retains fallback font choices when the desktop catalog command is unavailable", async () => {
-    const source = await Bun.file(inspectorUrl).text();
+    const source = (await Bun.file(inspectorUrl).text()).replace(/\r\n/g, "\n");
 
     expect(source).toContain("catch {\n      setFamilies(FALLBACK_FONT_FAMILIES);");
   });
