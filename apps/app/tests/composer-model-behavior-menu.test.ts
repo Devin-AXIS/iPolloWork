@@ -25,9 +25,13 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain('type MenuView = "root" | "model" | "behavior"');
     expect(menu).toContain("modelVariantLabel");
     expect(menu).toContain("onModelVariantChange");
-    expect(model).toContain("TokenStar Models");
-    expect(model).toContain("TokenStar / GPT / GPT 5.6");
-    expect(model).toContain("openCodeZen.items.unshift(tokenStarEntry)");
+    expect(model).toContain('kind: "tokenstar-connect"');
+    expect(model).toContain("Connect TokenStar");
+    expect(model).toContain('grouped.push({ value: "TokenStar", items: [tokenStarEntry] })');
+    expect(model).not.toContain('option.providerID === "tokenstar") continue');
+    expect(model).not.toContain('option.modelID.startsWith("gpt-")');
+    expect(model).not.toContain('option.modelID.startsWith("kimi-")');
+    expect(model).not.toContain("openCodeZen.items.unshift(tokenStarEntry)");
     expect(menu).toContain("onConfigureTokenStar");
   });
 });

@@ -314,7 +314,11 @@ describe("template installations", () => {
           "ipollowork-logo.svg",
         ), "utf8");
         expect(entry).toContain("assets/ipollowork-logo.svg?v=20260721");
-        expect(await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8")).toBe(currentLogo);
+        const bundledLogo = await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8");
+        expect(bundledLogo).toBe(currentLogo);
+        expect(bundledLogo).not.toMatch(/<rect[^>]+fill=["'](?:white|#fff(?:fff)?)["']/i);
+        expect(bundledLogo).not.toMatch(/<image\b/i);
+        expect(entry).toMatch(/(?:left|right):\s*\d+px[^}]*?(?:top|bottom):\s*\d+px|(?:top|bottom):\s*\d+px[^}]*?(?:left|right):\s*\d+px/i);
       }
       if (manifest.category === "slides") {
         const visualTemplateId = manifest.id.replace("ipollowork.html-anything.", "");
@@ -371,7 +375,11 @@ describe("template installations", () => {
         expect(() => new Function(script[1])).not.toThrow();
       }
       expect(existsSync(join(root, "assets", "gsap.min.js"))).toBe(true);
-      expect(await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8")).toBe(currentLogo);
+      const bundledLogo = await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8");
+      expect(bundledLogo).toBe(currentLogo);
+      expect(bundledLogo).not.toMatch(/<rect[^>]+fill=["'](?:white|#fff(?:fff)?)["']/i);
+      expect(bundledLogo).not.toMatch(/<image\b/i);
+      expect(entry).toMatch(/(?:left|right):\s*\d+px[^}]*?(?:top|bottom):\s*\d+px|(?:top|bottom):\s*\d+px[^}]*?(?:left|right):\s*\d+px/i);
     }
     expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "iphone.glb"))).toBe(true);
     expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "macbook.glb"))).toBe(true);
@@ -401,12 +409,22 @@ describe("template installations", () => {
     await materializeTemplate(serverConfig, ws, flagshipVideoTemplateIds[0]!, "session_logo");
     const logoPath = join(ws.path, "video", "session_logo", "assets", "ipollowork-logo.svg");
     await writeFile(logoPath, '<svg viewBox="-3 0 106 106"><rect fill="white"/></svg>');
+    const entryPath = join(ws.path, "video", "session_logo", "index.html");
+    const entry = await readFile(entryPath, "utf8");
+    await writeFile(entryPath, entry.replaceAll(
+      "assets/ipollowork-logo.svg?v=20260721",
+      "assets/missing-custom-logo.svg",
+    ));
 
     await readTemplateSession(serverConfig, ws, "session_logo");
 
     const refreshedLogo = await readFile(logoPath, "utf8");
     expect(refreshedLogo).toContain('viewBox="0 0 476 500"');
     expect(refreshedLogo).not.toContain('fill="white"');
+    const repairedEntry = await readFile(entryPath, "utf8");
+    expect(repairedEntry).toContain('src="assets/missing-custom-logo.svg"');
+    expect(repairedEntry).toContain('data-ipw-logo-fallback="current"');
+    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260724'");
   });
 
   test("ships every website template with accessible navigation and observable actions", async () => {

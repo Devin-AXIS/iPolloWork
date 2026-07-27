@@ -17,6 +17,10 @@ files:
 extraResources:
   - from: ../../examples/plugin-packages/figma
     to: plugin-packages/figma
+  - from: ../../examples/plugin-packages/github
+    to: plugin-packages/github
+  - from: ../../examples/plugin-packages/wechat-official
+    to: plugin-packages/wechat-official
   # Templates are installed by copying their full directory into the local
   # library. Electron's virtual ASAR filesystem can read them but Node cannot
   # recursively copy an ASAR directory on macOS, so keep these assets real.
@@ -40,6 +44,10 @@ extraResources:
       - "**/*"
       - "!**/*.map"
       - "!node_modules/.bun/**/node_modules/.bin/**"
+  - from: ../../vendor/hyperframes/registry
+    to: hyperframes/registry
+    filter:
+      - "**/*"
 asar: true
 asarUnpack:
   - node_modules/.pnpm/@lydell+node-pty*/**

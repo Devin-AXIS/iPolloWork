@@ -11,6 +11,7 @@ export type { SharedDesktopConfig };
 export { normalizeDesktopConfig };
 
 import { isDesktopDeployment } from "./ipollowork-deployment";
+import { resolveDenDesktopAuthScheme } from "./den-auth-scheme";
 import {
   dispatchDenSettingsChanged,
 } from "./den-session-events";
@@ -697,7 +698,7 @@ export function buildDenAuthUrl(baseUrl: string, mode: "sign-in" | "sign-up"): s
   target.searchParams.set("mode", mode);
   if (isDesktopDeployment()) {
     target.searchParams.set("desktopAuth", "1");
-    target.searchParams.set("desktopScheme", "ipollowork");
+    target.searchParams.set("desktopScheme", resolveDenDesktopAuthScheme(import.meta.env.DEV));
   }
   return target.toString();
 }
@@ -1991,24 +1992,6 @@ export function createDenClient(options: { baseUrl: string; token?: string | nul
         activeOrgSlug,
         defaultOrgId: activeOrgId,
       };
-    },
-
-    async createTeam(name: string): Promise<DenOrgSummary> {
-      const payload = await requestJson<unknown>(baseUrls, "/v1/teams", {
-        method: "POST",
-        token,
-        body: { name },
-      });
-      const team = isRecord(payload) ? getOrgList({ orgs: [payload.team] })[0] : null;
-      if (!team) throw new DenApiError(500, "invalid_team_payload", "Team response was invalid.");
-      return team;
-    },
-
-    async deleteTeam(teamId: string): Promise<void> {
-      await requestJson<unknown>(baseUrls, `/v1/teams/${encodeURIComponent(teamId)}`, {
-        method: "DELETE",
-        token,
-      });
     },
 
     async listWorkers(orgId: string, limit = 20): Promise<DenWorkerSummary[]> {

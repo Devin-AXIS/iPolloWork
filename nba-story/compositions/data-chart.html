@@ -1,0 +1,374 @@
+<!DOCTYPE html><!-- hyperframes-registry-item: data-chart -->
+
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>NBA 历史得分榜</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Libre+Franklin:wght@300;400;600&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background-color: #0d1b2a; }
+      [data-composition-id="data-chart"] {
+        width: 1920px;
+        height: 1080px;
+        background-color: #0d1b2a;
+        font-family: "Noto Sans SC", "Libre Franklin", sans-serif;
+        color: #fff;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+      }
+      [data-composition-id="data-chart"] .chart-container {
+        width: 1600px;
+        height: 900px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+      [data-composition-id="data-chart"] .header {
+        margin-bottom: 30px;
+        text-align: left;
+      }
+      [data-composition-id="data-chart"] .headline {
+        font-family: "Oswald", "Noto Sans SC", sans-serif;
+        font-size: 48px;
+        font-weight: 700;
+        margin: 0;
+        padding: 0;
+        color: #fff;
+        clip-path: inset(0 100% 0 0);
+        white-space: nowrap;
+        letter-spacing: 2px;
+      }
+      [data-composition-id="data-chart"] .headline .accent {
+        color: #F0A500;
+      }
+      [data-composition-id="data-chart"] .subtitle {
+        font-size: 18px;
+        color: rgba(255,255,255,0.5);
+        margin: 8px 0 16px 0;
+        clip-path: inset(0 100% 0 0);
+        white-space: nowrap;
+      }
+      [data-composition-id="data-chart"] .key {
+        display: flex;
+        gap: 24px;
+        opacity: 0;
+      }
+      [data-composition-id="data-chart"] .key-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      [data-composition-id="data-chart"] .key-box {
+        width: 10px;
+        height: 10px;
+        background-color: #F0A500;
+      }
+      [data-composition-id="data-chart"] .key-line {
+        width: 16px;
+        height: 1.5px;
+        background-color: #C8102E;
+      }
+      [data-composition-id="data-chart"] .key-text {
+        font-size: 13px;
+        color: rgba(255,255,255,0.5);
+      }
+      [data-composition-id="data-chart"] .chart-svg {
+        width: 100%;
+        height: 620px;
+        overflow: visible;
+      }
+      [data-composition-id="data-chart"] .source {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        font-size: 12px;
+        color: rgba(255,255,255,0.25);
+        opacity: 0;
+        font-family: "Noto Sans SC", sans-serif;
+      }
+      [data-composition-id="data-chart"] .grid-line {
+        stroke: rgba(255,255,255,0.06);
+        stroke-width: 0.5px;
+        opacity: 0;
+      }
+      [data-composition-id="data-chart"] .axis-label {
+        font-size: 16px;
+        fill: rgba(255,255,255,0.5);
+        text-anchor: middle;
+        font-family: "Noto Sans SC", sans-serif;
+      }
+      [data-composition-id="data-chart"] .bar {
+        fill: #F0A500;
+        opacity: 0.85;
+      }
+      [data-composition-id="data-chart"] .bar-label {
+        font-size: 16px;
+        fill: #fff;
+        text-anchor: middle;
+        opacity: 0;
+        font-weight: 600;
+        font-family: "Oswald", sans-serif;
+      }
+      [data-composition-id="data-chart"] .line-label {
+        font-size: 14px;
+        fill: #C8102E;
+        font-weight: 600;
+        text-anchor: middle;
+        opacity: 0;
+        font-family: "Oswald", sans-serif;
+      }
+      [data-composition-id="data-chart"] .player-name-label {
+        font-size: 15px;
+        fill: rgba(255,255,255,0.7);
+        text-anchor: middle;
+        font-family: "Noto Sans SC", sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-lcg6" id="data-chart" data-composition-id="data-chart" data-width="1920" data-height="1080" data-start="0" data-duration="14">
+      <div data-hf-id="hf-ig1q" class="chart-container">
+        <div data-hf-id="hf-4y7z" class="header">
+          <h1 data-hf-id="hf-0lzu" class="headline">历史<span data-hf-id="hf-hquq" class="accent">得分</span>榜</h1>
+          <p data-hf-id="hf-d1ys" class="subtitle">NBA 历史总得分排名 · 职业生涯数据</p>
+          <div data-hf-id="hf-l8jp" class="key">
+            <div data-hf-id="hf-0ten" class="key-item">
+              <div data-hf-id="hf-hqop" class="key-box"></div>
+              <span data-hf-id="hf-wkbe" class="key-text">总得分</span>
+            </div>
+            <div data-hf-id="hf-9cv3" class="key-item">
+              <div data-hf-id="hf-0a84" class="key-line"></div>
+              <span data-hf-id="hf-b4ak" class="key-text">场均得分</span>
+            </div>
+          </div>
+        </div>
+
+        <svg data-hf-id="hf-cmal" class="chart-svg" viewBox="0 0 1600 700" preserveAspectRatio="xMidYMid meet">
+          <g data-hf-id="hf-enf3" class="gridlines" />
+          <g data-hf-id="hf-80xk" class="x-axis-labels" />
+          <g data-hf-id="hf-pe8e" class="bars-group" />
+          <g data-hf-id="hf-71dd" class="bar-labels-group" />
+          <g data-hf-id="hf-6hq4" class="player-names-group" />
+          <g data-hf-id="hf-6p5a" class="line-group">
+            <path data-hf-id="hf-zvlz" class="conversion-path" fill="none" stroke="#C8102E" stroke-width="2" />
+            <circle data-hf-id="hf-j3vz" class="line-dot" r="6" fill="#C8102E" style="opacity: 0" />
+          </g>
+          <g data-hf-id="hf-v9iq" class="line-labels-group" />
+          <line data-hf-id="hf-vx8g" x1="100" y1="600" x2="1500" y2="600" stroke="rgba(255,255,255,0.15)" stroke-width="1" />
+        </svg>
+
+        <div data-hf-id="hf-cf82" class="source">数据截止至 2025-26 赛季</div>
+      </div>
+
+      <script>
+        (function () {
+          const svg = document.querySelector('[data-composition-id="data-chart"] .chart-svg');
+          const tl = gsap.timeline({ paused: true });
+
+          // NBA All-Time Scoring Leaders (total career points)
+          const players = ["LeBron\nJames", "Kareem\nAbdul-Jabbar", "Karl\nMalone", "Kobe\nBryant", "Michael\nJordan", "Wilt\nChamberlain"];
+          const pointsData = [40474, 38387, 36928, 33643, 32292, 31419];
+          const avgData = [27.1, 24.6, 25.0, 25.0, 30.1, 30.1];
+
+          // Chart dimensions
+          const chartWidth = 1400;
+          const chartHeight = 500;
+          const startX = 100;
+          const startY = 600;
+          const barWidth = 80;
+          const spacing = (chartWidth - barWidth * players.length) / (players.length + 1);
+
+          const maxPoints = 45000;
+
+          const getBarY = (val) => startY - (val / maxPoints) * chartHeight;
+          const getLineY = (val) => startY - (val / 35) * chartHeight;
+          const getX = (i) => startX + spacing + i * (barWidth + spacing) + barWidth / 2;
+
+          const gridGroup = svg.querySelector(".gridlines");
+          const xAxisGroup = svg.querySelector(".x-axis-labels");
+          const barsGroup = svg.querySelector(".bars-group");
+          const barLabelsGroup = svg.querySelector(".bar-labels-group");
+          const playerNamesGroup = svg.querySelector(".player-names-group");
+          const lineLabelsGroup = svg.querySelector(".line-labels-group");
+          const conversionPath = svg.querySelector(".conversion-path");
+          const lineDot = svg.querySelector(".line-dot");
+
+          // Gridlines
+          const gridValues = [0, 10000, 20000, 30000, 40000];
+          gridValues.forEach((val) => {
+            const y = getBarY(val);
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", startX);
+            line.setAttribute("y1", y);
+            line.setAttribute("x2", startX + chartWidth);
+            line.setAttribute("y2", y);
+            line.setAttribute("class", "grid-line");
+            gridGroup.appendChild(line);
+
+            const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            label.setAttribute("x", startX - 20);
+            label.setAttribute("y", y + 5);
+            label.setAttribute("text-anchor", "end");
+            label.setAttribute("fill", "rgba(255,255,255,0.2)");
+            label.setAttribute("font-size", "12px");
+            label.setAttribute("font-family", "Oswald, sans-serif");
+            label.textContent = (val / 1000).toFixed(0) + "K";
+            gridGroup.appendChild(label);
+          });
+
+          // Build chart elements
+          const linePoints = [];
+          players.forEach((player, i) => {
+            const x = getX(i);
+
+            // X-axis player name
+            const lines = player.split("\n");
+            lines.forEach((lineText, li) => {
+              const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+              label.setAttribute("x", x);
+              label.setAttribute("y", startY + 30 + li * 22);
+              label.setAttribute("class", "player-name-label");
+              label.textContent = lineText;
+              xAxisGroup.appendChild(label);
+            });
+
+            // Bar
+            const barHeight = (pointsData[i] / maxPoints) * chartHeight;
+            const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            bar.setAttribute("x", x - barWidth / 2);
+            bar.setAttribute("y", startY);
+            bar.setAttribute("width", barWidth);
+            bar.setAttribute("height", 0);
+            bar.setAttribute("class", "bar");
+            bar.setAttribute("rx", "4");
+            barsGroup.appendChild(bar);
+
+            // Bar label (point value)
+            const barLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            barLabel.setAttribute("x", x);
+            barLabel.setAttribute("y", getBarY(pointsData[i]) - 12);
+            barLabel.setAttribute("class", "bar-label");
+            barLabel.textContent = (pointsData[i] / 1000).toFixed(1) + "K";
+            barLabelsGroup.appendChild(barLabel);
+
+            linePoints.push(`${x},${getLineY(avgData[i])}`);
+
+            // Line label (avg points)
+            const lineLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            lineLabel.setAttribute("x", x);
+            lineLabel.setAttribute("y", getLineY(avgData[i]) - 12);
+            lineLabel.setAttribute("class", "line-label");
+            lineLabel.textContent = avgData[i].toFixed(1);
+            lineLabelsGroup.appendChild(lineLabel);
+          });
+
+          // Set path
+          conversionPath.setAttribute("d", `M ${linePoints.join(" L ")}`);
+          const pathLength = conversionPath.getTotalLength();
+          conversionPath.style.strokeDasharray = pathLength;
+          conversionPath.style.strokeDashoffset = pathLength;
+
+          // ── ANIMATION ──
+          tl.to('[data-composition-id="data-chart"] .headline', {
+            clipPath: "inset(0 0% 0 0)",
+            duration: 1.0,
+            ease: "power1.inOut",
+          }, 0);
+
+          tl.to('[data-composition-id="data-chart"] .subtitle', {
+            clipPath: "inset(0 0% 0 0)",
+            duration: 1.0,
+            ease: "power1.inOut",
+          }, 0.2);
+
+          tl.to('[data-composition-id="data-chart"] .key', {
+            opacity: 1,
+            duration: 0.4,
+            ease: "power2.out",
+          }, 0.8);
+
+          tl.to('[data-composition-id="data-chart"] .grid-line', {
+            opacity: 1,
+            duration: 0.4,
+            stagger: 0.15,
+            ease: "power2.out",
+          }, 0.5);
+
+          // Bars
+          const bars = barsGroup.querySelectorAll(".bar");
+          const barLabels = barLabelsGroup.querySelectorAll(".bar-label");
+
+          bars.forEach((bar, i) => {
+            const barHeight = (pointsData[i] / maxPoints) * chartHeight;
+            const startTime = 1.2 + i * 0.35;
+
+            tl.to(bar, {
+              attr: { height: barHeight, y: startY - barHeight },
+              duration: 0.7,
+              ease: "power2.out",
+            }, startTime);
+
+            tl.to(barLabels[i], {
+              opacity: 1,
+              duration: 0.3,
+              ease: "power2.out",
+            }, startTime + 0.6);
+          });
+
+          // Line
+          const lastBarStartTime = 1.2 + (players.length - 1) * 0.35;
+          const lineStartTime = lastBarStartTime + 0.3;
+
+          tl.to(conversionPath, {
+            strokeDashoffset: 0,
+            duration: 2.5,
+            ease: "none",
+          }, lineStartTime);
+
+          tl.set(lineDot, {
+            opacity: 1,
+            attr: { cx: getX(0), cy: getLineY(avgData[0]) },
+          }, lineStartTime);
+
+          const lineLabels = lineLabelsGroup.querySelectorAll(".line-label");
+          players.forEach((_, i) => {
+            if (i > 0) {
+              const x = getX(i);
+              const y = getLineY(avgData[i]);
+              tl.to(lineDot, {
+                attr: { cx: x, cy: y },
+                duration: 2.5 / (players.length - 1),
+                ease: "none",
+              }, lineStartTime + ((i - 1) / (players.length - 1)) * 2.5);
+            }
+
+            const labelTime = lineStartTime + (i / (players.length - 1)) * 2.5 + 0.15;
+
+            tl.to(lineLabels[i], {
+              opacity: 1,
+              duration: 0.1,
+              ease: "power2.out",
+            }, labelTime);
+          });
+
+          // Source
+          tl.to('[data-composition-id="data-chart"] .source', {
+            opacity: 1,
+            duration: 0.4,
+            ease: "power2.out",
+          }, ">+0.3");
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["data-chart"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

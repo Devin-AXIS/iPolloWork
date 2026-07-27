@@ -39,6 +39,19 @@ export type iPolloWorkServerCapabilities = {
   };
 };
 
+export type HyperframesCatalogItem = {
+  name: string;
+  title: string;
+  description: string;
+  type: "hyperframes:block" | "hyperframes:component";
+  category: string;
+  tags: string[];
+  duration?: number;
+  preview?: { poster?: string; video?: string };
+  /** Hidden scene-aware instruction supplied by Video Studio's Ask AI action. */
+  agentPrompt?: string;
+};
+
 export type iPolloWorkServerStatus = "connected" | "disconnected" | "limited";
 
 export type iPolloWorkServerDiagnostics = {
@@ -270,6 +283,7 @@ export type iPolloWorkPluginPackageItem = {
   name: string;
   version: string;
   enabled: boolean;
+  disabledResourceIds: string[];
   previousVersion: string | null;
   manifest: iPolloWorkExtensionManifest;
   integrity: { sha256: string; status: "verified" | "unsigned" };
@@ -277,8 +291,21 @@ export type iPolloWorkPluginPackageItem = {
 
 export type iPolloWorkPluginPackagePreview = {
   manifest: iPolloWorkExtensionManifest;
+  files: Array<{ path: string; sha256: string }>;
   writes: Array<{ path: string; sha256: string }>;
   integrity: { sha256: string; status: "verified" | "unsigned" };
+  safety: iPolloWorkPluginPackageImportSafety;
+};
+
+export type iPolloWorkPluginPackageImportSafety = {
+  level: "declarative";
+  localCode: false;
+  allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
+};
+
+export type iPolloWorkPluginPackageUpload = {
+  archiveName: string;
+  files: Array<{ path: string; contentBase64: string }>;
 };
 
 export type iPolloWorkBundledPluginPackageItem = {
@@ -1271,6 +1298,8 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       ),
     listTemplates: (workspaceId: string) =>
       requestJson<{ items: TemplateCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates`, { token, hostToken }),
+    listHyperframesCatalog: (workspaceId: string) =>
+      requestJson<{ items: HyperframesCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/hyperframes-catalog`, { token, hostToken }),
     installTemplate: (workspaceId: string, templateId: string) =>
       requestJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/install`, { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceImport }),
     importTemplate: (workspaceId: string, file: File, category?: TemplateCategory) =>
@@ -1553,6 +1582,26 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         body: { packageRoot },
         timeoutMs: timeouts.config,
       }),
+    validatePluginPackageUpload: (workspaceId: string, upload: iPolloWorkPluginPackageUpload) =>
+      requestJson<{ preview: iPolloWorkPluginPackagePreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/validate`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: upload,
+        timeoutMs: timeouts.binary,
+      }),
+    importPluginPackage: (workspaceId: string, upload: iPolloWorkPluginPackageUpload) =>
+      requestJson<{
+        result: { status: "installed" | "updated" | "unchanged"; pluginId: string; version: string; previousVersion?: string };
+        item?: iPolloWorkPluginPackageItem;
+        safety: iPolloWorkPluginPackageImportSafety;
+      }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: upload,
+        timeoutMs: timeouts.binary,
+      }),
     installPluginPackage: (workspaceId: string, packageRoot: string) =>
       requestJson<{ result: { status: "installed" | "unchanged"; pluginId: string; version: string }; item?: iPolloWorkPluginPackageItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages`, {
         token,
@@ -1578,6 +1627,14 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       }),
     setPluginPackageEnabled: (workspaceId: string, pluginId: string, enabled: boolean) =>
       requestJson<{ result: { pluginId: string; enabled: boolean; changed: boolean } }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}`, {
+        token,
+        hostToken,
+        method: "PATCH",
+        body: { enabled },
+        timeoutMs: timeouts.config,
+      }),
+    setPluginPackageResourceEnabled: (workspaceId: string, pluginId: string, resourceId: string, enabled: boolean) =>
+      requestJson<{ result: { pluginId: string; resourceId: string; enabled: boolean; changed: boolean } }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceId)}`, {
         token,
         hostToken,
         method: "PATCH",

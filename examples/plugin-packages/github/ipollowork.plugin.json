@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "id": "github",
+  "name": "GitHub",
+  "description": "检查仓库、处理 PR 与 Issue、诊断 Actions，并把本地修改安全发布为 Draft PR。",
+  "category": "开发者工具",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/Devin-AXIS/iPolloWork"
+  },
+  "icon": {
+    "simpleIconSlug": "github"
+  },
+  "composer": {
+    "prompt": "使用 GitHub 检查 PR、Issue 和 CI，并在发布代码前确认本地变更范围。"
+  },
+  "package": {
+    "version": "0.1.0",
+    "publisher": {
+      "id": "ipollowork",
+      "name": "iPolloWork"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.17.28",
+      "opencode": ">=1.18.0"
+    },
+    "updateId": "ipollowork/github",
+    "entrypoints": {
+      "service": "service/github.ts"
+    }
+  },
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "访问用户授权的 GitHub 仓库、Pull Request、Issue 和 Actions 数据。"
+    },
+    {
+      "id": "workspace-read",
+      "reason": "理解当前仓库、分支和待发布的本地修改。"
+    },
+    {
+      "id": "workspace-write",
+      "reason": "按照用户选择处理 Review 或 CI 问题。"
+    },
+    {
+      "id": "process",
+      "reason": "在发布工作流中运行受用户确认的本地 Git 命令。"
+    }
+  ],
+  "authorization": {
+    "required": true,
+    "methods": [
+      {
+        "id": "github-token",
+        "kind": "secret-form",
+        "label": "连接 GitHub",
+        "description": "使用仅限所选仓库和所需权限的 Fine-grained personal access token。令牌只保存在 iPolloWork 的加密授权仓库中。",
+        "fields": [
+          {
+            "id": "accessToken",
+            "label": "Fine-grained access token",
+            "placeholder": "github_pat_…",
+            "secret": true,
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  "resources": [
+    {
+      "type": "local-service",
+      "id": "github-service",
+      "label": "GitHub",
+      "description": "通过加密授权访问固定、受限的 GitHub API 能力。",
+      "path": "service/github.ts",
+      "requires": [
+        "authorization:github-token"
+      ],
+      "provides": [
+        "action:connection-status",
+        "action:repository-context",
+        "action:list-pull-requests",
+        "action:pull-request-detail",
+        "action:review-threads",
+        "action:list-issues",
+        "action:issue-detail",
+        "action:actions-failure",
+        "action:create-pull-request",
+        "action:post-comment",
+        "action:resolve-review-thread"
+      ],
+      "required": true,
+      "actions": [
+        {
+          "id": "connection-status",
+          "title": "检查 GitHub 连接",
+          "description": "验证当前加密凭据并返回已连接的 GitHub 账户。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "repository-context",
+          "title": "读取仓库信息",
+          "description": "读取一个 GitHub 仓库的基本信息和默认分支。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" }
+            },
+            "required": ["owner", "repo"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "list-pull-requests",
+          "title": "列出 Pull Request",
+          "description": "按更新时间列出仓库中的 Pull Request，最多返回 50 条。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "state": { "type": "string", "enum": ["open", "closed", "all"] },
+              "limit": { "type": "number", "minimum": 1, "maximum": 50 }
+            },
+            "required": ["owner", "repo"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "pull-request-detail",
+          "title": "读取 Pull Request 详情",
+          "description": "读取 PR、变更文件、Review 和评论的有界摘要。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "number": { "type": "number", "minimum": 1 }
+            },
+            "required": ["owner", "repo", "number"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "review-threads",
+          "title": "读取 Review Threads",
+          "description": "读取 PR 的 Review Threads、解决状态和文件行定位。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "number": { "type": "number", "minimum": 1 }
+            },
+            "required": ["owner", "repo", "number"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "list-issues",
+          "title": "列出 Issue",
+          "description": "列出仓库 Issue，自动排除 Pull Request，最多返回 50 条。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "state": { "type": "string", "enum": ["open", "closed", "all"] },
+              "limit": { "type": "number", "minimum": 1, "maximum": 50 }
+            },
+            "required": ["owner", "repo"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "issue-detail",
+          "title": "读取 Issue 详情",
+          "description": "读取一个 Issue 及其最近评论。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "number": { "type": "number", "minimum": 1 }
+            },
+            "required": ["owner", "repo", "number"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "actions-failure",
+          "title": "检查 Actions 失败",
+          "description": "读取一个 Actions run 和失败 Job/Step 的有界摘要。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "runId": { "type": "number", "minimum": 1 }
+            },
+            "required": ["owner", "repo", "runId"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "create-pull-request",
+          "title": "创建 Draft Pull Request",
+          "description": "为已经推送的分支创建 Draft PR；执行前由 iPolloWork 请求确认。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "title": { "type": "string" },
+              "body": { "type": "string" },
+              "head": { "type": "string" },
+              "base": { "type": "string" },
+              "draft": { "type": "boolean" }
+            },
+            "required": ["owner", "repo", "title", "head", "base"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "post-comment",
+          "title": "发表 GitHub 评论",
+          "description": "向指定 Issue 或 Pull Request 发表评论；执行前由 iPolloWork 请求确认。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "number": { "type": "number", "minimum": 1 },
+              "body": { "type": "string" }
+            },
+            "required": ["owner", "repo", "number", "body"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "resolve-review-thread",
+          "title": "解决 Review Thread",
+          "description": "把指定 Review Thread 标记为已解决；执行前由 iPolloWork 请求确认。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "threadId": { "type": "string" }
+            },
+            "required": ["threadId"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "skill",
+      "id": "github",
+      "label": "GitHub",
+      "description": "检查仓库、Pull Request、Issue 和协作状态。",
+      "path": ".opencode/skills/github/SKILL.md",
+      "requires": ["service:github-service", "authorization:github-token"],
+      "provides": ["workflow:github"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "github-review-follow-up",
+      "label": "Review Follow-up",
+      "description": "整理并处理 Pull Request 中尚未解决的 Review 意见。",
+      "path": ".opencode/skills/github-review-follow-up/SKILL.md",
+      "requires": ["service:github-service", "authorization:github-token"],
+      "provides": ["workflow:github-review-follow-up"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "github-ci-debug",
+      "label": "CI Debug",
+      "description": "诊断 GitHub Actions 失败并制定最小修复方案。",
+      "path": ".opencode/skills/github-ci-debug/SKILL.md",
+      "requires": ["service:github-service", "authorization:github-token"],
+      "provides": ["workflow:github-ci-debug"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "github-publish-changes",
+      "label": "Publish Changes",
+      "description": "确认变更范围，提交、推送并创建 Draft Pull Request。",
+      "path": ".opencode/skills/github-publish-changes/SKILL.md",
+      "requires": ["service:github-service", "authorization:github-token"],
+      "provides": ["workflow:github-publish-changes"],
+      "required": true
+    }
+  ]
+}

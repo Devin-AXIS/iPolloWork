@@ -36,6 +36,11 @@ import { openExternalUrl } from "./open-external.mjs";
 import { protectOutputStreamFromBrokenPipe } from "./stdio-safety.mjs";
 import { relaunchActionForMode } from "./relaunch-policy.mjs";
 import { listSystemFontFamilies } from "./system-font-catalog.mjs";
+import { createDesktopAuthWindow } from "./desktop-auth-window.mjs";
+import {
+  registerDesktopProtocolClient,
+  resolveDesktopProtocolRegistration,
+} from "./desktop-protocol.mjs";
 import {
   applyWindowsTaskbarIcon,
   windowsBrandAppUserModelId,
@@ -55,12 +60,12 @@ const pty = require(["node", "pty"].join("-"));
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
 const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";
 const DEV_APP_IDENTIFIER = "com.differentai.ipollowork.dev";
-const DESKTOP_PROTOCOL_SCHEME = "ipollowork";
 const isDevMode = process.env.IPOLLOWORK_DEV_MODE === "1";
 const APP_NAME =
   process.env.IPOLLOWORK_ELECTRON_APP_NAME?.trim() ||
   (isDevMode ? "iPollo - Dev" : "iPollo");
 let currentDisplayAppName = APP_NAME;
+let desktopAuthWindow = null;
 const APP_IDENTIFIER =
   process.env.IPOLLOWORK_ELECTRON_APP_IDENTIFIER?.trim() ||
   (isDevMode ? DEV_APP_IDENTIFIER : TAURI_APP_IDENTIFIER);
@@ -570,9 +575,12 @@ async function startHyperframesPreview(event, options = {}) {
 // Electron install from the real Tauri app.
 app.setName(APP_NAME);
 app.setAppUserModelId(APP_IDENTIFIER);
-if (app.isPackaged) {
-  app.setAsDefaultProtocolClient(DESKTOP_PROTOCOL_SCHEME);
-}
+registerDesktopProtocolClient(app, resolveDesktopProtocolRegistration({
+  isDevMode,
+  isPackaged: app.isPackaged,
+  execPath: process.execPath,
+  entryPath: process.argv[1],
+}));
 const userDataOverride = process.env.IPOLLOWORK_ELECTRON_USERDATA?.trim();
 if (userDataOverride) {
   app.setPath("userData", userDataOverride);
@@ -1473,6 +1481,53 @@ function flushPendingDeepLinks() {
   if (!mainWindow?.webContents || pendingDeepLinks.length === 0) return;
   const urls = pendingDeepLinks.splice(0, pendingDeepLinks.length);
   mainWindow.webContents.send(NATIVE_DEEP_LINK_EVENT, urls);
+}
+
+function closeDesktopAuthWindow() {
+  const window = desktopAuthWindow;
+  desktopAuthWindow = null;
+  if (window && !window.isDestroyed()) window.close();
+}
+
+function openDesktopAuthWindow(url) {
+  let target;
+  try {
+    target = new URL(url);
+  } catch {
+    return { ok: false, error: "invalid authentication URL" };
+  }
+  if (target.protocol !== "https:" && target.protocol !== "http:") {
+    return { ok: false, error: "authentication URL must use HTTP or HTTPS" };
+  }
+
+  if (desktopAuthWindow && !desktopAuthWindow.isDestroyed()) {
+    desktopAuthWindow.show();
+    desktopAuthWindow.focus();
+    void desktopAuthWindow.loadURL(target.toString()).catch(() => undefined);
+    return { ok: true };
+  }
+
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  desktopAuthWindow = createDesktopAuthWindow({
+    BrowserWindow,
+    parent,
+    title: `${currentDisplayAppName} · Sign in`,
+    url: target.toString(),
+    icon: APP_ICON_IMAGE,
+    openExternal: openExternalUrl,
+    onComplete: (callbackUrl) => {
+      queueDeepLinks([callbackUrl]);
+      closeDesktopAuthWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    },
+    onClosed: (window) => {
+      if (desktopAuthWindow === window) desktopAuthWindow = null;
+    },
+  });
+  return { ok: true };
 }
 
 function configHomePath() {
@@ -2748,6 +2803,12 @@ ipcMain.handle("ipollowork:shell:openExternal", async (_event, url) => {
   }
   return openExternalUrl(url.trim());
 });
+ipcMain.handle("ipollowork:shell:openAuth", async (_event, url) => {
+  if (typeof url !== "string" || url.trim().length === 0) {
+    return { ok: false, error: "empty authentication URL" };
+  }
+  return openDesktopAuthWindow(url.trim());
+});
 ipcMain.handle("ipollowork:shell:relaunch", async () => {
   if (relaunchActionForMode(isDevMode) === "reload-window") {
     const win = await createMainWindow();
@@ -3155,8 +3216,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         iframe?.contentWindow?.__player?.seek?.(0);
       }, 120);
     }
-    if (window.__ipolloworkSimpleVideoListener !== 13) {
-      window.__ipolloworkSimpleVideoListener = 13;
+    if (window.__ipolloworkSimpleVideoListener !== 14) {
+      window.__ipolloworkSimpleVideoListener = 14;
       window.__ipolloworkVideoAdvancedExplicit = false;
       window.addEventListener('message', (event) => {
         const inspector = document.querySelector('button[aria-label="Inspector"]');
@@ -3290,8 +3351,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
   })()`);
   if (enabled) {
     await Promise.all(frames.filter((frame) => frame !== studioFrame).map((frame) => frame.executeJavaScript(`(() => {
-      if (window.__ipolloworkSimpleVideoClickInstalled === 21) return;
-      window.__ipolloworkSimpleVideoClickInstalled = 21;
+      if (window.__ipolloworkSimpleVideoClickInstalled === 22) return;
+      window.__ipolloworkSimpleVideoClickInstalled = 22;
       const encodedProjectId = location.pathname.match(/^\\/api\\/projects\\/([^/]+)/)?.[1];
       const projectId = encodedProjectId ? decodeURIComponent(encodedProjectId) : '';
       if (!projectId) return;
@@ -3328,14 +3389,17 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
 
       const toolbarStyle = document.createElement('style');
       toolbarStyle.dataset.ipolloworkVideoToolbar = 'true';
-      toolbarStyle.textContent = '.ipollowork-video-toolbar{position:fixed;z-index:2147483647;display:none;align-items:center;gap:4px;padding:5px;border:1px solid rgba(15,23,42,.12);border-radius:14px;background:rgba(255,255,255,.94);box-shadow:0 14px 40px rgba(15,23,42,.2);backdrop-filter:blur(18px);font:500 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;transform-origin:bottom center}.ipollowork-video-toolbar button{appearance:none;border:0;background:transparent;color:inherit;height:28px;min-width:28px;padding:0 8px;border-radius:9px;font:inherit;cursor:pointer;display:grid;place-items:center}.ipollowork-video-toolbar button:hover{background:#f1f5f9}.ipollowork-video-toolbar .ow-tag{padding:0 7px;color:#64748b;font-size:10px;text-transform:uppercase}.ipollowork-video-toolbar .ow-size{min-width:34px;background:#f8fafc}.ipollowork-video-toolbar .ow-color{width:18px;height:18px;min-width:18px;padding:0;border:3px solid white;border-radius:999px;box-shadow:0 0 0 1px rgba(15,23,42,.16)}.ipollowork-video-toolbar .ow-sep{width:1px;height:18px;background:#e2e8f0}.ipollowork-video-colors{position:absolute;left:50%;bottom:38px;display:none;gap:6px;padding:7px;border:1px solid rgba(15,23,42,.1);border-radius:13px;background:rgba(255,255,255,.97);box-shadow:0 12px 32px rgba(15,23,42,.18);transform:translateX(-50%)}.ipollowork-video-colors button{width:22px;height:22px;min-width:22px;padding:0;border-radius:999px;border:2px solid white;box-shadow:0 0 0 1px rgba(15,23,42,.13)}';
+      toolbarStyle.textContent = '.ipollowork-video-toolbar{position:fixed;z-index:2147483647;display:none;align-items:center;gap:4px;padding:5px;border:1px solid rgba(15,23,42,.12);border-radius:14px;background:rgba(255,255,255,.94);box-shadow:0 14px 40px rgba(15,23,42,.2);backdrop-filter:blur(18px);font:500 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;transform-origin:bottom center}.ipollowork-video-toolbar button{appearance:none;border:0;background:transparent;color:inherit;height:28px;min-width:28px;padding:0 8px;border-radius:9px;font:inherit;cursor:pointer;display:grid;place-items:center}.ipollowork-video-toolbar button:hover{background:#f1f5f9}.ipollowork-video-toolbar button svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.ipollowork-video-toolbar .ow-danger{color:#f43f5e}.ipollowork-video-toolbar .ow-danger:hover{background:#ffe4e6;color:#e11d48}.ipollowork-video-toolbar .ow-tag{padding:0 7px;color:#64748b;font-size:10px;text-transform:uppercase}.ipollowork-video-toolbar .ow-size{min-width:34px;background:#f8fafc}.ipollowork-video-toolbar .ow-color{width:18px;height:18px;min-width:18px;padding:0;border:3px solid white;border-radius:999px;box-shadow:0 0 0 1px rgba(15,23,42,.16)}.ipollowork-video-toolbar .ow-sep{width:1px;height:18px;background:#e2e8f0}.ipollowork-video-colors{position:absolute;left:50%;bottom:38px;display:none;gap:6px;padding:7px;border:1px solid rgba(15,23,42,.1);border-radius:13px;background:rgba(255,255,255,.97);box-shadow:0 12px 32px rgba(15,23,42,.18);transform:translateX(-50%)}.ipollowork-video-colors button{width:22px;height:22px;min-width:22px;padding:0;border-radius:999px;border:2px solid white;box-shadow:0 0 0 1px rgba(15,23,42,.13)}';
       document.head.appendChild(toolbarStyle);
 
       const toolbar = document.createElement('div');
       toolbar.className = 'ipollowork-video-toolbar';
       toolbar.setAttribute('role', 'toolbar');
       toolbar.setAttribute('aria-label', 'Video element quick editor');
-      toolbar.innerHTML = '<span class="ow-tag"></span><button type="button" data-action="text" title="Edit text">T</button><button type="button" data-action="smaller" title="Smaller">−</button><button type="button" class="ow-size" data-action="size" title="Font size">16</button><button type="button" data-action="larger" title="Larger">+</button><button type="button" class="ow-color" data-action="colors" title="Color"></button><span class="ow-sep"></span><button type="button" data-action="advanced" title="More properties">•••</button><div class="ipollowork-video-colors"></div>';
+      const trashIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+      const slidersIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M2 14h4"/><path d="M10 8h4"/><path d="M18 16h4"/></svg>';
+      const sparklesIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.9 4.2 8.7 7.6 5.3 8.8l3.4 1.2 1.2 3.4 1.2-3.4 3.4-1.2-3.4-1.2-1.2-3.4Z"/><path d="M18 12.5 17.3 15l-2.5.7 2.5.7.7 2.5.7-2.5 2.5-.7-2.5-.7-.7-2.5Z"/><path d="M16 3l.5 1.5L18 5l-1.5.5L16 7l-.5-1.5L14 5l1.5-.5L16 3Z"/></svg>';
+      toolbar.innerHTML = '<span class="ow-tag"></span><button type="button" data-action="text" title="Edit text">T</button><button type="button" data-action="smaller" title="Smaller">-</button><button type="button" class="ow-size" data-action="size" title="Font size">16</button><button type="button" data-action="larger" title="Larger">+</button><button type="button" class="ow-color" data-action="colors" title="Color"></button><span class="ow-sep"></span><button type="button" class="ow-danger" data-action="delete" title="Delete element" aria-label="Delete element">' + trashIcon + '</button><button type="button" data-action="advanced" title="More properties" aria-label="More properties">' + slidersIcon + '</button><button type="button" data-action="ai" title="Ask AI about selected element" aria-label="Ask AI about selected element">' + sparklesIcon + '</button><div class="ipollowork-video-colors"></div>';
       const colors = toolbar.querySelector('.ipollowork-video-colors');
       for (const color of ['#111827','#475569','#ffffff','#ef4444','#f59e0b','#22c55e','#3b82f6','#8b5cf6']) {
         const swatch = document.createElement('button');
@@ -3454,6 +3518,46 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         if (!target) return;
         element.style.setProperty(property, value);
         await saveStyleTarget(target, property, value);
+      };
+
+      const selectedAiPayload = (element) => {
+        if (!element) return null;
+        const target = sourceTargetFor(element) || selectedTarget;
+        if (!target) return null;
+        const computed = getComputedStyle(element);
+        return {
+          type: 'ipollowork:hyperframes:ask-ai-selection',
+          target,
+          tag: element.tagName.toLowerCase(),
+          text: element.textContent || '',
+          src: element.getAttribute('src') || '',
+          alt: element.getAttribute('alt') || '',
+          styles: {
+            color: computed.color,
+            backgroundColor: computed.backgroundColor,
+            fontSize: computed.fontSize,
+            fontWeight: computed.fontWeight,
+            opacity: computed.opacity,
+          },
+        };
+      };
+
+      const deleteSelectedElement = async () => {
+        const element = selected;
+        const target = element ? sourceTargetFor(element) || selectedTarget : selectedTarget;
+        if (!element || !target) return;
+        finishEditing();
+        try {
+          const response = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/file-mutations/remove-element/' + encodeURI(target.file), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ target: { selector: target.selector, selectorIndex: target.selectorIndex } }),
+          });
+          if (!response.ok) return;
+          element.remove();
+          hideToolbar();
+          postEditorMessage({ type: 'ipollowork:hyperframes:close-side-panels' });
+        } catch {}
       };
 
       const displayScale = () => {
@@ -3635,6 +3739,15 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
           void saveStyle(selected, 'font-size', next + 'px');
         } else if (action === 'colors') {
           colors.style.display = colors.style.display === 'flex' ? 'none' : 'flex';
+        } else if (action === 'delete') {
+          void deleteSelectedElement();
+        } else if (action === 'ai') {
+          const payload = selectedAiPayload(selected);
+          if (payload) {
+            finishEditing();
+            toolbar.style.display = 'none';
+            postEditorMessage(payload);
+          }
         } else if (action === 'advanced') {
           const rect = selected.getBoundingClientRect();
           const canEditText = selected.matches(textSelector) && Boolean((selected.textContent || '').trim());

@@ -1,0 +1,24 @@
+{
+  "templateId": "ipollowork.pptx-compatible-brief",
+  "template": "Executive Brief",
+  "category": "slides",
+  "surface": "design",
+  "pptxCompatibility": "native-editable",
+  "sourcePath": "design/ses_05d8d3195ffeiGdfe12YD4NKT2/entry.html",
+  "applyChecklist": [
+    "Replace the decision title, owner and date.",
+    "Use verified evidence for every metric and statement.",
+    "Keep each recommendation short enough for a single slide.",
+    "Preserve the native PPTX object markers when editing HTML."
+  ],
+  "title": "3123",
+  "audience": "12312",
+  "details": "123",
+  "colorPalette": {
+    "id": "ember",
+    "label": "Warm Ember",
+    "canvas": "#fafaf9",
+    "text": "#1c1b1a",
+    "accent": "#c96442"
+  }
+}

@@ -3,6 +3,7 @@
   "id": "figma",
   "name": "Figma",
   "description": "完整的 Figma 设计到代码、Code Connect、设计系统和画布写入工作流。",
+  "category": "设计与开发",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "local",

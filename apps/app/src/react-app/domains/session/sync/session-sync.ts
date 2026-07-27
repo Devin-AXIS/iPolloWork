@@ -19,6 +19,7 @@ import {
   useSessionActivityStore,
 } from "../status/session-activity-store";
 import { notifyDesktopEvent } from "../../../shell/desktop-notifications";
+import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
 
 type SyncOptions = {
   workspaceId: string;
@@ -398,7 +399,14 @@ function toFileUIParts(part: FilePart): UIMessage["parts"] {
 
 function toUIPart(part: Part): UIMessage["parts"][number] | null {
   if (part.type === "text") {
-    if (part.synthetic || part.ignored) return null;
+    if (part.synthetic) {
+      const selection = parseDesignAiSelectionDisplayMetadata(part.text);
+      return selection ? {
+        type: "data-design-selection" as const,
+        data: { ...selection, partId: part.id },
+      } : null;
+    }
+    if (part.ignored) return null;
     return {
       type: "text",
       text: part.text,
@@ -447,6 +455,12 @@ function toUIParts(part: Part): UIMessage["parts"] {
 }
 
 function getPartMetadataId(part: UIMessage["parts"][number]) {
+  if (part.type === "data-design-selection") {
+    const partId = part.data && typeof part.data === "object" && "partId" in part.data
+      ? (part.data as { partId?: unknown }).partId
+      : null;
+    return typeof partId === "string" ? partId : null;
+  }
   if (part.type === "dynamic-tool") {
     const metadata = part.callProviderMetadata?.opencode;
     if (!metadata || typeof metadata !== "object") return null;

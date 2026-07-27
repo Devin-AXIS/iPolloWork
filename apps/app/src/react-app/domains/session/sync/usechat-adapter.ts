@@ -5,6 +5,7 @@ import type { FilePart, Part, ToolPart } from "@opencode-ai/sdk/v2/client";
 import type { iPolloWorkSessionSnapshot } from "../../../../app/lib/ipollowork-server";
 import { safeStringify } from "../../../../app/utils";
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "../../../../app/types";
+import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
 import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
@@ -195,7 +196,14 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
       ...(typeof created === "number" ? { metadata: { opencode: { created } } } : {}),
       parts: message.parts.flatMap<UIMessage["parts"][number]>((part) => {
         if (part.type === "text") {
-          if (part.synthetic || part.ignored) return [];
+          if (part.synthetic) {
+            const selection = parseDesignAiSelectionDisplayMetadata(part.text);
+            return selection ? [{
+              type: "data-design-selection" as const,
+              data: { ...selection, partId: part.id },
+            }] : [];
+          }
+          if (part.ignored) return [];
           return [{
             type: "text",
             text: getTextPartValue(part),

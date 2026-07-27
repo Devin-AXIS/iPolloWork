@@ -1,6 +1,43 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { wrapAdapterWithDurationLimit } from "./playbackAdapter";
+import {
+  shouldUseStudioClockForLegacyFrames,
+  wrapAdapterWithDurationLimit,
+} from "./playbackAdapter";
+
+describe("shouldUseStudioClockForLegacyFrames", () => {
+  it("uses the Studio clock for legacy multi-frame templates", () => {
+    const doc = {
+      querySelectorAll: (selector: string) => selector === ".frame" ? [{}, {}] : [],
+    } as unknown as Document;
+    const adapter = {
+      play: vi.fn(),
+      pause: vi.fn(),
+      seek: vi.fn(),
+      getTime: () => 0,
+      getDuration: () => 0,
+      isPlaying: () => false,
+    };
+
+    expect(shouldUseStudioClockForLegacyFrames(doc, adapter, 10)).toBe(true);
+  });
+
+  it("keeps native playback for ordinary compositions", () => {
+    const doc = {
+      querySelectorAll: () => [],
+    } as unknown as Document;
+    const adapter = {
+      play: vi.fn(),
+      pause: vi.fn(),
+      seek: vi.fn(),
+      getTime: () => 0,
+      getDuration: () => 10,
+      isPlaying: () => false,
+    };
+
+    expect(shouldUseStudioClockForLegacyFrames(doc, adapter, 10)).toBe(false);
+  });
+});
 
 describe("wrapAdapterWithDurationLimit", () => {
   it("clamps stale runtime time to a shortened document duration", () => {

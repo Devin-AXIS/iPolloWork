@@ -4,7 +4,7 @@ import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
-import { Check, Minimize2, X } from "lucide-react";
+import { Check, Film, Minimize2, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
@@ -13,6 +13,7 @@ import { abortSessionSafe } from "@/app/lib/opencode-session";
 import { t } from "@/i18n";
 import { readWorkspaceCloudImports, type CloudImportedPlugin } from "@/app/cloud/import-state";
 import type {
+  HyperframesCatalogItem,
   iPolloWorkServerClient,
   iPolloWorkSessionSnapshot,
 } from "@/app/lib/ipollowork-server";
@@ -493,6 +494,30 @@ function StarterCapabilityChip({ capability, onClear }: { capability: StarterCap
   );
 }
 
+function AnimationChip({ animation, onClear }: { animation: HyperframesCatalogItem; onClear: () => void }) {
+  return (
+    <div className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/8 px-2.5 text-[11px] text-dls-text shadow-sm">
+      <Film className="size-3.5 shrink-0 text-emerald-600" aria-hidden />
+      <span className="max-w-[12rem] truncate font-medium">{animation.title}</span>
+      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-dls-secondary hover:bg-emerald-500/15 hover:text-dls-text" aria-label={t("new_conversation.animations.remove", { title: animation.title })} onClick={onClear}>
+        <X className="size-3" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function animationSelectionInstruction(animations: HyperframesCatalogItem[]): string | null {
+  if (!animations.length) return null;
+  const choices = animations.map((item) => item.agentPrompt?.trim() || `- ${item.title} (registry: ${item.name}, category: ${item.category}): ${item.description}`).join("\n\n");
+  return [
+    "Selected HyperFrames animation references:",
+    choices,
+    "Use /hyperframes and treat these as the user's explicit motion direction for the video.",
+    "Install or adapt the selected registry items where they support the story; customize their text, media, colors, timing, and composition to the user's prompt.",
+    "Do not paste unrelated demo content and do not force every selection into every scene. Preserve the visual characteristics that motivated each selection while producing one coherent video.",
+  ].join("\n");
+}
+
 export function SessionSurface(props: SessionSurfaceProps) {
   const local = useLocal();
   const { config: shellConfig } = useShellConfig();
@@ -539,6 +564,26 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [verifiedOpenTargets, setVerifiedOpenTargets] = useState<OpenTarget[]>([]);
   const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
+  const [animationCatalog, setAnimationCatalog] = useState<HyperframesCatalogItem[]>([]);
+  const [animationCatalogLoading, setAnimationCatalogLoading] = useState(false);
+  const [animationCatalogError, setAnimationCatalogError] = useState<string | null>(null);
+  const [animationCatalogRevision, setAnimationCatalogRevision] = useState(0);
+  const [selectedAnimations, setSelectedAnimations] = useState<HyperframesCatalogItem[]>([]);
+
+  useEffect(() => {
+    const addAnimationReference = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: unknown; item?: unknown }>).detail;
+      if (detail?.sessionId !== props.sessionId || !detail.item || typeof detail.item !== "object") return;
+      const item = detail.item as HyperframesCatalogItem;
+      if (!item.name || !item.title || !item.agentPrompt) return;
+      setSelectedAnimations((current) => [
+        ...current.filter((animation) => animation.name !== item.name),
+        item,
+      ]);
+    };
+    window.addEventListener("ipollowork:add-animation-reference", addAnimationReference);
+    return () => window.removeEventListener("ipollowork:add-animation-reference", addAnimationReference);
+  }, [props.sessionId]);
   const composerShellRef = useRef<HTMLDivElement>(null);
   const hydratedKeyRef = useRef<string | null>(null);
   const autoOpenedTargetRef = useRef<string | null>(null);
@@ -588,7 +633,29 @@ export function SessionSurface(props: SessionSurfaceProps) {
     setVerifiedOpenTargets([]);
     setNewConversationMode("work");
     setStarterCapability(null);
+    setSelectedAnimations([]);
+    setAnimationCatalogError(null);
   }, [props.sessionId]);
+
+  useEffect(() => {
+    if (newConversationMode !== "video" || animationCatalog.length) return;
+    let cancelled = false;
+    setAnimationCatalogLoading(true);
+    setAnimationCatalogError(null);
+    void props.client.listHyperframesCatalog(props.workspaceId)
+      .then(({ items }) => {
+        if (cancelled) return;
+        setAnimationCatalog(items);
+        if (!items.length) setAnimationCatalogError("empty_catalog");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAnimationCatalog([]);
+        setAnimationCatalogError(error instanceof Error ? error.message : "catalog_unavailable");
+      })
+      .finally(() => { if (!cancelled) setAnimationCatalogLoading(false); });
+    return () => { cancelled = true; };
+  }, [animationCatalog.length, animationCatalogRevision, newConversationMode, props.client, props.workspaceId]);
 
   // Publish a composer inspector slice so external drivers can read draft
   // state, attachments, mentions, and sending status from the running app.
@@ -809,18 +876,22 @@ export function SessionSurface(props: SessionSurfaceProps) {
       resolved = resolved.replaceAll(`@${encodeComposerMentionValue(value)}`, `@${value}`);
     }
     const slashCommand = parseSlashCommandInvocation(resolved);
+    const animationInstruction = animationSelectionInstruction(selectedAnimations);
+    const capabilityInstruction = [starterCapability?.instruction, animationInstruction]
+      .filter((value): value is string => Boolean(value))
+      .join("\n\n");
     return {
       mode: "prompt",
       parts,
       attachments: nextAttachments,
       text,
       resolvedText: resolved,
-      capability: starterCapability
-        ? { id: starterCapability.id, instruction: starterCapability.instruction }
+      capability: capabilityInstruction
+        ? { id: selectedAnimations.length ? "hyperframes-animation-selection" : starterCapability!.id, instruction: capabilityInstruction }
         : undefined,
       command: slashCommand ?? undefined,
     };
-  }, [mentions, pasteParts, starterCapability]);
+  }, [mentions, pasteParts, selectedAnimations, starterCapability]);
 
   const handleComposerDraftChange = useCallback((value: string) => {
     setComposerDraft(props.sessionId, value);
@@ -848,6 +919,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       await props.onSendDraft(nextDraft, props.sessionId);
       draftAttachments.forEach(revokeAttachmentPreview);
       setStarterCapability(null);
+      setSelectedAnimations([]);
       setSending(false);
     } catch (nextError) {
       const parsed = parseSessionError(nextError);
@@ -895,6 +967,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     appendQueuedDraft(props.sessionId, buildDraft(text, attachments));
     clearComposer();
     setStarterCapability(null);
+    setSelectedAnimations([]);
   }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId]);
 
   const removeQueuedDraft = useCallback((index: number) => {
@@ -1466,13 +1539,14 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
           layout={layout}
           placeholder={isEmptyConversation ? newConversationPlaceholder(newConversationMode) : undefined}
-          compactTopSpacing={Boolean(starterCapability || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
+          compactTopSpacing={Boolean(starterCapability || selectedAnimations.length || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
           topAccessory={
-            starterCapability || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
+            starterCapability || selectedAnimations.length || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
               <div>
-                {starterCapability ? (
+                {starterCapability || selectedAnimations.length ? (
                   <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
-                    <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} />
+                    {starterCapability ? <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} /> : null}
+                    {selectedAnimations.map((animation) => <AnimationChip key={animation.name} animation={animation} onClear={() => setSelectedAnimations((current) => current.filter((item) => item.name !== animation.name))} />)}
                   </div>
                 ) : null}
                 {queuedMessages.length > 0 ? (
@@ -1530,6 +1604,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
               onSelectMode={(mode) => {
                 setNewConversationMode(mode);
                 setStarterCapability(null);
+                if (mode !== "video") setSelectedAnimations([]);
               }}
               onSelectPrompt={(_prompt, capability) => {
                 setStarterCapability(capability ?? null);
@@ -1542,6 +1617,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
               onUseTemplate={props.onCreateSession ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId) : undefined}
               onInstallTemplate={props.onInstallDesignTemplate}
               onRequestTemplates={props.onRequestDesignTemplates}
+              animationCatalog={animationCatalog}
+              animationCatalogLoading={animationCatalogLoading}
+              animationCatalogError={animationCatalogError}
+              selectedAnimations={selectedAnimations}
+              onToggleAnimation={(animation) => setSelectedAnimations((current) => current.some((item) => item.name === animation.name) ? current.filter((item) => item.name !== animation.name) : [...current, animation])}
+              onRetryAnimationCatalog={() => setAnimationCatalogRevision((current) => current + 1)}
             />
             <div ref={composerShellRef} className="mt-12 shrink-0">
               {renderComposer("inline")}

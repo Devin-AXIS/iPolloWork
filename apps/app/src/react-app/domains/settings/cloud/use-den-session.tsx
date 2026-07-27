@@ -1,6 +1,5 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
 import {
@@ -18,7 +17,7 @@ import {
   type DenOrgSummary,
 } from "@/app/lib/den";
 import { clearDesktopBootstrapConfig } from "@/app/lib/desktop";
-import { activateOrganizationWorkspace, removeOrganizationWorkspace } from "@/app/cloud/organization-workspaces";
+import { activateOrganizationWorkspace } from "@/app/cloud/organization-workspaces";
 import { exchangeHandoffAndSignIn } from "@/app/lib/den-handoff";
 import {
   denSessionUpdatedEvent,
@@ -30,7 +29,6 @@ import { useDenAuth } from "../../cloud/den-auth-provider";
 import { tryOpenBrowserAuthUrl } from "../../cloud/open-browser-auth";
 import { useCloudSession } from "./cloud-session-provider";
 import { defaultControlPlaneUrl, saveControlPlaneUrl } from "./control-plane-url";
-import { workspaceSessionRoute } from "../../../shell/workspace-routes";
 
 type SettingsTone = "ready" | "warning" | "neutral" | "error";
 
@@ -76,7 +74,6 @@ export function useDenSession({
   developerMode,
   openLink,
 }: UseDenSessionProps) {
-  const navigate = useNavigate();
   const denAuth = useDenAuth();
   const {
     authToken,
@@ -519,120 +516,6 @@ export function useDenSession({
     }
   }, [authBusy, authToken, clearSignedInState, client]);
 
-  const handleActiveOrgChange = React.useCallback(
-    async (nextId: string) => {
-      const nextOrg = orgs.find((org) => org.id === nextId) ?? null;
-      if (!nextOrg) {
-        setOrgsError(t("den.error_load_orgs"));
-        return;
-      }
-
-      setOrgsBusy(true);
-      setOrgsError(null);
-
-      try {
-        // 1. Sync Den server-side (cookie/session)
-        await client.setActiveOrganization({ organizationId: nextOrg.id });
-      } catch (error) {
-        setOrgsError(error instanceof Error ? error.message : t("den.error_load_orgs"));
-        setOrgsBusy(false);
-        return;
-      }
-
-      // 2. Persist to localStorage FIRST so any code that reads from settings
-      //    (e.g. refreshCloudOrgProviders which reads readDenSettings()) sees
-      //    the new org immediately.
-      writeDenSettings({
-        baseUrl,
-        authToken: authToken ? authToken : null,
-        activeOrgId: nextId ? nextId : null,
-        activeOrgSlug: nextOrg?.slug ?? null,
-        activeOrgName: nextOrg?.name ?? null,
-      });
-
-      // 3. Update local state
-      setActiveOrgId(nextId);
-
-      // 4. Update CloudSessionProvider context IMMEDIATELY so consumers
-      //    (cloud providers / marketplace / workers views) re-fetch with
-      //    the new org without waiting for the sync effect to fire.
-      setActiveOrganization({
-        id: nextOrg.id,
-        name: nextOrg.name,
-        role: nextOrg.role,
-        slug: nextOrg.slug,
-      });
-
-      // 5. Force a full server sync (Den + localStorage reconciliation)
-      try {
-        await ensureDenActiveOrganization({ forceServerSync: true });
-      } catch {
-        // Best-effort; the explicit setActiveOrganization above already
-        // covered the critical path.
-      }
-
-      try {
-        const workspaceId = await activateOrganizationWorkspace(nextOrg);
-        if (workspaceId) navigate(workspaceSessionRoute(workspaceId), { replace: true });
-      } catch (error) {
-        setOrgsError(error instanceof Error ? error.message : "工作站切换失败");
-        setOrgsBusy(false);
-        return;
-      }
-
-      setOrgsBusy(false);
-    },
-    [authToken, baseUrl, client, navigate, orgs, setActiveOrganization],
-  );
-
-  // User is signed in, orgs loaded, multiple orgs available, but none selected yet.
-  // The UI should prompt the user to pick an org before cloud features activate.
-  const needsOrgSelection =
-    !!authToken.trim() && !!user && !orgsBusy && orgs.length > 1 && !activeOrgId;
-
-  const createTeam = React.useCallback(async (name: string) => {
-    setOrgsBusy(true);
-    setOrgsError(null);
-    try {
-      const created = await client.createTeam(name);
-      await client.setActiveOrganization({ organizationId: created.id });
-      setOrgs((current) => [created, ...current.filter((org) => org.id !== created.id)]);
-      setActiveOrgId(created.id);
-      writeDenSettings({
-        baseUrl,
-        authToken: authToken || null,
-        activeOrgId: created.id,
-        activeOrgSlug: created.slug,
-        activeOrgName: created.name,
-      });
-      setActiveOrganization({ id: created.id, name: created.name, role: created.role, slug: created.slug });
-      const workspaceId = await activateOrganizationWorkspace(created);
-      if (workspaceId) navigate(workspaceSessionRoute(workspaceId), { replace: true });
-    } catch (error) {
-      setOrgsError(error instanceof Error ? error.message : "团队创建失败");
-      throw error;
-    } finally {
-      setOrgsBusy(false);
-    }
-  }, [authToken, baseUrl, client, navigate, setActiveOrganization]);
-
-  const deleteTeam = React.useCallback(async (teamId: string) => {
-    setOrgsBusy(true);
-    setOrgsError(null);
-    try {
-      await client.deleteTeam(teamId);
-      const workspaceId = await removeOrganizationWorkspace(teamId);
-      setActiveOrgId("");
-      await refreshOrgs(true);
-      if (workspaceId) navigate(workspaceSessionRoute(workspaceId), { replace: true });
-    } catch (error) {
-      setOrgsError(error instanceof Error ? error.message : "团队删除失败");
-      throw error;
-    } finally {
-      setOrgsBusy(false);
-    }
-  }, [client, navigate, refreshOrgs]);
-
   return {
     authBusy,
     authError,
@@ -640,7 +523,6 @@ export function useDenSession({
     baseUrlBusy,
     baseUrlDraft,
     baseUrlError,
-    needsOrgSelection,
     orgs,
     orgsBusy,
     orgsError,
@@ -649,16 +531,12 @@ export function useDenSession({
     summaryLabel,
     summaryTone,
     syncCurrentDenSettings,
-    onActiveOrgChange: handleActiveOrgChange,
-    onCreateTeam: createTeam,
-    onDeleteTeam: deleteTeam,
     onApplyBaseUrl: applyBaseUrl,
     onBaseUrlDraftChange: setBaseUrlDraft,
     onClearServerConfiguration: clearServerConfiguration,
     onClearAuthError: () => setAuthError(null),
     onOpenBrowserAuth: openBrowserAuth,
     onOpenControlPlane: openControlPlane,
-    onRefreshOrgs: refreshOrgs,
     onResetBaseUrl: () => setBaseUrlDraft(baseUrl),
     onResetBaseUrlToDefault: resetBaseUrlToDefault,
     onSignOut: signOut,

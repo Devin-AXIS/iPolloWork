@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 
 import en from "../src/i18n/locales/en";
 import zh from "../src/i18n/locales/zh";
@@ -9,6 +10,7 @@ const manifest = {
   id: "acme-research",
   name: "Acme Research",
   description: "Self-contained research plugin.",
+  category: "Research",
   source: { format: "ipollowork-extension-manifest", origin: "den", trusted: false },
   package: {
     version: "1.2.3",
@@ -49,6 +51,7 @@ describe("plugin developer and user flow", () => {
     expect(details).toMatchObject({
       version: "1.2.3",
       publisher: "Acme",
+      category: "Research",
       permissions: [{ id: "network", reason: "Connect to Acme." }],
       authorizationRequired: true,
     });
@@ -85,6 +88,15 @@ describe("plugin developer and user flow", () => {
       "plugin_platform.bundle_contents",
       "plugin_platform.mcp_authorization_hint",
       "plugin_platform.connect_figma",
+      "plugin_platform.info",
+      "plugin_platform.author",
+      "plugin_platform.category",
+      "plugin_platform.version",
+      "plugin_platform.capabilities",
+      "plugin_platform.import_button",
+      "plugin_platform.import_title",
+      "plugin_platform.import_safety",
+      "plugin_platform.import_error",
       "mcp.quick_connect_figma_title",
       "mcp.quick_connect_figma_desc",
     ];
@@ -93,6 +105,24 @@ describe("plugin developer and user flow", () => {
       expect(Object.hasOwn(en, key)).toBe(true);
       expect(Object.hasOwn(zh, key)).toBe(true);
     }
+  });
+
+  test("reads a wrapped complete plugin archive into a bounded upload payload", async () => {
+    const { readPluginPackageArchive } = await import("../src/react-app/domains/settings/plugin-package-archive");
+    const zip = new JSZip();
+    zip.file("acme-research/ipollowork.plugin.json", JSON.stringify({ schemaVersion: 1 }));
+    zip.file("acme-research/.opencode/skills/acme-research/SKILL.md", "# Acme Research\n");
+    zip.file("__MACOSX/acme-research/._SKILL.md", "ignored");
+    const archive = await zip.generateAsync({ type: "uint8array" });
+
+    const upload = await readPluginPackageArchive(new File([archive], "acme-research.zip", { type: "application/zip" }));
+
+    expect(upload.archiveName).toBe("acme-research.zip");
+    expect(upload.files.map((file) => file.path)).toEqual([
+      ".opencode/skills/acme-research/SKILL.md",
+      "ipollowork.plugin.json",
+    ]);
+    expect(upload.files.every((file) => !file.path.startsWith("acme-research/"))).toBe(true);
   });
 
   test("ships a one-click Figma OAuth connection matching the bundled package", async () => {
@@ -116,7 +146,7 @@ describe("plugin developer and user flow", () => {
         const url = String(input);
         calls.push({ url, method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : "" });
         if (url.endsWith("/plugin-packages")) {
-          return new Response(JSON.stringify({ items: [{ pluginId: "acme-research", name: "Acme Research", version: "1.0.0", enabled: true, previousVersion: null, manifest }] }), {
+          return new Response(JSON.stringify({ items: [{ pluginId: "acme-research", name: "Acme Research", version: "1.0.0", enabled: true, disabledResourceIds: [], previousVersion: null, manifest }] }), {
             status: 200,
             headers: { "content-type": "application/json" },
           });
@@ -132,12 +162,15 @@ describe("plugin developer and user flow", () => {
       expect((await client.listPluginPackages("ws_1")).items[0]?.pluginId).toBe("acme-research");
       const saved = await client.savePluginAuthorization("ws_1", "acme-research", "api-key", { apiKey: "plugin-only-secret" });
       expect(saved.status.fields).toEqual({ apiKey: true });
+      await client.setPluginPackageResourceEnabled("ws_1", "acme-research", "acme-skill", false);
       expect(calls.map((call) => call.url)).toEqual([
         "https://worker.example/workspace/ws_1/plugin-packages",
         "https://worker.example/workspace/ws_1/plugin-packages/acme-research/authorization/api-key/credentials",
+        "https://worker.example/workspace/ws_1/plugin-packages/acme-research/resources/acme-skill",
       ]);
       expect(calls.some((call) => call.url.includes("environment") || call.url.includes("authorization-services"))).toBe(false);
       expect(calls[1]?.body).toContain("plugin-only-secret");
+      expect(calls[2]).toMatchObject({ method: "PATCH", body: JSON.stringify({ enabled: false }) });
     } finally {
       Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
     }

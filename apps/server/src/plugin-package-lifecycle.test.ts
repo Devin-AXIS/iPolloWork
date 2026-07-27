@@ -79,6 +79,16 @@ async function writePackage(packageRoot: string, version: string, runtimeText: s
   }, null, 2), "utf8");
 }
 
+async function writeDeclarativePackage(packageRoot: string, version = "1.0.0") {
+  await writePackage(packageRoot, version, "export default async () => ({})\n", "# Acme Research\n");
+  const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.package.entrypoints = {};
+  delete manifest.authorization;
+  manifest.resources = manifest.resources.filter((resource: { type?: string }) => resource.type === "skill");
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+}
+
 async function expectMissing(path: string) {
   await expect(stat(path)).rejects.toThrow();
 }
@@ -101,9 +111,11 @@ describe("plugin package lifecycle", () => {
     const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
 
     expect(preview.manifest.id).toBe("figma");
-    expect(preview.writes.length).toBeGreaterThan(100);
-    expect(preview.writes.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(true);
+    expect(preview.files.length).toBeGreaterThan(100);
+    expect(preview.files.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(true);
     expect(preview.writes.some((entry) => entry.path === ".opencode/skills/figma-use/references/plugin-api-standalone.d.ts")).toBe(true);
+    expect(preview.writes.some((entry) => entry.path === "README.md")).toBe(false);
+    expect(preview.writes.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(false);
   });
 
   test("expands directory resources into owned files without duplicates", async () => {
@@ -146,6 +158,9 @@ describe("plugin package lifecycle", () => {
 
     const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
     expect(preview.writes.map((entry) => entry.path).sort()).toEqual([
+      ".opencode/skills/acme-research/SKILL.md",
+    ]);
+    expect(preview.files.map((entry) => entry.path).sort()).toEqual([
       ".opencode/plugins/acme-research.ts",
       ".opencode/skills/acme-research/SKILL.md",
     ]);
@@ -155,9 +170,9 @@ describe("plugin package lifecycle", () => {
     expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research", version: "1.0.0" });
     expect(repeated).toMatchObject({ status: "unchanged", pluginId: "acme-research", version: "1.0.0" });
     expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8")).toBe("# Acme Research\n");
-    expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin).toEqual([
-      `file://${join(workspaceRoot, ".opencode", "plugins", "acme-research.ts")}`,
-    ]);
+    const installedSpec = (await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin?.[0] ?? "";
+    expect(installedSpec).toContain("/plugin-packages/ws_plugin_package/artifacts/acme-research/1.0.0/");
+    expect(installedSpec).not.toContain(`${workspaceRoot}/.opencode/plugins`);
 
     await lifecycle.uninstallPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot });
     await expectMissing(join(workspaceRoot, ".opencode", "plugins", "acme-research.ts"));
@@ -177,13 +192,34 @@ describe("plugin package lifecycle", () => {
     const config = serverConfig(workspaceRoot);
 
     await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot: packageV1, workspaceRoot });
+    await lifecycle.setPluginPackageResourceEnabled({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "acme-research",
+      resourceId: "acme-skill",
+      workspaceRoot,
+      enabled: false,
+    });
     const updated = await lifecycle.updatePluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot: packageV2, workspaceRoot });
     expect(updated).toMatchObject({ status: "updated", previousVersion: "1.0.0", version: "1.1.0" });
-    expect(await readFile(join(workspaceRoot, ".opencode", "plugins", "acme-research.ts"), "utf8")).toContain("'v2'");
+    expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin?.[0]).toContain("/1.1.0/");
+    await expectMissing(join(workspaceRoot, ".opencode", "plugins", "acme-research.ts"));
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
 
     const rolledBack = await lifecycle.rollbackPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot });
     expect(rolledBack).toMatchObject({ status: "rolled_back", previousVersion: "1.1.0", version: "1.0.0" });
-    expect(await readFile(join(workspaceRoot, ".opencode", "plugins", "acme-research.ts"), "utf8")).toContain("'v1'");
+    expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin?.[0]).toContain("/1.0.0/");
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+
+    await lifecycle.setPluginPackageResourceEnabled({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "acme-research",
+      resourceId: "acme-skill",
+      workspaceRoot,
+      enabled: true,
+    });
+    expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8")).toBe("# Version one\n");
   });
 
   test("stops an update when an owned file was modified by the user", async () => {
@@ -197,13 +233,13 @@ describe("plugin package lifecycle", () => {
     const config = serverConfig(workspaceRoot);
 
     await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot: packageV1, workspaceRoot });
-    const target = join(workspaceRoot, ".opencode", "plugins", "acme-research.ts");
-    await writeFile(target, "// user customization\n", "utf8");
+    const target = join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md");
+    await writeFile(target, "# User customization\n", "utf8");
 
     await expect(lifecycle.updatePluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot: packageV2, workspaceRoot })).rejects.toMatchObject({
       code: "plugin_package_conflict",
     });
-    expect(await readFile(target, "utf8")).toBe("// user customization\n");
+    expect(await readFile(target, "utf8")).toBe("# User customization\n");
   });
 
   test("reports unsigned packages and rejects a declared checksum mismatch", async () => {
@@ -238,7 +274,34 @@ describe("plugin package lifecycle", () => {
     });
   });
 
-  test("exposes validate, install, redacted authorization, and uninstall through the server API", async () => {
+  test("allows remote HTTPS MCP imports but blocks local MCP commands", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-safe-mcp-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-safe-mcp-package-");
+    await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n", { mcp: true });
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.package.entrypoints = {};
+    delete manifest.authorization;
+    manifest.resources = manifest.resources.filter((resource: { type?: string }) => resource.type !== "opencode-plugin");
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+    const remotePreview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    expect(await lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview: remotePreview }))
+      .toMatchObject({ level: "declarative", localCode: false });
+
+    await writeFile(
+      join(packageRoot, ".opencode", "mcps", "acme-research.json"),
+      JSON.stringify({ type: "local", command: ["node", "malicious.mjs"] }),
+      "utf8",
+    );
+    const localPreview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    await expect(lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview: localPreview })).rejects.toMatchObject({
+      code: "plugin_package_import_unsafe",
+    });
+  });
+
+  test("rejects executable packages from the public developer import API", async () => {
     const workspaceRoot = await createRoot("ipollowork-plugin-api-");
     const packageRoot = join(workspaceRoot, "packages", "acme-research");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
@@ -253,47 +316,72 @@ describe("plugin package lifecycle", () => {
         headers,
         body: JSON.stringify({ packageRoot: "packages/acme-research" }),
       });
-      expect(validation.status).toBe(200);
-      const validationBody = await validation.json();
-      expect(validationBody).toMatchObject({ preview: { manifest: { id: "acme-research" } } });
-      expect(validationBody.preview.writes.map((entry: { path: string }) => entry.path)).toEqual([
-        ".opencode/plugins/acme-research.ts",
-        ".opencode/skills/acme-research/SKILL.md",
-      ]);
-
-      const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ packageRoot: "packages/acme-research" }),
+      expect(validation.status).toBe(400);
+      expect(await validation.json()).toMatchObject({
+        code: "plugin_package_import_unsafe",
+        details: { reasons: expect.arrayContaining([expect.stringContaining("executable entrypoints")]) },
       });
-      expect(installation.status).toBe(200);
-      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "acme-research" } });
-
-      const saved = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research/authorization/api-key/credentials`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ accountId: "personal", values: { apiKey: "api-route-super-secret" } }),
-      });
-      expect(saved.status).toBe(200);
-      expect(JSON.stringify(await saved.json())).not.toContain("api-route-super-secret");
-
-      const authorization = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research/authorization`, { headers });
-      expect(authorization.status).toBe(200);
-      const authorizationBody = JSON.stringify(await authorization.json());
-      expect(authorizationBody).toContain('"status":"connected"');
-      expect(authorizationBody).not.toContain("api-route-super-secret");
-      expect(await readFile(join(workspaceRoot, "plugin-authorization", `${WORKSPACE_ID}.vault`), "utf8")).not.toContain("api-route-super-secret");
-
-      const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research`, { method: "DELETE", headers });
-      expect(removal.status).toBe(200);
-      const list = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers });
-      expect(await list.json()).toEqual({ items: [] });
     } finally {
       await server.stop();
     }
   });
 
-  test("lists and installs the bundled Figma package through the user catalog API", async () => {
+  test("uploads, previews, installs, and uninstalls a complete declarative plugin archive", async () => {
+    const workspaceRoot = await createRoot("ipollowork-plugin-upload-api-");
+    const packageRoot = await createRoot("ipollowork-plugin-upload-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writeDeclarativePackage(packageRoot);
+    const manifest = await readFile(join(packageRoot, "ipollowork.plugin.json"));
+    const skill = await readFile(join(packageRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+    const upload = {
+      archiveName: "acme-research.zip",
+      files: [
+        { path: "ipollowork.plugin.json", contentBase64: manifest.toString("base64") },
+        { path: ".opencode/skills/acme-research/SKILL.md", contentBase64: skill.toString("base64") },
+      ],
+    };
+    const config = serverConfig(workspaceRoot);
+    const server = await startServer(config);
+    const base = `http://127.0.0.1:${server.port}`;
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    try {
+      const validation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import/validate`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(upload),
+      });
+      expect(validation.status).toBe(200);
+      expect(await validation.json()).toMatchObject({
+        preview: {
+          manifest: { id: "acme-research" },
+          safety: { level: "declarative", localCode: false },
+          writes: [{ path: ".opencode/skills/acme-research/SKILL.md" }],
+        },
+      });
+
+      const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(upload),
+      });
+      expect(installation.status).toBe(200);
+      expect(await installation.json()).toMatchObject({
+        result: { status: "installed", pluginId: "acme-research" },
+        safety: { level: "declarative", localCode: false },
+      });
+      expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8"))
+        .toBe("# Acme Research\n");
+      await expectMissing(join(workspaceRoot, ".opencode", "plugins", "acme-research.ts"));
+
+      const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research`, { method: "DELETE", headers });
+      expect(removal.status).toBe(200);
+      expect(await (await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers })).json()).toEqual({ items: [] });
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("lists and installs the bundled Figma, GitHub, and WeChat Official Account packages through the user catalog API", async () => {
     const workspaceRoot = await createRoot("ipollowork-figma-catalog-api-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const config = serverConfig(workspaceRoot);
@@ -304,7 +392,11 @@ describe("plugin package lifecycle", () => {
       const catalog = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, { headers });
       expect(catalog.status).toBe(200);
       expect(await catalog.json()).toMatchObject({
-        items: [{ pluginId: "figma", version: "2.0.13", installedVersion: null, updateAvailable: false }],
+        items: [
+          { pluginId: "figma", version: "2.0.13", installedVersion: null, updateAvailable: false },
+          { pluginId: "github", version: "0.1.0", installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-official", version: "0.1.0", installedVersion: null, updateAvailable: false },
+        ],
       });
 
       const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/figma/install`, {
@@ -319,6 +411,87 @@ describe("plugin package lifecycle", () => {
         enabled: true,
         oauth: {},
       });
+      expect(await readFile(join(workspaceRoot, ".opencode", "skills", "figma-design-to-code", "SKILL.md"), "utf8"))
+        .toContain("Implement a Figma Design as Code");
+      await expectMissing(join(workspaceRoot, "README.md"));
+      await expectMissing(join(workspaceRoot, "assets"));
+      await expectMissing(join(workspaceRoot, ".opencode", "mcps", "figma.json"));
+
+      const githubInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/github/install`, {
+        method: "POST",
+        headers,
+      });
+      expect(githubInstallation.status).toBe(200);
+      expect(await githubInstallation.json()).toMatchObject({
+        result: { status: "installed", pluginId: "github", version: "0.1.0" },
+        item: {
+          pluginId: "github",
+          manifest: {
+            category: "开发者工具",
+            authorization: { required: true },
+          },
+        },
+      });
+      expect(await readFile(join(workspaceRoot, ".opencode", "skills", "github", "SKILL.md"), "utf8"))
+        .toContain("# GitHub");
+      expect(await readFile(join(workspaceRoot, ".opencode", "skills", "github-publish-changes", "SKILL.md"), "utf8"))
+        .toContain("# GitHub Publish Changes");
+      const githubActions = await fetch(
+        `${base}/experimental/extensions/actions?extensionId=github&directory=${encodeURIComponent(workspaceRoot)}`,
+        { headers },
+      );
+      expect(githubActions.status).toBe(200);
+      const githubActionsBody = await githubActions.json();
+      expect(githubActionsBody.actions.find((action: { action: string }) => action.action === "repository-context"))
+        .toMatchObject({ extensionId: "github", action: "repository-context", effect: "read" });
+      expect(githubActionsBody.actions.find((action: { action: string }) => action.action === "create-pull-request"))
+        .toMatchObject({ extensionId: "github", action: "create-pull-request", effect: "write" });
+
+      const wechatInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/wechat-official/install`, {
+        method: "POST",
+        headers,
+      });
+      expect(wechatInstallation.status).toBe(200);
+      expect(await wechatInstallation.json()).toMatchObject({
+        result: { status: "installed", pluginId: "wechat-official", version: "0.1.0" },
+        item: {
+          pluginId: "wechat-official",
+          manifest: {
+            name: "微信公众号",
+            authorization: { required: true },
+          },
+        },
+      });
+      expect(await readFile(join(workspaceRoot, ".opencode", "skills", "wechat-official-comments", "SKILL.md"), "utf8"))
+        .toContain("# 公众号评论运营");
+      const wechatActions = await fetch(
+        `${base}/experimental/extensions/actions?extensionId=wechat-official&directory=${encodeURIComponent(workspaceRoot)}`,
+        { headers },
+      );
+      expect(wechatActions.status).toBe(200);
+      const wechatActionsBody = await wechatActions.json();
+      expect(wechatActionsBody.actions.find((action: { action: string }) => action.action === "reply-comment"))
+        .toMatchObject({ extensionId: "wechat-official", action: "reply-comment", effect: "write" });
+      expect(wechatActionsBody.actions.find((action: { action: string }) => action.action === "delete-comment"))
+        .toMatchObject({ extensionId: "wechat-official", action: "delete-comment", effect: "destructive" });
+
+      const disabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/figma/resources/figma-design-to-code`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: false }),
+      });
+      expect(disabled.status).toBe(200);
+      expect(await disabled.json()).toMatchObject({
+        result: { pluginId: "figma", resourceId: "figma-design-to-code", enabled: false, changed: true },
+      });
+      await expectMissing(join(workspaceRoot, ".opencode", "skills", "figma-design-to-code", "SKILL.md"));
+
+      const enabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/figma/resources/figma-design-to-code`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: true }),
+      });
+      expect(enabled.status).toBe(200);
       expect(await readFile(join(workspaceRoot, ".opencode", "skills", "figma-design-to-code", "SKILL.md"), "utf8"))
         .toContain("Implement a Figma Design as Code");
     } finally {
@@ -340,10 +513,33 @@ describe("plugin package lifecycle", () => {
       url: "https://mcp.acme.example/mcp",
     });
 
+    await lifecycle.setPluginPackageResourceEnabled({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "acme-research",
+      resourceId: "acme-skill",
+      workspaceRoot,
+      enabled: false,
+    });
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+    expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config, workspaceId: WORKSPACE_ID }))[0]?.disabledResourceIds)
+      .toEqual(["acme-skill"]);
+
     await lifecycle.setPluginPackageEnabled({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot, enabled: false });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.["acme-research"]).toBeUndefined();
     await lifecycle.setPluginPackageEnabled({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot, enabled: true });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.["acme-research"]).toBeDefined();
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+
+    await lifecycle.setPluginPackageResourceEnabled({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "acme-research",
+      resourceId: "acme-skill",
+      workspaceRoot,
+      enabled: true,
+    });
+    expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8")).toBe("# Acme Research\n");
 
     await lifecycle.uninstallPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.["acme-research"]).toBeUndefined();

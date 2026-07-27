@@ -50,6 +50,7 @@ export type SettingsShellProps = SettingsPageFrameProps & {
   modalSlot?: React.ReactNode;
   footer?: React.ReactNode;
   compact?: boolean;
+  hideShellHeader?: boolean;
 };
 
 export function SettingsShell(props: SettingsShellProps) {
@@ -115,39 +116,41 @@ export function SettingsShell(props: SettingsShellProps) {
         />
         <SidebarInset className="min-h-0 overflow-hidden bg-background mac:bg-background/80 mac:[&_header]:transition-[padding-left] mac:[&_header]:duration-200 mac:[&_header]:ease-linear mac:peer-data-[state=collapsed]:[&_header]:pl-16 [&_header]:pl-16 md:[&_header]:pl-6">
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <header className="shrink-0 flex h-10 items-center justify-between border-b border-dls-border px-4 md:px-6 mac:titlebar-drag">
-              <div className="flex min-w-0 items-center gap-3">
-                <SidebarTrigger className="mac:titlebar-no-drag md:hidden" />
-                {props.headerLeadingSlot}
-                <h1 className="truncate text-[15px] font-semibold text-dls-text">{title}</h1>
-                <span className="hidden truncate text-[13px] text-dls-secondary lg:inline">
-                  {props.selectedWorkspaceName}
-                </span>
-                {props.developerMode && props.headerStatus ? (
-                  <span className="hidden text-[12px] text-dls-secondary lg:inline">
-                    {props.headerStatus}
+            {!props.hideShellHeader ? (
+              <header className="shrink-0 flex h-10 items-center justify-between border-b border-dls-border px-4 md:px-6 mac:titlebar-drag">
+                <div className="flex min-w-0 items-center gap-3">
+                  <SidebarTrigger className="mac:titlebar-no-drag md:hidden" />
+                  {props.headerLeadingSlot}
+                  <h1 className="truncate text-[15px] font-semibold text-dls-text">{title}</h1>
+                  <span className="hidden truncate text-[13px] text-dls-secondary lg:inline">
+                    {props.selectedWorkspaceName}
                   </span>
-                ) : null}
-                {props.busyHint ? (
-                  <span className="hidden text-[12px] text-dls-secondary lg:inline">
-                    {props.busyHint}
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
-                <NotificationBell />
-                <Button
-                  variant="ghost"
-                  type="button"
-                  className="flex size-9 items-center justify-center rounded-md text-gray-10 transition-colors hover:bg-gray-2/70 hover:text-dls-text md:hidden"
-                  onClick={props.onClose}
-                  title={t("dashboard.close_settings")}
-                  aria-label={t("dashboard.close_settings")}
-                >
-                  <X size={18} />
-                </Button>
-              </div>
-            </header>
+                  {props.developerMode && props.headerStatus ? (
+                    <span className="hidden text-[12px] text-dls-secondary lg:inline">
+                      {props.headerStatus}
+                    </span>
+                  ) : null}
+                  {props.busyHint ? (
+                    <span className="hidden text-[12px] text-dls-secondary lg:inline">
+                      {props.busyHint}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
+                  <NotificationBell />
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    className="flex size-9 items-center justify-center rounded-md text-gray-10 transition-colors hover:bg-gray-2/70 hover:text-dls-text md:hidden"
+                    onClick={props.onClose}
+                    title={t("dashboard.close_settings")}
+                    aria-label={t("dashboard.close_settings")}
+                  >
+                    <X size={18} />
+                  </Button>
+                </div>
+              </header>
+            ) : null}
 
             <div className="flex min-h-0 flex-1 flex-col">
               <SettingsPage {...props}>{props.children}</SettingsPage>
