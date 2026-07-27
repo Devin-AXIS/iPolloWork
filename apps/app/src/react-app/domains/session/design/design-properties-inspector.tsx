@@ -33,6 +33,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { DesignField, DesignSelection, DesignStyleField } from "./design-html-runtime";
 
@@ -44,6 +45,15 @@ type DesignPropertiesInspectorProps = {
 };
 
 const FILL_COLORS = ["#2f6de1", "#111827", "#ffffff", "#7c3aed", "#059669", "#ea580c"];
+const FONT_SIZE_PRESETS = ["8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "32", "36", "48", "60", "72", "96"];
+const FONT_WEIGHT_PRESETS = [
+  { value: "300", label: "Light" },
+  { value: "400", label: "Regular" },
+  { value: "500", label: "Medium" },
+  { value: "600", label: "Semibold" },
+  { value: "700", label: "Bold" },
+  { value: "800", label: "Extra bold" },
+];
 
 export function DesignPropertiesInspector({
   selection,
@@ -92,11 +102,11 @@ export function DesignPropertiesInspector({
         </div>
         <FieldCaption className="mt-3">Position</FieldCaption>
         <div className="grid grid-cols-2 gap-2">
-          <PropertyField label="X" value={selection.styles.left || `${Math.round(selection.rect.left)}px`} onChange={(value) => onApplyField("left", value)} />
-          <PropertyField label="Y" value={selection.styles.top || `${Math.round(selection.rect.top)}px`} onChange={(value) => onApplyField("top", value)} />
+          <DragNumberField label="X" value={selection.styles.left || `${Math.round(selection.rect.left)}px`} suffix="px" onChange={(value) => onApplyField("left", `${value}px`)} />
+          <DragNumberField label="Y" value={selection.styles.top || `${Math.round(selection.rect.top)}px`} suffix="px" onChange={(value) => onApplyField("top", `${value}px`)} />
         </div>
         <div className="mt-2 grid grid-cols-[1fr_42px_42px_42px] gap-1">
-          <PropertyField label="Rotation" value={`${rotation}°`} onChange={(value) => onApplyField("transform", `rotate(${numericValue(value, 0)}deg)`)} />
+          <DragNumberField label="Rotation" value={`${rotation}°`} suffix="°" onChange={(value) => onApplyField("transform", `rotate(${value}deg)`)} />
           <PropertyButton aria-label="Rotate clockwise" onClick={() => onApplyField("transform", `rotate(${rotation + 90}deg)`)}><RotateCw /></PropertyButton>
           <PropertyButton aria-label="Flip horizontal" onClick={() => onApplyField("transform", "scaleX(-1)")}><FlipHorizontal2 /></PropertyButton>
           <PropertyButton aria-label="Flip vertical" onClick={() => onApplyField("transform", "scaleY(-1)")}><SeparatorHorizontal /></PropertyButton>
@@ -116,12 +126,12 @@ export function DesignPropertiesInspector({
             <SelectLikeField label="Font family" value={selection.styles.fontFamily || "PingFang SC"} onChange={(value) => onApplyField("fontFamily", value)} />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <SelectLikeField label="Font weight" value={selection.styles.fontWeight || "400"} onChange={(value) => onApplyField("fontWeight", value)} />
-            <SelectLikeField label="Font size" value={String(fontSize)} onChange={(value) => applyPixels("fontSize", value)} />
+            <FontPresetField label="Size" value={String(fontSize)} presets={FONT_SIZE_PRESETS} onChange={(value) => applyPixels("fontSize", value)} />
+            <FontPresetField label="Weight" value={selection.styles.fontWeight || "400"} presets={FONT_WEIGHT_PRESETS} onChange={(value) => onApplyField("fontWeight", value)} />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <PropertyField label="Line height" value={String(lineHeight)} suffix="" onChange={(value) => applyPixels("lineHeight", value)} />
-            <PropertyField label="Letter spacing" value={String(letterSpacing)} suffix="%" onChange={(value) => onApplyField("letterSpacing", `${value}%`)} />
+            <DragNumberField label="Line height" value={String(lineHeight)} onChange={(value) => applyPixels("lineHeight", String(value))} />
+            <DragNumberField label="Letter spacing" value={String(letterSpacing)} suffix="%" onChange={(value) => onApplyField("letterSpacing", `${value}%`)} />
           </div>
           <div className="mt-3 grid grid-cols-6 gap-1">
             <PropertyButton active={selection.styles.textAlign === "left"} aria-label="Align text left" onClick={() => onApplyField("textAlign", "left")}><AlignLeft /></PropertyButton>
@@ -142,8 +152,8 @@ export function DesignPropertiesInspector({
 
       <InspectorSection title="Size">
         <div className="grid grid-cols-[1fr_1fr_34px] gap-2">
-          <PropertyField label="Width" value={selection.styles.width || `${Math.round(selection.rect.width)}px`} onChange={(value) => onApplyField("width", value)} />
-          <PropertyField label="Height" value={selection.styles.height || `${Math.round(selection.rect.height)}px`} onChange={(value) => onApplyField("height", value)} />
+          <DragNumberField label="Width" value={selection.styles.width || `${Math.round(selection.rect.width)}px`} suffix="px" onChange={(value) => onApplyField("width", `${value}px`)} />
+          <DragNumberField label="Height" value={selection.styles.height || `${Math.round(selection.rect.height)}px`} suffix="px" onChange={(value) => onApplyField("height", `${value}px`)} />
           <button type="button" className="grid h-9 w-[34px] place-items-center rounded-lg text-[#858a94] disabled:opacity-55" disabled aria-label="Lock aspect ratio">
             <Lock className="size-4" />
           </button>
@@ -249,6 +259,92 @@ function PropertyField({ label, value, suffix, onChange, disabled = false }: { l
       <input className="min-w-0 flex-1 bg-transparent text-right text-[12px] outline-none disabled:cursor-default" value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`Design ${label.toLowerCase()}`} />
       {suffix ? <span className="text-[10px] text-[#969ba5]">{suffix}</span> : null}
     </label>
+  );
+}
+
+function DragNumberField({ label, value, suffix = "", onChange }: { label: string; value: string; suffix?: string; onChange: (value: number) => void }) {
+  return (
+    <label className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
+      <span className="shrink-0 text-[10px] text-[#969ba5]">{label}</span>
+      <DragNumberInput label={label} value={String(numericValue(value, 0))} onChange={onChange} />
+      {suffix ? <span className="text-[10px] text-[#969ba5]">{suffix}</span> : null}
+    </label>
+  );
+}
+
+function DragNumberInput({ label, value, onChange }: { label: string; value: string; onChange: (value: number) => void }) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const drag = React.useRef<{ pointerId: number; startX: number; startValue: number; moved: boolean } | null>(null);
+
+  const beginDrag = (event: React.PointerEvent<HTMLInputElement>) => {
+    if (event.button !== 0) return;
+
+    drag.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startValue: numericValue(value, 0),
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+
+    const move = (moveEvent: PointerEvent) => {
+      const activeDrag = drag.current;
+      if (!activeDrag || moveEvent.pointerId !== activeDrag.pointerId) return;
+      const distance = moveEvent.clientX - activeDrag.startX;
+      if (!activeDrag.moved && Math.abs(distance) < 3) return;
+
+      activeDrag.moved = true;
+      const nextValue = Math.round((activeDrag.startValue + distance) * 100) / 100;
+      onChange(nextValue);
+    };
+    const end = (endEvent: PointerEvent) => {
+      const activeDrag = drag.current;
+      if (!activeDrag || endEvent.pointerId !== activeDrag.pointerId) return;
+
+      if (!activeDrag.moved) inputRef.current?.focus();
+      drag.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      className="min-w-0 flex-1 cursor-ew-resize bg-transparent text-right text-[12px] outline-none focus:cursor-text"
+      value={value}
+      onPointerDown={beginDrag}
+      onChange={(event) => onChange(numericValue(event.currentTarget.value, numericValue(value, 0)))}
+      aria-label={`Design ${label.toLowerCase()}`}
+      title="Drag left or right to adjust; click to type"
+    />
+  );
+}
+
+function FontPresetField({ label, value, presets, onChange }: { label: string; value: string; presets: string[] | { value: string; label: string }[]; onChange: (value: string) => void }) {
+  const options = presets.map((preset) => typeof preset === "string" ? { value: preset, label: preset } : preset);
+
+  return (
+    <div className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
+      <span className="shrink-0 text-[10px] text-[#969ba5]">{label}</span>
+      {label === "Size" ? (
+        <DragNumberInput label={label} value={value} onChange={(nextValue) => onChange(String(nextValue))} />
+      ) : (
+        <span className="min-w-0 flex-1 text-right text-[12px]">{value}</span>
+      )}
+      <Select value={value} onValueChange={(nextValue) => { if (nextValue) onChange(nextValue); }}>
+        <SelectTrigger className="h-auto w-auto shrink-0 border-0 bg-transparent p-0 shadow-none hover:bg-transparent focus-visible:ring-0" aria-label={`Select ${label.toLowerCase()}`} />
+        <SelectContent align="end">
+          {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
