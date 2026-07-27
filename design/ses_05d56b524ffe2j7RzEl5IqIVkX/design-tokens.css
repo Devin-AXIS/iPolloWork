@@ -1,41 +1,35 @@
-/* ipw-design-system: runwayml */
+/* ipw-design-system: elevenlabs */
 :root {
-  --ipw-od-bg: #e62828;
-  --ipw-od-surface: #1a1a1a;
-  --ipw-od-surface-warm: #030303;
-  --ipw-od-fg-2: #e9ecf2;
-  --ipw-od-muted: #767d88;
-  --ipw-od-meta: #7d848e;
-  --ipw-od-border-soft: #1a1a1a;
-  --ipw-od-tracking-display: -0.025em;
-  --ipw-od-leading-body: 1.4 (mid-range of the documented 1.30–1.50
- *     band — body text stays editorial-tight, never magazine-loose).
- *   - --section-y-desktop: 78px ("cinema-grade breathing" — the
- *     largest discrete step on the documented spacing scale).
- *   - --radius-sm: 4px (sharp / button);
-  --ipw-od-radius-md: 8px;
-  --ipw-od-radius-lg: 16px;
-  --ipw-od-fg: #ffffff;
-  --ipw-od-border: #27272a;
-  --ipw-od-accent: #ffffff;
-  --ipw-od-accent-on: #000000;
-  --ipw-od-accent-hover: #e9ecf2;
-  --ipw-od-accent-active: #c9ccd1;
+  --ipw-od-bg: #ffffff;
+  --ipw-od-surface: #f5f5f5;
+  --ipw-od-surface-warm: #f5f2ef;
+  --ipw-od-fg: #000000;
+  --ipw-od-fg-2: #4e4e4e;
+  --ipw-od-muted: #777169;
+  --ipw-od-meta: var(--ipw-od-muted);
+  --ipw-od-border: #e5e5e5;
+  --ipw-od-border-soft: rgba(0, 0, 0, 0.05);
+  --ipw-od-accent: #000000;
+  --ipw-od-accent-on: #ffffff;
+  --ipw-od-accent-hover: #1a1a1a;
+  --ipw-od-accent-active: #333333;
   --ipw-od-success: #16a34a;
   --ipw-od-warn: #eab308;
   --ipw-od-danger: #dc2626;
-  --ipw-od-font-display: "abcNormal", "abcNormal Fallback", "Inter", "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --ipw-od-font-body: "abcNormal", "abcNormal Fallback", "Inter", "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --ipw-od-font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
-  --ipw-od-text-xs: 11px;
+  --ipw-od-font-display: "Waldenburg", "Waldenburg Fallback", system-ui, sans-serif;
+  --ipw-od-font-body: "Inter", "Inter Fallback", system-ui, -apple-system, sans-serif;
+  --ipw-od-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --ipw-od-text-xs: 12px;
   --ipw-od-text-sm: 13px;
   --ipw-od-text-base: 16px;
   --ipw-od-text-lg: 20px;
   --ipw-od-text-xl: 24px;
-  --ipw-od-text-2xl: 36px;
-  --ipw-od-text-3xl: 40px;
+  --ipw-od-text-2xl: 32px;
+  --ipw-od-text-3xl: 36px;
   --ipw-od-text-4xl: 48px;
-  --ipw-od-leading-tight: 1.0;
+  --ipw-od-leading-body: 1.5;
+  --ipw-od-leading-tight: 1.08;
+  --ipw-od-tracking-display: -0.02em;
   --ipw-od-space-1: 4px;
   --ipw-od-space-2: 8px;
   --ipw-od-space-3: 12px;
@@ -44,22 +38,23 @@
   --ipw-od-space-6: 24px;
   --ipw-od-space-8: 32px;
   --ipw-od-space-12: 48px;
-  --ipw-od-section-y-desktop: 78px;
-  --ipw-od-section-y-tablet: 48px;
-  --ipw-od-section-y-phone: 32px;
-  --ipw-od-radius-sm: 4px;
+  --ipw-od-section-y-desktop: 96px;
+  --ipw-od-section-y-tablet: 64px;
+  --ipw-od-section-y-phone: 48px;
+  --ipw-od-radius-sm: 8px;
+  --ipw-od-radius-md: 16px;
+  --ipw-od-radius-lg: 24px;
   --ipw-od-radius-pill: 9999px;
-  --ipw-od-elev-flat: none;
-  --ipw-od-elev-ring: 0 0 0 1px var(--ipw-od-border);
-  --ipw-od-elev-raised: none;
-  --ipw-od-focus-ring: 0 0 0 2px color-mix(in oklab, var(--ipw-od-accent), transparent 60%);
+  --ipw-od-elev-ring: rgba(0, 0, 0, 0.06) 0px 0px 0px 1px, rgba(0, 0, 0, 0.04) 0px 1px 2px, rgba(0, 0, 0, 0.04) 0px 2px 4px;
+  --ipw-od-elev-raised: rgba(0, 0, 0, 0.4) 0px 0px 1px, rgba(0, 0, 0, 0.04) 0px 4px 4px;
+  --ipw-od-focus-ring: 0 0 0 3px rgba(147, 197, 253, 0.5);
   --ipw-od-motion-fast: 150ms;
-  --ipw-od-motion-base: 220ms;
+  --ipw-od-motion-base: 200ms;
   --ipw-od-ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ipw-od-container-max: 1600px;
-  --ipw-od-container-gutter-desktop: 48px;
-  --ipw-od-container-gutter-tablet: 24px;
-  --ipw-od-container-gutter-phone: 16px;
+  --ipw-od-container-max: 1200px;
+  --ipw-od-container-gutter-desktop: 24px;
+  --ipw-od-container-gutter-tablet: 16px;
+  --ipw-od-container-gutter-phone: 12px;
 
   --ipw-color-bg: var(--ipw-od-bg);
   --ipw-color-surface: var(--ipw-od-surface);

@@ -174,7 +174,7 @@ export function buildDesignSystemTokenControls(theme: DesignSystemTheme): Design
     .map(([name, value]) => ({
       name,
       storageName: designSystemTokenStorageName(name),
-      value,
+      value: rewriteThemeTokenReferences(value),
       group: tokenGroup(name),
       kind: tokenKind(name, value),
     }))
