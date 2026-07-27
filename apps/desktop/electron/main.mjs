@@ -35,6 +35,11 @@ import { createWorkspaceStore } from "./workspace-store.mjs";
 import { openExternalUrl } from "./open-external.mjs";
 import { protectOutputStreamFromBrokenPipe } from "./stdio-safety.mjs";
 import { relaunchActionForMode } from "./relaunch-policy.mjs";
+import { createDesktopAuthWindow } from "./desktop-auth-window.mjs";
+import {
+  registerDesktopProtocolClient,
+  resolveDesktopProtocolRegistration,
+} from "./desktop-protocol.mjs";
 import {
   applyWindowsTaskbarIcon,
   windowsBrandAppUserModelId,
@@ -54,12 +59,12 @@ const pty = require(["node", "pty"].join("-"));
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
 const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";
 const DEV_APP_IDENTIFIER = "com.differentai.ipollowork.dev";
-const DESKTOP_PROTOCOL_SCHEME = "ipollowork";
 const isDevMode = process.env.IPOLLOWORK_DEV_MODE === "1";
 const APP_NAME =
   process.env.IPOLLOWORK_ELECTRON_APP_NAME?.trim() ||
   (isDevMode ? "iPollo - Dev" : "iPollo");
 let currentDisplayAppName = APP_NAME;
+let desktopAuthWindow = null;
 const APP_IDENTIFIER =
   process.env.IPOLLOWORK_ELECTRON_APP_IDENTIFIER?.trim() ||
   (isDevMode ? DEV_APP_IDENTIFIER : TAURI_APP_IDENTIFIER);
@@ -569,9 +574,12 @@ async function startHyperframesPreview(event, options = {}) {
 // Electron install from the real Tauri app.
 app.setName(APP_NAME);
 app.setAppUserModelId(APP_IDENTIFIER);
-if (app.isPackaged) {
-  app.setAsDefaultProtocolClient(DESKTOP_PROTOCOL_SCHEME);
-}
+registerDesktopProtocolClient(app, resolveDesktopProtocolRegistration({
+  isDevMode,
+  isPackaged: app.isPackaged,
+  execPath: process.execPath,
+  entryPath: process.argv[1],
+}));
 const userDataOverride = process.env.IPOLLOWORK_ELECTRON_USERDATA?.trim();
 if (userDataOverride) {
   app.setPath("userData", userDataOverride);
@@ -1472,6 +1480,53 @@ function flushPendingDeepLinks() {
   if (!mainWindow?.webContents || pendingDeepLinks.length === 0) return;
   const urls = pendingDeepLinks.splice(0, pendingDeepLinks.length);
   mainWindow.webContents.send(NATIVE_DEEP_LINK_EVENT, urls);
+}
+
+function closeDesktopAuthWindow() {
+  const window = desktopAuthWindow;
+  desktopAuthWindow = null;
+  if (window && !window.isDestroyed()) window.close();
+}
+
+function openDesktopAuthWindow(url) {
+  let target;
+  try {
+    target = new URL(url);
+  } catch {
+    return { ok: false, error: "invalid authentication URL" };
+  }
+  if (target.protocol !== "https:" && target.protocol !== "http:") {
+    return { ok: false, error: "authentication URL must use HTTP or HTTPS" };
+  }
+
+  if (desktopAuthWindow && !desktopAuthWindow.isDestroyed()) {
+    desktopAuthWindow.show();
+    desktopAuthWindow.focus();
+    void desktopAuthWindow.loadURL(target.toString()).catch(() => undefined);
+    return { ok: true };
+  }
+
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  desktopAuthWindow = createDesktopAuthWindow({
+    BrowserWindow,
+    parent,
+    title: `${currentDisplayAppName} · Sign in`,
+    url: target.toString(),
+    icon: APP_ICON_IMAGE,
+    openExternal: openExternalUrl,
+    onComplete: (callbackUrl) => {
+      queueDeepLinks([callbackUrl]);
+      closeDesktopAuthWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    },
+    onClosed: (window) => {
+      if (desktopAuthWindow === window) desktopAuthWindow = null;
+    },
+  });
+  return { ok: true };
 }
 
 function configHomePath() {
@@ -2738,6 +2793,12 @@ ipcMain.handle("ipollowork:shell:openExternal", async (_event, url) => {
     return { ok: false, error: "empty url" };
   }
   return openExternalUrl(url.trim());
+});
+ipcMain.handle("ipollowork:shell:openAuth", async (_event, url) => {
+  if (typeof url !== "string" || url.trim().length === 0) {
+    return { ok: false, error: "empty authentication URL" };
+  }
+  return openDesktopAuthWindow(url.trim());
 });
 ipcMain.handle("ipollowork:shell:relaunch", async () => {
   if (relaunchActionForMode(isDevMode) === "reload-window") {

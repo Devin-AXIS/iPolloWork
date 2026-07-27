@@ -27,18 +27,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type {
   iPolloWorkAuthorizationService,
   iPolloWorkAuthorizationServiceId,
@@ -49,6 +37,7 @@ import { t } from "@/i18n";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { LayoutSection, LayoutSectionDescription, LayoutSectionHeader, LayoutSectionTitle, LayoutStack } from "@/react-app/domains/settings/settings-layout";
 import { SettingsNotice, SettingsStatusBadge, Spinner } from "@/react-app/domains/settings/settings-section";
+import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
 import {
   EnvironmentVariableProvider,
   environmentUserEnvQueryKey,
@@ -418,69 +407,29 @@ function AuthorizationEditor(props: {
   const title = t(presentation.titleKey);
 
   return (
-    <Dialog open onOpenChange={(open) => !open && props.onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t("settings.authorization.configure_title", { service: title })}</DialogTitle>
-          <DialogDescription>{t("settings.authorization.configure_description")}</DialogDescription>
-        </DialogHeader>
-        <FieldGroup className="gap-4">
-          {presentation.fields.map((field) => {
-            const configured = props.editor.service.fields.find((item) => item.key === field.key)?.configured === true;
-            return (
-              <Field key={field.key}>
-                <FieldLabel>{field.label}</FieldLabel>
-                {field.options ? (
-                  <Select
-                    value={props.editor.values[field.key] ?? undefined}
-                    onValueChange={(value) => props.onChange({
-                      ...props.editor.values,
-                      [field.key]: value ?? "",
-                    })}
-                    disabled={props.saving}
-                  >
-                    <SelectTrigger className="w-full" aria-label={field.label}>
-                      <SelectValue placeholder={configured ? t("settings.authorization.value_saved") : field.placeholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {field.options.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    type={field.secret === false ? "text" : "password"}
-                    value={props.editor.values[field.key] ?? ""}
-                    onChange={(event) => props.onChange({
-                      ...props.editor.values,
-                      [field.key]: event.currentTarget.value,
-                    })}
-                    placeholder={configured ? t("settings.authorization.value_saved") : field.placeholder}
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="font-mono"
-                    disabled={props.saving}
-                  />
-                )}
-                {field.hintKey ? <FieldDescription>{t(field.hintKey)}</FieldDescription> : null}
-              </Field>
-            );
-          })}
-        </FieldGroup>
-        {props.error ? <SettingsNotice tone="error">{props.error.message}</SettingsNotice> : null}
-        <DialogFooter>
-          <DialogClose render={<Button size="sm" variant="outline" disabled={props.saving} />}>
-            {t("settings.authorization.cancel")}
-          </DialogClose>
-          <Button size="sm" onClick={props.onSave} disabled={props.saving}>
-            {props.saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            {props.saving ? t("settings.authorization.saving") : t("settings.authorization.save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <AuthorizationFormDialog
+      open
+      title={t("settings.authorization.configure_title", { service: title })}
+      description={t("settings.authorization.configure_description")}
+      fields={presentation.fields.map((field) => ({
+        id: field.key,
+        label: field.label,
+        placeholder: field.placeholder,
+        secret: field.secret,
+        description: field.hintKey ? t(field.hintKey) : undefined,
+        saved: props.editor.service.fields.find((item) => item.key === field.key)?.configured === true,
+        options: field.options?.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+      }))}
+      values={props.editor.values}
+      saving={props.saving}
+      error={props.error?.message ?? null}
+      cancelLabel={t("settings.authorization.cancel")}
+      savedLabel={t("settings.authorization.value_saved")}
+      submitLabel={t("settings.authorization.save")}
+      savingLabel={t("settings.authorization.saving")}
+      onValuesChange={props.onChange}
+      onClose={props.onClose}
+      onSubmit={props.onSave}
+    />
   );
 }

@@ -23,7 +23,6 @@ import { join, dirname } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { connect, debuggerUrlFor, pickAppTarget, resolveCdpBaseUrl } from "./cdp.mjs";
 import { EvalContext } from "./context.mjs";
-import { denStackDown, ensureDenStack } from "./den-stack.mjs";
 import { checkVoiceoverCoverage, loadVoiceoverParagraphs, scaffoldFlow } from "./voiceover.mjs";
 import { postPrComment } from "./pr.mjs";
 
@@ -430,6 +429,7 @@ async function main() {
   }
 
   if (args.stackDown) {
+    const { denStackDown } = await import("./den-stack.mjs");
     await denStackDown({ log: (msg) => console.log(`▸ ${msg}`) });
     return;
   }
@@ -442,6 +442,7 @@ async function main() {
   }
 
   if (args.stack === "den") {
+    const { ensureDenStack } = await import("./den-stack.mjs");
     await ensureDenStack({
       log: (msg) => console.log(`▸ ${msg}`),
       cdpCandidates: args.cdpUrl ? [args.cdpUrl] : DEFAULT_CDP_CANDIDATES,
