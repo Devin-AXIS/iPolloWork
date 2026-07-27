@@ -6,6 +6,8 @@ describe("Studio right panel layout", () => {
     const source = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
 
     expect(source).toContain('label={t("right.design")}');
+    expect(source).toContain('label={t("right.catalog")}');
+    expect(source).toContain('<BlocksTab onAddBlock={onAddBlock} onPreviewBlock={onPreviewBlock} />');
     expect(source).toContain("<LayersPanel />");
     expect(source).toContain("{propertyPanel}");
     expect(source).not.toContain('label={t("right.layers")}');

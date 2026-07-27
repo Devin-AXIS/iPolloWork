@@ -2,6 +2,7 @@
 
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 import {
   createStudioDevRenderBodyScripts,
   readStudioDevManualEditManifestContent,
@@ -14,10 +15,19 @@ import { seekThumbnailPreview } from "./vite.thumbnail";
 let _browser: import("puppeteer-core").Browser | null = null;
 let _browserLaunchPromise: Promise<import("puppeteer-core").Browser> | null = null;
 
+const WINDOWS_BROWSER_ROOTS = [
+  process.env.LOCALAPPDATA,
+  process.env.PROGRAMFILES,
+  process.env["PROGRAMFILES(X86)"],
+].filter((value): value is string => Boolean(value));
 const CHROME_PATHS = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/usr/bin/google-chrome",
   "/usr/bin/chromium-browser",
+  ...WINDOWS_BROWSER_ROOTS.flatMap((root) => [
+    join(root, "Google", "Chrome", "Application", "chrome.exe"),
+    join(root, "Microsoft", "Edge", "Application", "msedge.exe"),
+  ]),
 ];
 
 async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | null> {

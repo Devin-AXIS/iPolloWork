@@ -38,6 +38,12 @@ import {
 } from "./design-html-runtime";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
+import { DesignSystemDrawer, type DesignTokenValues } from "./design-system-drawer";
+import {
+  buildTemplateTokenCss,
+  type DesignSystemTheme,
+} from "./design-system-registry";
+import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "./design-system-theme-contract";
 import {
   downgradeUnsupportedPdfExportColors,
   downgradeUnsupportedPdfExportColorText,
@@ -458,6 +464,31 @@ function normalizeHexColor(value: string) {
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0")).join("")}`;
 }
 
+function parseDesignTokenValues(source: string | undefined): DesignTokenValues {
+  const values: DesignTokenValues = {};
+  const pattern = /(--ipw-[a-zA-Z0-9_-]+)\s*:\s*([^;]+);/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(source ?? ""))) {
+    values[match[1] as keyof DesignTokenValues] = match[2]?.trim() ?? "";
+  }
+  return values;
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function replaceDesignTokenValue(source: string, name: string, value: string) {
+  const css = source.trim() ? source : ":root {\n}\n";
+  const tokenPattern = new RegExp(`(${escapeRegex(name)}\\s*:\\s*)([^;]*)(;)`);
+  if (tokenPattern.test(css)) return css.replace(tokenPattern, `$1${value}$3`);
+  const rootEnd = css.lastIndexOf("}");
+  if (rootEnd >= 0) {
+    return `${css.slice(0, rootEnd)}  ${name}: ${value};\n${css.slice(rootEnd)}`;
+  }
+  return `${css}\n:root {\n  ${name}: ${value};\n}\n`;
+}
+
 async function imageFileToPortableDataUrl(file: File) {
   const bitmap = await createImageBitmap(file);
   try {
@@ -502,6 +533,8 @@ export function DesignPanel({
   const previewViewportRef = React.useRef<HTMLDivElement>(null);
   const presentationPanRef = React.useRef<HTMLDivElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
+  const designTokenDraftRef = React.useRef("");
+  const designTokenSaveTimerRef = React.useRef<number | null>(null);
   const templateQuery = useQuery({
     queryKey: ["design-session-template", workspaceId, sessionId] as const,
     queryFn: async () => {
@@ -562,6 +595,8 @@ export function DesignPanel({
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
+  const [designTokenDraft, setDesignTokenDraft] = React.useState("");
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
@@ -687,6 +722,70 @@ export function DesignPanel({
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
+  React.useEffect(() => {
+    const next = templateTokenQuery.data ?? "";
+    designTokenDraftRef.current = next;
+    setDesignTokenDraft(next);
+  }, [templateTokenPath, templateTokenQuery.data]);
+  const designTokenValues = React.useMemo(
+    () => parseDesignTokenValues(designTokenDraft || templateTokenQuery.data),
+    [designTokenDraft, templateTokenQuery.data],
+  );
+  const appliedDesignSystemId = React.useMemo(
+    () => readAppliedDesignSystemId(designTokenDraft || templateTokenQuery.data),
+    [designTokenDraft, templateTokenQuery.data],
+  );
+  const writeDesignTokenMutation = useMutation({
+    mutationFn: async (content: string) => {
+      if (!client || !workspaceId || !templateTokenPath) throw new Error("Design token file is not ready.");
+      return client.writeWorkspaceFile(workspaceId, { path: templateTokenPath, content, force: true });
+    },
+    onSuccess: (_result, content) => {
+      queryClient.setQueryData(["design-template-tokens", workspaceId, templateTokenPath] as const, content);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Could not save design system tokens.");
+    },
+  });
+  const scheduleDesignTokenSave = React.useCallback((content: string) => {
+    if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
+    designTokenSaveTimerRef.current = window.setTimeout(() => {
+      designTokenSaveTimerRef.current = null;
+      writeDesignTokenMutation.mutate(content);
+    }, 350);
+  }, [writeDesignTokenMutation]);
+  React.useEffect(() => () => {
+    if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
+  }, []);
+  const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
+    const next = replaceDesignTokenValue(designTokenDraftRef.current || templateTokenQuery.data || "", name, value);
+    designTokenDraftRef.current = next;
+    setDesignTokenDraft(next);
+    scheduleDesignTokenSave(next);
+  }, [scheduleDesignTokenSave, templateTokenQuery.data]);
+  const handleApplyDesignSystem = React.useCallback((theme: DesignSystemTheme) => {
+    const next = buildTemplateTokenCss(theme);
+    const currentHtml = draftRef.current || fileQuery.data?.content || "";
+    const themedHtml = ensureHtmlDesignSystemContract(
+      currentHtml,
+      theme.id,
+      linkedDesignTokenPath(currentHtml) || "design-tokens.css",
+    );
+    if (themedHtml !== currentHtml) {
+      setHistory((current) => [...current, currentHtml]);
+      draftRef.current = themedHtml;
+      setDraft(themedHtml);
+      setPendingCanvasChange(true);
+      setPreviewSource(themedHtml);
+      setHydratedPreviewSource("");
+      setPreviewLoaded(false);
+      setPreviewRevision((current) => current + 1);
+    }
+    designTokenDraftRef.current = next;
+    setDesignTokenDraft(next);
+    scheduleDesignTokenSave(next);
+    toast.success(`Applied ${theme.name}.`);
+  }, [fileQuery.data?.content, scheduleDesignTokenSave]);
 
   const openDesignLink = React.useCallback(async (href: string) => {
     if (!client || !workspaceId || !lockedPath || !activePagePath) return;
@@ -733,6 +832,7 @@ export function DesignPanel({
     }
     setQuickEdit(null);
     setAdvancedOpen(false);
+    setDesignSystemOpen(false);
     setPreviewSource(fileQuery.data.content);
     setHydratedPreviewSource("");
     setPreviewLoaded(false);
@@ -1543,8 +1643,8 @@ export function DesignPanel({
   const preview = React.useMemo(
     // The bridge is always present but starts inactive. Toggling editing is
     // a message to that bridge, not a new srcDoc, so a deck stays on its slide.
-    () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, templateTokenQuery.data ?? "", false, usesNativeEditablePptx, isPresentationTemplate),
-    [hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
+    () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, designTokenDraft || templateTokenQuery.data || "", false, usesNativeEditablePptx, isPresentationTemplate),
+    [designTokenDraft, hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
   const selectionLeft = isPresentationTemplate
     ? presentationCanvasLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2 - presentationScroll.left
@@ -1623,6 +1723,7 @@ export function DesignPanel({
                   setSelection(null);
                   setQuickEdit(null);
                   setAdvancedOpen(false);
+                  setDesignSystemOpen(false);
                 }}
                 aria-label="Edit"
               />
@@ -1673,12 +1774,31 @@ export function DesignPanel({
                   variant="ghost"
                   size="icon-sm"
                   className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && "bg-[#F3F4F6]")}
-                  onClick={() => setAdvancedOpen((current) => !current)}
+                  onClick={() => {
+                    setDesignSystemOpen(false);
+                    setAdvancedOpen((current) => !current);
+                  }}
                   aria-label="Toggle design properties"
                   title="Design properties"
                   aria-pressed={advancedOpen}
                 >
                   <SlidersHorizontal />
+                </Button>
+              ) : null}
+              {editing ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(DESIGN_ACTION_BUTTON_CLASS, designSystemOpen && "bg-[#F3F4F6]")}
+                  onClick={() => {
+                    setAdvancedOpen(false);
+                    setDesignSystemOpen((current) => !current);
+                  }}
+                  aria-label="Open design system"
+                  title="Design system"
+                  aria-pressed={designSystemOpen}
+                >
+                  <Palette />
                 </Button>
               ) : null}
               <Button variant="ghost" size="icon-sm" className={DESIGN_ACTION_BUTTON_CLASS} onClick={() => void undo()} disabled={history.length === 0 && !aiUndoCheckpoint} aria-label="Undo design change">
@@ -1738,6 +1858,7 @@ export function DesignPanel({
                     setSelection(null);
                     setQuickEdit(null);
                     setAdvancedOpen(false);
+                    setDesignSystemOpen(false);
                   } : undefined}
                   onPublish={() => publishMutation.mutate()}
                   onExportPdf={() => void exportDeckToPdf()}
@@ -1947,7 +2068,10 @@ export function DesignPanel({
                         <Button
                           variant={advancedOpen ? "secondary" : "ghost"}
                           size="icon-xs"
-                          onClick={() => setAdvancedOpen((current) => !current)}
+                          onClick={() => {
+                            setDesignSystemOpen(false);
+                            setAdvancedOpen((current) => !current);
+                          }}
                           aria-label="Toggle advanced design settings"
                           aria-pressed={advancedOpen}
                         >
@@ -1981,6 +2105,17 @@ export function DesignPanel({
                     Click an element in the page to edit it.
                   </aside>
                 )
+              ) : null}
+              {editing ? (
+                <DesignSystemDrawer
+                  open={designSystemOpen}
+                  templateName={designTemplate?.title ?? fileName(activePagePath)}
+                  currentThemeId={appliedDesignSystemId}
+                  initialValues={designTokenValues}
+                  onClose={() => setDesignSystemOpen(false)}
+                  onTokenChange={handleDesignTokenChange}
+                  onApplyDesignSystem={handleApplyDesignSystem}
+                />
               ) : null}
             </div>
           )}

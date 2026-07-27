@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>NBA 传奇</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Playfair+Display:ital,wght@0,700;1,800&family=Oswald:wght@500;700&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a1628;
+      }
+      body {
+        font-family: "Inter", "Noto Sans SC", sans-serif;
+      }
+      [data-composition-id="main"] {
+        width: 1920px;
+        height: 1080px;
+        background: #0a1628;
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* ── Editorial Emphasis typography ── */
+      .word-em {
+        font-family: "Playfair Display", "Noto Sans SC", serif;
+        font-weight: 800;
+        font-style: italic;
+        color: #F0A500;
+        text-shadow: 0 0 40px rgba(240, 165, 0, 0.3);
+        display: inline-block;
+      }
+      .word-norm {
+        font-family: "Inter", "Noto Sans SC", sans-serif;
+        font-weight: 400;
+        display: inline-block;
+      }
+      .word-bold {
+        font-family: "Inter", "Noto Sans SC", sans-serif;
+        font-weight: 700;
+        display: inline-block;
+      }
+
+      /* ── Background layer ── */
+      .bg-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+      }
+      .bg-glow-1 {
+        position: absolute;
+        width: 900px;
+        height: 900px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(200,16,46,0.08) 0%, transparent 70%);
+        top: -200px;
+        left: -200px;
+      }
+      .bg-glow-2 {
+        position: absolute;
+        width: 700px;
+        height: 700px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(240,165,0,0.06) 0%, transparent 70%);
+        bottom: -150px;
+        right: -100px;
+      }
+      .bg-glow-3 {
+        position: absolute;
+        width: 500px;
+        height: 500px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(29,66,138,0.1) 0%, transparent 70%);
+        top: 400px;
+        left: 600px;
+      }
+      .bg-grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+        background-size: 80px 80px;
+      }
+      .bg-court {
+        position: absolute;
+        width: 800px;
+        height: 600px;
+        border: 1px solid rgba(255,255,255,0.03);
+        border-radius: 50%;
+        top: 240px;
+        left: 560px;
+        transform: perspective(800px) rotateX(60deg);
+      }
+
+      /* ── Scene clips ── */
+      .clip {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .scene-content {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 80px 120px;
+      }
+
+      /* ── Title scene ── */
+      .title-main {
+        font-family: "Oswald", "Noto Sans SC", sans-serif;
+        font-size: 140px;
+        font-weight: 700;
+        letter-spacing: 8px;
+        color: #fff;
+        text-align: center;
+        text-shadow: 0 4px 60px rgba(200,16,46,0.4);
+        margin-bottom: 20px;
+      }
+      .title-main .nba-red {
+        color: #C8102E;
+      }
+      .title-sub {
+        font-family: "Noto Sans SC", sans-serif;
+        font-size: 36px;
+        font-weight: 300;
+        color: rgba(255,255,255,0.6);
+        letter-spacing: 4px;
+      }
+      .title-year {
+        font-family: "Inter", sans-serif;
+        font-size: 22px;
+        font-weight: 300;
+        color: rgba(255,255,255,0.35);
+        letter-spacing: 6px;
+        margin-top: 30px;
+      }
+      .title-line {
+        width: 120px;
+        height: 3px;
+        background: #C8102E;
+        margin: 24px 0;
+      }
+
+      /* ── Scene text ── */
+      .scene-headline {
+        font-family: "Noto Sans SC", sans-serif;
+        font-size: 72px;
+        font-weight: 700;
+        color: #fff;
+        text-align: center;
+        line-height: 1.3;
+        max-width: 1600px;
+      }
+      .scene-headline .word-em {
+        font-size: 96px;
+      }
+      .scene-stat {
+        font-family: "Oswald", sans-serif;
+        font-size: 200px;
+        font-weight: 700;
+        color: #F0A500;
+        text-shadow: 0 0 60px rgba(240,165,0,0.3);
+        line-height: 1;
+        letter-spacing: 4px;
+      }
+      .scene-stat-label {
+        font-family: "Noto Sans SC", sans-serif;
+        font-size: 28px;
+        font-weight: 400;
+        color: rgba(255,255,255,0.5);
+        letter-spacing: 2px;
+        margin-top: 8px;
+      }
+      .scene-year {
+        font-family: "Inter", sans-serif;
+        font-size: 32px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.3);
+        letter-spacing: 10px;
+        margin-bottom: 16px;
+        text-transform: uppercase;
+      }
+      .era-badge {
+        display: inline-block;
+        padding: 8px 28px;
+        border: 1px solid rgba(240,165,0,0.3);
+        border-radius: 30px;
+        font-family: "Noto Sans SC", sans-serif;
+        font-size: 20px;
+        color: #F0A500;
+        letter-spacing: 2px;
+        margin-bottom: 24px;
+      }
+
+      /* ── Player cards ── */
+      .players-row {
+        display: flex;
+        gap: 60px;
+        margin-top: 40px;
+        justify-content: center;
+      }
+      .player-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      .player-name {
+        font-family: "Playfair Display", "Noto Sans SC", serif;
+        font-size: 40px;
+        font-weight: 700;
+        font-style: italic;
+        color: #fff;
+      }
+      .player-detail {
+        font-family: "Noto Sans SC", sans-serif;
+        font-size: 20px;
+        font-weight: 300;
+        color: rgba(255,255,255,0.5);
+      }
+      .player-stat {
+        font-family: "Oswald", sans-serif;
+        font-size: 36px;
+        font-weight: 700;
+        color: #F0A500;
+      }
+      .player-tag {
+        font-size: 14px;
+        color: rgba(255,255,255,0.3);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        font-family: "Inter", sans-serif;
+      }
+
+      /* ── Closing ── */
+      .closing-text {
+        font-family: "Noto Sans SC", sans-serif;
+        font-size: 80px;
+        font-weight: 700;
+        color: #fff;
+        text-align: center;
+        line-height: 1.4;
+      }
+      .closing-text .word-em {
+        font-size: 100px;
+      }
+      .closing-sub {
+        font-family: "Noto Sans SC", sans-serif;
+        font-size: 28px;
+        font-weight: 300;
+        color: rgba(255,255,255,0.4);
+        margin-top: 20px;
+        letter-spacing: 6px;
+      }
+
+      /* ── Sub-composition host ── */
+      [data-composition-src] {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+      }
+
+      /* ── Decorative divider line ── */
+      .divider-line {
+        width: 80px;
+        height: 2px;
+        background: #C8102E;
+        margin: 20px 0;
+      }
+
+      /* ── Stat badge ── */
+      .stat-badge {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 30px 50px;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+      }
+      .stat-big {
+        font-family: "Oswald", sans-serif;
+        font-size: 70px;
+        font-weight: 700;
+        color: #F0A500;
+        line-height: 1;
+      }
+      .stat-label {
+        font-family: "Noto Sans SC", sans-serif;
+        font-size: 18px;
+        color: rgba(255,255,255,0.5);
+        margin-top: 6px;
+      }
+      .stats-row {
+        display: flex;
+        gap: 40px;
+        margin-top: 30px;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-dy4d" id="root" data-composition-id="main" data-start="0" data-duration="90" data-width="1920" data-height="1080">
+      <!-- ═══════════ BACKGROUND LAYER (track 0) ═══════════ -->
+      <div data-hf-id="hf-xetr" id="bg-layer" class="bg-layer clip" data-start="0" data-duration="90" data-track-index="0">
+        <div data-hf-id="hf-mf93" class="bg-glow-1" id="glow1"></div>
+        <div data-hf-id="hf-u7kp" class="bg-glow-2" id="glow2"></div>
+        <div data-hf-id="hf-i4yf" class="bg-glow-3" id="glow3"></div>
+        <div data-hf-id="hf-fw44" class="bg-grid" id="grid"></div>
+        <div data-hf-id="hf-s46y" class="bg-court" id="court"></div>
+      </div>
+
+      <!-- ═══════════ SCENE 1: TITLE (0-10s, track 1) ═══════════ -->
+      <div data-hf-id="hf-jbkc" id="scene-1" class="clip" data-start="0" data-duration="10" data-track-index="1">
+        <div data-hf-id="hf-tqww" class="scene-content" style="justify-content: center;">
+          <div data-hf-id="hf-5pue" id="s1-year" class="scene-year" style="opacity: 0;">1946 — 2026</div>
+          <div data-hf-id="hf-qe6q" id="s1-line-1" class="title-line" style="opacity: 0; transform: scaleX(0);"></div>
+          <h1 data-hf-id="hf-22s2" id="s1-title" class="title-main" style="opacity: 0;">
+            <span data-hf-id="hf-rtw3" class="nba-red">NBA</span> 传奇
+          </h1>
+          <div data-hf-id="hf-pqwp" id="s1-line-2" class="title-line" style="opacity: 0; transform: scaleX(0);"></div>
+          <p data-hf-id="hf-ohmp" id="s1-sub" class="title-sub" style="opacity: 0;">
+            世界篮球的殿堂之路
+          </p>
+          <p data-hf-id="hf-y91p" id="s1-years" class="title-year" style="opacity: 0;">
+            从 1946 到 2026 · 八十载辉煌
+          </p>
+        </div>
+      </div>
+
+      <!-- ═══════════ SCENE 2: EARLY ERA (10-24s, track 1) ═══════════ -->
+      <div data-hf-id="hf-u5q2" id="scene-2" class="clip" data-start="10" data-duration="14" data-track-index="1">
+        <div data-hf-id="hf-cn5c" class="scene-content">
+          <div data-hf-id="hf-4bfh" id="s2-era" class="era-badge" style="opacity: 0;">开创时代 · 1946—1970s</div>
+          <h2 data-hf-id="hf-cngf" id="s2-headline" class="scene-headline" style="opacity: 0; transform: translateY(40px);">
+            从<span data-hf-id="hf-khv9" class="word-em">乔治·麦肯</span>到<span data-hf-id="hf-a03y" class="word-em">比尔·拉塞尔</span>
+          </h2>
+          <p data-hf-id="hf-zg2n" id="s2-sub" class="divider-line" style="opacity: 0;"></p>
+          <p data-hf-id="hf-8oku" id="s2-text" class="scene-headline" style="font-size: 44px; font-weight: 300; color: rgba(255,255,255,0.6); opacity: 0;">
+            张伯伦单场<span data-hf-id="hf-p39d" class="word-em" style="font-size: 64px;">100分</span> · 拉塞尔<span data-hf-id="hf-wa3o" class="word-em" style="font-size: 64px;">11冠</span>王朝
+          </p>
+          <div data-hf-id="hf-jchn" class="players-row" style="opacity: 0;" id="s2-players">
+            <div data-hf-id="hf-xvwy" class="player-card">
+              <div data-hf-id="hf-0ymc" class="player-name">George Mikan</div>
+              <div data-hf-id="hf-v5ih" class="player-stat">5× Champion</div>
+              <div data-hf-id="hf-vqqa" class="player-detail">首位超级中锋</div>
+            </div>
+            <div data-hf-id="hf-2u52" class="player-card">
+              <div data-hf-id="hf-6yae" class="player-name">Bill Russell</div>
+              <div data-hf-id="hf-0mao" class="player-stat">11× Champion</div>
+              <div data-hf-id="hf-4lid" class="player-detail">指环王·绿军王朝</div>
+            </div>
+            <div data-hf-id="hf-38g3" class="player-card">
+              <div data-hf-id="hf-l1hr" class="player-name">Wilt Chamberlain</div>
+              <div data-hf-id="hf-4ek8" class="player-stat">100 pts</div>
+              <div data-hf-id="hf-po05" class="player-detail">单场百分神迹</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SCENE 3: MAGIC & BIRD (24-38s, track 1) ═══════════ -->
+      <div data-hf-id="hf-1pue" id="scene-3" class="clip" data-start="24" data-duration="14" data-track-index="1">
+        <div data-hf-id="hf-o0eg" class="scene-content">
+          <div data-hf-id="hf-q9av" id="s3-era" class="era-badge" style="opacity: 0;">黄金年代 · 1980s</div>
+          <h2 data-hf-id="hf-xtke" id="s3-headline" class="scene-headline" style="opacity: 0;">
+            <span data-hf-id="hf-0i3f" class="word-em">魔术师</span> vs <span data-hf-id="hf-sgqe" class="word-em">大鸟</span>
+          </h2>
+          <p data-hf-id="hf-zjwb" id="s3-divider" class="divider-line" style="opacity: 0;"></p>
+          <p data-hf-id="hf-eemo" id="s3-text" class="scene-headline" style="font-size: 44px; font-weight: 300; color: rgba(255,255,255,0.6); opacity: 0; transform: translateY(20px);">
+            Showtime 湖人 · 铁血绿军 · 拯救NBA的对决
+          </p>
+          <div data-hf-id="hf-jwh2" class="players-row" id="s3-players" style="opacity: 0;">
+            <div data-hf-id="hf-3mr4" class="player-card">
+              <div data-hf-id="hf-claj" class="player-name">Magic Johnson</div>
+              <div data-hf-id="hf-y3kt" class="player-stat">5× Champion</div>
+              <div data-hf-id="hf-o95a" class="player-detail">魔术师的Showtime</div>
+            </div>
+            <div data-hf-id="hf-0ulx" class="player-card">
+              <div data-hf-id="hf-w19w" class="player-name">Larry Bird</div>
+              <div data-hf-id="hf-1z93" class="player-stat">3× Champion</div>
+              <div data-hf-id="hf-anxa" class="player-detail">大鸟的传奇</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SCENE 4: MICHAEL JORDAN (38-52s, track 1) ═══════════ -->
+      <div data-hf-id="hf-r5qq" id="scene-4" class="clip" data-start="38" data-duration="14" data-track-index="1">
+        <div data-hf-id="hf-mthd" class="scene-content">
+          <div data-hf-id="hf-husz" id="s4-era" class="era-badge" style="opacity: 0;">神话时代 · 1990s</div>
+          <h2 data-hf-id="hf-kczg" id="s4-headline" class="scene-headline" style="opacity: 0;">
+            <span data-hf-id="hf-rxh2" class="word-em" style="font-size: 120px;">Michael Jordan</span>
+          </h2>
+          <p data-hf-id="hf-a744" id="s4-divider" class="divider-line" style="opacity: 0;"></p>
+          <div data-hf-id="hf-zup9" class="stats-row" id="s4-stats" style="opacity: 0;">
+            <div data-hf-id="hf-giao" class="stat-badge">
+              <div data-hf-id="hf-trfs" class="stat-big">6×</div>
+              <span data-hf-id="hf-noza" class="stat-label">总冠军</span>
+            </div>
+            <div data-hf-id="hf-hwns" class="stat-badge">
+              <div data-hf-id="hf-ux1r" class="stat-big">5×</div>
+              <span data-hf-id="hf-zrhn" class="stat-label">MVP</span>
+            </div>
+            <div data-hf-id="hf-gpqp" class="stat-badge">
+              <div data-hf-id="hf-cfr3" class="stat-big">10×</div>
+              <span data-hf-id="hf-iks8" class="stat-label">得分王</span>
+            </div>
+            <div data-hf-id="hf-h41q" class="stat-badge">
+              <div data-hf-id="hf-7601" class="stat-big">30.1</div>
+              <span data-hf-id="hf-ohn4" class="stat-label">场均得分</span>
+            </div>
+          </div>
+          <p data-hf-id="hf-6xdb" id="s4-text" class="scene-headline" style="font-size: 36px; font-weight: 300; color: rgba(255,255,255,0.5); opacity: 0; margin-top: 30px;">
+            "篮球之神"·定义了一个时代
+          </p>
+        </div>
+      </div>
+
+      <!-- ═══════════ SCENE 5: DATA CHART (52-66s, hosted via sub-comp) ═══════════ -->
+      <div data-hf-id="hf-ttvu" id="chart-host" data-composition-id="data-chart" data-composition-src="compositions/data-chart.html" data-start="52" data-duration="14" data-track-index="2" data-width="1920" data-height="1080"></div>
+
+      <!-- ═══════════ SCENE 6: KOBE & LEBRON (66-80s, track 1) ═══════════ -->
+      <div data-hf-id="hf-ky6t" id="scene-6" class="clip" data-start="66" data-duration="14" data-track-index="1">
+        <div data-hf-id="hf-n7se" class="scene-content">
+          <div data-hf-id="hf-4czd" id="s6-era" class="era-badge" style="opacity: 0;">传奇延续 · 2000s—至今</div>
+          <h2 data-hf-id="hf-xcuk" id="s6-headline" class="scene-headline" style="opacity: 0;">
+            <span data-hf-id="hf-vwdp" class="word-em">科比</span> &amp; <span data-hf-id="hf-22uo" class="word-em">勒布朗</span>
+          </h2>
+          <p data-hf-id="hf-ijlq" id="s6-divider" class="divider-line" style="opacity: 0;"></p>
+          <div data-hf-id="hf-8rrb" class="players-row" id="s6-players" style="opacity: 0;">
+            <div data-hf-id="hf-18wy" class="player-card">
+              <div data-hf-id="hf-7pmi" class="player-name">Kobe Bryant</div>
+              <div data-hf-id="hf-ib5i" class="player-stat">5× Champion · 81 pts</div>
+              <div data-hf-id="hf-1ek4" class="player-detail">曼巴精神 · 永不言弃</div>
+            </div>
+            <div data-hf-id="hf-1n7z" class="player-card">
+              <div data-hf-id="hf-hyrj" class="player-name">LeBron James</div>
+              <div data-hf-id="hf-rxlv" class="player-stat">4× Champion · #1 Scorer</div>
+              <div data-hf-id="hf-qdzq" class="player-detail">历史得分王 · 仍在巅峰</div>
+            </div>
+          </div>
+          <p data-hf-id="hf-orl2" id="s6-text" class="scene-headline" style="font-size: 32px; font-weight: 300; color: rgba(255,255,255,0.4); opacity: 0; margin-top: 20px;">
+            两代传奇 · 两种伟大
+          </p>
+        </div>
+      </div>
+
+      <!-- ═══════════ SCENE 7: CLOSING (80-90s, track 1) ═══════════ -->
+      <div data-hf-id="hf-svhk" id="scene-7" class="clip" data-start="80" data-duration="10" data-track-index="1">
+        <div data-hf-id="hf-m0vb" class="scene-content">
+          <div data-hf-id="hf-rzgi" id="s7-line" class="title-line" style="opacity: 0;"></div>
+          <h2 data-hf-id="hf-kzq2" id="s7-closing" class="closing-text" style="opacity: 0;">
+            <span data-hf-id="hf-ak0k" class="word-em" style="font-size: 120px;">篮球</span>永不停歇
+          </h2>
+          <p data-hf-id="hf-wo2f" id="s7-divider" class="divider-line" style="opacity: 0;"></p>
+          <p data-hf-id="hf-2iwv" id="s7-sub" class="closing-sub" style="opacity: 0;">
+            NBA · Never Stops
+          </p>
+          <p data-hf-id="hf-d06j" id="s7-year" class="title-year" style="opacity: 0; margin-top: 40px;">
+            iPolloWork · HyperFrames
+          </p>
+        </div>
+      </div>
+
+      <!-- ═══════════ VOICEOVER AUDIO (track 3) ═══════════ -->
+      <audio data-hf-id="hf-5eoj" id="vo-1" src="assets/scene-1.mp3" data-start="0" data-duration="10" data-track-index="3" data-volume="1"></audio>
+      <audio data-hf-id="hf-hkbo" id="vo-2" src="assets/scene-2.mp3" data-start="10" data-duration="14" data-track-index="3" data-volume="1"></audio>
+      <audio data-hf-id="hf-n9kr" id="vo-3" src="assets/scene-3.mp3" data-start="24" data-duration="14" data-track-index="3" data-volume="1"></audio>
+      <audio data-hf-id="hf-wrp2" id="vo-4" src="assets/scene-4.mp3" data-start="38" data-duration="14" data-track-index="3" data-volume="1"></audio>
+      <audio data-hf-id="hf-e90s" id="vo-5" src="assets/scene-5.mp3" data-start="52" data-duration="14" data-track-index="3" data-volume="1"></audio>
+      <audio data-hf-id="hf-b6xz" id="vo-6" src="assets/scene-6.mp3" data-start="66" data-duration="14" data-track-index="3" data-volume="1"></audio>
+      <audio data-hf-id="hf-2dkx" id="vo-7" src="assets/scene-7.mp3" data-start="80" data-duration="10" data-track-index="3" data-volume="1"></audio>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      /* ── BACKGROUND ambient motion ── */
+      tl.to("#glow1", { scale: 1.08, duration: 5, ease: "sine.inOut", repeat: 9, yoyo: true }, 0);
+      tl.to("#glow2", { scale: 1.12, duration: 6, ease: "sine.inOut", repeat: 7, yoyo: true }, 1);
+      tl.to("#glow3", { scale: 1.06, duration: 4.5, ease: "sine.inOut", repeat: 10, yoyo: true }, 0.5);
+      tl.to("#grid", { rotation: 0.5, duration: 8, ease: "none", repeat: 5, yoyo: true }, 0);
+      tl.to("#court", { scale: 1.03, duration: 7, ease: "sine.inOut", repeat: 6, yoyo: true }, 2);
+
+      /* ── SCENE 1: Title (0-10s) ── */
+      tl.fromTo("#s1-year", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" }, 0.5);
+      tl.fromTo("#s1-line-1", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.6, ease: "power2.out", transformOrigin: "center" }, 1.0);
+      tl.fromTo("#s1-title", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 1.0, ease: "power3.out" }, 1.5);
+      tl.fromTo("#s1-line-2", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.6, ease: "power2.out", transformOrigin: "center" }, 2.8);
+      tl.fromTo("#s1-sub", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" }, 3.2);
+      tl.fromTo("#s1-years", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 4.0);
+
+      /* ── SCENE 2: Early Era (10-24s) ── */
+      tl.fromTo("#s2-era", { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 10.5);
+      tl.fromTo("#s2-headline", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, 11.0);
+      tl.fromTo("#s2-sub", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.5, ease: "power2.out", transformOrigin: "center" }, 12.0);
+      tl.fromTo("#s2-text", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" }, 12.5);
+      tl.fromTo("#s2-players", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, 13.5);
+      // Player cards stagger
+      tl.fromTo("#s2-players .player-card", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.2, ease: "power2.out" }, 14.0);
+
+      /* ── SCENE 3: Magic & Bird (24-38s) ── */
+      tl.fromTo("#s3-era", { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 24.5);
+      tl.fromTo("#s3-headline", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, 25.0);
+      tl.fromTo("#s3-divider", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.5, ease: "power2.out", transformOrigin: "center" }, 26.0);
+      tl.fromTo("#s3-text", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: "power2.out" }, 26.5);
+      tl.fromTo("#s3-players", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 27.5);
+      tl.fromTo("#s3-players .player-card", { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.3, ease: "power2.out" }, 28.0);
+
+      /* ── SCENE 4: Michael Jordan (38-52s) ── */
+      tl.fromTo("#s4-era", { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 38.5);
+      tl.fromTo("#s4-headline", { opacity: 0, y: 40, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 1.0, ease: "power3.out" }, 39.0);
+      tl.fromTo("#s4-divider", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.4, ease: "power2.out", transformOrigin: "center" }, 40.2);
+      tl.fromTo("#s4-stats", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, 40.8);
+      // Animate individual stat badges
+      tl.fromTo("#s4-stats .stat-badge", { opacity: 0, y: 20, scale: 0.8 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, stagger: 0.15, ease: "back.out(1.5)" }, 41.5);
+      tl.fromTo("#s4-text", { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 43.5);
+
+      /* ── SCENE 6: Kobe & LeBron (66-80s) ── */
+      tl.fromTo("#s6-era", { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 66.5);
+      tl.fromTo("#s6-headline", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 67.0);
+      tl.fromTo("#s6-divider", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.4, ease: "power2.out", transformOrigin: "center" }, 68.0);
+      tl.fromTo("#s6-players", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 68.5);
+      tl.fromTo("#s6-players .player-card", { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.3, ease: "power2.out" }, 69.0);
+      tl.fromTo("#s6-text", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 70.5);
+
+      /* ── SCENE 7: Closing (80-90s) ── */
+      tl.fromTo("#s7-line", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.6, ease: "power2.out", transformOrigin: "center" }, 80.5);
+      tl.fromTo("#s7-closing", { opacity: 0, y: 30, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 1.0, ease: "power3.out" }, 81.2);
+      tl.fromTo("#s7-divider", { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: 0.4, ease: "power2.out", transformOrigin: "center" }, 82.5);
+      tl.fromTo("#s7-sub", { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 83.0);
+      tl.fromTo("#s7-year", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 84.0);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

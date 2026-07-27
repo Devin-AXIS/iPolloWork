@@ -400,6 +400,7 @@ type AssistantMessageProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  hideProcess?: boolean
   showLatestArtifactsTitle?: boolean
   templateEntryPath?: string
 }
@@ -426,11 +427,13 @@ function assistantProcessSummary(groups: AssistantProcessRenderGroup[]) {
   return segments.length > 0 ? segments.join(" · ") : t("message.process_steps")
 }
 
-function AssistantProcessSection(props: {
+function AssistantProcessDisclosure(props: {
   groups: AssistantProcessRenderGroup[]
   isStreaming: boolean
+  children: React.ReactNode
+  contentClassName?: string
 }) {
-  const { groups, isStreaming } = props
+  const { groups, isStreaming, children, contentClassName } = props
   const [isOpen, setIsOpen] = React.useState(isStreaming)
   const previousStreamingRef = React.useRef(isStreaming)
 
@@ -442,10 +445,6 @@ function AssistantProcessSection(props: {
     }
     previousStreamingRef.current = isStreaming
   }, [isStreaming])
-
-  if (groups.length === 0) {
-    return null
-  }
 
   const label = isStreaming ? t("message.process_in_progress") : t("message.process_completed")
 
@@ -470,16 +469,33 @@ function AssistantProcessSection(props: {
         <ChevronDown className={cn("ml-auto size-3.5 shrink-0 transition-transform", isOpen && "rotate-180")} aria-hidden />
       </button>
       {isOpen ? (
-        <div className="mt-2 flex w-full flex-col gap-2 border-l border-border/70 pl-4">
-          {groups.map((group, index) => renderAssistantGroup(group, index))}
+        <div className={cn("mt-2 flex w-full flex-col gap-2 border-l border-border/70 pl-4", contentClassName)}>
+          {children}
         </div>
       ) : null}
     </div>
   )
 }
 
+function AssistantProcessSection(props: {
+  groups: AssistantProcessRenderGroup[]
+  isStreaming: boolean
+}) {
+  const { groups, isStreaming } = props
+
+  if (groups.length === 0) {
+    return null
+  }
+
+  return (
+    <AssistantProcessDisclosure groups={groups} isStreaming={isStreaming}>
+      {groups.map((group, index) => renderAssistantGroup(group, index))}
+    </AssistantProcessDisclosure>
+  )
+}
+
 const AssistantMessage = React.memo(
-  ({ message, isStreaming, showLatestArtifactsTitle = false, templateEntryPath }: AssistantMessageProps) => {
+  ({ message, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, templateEntryPath }: AssistantMessageProps) => {
     const { showThinking, highlightQuery, sessionId } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
@@ -497,10 +513,12 @@ const AssistantMessage = React.memo(
         data-message-role={message.role}
       >
         <div className="group flex w-full flex-col gap-0 space-y-2">
-          <AssistantProcessSection
-            groups={assistantRenderSections.processGroups}
-            isStreaming={isStreaming}
-          />
+          {hideProcess ? null : (
+            <AssistantProcessSection
+              groups={assistantRenderSections.processGroups}
+              isStreaming={isStreaming}
+            />
+          )}
           {assistantRenderSections.resultGroups.map((group, index) =>
             renderAssistantGroup(group, index, { highlightQuery })
           )}
@@ -712,12 +730,13 @@ type MessageComponentProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  hideProcess?: boolean
   showLatestArtifactsTitle?: boolean
   templateEntryPath?: string
 }
 
 const MessageComponent = React.memo(
-  ({ message, isLastMessage, isStreaming, isLastStep, showLatestArtifactsTitle, templateEntryPath }: MessageComponentProps) => {
+  ({ message, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, templateEntryPath }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
     }
@@ -738,6 +757,7 @@ const MessageComponent = React.memo(
           isLastMessage={isLastMessage}
           isStreaming={isStreaming}
           isLastStep={isLastStep}
+          hideProcess={hideProcess}
           showLatestArtifactsTitle={showLatestArtifactsTitle}
           templateEntryPath={templateEntryPath}
         />
@@ -881,7 +901,7 @@ function MessageGroup({
   templateEntryPath,
   latestAssistantMessageId,
 }: AssistantMessageGroupProps) {
-  const { onRevertToUserMessage, onForkAtMessage } = useMessageList()
+  const { onRevertToUserMessage, onForkAtMessage, showThinking } = useMessageList()
   const lastItem = items[items.length - 1]
   // Branch/revert must target a real server-side message id. Synthetic
   // client-side messages (e.g. session errors) don't exist on the server and
@@ -909,41 +929,71 @@ function MessageGroup({
   const renderableItems = getRenderableMessages(items)
   const lastTextMessage = getLastTextPart(lastItem.message)
 
-  // Leading messages without prose (tool/reasoning steps) render inside a
-  // height-capped scroll area so long runs stay compact; messages with text
-  // or files render inline below it.
-  let stepCount = 0
-  while (stepCount < items.length && !getRenderableMessage(items[stepCount].message)) {
-    stepCount += 1
-  }
-  const stepItems = items.slice(0, stepCount)
-  const proseItems = items.slice(stepCount)
+  const itemRenderData = items.map((item) => {
+    const groups = getAssistantRenderGroups(item.message.parts, showThinking)
+    return { item, groups, sections: splitAssistantRenderGroups(groups) }
+  })
+  const resultItemIndex = isLiveGroup
+    ? -1
+    : itemRenderData.findLastIndex(({ groups }) =>
+        groups.some((group) => group.kind === "text" && Boolean(group.text.trim())),
+      )
+  const resultData = resultItemIndex >= 0 ? itemRenderData[resultItemIndex] : null
+  const processRenderGroups = itemRenderData.flatMap(({ groups, sections }, index) => {
+    const processGroups = index === resultItemIndex ? sections.processGroups : groups
+    return processGroups.filter(
+      (group): group is AssistantProcessRenderGroup => group.kind !== "text",
+    )
+  })
+  const hasProcessContent = itemRenderData.some(({ groups, sections }, index) =>
+    (index === resultItemIndex ? sections.processGroups : groups).length > 0,
+  )
 
-  const renderItem = (item: UIMessageWithIndex, groupIndex: number) => {
-    const isLastMessage = item.index === messages.length - 1
+  const renderProcessItem = (
+    data: (typeof itemRenderData)[number],
+    groupIndex: number,
+  ) => {
+    const groups = groupIndex === resultItemIndex ? data.sections.processGroups : data.groups
+    if (groups.length === 0) return null
 
     return (
-      <div key={item.message.id}>
-        <MessageComponent
-          message={item.message}
-          isLastMessage={isLastMessage}
-          isStreaming={isLastMessage && isStreaming}
-          isLastStep={groupIndex === items.length - 1}
-          showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}
-          templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
-        />
-      </div>
+      <Message
+        key={`process-${data.item.message.id}`}
+        className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0"
+        data-message-id={data.item.message.id}
+        data-message-role={data.item.message.role}
+      >
+        <div className="flex w-full flex-col gap-2">
+          {groups.map((group, index) => renderAssistantGroup(group, index))}
+        </div>
+      </Message>
     )
   }
 
   return (
       <div className="flex flex-col gap-2 group/message-group">
-      {stepItems.length > 0 ? (
-        <div ref={stepsRef} className="max-h-[520px] overflow-y-auto">
-          {stepItems.map((item, groupIndex) => renderItem(item, groupIndex))}
-        </div>
+      {hasProcessContent ? (
+        <AssistantProcessDisclosure
+          groups={processRenderGroups}
+          isStreaming={isLiveGroup}
+          contentClassName="max-h-[520px] overflow-y-auto"
+        >
+          <div ref={stepsRef}>
+            {itemRenderData.map(renderProcessItem)}
+          </div>
+        </AssistantProcessDisclosure>
       ) : null}
-      {proseItems.map((item, groupIndex) => renderItem(item, stepItems.length + groupIndex))}
+      {resultData ? (
+        <MessageComponent
+          message={resultData.item.message}
+          isLastMessage={resultData.item.index === messages.length - 1}
+          isStreaming={resultData.item.index === messages.length - 1 && isStreaming}
+          isLastStep
+          hideProcess
+          showLatestArtifactsTitle={resultData.item.message.id === latestAssistantMessageId}
+          templateEntryPath={resultData.item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
+        />
+      ) : null}
       {lastTextMessage && !isStreaming && (
         <div className="mx-auto flex w-full max-w-[800px] flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">
           <MessageActions className="flex gap-0">

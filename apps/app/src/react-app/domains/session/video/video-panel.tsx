@@ -2,7 +2,7 @@
 import * as React from "react";
 import { AudioLines, Film, Loader2, Maximize2, Minimize2, Plus, RefreshCw, X } from "lucide-react";
 
-import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import type { HyperframesCatalogItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -151,6 +151,48 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [client, onAskAi, projectDirectory, sessionId, workspaceId]);
+
+  React.useEffect(() => {
+    const handleAnimationReference = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow) return;
+      if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type !== "ipollowork:hyperframes:animation-reference") return;
+      const candidate = event.data.animation;
+      if (!candidate || typeof candidate !== "object") return;
+      if (
+        typeof candidate.name !== "string" ||
+        typeof candidate.title !== "string" ||
+        typeof candidate.description !== "string" ||
+        typeof candidate.type !== "string" ||
+        typeof candidate.category !== "string" ||
+        typeof candidate.agentPrompt !== "string"
+      ) return;
+      const item: HyperframesCatalogItem = {
+        name: candidate.name,
+        title: candidate.title,
+        description: candidate.description,
+        type: candidate.type === "hyperframes:block" ? "hyperframes:block" : "hyperframes:component",
+        category: candidate.category,
+        tags: Array.isArray(candidate.tags)
+          ? candidate.tags.filter((tag: unknown): tag is string => typeof tag === "string")
+          : [],
+        duration: typeof candidate.duration === "number" ? candidate.duration : undefined,
+        preview: candidate.preview && typeof candidate.preview === "object"
+          ? {
+              poster: typeof candidate.preview.poster === "string" ? candidate.preview.poster : undefined,
+              video: typeof candidate.preview.video === "string" ? candidate.preview.video : undefined,
+            }
+          : undefined,
+        agentPrompt: candidate.agentPrompt,
+      };
+      window.dispatchEvent(new CustomEvent("ipollowork:add-animation-reference", {
+        detail: { sessionId, item },
+      }));
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    };
+    window.addEventListener("message", handleAnimationReference);
+    return () => window.removeEventListener("message", handleAnimationReference);
+  }, [sessionId, studioUrl]);
 
   const clearLocaleSyncTimers = React.useCallback(() => {
     for (const timer of localeSyncTimersRef.current) window.clearTimeout(timer);

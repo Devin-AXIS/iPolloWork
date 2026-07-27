@@ -7,7 +7,16 @@
 
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, unlinkSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
 import { resolve, join, basename, dirname } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
 import {
@@ -35,6 +44,7 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
+import type { RegistryItem } from "@hyperframes/core";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 const REMOTE_GIF_IMG_SRC_RE =
@@ -205,24 +215,38 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
     try {
       const { ensureBrowser } = await import("../browser/manager.js");
       const { acquireBrowser, buildChromeArgs } = await import("@hyperframes/engine");
+      const chromeArgs = buildChromeArgs({
+        width: 1920,
+        height: 1080,
+        captureMode: "screenshot",
+      });
+      const launchOptions = {
+        forceScreenshot: true as const,
+        browserTimeout: THUMBNAIL_BROWSER_TIMEOUT_MS,
+        protocolTimeout: Math.max(120_000, THUMBNAIL_BROWSER_TIMEOUT_MS * 2),
+      };
 
+      let acquired;
       try {
-        const b = await ensureBrowser({ preferManagedChrome: true });
-        if (b.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-          process.env.PRODUCER_HEADLESS_SHELL_PATH = b.executablePath;
-        }
-      } catch {
-        /* continue — acquireBrowser will try its own resolution */
+        const managedBrowser = await ensureBrowser({ preferManagedChrome: true });
+        process.env.PRODUCER_HEADLESS_SHELL_PATH = managedBrowser.executablePath;
+        acquired = await acquireBrowser(chromeArgs, {
+          ...launchOptions,
+          chromePath: managedBrowser.executablePath,
+        });
+      } catch (managedError) {
+        console.warn(
+          "[Studio] Managed thumbnail browser failed; retrying with a system browser:",
+          managedError instanceof Error ? managedError.message : managedError,
+        );
+        const systemBrowser = await ensureBrowser({ preferSystemBrowser: true });
+        process.env.PRODUCER_HEADLESS_SHELL_PATH = systemBrowser.executablePath;
+        acquired = await acquireBrowser(chromeArgs, {
+          ...launchOptions,
+          chromePath: systemBrowser.executablePath,
+          enableBrowserPool: false,
+        });
       }
-
-      const acquired = await acquireBrowser(
-        buildChromeArgs({ width: 1920, height: 1080, captureMode: "screenshot" }),
-        {
-          forceScreenshot: true,
-          browserTimeout: THUMBNAIL_BROWSER_TIMEOUT_MS,
-          protocolTimeout: Math.max(120_000, THUMBNAIL_BROWSER_TIMEOUT_MS * 2),
-        },
-      );
       _thumbnailBrowserLease = acquired;
       acquired.browser.on("disconnected", () => {
         if (_thumbnailBrowserLease === acquired) _thumbnailBrowserLease = null;
@@ -323,6 +347,59 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
     );
     writeFileSync(absPath, content, "utf-8");
   }
+}
+
+function resolveBundledRegistryRoot(): string | null {
+  const candidates = [
+    resolve(__dirname, "..", "..", "..", "..", "registry"),
+    resolve(__dirname, "..", "..", "..", "registry"),
+  ];
+  return candidates.find((candidate) => existsSync(join(candidate, "registry.json"))) ?? null;
+}
+
+function loadBundledRegistryItems(registryRoot: string): RegistryItem[] {
+  const items: RegistryItem[] = [];
+  for (const subdir of ["blocks", "components"]) {
+    const dir = join(registryRoot, subdir);
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const manifestPath = join(dir, entry.name, "registry-item.json");
+      if (!existsSync(manifestPath)) continue;
+      try {
+        const item = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
+        if (item.type === "hyperframes:block" || item.type === "hyperframes:component") {
+          items.push(item);
+        }
+      } catch {
+        // Skip malformed vendored manifests without hiding the rest of the catalog.
+      }
+    }
+  }
+  return items;
+}
+
+function installBundledRegistryItem(
+  registryRoot: string,
+  item: RegistryItem,
+  projectDir: string,
+): string[] {
+  const subdir = item.type === "hyperframes:block" ? "blocks" : "components";
+  const itemDir = join(registryRoot, subdir, item.name);
+  const written: string[] = [];
+  for (const file of item.files) {
+    const targetPath = resolve(projectDir, file.target);
+    const relativeTarget = targetPath.slice(resolve(projectDir).length + 1);
+    if (relativeTarget.startsWith("..") || relativeTarget === targetPath) {
+      throw new Error(`Unsafe registry target: ${file.target}`);
+    }
+    const sourcePath = join(itemDir, file.path);
+    if (!existsSync(sourcePath)) throw new Error(`Missing bundled registry file: ${file.path}`);
+    mkdirSync(dirname(targetPath), { recursive: true });
+    copyFileSync(sourcePath, targetPath);
+    written.push(targetPath);
+  }
+  return written;
 }
 
 export function createStudioServer(options: StudioServerOptions): StudioServer {
@@ -529,7 +606,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         "Timed out while starting the thumbnail browser",
       );
       if (!browser) {
-        console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
+        console.warn("[Studio] Thumbnail: no usable browser could be started");
         return null;
       }
       let page: import("puppeteer-core").Page | null = null;
@@ -620,6 +697,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async listRegistryCatalog() {
+      const bundledRegistryRoot = resolveBundledRegistryRoot();
+      if (bundledRegistryRoot) return loadBundledRegistryItems(bundledRegistryRoot);
+
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
       const entries = await listRegistryItems();
       const blockAndComponentEntries = entries.filter(
@@ -629,6 +709,20 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async installRegistryBlock(opts) {
+      const bundledRegistryRoot = resolveBundledRegistryRoot();
+      if (bundledRegistryRoot) {
+        const item = loadBundledRegistryItems(bundledRegistryRoot).find(
+          (candidate) => candidate.name === opts.blockName,
+        );
+        if (!item) throw new Error(`Item "${opts.blockName}" not found in bundled registry`);
+        const written = installBundledRegistryItem(bundledRegistryRoot, item, opts.project.dir);
+        rewriteWrittenToHostViewport(opts.project.dir, written);
+        return {
+          written: written.map((path) => path.slice(opts.project.dir.length + 1)),
+          block: item,
+        };
+      }
+
       const { resolveItemWithDependencies } = await import("../registry/resolver.js");
       const { installItem } = await import("../registry/installer.js");
       const { gateRegistryItemsCompatibility } = await import("../registry/compatibility.js");

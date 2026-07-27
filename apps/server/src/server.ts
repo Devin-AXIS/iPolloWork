@@ -117,6 +117,7 @@ import {
 } from "./templates.js";
 import pkg from "../package.json" with { type: "json" };
 import constants from "../../../constants.json" with { type: "json" };
+import { listHyperframesCatalog } from "./hyperframes-catalog.js";
 
 export {
   isSupportedWorkspaceTextFilePath,
@@ -1444,6 +1445,11 @@ function createRoutes(
   addRoute(routes, "GET", "/workspace/:id/templates", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     return jsonResponse({ items: await listTemplates(config, workspace.id) });
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/hyperframes-catalog", "client", async (ctx) => {
+    await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse({ items: await listHyperframesCatalog() });
   });
 
   addRoute(routes, "GET", "/workspace/:id/templates/:templateId/cover", "client", async (ctx) => {

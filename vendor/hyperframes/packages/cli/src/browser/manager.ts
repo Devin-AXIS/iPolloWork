@@ -196,6 +196,8 @@ export interface EnsureBrowserOptions {
   // eligible renders outright; HF#2060). `HYPERFRAMES_BROWSER_PATH` still
   // wins over this — an explicit override is still an explicit override.
   preferManagedChrome?: boolean;
+  /** Prefer an installed Chrome/Edge before consulting managed caches. */
+  preferSystemBrowser?: boolean;
 }
 
 interface CacheLookupResult {
@@ -222,15 +224,28 @@ function purgeStaleInstall(installPath: string): void {
 
 // --- Internal helpers -------------------------------------------------------
 
-const SYSTEM_CHROME_PATHS: ReadonlyArray<string> =
-  process.platform === "darwin"
-    ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
-    : [
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-      ];
+const SYSTEM_CHROME_PATHS: ReadonlyArray<string> = (() => {
+  if (process.platform === "darwin") {
+    return ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"];
+  }
+  if (process.platform === "win32") {
+    const roots = [
+      process.env.LOCALAPPDATA,
+      process.env.PROGRAMFILES,
+      process.env["PROGRAMFILES(X86)"],
+    ].filter((value): value is string => Boolean(value));
+    return roots.flatMap((root) => [
+      join(root, "Google", "Chrome", "Application", "chrome.exe"),
+      join(root, "Microsoft", "Edge", "Application", "msedge.exe"),
+    ]);
+  }
+  return [
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+  ];
+})();
 
 function whichBinary(name: string): string | undefined {
   try {
@@ -464,7 +479,11 @@ function findFromSystem(): BrowserResult | undefined {
     }
   }
 
-  const fromWhich = whichBinary("google-chrome") ?? whichBinary("chromium");
+  const binaryNames =
+    process.platform === "win32"
+      ? ["chrome", "msedge", "chromium"]
+      : ["google-chrome", "chromium"];
+  const fromWhich = binaryNames.map(whichBinary).find(Boolean);
   if (fromWhich) {
     return { executablePath: fromWhich, source: "system" };
   }
@@ -567,6 +586,11 @@ async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<Br
 export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {
   const fromEnv = findFromEnv();
   if (fromEnv) return fromEnv;
+
+  if (options?.preferSystemBrowser) {
+    const fromSystem = findFromSystem();
+    if (fromSystem) return fromSystem;
+  }
 
   if (!options?.force) {
     const fromCache = await (options?.preferManagedChrome

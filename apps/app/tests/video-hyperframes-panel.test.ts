@@ -152,6 +152,17 @@ describe("HyperFrames Video Studio", () => {
     expect(shouldInjectVideoTaskContext(null, "work")).toBe(false);
   });
 
+  test("injects the Video Studio contract before animation guidance", () => {
+    const sessionRouteSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
+    expect(sessionRouteSource).toContain("videoTaskSystemContext(");
+    expect(sessionRouteSource).toContain("[envSystemContext, videoSystemContext, capabilitySystemContext]");
+  });
+
   test("gives the agent the same session-scoped project as the Studio", () => {
     const contract = videoTaskSystemContext("ses/current video", "/workspace/current");
     expect(contract).toContain("/workspace/current/video/ses_current_video/index.html");

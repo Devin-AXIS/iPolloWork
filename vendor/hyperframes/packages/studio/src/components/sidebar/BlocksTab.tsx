@@ -1,16 +1,17 @@
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useEffect } from "react";
-import { createPortal } from "react-dom";
 import { useBlockCatalog } from "../../hooks/useBlockCatalog";
 import {
   BLOCK_CATEGORIES,
   getCategoryColors,
+  getCategoryLabel,
   type BlockCategory,
 } from "../../utils/blockCategories";
 import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
+import { useStudioI18n } from "../../i18n";
 export interface BlockPreviewInfo {
   videoUrl?: string;
   posterUrl?: string;
@@ -24,9 +25,9 @@ interface BlocksTabProps {
 
 // fallow-ignore-next-line complexity
 export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }: BlocksTabProps) {
+  const { locale } = useStudioI18n();
   const { loading, error, search, setSearch, category, setCategory, filteredBlocks } =
     useBlockCatalog();
-  const [promptModal, setPromptModal] = useState<{ title: string; prompt: string } | null>(null);
 
   if (loading) {
     return (
@@ -46,6 +47,11 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      <div className="mx-3 mt-2 rounded-md border border-neutral-800 bg-neutral-950/70 px-2.5 py-2 text-[10px] leading-relaxed text-neutral-400">
+        {locale === "zh"
+          ? "悬停查看动画预览。将播放头移到目标时间后点击“添加”，或点击“交给 AI”将动画标签添加到对话框。"
+          : "Hover to preview. Move the playhead to the target time and choose Add, or use Ask AI to add an animation tag to the composer."}
+      </div>
       {/* Search */}
       <div className="px-3 pt-2 pb-1 flex-shrink-0">
         <div className="relative">
@@ -67,7 +73,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, category, or tag…"
+            placeholder={locale === "zh" ? "搜索名称、分类或标签..." : "Search by name, category, or tag..."}
             className="w-full bg-neutral-900 border border-neutral-800 rounded-md pl-7 pr-2 py-1.5 text-[11px] text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-700 transition-colors"
           />
         </div>
@@ -75,16 +81,21 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
 
       {/* Category pills */}
       <div className="px-3 pt-1 pb-2 flex-shrink-0 overflow-x-auto">
-        <div className="flex gap-1">
-          <CategoryPill label="All" active={category === null} onClick={() => setCategory(null)} />
-          {BLOCK_CATEGORIES.map((cat) => (
-            <CategoryPill
-              key={cat.id}
-              label={cat.label}
-              category={cat.id}
-              active={category === cat.id}
-              onClick={() => setCategory(category === cat.id ? null : cat.id)}
-            />
+        <div className="flex items-center gap-1">
+          <CategoryPill label={locale === "zh" ? "全部" : "All"} active={category === null} onClick={() => setCategory(null)} />
+          <CategoryStageLabel label={locale === "zh" ? "生成时" : "Build"} />
+          {BLOCK_CATEGORIES.map((cat, index) => (
+            <div key={cat.id} className="contents">
+              {index === 6 && (
+                <CategoryStageLabel label={locale === "zh" ? "后期" : "Finish"} divided />
+              )}
+              <CategoryPill
+                label={getCategoryLabel(cat.id, locale)}
+                category={cat.id}
+                active={category === cat.id}
+                onClick={() => setCategory(category === cat.id ? null : cat.id)}
+              />
+            </div>
           ))}
         </div>
       </div>
@@ -122,29 +133,14 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
                   posterUrl={block.preview?.poster}
                   videoUrl={block.preview?.video}
                   onPreview={onPreviewBlock}
-                  onShowPrompt={setPromptModal}
-                  onAdd={
-                    block.category === "vfx" ||
-                    block.category === "social" ||
-                    block.category === "scenes"
-                      ? () => onAddBlock?.(block.name)
-                      : undefined
-                  }
+                  locale={locale}
+                  onAdd={() => onAddBlock?.(block.name)}
                 />
               );
             })}
           </div>
         )}
       </div>
-      {promptModal &&
-        createPortal(
-          <PromptPreviewModal
-            title={promptModal.title}
-            prompt={promptModal.prompt}
-            onClose={() => setPromptModal(null)}
-          />,
-          document.body,
-        )}
     </div>
   );
 });
@@ -175,6 +171,18 @@ function CategoryPill({
     >
       {label}
     </button>
+  );
+}
+
+function CategoryStageLabel({ label, divided = false }: { label: string; divided?: boolean }) {
+  return (
+    <span
+      className={`flex-shrink-0 px-1 text-[9px] font-medium text-neutral-600 ${
+        divided ? "ml-1 border-l border-neutral-800 pl-2" : "ml-1"
+      }`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -292,8 +300,8 @@ function BlockCard({
   posterUrl,
   videoUrl,
   onAdd,
-  onShowPrompt,
   onPreview,
+  locale,
 }: {
   name: string;
   title: string;
@@ -305,14 +313,21 @@ function BlockCard({
   posterUrl?: string;
   videoUrl?: string;
   onAdd?: () => void;
-  onShowPrompt?: (info: { title: string; prompt: string }) => void;
   onPreview?: (preview: BlockPreviewInfo | null) => void;
+  locale: "en" | "zh";
 }) {
   const [hovered, setHovered] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const colors = getCategoryColors(category);
   const needsWebGL = tags?.includes("html-in-canvas") || tags?.includes("webgl");
+  const canShowPoster = Boolean(posterUrl) && !posterFailed;
+  const canShowVideo = Boolean(videoUrl) && !videoFailed;
+
+  useEffect(() => setPosterFailed(false), [posterUrl]);
+  useEffect(() => setVideoFailed(false), [videoUrl]);
 
   const handleEnter = useCallback(() => {
     hoverTimer.current = setTimeout(() => {
@@ -367,7 +382,23 @@ function BlockCard({
         compositionDimensions: compositionDimensions ?? undefined,
       };
       const prompt = buildAgentPrompt(title, name, description, category, blockType, context);
-      onShowPrompt?.({ title, prompt });
+      window.parent.postMessage(
+        {
+          type: "ipollowork:hyperframes:animation-reference",
+          animation: {
+            name,
+            title,
+            description,
+            type: blockType,
+            category,
+            tags: tags ?? [],
+            duration,
+            preview: { poster: posterUrl, video: videoUrl },
+            agentPrompt: prompt,
+          },
+        },
+        "*",
+      );
     },
     [
       title,
@@ -377,7 +408,10 @@ function BlockCard({
       blockType,
       activeCompPath,
       compositionDimensions,
-      onShowPrompt,
+      tags,
+      duration,
+      posterUrl,
+      videoUrl,
     ],
   );
 
@@ -394,80 +428,33 @@ function BlockCard({
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
     >
-      <div className="aspect-video w-full overflow-hidden relative">
-        {hovered && videoUrl ? (
+      <div className="relative aspect-video w-full overflow-hidden">
+        {canShowVideo && (hovered || !canShowPoster) ? (
           <video
             src={videoUrl}
             autoPlay
             muted
             loop
             playsInline
-            className="w-full h-full object-cover"
-          />
-        ) : posterUrl ? (
-          <img src={posterUrl} alt={title} loading="lazy" className="w-full h-full object-cover" />
-        ) : videoUrl ? (
-          <video
-            src={videoUrl}
-            muted
-            playsInline
             preload="metadata"
-            className="w-full h-full object-cover"
+            onError={() => setVideoFailed(true)}
+            className="absolute inset-0 size-full object-cover"
+          />
+        ) : canShowPoster ? (
+          <img
+            src={posterUrl}
+            alt=""
+            loading="lazy"
+            onError={() => setPosterFailed(true)}
+            className="absolute inset-0 size-full object-cover"
           />
         ) : (
-          <div className={`w-full h-full flex items-center justify-center ${colors.bg}`}>
+          <div className={`absolute inset-0 flex items-center justify-center ${colors.bg}`}>
             <span className={`text-[9px] font-medium ${colors.text}`}>
-              {category.toUpperCase()}
+              {getCategoryLabel(category, locale)}
             </span>
           </div>
         )}
-
-        {/* Action overlay */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/60 opacity-0 group-hover/card:opacity-100 transition-opacity">
-          {onAdd && (
-            <button
-              type="button"
-              onClick={handleAdd}
-              title="Add to composition at current time"
-              className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-white text-black text-[10px] font-semibold hover:bg-neutral-200 transition-colors"
-            >
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              {adding ? "Added!" : "Add"}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={handleShowPrompt}
-            title="Generate a prompt to paste into your AI agent"
-            className={`flex items-center gap-1.5 px-3 ${onAdd ? "py-1" : "py-1.5"} rounded-md transition-colors ${
-              onAdd
-                ? "bg-white/15 text-white/90 hover:bg-white/25 text-[9px]"
-                : "bg-white text-black hover:bg-neutral-200 text-[10px] font-semibold"
-            }`}
-          >
-            <svg
-              width={onAdd ? 9 : 11}
-              height={onAdd ? 9 : 11}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <rect x="9" y="9" width="13" height="13" rx="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-            Ask agent
-          </button>
-        </div>
 
         {/* Badges */}
         <div className="absolute top-1 right-1 flex items-center gap-0.5 pointer-events-none">
@@ -489,100 +476,47 @@ function BlockCard({
         <div className="text-[10px] font-medium text-neutral-200 truncate leading-tight">
           {title}
         </div>
-        <div className="flex items-center gap-1 mt-0.5">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.dot}`} />
-          <span className={`text-[8px] ${colors.text}`}>
-            {BLOCK_CATEGORIES.find((c) => c.id === category)?.label}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PromptPreviewModal({
-  title,
-  prompt,
-  onClose,
-}: {
-  title: string;
-  prompt: string;
-  onClose: () => void;
-}) {
-  const [value, setValue] = useState(prompt);
-  const [copied, setCopied] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    requestAnimationFrame(() => textareaRef.current?.focus());
-  }, []);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [value]);
-
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="w-[560px] max-h-[80vh] flex flex-col rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
-          <div>
-            <h3 className="text-sm font-medium text-neutral-200">Ask agent</h3>
-            <p className="text-xs text-neutral-500 mt-0.5">{title}</p>
-          </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-1">
           <button
-            className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
-            onClick={onClose}
+            type="button"
+            onClick={handleAdd}
+            title={locale === "zh" ? "在当前播放头位置添加" : "Add at the current playhead"}
+            className="flex h-7 min-w-0 items-center justify-center gap-1 rounded-md bg-white px-1.5 text-[9px] font-semibold text-black transition-colors hover:bg-neutral-200"
           >
             <svg
-              width="14"
-              height="14"
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span className="truncate">
+              {adding ? (locale === "zh" ? "已添加" : "Added") : locale === "zh" ? "添加" : "Add"}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={handleShowPrompt}
+            title={locale === "zh" ? "让 AI 按当前场景集成" : "Ask AI to integrate this effect"}
+            className="flex h-7 min-w-0 items-center justify-center gap-1 rounded-md bg-neutral-800 px-1.5 text-[9px] font-medium text-neutral-200 transition-colors hover:bg-neutral-700 hover:text-white"
+          >
+            <svg
+              width="10"
+              height="10"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
-              strokeLinecap="round"
+              aria-hidden="true"
             >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <p className="text-[11px] text-neutral-500 mb-2">
-            Edit the prompt below, then copy and paste into your AI agent
-          </p>
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleCopy();
-              if (e.key === "Escape") onClose();
-            }}
-            className="w-full min-h-[240px] text-[11px] text-neutral-200 leading-relaxed font-mono bg-neutral-900/60 rounded-lg p-3 border border-neutral-800 resize-y focus:outline-none focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
-          />
-        </div>
-        <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
-          <span className="text-[11px] text-neutral-600">
-            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
-          </span>
-          <button
-            className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              copied
-                ? "bg-emerald-500 text-white"
-                : "bg-studio-accent/90 text-neutral-950 hover:bg-studio-accent"
-            }`}
-            onClick={handleCopy}
-          >
-            {copied ? "Copied!" : "Copy prompt"}
+            <span className="truncate">{locale === "zh" ? "交给 AI" : "Ask AI"}</span>
           </button>
         </div>
       </div>

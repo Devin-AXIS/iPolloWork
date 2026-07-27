@@ -1,0 +1,24 @@
+{
+  "templateId": "ipollowork.pptx-compatible-brief",
+  "template": "Executive Brief",
+  "category": "slides",
+  "surface": "design",
+  "pptxCompatibility": "native-editable",
+  "sourcePath": "design/ses_05dd66261ffeM45u13qc3vhycI/entry.html",
+  "applyChecklist": [
+    "Replace the decision title, owner and date.",
+    "Use verified evidence for every metric and statement.",
+    "Keep each recommendation short enough for a single slide.",
+    "Preserve the native PPTX object markers when editing HTML."
+  ],
+  "title": "生成一个ai相关的ppt",
+  "audience": "1123",
+  "details": "123",
+  "colorPalette": {
+    "id": "ember",
+    "label": "Warm Ember",
+    "canvas": "#fafaf9",
+    "text": "#1c1b1a",
+    "accent": "#c96442"
+  }
+}

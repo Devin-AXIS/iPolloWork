@@ -39,6 +39,19 @@ export type iPolloWorkServerCapabilities = {
   };
 };
 
+export type HyperframesCatalogItem = {
+  name: string;
+  title: string;
+  description: string;
+  type: "hyperframes:block" | "hyperframes:component";
+  category: string;
+  tags: string[];
+  duration?: number;
+  preview?: { poster?: string; video?: string };
+  /** Hidden scene-aware instruction supplied by Video Studio's Ask AI action. */
+  agentPrompt?: string;
+};
+
 export type iPolloWorkServerStatus = "connected" | "disconnected" | "limited";
 
 export type iPolloWorkServerDiagnostics = {
@@ -1271,6 +1284,8 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       ),
     listTemplates: (workspaceId: string) =>
       requestJson<{ items: TemplateCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates`, { token, hostToken }),
+    listHyperframesCatalog: (workspaceId: string) =>
+      requestJson<{ items: HyperframesCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/hyperframes-catalog`, { token, hostToken }),
     installTemplate: (workspaceId: string, templateId: string) =>
       requestJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/install`, { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceImport }),
     importTemplate: (workspaceId: string, file: File, category?: TemplateCategory) =>

@@ -548,6 +548,8 @@ export function StudioApp() {
                           domEditSaveTimestampRef={domEditSaveTimestampRef}
                           recordEdit={editHistory.recordEdit}
                           onToggleElementHidden={timelineEditing.handleToggleElementHidden}
+                          onAddBlock={handleAddBlock}
+                          onPreviewBlock={setBlockPreview}
                         />
                       )
                     }

@@ -20,6 +20,10 @@ describe("assistant process collapse sections", () => {
     expect(source).toContain("setIsOpen(false)");
     expect(source).toContain("aria-expanded={isOpen}");
     expect(source).toContain("onClick={() => setIsOpen((open) => !open)}");
+    expect(source).toContain("<AssistantProcessDisclosure");
+    expect(source).toContain("isStreaming={isLiveGroup}");
+    expect(source).toContain("itemRenderData.map(renderProcessItem)");
+    expect(source).toContain("hideProcess");
   });
 
   test("moves completed pre-result work into a collapsible process section", () => {
