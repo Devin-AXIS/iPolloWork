@@ -7,6 +7,22 @@ import {
 export type { BlockCategory };
 export { BLOCK_CATEGORIES, resolveBlockCategory };
 
+const CATEGORY_LABELS: Record<BlockCategory, { en: string; zh: string }> = {
+  scenes: { en: "Scenes", zh: "场景" },
+  data: { en: "Data", zh: "数据动画" },
+  "code-animation": { en: "Code Animations", zh: "代码动画" },
+  social: { en: "Social", zh: "社交元素" },
+  "text-effects": { en: "Text Effects", zh: "文字特效" },
+  transitions: { en: "Transitions", zh: "转场" },
+  captions: { en: "Captions", zh: "动态字幕" },
+  effects: { en: "Effects", zh: "画面效果" },
+  vfx: { en: "VFX", zh: "视觉特效" },
+};
+
+export function getCategoryLabel(category: BlockCategory, locale: "en" | "zh"): string {
+  return CATEGORY_LABELS[category][locale];
+}
+
 const COLOR_MAP: Record<BlockCategory, { bg: string; text: string; dot: string }> = {
   transitions: { bg: "bg-blue-500/15", text: "text-blue-400", dot: "bg-blue-400" },
   vfx: { bg: "bg-purple-500/15", text: "text-purple-400", dot: "bg-purple-400" },

@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   Copy,
   Download,
   FileIcon,
@@ -84,9 +85,54 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCreated, formatMessageTimestamp, type UIMessageWithIndex, getMessagesText } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCreated, formatMessageTimestamp, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
+
+type RenderAssistantGroupOptions = {
+  highlightQuery?: string
+}
+
+function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>[number], index: number, options: RenderAssistantGroupOptions = {}) {
+  if (group.kind === "text") {
+    return (
+      <MessageContent
+        key={`text-${index}`}
+        className="text-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
+        markdown
+        highlightQuery={options.highlightQuery}
+      >
+        {group.text}
+      </MessageContent>
+    )
+  }
+
+  if (group.kind === "reasoning") {
+    return (
+      <MessageContent
+        key={`reasoning-${index}`}
+        className="text-muted-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
+        markdown
+      >
+        {group.text}
+      </MessageContent>
+    )
+  }
+
+  if (group.kind === "file") {
+    return (
+      <div key={`file-${index}`} className="w-full">
+        <FileMessage part={group.part} tone="assistant" />
+      </div>
+    )
+  }
+
+  return (
+    <div key={`tool-${index}`} className="w-full">
+      <ToolMessage part={group.part} />
+    </div>
+  )
+}
 
 function MessageTimestamp({ message, className }: { message: UIMessage; className?: string }) {
   const created = getMessageCreated(message)
@@ -354,16 +400,110 @@ type AssistantMessageProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  hideProcess?: boolean
   showLatestArtifactsTitle?: boolean
   templateEntryPath?: string
 }
 
+function assistantProcessSummary(groups: AssistantProcessRenderGroup[]) {
+  let reasoningCount = 0
+  let toolCount = 0
+  let fileCount = 0
+
+  for (const group of groups) {
+    if (group.kind === "reasoning") {
+      reasoningCount += 1
+    } else if (group.kind === "tool") {
+      toolCount += 1
+    } else {
+      fileCount += 1
+    }
+  }
+
+  const segments: string[] = []
+  if (reasoningCount > 0) segments.push(t("message.process_reasoning_count", { count: reasoningCount }))
+  if (toolCount > 0) segments.push(t("message.process_tool_count", { count: toolCount }))
+  if (fileCount > 0) segments.push(t("message.process_file_count", { count: fileCount }))
+  return segments.length > 0 ? segments.join(" · ") : t("message.process_steps")
+}
+
+function AssistantProcessDisclosure(props: {
+  groups: AssistantProcessRenderGroup[]
+  isStreaming: boolean
+  children: React.ReactNode
+  contentClassName?: string
+}) {
+  const { groups, isStreaming, children, contentClassName } = props
+  const [isOpen, setIsOpen] = React.useState(isStreaming)
+  const previousStreamingRef = React.useRef(isStreaming)
+
+  React.useEffect(() => {
+    if (isStreaming) {
+      setIsOpen(true)
+    } else if (previousStreamingRef.current) {
+      setIsOpen(false)
+    }
+    previousStreamingRef.current = isStreaming
+  }, [isStreaming])
+
+  const label = isStreaming ? t("message.process_in_progress") : t("message.process_completed")
+
+  return (
+    <div className="w-full">
+      <button
+        type="button"
+        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 rounded-md px-0 py-1 text-left text-sm transition-colors"
+        aria-expanded={isOpen}
+        aria-label={isOpen ? t("message.collapse_process") : t("message.expand_process")}
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        {isStreaming ? (
+          <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
+        ) : (
+          <Check className="size-3.5 shrink-0" aria-hidden />
+        )}
+        <span className="min-w-0 truncate">
+          {label}
+          <span className="ml-1 text-muted-foreground/75">{assistantProcessSummary(groups)}</span>
+        </span>
+        <ChevronDown className={cn("ml-auto size-3.5 shrink-0 transition-transform", isOpen && "rotate-180")} aria-hidden />
+      </button>
+      {isOpen ? (
+        <div className={cn("mt-2 flex w-full flex-col gap-2 border-l border-border/70 pl-4", contentClassName)}>
+          {children}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function AssistantProcessSection(props: {
+  groups: AssistantProcessRenderGroup[]
+  isStreaming: boolean
+}) {
+  const { groups, isStreaming } = props
+
+  if (groups.length === 0) {
+    return null
+  }
+
+  return (
+    <AssistantProcessDisclosure groups={groups} isStreaming={isStreaming}>
+      {groups.map((group, index) => renderAssistantGroup(group, index))}
+    </AssistantProcessDisclosure>
+  )
+}
+
 const AssistantMessage = React.memo(
-  ({ message, showLatestArtifactsTitle = false, templateEntryPath }: AssistantMessageProps) => {
+  ({ message, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, templateEntryPath }: AssistantMessageProps) => {
     const { showThinking, highlightQuery, sessionId } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
       [message.parts, showThinking]
+    )
+    const assistantRenderSections = React.useMemo(
+      () => splitAssistantRenderGroups(assistantRenderGroups),
+      [assistantRenderGroups]
     )
 
     return (
@@ -373,46 +513,15 @@ const AssistantMessage = React.memo(
         data-message-role={message.role}
       >
         <div className="group flex w-full flex-col gap-0 space-y-2">
-          {assistantRenderGroups.map((group, index) => {
-            if (group.kind === "text") {
-              return (
-                <MessageContent
-                  key={`text-${index}`}
-                  className="text-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
-                  markdown
-                  highlightQuery={highlightQuery}
-                >
-                  {group.text}
-                </MessageContent>
-              )
-            }
-
-            if (group.kind === "reasoning") {
-              return (
-                <MessageContent
-                  key={`reasoning-${index}`}
-                  className="text-muted-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
-                  markdown
-                >
-                  {group.text}
-                </MessageContent>
-              )
-            }
-
-            if (group.kind === "file") {
-              return (
-                <div key={`file-${index}`} className="w-full">
-                  <FileMessage part={group.part} tone="assistant" />
-                </div>
-              )
-            }
-
-            return (
-              <div key={`tool-${index}`} className="w-full">
-                <ToolMessage part={group.part} />
-              </div>
-            )
-          })}
+          {hideProcess ? null : (
+            <AssistantProcessSection
+              groups={assistantRenderSections.processGroups}
+              isStreaming={isStreaming}
+            />
+          )}
+          {assistantRenderSections.resultGroups.map((group, index) =>
+            renderAssistantGroup(group, index, { highlightQuery })
+          )}
           <ArtifactList
             messages={[message]}
             sessionId={sessionId}
@@ -438,6 +547,29 @@ function UserSkillChip(props: { name: string }) {
   return (
     <span className="mx-0.5 inline-flex items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11 align-middle" title={`Skill: ${props.name}`}>
       {props.name}
+    </span>
+  )
+}
+
+type DesignSelectionDataPart = UIMessage["parts"][number] & {
+  type: "data-design-selection"
+  data: { contextId: string; label: string }
+}
+
+function isDesignSelectionDataPart(part: UIMessage["parts"][number]): part is DesignSelectionDataPart {
+  if (part.type !== "data-design-selection" || !part.data || typeof part.data !== "object") return false
+  const data = part.data as { contextId?: unknown; label?: unknown }
+  return typeof data.contextId === "string" && typeof data.label === "string" && Boolean(data.label.trim())
+}
+
+function UserDesignSelectionChip(props: { label: string }) {
+  return (
+    <span
+      data-message-design-selection="true"
+      className="inline-flex max-w-full items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11"
+      title={`Design selection: ${props.label}`}
+    >
+      <span className="truncate">{props.label}</span>
     </span>
   )
 }
@@ -506,6 +638,9 @@ const UserMessage = React.memo(
               <div className="group flex w-full flex-col items-end gap-1">
                 {message.parts.filter(isFileUIPart).map((part, index) => (
                   <FileMessage key={`${part.url}-${index}`} part={part} tone="user" />
+                ))}
+                {message.parts.filter(isDesignSelectionDataPart).map((part) => (
+                  <UserDesignSelectionChip key={part.data.contextId} label={part.data.label} />
                 ))}
                 {message.parts.some((part) => part.type === "text" && part.text) ? (
                   <MessageContent
@@ -595,12 +730,13 @@ type MessageComponentProps = {
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
+  hideProcess?: boolean
   showLatestArtifactsTitle?: boolean
   templateEntryPath?: string
 }
 
 const MessageComponent = React.memo(
-  ({ message, isLastMessage, isStreaming, isLastStep, showLatestArtifactsTitle, templateEntryPath }: MessageComponentProps) => {
+  ({ message, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, templateEntryPath }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
     }
@@ -621,6 +757,7 @@ const MessageComponent = React.memo(
           isLastMessage={isLastMessage}
           isStreaming={isStreaming}
           isLastStep={isLastStep}
+          hideProcess={hideProcess}
           showLatestArtifactsTitle={showLatestArtifactsTitle}
           templateEntryPath={templateEntryPath}
         />
@@ -764,7 +901,7 @@ function MessageGroup({
   templateEntryPath,
   latestAssistantMessageId,
 }: AssistantMessageGroupProps) {
-  const { onRevertToUserMessage, onForkAtMessage } = useMessageList()
+  const { onRevertToUserMessage, onForkAtMessage, showThinking } = useMessageList()
   const lastItem = items[items.length - 1]
   // Branch/revert must target a real server-side message id. Synthetic
   // client-side messages (e.g. session errors) don't exist on the server and
@@ -792,41 +929,71 @@ function MessageGroup({
   const renderableItems = getRenderableMessages(items)
   const lastTextMessage = getLastTextPart(lastItem.message)
 
-  // Leading messages without prose (tool/reasoning steps) render inside a
-  // height-capped scroll area so long runs stay compact; messages with text
-  // or files render inline below it.
-  let stepCount = 0
-  while (stepCount < items.length && !getRenderableMessage(items[stepCount].message)) {
-    stepCount += 1
-  }
-  const stepItems = items.slice(0, stepCount)
-  const proseItems = items.slice(stepCount)
+  const itemRenderData = items.map((item) => {
+    const groups = getAssistantRenderGroups(item.message.parts, showThinking)
+    return { item, groups, sections: splitAssistantRenderGroups(groups) }
+  })
+  const resultItemIndex = isLiveGroup
+    ? -1
+    : itemRenderData.findLastIndex(({ groups }) =>
+        groups.some((group) => group.kind === "text" && Boolean(group.text.trim())),
+      )
+  const resultData = resultItemIndex >= 0 ? itemRenderData[resultItemIndex] : null
+  const processRenderGroups = itemRenderData.flatMap(({ groups, sections }, index) => {
+    const processGroups = index === resultItemIndex ? sections.processGroups : groups
+    return processGroups.filter(
+      (group): group is AssistantProcessRenderGroup => group.kind !== "text",
+    )
+  })
+  const hasProcessContent = itemRenderData.some(({ groups, sections }, index) =>
+    (index === resultItemIndex ? sections.processGroups : groups).length > 0,
+  )
 
-  const renderItem = (item: UIMessageWithIndex, groupIndex: number) => {
-    const isLastMessage = item.index === messages.length - 1
+  const renderProcessItem = (
+    data: (typeof itemRenderData)[number],
+    groupIndex: number,
+  ) => {
+    const groups = groupIndex === resultItemIndex ? data.sections.processGroups : data.groups
+    if (groups.length === 0) return null
 
     return (
-      <div key={item.message.id}>
-        <MessageComponent
-          message={item.message}
-          isLastMessage={isLastMessage}
-          isStreaming={isLastMessage && isStreaming}
-          isLastStep={groupIndex === items.length - 1}
-          showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}
-          templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
-        />
-      </div>
+      <Message
+        key={`process-${data.item.message.id}`}
+        className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0"
+        data-message-id={data.item.message.id}
+        data-message-role={data.item.message.role}
+      >
+        <div className="flex w-full flex-col gap-2">
+          {groups.map((group, index) => renderAssistantGroup(group, index))}
+        </div>
+      </Message>
     )
   }
 
   return (
       <div className="flex flex-col gap-2 group/message-group">
-      {stepItems.length > 0 ? (
-        <div ref={stepsRef} className="max-h-[520px] overflow-y-auto">
-          {stepItems.map((item, groupIndex) => renderItem(item, groupIndex))}
-        </div>
+      {hasProcessContent ? (
+        <AssistantProcessDisclosure
+          groups={processRenderGroups}
+          isStreaming={isLiveGroup}
+          contentClassName="max-h-[520px] overflow-y-auto"
+        >
+          <div ref={stepsRef}>
+            {itemRenderData.map(renderProcessItem)}
+          </div>
+        </AssistantProcessDisclosure>
       ) : null}
-      {proseItems.map((item, groupIndex) => renderItem(item, stepItems.length + groupIndex))}
+      {resultData ? (
+        <MessageComponent
+          message={resultData.item.message}
+          isLastMessage={resultData.item.index === messages.length - 1}
+          isStreaming={resultData.item.index === messages.length - 1 && isStreaming}
+          isLastStep
+          hideProcess
+          showLatestArtifactsTitle={resultData.item.message.id === latestAssistantMessageId}
+          templateEntryPath={resultData.item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
+        />
+      ) : null}
       {lastTextMessage && !isStreaming && (
         <div className="mx-auto flex w-full max-w-[800px] flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">
           <MessageActions className="flex gap-0">

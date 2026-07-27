@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ const hyperframesRoot = resolve(repoRoot, "vendor", "hyperframes");
 const hyperframesCli = resolve(hyperframesRoot, "packages", "cli", "bin", "hyperframes.mjs");
 const hyperframesCliBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "cli.js");
 const hyperframesRuntimeVersion = resolve(hyperframesRoot, "packages", "cli", "dist", "runtimeVersion.js");
+const hyperframesStudioBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "studio", "index.html");
 const hyperframesDependencies = resolve(hyperframesRoot, "node_modules", ".bun");
 const hyperframesDevProjectDir = resolve(repoRoot, ".ipollowork-dev", "hyperframes-preview");
 const hyperframesDevProjectName = ".ipollowork-dev/hyperframes-preview";
@@ -94,10 +95,28 @@ function ensureHyperframesDevBuild() {
     console.log("[electron-dev] Installing HyperFrames dependencies...");
     runSync(bunCmd, ["install", "--frozen-lockfile"], { cwd: hyperframesRoot });
   }
-  if (!existsSync(hyperframesCliBuild) || !existsSync(hyperframesRuntimeVersion)) {
+  const studioSourceRoot = resolve(hyperframesRoot, "packages", "studio", "src");
+  const studioBuildTime = existsSync(hyperframesStudioBuild) ? statSync(hyperframesStudioBuild).mtimeMs : 0;
+  if (
+    !existsSync(hyperframesCliBuild)
+    || !existsSync(hyperframesRuntimeVersion)
+    || newestMtimeMs(studioSourceRoot) > studioBuildTime
+  ) {
     console.log("[electron-dev] Building HyperFrames Studio...");
     runSync(bunCmd, ["run", "build:local-studio"], { cwd: hyperframesRoot });
   }
+}
+
+function newestMtimeMs(root) {
+  if (!existsSync(root)) return 0;
+  const stat = statSync(root);
+  if (!stat.isDirectory()) return stat.mtimeMs;
+  let newest = stat.mtimeMs;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === "dist") continue;
+    newest = Math.max(newest, newestMtimeMs(resolve(root, entry.name)));
+  }
+  return newest;
 }
 
 function ensureVisibleHyperframesStarter(projectDir) {

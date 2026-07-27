@@ -106,6 +106,7 @@ import {
 } from "@/react-app/domains/session/sync/session-sync";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
 import {
+  designHtmlThemeSystemContext,
   designAiSelectionInstruction,
   type DesignAiSelectionContext,
 } from "@/react-app/domains/session/design/design-ai-selection";
@@ -124,6 +125,10 @@ import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-co
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
+import {
+  shouldInjectVideoTaskContext,
+  videoTaskSystemContext,
+} from "@/react-app/domains/session/video/video-project";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -1108,9 +1113,6 @@ export function SessionRoute() {
           runtimeKey: environmentRuntimeKey,
         });
         const capabilitySystemContext = draft.capability?.instruction ?? null;
-        const systemContext = [envSystemContext, capabilitySystemContext]
-          .filter((value): value is string => Boolean(value?.trim()))
-          .join("\n\n");
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
@@ -1123,9 +1125,31 @@ export function SessionRoute() {
         if (!sessionTemplate && selectedWorkspaceEndpoint && readSessionType(targetSessionId) === "video") {
           sessionTemplate = await selectedWorkspaceEndpoint.client.adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null);
         }
+        const cachedSessionType = readSessionType(targetSessionId);
+        const videoSystemContext = shouldInjectVideoTaskContext(
+          sessionTemplate?.manifest.surface,
+          cachedSessionType,
+        )
+          ? videoTaskSystemContext(
+              targetSessionId,
+              selectedWorkspaceRoot,
+              sessionTemplate?.manifest.surface === "video" ? sessionTemplate.manifest : null,
+            )
+          : null;
         const isDesignTask = sessionTemplate?.surface === "design";
         const designSessionTemplate = isDesignTask ? sessionTemplate : null;
         const designPath = designSessionTemplate?.state.entry ?? null;
+        const designSystemContext = isDesignTask
+          ? designHtmlThemeSystemContext({
+              title: designSessionTemplate?.manifest.title ?? null,
+              entry: designPath,
+              tokenPath: designSessionTemplate?.manifest.designSystem.tokens ?? "design-tokens.css",
+              applyChecklist: designSessionTemplate?.manifest.applyChecklist ?? null,
+            })
+          : null;
+        const systemContext = [envSystemContext, videoSystemContext, designSystemContext, capabilitySystemContext]
+          .filter((value): value is string => Boolean(value?.trim()))
+          .join("\n\n");
         // Version history is a site-only workflow. Slides and every other
         // design category keep their single session artifact without creating
         // website-style snapshots before each AI turn.

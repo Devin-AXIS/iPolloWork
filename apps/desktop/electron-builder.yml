@@ -40,6 +40,10 @@ extraResources:
       - "**/*"
       - "!**/*.map"
       - "!node_modules/.bun/**/node_modules/.bin/**"
+  - from: ../../vendor/hyperframes/registry
+    to: hyperframes/registry
+    filter:
+      - "**/*"
 asar: true
 asarUnpack:
   - node_modules/.pnpm/@lydell+node-pty*/**

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import {
+  designAiSelectionDisplayMetadata,
   designAiSelectionInstruction,
   designAiSelectionToken,
+  parseDesignAiSelectionDisplayMetadata,
   parseDesignAiSelectionToken,
   type DesignAiSelectionContext,
 } from "../src/react-app/domains/session/design/design-ai-selection";
@@ -41,9 +43,19 @@ describe("Design AI selections", () => {
     expect(parseDesignAiSelectionToken("[design-ai:design-ai-1]")).toBeNull();
   });
 
+  test("round-trips the persisted Design selection display metadata", () => {
+    const metadata = designAiSelectionDisplayMetadata(context.id, context.target.label);
+    expect(parseDesignAiSelectionDisplayMetadata(metadata)).toEqual({
+      contextId: context.id,
+      label: context.target.label,
+    });
+    expect(parseDesignAiSelectionDisplayMetadata("Design selection request:")).toBeNull();
+  });
+
   test("restricts the agent instruction to one element in one file", () => {
     const instruction = designAiSelectionInstruction(context);
 
+    expect(instruction).toContain("Design selection display:");
     expect(instruction).toContain("design/ses_1/index.html");
     expect(instruction).toContain("body > h1:nth-of-type(1)");
     expect(instruction).toContain("Do not modify any other element");

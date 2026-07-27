@@ -2,13 +2,14 @@
 import * as React from "react";
 import { AudioLines, Film, Loader2, Maximize2, Minimize2, Plus, RefreshCw, X } from "lucide-react";
 
-import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import type { HyperframesCatalogItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
+import type { DesignAiSelectionContext } from "../design/design-ai-selection";
 import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
   HYPERFRAMES_STUDIO_LABEL,
@@ -35,6 +36,7 @@ type VideoPanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  onAskAi?: (context: DesignAiSelectionContext) => void;
   onClose: () => void;
 };
 
@@ -52,7 +54,7 @@ const studioStartupDetailKey: Record<StudioStartupStage, string> = {
   "loading-frame": "video.startup.loading_frame_detail",
 };
 
-export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onClose }: VideoPanelProps) {
+export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const localeSyncTimersRef = React.useRef<number[]>([]);
@@ -100,6 +102,97 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       new URL(studioUrl).origin,
     );
   }, [studioUrl]);
+
+  React.useEffect(() => {
+    if (!client || !workspaceId || !onAskAi) return;
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "ipollowork:hyperframes:ask-ai-selection") return;
+      const target = event.data.target;
+      if (!target || typeof target !== "object") return;
+      const file = typeof target.file === "string" && target.file.trim()
+        ? target.file.trim()
+        : "index.html";
+      const selector = typeof target.selector === "string" ? target.selector.trim() : "";
+      if (!selector) return;
+      const filePath = `${projectDirectory}/${file}`.replace(/\\/g, "/");
+      void (async () => {
+        const current = await client.readWorkspaceFile(workspaceId, filePath);
+        const tag = typeof event.data.tag === "string" && event.data.tag.trim()
+          ? event.data.tag.trim().toLowerCase()
+          : "element";
+        const text = typeof event.data.text === "string" ? event.data.text.trim() : "";
+        const src = typeof event.data.src === "string" ? event.data.src : "";
+        const alt = typeof event.data.alt === "string" ? event.data.alt : "";
+        const summary = (text || alt || src || selector).replace(/\s+/g, " ").trim().slice(0, 80);
+        const styles = event.data.styles && typeof event.data.styles === "object"
+          ? Object.fromEntries(Object.entries(event.data.styles).filter((entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"))
+          : {};
+        onAskAi({
+          id: `video-ai-${crypto.randomUUID()}`,
+          sessionId,
+          workspaceId,
+          filePath,
+          baseUpdatedAt: current.updatedAt ?? null,
+          beforeHtml: current.content,
+          target: {
+            tag,
+            label: summary ? `VIDEO ${tag.toUpperCase()} · ${summary}` : `VIDEO ${tag.toUpperCase()}`,
+            locator: selector,
+            text,
+            src,
+            alt,
+            styles,
+          },
+        });
+      })().catch((error) => {
+        console.error("[video-studio] failed to create AI selection", error);
+      });
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [client, onAskAi, projectDirectory, sessionId, workspaceId]);
+
+  React.useEffect(() => {
+    const handleAnimationReference = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow) return;
+      if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type !== "ipollowork:hyperframes:animation-reference") return;
+      const candidate = event.data.animation;
+      if (!candidate || typeof candidate !== "object") return;
+      if (
+        typeof candidate.name !== "string" ||
+        typeof candidate.title !== "string" ||
+        typeof candidate.description !== "string" ||
+        typeof candidate.type !== "string" ||
+        typeof candidate.category !== "string" ||
+        typeof candidate.agentPrompt !== "string"
+      ) return;
+      const item: HyperframesCatalogItem = {
+        name: candidate.name,
+        title: candidate.title,
+        description: candidate.description,
+        type: candidate.type === "hyperframes:block" ? "hyperframes:block" : "hyperframes:component",
+        category: candidate.category,
+        tags: Array.isArray(candidate.tags)
+          ? candidate.tags.filter((tag: unknown): tag is string => typeof tag === "string")
+          : [],
+        duration: typeof candidate.duration === "number" ? candidate.duration : undefined,
+        preview: candidate.preview && typeof candidate.preview === "object"
+          ? {
+              poster: typeof candidate.preview.poster === "string" ? candidate.preview.poster : undefined,
+              video: typeof candidate.preview.video === "string" ? candidate.preview.video : undefined,
+            }
+          : undefined,
+        agentPrompt: candidate.agentPrompt,
+      };
+      window.dispatchEvent(new CustomEvent("ipollowork:add-animation-reference", {
+        detail: { sessionId, item },
+      }));
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    };
+    window.addEventListener("message", handleAnimationReference);
+    return () => window.removeEventListener("message", handleAnimationReference);
+  }, [sessionId, studioUrl]);
 
   const clearLocaleSyncTimers = React.useCallback(() => {
     for (const timer of localeSyncTimersRef.current) window.clearTimeout(timer);

@@ -29,6 +29,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { isPptxCompatibleTemplate, type TemplateCatalogItem } from "@ipollowork/types/templates";
+import type { HyperframesCatalogItem } from "@/app/lib/ipollowork-server";
 
 import { publicAssetUrl } from "@/app/lib/public-asset";
 import { t } from "@/i18n";
@@ -52,6 +53,28 @@ type NewConversationStarterProps = {
   onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
   onInstallTemplate?: (templateId: string) => void;
   onRequestTemplates?: () => void;
+  animationCatalog?: HyperframesCatalogItem[];
+  animationCatalogLoading?: boolean;
+  animationCatalogError?: string | null;
+  selectedAnimations?: HyperframesCatalogItem[];
+  onToggleAnimation?: (animation: HyperframesCatalogItem) => void;
+  onRetryAnimationCatalog?: () => void;
+};
+
+const VIDEO_TEMPLATE_PICKER_ENABLED = false;
+const RECENT_ANIMATION_STORAGE_KEY = "ipollowork.video.recent-animations.v1";
+const RECENT_ANIMATION_LIMIT = 6;
+const ANIMATION_CATEGORY_ORDER = ["scenes", "data", "code-animation", "social", "text-effects", "transitions", "captions", "effects", "vfx"];
+const ANIMATION_CATEGORY_LABELS: Record<string, { en: string; zh: string }> = {
+  scenes: { en: "Scenes", zh: "场景" },
+  data: { en: "Data", zh: "数据动画" },
+  "code-animation": { en: "Code", zh: "代码动画" },
+  social: { en: "Social", zh: "社交元素" },
+  "text-effects": { en: "Text", zh: "文字特效" },
+  transitions: { en: "Transitions", zh: "转场" },
+  captions: { en: "Captions", zh: "动态字幕" },
+  effects: { en: "Effects", zh: "画面效果" },
+  vfx: { en: "VFX", zh: "视觉特效" },
 };
 
 const MODES = [
@@ -278,6 +301,203 @@ function TemplateStrip({
     </section>
   );
 }
+function AnimationCatalogCard({
+  item,
+  active,
+  recent,
+  locale,
+  onToggle,
+}: {
+  item: HyperframesCatalogItem;
+  active: boolean;
+  recent: boolean;
+  locale: "en" | "zh";
+  onToggle?: (animation: HyperframesCatalogItem) => void;
+}) {
+  const previewRef = useRef<HTMLVideoElement | null>(null);
+  const hoveredRef = useRef(false);
+  const focusedRef = useRef(false);
+  const [previewing, setPreviewing] = useState(false);
+  const previewVideo = item.preview?.video;
+
+  useEffect(() => {
+    if (!previewing) return;
+    const preview = previewRef.current;
+    if (!preview) return;
+    preview.currentTime = 0;
+    void preview.play().catch(() => undefined);
+  }, [previewing]);
+
+  const updatePreview = () => {
+    const shouldPreview = Boolean(previewVideo) && (hoveredRef.current || focusedRef.current);
+    if (!shouldPreview) {
+      const preview = previewRef.current;
+      if (preview) {
+        preview.pause();
+        preview.currentTime = 0;
+      }
+    }
+    setPreviewing(shouldPreview);
+  };
+
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={() => onToggle?.(item)}
+      onMouseEnter={() => {
+        hoveredRef.current = true;
+        updatePreview();
+      }}
+      onMouseLeave={() => {
+        hoveredRef.current = false;
+        updatePreview();
+      }}
+      onFocus={() => {
+        focusedRef.current = true;
+        updatePreview();
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        updatePreview();
+      }}
+      className={cn("group w-[154px] shrink-0 snap-start overflow-hidden rounded-lg border bg-background text-left transition", active ? "border-primary ring-2 ring-primary/20" : "border-border/80 hover:border-primary/45")}
+    >
+      <div className="relative aspect-video overflow-hidden bg-muted">
+        {previewing && previewVideo ? (
+          <video
+            ref={previewRef}
+            src={previewVideo}
+            poster={item.preview?.poster}
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            className="h-full w-full object-cover"
+          />
+        ) : item.preview?.poster ? (
+          <img src={item.preview.poster} alt="" loading="lazy" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">{ANIMATION_CATEGORY_LABELS[item.category]?.[locale] ?? item.category}</div>
+        )}
+        <span className={cn("absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm", active ? "border-primary bg-primary text-primary-foreground" : "border-white/70 bg-black/45 text-white opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100")}>
+          {active ? <CheckIcon className="size-3" /> : <Plus className="size-3" />}
+        </span>
+        {recent ? <span className="absolute left-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-medium text-foreground shadow-sm">{t("new_conversation.animations.recent")}</span> : null}
+        {item.duration ? <span className="absolute bottom-1 right-1 rounded bg-black/65 px-1 text-[9px] text-white">{item.duration}s</span> : null}
+      </div>
+      <div className="truncate px-2 py-1.5 text-[11px] font-medium text-foreground">{item.title}</div>
+    </button>
+  );
+}
+
+function AnimationCatalogStrip({
+  items,
+  loading,
+  error,
+  selected,
+  onToggle,
+  onRetry,
+}: {
+  items: HyperframesCatalogItem[];
+  loading: boolean;
+  error?: string | null;
+  selected: HyperframesCatalogItem[];
+  onToggle?: (animation: HyperframesCatalogItem) => void;
+  onRetry?: () => void;
+}) {
+  const [category, setCategory] = useState<string | null>(null);
+  const [recentAnimationNames, setRecentAnimationNames] = useState<string[]>([]);
+  const selectedNames = new Set(selected.map((item) => item.name));
+  const locale = typeof document !== "undefined" && document.documentElement.lang === "zh" ? "zh" : "en";
+  const recentNameSet = new Set(recentAnimationNames);
+  const filtered = [...(category ? items.filter((item) => item.category === category) : items)].sort((left, right) => {
+    const leftIndex = recentAnimationNames.indexOf(left.name);
+    const rightIndex = recentAnimationNames.indexOf(right.name);
+    if (leftIndex === -1 && rightIndex === -1) return 0;
+    if (leftIndex === -1) return 1;
+    if (rightIndex === -1) return -1;
+    return leftIndex - rightIndex;
+  });
+  const categories = ANIMATION_CATEGORY_ORDER.filter((id) => items.some((item) => item.category === id));
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(RECENT_ANIMATION_STORAGE_KEY) ?? "[]") as unknown;
+      if (Array.isArray(stored)) {
+        setRecentAnimationNames(stored.filter((name): name is string => typeof name === "string").slice(0, RECENT_ANIMATION_LIMIT));
+      }
+    } catch {
+      setRecentAnimationNames([]);
+    }
+  }, []);
+
+  const rememberAnimation = (animation: HyperframesCatalogItem) => {
+    setRecentAnimationNames((current) => {
+      const next = [animation.name, ...current.filter((name) => name !== animation.name)].slice(0, RECENT_ANIMATION_LIMIT);
+      try {
+        window.localStorage.setItem(RECENT_ANIMATION_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // localStorage may be unavailable in private or embedded contexts.
+      }
+      return next;
+    });
+  };
+
+  return (
+    <section className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3" aria-label={t("new_conversation.animations.title")}>
+      <div className="flex items-start justify-between gap-3 px-0.5">
+        <div>
+          <p className="text-[13px] font-medium text-foreground">{t("new_conversation.animations.title")}</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{t("new_conversation.animations.subtitle")}</p>
+        </div>
+        <span className={cn("shrink-0 rounded-full px-2 py-1 text-[11px] font-medium", selected.length ? "bg-primary/10 text-primary" : "bg-background text-muted-foreground")}>{t("new_conversation.animations.selected", { count: selected.length })}</span>
+      </div>
+      <div className="mt-2 flex gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <button type="button" onClick={() => setCategory(null)} className={cn("h-6 shrink-0 rounded-full px-2.5 text-[10px]", category === null ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:text-foreground")}>{t("new_conversation.animations.all")}</button>
+        {categories.map((id) => (
+          <button key={id} type="button" onClick={() => setCategory(id)} className={cn("h-6 shrink-0 rounded-full px-2.5 text-[10px]", category === id ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:text-foreground")}>{ANIMATION_CATEGORY_LABELS[id]?.[locale] ?? id}</button>
+        ))}
+      </div>
+      {loading ? (
+        <div className="flex h-[112px] items-center justify-center text-xs text-muted-foreground"><LoaderCircle className="mr-2 size-4 animate-spin" />{t("new_conversation.animations.loading")}</div>
+      ) : error === "empty_catalog" ? (
+        <div className="flex h-[112px] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/80 bg-background/55 px-4 text-center">
+          <p className="text-[12px] font-medium text-foreground">{t("new_conversation.animations.empty_catalog_title")}</p>
+          <p className="text-[11px] text-muted-foreground">{t("new_conversation.animations.empty_catalog_body")}</p>
+        </div>
+      ) : error ? (
+        <div className="flex h-[112px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/80 bg-background/55 px-4 text-center">
+          <p className="text-[12px] font-medium text-foreground">{t("new_conversation.animations.error_title")}</p>
+          <p className="text-[11px] text-muted-foreground">{t("new_conversation.animations.error_body")}</p>
+          <button type="button" onClick={onRetry} className="h-7 rounded-md border border-border bg-background px-3 text-[11px] font-medium text-foreground hover:bg-muted">{t("new_conversation.animations.retry")}</button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex h-[112px] items-center justify-center text-xs text-muted-foreground">{t("new_conversation.animations.empty")}</div>
+      ) : (
+        <div className="mt-2 flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {filtered.map((item) => {
+            const active = selectedNames.has(item.name);
+            return (
+              <AnimationCatalogCard
+                key={item.name}
+                item={item}
+                active={active}
+                recent={recentNameSet.has(item.name)}
+                locale={locale}
+                onToggle={(animation) => {
+                  rememberAnimation(animation);
+                  onToggle?.(animation);
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function ShortcutEditor({
   mode,
@@ -403,6 +623,12 @@ export function NewConversationStarter({
   onUseTemplate,
   onInstallTemplate,
   onRequestTemplates,
+  animationCatalog = [],
+  animationCatalogLoading = false,
+  animationCatalogError = null,
+  selectedAnimations = [],
+  onToggleAnimation,
+  onRetryAnimationCatalog,
 }: NewConversationStarterProps) {
   const [activeTemplateCategory, setActiveTemplateCategory] = useState<TemplateCategory | null>(null);
   const [hoveredMode, setHoveredMode] = useState<NewConversationMode | null>(null);
@@ -521,7 +747,7 @@ export function NewConversationStarter({
   const selectMode = (mode: NewConversationMode) => {
     setActiveTemplateCategory(null);
     setShortcutEditorOpen(false);
-    if (mode === "design" || mode === "video") onRequestTemplates?.();
+    if (mode === "design") onRequestTemplates?.();
     onSelectMode(mode);
   };
 
@@ -679,6 +905,16 @@ export function NewConversationStarter({
           </div>
         ) : null}
         {selectedMode === "video" ? (
+          <AnimationCatalogStrip
+            items={animationCatalog}
+            loading={animationCatalogLoading}
+            error={animationCatalogError}
+            selected={selectedAnimations}
+            onToggle={onToggleAnimation}
+            onRetry={onRetryAnimationCatalog}
+          />
+        ) : null}
+        {selectedMode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED ? (
           <TemplateStrip
             templates={templates}
             loading={templatesLoading}
@@ -693,3 +929,4 @@ export function NewConversationStarter({
     </div>
   );
 }
+

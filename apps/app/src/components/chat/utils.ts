@@ -171,6 +171,13 @@ type AssistantRenderGroup =
   | { kind: "file"; part: FileUIPart }
   | { kind: "tool"; part: ToolUIPart | DynamicToolUIPart }
 
+export type AssistantProcessRenderGroup = Extract<AssistantRenderGroup, { kind: "reasoning" | "file" | "tool" }>
+
+export interface AssistantRenderSections {
+  processGroups: AssistantProcessRenderGroup[]
+  resultGroups: AssistantRenderGroup[]
+}
+
 export function getAssistantRenderGroups(
   parts: UIMessage["parts"],
   showThinking: boolean
@@ -235,4 +242,21 @@ export function getAssistantRenderGroups(
   }
 
   return groups
+}
+
+export function splitAssistantRenderGroups(groups: AssistantRenderGroup[]): AssistantRenderSections {
+  const lastTextIndex = groups.findLastIndex((group) => group.kind === "text" && Boolean(group.text.trim()))
+  if (lastTextIndex <= 0) {
+    return { processGroups: [], resultGroups: groups }
+  }
+
+  const leadingGroups = groups.slice(0, lastTextIndex)
+  if (!leadingGroups.every((group): group is AssistantProcessRenderGroup => group.kind !== "text")) {
+    return { processGroups: [], resultGroups: groups }
+  }
+
+  return {
+    processGroups: leadingGroups,
+    resultGroups: groups.slice(lastTextIndex),
+  }
 }

@@ -393,8 +393,8 @@ function FormatExportButton({
             format,
             quality,
             resolution,
-            outputSize,
-            captureSize,
+            outputSize: outputSize ? `${outputSize.width}x${outputSize.height}` : undefined,
+            captureSize: captureSize ? `${captureSize.width}x${captureSize.height}` : undefined,
             fps,
           });
           void onStartRender(format, quality, outputResolution, fps, outputSize, captureSize);

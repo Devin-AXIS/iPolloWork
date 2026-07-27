@@ -43,6 +43,7 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 const EXECUTABLE_EXTENSIONS = new Set([".exe", ".dll", ".com", ".bat", ".cmd", ".sh", ".ps1", ".app", ".dmg", ".pkg"]);
 const HYPERFRAMES_VARIABLE_TYPES = new Set(["string", "number", "color", "boolean", "enum"]);
+const CURRENT_VIDEO_LOGO_URL = "assets/ipollowork-logo.svg?v=20260724";
 const SLIDE_DOCUMENT_PATTERN = /\bdata-ipw-slide(?:\s|=|>)|\bclass\s*=\s*["'](?:[^"']*\s)?(?:slide|slide-frame)(?=\s|["'])|\bclassName\s*=\s*["'](?:slide|slide-frame)["']|\bclassList\.add\(\s*["'](?:slide|slide-frame)["']/i;
 const PPTX_OBJECT_PATTERN = /\bdata-pptx-(?:shape|text|image)\b/i;
 const inflateRawAsync = promisify(inflateRaw);
@@ -669,6 +670,7 @@ export async function materializeTemplate(config: ServerConfig, workspace: Works
     await mkdir(dirname(root), { recursive: true });
     await rename(staged, root);
     moved = true;
+    if (manifest.surface === "video") await refreshVideoSessionLogo(workspace, sessionId);
     db.upsertSession({
       workspaceId: workspace.id,
       sessionId,
@@ -765,16 +767,31 @@ function snapshotFromRow(row: TemplateSessionRow): TemplateSessionSnapshot {
   };
 }
 
+async function refreshVideoSessionLogo(workspace: WorkspaceInfo, sessionId: string) {
+  const root = sessionRoot(workspace, sessionId, "video");
+  const currentLogo = join(await resolveBundledTemplatesRoot(), "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg");
+  const sessionLogo = join(root, "assets", "ipollowork-logo.svg");
+  if (existsSync(currentLogo) && existsSync(dirname(sessionLogo))) {
+    await cp(currentLogo, sessionLogo, { force: true });
+  }
+
+  const entryPath = join(root, "index.html");
+  if (!existsSync(entryPath)) return;
+  const entry = await readFile(entryPath, "utf8");
+  const repaired = entry.replace(/<img\b[^>]*\bdata-var-src=(['"])logoUrl\1[^>]*>/gi, (tag) => {
+    if (/\bdata-ipw-logo-fallback\b/i.test(tag)) return tag;
+    const fallback = ` data-ipw-logo-fallback="current" onerror="this.onerror=null;this.src='${CURRENT_VIDEO_LOGO_URL}'"`;
+    return tag.replace(/\s*\/?>$/, (ending) => `${fallback}${ending}`);
+  });
+  if (repaired !== entry) await writeFile(entryPath, repaired, "utf8");
+}
+
 export async function readTemplateSession(config: ServerConfig, workspace: WorkspaceInfo, sessionId: string): Promise<TemplateSessionSnapshot> {
   const row = (await templateDb(config)).getSession(workspace.id, sessionId);
   if (!row) throw new ApiError(404, "template_session_not_found", "This session has no template metadata");
   const snapshot = snapshotFromRow(row);
   if (snapshot.surface === "video") {
-    const currentLogo = join(await resolveBundledTemplatesRoot(), "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg");
-    const sessionLogo = join(sessionRoot(workspace, sessionId, "video"), "assets", "ipollowork-logo.svg");
-    if (existsSync(currentLogo) && existsSync(dirname(sessionLogo))) {
-      await cp(currentLogo, sessionLogo, { force: true });
-    }
+    await refreshVideoSessionLogo(workspace, sessionId);
   }
   return snapshot;
 }
