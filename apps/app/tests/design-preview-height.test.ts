@@ -40,6 +40,34 @@ describe("Design property number fields", () => {
     expect(source).toContain("<SelectContent align=\"end\">");
   });
 
+  test("renders text controls before position while retaining x and y bindings", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+    const textSection = '<InspectorSection title="Text">';
+    const positionSection = '<InspectorSection title="Position">';
+
+    expect(source.indexOf(textSection)).toBeGreaterThanOrEqual(0);
+    expect(source.indexOf(positionSection)).toBeGreaterThan(source.indexOf(textSection));
+    expect(source).toContain('onApplyField("left", `${value}px`)');
+    expect(source).toContain('onApplyField("top", `${value}px`)');
+  });
+
+  test("uses a lazy searchable font picker with self-rendered options", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+
+    expect(source).toContain("function FontFamilyPicker(");
+    expect(source).toContain("void loadFontFamilies()");
+    expect(source).toContain("listSystemFontFamilies()");
+    expect(source).toContain('style={{ fontFamily: family }}');
+    expect(source).toContain("filterFontFamilyOptions(");
+    expect(source).toContain('<FontFamilyPicker value={selection.styles.fontFamily || "PingFang SC"}');
+  });
+
+  test("retains fallback font choices when the desktop catalog command is unavailable", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+
+    expect(source).toContain("catch {\n      setFamilies(FALLBACK_FONT_FAMILIES);");
+  });
+
   test("toggles each mirror direction without dropping rotation or the other axis", async () => {
     const source = await Bun.file(inspectorUrl).text();
 
