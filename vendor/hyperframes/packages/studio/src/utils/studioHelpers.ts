@@ -17,6 +17,7 @@ export type RightPanelTab =
   | "layers"
   | "design"
   | "catalog"
+  | "effects"
   | "renders"
   | "block-params"
   | "slideshow"

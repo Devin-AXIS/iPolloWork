@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useSyncExternalStore,
-  type MutableRefObject,
-} from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore, type MutableRefObject } from "react";
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
@@ -14,9 +8,7 @@ import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
-import {
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-} from "./editor/manualEditingAvailability";
+import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
@@ -522,7 +514,17 @@ export function StudioRightPanel({
                 onClick={() => setRightPanelTab("catalog")}
               />
               <PanelTabButton
-                label={renderJobs.length > 0 ? t("right.rendersCount", { count: renderJobs.length }) : t("right.renders")}
+                label={t("right.effects")}
+                tooltip={t("right.effectsTooltip")}
+                active={rightPanelTab === "effects"}
+                onClick={() => setRightPanelTab("effects")}
+              />
+              <PanelTabButton
+                label={
+                  renderJobs.length > 0
+                    ? t("right.rendersCount", { count: renderJobs.length })
+                    : t("right.renders")
+                }
                 tooltip={t("right.rendersTooltip")}
                 active={rightPanelTab === "renders"}
                 onClick={() => setRightPanelTab("renders")}
@@ -547,7 +549,19 @@ export function StudioRightPanel({
                   onClose={onCloseBlockParams ?? (() => {})}
                 />
               ) : rightPanelTab === "catalog" ? (
-                <BlocksTab onAddBlock={onAddBlock} onPreviewBlock={onPreviewBlock} />
+                <BlocksTab
+                  key="animation"
+                  kind="animation"
+                  onAddBlock={onAddBlock}
+                  onPreviewBlock={onPreviewBlock}
+                />
+              ) : rightPanelTab === "effects" ? (
+                <BlocksTab
+                  key="effect"
+                  kind="effect"
+                  onAddBlock={onAddBlock}
+                  onPreviewBlock={onPreviewBlock}
+                />
               ) : inspectorTabActive ? (
                 <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
                   <div
@@ -569,8 +583,8 @@ export function StudioRightPanel({
                   >
                     <div className="h-px w-10 rounded-full bg-white/12 transition-colors group-hover:bg-white/24 group-active:bg-studio-accent/70" />
                   </div>
-                    <div className="min-h-0 flex-1 overflow-hidden">{propertyPanel}</div>
-                  </div>
+                  <div className="min-h-0 flex-1 overflow-hidden">{propertyPanel}</div>
+                </div>
               ) : (
                 renderQueuePanel
               )}

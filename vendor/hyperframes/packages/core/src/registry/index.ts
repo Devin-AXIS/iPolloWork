@@ -4,6 +4,11 @@ export type {
   FileTarget,
   RegistryItemDimensions,
   RegistryItemPreview,
+  RegistryItemEngine,
+  RegistryItemKind,
+  RegistryItemSource,
+  RegistryVariable,
+  RegistryVariableUpdate,
   RegistryItem,
   ExampleItem,
   BlockItem,
@@ -21,7 +26,18 @@ export {
   ITEM_TYPE_DIRS,
   BLOCK_CATEGORIES,
   resolveBlockCategory,
+  resolveRegistryItemKind,
   isExampleItem,
   isBlockItem,
   isComponentItem,
 } from "./types.js";
+
+export type {
+  GsapOfficialCapability,
+  GsapOfficialCapabilityGroup,
+  GsapOfficialCapabilityKind,
+  GsapOfficialCapabilityRole,
+} from "./gsapCapabilities.js";
+
+export { GSAP_OFFICIAL_CAPABILITIES, GSAP_OFFICIAL_VERSION } from "./gsapCapabilities.js";
+export { resolveGsapRegistryItemEngine } from "./gsapRuntime.js";

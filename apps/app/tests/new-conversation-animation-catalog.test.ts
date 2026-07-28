@@ -7,14 +7,25 @@ const starter = readFileSync(resolve(root, "src/components/chat/new-conversation
 const surface = readFileSync(resolve(root, "src/react-app/domains/session/surface/session-surface.tsx"), "utf8");
 
 describe("new conversation animation catalog", () => {
-  test("restores the video template picker and hides the animation catalog", () => {
+  test("shows the video template picker and GSAP animation catalog", () => {
     expect(starter).toContain("const VIDEO_TEMPLATE_PICKER_ENABLED = true");
-    expect(starter).toContain("const VIDEO_ANIMATION_PICKER_ENABLED = false");
+    expect(starter).toContain("const VIDEO_ANIMATION_PICKER_ENABLED = true");
+    expect(surface).toContain("const VIDEO_ANIMATION_PICKER_ENABLED = true");
     expect(starter).toContain('selectedMode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED');
     expect(starter).toContain('selectedMode === "video" && VIDEO_ANIMATION_PICKER_ENABLED');
     expect(starter).toContain('mode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED');
     expect(surface).toContain("if (!VIDEO_ANIMATION_PICKER_ENABLED");
     expect(starter).toContain("function TemplateStrip");
+  });
+
+  test("separates the GSAP catalog into animation and effect libraries", () => {
+    expect(starter).toContain('useState<"animation" | "effect">("effect")');
+    expect(starter).toContain('item.engine?.name.toLowerCase() === "gsap"');
+    expect(starter).toContain('item.kind === libraryKind');
+    expect(starter).toContain("new_conversation.animations.effect_library");
+    expect(starter).toContain("new_conversation.animations.animation_library");
+    expect(starter).toContain("new_conversation.animations.catalog_synced");
+    expect(starter).toContain("new_conversation.animations.all_plugins");
   });
 
   test("gives the video template empty state a recovery action", () => {
@@ -38,7 +49,15 @@ describe("new conversation animation catalog", () => {
     expect(starter).toContain('new_conversation.animations.recent');
     expect(starter).toContain('new_conversation.animations.empty_catalog_title');
     expect(starter).toContain('new_conversation.animations.error_title');
-    expect(starter).toContain('shrink-0 rounded-full px-2 py-1 text-[11px] font-medium');
+    expect(starter).toContain('rounded-full px-2 py-1 text-[11px] font-medium');
+  });
+
+  test("edits validated effect variables and sends structured configuration", () => {
+    expect(starter).toContain("function AnimationParameterDialog");
+    expect(starter).toContain("updateHyperframesEffectVariableOverride");
+    expect(starter).toContain("new_conversation.animations.update_${lastUpdate}");
+    expect(surface).toContain("hyperframesSelectionPayload(selection)");
+    expect(surface).toContain("data-variable-values/getVariables");
   });
 
   test("routes template launches through the current session materializer first", () => {

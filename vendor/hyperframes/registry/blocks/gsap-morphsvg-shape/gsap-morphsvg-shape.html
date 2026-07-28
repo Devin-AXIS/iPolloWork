@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GSAP MorphSVG Shape</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+      body {
+        display: grid;
+        place-items: center;
+        background: var(--background, #050816);
+        color: #f8fafc;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      .frame { display: grid; grid-template-columns: 1fr 1fr; align-items: center; width: 100%; padding: 120px 160px; }
+      .copy { max-width: 700px; }
+      .eyebrow { color: #9aa7ff; font-size: 20px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
+      h1 { margin: 26px 0 0; font-size: 92px; line-height: .95; letter-spacing: -.06em; }
+      p { margin: 32px 0 0; max-width: 580px; color: rgba(248,250,252,.62); font-size: 26px; line-height: 1.55; }
+      .visual { display: grid; place-items: center; min-height: 760px; }
+      svg { width: 720px; height: 720px; overflow: visible; }
+      #shape {
+        fill: var(--shape, #6c7cff);
+        filter: drop-shadow(0 0 calc(70px * var(--glow, 1)) rgba(108,124,255,.7));
+        transform-origin: center;
+      }
+      .orbit { fill: none; stroke: rgba(255,255,255,.12); stroke-width: 2; stroke-dasharray: 8 18; }
+    </style>
+  </head>
+  <body>
+    <main class="frame">
+      <section class="copy">
+        <div class="eyebrow">MorphSVG identity</div>
+        <h1>Shape becomes a signature.</h1>
+        <p>A continuous silhouette transformation turns a simple geometric mark into a memorable visual system.</p>
+      </section>
+      <section class="visual">
+        <svg viewBox="0 0 600 600" aria-label="Morphing luminous shape">
+          <circle class="orbit" cx="300" cy="300" r="248"></circle>
+          <path id="shape" d="M300 72 C426 72 528 174 528 300 C528 426 426 528 300 528 C174 528 72 426 72 300 C72 174 174 72 300 72 Z"></path>
+          <path id="target-diamond" visibility="hidden" d="M300 48 L552 300 L300 552 L48 300 Z"></path>
+          <path id="target-wave" visibility="hidden" d="M58 310 C120 112 232 90 300 254 C368 418 480 396 542 198 L542 462 C466 532 372 538 300 430 C228 322 134 328 58 398 Z"></path>
+        </svg>
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/MorphSVGPlugin.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var variables = window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+      var backgroundColor = typeof variables.backgroundColor === "string" ? variables.backgroundColor : "#050816";
+      var shapeColor = typeof variables.shapeColor === "string" ? variables.shapeColor : "#6C7CFF";
+      var glowIntensity = typeof variables.glowIntensity === "number" ? variables.glowIntensity : 1;
+      var duration = typeof variables.duration === "number" ? variables.duration : 7;
+      document.documentElement.style.setProperty("--background", backgroundColor);
+      document.documentElement.style.setProperty("--shape", shapeColor);
+      document.documentElement.style.setProperty("--glow", glowIntensity);
+
+      gsap.registerPlugin(MorphSVGPlugin);
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from(".copy > *", { opacity: 0, x: -50, stagger: 0.14, duration: 0.9, ease: "power3.out" })
+        .from("#shape", { opacity: 0, scale: 0.4, rotate: -60, duration: 1.2, ease: "back.out(1.6)" }, 0)
+        .to("#shape", { morphSVG: "#target-diamond", rotate: 90, duration: duration * 0.28, ease: "power2.inOut" }, duration * 0.22)
+        .to("#shape", { morphSVG: "#target-wave", rotate: 180, duration: duration * 0.3, ease: "power2.inOut" }, duration * 0.5)
+        .to(".orbit", { rotate: 180, transformOrigin: "center", duration: duration, ease: "none" }, 0);
+
+      window.__timelines["gsap-morphsvg-shape"] = timeline;
+      window.addEventListener("hf-seek", function (event) {
+        timeline.seek(Math.max(0, Math.min(event.detail.time, duration)));
+      });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

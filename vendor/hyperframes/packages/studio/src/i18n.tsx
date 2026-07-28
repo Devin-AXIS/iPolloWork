@@ -47,6 +47,8 @@ type TranslationKey =
   | "right.designTooltip"
   | "right.catalog"
   | "right.catalogTooltip"
+  | "right.effects"
+  | "right.effectsTooltip"
   | "right.layers"
   | "right.layersTooltip"
   | "right.renders"
@@ -108,8 +110,10 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.resizePanes": "Resize Layers and Design panes",
     "right.design": "Design",
     "right.designTooltip": "Element styles and properties",
-    "right.catalog": "Catalog",
-    "right.catalogTooltip": "Animation, transition, caption, and visual effect library",
+    "right.catalog": "Animations",
+    "right.catalogTooltip": "Browse reusable animation presets",
+    "right.effects": "Effects",
+    "right.effectsTooltip": "Browse GSAP effects, plugins, easing, and production tools",
     "right.layers": "Layers",
     "right.layersTooltip": "Composition layer stack",
     "right.renders": "Export",
@@ -172,7 +176,9 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.design": "设计",
     "right.designTooltip": "元素样式和属性",
     "right.catalog": "动画库",
-    "right.catalogTooltip": "浏览动画、转场、字幕和视觉特效",
+    "right.catalogTooltip": "浏览可复用动画预设",
+    "right.effects": "特效库",
+    "right.effectsTooltip": "浏览 GSAP 特效、插件、缓动和制作工具",
     "right.layers": "图层",
     "right.layersTooltip": "合成图层堆栈",
     "right.renders": "导出",

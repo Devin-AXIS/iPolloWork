@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GSAP ScrollTrigger Story</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+      body {
+        display: grid;
+        place-items: center;
+        background: var(--background, #07111f);
+        color: #eefdf7;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      .stage { position: relative; width: 100%; height: 100%; padding: 112px 128px; overflow: hidden; }
+      .eyebrow { color: var(--accent, #62f6b5); font-size: 22px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
+      h1 { width: 850px; margin: 24px 0 0; font-size: 92px; line-height: .98; letter-spacing: -.055em; }
+      .rail { position: absolute; right: 128px; top: 126px; width: 600px; height: 820px; }
+      .card {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        padding: 54px;
+        border: 1px solid rgba(255,255,255,.16);
+        border-radius: 44px;
+        background: linear-gradient(145deg, rgba(255,255,255,.14), rgba(255,255,255,.035));
+        box-shadow: 0 48px 120px rgba(0,0,0,.32);
+        backdrop-filter: blur(24px);
+      }
+      .card:nth-child(2) { background: linear-gradient(145deg, rgba(98,246,181,.2), rgba(255,255,255,.04)); }
+      .card:nth-child(3) { background: linear-gradient(145deg, rgba(112,132,255,.22), rgba(255,255,255,.04)); }
+      .number { color: var(--accent, #62f6b5); font-size: 22px; font-weight: 700; }
+      .card strong { display: block; margin-top: 14px; font-size: 64px; line-height: 1; letter-spacing: -.045em; }
+      .card p { margin: 20px 0 0; color: rgba(238,253,247,.7); font-size: 24px; line-height: 1.5; }
+      .progress { position: absolute; left: 128px; bottom: 112px; width: 640px; height: 6px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.12); }
+      .progress span { display: block; width: 100%; height: 100%; transform-origin: left; background: var(--accent, #62f6b5); }
+    </style>
+  </head>
+  <body>
+    <main id="stage" class="stage">
+      <div class="eyebrow">ScrollTrigger system</div>
+      <h1>One story.<br />Three decisive moments.</h1>
+      <section class="rail">
+        <article class="card">
+          <span class="number">01</span>
+          <strong>Discover</strong>
+          <p>Surface the idea with focus and a clear visual hierarchy.</p>
+        </article>
+        <article class="card">
+          <span class="number">02</span>
+          <strong>Understand</strong>
+          <p>Layer evidence as the viewer moves through the narrative.</p>
+        </article>
+        <article class="card">
+          <span class="number">03</span>
+          <strong>Act</strong>
+          <p>Land on one memorable action with motion that earns attention.</p>
+        </article>
+      </section>
+      <div class="progress"><span id="progress"></span></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var variables = window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+      var backgroundColor = typeof variables.backgroundColor === "string" ? variables.backgroundColor : "#07111F";
+      var accentColor = typeof variables.accentColor === "string" ? variables.accentColor : "#62F6B5";
+      var distance = typeof variables.distance === "number" ? variables.distance : 120;
+      var duration = typeof variables.duration === "number" ? variables.duration : 8;
+      document.documentElement.style.setProperty("--background", backgroundColor);
+      document.documentElement.style.setProperty("--accent", accentColor);
+
+      gsap.registerPlugin(ScrollTrigger);
+      var cards = gsap.utils.toArray(".card");
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from("h1", { opacity: 0, y: 50, duration: duration * 0.16, ease: "power3.out" })
+        .from(cards, { opacity: 0, y: distance, rotate: 4, stagger: duration * 0.1, duration: duration * 0.22, ease: "power3.out" }, 0)
+        .to(cards[0], { y: -distance * 0.28, scale: 0.94, opacity: 0.28, duration: duration * 0.18 }, duration * 0.38)
+        .to(cards[1], { y: -distance * 0.14, scale: 0.97, opacity: 0.55, duration: duration * 0.18 }, duration * 0.55)
+        .fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: duration, ease: "none" }, 0);
+
+      ScrollTrigger.create({
+        trigger: "#stage",
+        start: "top top",
+        end: "+=1000",
+        animation: timeline,
+        scrub: true
+      });
+      window.__timelines["gsap-scrolltrigger-story"] = timeline;
+      window.addEventListener("hf-seek", function (event) {
+        timeline.seek(Math.max(0, Math.min(event.detail.time, duration)));
+      });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>
