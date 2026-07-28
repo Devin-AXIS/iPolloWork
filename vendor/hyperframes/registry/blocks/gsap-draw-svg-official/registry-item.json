@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "gsap-draw-svg-official",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "kind": "effect",
+  "title": "DrawSVG Official Demo",
+  "description": "Official GSAP DrawSVG capability adapted as a seekable iPolloWork effect.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "tags": [
+    "effect",
+    "gsap-official",
+    "svg",
+    "plugin"
+  ],
+  "engine": {
+    "name": "gsap",
+    "version": "3.15.0",
+    "seekable": true,
+    "plugins": [
+      "DrawSVGPlugin"
+    ]
+  },
+  "source": {
+    "provider": "gsap-docs",
+    "label": "GSAP 3.15.0 Docs",
+    "url": "https://gsap.com/docs/v3/Plugins/DrawSVGPlugin/"
+  },
+  "files": [
+    {
+      "path": "gsap-draw-svg-official.html",
+      "target": "compositions/gsap-draw-svg-official.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "headline",
+      "label": "Headline",
+      "type": "string",
+      "default": "DrawSVG Official Demo",
+      "maxLength": 80,
+      "update": "reload"
+    },
+    {
+      "id": "backgroundColor",
+      "label": "Background color",
+      "type": "color",
+      "default": "#070B16",
+      "update": "live"
+    },
+    {
+      "id": "accentColor",
+      "label": "Accent color",
+      "type": "color",
+      "default": "#6EF2BE",
+      "update": "live"
+    },
+    {
+      "id": "intensity",
+      "label": "Intensity",
+      "type": "number",
+      "default": 1,
+      "min": 0.25,
+      "max": 2,
+      "step": 0.05,
+      "update": "rebuild"
+    },
+    {
+      "id": "duration",
+      "label": "Duration",
+      "type": "number",
+      "default": 6,
+      "min": 1,
+      "max": 20,
+      "step": 0.5,
+      "unit": "s",
+      "update": "rebuild"
+    }
+  ],
+  "agentPrompt": "Use the DrawSVG official GSAP capability. Preserve its declared variables, source credit, and deterministic seek contract."
+}

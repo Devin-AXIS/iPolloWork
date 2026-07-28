@@ -13,10 +13,22 @@ export async function listTargets(baseUrl) {
   return response.json();
 }
 
-export async function pickAppTarget(baseUrl) {
+export async function pickAppTarget(baseUrl, targetFilter = null) {
   const targets = await listTargets(baseUrl);
-  const pages = targets.filter((target) => target.type === "page" && target.webSocketDebuggerUrl);
+  const pages = targets.filter(
+    (target) =>
+      (target.type === "page" || (targetFilter && target.type === "iframe")) &&
+      target.webSocketDebuggerUrl,
+  );
+  const requestedTarget = targetFilter
+    ? pages.find(
+        (page) =>
+          (!targetFilter.title || page.title === targetFilter.title) &&
+          (!targetFilter.urlIncludes || page.url.includes(targetFilter.urlIncludes)),
+      )
+    : null;
   const target =
+    requestedTarget ??
     pages.find((page) => page.title === "iPolloWork") ??
     pages.find(
       (page) =>
@@ -27,6 +39,11 @@ export async function pickAppTarget(baseUrl) {
     pages[0];
   if (!target) {
     throw new Error(`No CDP page target found at ${baseUrl}.`);
+  }
+  if (targetFilter && !requestedTarget) {
+    throw new Error(
+      `No CDP page target matched ${JSON.stringify(targetFilter)} at ${baseUrl}.`,
+    );
   }
   return target;
 }

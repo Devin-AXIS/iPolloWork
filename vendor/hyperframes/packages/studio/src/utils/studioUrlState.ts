@@ -23,6 +23,7 @@ const VALID_TABS: RightPanelTab[] = [
   "layers",
   "design",
   "catalog",
+  "effects",
   "renders",
   "slideshow",
   "variables",

@@ -5,6 +5,7 @@
   "type": "hyperframes:block",
   "title": "MorphSVG Shape",
   "description": "A luminous identity mark that morphs between geometric silhouettes with GSAP MorphSVG.",
+  "kind": "effect",
   "dimensions": {
     "width": 1920,
     "height": 1080
@@ -16,6 +17,11 @@
     "version": "3.15.0",
     "seekable": true,
     "plugins": ["MorphSVGPlugin"]
+  },
+  "source": {
+    "provider": "gsap-docs",
+    "label": "GSAP 3.15 Docs",
+    "url": "https://gsap.com/docs/v3/Plugins/MorphSVGPlugin/"
   },
   "files": [
     {

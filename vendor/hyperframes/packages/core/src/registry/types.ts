@@ -46,6 +46,14 @@ export interface RegistryItemEngine {
   plugins?: string[];
 }
 
+export type RegistryItemKind = "animation" | "effect";
+
+export interface RegistryItemSource {
+  provider: string;
+  label: string;
+  url?: string;
+}
+
 /** Fields common to every registry item, regardless of type. */
 interface RegistryItemBase {
   /** JSON Schema URL — `https://hyperframes.heygen.com/schema/registry-item.json`. */
@@ -58,6 +66,8 @@ interface RegistryItemBase {
   description: string;
   /** Filter tags (e.g. `["social", "portrait", "card"]`). */
   tags?: string[];
+  /** Product-facing library placement. Inferred from type/tags when omitted. */
+  kind?: RegistryItemKind;
   /** Item author / maintainer. */
   author?: string;
   /** URL for the author / creator credit. */
@@ -80,6 +90,8 @@ interface RegistryItemBase {
   preview?: RegistryItemPreview;
   /** Animation/runtime engine used by the item. */
   engine?: RegistryItemEngine;
+  /** Upstream catalog or original demo used as the adaptation source. */
+  source?: RegistryItemSource;
   /** User-facing variables, aligned with the composition variable contract. */
   variables?: RegistryVariable[];
   /** Related skill slug (e.g. `hyperframes-captions`) — shown in docs. */
@@ -236,6 +248,22 @@ export function resolveBlockCategory(tags: string[] | undefined): BlockCategory 
   if (set.has("text-effect")) return "text-effects";
   if (set.has("effect") || set.has("grain") || set.has("vignette")) return "effects";
   return "scenes";
+}
+
+const EFFECT_CATEGORIES = new Set<BlockCategory>([
+  "captions",
+  "effects",
+  "text-effects",
+  "transitions",
+  "vfx",
+]);
+
+export function resolveRegistryItemKind(
+  item: Pick<RegistryItem, "kind" | "tags" | "type">,
+): RegistryItemKind {
+  if (item.kind) return item.kind;
+  if (item.type === "hyperframes:component") return "effect";
+  return EFFECT_CATEGORIES.has(resolveBlockCategory(item.tags)) ? "effect" : "animation";
 }
 
 // ── Type guards ─────────────────────────────────────────────────────────────

@@ -20,7 +20,10 @@ import {
   createBackgroundRemovalJob,
   createProjectSignature,
 } from "@hyperframes/studio-server";
-import type { RegistryItem } from "@hyperframes/core/registry";
+import {
+  resolveGsapRegistryItemEngine,
+  type RegistryItem,
+} from "@hyperframes/core/registry";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { generateThumbnail, findSystemChrome } from "./vite.browser";
@@ -358,8 +361,21 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
           if (!existsSync(manifestPath)) continue;
           try {
             const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
-            if (manifest.type === "hyperframes:block" || manifest.type === "hyperframes:component")
-              items.push(manifest);
+            if (manifest.type === "hyperframes:block" || manifest.type === "hyperframes:component") {
+              const itemRoot = join(dir, entry.name);
+              const runtimeSources = manifest.files.flatMap((file) => {
+                if (!/\.(?:html|js|mjs|ts|tsx)$/i.test(file.path)) return [];
+                const sourcePath = resolve(itemRoot, file.path);
+                if (!isPathWithin(itemRoot, sourcePath)) return [];
+                try {
+                  return [readFileSync(sourcePath, "utf-8")];
+                } catch {
+                  return [];
+                }
+              });
+              const engine = resolveGsapRegistryItemEngine(manifest, runtimeSources);
+              items.push(engine ? { ...manifest, engine } : manifest);
+            }
           } catch {
             /* skip malformed manifests */
           }

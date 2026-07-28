@@ -1,288 +1,156 @@
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("gsap-effect-library");
+const STUDIO_SCREENSHOT_TARGETS = {
+  targetUrlIncludes: "app-dist/index.html",
+  textTargetUrlIncludes: "#project/",
+  rejectText: ["Console errors in preview", "composition script error", "Something went wrong"],
+};
 
-const LIBRARY_LABELS = ["GSAP animation and effect library", "GSAP 动画特效库"];
-const EFFECT_LIBRARY_LABELS = ["GSAP effect library", "GSAP 特效库"];
-const VIDEO_LABELS = ["Video", "视频制作"];
-
-function includesOne(value, labels) {
-  return labels.some((label) => value.includes(label));
-}
-
-async function clickButton(ctx, labels, parentText = "") {
-  const clicked = await ctx.eval(`(() => {
-    const labels = ${JSON.stringify(labels)};
-    const parentText = ${JSON.stringify(parentText)};
-    const button = [...document.querySelectorAll("button")].find((candidate) => {
-      const text = candidate.innerText.trim();
-      const labelMatches = labels.some((label) => text === label || text.includes(label));
-      return labelMatches && (!parentText || candidate.parentElement?.innerText.includes(parentText));
-    });
-    if (!button) return false;
-    button.click();
-    return true;
-  })()`);
-  ctx.assert(clicked === true, `Could not find button: ${labels.join(" / ")}`);
-}
-
-async function setInputValue(ctx, label, value) {
-  const updated = await ctx.eval(`(() => {
-    const input = document.querySelector('[role="dialog"] [aria-label=${JSON.stringify(label)}]');
-    if (!(input instanceof HTMLInputElement)) return false;
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    if (!setter) return false;
-    setter.call(input, ${JSON.stringify(value)});
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    return true;
-  })()`);
-  ctx.assert(updated === true, `Could not update ${label}.`);
-}
-
-async function openConfiguration(ctx, title) {
-  const opened = await ctx.eval(`(() => {
-    const selectButton = [...document.querySelectorAll("button")]
-      .find((button) => button.innerText.includes(${JSON.stringify(title)}));
-    const configureButton = [...(selectButton?.parentElement?.querySelectorAll("button") ?? [])]
-      .find((button) => button !== selectButton);
-    if (!configureButton) return false;
-    configureButton.click();
-    return true;
-  })()`);
-  ctx.assert(opened === true, `Could not configure ${title}.`);
-  await ctx.waitFor(`Boolean(document.querySelector('[role="dialog"]'))`, {
-    timeoutMs: 15_000,
-    label: `${title} parameter dialog`,
-  });
-}
-
-async function closeDialog(ctx) {
-  if (!await ctx.eval("Boolean(document.querySelector('[role=\"dialog\"]'))")) return;
-  await ctx.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
-  await ctx.waitFor("!document.querySelector('[role=\"dialog\"]')", {
-    timeoutMs: 15_000,
-    label: "parameter dialog closed",
-  });
+async function clickTextButton(ctx, text) {
+  await ctx.waitFor(
+    `(() => {
+      const text = ${JSON.stringify(text)};
+      const button = [...document.querySelectorAll("button")]
+        .find((candidate) => candidate.innerText.trim() === text);
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`,
+    { timeoutMs: 20_000, label: `button ${JSON.stringify(text)}` },
+  );
 }
 
 export default {
   id: "gsap-effect-library",
-  title: "Browse, filter, configure, and add the bundled GSAP catalog",
+  title: "Verify the packaged Studio animation and GSAP effect libraries",
   kind: "user-facing",
+  cdpTarget: { urlIncludes: "#project/" },
+  preserveTheme: true,
   precondition: async (ctx) => {
-    await ctx.waitFor("Boolean(window.__ipolloworkControl) && Boolean(window.__ipollowork)", {
-      timeoutMs: 60_000,
-      label: "iPolloWork control and inspector APIs",
-    });
+    if (!await ctx.eval(`document.body.innerText.includes("动画库")`)) {
+      await clickTextButton(ctx, "设计");
+    }
+    await ctx.waitFor(
+      `document.body.innerText.includes("动画库") && document.body.innerText.includes("特效库")`,
+      { timeoutMs: 60_000, label: "Studio animation and effect tabs" },
+    );
     return null;
   },
   steps: [
     {
-      name: "GSAP libraries and catalog status are visible",
+      name: "Animation and effect libraries are separate Studio tabs",
       run: async (ctx) => {
-        await ctx.prove("The video workspace shows separate GSAP animation and effect libraries with complete local counts", {
+        await ctx.prove("The real packaged Studio places 动画库 and 特效库 side by side.", {
           voiceover: vo[0],
           action: async () => {
-            await ctx.ensureLightMode();
-            await closeDialog(ctx);
-            await ctx.waitFor(
-              `window.__ipolloworkControl.listActions().some((action) => action.id === "session.create_task" && !action.disabled)`,
-              { timeoutMs: 60_000, label: "create task action" },
-            );
-            const previousRoute = await ctx.eval("window.__ipolloworkControl.snapshot().route");
-            await ctx.control("session.create_task");
-            await ctx.waitFor(
-              `window.__ipolloworkControl.snapshot().route !== ${JSON.stringify(previousRoute)}
-                && window.__ipolloworkControl.snapshot().route.includes("/session/")`,
-              { timeoutMs: 60_000, label: "new task route" },
-            );
-            await ctx.waitFor(
-              `[...document.querySelectorAll("button")].some((button) =>
-                ["Video", "视频制作"].includes(button.innerText.trim())
-              )`,
-              { timeoutMs: 60_000, label: "video mode button" },
-            );
-            await clickButton(ctx, VIDEO_LABELS);
-            await ctx.waitFor(
-              `document.body.innerText.includes("GSAP effect library") || document.body.innerText.includes("GSAP 特效库")`,
-              { timeoutMs: 60_000, label: "GSAP effect library" },
-            );
-            await ctx.waitFor(
-              `document.querySelector('section[aria-label*="GSAP"]')?.innerText.includes("129")`,
-              { timeoutMs: 60_000, label: "complete GSAP catalog counts" },
-            );
-            await ctx.eval(`document.querySelector('section[aria-label*="GSAP"]')?.scrollIntoView({ block: "center" })`);
+            await clickTextButton(ctx, "动画库");
+            await ctx.waitForText("iPolloWork 动画预设", { timeoutMs: 20_000 });
           },
           assert: async () => {
             const state = await ctx.eval(`(() => {
-              const section = document.querySelector('section[aria-label*="GSAP"]');
-              return { label: section?.getAttribute("aria-label") ?? "", text: section?.innerText ?? "" };
+              const buttons = [...document.querySelectorAll("button")].map((button) => button.innerText.trim());
+              return { buttons, text: document.body.innerText };
             })()`);
-            ctx.assert(includesOne(state.label, LIBRARY_LABELS), `Unexpected library label: ${state.label}`);
-            ctx.assert(state.text.includes("129"), "The complete 129-item GSAP count is missing.");
-            ctx.assert(state.text.includes("69") && state.text.includes("60"), "Animation/effect totals are missing.");
-            ctx.assert(
-              state.text.includes("Local catalog synced") || state.text.includes("本地已同步"),
-              "Local catalog sync status is missing.",
-            );
+            ctx.assert(state.buttons.includes("动画库"), "动画库 tab is missing.");
+            ctx.assert(state.buttons.includes("特效库"), "特效库 tab is missing.");
+            ctx.assert(state.text.includes("iPolloWork 动画预设"), "Animation preset summary is missing.");
           },
           screenshot: {
-            name: "gsap-library-counts",
-            requireText: ["GSAP", "129", "69", "60"],
-            rejectText: ["Something went wrong"],
+            ...STUDIO_SCREENSHOT_TARGETS,
+            name: "studio-animation-effect-tabs",
+            requireText: ["动画库", "特效库", "iPolloWork 动画预设"],
           },
         });
       },
     },
     {
-      name: "Effects are grouped with dynamic previews",
+      name: "Official GSAP coverage is complete and independently counted",
       run: async (ctx) => {
-        await ctx.prove("The effect library exposes scroll, SVG, text, transition, and visual-effect categories with preview cards", {
+        await ctx.prove("The effect library reports 82 local presets and official coverage of 19 plugins plus 6 eases.", {
           voiceover: vo[1],
           action: async () => {
-            await clickButton(ctx, ["Effects 60", "特效库 60"]);
-            await ctx.eval(`document.querySelector('section[aria-label*="GSAP"]')?.scrollIntoView({ block: "center" })`);
+            await clickTextButton(ctx, "特效库");
+            await ctx.waitFor(
+              `document.body.innerText.includes("iPolloWork 特效预设")
+                && document.body.innerText.includes("82")
+                && document.body.innerText.includes("插件 19/19")
+                && document.body.innerText.includes("缓动 6/6")`,
+              { timeoutMs: 20_000, label: "complete official GSAP coverage" },
+            );
           },
           assert: async () => {
-            const state = await ctx.eval(`(() => {
-              const section = document.querySelector('section[aria-label*="GSAP"]');
-              const text = section?.innerText ?? "";
-              return {
-                text,
-                cardCount: section?.querySelectorAll('button[aria-pressed]').length ?? 0,
-                previewCount: section?.querySelectorAll("video, img").length ?? 0,
-              };
-            })()`);
-            for (const labels of [["Scroll", "滚动"], ["SVG"], ["Text effects", "文字特效"], ["Transitions", "转场"], ["VFX", "视觉特效"]]) {
-              ctx.assert(includesOne(state.text, labels), `Missing category: ${labels.join(" / ")}`);
-            }
-            ctx.assert(state.cardCount === 60, `Expected 60 effect cards, found ${state.cardCount}.`);
-            ctx.assert(state.previewCount > 0, "Effect cards do not expose dynamic preview media.");
+            const text = await ctx.waitFor(
+              `(() => {
+                const text = document.body.innerText;
+                return text.includes("iPolloWork 特效预设")
+                  && text.includes("82")
+                  && text.includes("插件 19/19")
+                  && text.includes("缓动 6/6")
+                  ? text
+                  : false;
+              })()`,
+              { timeoutMs: 20_000, label: "stable GSAP coverage summary" },
+            );
+            ctx.assert(text.includes("iPolloWork 特效预设") && text.includes("82"), "82 local effect presets are not reported.");
+            ctx.assert(text.includes("GSAP 3.15.0 官网能力"), "Official GSAP baseline label is missing.");
+            ctx.assert(text.includes("插件 19/19"), "Official plugin coverage is not 19/19.");
+            ctx.assert(text.includes("缓动 6/6"), "Official ease coverage is not 6/6.");
           },
           screenshot: {
-            name: "effect-categories-and-previews",
-            requireText: ["Scroll", "SVG", "VFX"],
+            ...STUDIO_SCREENSHOT_TARGETS,
+            name: "official-gsap-coverage",
+            requireText: ["82", "GSAP 3.15.0", "插件 19/19", "缓动 6/6"],
           },
         });
       },
     },
     {
-      name: "Plugin filtering exposes dependency metadata",
+      name: "Official tools and ease extensions are filterable",
       run: async (ctx) => {
-        await ctx.prove("Filtering by SplitText leaves its matching effect and exposes version, source, dependency, and bundled status", {
+        await ctx.prove("Official workflow tools and ease extensions are explicit, searchable catalog capabilities.", {
           voiceover: vo[2],
           action: async () => {
-            await clickButton(ctx, ["SplitText"]);
-            await ctx.waitForText("SplitText Reveal", { timeoutMs: 15_000 });
-            await openConfiguration(ctx, "SplitText Reveal");
+            await clickTextButton(ctx, "特效库");
+            await ctx.waitForText("iPolloWork 特效预设", { timeoutMs: 20_000 });
+            await clickTextButton(ctx, "GSDevTools");
+            await ctx.waitForText("GSDevTools Official Demo", { timeoutMs: 20_000 });
           },
           assert: async () => {
-            const dialog = await ctx.eval(`document.querySelector('[role="dialog"]')?.innerText ?? ""`);
-            ctx.assert(dialog.includes("SplitText Reveal"), "Filtered SplitText effect is missing.");
-            ctx.assert(dialog.includes("GSAP 3.15.0"), "GSAP version metadata is missing.");
-            ctx.assert(dialog.includes("SplitText"), "Plugin dependency metadata is missing.");
-            ctx.assert(dialog.includes("HyperFrames"), "Catalog source metadata is missing.");
-            ctx.assert(dialog.includes("Bundled") || dialog.includes("已内置"), "Bundled state is missing.");
+            const gsDevToolsText = await ctx.eval("document.body.innerText");
+            ctx.assert(gsDevToolsText.includes("GSDevTools Official Demo"), "GSDevTools tool entry is missing.");
+            await clickTextButton(ctx, "CustomWiggle");
+            await ctx.waitForText("CustomWiggle Official Demo", { timeoutMs: 20_000 });
+            const customWiggleText = await ctx.eval("document.body.innerText");
+            ctx.assert(customWiggleText.includes("CustomWiggle Official Demo"), "CustomWiggle ease entry is missing.");
+            ctx.assert(customWiggleText.includes("GSAP Official"), "Official source badge is missing.");
           },
           screenshot: {
-            name: "splittext-plugin-metadata",
-            requireText: ["SplitText Reveal", "GSAP 3.15.0", "SplitText", "HyperFrames"],
+            ...STUDIO_SCREENSHOT_TARGETS,
+            name: "official-gsap-tool-and-ease",
+            requireText: ["CustomWiggle Official Demo", "GSAP Official", "CustomWiggle"],
           },
         });
       },
     },
     {
-      name: "Effect parameters update the preview",
+      name: "Animation catalog remains independently available",
       run: async (ctx) => {
-        await ctx.prove("A GSAP effect exposes safe color, speed, duration, intensity, and easing controls with immediate preview feedback", {
+        await ctx.prove("Switching back to 动画库 shows the independent 69-animation preset count.", {
           voiceover: vo[3],
           action: async () => {
-            await closeDialog(ctx);
-            await ctx.eval(`(() => {
-              const splitText = [...document.querySelectorAll("button")]
-                .find((button) => button.innerText.includes("SplitText Reveal"));
-              if (splitText?.getAttribute("aria-pressed") === "true") splitText.click();
-            })()`);
-            await clickButton(ctx, ["All plugins", "全部插件"]);
-            await openConfiguration(ctx, "Liquid Background");
-            await setInputValue(ctx, "Background color", "#123456");
-            await setInputValue(ctx, "Wave intensity", "2.5");
-            await setInputValue(ctx, "Animation speed", "1.4");
-            await setInputValue(ctx, "Duration", "18");
-            await ctx.waitFor(
-              `document.querySelector('[role="dialog"] [aria-label="Duration"]')?.value === "18"`,
-              { timeoutMs: 10_000, label: "updated duration" },
-            );
+            await clickTextButton(ctx, "动画库");
+            await ctx.waitForText("iPolloWork 动画预设", { timeoutMs: 20_000 });
           },
           assert: async () => {
-            const state = await ctx.eval(`(() => {
-              const dialog = document.querySelector('[role="dialog"]');
-              const value = (label) => dialog?.querySelector('[aria-label="' + label + '"]')?.value;
-              return {
-                text: dialog?.innerText ?? "",
-                background: value("Background color"),
-                intensity: value("Wave intensity"),
-                speed: value("Animation speed"),
-                duration: value("Duration"),
-                previewBackground: dialog?.querySelector("video")?.parentElement?.style.backgroundColor ?? "",
-              };
-            })()`);
-            ctx.assert(state.background === "#123456", "Color value was not applied.");
-            ctx.assert(state.intensity === "2.5", "Intensity value was not applied.");
-            ctx.assert(state.speed === "1.4", "Speed value was not applied.");
-            ctx.assert(state.duration === "18", "Duration value was not applied.");
-            ctx.assert(state.previewBackground === "rgb(18, 52, 86)", "Preview did not reflect the color immediately.");
-            ctx.assert(state.text.includes("Entrance easing"), "Easing control is missing.");
+            const text = await ctx.eval("document.body.innerText");
+            ctx.assert(text.includes("iPolloWork 动画预设") && text.includes("69"), "69 animation presets are not reported.");
+            ctx.assert(!text.includes("插件 19/19"), "GSAP effect coverage leaked into the animation library.");
           },
           screenshot: {
-            name: "effect-parameter-preview",
-            requireText: ["Liquid Background", "#123456", "2.5", "18s", "Entrance easing"],
-          },
-        });
-      },
-    },
-    {
-      name: "Configured effect enters the current work",
-      run: async (ctx) => {
-        await ctx.prove("Adding the configured effect preserves its parameters and identifies the bundled local catalog state", {
-          voiceover: vo[4],
-          action: async () => {
-            await closeDialog(ctx);
-            const selected = await ctx.eval(`(() => {
-              const button = [...document.querySelectorAll("button")]
-                .find((candidate) => candidate.innerText.includes("Liquid Background"));
-              if (!button) return false;
-              if (button.getAttribute("aria-pressed") !== "true") button.click();
-              return true;
-            })()`);
-            ctx.assert(selected === true, "Could not add Liquid Background to the current work.");
-            await ctx.waitFor(
-              `[...document.querySelectorAll("button")].some((button) =>
-                button.innerText.includes("Liquid Background") && button.getAttribute("aria-pressed") === "true"
-              )`,
-              { timeoutMs: 15_000, label: "selected Liquid Background" },
-            );
-          },
-          assert: async () => {
-            const state = await ctx.eval(`(() => {
-              const section = document.querySelector('section[aria-label*="GSAP"]');
-              const cardButton = [...(section?.querySelectorAll("button") ?? [])]
-                .find((button) => button.innerText.includes("Liquid Background"));
-              return {
-                selected: cardButton?.getAttribute("aria-pressed"),
-                sectionText: section?.innerText ?? "",
-                cardText: cardButton?.innerText ?? "",
-              };
-            })()`);
-            ctx.assert(state.selected === "true", "Configured effect is not selected in the current work.");
-            ctx.assert(state.sectionText.includes("Selected 1") || state.sectionText.includes("已选择 1"), "Selected count is not visible.");
-            ctx.assert(state.sectionText.includes("Local catalog synced") || state.sectionText.includes("本地已同步"), "Catalog sync state is missing.");
-            ctx.assert(state.cardText.includes("Bundled") || state.cardText.includes("已内置"), "Offline bundled state is missing.");
-          },
-          screenshot: {
-            name: "configured-effect-added",
-            requireText: ["Liquid Background", "GSAP"],
+            ...STUDIO_SCREENSHOT_TARGETS,
+            name: "independent-animation-library",
+            requireText: ["动画库", "特效库", "iPolloWork 动画预设", "69"],
           },
         });
       },

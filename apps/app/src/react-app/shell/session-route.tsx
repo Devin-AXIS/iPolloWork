@@ -199,10 +199,12 @@ import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-targ
 import { SettingsSurface } from "./settings-route";
 import {
   ensureProviderListQuery,
+  getSelectableChatModelSnapshot,
   isModelAvailableInSelectableChatProviders,
   refreshProviderListQueries,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
+import { resolvePreferredSelectableChatModel } from "@/react-app/infra/preferred-chat-model";
 
 /**
  * Serialize an SDK error value into a string that parseSessionError can parse.
@@ -771,6 +773,28 @@ export function SessionRoute() {
     baseUrl: opencodeBaseUrl,
     workspaceRoot: selectedWorkspaceRoot,
   });
+  useEffect(() => {
+    if (!providerListQuery.data) return;
+    const preferredModel = resolvePreferredSelectableChatModel({
+      providers: getSelectableChatModelSnapshot(providerListQuery.data),
+      defaults: providerListQuery.data.default,
+      current: local.prefs.defaultModel,
+    });
+    if (
+      !preferredModel ||
+      (
+        preferredModel.providerID === local.prefs.defaultModel?.providerID &&
+        preferredModel.modelID === local.prefs.defaultModel.modelID
+      )
+    ) {
+      return;
+    }
+    local.setPrefs((previous) => ({
+      ...previous,
+      defaultModel: preferredModel,
+      modelVariant: null,
+    }));
+  }, [local.prefs.defaultModel, local.setPrefs, providerListQuery.data]);
   const selectedModelUnavailable = Boolean(
     local.prefs.defaultModel &&
       (

@@ -31,6 +31,11 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "kind": {
+      "type": "string",
+      "enum": ["animation", "effect"],
+      "description": "Product-facing animation/effect library placement."
+    },
     "author": {
       "type": "string",
       "minLength": 1
@@ -143,6 +148,16 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["provider", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" }
       }
     },
     "variables": {
