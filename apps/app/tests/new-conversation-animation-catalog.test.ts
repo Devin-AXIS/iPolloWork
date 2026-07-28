@@ -28,4 +28,12 @@ describe("new conversation animation catalog", () => {
     expect(starter).toContain('new_conversation.animations.error_title');
     expect(starter).toContain('shrink-0 rounded-full px-2 py-1 text-[11px] font-medium');
   });
+
+  test("edits validated effect variables and sends structured configuration", () => {
+    expect(starter).toContain("function AnimationParameterDialog");
+    expect(starter).toContain("updateHyperframesEffectVariableOverride");
+    expect(starter).toContain("new_conversation.animations.update_${lastUpdate}");
+    expect(surface).toContain("hyperframesSelectionPayload(selection)");
+    expect(surface).toContain("data-variable-values/getVariables");
+  });
 });

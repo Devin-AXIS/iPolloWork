@@ -4,6 +4,7 @@ import { isDesktopRuntime } from "./runtime-env";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
 import type { DenOrgMarketplace, DenOrgPluginResolved, DenResourceSnapshot } from "./den-types";
 import type { CloudImportedMarketplace, CloudImportedPlugin } from "../cloud/import-state";
+import type { HyperframesCatalogItem } from "@ipollowork/types/hyperframes";
 import type { TemplateCatalogItem, TemplateCategory, TemplateManifestV1, TemplateSessionSnapshot, TemplateSessionState } from "@ipollowork/types/templates";
 import type { iPolloWorkExtensionManifest } from "../extensions";
 
@@ -39,18 +40,13 @@ export type iPolloWorkServerCapabilities = {
   };
 };
 
-export type HyperframesCatalogItem = {
-  name: string;
-  title: string;
-  description: string;
-  type: "hyperframes:block" | "hyperframes:component";
-  category: string;
-  tags: string[];
-  duration?: number;
-  preview?: { poster?: string; video?: string };
-  /** Hidden scene-aware instruction supplied by Video Studio's Ask AI action. */
-  agentPrompt?: string;
-};
+export type {
+  HyperframesAnimationSelection,
+  HyperframesCatalogItem,
+  HyperframesEffectVariable,
+  HyperframesEffectVariableValue,
+  HyperframesEffectVariableValues,
+} from "@ipollowork/types/hyperframes";
 
 export type iPolloWorkServerStatus = "connected" | "disconnected" | "limited";
 

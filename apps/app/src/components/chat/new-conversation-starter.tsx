@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   CheckIcon,
@@ -24,13 +24,34 @@ import {
   PanelsTopLeft,
   Presentation,
   Plus,
+  RotateCcw,
+  SlidersHorizontal,
   Table2,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { isPptxCompatibleTemplate, type TemplateCatalogItem } from "@ipollowork/types/templates";
-import type { HyperframesCatalogItem } from "@/app/lib/ipollowork-server";
+import type {
+  HyperframesAnimationSelection,
+  HyperframesCatalogItem,
+  HyperframesEffectVariable,
+  HyperframesEffectVariableValue,
+  HyperframesEffectVariableValues,
+} from "@/app/lib/ipollowork-server";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { resolveHyperframesEffectVariableValues } from "@ipollowork/types/hyperframes";
+import {
+  hyperframesSelectionUpdateMode,
+  updateHyperframesEffectVariableOverride,
+} from "@/app/lib/hyperframes-effect-params";
 import { publicAssetUrl } from "@/app/lib/public-asset";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -56,8 +77,9 @@ type NewConversationStarterProps = {
   animationCatalog?: HyperframesCatalogItem[];
   animationCatalogLoading?: boolean;
   animationCatalogError?: string | null;
-  selectedAnimations?: HyperframesCatalogItem[];
+  selectedAnimations?: HyperframesAnimationSelection[];
   onToggleAnimation?: (animation: HyperframesCatalogItem) => void;
+  onChangeAnimationParams?: (animation: HyperframesCatalogItem, values: HyperframesEffectVariableValues) => void;
   onRetryAnimationCatalog?: () => void;
 };
 
@@ -304,21 +326,26 @@ function TemplateStrip({
 function AnimationCatalogCard({
   item,
   active,
+  configuredCount,
   recent,
   locale,
   onToggle,
+  onConfigure,
 }: {
   item: HyperframesCatalogItem;
   active: boolean;
+  configuredCount: number;
   recent: boolean;
   locale: "en" | "zh";
   onToggle?: (animation: HyperframesCatalogItem) => void;
+  onConfigure?: (animation: HyperframesCatalogItem) => void;
 }) {
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const hoveredRef = useRef(false);
   const focusedRef = useRef(false);
   const [previewing, setPreviewing] = useState(false);
   const previewVideo = item.preview?.video;
+  const categoryLabel = ANIMATION_CATEGORY_LABELS[item.category]?.[locale] ?? item.category;
 
   useEffect(() => {
     if (!previewing) return;
@@ -341,53 +368,272 @@ function AnimationCatalogCard({
   };
 
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={() => onToggle?.(item)}
-      onMouseEnter={() => {
-        hoveredRef.current = true;
-        updatePreview();
-      }}
-      onMouseLeave={() => {
-        hoveredRef.current = false;
-        updatePreview();
-      }}
-      onFocus={() => {
-        focusedRef.current = true;
-        updatePreview();
-      }}
-      onBlur={() => {
-        focusedRef.current = false;
-        updatePreview();
-      }}
-      className={cn("group w-[154px] shrink-0 snap-start overflow-hidden rounded-lg border bg-background text-left transition", active ? "border-primary ring-2 ring-primary/20" : "border-border/80 hover:border-primary/45")}
-    >
-      <div className="relative aspect-video overflow-hidden bg-muted">
-        {previewing && previewVideo ? (
-          <video
-            ref={previewRef}
-            src={previewVideo}
-            poster={item.preview?.poster}
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            className="h-full w-full object-cover"
-          />
-        ) : item.preview?.poster ? (
-          <img src={item.preview.poster} alt="" loading="lazy" className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">{ANIMATION_CATEGORY_LABELS[item.category]?.[locale] ?? item.category}</div>
-        )}
-        <span className={cn("absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm", active ? "border-primary bg-primary text-primary-foreground" : "border-white/70 bg-black/45 text-white opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100")}>
-          {active ? <CheckIcon className="size-3" /> : <Plus className="size-3" />}
+    <div className={cn("group w-[154px] shrink-0 snap-start overflow-hidden rounded-lg border bg-background text-left transition", active ? "border-primary ring-2 ring-primary/20" : "border-border/80 hover:border-primary/45")}>
+      <button
+        type="button"
+        aria-pressed={active}
+        onClick={() => onToggle?.(item)}
+        onMouseEnter={() => {
+          hoveredRef.current = true;
+          updatePreview();
+        }}
+        onMouseLeave={() => {
+          hoveredRef.current = false;
+          updatePreview();
+        }}
+        onFocus={() => {
+          focusedRef.current = true;
+          updatePreview();
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          updatePreview();
+        }}
+        className="block w-full text-left"
+      >
+        <div className="relative aspect-video overflow-hidden bg-muted">
+          {previewing && previewVideo ? (
+            <video
+              ref={previewRef}
+              src={previewVideo}
+              poster={item.preview?.poster}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+            />
+          ) : item.preview?.poster ? (
+            <img src={item.preview.poster} alt="" loading="lazy" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">{ANIMATION_CATEGORY_LABELS[item.category]?.[locale] ?? item.category}</div>
+          )}
+          <span className={cn("absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm", active ? "border-primary bg-primary text-primary-foreground" : "border-white/70 bg-black/45 text-white opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100")}>
+            {active ? <CheckIcon className="size-3" /> : <Plus className="size-3" />}
+          </span>
+          <span className="absolute left-1.5 top-1.5 max-w-[125px] truncate rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-medium text-white">
+            {item.engine ? `${item.engine.name.toUpperCase()} · ${categoryLabel}` : categoryLabel}
+          </span>
+          {recent ? <span className="absolute left-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-medium text-foreground shadow-sm">{t("new_conversation.animations.recent")}</span> : null}
+          {item.duration ? <span className="absolute bottom-1 right-1 rounded bg-black/65 px-1 text-[9px] text-white">{item.duration}s</span> : null}
+        </div>
+        <div className="truncate px-2 py-1.5 text-[11px] font-medium text-foreground">{item.title}</div>
+      </button>
+      {item.variables.length ? (
+        <button
+          type="button"
+          className="flex h-7 w-full items-center justify-center gap-1 border-t border-border/70 px-2 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={() => onConfigure?.(item)}
+        >
+          <SlidersHorizontal className="size-3" />
+          {configuredCount
+            ? t("new_conversation.animations.customized", { count: configuredCount })
+            : t("new_conversation.animations.configure")}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function AnimationVariableControl({
+  variable,
+  value,
+  onChange,
+}: {
+  variable: HyperframesEffectVariable;
+  value: HyperframesEffectVariableValue;
+  onChange: (value: HyperframesEffectVariableValue) => void;
+}) {
+  const inputId = `hyperframes-variable-${variable.id}`;
+  return (
+    <div className="space-y-1.5 rounded-lg border border-border/70 bg-background/65 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={inputId} className="text-[12px] font-medium text-foreground">{variable.label}</label>
+        <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase", variable.update === "live" ? "bg-emerald-500/10 text-emerald-600" : variable.update === "rebuild" ? "bg-amber-500/10 text-amber-600" : "bg-sky-500/10 text-sky-600")}>
+          {variable.update}
         </span>
-        {recent ? <span className="absolute left-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-medium text-foreground shadow-sm">{t("new_conversation.animations.recent")}</span> : null}
-        {item.duration ? <span className="absolute bottom-1 right-1 rounded bg-black/65 px-1 text-[9px] text-white">{item.duration}s</span> : null}
       </div>
-      <div className="truncate px-2 py-1.5 text-[11px] font-medium text-foreground">{item.title}</div>
-    </button>
+      {variable.description ? <p className="text-[10px] text-muted-foreground">{variable.description}</p> : null}
+      {variable.type === "color" ? (
+        <div className="flex items-center gap-2">
+          <input
+            id={inputId}
+            type="color"
+            value={typeof value === "string" ? value : variable.default}
+            aria-label={variable.label}
+            className="size-9 cursor-pointer rounded-md border border-border bg-transparent p-1"
+            onChange={(event) => onChange(event.target.value)}
+          />
+          <code className="text-[11px] text-muted-foreground">{value}</code>
+        </div>
+      ) : null}
+      {variable.type === "number" ? (
+        <div className="flex items-center gap-3">
+          <input
+            id={inputId}
+            type="range"
+            min={variable.min}
+            max={variable.max}
+            step={variable.step}
+            value={typeof value === "number" ? value : variable.default}
+            aria-label={variable.label}
+            className="min-w-0 flex-1 accent-primary"
+            onChange={(event) => onChange(Number(event.target.value))}
+          />
+          <output htmlFor={inputId} className="w-14 text-right text-[11px] tabular-nums text-foreground">
+            {value}{variable.unit ?? ""}
+          </output>
+        </div>
+      ) : null}
+      {variable.type === "enum" ? (
+        <select
+          id={inputId}
+          value={typeof value === "string" ? value : variable.default}
+          aria-label={variable.label}
+          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground"
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {variable.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      ) : null}
+      {variable.type === "string" ? (
+        <input
+          id={inputId}
+          type="text"
+          value={typeof value === "string" ? value : variable.default}
+          maxLength={variable.maxLength}
+          aria-label={variable.label}
+          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground"
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : null}
+      {variable.type === "boolean" ? (
+        <input
+          id={inputId}
+          type="checkbox"
+          checked={typeof value === "boolean" ? value : variable.default}
+          aria-label={variable.label}
+          className="size-4 accent-primary"
+          onChange={(event) => onChange(event.target.checked)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AnimationParameterDialog({
+  item,
+  values,
+  onChange,
+  onClose,
+}: {
+  item: HyperframesCatalogItem | null;
+  values: HyperframesEffectVariableValues;
+  onChange: (values: HyperframesEffectVariableValues) => void;
+  onClose: () => void;
+}) {
+  const previewRef = useRef<HTMLVideoElement | null>(null);
+  const preservedTimeRef = useRef(0);
+  const [previewRevision, setPreviewRevision] = useState(0);
+  const [lastUpdate, setLastUpdate] = useState<"live" | "rebuild" | "reload" | null>(null);
+  const resolvedValues = useMemo(
+    () => item ? resolveHyperframesEffectVariableValues(item, values) : {},
+    [item, values],
+  );
+  const backgroundColor = typeof resolvedValues.backgroundColor === "string" ? resolvedValues.backgroundColor : "#09090b";
+  const textColor = typeof resolvedValues.textColor === "string" ? resolvedValues.textColor : "#ffffff";
+  const waveIntensity = typeof resolvedValues.waveIntensity === "number" ? resolvedValues.waveIntensity : 1;
+  const animationSpeed = typeof resolvedValues.animationSpeed === "number" ? resolvedValues.animationSpeed : 1;
+
+  useEffect(() => {
+    if (previewRef.current) previewRef.current.playbackRate = animationSpeed;
+  }, [animationSpeed, previewRevision]);
+
+  const handleVariableChange = (variable: HyperframesEffectVariable, value: HyperframesEffectVariableValue) => {
+    if (!item) return;
+    const update = hyperframesSelectionUpdateMode(item, variable.id);
+    if (update !== "live") {
+      preservedTimeRef.current = previewRef.current?.currentTime ?? preservedTimeRef.current;
+      setPreviewRevision((current) => current + 1);
+    }
+    setLastUpdate(update);
+    onChange(updateHyperframesEffectVariableOverride(item, values, variable.id, value));
+  };
+
+  return (
+    <Dialog open={Boolean(item)} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-[980px] gap-4">
+        <DialogHeader>
+          <DialogTitle>{item ? t("new_conversation.animations.parameters_title", { title: item.title }) : ""}</DialogTitle>
+          <DialogDescription>{t("new_conversation.animations.parameters_description")}</DialogDescription>
+        </DialogHeader>
+        {item ? (
+          <div className="grid min-h-0 grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] gap-4 max-[860px]:grid-cols-1">
+            <div className="space-y-2">
+              <div
+                className="relative aspect-video overflow-hidden rounded-xl border border-border"
+                style={{ backgroundColor }}
+              >
+                {item.preview?.video ? (
+                  <video
+                    key={previewRevision}
+                    ref={previewRef}
+                    src={item.preview.video}
+                    poster={item.preview.poster}
+                    muted
+                    loop
+                    autoPlay
+                    playsInline
+                    className="h-full w-full object-cover transition-[filter,transform] duration-150"
+                    style={{
+                      filter: `saturate(${Math.max(0.4, waveIntensity)}) contrast(${1 + waveIntensity * 0.04})`,
+                      transform: `scale(${1 + waveIntensity * 0.005})`,
+                    }}
+                    onLoadedMetadata={(event) => {
+                      event.currentTarget.currentTime = Math.min(preservedTimeRef.current, event.currentTarget.duration || preservedTimeRef.current);
+                      event.currentTarget.playbackRate = animationSpeed;
+                    }}
+                  />
+                ) : item.preview?.poster ? (
+                  <img src={item.preview.poster} alt="" className="h-full w-full object-cover" />
+                ) : null}
+                <div
+                  className="pointer-events-none absolute inset-0 transition-colors duration-150"
+                  style={{ backgroundColor, mixBlendMode: "color", opacity: 0.65 }}
+                />
+                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-8 text-[10px]" style={{ color: textColor }}>
+                  <span>{t("new_conversation.animations.live_preview")}</span>
+                  <span>{item.engine ? `${item.engine.name.toUpperCase()} ${item.engine.version ?? ""}` : item.category}</span>
+                </div>
+              </div>
+              <div className="flex min-h-7 items-center justify-between rounded-lg bg-muted/60 px-2.5 text-[10px] text-muted-foreground">
+                <span>{lastUpdate ? t(`new_conversation.animations.update_${lastUpdate}`) : t("new_conversation.animations.preview_defaults")}</span>
+                <span>{t("new_conversation.animations.current_time", { time: preservedTimeRef.current.toFixed(1) })}</span>
+              </div>
+            </div>
+            <div className="grid max-h-[390px] grid-cols-2 gap-2 overflow-y-auto pr-1 max-[860px]:grid-cols-1">
+              {item.variables.map((variable) => (
+                <AnimationVariableControl
+                  key={variable.id}
+                  variable={variable}
+                  value={resolvedValues[variable.id] ?? variable.default}
+                  onChange={(value) => handleVariableChange(variable, value)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <DialogFooter className="flex-row justify-between sm:justify-between">
+          <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => onChange({})}>
+            <RotateCcw className="size-3.5" />
+            {t("common.reset")}
+          </button>
+          <button type="button" className="h-8 rounded-lg bg-foreground px-4 text-[11px] font-medium text-background" onClick={onClose}>
+            {t("common.close")}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -397,18 +643,22 @@ function AnimationCatalogStrip({
   error,
   selected,
   onToggle,
+  onChangeAnimationParams,
   onRetry,
 }: {
   items: HyperframesCatalogItem[];
   loading: boolean;
   error?: string | null;
-  selected: HyperframesCatalogItem[];
+  selected: HyperframesAnimationSelection[];
   onToggle?: (animation: HyperframesCatalogItem) => void;
+  onChangeAnimationParams?: (animation: HyperframesCatalogItem, values: HyperframesEffectVariableValues) => void;
   onRetry?: () => void;
 }) {
   const [category, setCategory] = useState<string | null>(null);
   const [recentAnimationNames, setRecentAnimationNames] = useState<string[]>([]);
-  const selectedNames = new Set(selected.map((item) => item.name));
+  const [editingItem, setEditingItem] = useState<HyperframesCatalogItem | null>(null);
+  const selectedByName = new Map(selected.map((selection) => [selection.item.name, selection]));
+  const selectedNames = new Set(selectedByName.keys());
   const locale = typeof document !== "undefined" && document.documentElement.lang === "zh" ? "zh" : "en";
   const recentNameSet = new Set(recentAnimationNames);
   const filtered = [...(category ? items.filter((item) => item.category === category) : items)].sort((left, right) => {
@@ -446,7 +696,8 @@ function AnimationCatalogStrip({
   };
 
   return (
-    <section className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3" aria-label={t("new_conversation.animations.title")}>
+    <>
+      <section className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3" aria-label={t("new_conversation.animations.title")}>
       <div className="flex items-start justify-between gap-3 px-0.5">
         <div>
           <p className="text-[13px] font-medium text-foreground">{t("new_conversation.animations.title")}</p>
@@ -484,18 +735,33 @@ function AnimationCatalogStrip({
                 key={item.name}
                 item={item}
                 active={active}
+                configuredCount={Object.keys(selectedByName.get(item.name)?.values ?? {}).length}
                 recent={recentNameSet.has(item.name)}
                 locale={locale}
                 onToggle={(animation) => {
                   rememberAnimation(animation);
                   onToggle?.(animation);
                 }}
+                onConfigure={(animation) => {
+                  rememberAnimation(animation);
+                  onChangeAnimationParams?.(animation, selectedByName.get(animation.name)?.values ?? {});
+                  setEditingItem(animation);
+                }}
               />
             );
           })}
         </div>
       )}
-    </section>
+      </section>
+      <AnimationParameterDialog
+        item={editingItem}
+        values={editingItem ? selectedByName.get(editingItem.name)?.values ?? {} : {}}
+        onChange={(values) => {
+          if (editingItem) onChangeAnimationParams?.(editingItem, values);
+        }}
+        onClose={() => setEditingItem(null)}
+      />
+    </>
   );
 }
 
@@ -628,6 +894,7 @@ export function NewConversationStarter({
   animationCatalogError = null,
   selectedAnimations = [],
   onToggleAnimation,
+  onChangeAnimationParams,
   onRetryAnimationCatalog,
 }: NewConversationStarterProps) {
   const [activeTemplateCategory, setActiveTemplateCategory] = useState<TemplateCategory | null>(null);
@@ -911,6 +1178,7 @@ export function NewConversationStarter({
             error={animationCatalogError}
             selected={selectedAnimations}
             onToggle={onToggleAnimation}
+            onChangeAnimationParams={onChangeAnimationParams}
             onRetry={onRetryAnimationCatalog}
           />
         ) : null}

@@ -1,5 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html
+  lang="en"
+  data-composition-variables='[{"id":"backgroundColor","label":"Background color","type":"color","default":"#0a0e17"},{"id":"textColor","label":"Text color","type":"color","default":"#e2e8f0"},{"id":"waveIntensity","label":"Wave intensity","type":"number","default":1,"min":0,"max":3,"step":0.1},{"id":"animationSpeed","label":"Animation speed","type":"number","default":1,"min":0.25,"max":3,"step":0.05,"unit":"x"},{"id":"duration","label":"Duration","type":"number","default":12,"min":1,"max":60,"step":0.5,"unit":"s"},{"id":"ease","label":"Entrance easing","type":"enum","default":"power2.out","options":[{"label":"Soft","value":"power2.out"},{"label":"Elastic","value":"back.out"},{"label":"Linear","value":"none"}]}]'
+>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -32,8 +35,8 @@
           style="
             width: 100%;
             height: 100%;
-            background: #0a0e17;
-            color: #e2e8f0;
+            background: var(--backgroundcolor, #0a0e17);
+            color: var(--textcolor, #e2e8f0);
             font-family:
               &quot;Inter&quot;,
               -apple-system,
@@ -523,6 +526,32 @@
 
       <script>
         window.__timelines = window.__timelines || {};
+        var effectVariables =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+        var effectBackgroundColor =
+          typeof effectVariables.backgroundColor === "string"
+            ? effectVariables.backgroundColor
+            : "#0a0e17";
+        var effectTextColor =
+          typeof effectVariables.textColor === "string" ? effectVariables.textColor : "#e2e8f0";
+        var effectWaveIntensity =
+          typeof effectVariables.waveIntensity === "number"
+            ? Math.max(0, effectVariables.waveIntensity)
+            : 1;
+        var effectSpeed =
+          typeof effectVariables.animationSpeed === "number"
+            ? Math.max(0.01, effectVariables.animationSpeed)
+            : 1;
+        var effectDuration =
+          typeof effectVariables.duration === "number" ? Math.max(1, effectVariables.duration) : 12;
+        var effectEase =
+          typeof effectVariables.ease === "string" ? effectVariables.ease : "power2.out";
+        var effectiveDuration = effectDuration / effectSpeed;
+        document
+          .getElementById("root")
+          .setAttribute("data-duration", String(effectiveDuration));
 
         setTimeout(function () {
           // ── Capture panel textures via html2canvas-like rasterization ──
@@ -585,7 +614,7 @@
                 c.width = W;
                 c.height = H;
                 var ctx = c.getContext("2d");
-                ctx.fillStyle = panelEl.id === "panel-a" ? "#0a0e17" : "#0f1419";
+                ctx.fillStyle = panelEl.id === "panel-a" ? effectBackgroundColor : "#0f1419";
                 ctx.fillRect(0, 0, W, H);
                 URL.revokeObjectURL(url);
                 resolve(c);
@@ -602,7 +631,7 @@
             var ctx = c.getContext("2d");
 
             // Background
-            ctx.fillStyle = "#0a0e17";
+            ctx.fillStyle = effectBackgroundColor;
             ctx.fillRect(0, 0, W, H);
 
             // Logo
@@ -611,13 +640,13 @@
             grad.addColorStop(1, "#8b5cf6");
             roundRect(ctx, 80, 60, 36, 36, 10, grad);
 
-            ctx.fillStyle = "#e2e8f0";
+              ctx.fillStyle = effectTextColor;
             ctx.font = "700 22px Inter, sans-serif";
             ctx.fillText("Vault", 126, 86);
 
             // Nav
             ctx.font = "400 15px Inter, sans-serif";
-            ctx.fillStyle = "#e2e8f0";
+              ctx.fillStyle = effectTextColor;
             ctx.fillText("Portfolio", 600, 82);
             ctx.fillStyle = "#64748b";
             ctx.fillText("Markets", 700, 82);
@@ -706,7 +735,7 @@
               ctx.font = "700 12px Inter, sans-serif";
               ctx.fillText(cards[i].sym.substring(0, 2), cx + 32, cardY + 46);
 
-              ctx.fillStyle = "#e2e8f0";
+            ctx.fillStyle = effectTextColor;
               ctx.font = "600 16px Inter, sans-serif";
               ctx.fillText(cards[i].sym, cx + 68, cardY + 40);
 
@@ -718,7 +747,7 @@
               ctx.font = "600 14px Inter, sans-serif";
               ctx.fillText(cards[i].change, cx + cardW - 80, cardY + 44);
 
-              ctx.fillStyle = "#e2e8f0";
+            ctx.fillStyle = effectTextColor;
               ctx.font = "700 28px Inter, sans-serif";
               ctx.fillText(cards[i].price, cx + 24, cardY + 120);
             }
@@ -1062,9 +1091,9 @@
           tl.to(
             uniforms.uWaveIntensity,
             {
-              value: 1.0,
+              value: 1.0 * effectWaveIntensity,
               duration: 2,
-              ease: "power2.out",
+              ease: effectEase,
             },
             0,
           );
@@ -1095,7 +1124,7 @@
           tl.to(
             uniforms.uWaveIntensity,
             {
-              value: 2.5,
+              value: 2.5 * effectWaveIntensity,
               duration: 1.0,
               ease: "power2.in",
             },
@@ -1127,7 +1156,7 @@
           tl.to(
             uniforms.uWaveIntensity,
             {
-              value: 1.0,
+              value: 1.0 * effectWaveIntensity,
               duration: 2.0,
               ease: "power2.out",
             },
@@ -1160,7 +1189,7 @@
           tl.to(
             uniforms.uWaveIntensity,
             {
-              value: 0.7,
+              value: 0.7 * effectWaveIntensity,
               duration: 2.0,
               ease: "sine.inOut",
             },
@@ -1224,14 +1253,16 @@
             },
             0,
           );
+          tl.duration(effectiveDuration);
 
           window.__timelines["vfx-liquid-background"] = tl;
 
           // ── hf-seek integration for Three.js adapter ──
           window.addEventListener("hf-seek", function (e) {
             var t = e.detail.time;
-            tl.seek(t);
-            uniforms.uTime.value = t;
+            var seekTime = Math.max(0, Math.min(t, effectiveDuration));
+            tl.seek(seekTime);
+            uniforms.uTime.value = seekTime;
             renderer.render(scene, camera);
           });
 

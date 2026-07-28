@@ -53,6 +53,11 @@
       "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
       "description": "Minimum `hyperframes` CLI version required to install this item."
     },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Version of this registry item contract/content."
+    },
     "deprecated": {
       "type": "string",
       "minLength": 1,
@@ -123,6 +128,85 @@
       "properties": {
         "video": { "type": "string" },
         "poster": { "type": "string" }
+      }
+    },
+    "engine": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "seekable": { "type": "boolean" }
+      }
+    },
+    "variables": {
+      "type": "array",
+      "description": "User-facing values aligned with the composition variable contract.",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "label", "default"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["string", "number", "color", "boolean", "enum"]
+          },
+          "label": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "default": {
+            "type": ["string", "number", "boolean"]
+          },
+          "placeholder": { "type": "string" },
+          "maxLength": { "type": "integer", "minimum": 1 },
+          "min": { "type": "number" },
+          "max": { "type": "number" },
+          "step": { "type": "number", "exclusiveMinimum": 0 },
+          "unit": { "type": "string", "minLength": 1 },
+          "options": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["value", "label"],
+              "additionalProperties": false,
+              "properties": {
+                "value": { "type": "string", "minLength": 1 },
+                "label": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "update": {
+            "type": "string",
+            "enum": ["live", "rebuild", "reload"],
+            "default": "live"
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "type": { "const": "number" } } },
+            "then": { "properties": { "default": { "type": "number" } } }
+          },
+          {
+            "if": { "properties": { "type": { "const": "boolean" } } },
+            "then": { "properties": { "default": { "type": "boolean" } } }
+          },
+          {
+            "if": { "properties": { "type": { "enum": ["string", "color", "enum"] } } },
+            "then": { "properties": { "default": { "type": "string" } } }
+          },
+          {
+            "if": { "properties": { "type": { "const": "color" } } },
+            "then": { "properties": { "default": { "pattern": "^#[0-9A-Fa-f]{6}$" } } }
+          },
+          {
+            "if": { "properties": { "type": { "const": "enum" } } },
+            "then": { "required": ["options"] }
+          }
+        ]
       }
     },
     "relatedSkill": {

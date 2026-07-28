@@ -183,6 +183,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
               video: typeof candidate.preview.video === "string" ? candidate.preview.video : undefined,
             }
           : undefined,
+        variables: [],
         agentPrompt: candidate.agentPrompt,
       };
       window.dispatchEvent(new CustomEvent("ipollowork:add-animation-reference", {

@@ -13,10 +13,13 @@ import { abortSessionSafe } from "@/app/lib/opencode-session";
 import { t } from "@/i18n";
 import { readWorkspaceCloudImports, type CloudImportedPlugin } from "@/app/cloud/import-state";
 import type {
+  HyperframesAnimationSelection,
   HyperframesCatalogItem,
+  HyperframesEffectVariableValues,
   iPolloWorkServerClient,
   iPolloWorkSessionSnapshot,
 } from "@/app/lib/ipollowork-server";
+import { hyperframesSelectionPayload } from "@/app/lib/hyperframes-effect-params";
 import type {
   ComposerAttachment,
   ComposerDraft,
@@ -494,26 +497,32 @@ function StarterCapabilityChip({ capability, onClear }: { capability: StarterCap
   );
 }
 
-function AnimationChip({ animation, onClear }: { animation: HyperframesCatalogItem; onClear: () => void }) {
+function AnimationChip({ animation, onClear }: { animation: HyperframesAnimationSelection; onClear: () => void }) {
+  const configuredCount = Object.keys(animation.values).length;
   return (
     <div className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/8 px-2.5 text-[11px] text-dls-text shadow-sm">
       <Film className="size-3.5 shrink-0 text-emerald-600" aria-hidden />
-      <span className="max-w-[12rem] truncate font-medium">{animation.title}</span>
-      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-dls-secondary hover:bg-emerald-500/15 hover:text-dls-text" aria-label={t("new_conversation.animations.remove", { title: animation.title })} onClick={onClear}>
+      <span className="max-w-[12rem] truncate font-medium">{animation.item.title}</span>
+      {configuredCount ? <span className="rounded-full bg-emerald-500/12 px-1.5 text-[9px] text-emerald-700">{t("new_conversation.animations.customized", { count: configuredCount })}</span> : null}
+      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-dls-secondary hover:bg-emerald-500/15 hover:text-dls-text" aria-label={t("new_conversation.animations.remove", { title: animation.item.title })} onClick={onClear}>
         <X className="size-3" aria-hidden />
       </button>
     </div>
   );
 }
 
-function animationSelectionInstruction(animations: HyperframesCatalogItem[]): string | null {
+function animationSelectionInstruction(animations: HyperframesAnimationSelection[]): string | null {
   if (!animations.length) return null;
-  const choices = animations.map((item) => item.agentPrompt?.trim() || `- ${item.title} (registry: ${item.name}, category: ${item.category}): ${item.description}`).join("\n\n");
+  const choices = animations.map((selection) => {
+    const item = selection.item;
+    const reference = item.agentPrompt?.trim() || `- ${item.title} (registry: ${item.name}, category: ${item.category}): ${item.description}`;
+    return `${reference}\nEffect configuration: ${JSON.stringify(hyperframesSelectionPayload(selection))}`;
+  }).join("\n\n");
   return [
     "Selected HyperFrames animation references:",
     choices,
     "Use /hyperframes and treat these as the user's explicit motion direction for the video.",
-    "Install or adapt the selected registry items where they support the story; customize their text, media, colors, timing, and composition to the user's prompt.",
+    "Install or adapt the selected registry items where they support the story. Apply the supplied variables through HyperFrames data-variable-values/getVariables so preview and deterministic render use the same values.",
     "Do not paste unrelated demo content and do not force every selection into every scene. Preserve the visual characteristics that motivated each selection while producing one coherent video.",
   ].join("\n");
 }
@@ -568,7 +577,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [animationCatalogLoading, setAnimationCatalogLoading] = useState(false);
   const [animationCatalogError, setAnimationCatalogError] = useState<string | null>(null);
   const [animationCatalogRevision, setAnimationCatalogRevision] = useState(0);
-  const [selectedAnimations, setSelectedAnimations] = useState<HyperframesCatalogItem[]>([]);
+  const [selectedAnimations, setSelectedAnimations] = useState<HyperframesAnimationSelection[]>([]);
 
   useEffect(() => {
     const addAnimationReference = (event: Event) => {
@@ -577,8 +586,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
       const item = detail.item as HyperframesCatalogItem;
       if (!item.name || !item.title || !item.agentPrompt) return;
       setSelectedAnimations((current) => [
-        ...current.filter((animation) => animation.name !== item.name),
-        item,
+        ...current.filter((animation) => animation.item.name !== item.name),
+        { item, values: {} },
       ]);
     };
     window.addEventListener("ipollowork:add-animation-reference", addAnimationReference);
@@ -917,6 +926,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
     setAwaitingAssistantBaseline(renderedMessages.length);
     try {
       await props.onSendDraft(nextDraft, props.sessionId);
+      if (selectedAnimations.length) {
+        recordInspectorEvent("composer.hyperframes_sent", {
+          workspaceId: props.workspaceId,
+          sessionId: props.sessionId,
+          selections: selectedAnimations.map(hyperframesSelectionPayload),
+        });
+      }
       draftAttachments.forEach(revokeAttachmentPreview);
       setStarterCapability(null);
       setSelectedAnimations([]);
@@ -931,7 +947,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setSending(false);
       throw nextError;
     }
-  }, [appendComposerHistory, props.onSendDraft, props.sessionId, props.workspaceId, renderedMessages.length, setComposerDraft]);
+  }, [appendComposerHistory, props.onSendDraft, props.sessionId, props.workspaceId, renderedMessages.length, selectedAnimations, setComposerDraft]);
 
   const clearComposer = useCallback(() => {
     clearComposerSession(props.sessionId);
@@ -1546,7 +1562,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 {starterCapability || selectedAnimations.length ? (
                   <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
                     {starterCapability ? <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} /> : null}
-                    {selectedAnimations.map((animation) => <AnimationChip key={animation.name} animation={animation} onClear={() => setSelectedAnimations((current) => current.filter((item) => item.name !== animation.name))} />)}
+                    {selectedAnimations.map((animation) => <AnimationChip key={animation.item.name} animation={animation} onClear={() => setSelectedAnimations((current) => current.filter((item) => item.item.name !== animation.item.name))} />)}
                   </div>
                 ) : null}
                 {queuedMessages.length > 0 ? (
@@ -1621,7 +1637,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
               animationCatalogLoading={animationCatalogLoading}
               animationCatalogError={animationCatalogError}
               selectedAnimations={selectedAnimations}
-              onToggleAnimation={(animation) => setSelectedAnimations((current) => current.some((item) => item.name === animation.name) ? current.filter((item) => item.name !== animation.name) : [...current, animation])}
+              onToggleAnimation={(animation) => setSelectedAnimations((current) => current.some((item) => item.item.name === animation.name) ? current.filter((item) => item.item.name !== animation.name) : [...current, { item: animation, values: {} }])}
+              onChangeAnimationParams={(animation, values: HyperframesEffectVariableValues) => setSelectedAnimations((current) => [
+                ...current.filter((item) => item.item.name !== animation.name),
+                { item: animation, values },
+              ])}
               onRetryAnimationCatalog={() => setAnimationCatalogRevision((current) => current + 1)}
             />
             <div ref={composerShellRef} className="mt-12 shrink-0">

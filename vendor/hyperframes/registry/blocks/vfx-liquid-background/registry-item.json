@@ -1,6 +1,7 @@
 {
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "vfx-liquid-background",
+  "version": "1.0.0",
   "type": "hyperframes:block",
   "title": "Liquid Background",
   "description": "Organic liquid simulation with vertex displacement on a subdivided plane. HTML content floats above rippling fluid surface with real-time wave dynamics.",
@@ -10,6 +11,11 @@
     "height": 1080
   },
   "duration": 12,
+  "engine": {
+    "name": "gsap",
+    "version": "3.14.2",
+    "seekable": true
+  },
   "tags": ["html-in-canvas", "liquid", "webgl", "displacement", "background"],
   "files": [
     {
@@ -22,6 +28,66 @@
     "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-background.mp4",
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-background.png"
   },
+  "variables": [
+    {
+      "id": "backgroundColor",
+      "label": "Background color",
+      "type": "color",
+      "default": "#0a0e17",
+      "update": "live"
+    },
+    {
+      "id": "textColor",
+      "label": "Text color",
+      "type": "color",
+      "default": "#e2e8f0",
+      "update": "live"
+    },
+    {
+      "id": "waveIntensity",
+      "label": "Wave intensity",
+      "type": "number",
+      "default": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.1,
+      "update": "live"
+    },
+    {
+      "id": "animationSpeed",
+      "label": "Animation speed",
+      "type": "number",
+      "default": 1,
+      "min": 0.25,
+      "max": 3,
+      "step": 0.05,
+      "unit": "x",
+      "update": "live"
+    },
+    {
+      "id": "duration",
+      "label": "Duration",
+      "type": "number",
+      "default": 12,
+      "min": 1,
+      "max": 60,
+      "step": 0.5,
+      "unit": "s",
+      "update": "rebuild"
+    },
+    {
+      "id": "ease",
+      "label": "Entrance easing",
+      "type": "enum",
+      "default": "power2.out",
+      "options": [
+        { "label": "Soft", "value": "power2.out" },
+        { "label": "Elastic", "value": "back.out" },
+        { "label": "Linear", "value": "none" }
+      ],
+      "update": "rebuild"
+    }
+  ],
   "params": [
     {
       "key": "--bg-color",
