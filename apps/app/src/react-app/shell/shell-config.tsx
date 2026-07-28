@@ -8,20 +8,16 @@ import { createContext, useCallback, use, useMemo, useState, type ReactNode } fr
 export type ShellConfig = {
   /** Display name shown in the title bar, sidebar, and welcome page. */
   appName: string;
-  /** Show the left sidebar with workspace/session list. */
+  /** Show the left sidebar with the current space's session list. */
   sidebar: boolean;
   /** Show the Cloud sign-in button when not signed in. */
   cloudSignin: boolean;
-  /** Show the welcome/onboarding page for new users. */
-  welcomePage: boolean;
   /** Show starter task cards in empty sessions. */
   starterCards: boolean;
   /** Show the model picker / model change UI. */
   modelPicker: boolean;
   /** Show the built-in browser panel. */
   browser: boolean;
-  /** Show the "Add workspace" button. */
-  addWorkspace: boolean;
   /** Show the notification bell in the header. */
   notifications: boolean;
 };
@@ -34,11 +30,9 @@ export const DEFAULT_SHELL_CONFIG: ShellConfig = {
   appName: "iPolloWork",
   sidebar: true,
   cloudSignin: true,
-  welcomePage: true,
   starterCards: true,
   modelPicker: true,
   browser: true,
-  addWorkspace: true,
   notifications: true,
 };
 
@@ -54,7 +48,13 @@ function readShellConfig(): ShellConfig {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SHELL_CONFIG;
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_SHELL_CONFIG, ...parsed };
+    if (parsed && typeof parsed === "object") {
+      delete parsed.addWorkspace;
+      delete parsed.welcomePage;
+    }
+    const normalized = { ...DEFAULT_SHELL_CONFIG, ...parsed };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    return normalized;
   } catch {
     return DEFAULT_SHELL_CONFIG;
   }

@@ -109,6 +109,8 @@ test("recovers empty desktop workspace state from token store paths", async () =
     const persisted = JSON.parse(await readFile(path.join(userData, "ipollowork-workspaces.json"), "utf8"));
     assert.equal(persisted.workspaces.length, 1);
     assert.equal(persisted.selectedWorkspaceId, state.workspaces[0].id);
+    const tokenStore = JSON.parse(await readFile(path.join(userData, "ipollowork-server-tokens.json"), "utf8"));
+    assert.deepEqual(Object.keys(tokenStore.workspaces), [oldWorkspace]);
   } finally {
     if (previous === undefined) delete process.env.IPOLLOWORK_SERVER_CONFIG;
     else process.env.IPOLLOWORK_SERVER_CONFIG = previous;
@@ -158,6 +160,59 @@ test("migrates an older enterprise workspace from its dedicated context path", a
   });
 });
 
+test("collapses historical workstations into one Personal and one Enterprise space", async () => {
+  await withIsolatedBootstrapStore(async ({ createStore, root, userDataPath }) => {
+    const personalPath = path.join(root, "personal");
+    const legacyPersonalPath = path.join(personalPath, ".ipollowork", "workstations", "old-personal");
+    const enterprisePath = path.join(root, ".ipollowork", "work-contexts", "ent_medical");
+    const legacyEnterprisePath = path.join(personalPath, ".ipollowork", "workstations", "old-enterprise");
+    await Promise.all([
+      mkdir(personalPath, { recursive: true }),
+      mkdir(legacyPersonalPath, { recursive: true }),
+      mkdir(enterprisePath, { recursive: true }),
+      mkdir(legacyEnterprisePath, { recursive: true }),
+      mkdir(userDataPath, { recursive: true }),
+    ]);
+    await writeFile(
+      path.join(userDataPath, "ipollowork-workspaces.json"),
+      JSON.stringify({
+        selectedId: "legacy-personal",
+        activeId: "legacy-personal",
+        workspaces: [
+          { id: "personal", name: "Personal", path: personalPath, workspaceType: "local" },
+          { id: "legacy-personal", name: "Old Personal", path: legacyPersonalPath, workspaceType: "local" },
+          { id: "enterprise", name: "Medical", path: enterprisePath, workspaceType: "local", workContextId: "enterprise:ent_medical" },
+          { id: "legacy-enterprise", name: "Old Medical", path: legacyEnterprisePath, workspaceType: "local", workContextId: "enterprise:ent_medical" },
+        ],
+      }),
+      "utf8",
+    );
+    await writeFile(
+      path.join(userDataPath, "ipollowork-server-tokens.json"),
+      JSON.stringify({
+        version: 1,
+        workspaces: {
+          [personalPath]: { token: "personal-token" },
+          [legacyPersonalPath]: { token: "old-personal-token" },
+          [enterprisePath]: { token: "enterprise-token" },
+          [legacyEnterprisePath]: { token: "old-enterprise-token" },
+        },
+      }),
+      "utf8",
+    );
+
+    const state = await createStore().readWorkspaceState();
+    assert.deepEqual(state.workspaces.map((workspace) => workspace.id), ["personal", "enterprise"]);
+    assert.equal(state.workspaces[0].name, "Personal");
+    assert.equal(state.workspaces[0].displayName, "Personal");
+    assert.equal(state.selectedId, "personal");
+    assert.equal(state.activeId, "personal");
+
+    const tokenStore = JSON.parse(await readFile(path.join(userDataPath, "ipollowork-server-tokens.json"), "utf8"));
+    assert.deepEqual(Object.keys(tokenStore.workspaces).sort(), [enterprisePath, personalPath].sort());
+  });
+});
+
 test("prefers server config workspaces when desktop state is empty", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ipollowork-workspace-store-"));
   const userData = path.join(root, "userData");
@@ -196,10 +251,56 @@ test("prefers server config workspaces when desktop state is empty", async () =>
     const state = await store.readWorkspaceState();
     assert.equal(state.workspaces.length, 1);
     assert.equal(state.workspaces[0].path, oldWorkspaceReal);
-    assert.equal(state.workspaces[0].name, "From Server");
+    assert.equal(state.workspaces[0].name, "Personal");
   } finally {
     if (previous === undefined) delete process.env.IPOLLOWORK_SERVER_CONFIG;
     else process.env.IPOLLOWORK_SERVER_CONFIG = previous;
+  }
+});
+
+test("development workspace recovery reads only the sandbox server config", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-workspace-store-"));
+  const userData = path.join(root, "userData");
+  const globalXdg = path.join(root, "global-xdg");
+  const sandboxWorkspace = path.join(root, "sandbox-personal");
+  const globalWorkspace = path.join(root, "global-old-workstation");
+  const sandboxConfig = path.join(userData, "ipollowork-dev-data", "xdg", "config", "ipollowork", "server.json");
+  const globalConfig = path.join(globalXdg, "ipollowork", "server.json");
+  await Promise.all([
+    mkdir(userData, { recursive: true }),
+    mkdir(sandboxWorkspace, { recursive: true }),
+    mkdir(globalWorkspace, { recursive: true }),
+    mkdir(path.dirname(sandboxConfig), { recursive: true }),
+    mkdir(path.dirname(globalConfig), { recursive: true }),
+  ]);
+  await writeFile(
+    path.join(userData, "ipollowork-workspaces.json"),
+    JSON.stringify({ selectedId: "", activeId: null, watchedId: null, workspaces: [] }),
+    "utf8",
+  );
+  await writeFile(sandboxConfig, JSON.stringify({ workspaces: [{ path: sandboxWorkspace, name: "Personal" }] }), "utf8");
+  await writeFile(globalConfig, JSON.stringify({ workspaces: [{ path: globalWorkspace, name: "Old workstation" }] }), "utf8");
+
+  const previousDevMode = process.env.IPOLLOWORK_DEV_MODE;
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  const previousServerConfig = process.env.IPOLLOWORK_SERVER_CONFIG;
+  process.env.IPOLLOWORK_DEV_MODE = "1";
+  process.env.XDG_CONFIG_HOME = globalXdg;
+  delete process.env.IPOLLOWORK_SERVER_CONFIG;
+  try {
+    const store = createWorkspaceStore({
+      app: { getPath: (name) => name === "userData" ? userData : root },
+      defaultDenBaseUrl: "https://example.test",
+      defaultRequireSignin: false,
+      forceRequireSignin: false,
+    });
+    const state = await store.readWorkspaceState();
+    assert.equal(state.workspaces.length, 1);
+    assert.equal(state.workspaces[0].path, await realpath(sandboxWorkspace));
+  } finally {
+    restoreEnv("IPOLLOWORK_DEV_MODE", previousDevMode);
+    restoreEnv("XDG_CONFIG_HOME", previousXdg);
+    restoreEnv("IPOLLOWORK_SERVER_CONFIG", previousServerConfig);
   }
 });
 

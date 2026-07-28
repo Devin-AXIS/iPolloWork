@@ -31,19 +31,13 @@ import {
   getWorkspaceSettingsTabs,
   isSettingsTabBeta,
 } from "./settings-page";
-import { WorkspaceIcon } from "../../../design-system/workspace-icon";
 import { useFeatureFlagsPreferences } from "../state/feature-flags-preferences";
 
 type SettingsPageFrameProps = Omit<React.ComponentProps<typeof SettingsPage>, "children">;
 
 export type SettingsShellProps = SettingsPageFrameProps & {
-  selectedWorkspaceId: string;
-  selectedWorkspaceName: string;
-  selectedWorkspaceColor: string;
-  workspaces: Array<{ id: string; name: string; color: string }>;
   headerStatus?: string;
   busyHint?: string | null;
-  onSelectWorkspace: (workspaceId: string) => void;
   onClose: () => void;
   headerLeadingSlot?: React.ReactNode;
   children: React.ReactNode;
@@ -65,12 +59,6 @@ export function SettingsShell(props: SettingsShellProps) {
               activeTab={props.activeTab}
               developerMode={props.developerMode}
               onSelectTab={props.onSelectTab}
-            />
-            <WorkspaceMenu
-              selectedWorkspaceId={props.selectedWorkspaceId}
-              selectedWorkspaceName={props.selectedWorkspaceName}
-              workspaces={props.workspaces}
-              onSelectWorkspace={props.onSelectWorkspace}
             />
           </div>
           <div className="flex shrink-0 items-center gap-1 mac:titlebar-no-drag">
@@ -108,11 +96,6 @@ export function SettingsShell(props: SettingsShellProps) {
           onSelectTab={props.onSelectTab}
           developerMode={props.developerMode}
           onClose={props.onClose}
-          selectedWorkspaceId={props.selectedWorkspaceId}
-          selectedWorkspaceName={props.selectedWorkspaceName}
-          selectedWorkspaceColor={props.selectedWorkspaceColor}
-          workspaces={props.workspaces}
-          onSelectWorkspace={props.onSelectWorkspace}
         />
         <SidebarInset className="min-h-0 overflow-hidden bg-background mac:bg-background/80 mac:[&_header]:transition-[padding-left] mac:[&_header]:duration-200 mac:[&_header]:ease-linear mac:peer-data-[state=collapsed]:[&_header]:pl-16 [&_header]:pl-16 md:[&_header]:pl-6">
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -122,9 +105,6 @@ export function SettingsShell(props: SettingsShellProps) {
                   <SidebarTrigger className="mac:titlebar-no-drag md:hidden" />
                   {props.headerLeadingSlot}
                   <h1 className="truncate text-[15px] font-semibold text-dls-text">{title}</h1>
-                  <span className="hidden truncate text-[13px] text-dls-secondary lg:inline">
-                    {props.selectedWorkspaceName}
-                  </span>
                   {props.developerMode && props.headerStatus ? (
                     <span className="hidden text-[12px] text-dls-secondary lg:inline">
                       {props.headerStatus}
@@ -207,34 +187,6 @@ function SettingsSectionMenu(props: Pick<SettingsPageFrameProps, "activeTab" | "
               );
             })}
           </DropdownMenuGroup>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function WorkspaceMenu(props: Pick<SettingsShellProps, "selectedWorkspaceId" | "selectedWorkspaceName" | "workspaces" | "onSelectWorkspace">) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={(
-          <Button variant="ghost" size="sm" className="min-w-0 max-w-36 justify-start gap-2 text-dls-secondary">
-            <WorkspaceIcon workspaceId={props.selectedWorkspaceId} sizeClass="size-4" />
-            <span className="truncate">{props.selectedWorkspaceName}</span>
-            <ChevronDown className="ml-auto size-4 shrink-0" />
-          </Button>
-        )}
-      />
-      <DropdownMenuContent className="w-56">
-        {props.workspaces.map((workspace) => (
-          <DropdownMenuItem
-            key={workspace.id}
-            onClick={() => props.onSelectWorkspace(workspace.id)}
-            disabled={workspace.id === props.selectedWorkspaceId}
-          >
-            <WorkspaceIcon workspaceId={workspace.id} sizeClass="size-4" />
-            <span className="truncate">{workspace.name}</span>
-          </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>

@@ -53,24 +53,41 @@ async function currentSessions(ctx, options = {}) {
   const requiredWorkspaceName = options.requiredWorkspaceName || "";
   const forbiddenWorkspaceName = options.forbiddenWorkspaceName || "";
   await ctx.waitFor(
-    `window.__ipolloworkControl.execute("session.list_sessions").then((response) => {
-      const activeSessionId = location.hash.match(/\\/session\\/(ses_[A-Za-z0-9]+)/)?.[1] || "";
-      const sessions = response.result || [];
-      if (activeSessionId && !sessions.some((session) => session.sessionId === activeSessionId)) return false;
-      const requiredWorkspaceName = ${JSON.stringify(requiredWorkspaceName)};
-      const forbiddenWorkspaceName = ${JSON.stringify(forbiddenWorkspaceName)};
-      if (requiredWorkspaceName && sessions.some((session) => session.workspace !== requiredWorkspaceName)) return false;
-      if (forbiddenWorkspaceName && sessions.some((session) => session.workspace === forbiddenWorkspaceName)) return false;
-      window.__ipolloworkWorkContextProofSessions = sessions;
-      return true;
-    })`,
+    `(() => {
+      const route = window.__ipollowork?.slice?.("route");
+      if (!route || route.loading) return false;
+      const selectedWorkspaceId = route.selectedWorkspaceId || "";
+      return Boolean(
+        selectedWorkspaceId
+        && route.sessionsByWorkspaceId
+        && Object.prototype.hasOwnProperty.call(route.sessionsByWorkspaceId, selectedWorkspaceId)
+        && window.__ipolloworkControl.listActions().some((action) =>
+          action.id === "session.list_sessions" && !action.busy && !action.disabled
+        )
+      );
+    })()`,
     { timeoutMs: 30_000, label: "session list updated for active workspace" },
   );
-  return ctx.eval(`(() => {
-    const sessions = window.__ipolloworkWorkContextProofSessions || [];
-    delete window.__ipolloworkWorkContextProofSessions;
-    return sessions;
-  })()`);
+  const response = await ctx.eval(
+    `window.__ipolloworkControl.execute("session.list_sessions")`,
+    { awaitPromise: true },
+  );
+  ctx.assert(response?.ok === true, `Could not read the active session list: ${response?.error || "unknown error"}`);
+  const sessions = response.result || [];
+  const activeSessionId = await ctx.eval(`location.hash.match(/\\/session\\/(ses_[A-Za-z0-9]+)/)?.[1] || ""`);
+  ctx.assert(
+    !activeSessionId || sessions.some((session) => session.sessionId === activeSessionId),
+    "The active session must belong to the visible work context.",
+  );
+  ctx.assert(
+    !requiredWorkspaceName || sessions.every((session) => session.workspace === requiredWorkspaceName),
+    `Every visible session must belong to ${requiredWorkspaceName}.`,
+  );
+  ctx.assert(
+    !forbiddenWorkspaceName || sessions.every((session) => session.workspace !== forbiddenWorkspaceName),
+    `No visible session may belong to ${forbiddenWorkspaceName}.`,
+  );
+  return sessions;
 }
 
 export default {
@@ -126,12 +143,13 @@ export default {
               { timeoutMs: 30_000, label: "Personal session list" },
             );
             personalSessionIds = (await currentSessions(ctx, { forbiddenWorkspaceName: enterpriseName })).map((session) => session.sessionId);
+            ctx.assert(state.personalIds.length === 1, "Expected exactly one Personal workspace.");
             ctx.assert(state.personalIds.includes(personalWorkspaceId), "Personal route must use a Personal workspace.");
           },
           screenshot: {
             name: "work-context-personal",
             requireText: ["新建对话", "模版", "扩展"],
-            rejectText: ["创建团队", "Request failed with 404"],
+            rejectText: ["创建团队", "Request failed with 404", "Workspace was not found", "Session was not found"],
           },
         });
       },
@@ -165,19 +183,28 @@ export default {
             })()`, { awaitPromise: true });
             enterpriseWorkspaceId = state.routeWorkspaceId;
             enterpriseSessionIds = (await currentSessions(ctx, { requiredWorkspaceName: enterpriseName })).map((session) => session.sessionId);
+            const enterpriseRouteEvidence = await ctx.eval(`(() => {
+              const route = window.__ipollowork?.slice?.("route");
+              return {
+                loading: route?.loading,
+                selectedWorkspaceId: route?.selectedWorkspaceId,
+                sessionsByWorkspaceId: route?.sessionsByWorkspaceId,
+              };
+            })()`);
             ctx.assert(sawSwitchLoader, "The iPolloWork transition loader must be visible while switching.");
             ctx.assert(state.enterpriseIds.length === 1, "Expected one dedicated Enterprise workspace.");
             ctx.assert(state.enterpriseIds.includes(enterpriseWorkspaceId), "Enterprise route must use its dedicated workspace.");
             ctx.assert(enterpriseWorkspaceId !== personalWorkspaceId, "Personal and Enterprise must not share a workspace.");
+            const leakedPersonalSessionIds = enterpriseSessionIds.filter((id) => personalSessionIds.includes(id));
             ctx.assert(
-              enterpriseSessionIds.every((id) => !personalSessionIds.includes(id)),
-              "Enterprise must not render a Personal chat in its sidebar.",
+              leakedPersonalSessionIds.length === 0,
+              `Enterprise must not render a Personal chat in its sidebar (${leakedPersonalSessionIds.join(", ")}; route=${JSON.stringify(enterpriseRouteEvidence)}).`,
             );
           },
           screenshot: {
             name: "work-context-enterprise",
-            requireText: [enterpriseName, "新建对话", "模版", "扩展"],
-            rejectText: ["创建团队", "Request failed with 404"],
+            requireText: ["Enterprise", "新建对话", "模版", "扩展"],
+            rejectText: ["创建团队", "Request failed with 404", "Workspace was not found", "Session was not found"],
           },
         });
       },
@@ -247,6 +274,7 @@ export default {
             ctx.assert(accountState.personalButtons === 1, "Expected exactly one Personal work identity entry.");
             ctx.assert(accountState.enterpriseButtons === 1, "Expected exactly one joined Enterprise work identity entry.");
             ctx.assert(!accountState.body.includes("创建团队"), "The removed team creation UI must not return.");
+            ctx.assert(!accountState.body.includes("工作站"), "The removed workstation concept must not return.");
 
             const clicked = await ctx.eval(clickButton("/^(?:个人|Personal)/u"));
             ctx.assert(clicked === true, "Expected the Personal work identity button.");
@@ -262,6 +290,9 @@ export default {
               routeSessionId: location.hash.match(/\\/session\\/(ses_[A-Za-z0-9]+)/)?.[1] || "",
               activeContext: localStorage.getItem("ipollowork.work-context.v1"),
               hasLegacyContext: localStorage.getItem("ipollowork.enterprise-active.v1") !== null,
+              hasLegacyWorkspaceMap: localStorage.getItem("ipollowork.work-context-workspaces.v1") !== null,
+              hasLegacyOrganizationMap: localStorage.getItem("ipollowork.cloud.organizationWorkspaces.v1") !== null,
+              hasLegacyWorkspaceOrder: localStorage.getItem("ipollowork.react.workspaceOrder") !== null,
             }))()`);
             const restoredSessionIds = (await currentSessions(ctx, { forbiddenWorkspaceName: enterpriseName })).map((session) => session.sessionId);
             ctx.assert(state.activeContext === "personal", "Personal must be the active Work Context.");
@@ -269,6 +300,9 @@ export default {
             ctx.assert(state.routeWorkspaceId !== enterpriseWorkspaceId, "Enterprise workspace must stay hidden in Personal.");
             ctx.assert(state.routeSessionId === personalActiveSessionId, "Personal must restore its previous active chat.");
             ctx.assert(!state.hasLegacyContext, "The legacy active Enterprise key must be removed.");
+            ctx.assert(!state.hasLegacyWorkspaceMap, "The legacy context-to-workspace map must be removed.");
+            ctx.assert(!state.hasLegacyOrganizationMap, "The legacy organization-to-workspace map must be removed.");
+            ctx.assert(!state.hasLegacyWorkspaceOrder, "The legacy workspace order must be removed.");
             ctx.assert(
               restoredSessionIds.every((id) => !enterpriseSessionIds.includes(id)),
               "Returning to Personal must not render an Enterprise chat.",

@@ -55,9 +55,9 @@ function ShellWireframe({ config }: { config: ShellConfig }) {
           <rect x="0.5" y="31" width="100" height="195" fill="var(--dls-hover)" />
           <line x1="101" y1="31" x2="101" y2="226" stroke="var(--dls-border)" strokeWidth="0.5" />
 
-          {/* Workspace header */}
+          {/* Active space header */}
           <circle cx="16" cy="44" r="5" fill="var(--dls-accent)" opacity="0.3" />
-          <text x="26" y="47" fontSize="6.5" fontWeight="600" fill="var(--dls-text-primary)" opacity="0.7">{t("workspace.workspace_fallback")}</text>
+          <text x="26" y="47" fontSize="6.5" fontWeight="600" fill="var(--dls-text-primary)" opacity="0.7">{t("enterprise_connection.personal")}</text>
 
           {/* Session list */}
           <rect x="8" y="58" width="85" height="16" rx="4" fill="var(--dls-surface)" opacity="0.6" />
@@ -72,13 +72,6 @@ function ShellWireframe({ config }: { config: ShellConfig }) {
           {/* New session button */}
           <text x="14" y="130" fontSize="5" fill="var(--dls-text-secondary)" opacity="0.3">+ {t("settings.shell.preview_new_session")}</text>
 
-          {/* Add workspace */}
-          {config.addWorkspace ? (
-            <g>
-              <rect x="8" y="200" width="85" height="16" rx="8" fill="var(--dls-accent)" opacity="0.15" />
-              <text x="50" y="210" textAnchor="middle" fontSize="5.5" fontWeight="500" fill="var(--dls-accent)" opacity="0.6">{t("settings.shell.preview_add_workspace")}</text>
-            </g>
-          ) : null}
         </g>
 
         {/* Main content */}
@@ -329,14 +322,6 @@ export function ShellCustomizationView() {
           className="hidden windows:flex linux:flex"
         />
 
-        <ToggleRow
-          label={t("settings.shell.new_workspace_label")}
-          description={t("settings.shell.new_workspace_description")}
-          checked={config.addWorkspace}
-          onChange={(v) => update({ addWorkspace: v })}
-          disabled
-          unavailable={t("settings.shell.new_workspace_unavailable")}
-        />
       </LayoutSection>
 
       <Separator />
@@ -381,14 +366,6 @@ export function ShellCustomizationView() {
           cloudOnly
         />
 
-        <ToggleRow
-          label={t("settings.shell.welcome_label")}
-          description={t("settings.shell.welcome_description")}
-          checked={config.welcomePage}
-          onChange={(v) => update({ welcomePage: v })}
-          cloudOnly
-          disabled
-        />
       </LayoutSection>
 
       <Separator />

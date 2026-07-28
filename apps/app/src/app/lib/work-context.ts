@@ -12,15 +12,23 @@ import {
   readEnterpriseConnections,
   type EnterpriseConnection,
 } from "./enterprise-connections";
-import { createiPolloWorkServerClient } from "./ipollowork-server";
+import {
+  createiPolloWorkServerClient,
+  type iPolloWorkServerClient,
+} from "./ipollowork-server";
 import { isDesktopRuntime } from "./runtime-env";
 
 export const PERSONAL_WORK_CONTEXT_ID = "personal" as const;
 export type WorkContextId = typeof PERSONAL_WORK_CONTEXT_ID | `enterprise:${string}`;
 
 const ACTIVE_WORK_CONTEXT_KEY = "ipollowork.work-context.v1";
-const LAST_WORKSPACE_BY_CONTEXT_KEY = "ipollowork.work-context-workspaces.v1";
 const LEGACY_ACTIVE_ENTERPRISE_KEY = "ipollowork.enterprise-active.v1";
+const LEGACY_WORK_CONTEXT_STORAGE_KEYS = [
+  "ipollowork.work-context-workspaces.v1",
+  "ipollowork.cloud.organizationWorkspaces.v1",
+  "ipollowork.react.workspaceOrder",
+] as const;
+const LEGACY_PENDING_ORGANIZATION_KEY = "ipollowork.cloud.pendingOrganization";
 
 export const workContextChangedEvent = "ipollowork:work-context-changed";
 export const workContextSwitchEvent = "ipollowork:work-context-switch";
@@ -43,6 +51,16 @@ export function normalizeWorkContextId(value: unknown): WorkContextId | null {
     : null;
 }
 
+export function workContextIdsEqual(left: unknown, right: unknown): boolean {
+  const normalizeWorkspaceMarker = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return PERSONAL_WORK_CONTEXT_ID;
+    return normalizeWorkContextId(value);
+  };
+  const normalizedLeft = normalizeWorkspaceMarker(left);
+  const normalizedRight = normalizeWorkspaceMarker(right);
+  return normalizedLeft !== null && normalizedLeft === normalizedRight;
+}
+
 function legacyActiveEnterpriseId(): string | null {
   if (typeof window === "undefined") return null;
   const enterpriseId = window.localStorage.getItem(LEGACY_ACTIVE_ENTERPRISE_KEY)?.trim() ?? "";
@@ -50,8 +68,17 @@ function legacyActiveEnterpriseId(): string | null {
   return enterpriseId;
 }
 
+function clearLegacyWorkspaceIdentityState() {
+  if (typeof window === "undefined") return;
+  for (const key of LEGACY_WORK_CONTEXT_STORAGE_KEYS) {
+    window.localStorage.removeItem(key);
+  }
+  window.sessionStorage.removeItem(LEGACY_PENDING_ORGANIZATION_KEY);
+}
+
 export function readActiveWorkContextId(): WorkContextId {
   if (typeof window === "undefined") return PERSONAL_WORK_CONTEXT_ID;
+  clearLegacyWorkspaceIdentityState();
   const stored = normalizeWorkContextId(window.localStorage.getItem(ACTIVE_WORK_CONTEXT_KEY));
   if (stored) {
     if (
@@ -80,34 +107,6 @@ export function readActiveEnterpriseConnection(): EnterpriseConnection | null {
   return readEnterpriseConnections().find((connection) => connection.id === enterpriseId) ?? null;
 }
 
-function readLastWorkspaceMap(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(LAST_WORKSPACE_BY_CONTEXT_KEY) ?? "{}");
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(Object.entries(parsed).flatMap(([contextId, workspaceId]) => (
-      normalizeWorkContextId(contextId) && typeof workspaceId === "string" && workspaceId.trim()
-        ? [[contextId, workspaceId.trim()]]
-        : []
-    )));
-  } catch {
-    return {};
-  }
-}
-
-export function readLastWorkspaceForWorkContext(contextId: WorkContextId): string | null {
-  return readLastWorkspaceMap()[contextId] ?? null;
-}
-
-export function rememberWorkspaceForWorkContext(contextId: WorkContextId, workspaceId: string | null) {
-  if (typeof window === "undefined") return;
-  const map = readLastWorkspaceMap();
-  const normalized = workspaceId?.trim() ?? "";
-  if (normalized) map[contextId] = normalized;
-  else delete map[contextId];
-  window.localStorage.setItem(LAST_WORKSPACE_BY_CONTEXT_KEY, JSON.stringify(map));
-}
-
 export function workspaceBelongsToWorkContext(
   workspace: Pick<WorkspaceInfo, "workContextId">,
   contextId: WorkContextId,
@@ -123,6 +122,72 @@ export function filterWorkspacesForWorkContext<T extends Pick<WorkspaceInfo, "wo
   contextId: WorkContextId,
 ): T[] {
   return workspaces.filter((workspace) => workspaceBelongsToWorkContext(workspace, contextId));
+}
+
+function isLegacyWorkstationPath(workspacePath: string | null | undefined) {
+  return /(?:^|[/\\])\.ipollowork[/\\]workstations[/\\]/i.test(workspacePath?.trim() ?? "");
+}
+
+export function canonicalWorkspaceForWorkContext<
+  T extends Pick<WorkspaceInfo, "id" | "path" | "workContextId" | "workspaceType">,
+>(
+  workspaces: T[],
+  contextId: WorkContextId,
+  preferredIds: Array<string | null | undefined> = [],
+): T | null {
+  const candidates = filterWorkspacesForWorkContext(workspaces, contextId);
+  if (candidates.length === 0) return null;
+
+  const contextCandidates = contextId === PERSONAL_WORK_CONTEXT_ID
+    ? candidates.some((workspace) => !isLegacyWorkstationPath(workspace.path))
+      ? candidates.filter((workspace) => !isLegacyWorkstationPath(workspace.path))
+      : candidates
+    : (() => {
+        const enterpriseId = contextId.slice("enterprise:".length);
+        const contextPathPattern = new RegExp(`(?:^|[/\\\\])\\.ipollowork[/\\\\]work-contexts[/\\\\]${enterpriseId}(?:[/\\\\]|$)`, "i");
+        const dedicated = candidates.filter((workspace) => contextPathPattern.test(workspace.path?.trim() ?? ""));
+        return dedicated.length > 0 ? dedicated : candidates;
+      })();
+
+  for (const preferredId of preferredIds) {
+    const normalized = preferredId?.trim() ?? "";
+    if (!normalized) continue;
+    const match = contextCandidates.find((workspace) => workspace.id === normalized);
+    if (match) return match;
+  }
+
+  return contextCandidates.find((workspace) => workspace.workspaceType !== "remote")
+    ?? contextCandidates[0]
+    ?? null;
+}
+
+export function canonicalWorkspacesForWorkContext<
+  T extends Pick<WorkspaceInfo, "id" | "path" | "workContextId" | "workspaceType">,
+>(
+  workspaces: T[],
+  contextId: WorkContextId,
+  preferredIds: Array<string | null | undefined> = [],
+): T[] {
+  const workspace = canonicalWorkspaceForWorkContext(workspaces, contextId, preferredIds);
+  return workspace ? [workspace] : [];
+}
+
+export async function pruneServerWorkspacesForWorkContext(
+  client: iPolloWorkServerClient,
+  workspaces: Array<Pick<WorkspaceInfo, "id" | "workContextId">>,
+  contextId: WorkContextId,
+  canonicalWorkspaceId: string,
+): Promise<string[]> {
+  const staleWorkspaceIds = filterWorkspacesForWorkContext(workspaces, contextId)
+    .map((workspace) => workspace.id)
+    .filter((workspaceId) => workspaceId !== canonicalWorkspaceId);
+
+  const removed: string[] = [];
+  for (const workspaceId of staleWorkspaceIds) {
+    const result = await client.deleteWorkspace(workspaceId).catch(() => null);
+    if (result?.deleted) removed.push(workspaceId);
+  }
+  return removed;
 }
 
 function dispatchSwitch(phase: WorkContextSwitchDetail["phase"], contextId: WorkContextId) {
@@ -166,7 +231,7 @@ async function activateWorkspaceEverywhere(workspace: WorkspaceInfo) {
   const serverWorkspaces = list.workspaces ?? list.items;
   let serverWorkspace = serverWorkspaces.find((entry) => entry.id === workspace.id || entry.path === workspace.path) ?? null;
   if (
-    !serverWorkspace || serverWorkspace.workContextId !== workspace.workContextId
+    !serverWorkspace || !workContextIdsEqual(serverWorkspace.workContextId, workspace.workContextId)
   ) {
     const created = await client.createLocalWorkspace({
       folderPath: workspace.path,
@@ -177,6 +242,15 @@ async function activateWorkspaceEverywhere(workspace: WorkspaceInfo) {
     serverWorkspace = created.workspaces.find((entry) => entry.id === workspace.id || entry.path === workspace.path) ?? null;
   }
   if (!serverWorkspace) throw new Error("work_context_workspace_unavailable");
+  const contextId = normalizeWorkContextId(workspace.workContextId) ?? PERSONAL_WORK_CONTEXT_ID;
+  const canonicalDisplayName = contextId === PERSONAL_WORK_CONTEXT_ID
+    ? "Personal"
+    : workspace.displayName?.trim() || workspace.name;
+  if ((serverWorkspace.displayName?.trim() || serverWorkspace.name) !== canonicalDisplayName) {
+    const renamed = await client.updateWorkspaceDisplayName(serverWorkspace.id, canonicalDisplayName);
+    serverWorkspace = renamed.workspaces.find((entry) => entry.id === serverWorkspace?.id) ?? serverWorkspace;
+  }
+  await pruneServerWorkspacesForWorkContext(client, serverWorkspaces, contextId, serverWorkspace.id);
   await client.activateWorkspace(serverWorkspace.id, { persist: true });
   await workspaceSetSelected(workspace.id);
   await workspaceSetRuntimeActive(workspace.id);
@@ -194,16 +268,12 @@ export async function activatePersonalWorkContext(): Promise<string | null> {
       return null;
     }
     const state = await workspaceBootstrap();
-    const personalWorkspaces = filterWorkspacesForWorkContext(state.workspaces, contextId);
-    const rememberedWorkspaceId = readLastWorkspaceForWorkContext(contextId);
-    const workspace = personalWorkspaces.find((entry) => entry.id === rememberedWorkspaceId)
-      ?? personalWorkspaces.find((entry) => entry.id === state.selectedId)
-      ?? personalWorkspaces.find((entry) => entry.id === state.activeId)
-      ?? personalWorkspaces[0]
-      ?? null;
+    const workspace = canonicalWorkspaceForWorkContext(state.workspaces, contextId, [
+      state.selectedId,
+      state.activeId,
+    ]);
     if (!workspace) throw new Error("personal_workspace_unavailable");
     const workspaceId = await activateWorkspaceEverywhere(workspace);
-    rememberWorkspaceForWorkContext(contextId, workspaceId);
     commitActiveContext(contextId);
     committed = true;
     return workspaceId;
@@ -223,10 +293,10 @@ export async function activateEnterpriseWorkContext(connection: EnterpriseConnec
       return null;
     }
     const state = await workspaceBootstrap();
-    const rememberedWorkspaceId = readLastWorkspaceForWorkContext(contextId);
-    let workspace = state.workspaces.find((entry) => entry.id === rememberedWorkspaceId && entry.workContextId === contextId)
-      ?? state.workspaces.find((entry) => entry.workContextId === contextId)
-      ?? null;
+    let workspace = canonicalWorkspaceForWorkContext(state.workspaces, contextId, [
+      state.selectedId,
+      state.activeId,
+    ]);
     if (!workspace) {
       const homeDir = await getDesktopHomeDir();
       const folderPath = await joinDesktopPath(homeDir, ".ipollowork", "work-contexts", connection.id);
@@ -242,7 +312,6 @@ export async function activateEnterpriseWorkContext(connection: EnterpriseConnec
     }
     if (!workspace) throw new Error("enterprise_workspace_unavailable");
     const workspaceId = await activateWorkspaceEverywhere(workspace);
-    rememberWorkspaceForWorkContext(contextId, workspaceId);
     commitActiveContext(contextId);
     committed = true;
     return workspaceId;

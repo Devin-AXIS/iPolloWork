@@ -1202,7 +1202,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     // truth. Do not pass Electron's legacy workspace list as CLI workspaces or
     // the server config loader will ignore server.json and lose server-created
     // workspaces after restart.
-    const serverConfigPath = resolveiPolloWorkServerConfigPath(process.env);
+    const serverConfigPath = resolveiPolloWorkServerConfigPath(serverEnv);
     const requestedWorkspacePaths = (options.workspacePaths ?? []).filter((value) => value.trim().length > 0);
     const workspacePaths = seedWorkspacePathsForEmbeddedServer(
       requestedWorkspacePaths,

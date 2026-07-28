@@ -13,13 +13,11 @@ import {
   Pin,
   PinOff,
   Plus,
-  Share2,
   Trash2,
   RefreshCw,
   RotateCcw,
   Settings,
   HelpCircle,
-  FolderOpen,
   Tag,
   UserRound,
 } from "lucide-react";
@@ -27,7 +25,6 @@ import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
-import type { WorkspaceInfo } from "../../../../app/lib/desktop";
 import { IPolloWorkDenHelpLink } from "../../workspace/ipollowork-den-help-link";
 import type {
   WorkspaceConnectionState,
@@ -38,7 +35,6 @@ import {
   getWorkspaceTaskLoadErrorDisplay,
   isRemoteConnectionWorkspace,
   isMacPlatform,
-  isWindowsPlatform,
 } from "../../../../app/utils";
 import { currentLocale, setLocale, t, type Language } from "../../../../i18n";
 import { useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
@@ -97,8 +93,6 @@ import {
   isSessionArchived,
   isStreamingSessionStatus,
   partitionArchivedSessions,
-  workspaceKindLabel,
-  workspaceLabel,
 } from "./utils";
 import type { FlattenedSessionRow, SessionListItem, SessionTreeState } from "./utils";
 import {
@@ -109,7 +103,6 @@ import {
   type SessionGroupDefinition,
 } from "./session-management-store";
 import { cn } from "@/lib/utils";
-import { WorkspaceIcon } from "../../../design-system/workspace-icon";
 import { MarbleAvatar } from "../../../design-system/marble-avatar";
 import { getSessionActivityStatusLabel, type SessionActivityStatus } from "../status/session-activity-store";
 import { NotificationBell } from "../../../shell/notification-center";
@@ -391,93 +384,6 @@ function SessionContextMenu({ children, sessionId, workspaceId, isPinned, isArch
   );
 }
 
-type WorkspaceActionsMenuProps = {
-  workspace: WorkspaceInfo;
-  isConnectionActionBusy: boolean;
-  canRecover: boolean;
-  className: string;
-};
-
-function WorkspaceActionsMenu({ workspace, isConnectionActionBusy, canRecover, className }: WorkspaceActionsMenuProps) {
-  const ctx = useSidebarContext();
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("size-6", className)}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-            aria-label={t("workspace_list.workspace_options")}
-          >
-            <MoreHorizontal className="size-4" />
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="w-56">
-        <DropdownMenuItem onClick={() => ctx.onOpenRenameWorkspace(workspace.id)}>
-          <Pencil className="size-4" />
-          {t("workspace_list.edit_name")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => ctx.onShareWorkspace(workspace.id)}>
-          <Share2 className="size-4" />
-          {t("workspace_list.share")}
-        </DropdownMenuItem>
-        {workspace.workspaceType === "local" ? (
-          <DropdownMenuItem onClick={() => ctx.onRevealWorkspace(workspace.id)}>
-            <FolderOpen className="size-4" />
-            {isWindowsPlatform() ? t("workspace_list.reveal_explorer") : t("workspace_list.reveal_finder")}
-          </DropdownMenuItem>
-        ) : null}
-        {workspace.workspaceType === "remote" ? (
-          <>
-            {canRecover ? (
-              <DropdownMenuItem
-                onClick={() => void Promise.resolve(ctx.onRecoverWorkspace(workspace.id))}
-                disabled={isConnectionActionBusy}
-              >
-                <RefreshCw className="size-4" />
-                {t("workspace_list.recover")}
-              </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuItem
-              onClick={() => void Promise.resolve(ctx.onTestWorkspaceConnection(workspace.id))}
-              disabled={isConnectionActionBusy}
-            >
-              <RefreshCw className="size-4" />
-              {t("workspace_list.test_connection")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => ctx.onEditWorkspaceConnection(workspace.id)}
-              disabled={isConnectionActionBusy}
-            >
-              <Settings className="size-4" />
-              {t("workspace_list.edit_connection")}
-            </DropdownMenuItem>
-          </>
-        ) : null}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => ctx.onOpenCreateGroupModal?.(workspace.id)}>
-          <FolderPlus className="size-4" />
-          {t("session_management.new_group")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          variant="destructive"
-          onClick={() => ctx.onForgetWorkspace(workspace.id)}
-        >
-          <Trash2 className="size-4" />
-          {t("workspace_list.remove_workspace")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 function RemoteConnectionIssueCard(props: {
   message: string;
   tone: "error" | "offline";
@@ -578,7 +484,6 @@ export type AppSidebarProps = {
   connectingWorkspaceId: string | null;
   workspaceConnectionStateById: Record<string, WorkspaceConnectionState>;
   newTaskDisabled: boolean;
-  onSelectWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
   onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType, templateId?: iPolloWorkTemplateId) => void;
@@ -586,14 +491,9 @@ export type AppSidebarProps = {
   onOpenDeleteSession?: (sessionId: string) => void;
   onArchiveSession?: (sessionId: string, archived: boolean) => void;
   onOpenCreateGroupModal?: (workspaceId: string) => void;
-  onOpenRenameWorkspace: (workspaceId: string) => void;
-  onShareWorkspace: (workspaceId: string) => void;
-  onRevealWorkspace: (workspaceId: string) => void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
   onEditWorkspaceConnection: (workspaceId: string) => void;
-  onForgetWorkspace: (workspaceId: string) => void;
-  onOpenCreateWorkspace: () => void;
   account: {
     loading: boolean;
     signedIn: boolean;
@@ -609,7 +509,6 @@ export type AppSidebarProps = {
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
-  onReorderWorkspaces?: (workspaceIds: string[]) => void;
   onStartResize?: React.PointerEventHandler<HTMLButtonElement>;
 };
 
@@ -629,9 +528,6 @@ function isSessionActivityStatus(status: string | undefined): status is SessionA
 
 export function AppSidebar(props: AppSidebarProps) {
   const activeEnterprise = useActiveEnterpriseConnection();
-  const [expandedWorkspaceIds, setExpandedWorkspaceIds] = React.useState<Set<string>>(
-    () => new Set(),
-  );
   const [previewCountByWorkspaceId, setPreviewCountByWorkspaceId] = React.useState<Record<string, number>>({});
   const [expandedSessionIds, setExpandedSessionIds] = React.useState<Set<string>>(
     () => new Set(),
@@ -640,31 +536,6 @@ export function AppSidebar(props: AppSidebarProps) {
   const switchLanguage = React.useCallback((nextLanguage: Language) => {
     setLanguage(nextLanguage);
     setLocale(nextLanguage);
-  }, []);
-
-  const expandWorkspace = React.useCallback((workspaceId: string) => {
-    const id = workspaceId.trim();
-    if (!id) return;
-    setExpandedWorkspaceIds((previous) => {
-      if (previous.has(id)) return previous;
-      const next = new Set(previous);
-      next.add(id);
-      return next;
-    });
-  }, []);
-
-  const toggleWorkspaceExpanded = React.useCallback((workspaceId: string) => {
-    const id = workspaceId.trim();
-    if (!id) return;
-    setExpandedWorkspaceIds((previous) => {
-      const next = new Set(previous);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
   }, []);
 
   const toggleSessionExpanded = React.useCallback((sessionId: string) => {
@@ -681,17 +552,10 @@ export function AppSidebar(props: AppSidebarProps) {
     });
   }, []);
 
-  React.useEffect(() => {
-    const id = props.selectedWorkspaceId.trim();
-    if (!id) return;
-    expandWorkspace(id);
-  }, [props.selectedWorkspaceId, expandWorkspace]);
-
   const previewCount = (workspaceId: string) =>
     previewCountByWorkspaceId[workspaceId] ?? MAX_SESSIONS_PREVIEW;
 
   const showMoreSessions = (workspaceId: string, totalRoots: number) => {
-    expandWorkspace(workspaceId);
     setPreviewCountByWorkspaceId((current) => ({
       ...current,
       [workspaceId]: Math.min((current[workspaceId] ?? MAX_SESSIONS_PREVIEW) + MAX_SESSIONS_PREVIEW, totalRoots),
@@ -735,7 +599,6 @@ export function AppSidebar(props: AppSidebarProps) {
     newTaskDisabled: props.newTaskDisabled,
     connectingWorkspaceId: props.connectingWorkspaceId,
     workspaceConnectionStateById: props.workspaceConnectionStateById,
-    onSelectWorkspace: props.onSelectWorkspace,
     onOpenSession: props.onOpenSession,
     onPrefetchSession: props.onPrefetchSession,
     onCreateTaskInWorkspace: props.onCreateTaskInWorkspace,
@@ -743,17 +606,10 @@ export function AppSidebar(props: AppSidebarProps) {
     onOpenDeleteSession: props.onOpenDeleteSession,
     onArchiveSession: props.onArchiveSession,
     onOpenCreateGroupModal: props.onOpenCreateGroupModal,
-    onOpenRenameWorkspace: props.onOpenRenameWorkspace,
-    onShareWorkspace: props.onShareWorkspace,
-    onRevealWorkspace: props.onRevealWorkspace,
     onRecoverWorkspace: props.onRecoverWorkspace,
     onTestWorkspaceConnection: props.onTestWorkspaceConnection,
     onEditWorkspaceConnection: props.onEditWorkspaceConnection,
-    onForgetWorkspace: props.onForgetWorkspace,
-    expandWorkspace,
-    toggleWorkspaceExpanded,
     toggleSessionExpanded,
-    expandedWorkspaceIds,
     expandedSessionIds,
   };
 
@@ -843,24 +699,16 @@ export function AppSidebar(props: AppSidebarProps) {
             data-sidebar="content"
             className="no-scrollbar flex min-h-0 flex-1 flex-col gap-px overflow-auto [--radius:var(--radius-xl)] group-data-[collapsible=icon]:overflow-hidden"
           >
-            <Reorder.Group
-              as="div"
-              axis="y"
-              values={props.workspaceSessionGroups.map((group) => group.workspace.id)}
-              onReorder={(workspaceIds) => props.onReorderWorkspaces?.(workspaceIds)}
-              className="flex flex-col gap-px"
-            >
-              {props.workspaceSessionGroups.map((group, index) => (
-                <WorkspaceReorderItem
-                  key={group.workspace.id}
-                  group={group}
-                  className={cn(index === 0 && "mac:pt-0")}
-                  showInitialLoading={props.showInitialLoading}
-                  previewCount={previewCount(group.workspace.id)}
-                  showMoreSessions={showMoreSessions}
-                />
-              ))}
-            </Reorder.Group>
+            {props.workspaceSessionGroups.slice(0, 1).map((group) => (
+              <WorkspaceSidebarGroup
+                key={group.workspace.id}
+                group={group}
+                className="mac:pt-0"
+                showInitialLoading={props.showInitialLoading}
+                previewCount={previewCount(group.workspace.id)}
+                showMoreSessions={showMoreSessions}
+              />
+            ))}
           </m.div>
         </LazyMotion>
 
@@ -951,117 +799,12 @@ export function AppSidebar(props: AppSidebarProps) {
   );
 }
 
-type WorkspaceReorderItemProps = {
-  className: string;
-  group: WorkspaceSessionGroup;
-  showInitialLoading?: boolean;
-  previewCount: number;
-  showMoreSessions: (workspaceId: string, totalRoots: number) => void;
-};
-
-function WorkspaceReorderItem({
-  className,
-  group,
-  showInitialLoading,
-  previewCount,
-  showMoreSessions,
-}: WorkspaceReorderItemProps) {
-  const dragControls = useDragControls();
-
-  return (
-    <Reorder.Item
-      as="div"
-      value={group.workspace.id}
-      id={group.workspace.id}
-      layout="position"
-      dragElastic={0}
-      dragListener={false}
-      dragControls={dragControls}
-      transformTemplate={(_latest, generated) =>
-        // Keep Motion's translate-based reorder movement, but drop projection scale
-        // so expanded workspace contents don't stretch during collapse/expand.
-        generated.replace(/ ?scale[XY]?\([^)]*\)/g, "")
-      }
-      className="relative"
-    >
-      <WorkspaceSidebarGroup
-        className={className}
-        group={group}
-        showInitialLoading={showInitialLoading}
-        previewCount={previewCount}
-        showMoreSessions={showMoreSessions}
-        onWorkspaceTitlePointerDown={(event) => dragControls.start(event)}
-      />
-    </Reorder.Item>
-  );
-}
-
-type WorkspaceHeaderProps = React.ComponentProps<typeof SidebarMenuButton> & {
-  workspace: WorkspaceInfo;
-  statusLabel: string;
-  isError: boolean;
-  isLoading: boolean;
-  onTitlePointerDown: React.PointerEventHandler<HTMLDivElement>;
-};
-
-function WorkspaceHeader({
-  workspace,
-  statusLabel,
-  isError,
-  isLoading,
-  onTitlePointerDown,
-  onClick,
-  ...props
-}: WorkspaceHeaderProps) {
-  const ctx = useSidebarContext();
-
-  const handleSelectWorkspace = () => {
-    void Promise.resolve(ctx.onSelectWorkspace(workspace.id));
-  };
-
-  return (
-    <SidebarMenuButton
-      {...props}
-      className={cn(
-        "group-hover/workspace-header:bg-sidebar-accent group-hover/workspace-header:text-sidebar-accent-foreground mac:group-hover/workspace-header:bg-black/5 dark:mac:group-hover/workspace-header:bg-white/10",
-        statusLabel && "h-10",
-      )}
-      onClick={(event) => {
-        onClick?.(event);
-        handleSelectWorkspace();
-      }}
-    >
-      <WorkspaceIcon workspaceId={workspace.id} sizeClass="size-4" />
-      <div
-        className={cn(
-          "min-w-0 flex-1 cursor-grab touch-none transition-[padding] duration-75 active:cursor-grabbing group-hover/workspace-header:pr-16 group-has-[[data-workspace-actions]:focus-within]/workspace-header:pr-16 group-has-data-popup-open/workspace-header:pr-11 group-hover/workspace-header:group-has-data-popup-open/workspace-header:pr-16 pr-2",
-          isLoading && "pr-6",
-        )}
-        onPointerDown={onTitlePointerDown}
-      >
-        <span className="block truncate">{workspaceLabel(workspace)}</span>
-        {statusLabel ? (
-          <span className={cn("block text-xs", isError ? "text-destructive" : "text-muted-foreground")}>
-            {statusLabel}
-          </span>
-        ) : null}
-      </div>
-      <span className="ml-auto flex items-center gap-1 pl-0">
-        {isLoading ? (
-          <Loader2 className="size-4 animate-spin text-muted-foreground transition-opacity group-hover/workspace-header:opacity-0" />
-        ) : null}
-      </span>
-    </SidebarMenuButton>
-  );
-}
-
 type WorkspaceSidebarGroupProps = {
   className: string;
   group: WorkspaceSessionGroup;
   showInitialLoading?: boolean;
   previewCount: number;
   showMoreSessions: (workspaceId: string, totalRoots: number) => void;
-  onWorkspaceTitlePointerDown: React.PointerEventHandler<HTMLDivElement>;
 };
 
 function WorkspaceSidebarGroup({
@@ -1070,7 +813,6 @@ function WorkspaceSidebarGroup({
   showInitialLoading,
   previewCount,
   showMoreSessions,
-  onWorkspaceTitlePointerDown,
 }: WorkspaceSidebarGroupProps) {
   const ctx = useSidebarContext();
   const workspace = group.workspace;
@@ -1101,20 +843,6 @@ function WorkspaceSidebarGroup({
     (isRemoteWorkspace || isRemoteConnectionErrorMessage(connectionIssueMessage)) &&
     Boolean(connectionIssueMessage) &&
     (connectionState.status === "error" || group.status === "error");
-  const isExpanded = ctx.expandedWorkspaceIds.has(workspace.id);
-  const isSelected = ctx.selectedWorkspaceId === workspace.id;
-
-  const statusLabel = (() => {
-    if (showRemoteConnectionIssue) return t("workspace_list.unavailable");
-    if (connectionState.status === "error") return connectionState.message?.trim() || taskLoadError.message;
-    if (group.status === "error") return taskLoadError.label;
-    if (isConnectionActionBusy) return t("workspace_list.connecting");
-    if (isRemoteWorkspace && connectionState.status === "connected") return connectionState.message?.trim() || t("workspace_list.connected");
-    if (!ctx.developerMode) return "";
-    if (isSelected) return t("workspace.selected");
-    return workspaceKindLabel(workspace);
-  })();
-
   const pinnedIds = usePinnedSessionIds();
   const orderIds = useSessionOrder(workspace.id);
   const { groups: wsGroups, assignments: wsAssignments } = useWorkspaceGroups(workspace.id);
@@ -1153,55 +881,8 @@ function WorkspaceSidebarGroup({
     <SidebarGroup className={className}>
       <SidebarGroupContent>
         <SidebarMenu>
-          <Collapsible
-            render={<SidebarMenuItem />}
-            open={isExpanded}
-            onOpenChange={() => ctx.toggleWorkspaceExpanded(workspace.id)}
-            className="group/collapsible"
-          >
-            <div className="group/workspace-header relative">
-              <WorkspaceHeader
-                workspace={workspace}
-                statusLabel={statusLabel}
-                isError={group.status === "error"}
-                isLoading={group.status === "loading" || isConnecting}
-                onTitlePointerDown={onWorkspaceTitlePointerDown}
-              />
-              <div data-workspace-actions className="group/workspace-actions absolute right-9 top-1/2 flex -translate-y-1/2 items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-6 text-muted-foreground opacity-0 hover:bg-muted group-hover/workspace-header:opacity-100 group-focus-within/workspace-actions:opacity-100"
-                  disabled={ctx.newTaskDisabled}
-                  aria-label={t("session.new_task")}
-                  onClick={() => ctx.onCreateTaskInWorkspace(workspace.id, "work")}
-                >
-                  <Plus className="size-4" />
-                </Button>
-                <WorkspaceActionsMenu
-                  workspace={workspace}
-                  isConnectionActionBusy={isConnectionActionBusy}
-                  canRecover={canRecover}
-                  className="size-6 text-muted-foreground opacity-0 group-hover/workspace-header:opacity-100 group-focus-within/workspace-actions:opacity-100 data-popup-open:opacity-100"
-                />
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-1/2 size-6 -translate-y-1/2 text-muted-foreground flex items-center justify-center group/expand-collapse-button"
-                aria-label={isExpanded ? t("sidebar.collapse") : t("sidebar.expand")}
-                aria-expanded={isExpanded}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  ctx.toggleWorkspaceExpanded(workspace.id);
-                }}
-              >
-                <ChevronRight className={cn("size-4 transition-transform duration-200 text-muted-foreground group-hover/expand-collapse-button:text-foreground", isExpanded && "rotate-90")} />
-              </Button>
-            </div>
-
-            <CollapsibleContent className="pt-[6px]">
+          <Collapsible render={<SidebarMenuItem />} open className="group/collapsible">
+            <CollapsibleContent>
               <SidebarMenuSub>
                 {showRemoteConnectionIssue ? (
                   <RemoteConnectionIssueCard

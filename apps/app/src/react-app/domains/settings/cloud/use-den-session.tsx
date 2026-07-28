@@ -17,7 +17,6 @@ import {
   type DenOrgSummary,
 } from "@/app/lib/den";
 import { clearDesktopBootstrapConfig } from "@/app/lib/desktop";
-import { activateOrganizationWorkspace } from "@/app/cloud/organization-workspaces";
 import { exchangeHandoffAndSignIn } from "@/app/lib/den-handoff";
 import {
   denSessionUpdatedEvent,
@@ -408,7 +407,6 @@ export function useDenSession({
         }
         if (next) {
           await ensureDenActiveOrganization({ forceServerSync: true }).catch(() => null);
-          if (nextOrg) await activateOrganizationWorkspace(nextOrg).catch(() => null);
         }
         if (!quiet && response.orgs.length > 0) {
           toast.info(t("den.status_loaded_orgs", { count: response.orgs.length }));
