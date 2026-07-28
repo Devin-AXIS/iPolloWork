@@ -4,6 +4,13 @@
  * their spot when switching between shells during the port.
  */
 
+import {
+  PERSONAL_WORK_CONTEXT_ID,
+  readActiveWorkContextId,
+  readLastWorkspaceForWorkContext,
+  rememberWorkspaceForWorkContext,
+} from "@/app/lib/work-context";
+
 const ACTIVE_WORKSPACE_KEY = "ipollowork.react.activeWorkspace";
 const SESSION_BY_WORKSPACE_KEY = "ipollowork.react.sessionByWorkspace";
 const WORKSPACE_ORDER_KEY = "ipollowork.react.workspaceOrder";
@@ -32,12 +39,17 @@ function safeSet(key: string, value: string | null): void {
 }
 
 export function readActiveWorkspaceId(): string | null {
-  const value = safeGet(ACTIVE_WORKSPACE_KEY);
-  return value?.trim() || null;
+  const contextId = readActiveWorkContextId();
+  const remembered = readLastWorkspaceForWorkContext(contextId);
+  if (remembered) return remembered;
+  if (contextId !== PERSONAL_WORK_CONTEXT_ID) return null;
+  return safeGet(ACTIVE_WORKSPACE_KEY)?.trim() || null;
 }
 
 export function writeActiveWorkspaceId(id: string | null): void {
-  safeSet(ACTIVE_WORKSPACE_KEY, id?.trim() || null);
+  const normalized = id?.trim() || null;
+  rememberWorkspaceForWorkContext(readActiveWorkContextId(), normalized);
+  safeSet(ACTIVE_WORKSPACE_KEY, normalized);
 }
 
 export function readWorkspaceOrderIds(): string[] {

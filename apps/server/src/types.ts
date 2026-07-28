@@ -19,6 +19,7 @@ export interface WorkspaceConfig {
   path: string;
   name?: string;
   preset?: string;
+  workContextId?: `enterprise:${string}`;
   workspaceType?: WorkspaceType;
   remoteType?: RemoteType;
   baseUrl?: string;
@@ -40,6 +41,7 @@ export interface WorkspaceInfo {
   name: string;
   path: string;
   preset: string;
+  workContextId?: `enterprise:${string}`;
   workspaceType: WorkspaceType;
   remoteType?: RemoteType;
   baseUrl?: string;

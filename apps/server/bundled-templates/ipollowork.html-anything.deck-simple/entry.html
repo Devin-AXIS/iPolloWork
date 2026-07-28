@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>iPolloWork ¬∑ Investor deck ‚Äî Q2 2026</title>
+  <title>iPolloWork ¬∑ Investor deck ‚Ä?Q2 2026</title>
   <style>
     :root {
       --bg: #fafaf9; --fg: #1c1b1a; --muted: #6b6964; --accent: #c96442; --surface: #ffffff;
@@ -49,8 +49,8 @@
     .counter { position: fixed; bottom: 24px; right: 32px; font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); background: var(--surface); padding: 4px 10px; border-radius: 999px; border: 1px solid #e6e4e0; }
     .hint { position: fixed; bottom: 24px; left: 32px; font-size: 11px; color: var(--muted); }
   </style>
-<link rel="stylesheet" href="design-tokens.css"></head>
-<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
+<link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens></head>
+<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg?v=20260724" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
   <section class="slide title" data-od-id="slide-1">
     <div class="eyebrow" style="color:#c96442;">iPolloWork ¬∑ Series B ¬∑ Q2 2026</div>
     <h1>The bandwidth bill is the bug.</h1>
@@ -76,8 +76,8 @@
   </section>
   <section class="slide" data-od-id="slide-5">
     <div class="quote-mark">"</div>
-    <p class="quote-text">iPolloWork pays for itself in the first month. We were going to hire a dedicated DevOps person to babysit our sync ‚Äî instead we just switched.</p>
-    <p class="quote-author">‚Äî Mira Hassan, CTO at Northwind Studios</p>
+    <p class="quote-text">iPolloWork pays for itself in the first month. We were going to hire a dedicated DevOps person to babysit our sync ‚Ä?instead we just switched.</p>
+    <p class="quote-author">‚Ä?Mira Hassan, CTO at Northwind Studios</p>
   </section>
   <section class="slide title" data-od-id="slide-6">
     <div class="eyebrow" style="color:#c96442;">Ask</div>
@@ -86,14 +86,14 @@
   </section>
 
   <div class="counter" id="counter">1 / 6</div>
-  <div class="hint">‚Üê / ‚Üí to navigate</div>
+  <div class="hint">‚Ü?/ ‚Ü?to navigate</div>
 
   <script>
     const slides = document.querySelectorAll('.slide');
     const counter = document.getElementById('counter');
     let active = 0;
 
-    // Detect the real scroller ‚Äî when body has `display: flex` + `overflow-x: auto`
+    // Detect the real scroller ‚Ä?when body has `display: flex` + `overflow-x: auto`
     // the scroller can be body OR documentElement depending on the host (in
     // particular, the OD srcdoc iframe). Pick whichever actually overflows.
     function scroller() {
@@ -125,7 +125,7 @@
     // fires regardless of which element holds focus inside the iframe.
     window.addEventListener('keydown', onKey, true);
     document.addEventListener('keydown', onKey, true);
-    // And listen for scroll on both surfaces ‚Äî same reason.
+    // And listen for scroll on both surfaces ‚Ä?same reason.
     document.addEventListener('scroll', syncFromScroll, { passive: true, capture: true });
     window.addEventListener('scroll', syncFromScroll, { passive: true });
 

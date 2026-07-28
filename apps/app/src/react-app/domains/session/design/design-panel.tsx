@@ -38,7 +38,8 @@ import {
 } from "./design-html-runtime";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
-import { DesignSystemDrawer, type DesignTokenValues } from "./design-system-drawer";
+import { DesignSystemDrawer } from "./design-system-drawer";
+import { linkedDesignTokenPath, mergeTemplateTokenCss, parseDesignTokenValues, replaceDesignTokenValue, type DesignTokenValues } from "./design-system-files";
 import {
   buildTemplateTokenCss,
   type DesignSystemTheme,
@@ -117,12 +118,6 @@ function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
     && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
-}
-
-function linkedDesignTokenPath(source: string | undefined): string {
-  const path = source?.match(/<link\b[^>]*\bhref=["']([^"']*design-tokens?\.css)["'][^>]*>/i)?.[1]?.trim() ?? "";
-  if (!path || path.startsWith("/") || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(path) || path.split("/").includes("..")) return "";
-  return path.replace(/^\.\//, "");
 }
 
 function fileName(path: string) {
@@ -464,31 +459,6 @@ function normalizeHexColor(value: string) {
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0")).join("")}`;
 }
 
-function parseDesignTokenValues(source: string | undefined): DesignTokenValues {
-  const values: DesignTokenValues = {};
-  const pattern = /(--ipw-[a-zA-Z0-9_-]+)\s*:\s*([^;]+);/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(source ?? ""))) {
-    values[match[1] as keyof DesignTokenValues] = match[2]?.trim() ?? "";
-  }
-  return values;
-}
-
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function replaceDesignTokenValue(source: string, name: string, value: string) {
-  const css = source.trim() ? source : ":root {\n}\n";
-  const tokenPattern = new RegExp(`(${escapeRegex(name)}\\s*:\\s*)([^;]*)(;)`);
-  if (tokenPattern.test(css)) return css.replace(tokenPattern, `$1${value}$3`);
-  const rootEnd = css.lastIndexOf("}");
-  if (rootEnd >= 0) {
-    return `${css.slice(0, rootEnd)}  ${name}: ${value};\n${css.slice(rootEnd)}`;
-  }
-  return `${css}\n:root {\n  ${name}: ${value};\n}\n`;
-}
-
 async function imageFileToPortableDataUrl(file: File) {
   const bitmap = await createImageBitmap(file);
   try {
@@ -764,7 +734,10 @@ export function DesignPanel({
     scheduleDesignTokenSave(next);
   }, [scheduleDesignTokenSave, templateTokenQuery.data]);
   const handleApplyDesignSystem = React.useCallback((theme: DesignSystemTheme) => {
-    const next = buildTemplateTokenCss(theme);
+    const next = mergeTemplateTokenCss(
+      designTokenDraftRef.current || templateTokenQuery.data || "",
+      buildTemplateTokenCss(theme),
+    );
     const currentHtml = draftRef.current || fileQuery.data?.content || "";
     const themedHtml = ensureHtmlDesignSystemContract(
       currentHtml,
@@ -785,7 +758,7 @@ export function DesignPanel({
     setDesignTokenDraft(next);
     scheduleDesignTokenSave(next);
     toast.success(`Applied ${theme.name}.`);
-  }, [fileQuery.data?.content, scheduleDesignTokenSave]);
+  }, [fileQuery.data?.content, scheduleDesignTokenSave, templateTokenQuery.data]);
 
   const openDesignLink = React.useCallback(async (href: string) => {
     if (!client || !workspaceId || !lockedPath || !activePagePath) return;
@@ -1877,7 +1850,7 @@ export function DesignPanel({
           ) : fileQuery.isError ? (
             <div className="p-4 text-sm text-destructive">{fileQuery.error.message}</div>
           ) : (
-            <div className="flex min-h-0 flex-1">
+            <div className="relative flex min-h-0 flex-1 overflow-hidden">
               <div
                 ref={previewViewportRef}
                 className={cn("relative min-w-0 flex-1 overflow-hidden bg-muted/30 p-2", !isPresentationTemplate && previewDevice === "mobile" && "flex justify-center bg-muted/50 px-4 py-3")}

@@ -25,6 +25,17 @@ async function hasPluginButton(ctx, labels) {
   })()`);
 }
 
+async function selectPersonalResourceScope(ctx) {
+  await ctx.waitFor(`[...document.querySelectorAll('button')].some((entry) => ['个人', 'Personal'].includes(entry.textContent?.trim() ?? ''))`, {
+    timeoutMs: 30_000,
+    label: "personal resource scope",
+  });
+  await ctx.eval(`(() => {
+    const button = [...document.querySelectorAll('button')].find((entry) => ['个人', 'Personal'].includes(entry.textContent?.trim() ?? ''));
+    button?.click();
+  })()`);
+}
+
 export default {
   id: "wechat-official-plugin",
   title: "Install and configure the WeChat Official Account plugin",
@@ -37,6 +48,7 @@ export default {
           voiceover: vo[0],
           action: async () => {
             await ctx.navigateHash("/settings/extensions");
+            await selectPersonalResourceScope(ctx);
             await ctx.waitFor("document.body.innerText.includes('独立插件包')", {
               timeoutMs: 30_000,
               label: "plugin catalog loaded",

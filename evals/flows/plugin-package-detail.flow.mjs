@@ -105,6 +105,17 @@ async function clickExactButton(ctx, label) {
   ctx.assert(clicked, `Could not find button: ${label}`);
 }
 
+async function selectPersonalResourceScope(ctx) {
+  await ctx.waitFor(`[...document.querySelectorAll('button')].some((entry) => ['个人', 'Personal'].includes(entry.textContent?.trim() ?? ''))`, {
+    timeoutMs: 30_000,
+    label: "personal resource scope",
+  });
+  await ctx.eval(`(() => {
+    const button = [...document.querySelectorAll('button')].find((entry) => ['个人', 'Personal'].includes(entry.textContent?.trim() ?? ''));
+    button?.click();
+  })()`);
+}
+
 async function choosePluginPackage(ctx, file) {
   const { root } = await ctx.client.send("DOM.getDocument", { depth: 1, pierce: true });
   const { nodeId } = await ctx.client.send("DOM.querySelector", {
@@ -129,6 +140,7 @@ export default {
             await ctx.navigateHash("/settings/preferences");
             await ctx.waitForText("偏好设置", { timeoutMs: 30_000 });
             await ctx.navigateHash("/settings/extensions");
+            await selectPersonalResourceScope(ctx);
             await ctx.waitForText("独立插件包", { timeoutMs: 30_000 });
             const installed = await ctx.eval(`(() => {
               const buttons = [...document.querySelectorAll('button')];
@@ -249,6 +261,7 @@ export default {
           voiceover: vo[3],
           action: async () => {
             await ctx.navigateHash("/settings/extensions");
+            await selectPersonalResourceScope(ctx);
             await ctx.waitForText("独立插件包", { timeoutMs: 30_000 });
             const installed = await ctx.eval(`(() => {
               const buttons = [...document.querySelectorAll('button')];

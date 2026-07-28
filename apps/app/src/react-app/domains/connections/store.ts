@@ -29,6 +29,7 @@ import {
   validateMcpServerName,
 } from "../../../app/mcp";
 import { buildiPolloWorkWorkspaceBaseUrl } from "../../../app/lib/ipollowork-server";
+import { PERSONAL_WORK_CONTEXT_ID, readActiveWorkContextId } from "../../../app/lib/work-context";
 import type {
   Client,
   McpServerEntry,
@@ -874,6 +875,7 @@ export function createConnectionsStore(options: {
    * waiting for the marker to expire.
    */
   async function syncCloudControlMcp(options?: { force?: boolean }): Promise<"synced" | "unchanged" | "skipped"> {
+    if (readActiveWorkContextId() !== PERSONAL_WORK_CONTEXT_ID) return "skipped";
     const settings = readDenSettings();
     const orgId = settings.activeOrgId?.trim() ?? "";
     if (!orgId || !settings.authToken?.trim()) return "skipped";

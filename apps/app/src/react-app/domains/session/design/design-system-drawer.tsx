@@ -1,9 +1,10 @@
 ﻿/** @jsxImportSource react */
 import * as React from "react";
-import { Palette, RotateCcw, SlidersHorizontal, X } from "lucide-react";
+import { GripVertical, Palette, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import {
@@ -14,8 +15,25 @@ import {
   type DesignSystemTheme,
   getDesignSystemTheme,
 } from "./design-system-registry";
+import type { DesignTokenValues } from "./design-system-files";
 
 type DesignSystemTab = "systems" | "variables";
+
+const DRAWER_DEFAULT_WIDTH = 360;
+const DRAWER_MIN_WIDTH = 280;
+const DRAWER_MAX_WIDTH = 720;
+const DRAWER_WIDTH_STORAGE_KEY = "ipollowork.design-system-drawer.width";
+
+function clampDrawerWidth(width: number, availableWidth = DRAWER_MAX_WIDTH) {
+  const responsiveMax = Math.max(DRAWER_MIN_WIDTH, Math.min(DRAWER_MAX_WIDTH, availableWidth - 280));
+  return Math.round(Math.max(DRAWER_MIN_WIDTH, Math.min(responsiveMax, width)));
+}
+
+function storedDrawerWidth() {
+  if (typeof window === "undefined") return DRAWER_DEFAULT_WIDTH;
+  const stored = Number(window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY));
+  return Number.isFinite(stored) ? clampDrawerWidth(stored, window.innerWidth) : DRAWER_DEFAULT_WIDTH;
+}
 
 const DEFAULTS = {
   "--ipw-color-primary": "#c96442",
@@ -51,22 +69,21 @@ const DEFAULTS = {
   "--ipw-card-blur": "0px",
 } as const;
 
-export type DesignTokenValues = Record<string, string>;
-
 type DesignSystemDrawerProps = {
   open: boolean;
   embedded?: boolean;
   templateName: string;
   currentThemeId?: string | null;
+  variablesDisabled?: boolean;
   initialValues?: DesignTokenValues;
   onClose: () => void;
   onTokenChange: (name: string, value: string) => void;
   onApplyDesignSystem?: (theme: DesignSystemTheme) => void;
 };
 
-const TABS: Array<{ id: DesignSystemTab; label: string; icon: React.ElementType }> = [
-  { id: "systems", label: "选择设计系统", icon: Palette },
-  { id: "variables", label: "批量修改变量", icon: SlidersHorizontal },
+const TABS: Array<{ id: DesignSystemTab; labelKey: string; icon: React.ElementType }> = [
+  { id: "systems", labelKey: "design_system.tab.systems", icon: Palette },
+  { id: "variables", labelKey: "design_system.tab.variables", icon: SlidersHorizontal },
 ];
 
 function normalizeHex(value: string, fallback: string) {
@@ -81,15 +98,24 @@ export function DesignSystemDrawer({
   embedded = false,
   templateName,
   currentThemeId,
+  variablesDisabled = false,
   initialValues,
   onClose,
   onTokenChange,
   onApplyDesignSystem,
 }: DesignSystemDrawerProps) {
+  const drawerRef = React.useRef<HTMLElement>(null);
+  const resizeStartRef = React.useRef({ clientX: 0, width: DRAWER_DEFAULT_WIDTH });
   const [tab, setTab] = React.useState<DesignSystemTab>("systems");
+  const [drawerWidth, setDrawerWidth] = React.useState(storedDrawerWidth);
+  const [resizing, setResizing] = React.useState(false);
   const [values, setValues] = React.useState<DesignTokenValues>({ ...DEFAULTS });
   const [selectedThemeId, setSelectedThemeId] = React.useState(currentThemeId ?? DESIGN_SYSTEM_THEMES[0]?.id ?? "");
   const [themeSearch, setThemeSearch] = React.useState("");
+  const currentTheme = React.useMemo(
+    () => currentThemeId ? getDesignSystemTheme(currentThemeId) : undefined,
+    [currentThemeId],
+  );
   const selectedTheme = React.useMemo(
     () => getDesignSystemTheme(selectedThemeId) ?? DESIGN_SYSTEM_THEMES[0],
     [selectedThemeId],
@@ -115,6 +141,59 @@ export function DesignSystemDrawer({
   React.useEffect(() => {
     if (currentThemeId && getDesignSystemTheme(currentThemeId)) setSelectedThemeId(currentThemeId);
   }, [currentThemeId]);
+
+  const availableDrawerWidth = React.useCallback(() => (
+    drawerRef.current?.parentElement?.getBoundingClientRect().width ?? window.innerWidth
+  ), []);
+
+  const updateDrawerWidth = React.useCallback((width: number) => {
+    setDrawerWidth(clampDrawerWidth(width, availableDrawerWidth()));
+  }, [availableDrawerWidth]);
+
+  React.useEffect(() => {
+    window.localStorage.setItem(DRAWER_WIDTH_STORAGE_KEY, String(drawerWidth));
+  }, [drawerWidth]);
+
+  React.useEffect(() => {
+    const handleResize = () => updateDrawerWidth(drawerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [drawerWidth, updateDrawerWidth]);
+
+  React.useEffect(() => {
+    if (!resizing) return;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [resizing]);
+
+  const startResize = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    resizeStartRef.current = { clientX: event.clientX, width: drawerWidth };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizing(true);
+  }, [drawerWidth]);
+
+  const moveResize = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizing) return;
+    updateDrawerWidth(resizeStartRef.current.width + resizeStartRef.current.clientX - event.clientX);
+  }, [resizing, updateDrawerWidth]);
+
+  const stopResize = React.useCallback(() => setResizing(false), []);
+
+  const handleResizeKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 40 : 12;
+    if (event.key === "ArrowLeft") updateDrawerWidth(drawerWidth + step);
+    else if (event.key === "ArrowRight") updateDrawerWidth(drawerWidth - step);
+    else if (event.key === "Home") updateDrawerWidth(DRAWER_MIN_WIDTH);
+    else if (event.key === "End") updateDrawerWidth(DRAWER_MAX_WIDTH);
+    else return;
+    event.preventDefault();
+  }, [drawerWidth, updateDrawerWidth]);
 
   const update = React.useCallback((name: string, value: string) => {
     setValues((current) => ({ ...current, [name]: value }));
@@ -143,53 +222,106 @@ export function DesignSystemDrawer({
 
   return (
     <aside
+      ref={drawerRef}
       className={cn(
         embedded
           ? "min-h-0 flex-1 overflow-hidden bg-background"
-          : "shrink-0 overflow-hidden border-l border-border/70 bg-background transition-[width,border-color] duration-200 ease-out",
-        !embedded && (open ? "w-[360px]" : "w-0 border-l-transparent"),
+          : "absolute inset-y-0 right-0 z-30 overflow-visible border-l border-border/70 bg-background shadow-[-12px_0_32px_rgba(0,0,0,0.08)] transition-transform duration-200 ease-out",
+        !embedded && (open ? "translate-x-0" : "pointer-events-none translate-x-full"),
       )}
+      style={embedded ? undefined : { width: drawerWidth }}
       aria-hidden={!open}
       data-testid="design-system-drawer"
     >
-      <div className={cn("flex h-full flex-col", embedded ? "w-full" : "w-[360px]")}>
+      {!embedded ? <div
+        role="separator"
+        aria-label={t("design_system.resize")}
+        aria-orientation="vertical"
+        aria-valuemin={DRAWER_MIN_WIDTH}
+        aria-valuemax={DRAWER_MAX_WIDTH}
+        aria-valuenow={drawerWidth}
+        tabIndex={open ? 0 : -1}
+        className={cn(
+          "group absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize touch-none outline-none",
+          "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent after:transition-colors",
+          "hover:after:bg-primary/60 focus-visible:after:bg-primary",
+          resizing && "after:bg-primary",
+        )}
+        onPointerDown={startResize}
+        onPointerMove={moveResize}
+        onPointerUp={stopResize}
+        onPointerCancel={stopResize}
+        onLostPointerCapture={stopResize}
+        onDoubleClick={() => updateDrawerWidth(DRAWER_DEFAULT_WIDTH)}
+        onKeyDown={handleResizeKeyDown}
+      >
+        <span className="pointer-events-none absolute left-0 top-1/2 grid h-9 w-3 -translate-y-1/2 place-items-center rounded-sm border border-border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          <GripVertical className="size-3" />
+        </span>
+      </div> : null}
+      <div className="flex h-full w-full flex-col overflow-hidden">
         {!embedded ? <div className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3 py-3">
           <div className="grid size-7 place-items-center rounded-lg bg-primary/10 text-primary"><Palette className="size-3.5" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold">Design system</p>
-            <p className="truncate text-[10px] text-muted-foreground">{templateName}</p>
+            <p className="text-xs font-semibold">{t("design_system.title")}</p>
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-muted-foreground">
+              <span className="truncate">{templateName}</span>
+              <span aria-hidden>/</span>
+              <span
+                className={cn(
+                  "max-w-full truncate rounded-full border px-1.5 py-0.5",
+                  currentTheme ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-muted/45",
+                )}
+              >
+                {currentTheme
+                  ? t("design_system.current_theme", { theme: currentTheme.name })
+                  : t("design_system.no_theme")}
+              </span>
+            </div>
           </div>
-          <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close design system"><X /></Button>
+          <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label={t("design_system.close")}><X /></Button>
         </div> : null}
 
         <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-border/70 p-2">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              className={cn(
-                "flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors",
-                tab === id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-              aria-pressed={tab === id}
-            >
-              <Icon className="size-3.5" />
-              {label}
-            </button>
-          ))}
+          {TABS.map(({ id, labelKey, icon: Icon }) => {
+            const disabled = id === "variables" && variablesDisabled;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                disabled={disabled}
+                title={disabled ? t("design_system.variables_disabled_hint") : undefined}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors",
+                  tab === id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  disabled && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground",
+                )}
+                aria-pressed={tab === id}
+                aria-describedby={disabled ? "design-system-variables-disabled-hint" : undefined}
+              >
+                <Icon className="size-3.5" />
+                {t(labelKey)}
+              </button>
+            );
+          })}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {tab === "systems" ? (
             <div className="space-y-3">
-              <DrawerHeading title="选择设计系统" description="Pick a preset to swap the current HTML theme tokens." />
+              <DrawerHeading title={t("design_system.systems_heading")} description={t("design_system.systems_description")} />
+              {!currentTheme ? (
+                <div className="rounded-lg border border-dashed border-border/80 bg-muted/25 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                  {t("design_system.no_theme_hint")}
+                </div>
+              ) : null}
               <Input
                 className="h-8 rounded-lg bg-muted/45 px-2 text-[11px]"
-                placeholder="Search themes..."
+                placeholder={t("design_system.search_placeholder")}
                 value={themeSearch}
                 onChange={(event) => setThemeSearch(event.currentTarget.value)}
-                aria-label="Search design systems"
+                aria-label={t("design_system.search_label")}
               />
               {filteredThemes.length ? filteredThemes.map((theme) => {
                 const active = theme.id === selectedThemeId;
@@ -207,12 +339,7 @@ export function DesignSystemDrawer({
                       onClick={() => setSelectedThemeId(theme.id)}
                       aria-pressed={active}
                     >
-                        <iframe
-                          title={`${theme.name} preview`}
-                          srcDoc={buildDesignSystemCardPreviewDoc(theme)}
-                          className="h-[320px] w-full border-0 bg-white"
-                          sandbox="allow-same-origin"
-                        />
+                    <ThemePreview theme={theme} />
                     <div className="space-y-1 p-3">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-semibold">{theme.name}</span>
@@ -230,14 +357,14 @@ export function DesignSystemDrawer({
                           onApplyDesignSystem?.(theme);
                         }}
                       >
-                        {currentThemeId === theme.id ? "当前主题" : "应用主题"}
+                        {currentThemeId === theme.id ? t("design_system.current_theme_button") : t("design_system.apply_theme")}
                       </Button>
                     </div>
                   </div>
                 );
               }) : (
                 <div className="rounded-xl border border-dashed border-border/70 px-3 py-6 text-center text-[11px] text-muted-foreground">
-                  No themes found.
+                  {t("design_system.no_themes_found")}
                 </div>
               )}
             </div>
@@ -245,7 +372,12 @@ export function DesignSystemDrawer({
 
           {tab === "variables" ? (
             <div className="space-y-5">
-              <DrawerHeading title="设计 token" description={`${selectedTheme?.name ?? "Current theme"} · ${selectedThemeControls.length} 个主题原始变量`} />
+              <DrawerHeading title={t("design_system.variables_heading")} description={t("design_system.variables_description", { theme: selectedTheme?.name ?? t("design_system.current_theme_fallback"), count: selectedThemeControls.length })} />
+              {variablesDisabled ? (
+                <div id="design-system-variables-disabled-hint" className="rounded-lg border border-dashed border-border/80 bg-muted/25 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                  {t("design_system.variables_disabled_hint")}
+                </div>
+              ) : null}
               <div className="space-y-4">
                 {selectedThemeGroups.map(([title, controls]) => (
                   <TokenGroup key={title} title={title}>
@@ -265,11 +397,60 @@ export function DesignSystemDrawer({
         </div>
 
         <div className="flex shrink-0 items-center justify-between border-t border-border/70 px-3 py-2">
-          <p className="text-[10px] text-muted-foreground">仅显示当前主题 tokens.css 中存在的变量。</p>
-          <Button variant="ghost" size="xs" onClick={resetAll}><RotateCcw /> Reset all</Button>
+          <p className="text-[10px] text-muted-foreground">{t("design_system.variables_footer")}</p>
+          <Button variant="ghost" size="xs" onClick={resetAll}><RotateCcw /> {t("design_system.reset_all")}</Button>
         </div>
       </div>
     </aside>
+  );
+}
+
+function ThemePreview({ theme }: { theme: DesignSystemTheme }) {
+  const [loaded, setLoaded] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
+  const previewDoc = React.useMemo(() => buildDesignSystemCardPreviewDoc(theme), [theme]);
+  const swatches = React.useMemo(() => {
+    const values: string[] = [];
+    for (const name of ["--ipw-color-primary", "--ipw-color-secondary", "--ipw-color-accent"]) {
+      const match = theme.tokensCss.match(new RegExp(`${name}\\s*:\\s*([^;]+);`));
+      if (match?.[1]) values.push(match[1].trim());
+    }
+    return values;
+  }, [theme.tokensCss]);
+
+  React.useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [previewDoc]);
+
+  return (
+    <div className="relative h-[320px] overflow-hidden bg-muted/40">
+      {!loaded || failed ? (
+        <div className="absolute inset-0 z-0 flex flex-col justify-between bg-background p-4">
+          <div className="flex gap-2">
+            {swatches.map((color) => (
+              <span key={color} className="size-6 rounded-full border border-black/10 shadow-sm" style={{ background: color }} />
+            ))}
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-foreground">{theme.name}</p>
+            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+              {failed ? t("design_system.preview_failed") : t("design_system.preview_loading")}
+            </p>
+          </div>
+        </div>
+      ) : null}
+      {!failed ? (
+        <iframe
+          title={t("design_system.preview_title", { theme: theme.name })}
+          srcDoc={previewDoc}
+          className={cn("relative z-10 h-full w-full border-0 bg-white transition-opacity", loaded ? "opacity-100" : "opacity-0")}
+          sandbox="allow-same-origin"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+        />
+      ) : null}
+    </div>
   );
 }
 

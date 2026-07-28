@@ -19,6 +19,11 @@ import { createClient } from "@/app/lib/opencode";
 import { createiPolloWorkServerClient, type iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { isDesktopRuntime } from "@/app/lib/runtime-env";
 import {
+  filterWorkspacesForWorkContext,
+  finishWorkContextSwitch,
+  type WorkContextId,
+} from "@/app/lib/work-context";
+import {
   resolveWorkspaceEndpoint,
   type ResolvedWorkspaceEndpoint,
 } from "@/app/lib/workspace-endpoint";
@@ -54,6 +59,7 @@ import {
 import { legacySessionRoute, workspaceSessionRoute } from "./workspace-routes";
 
 export type UseWorkspaceRouteStateInput = {
+  workContextId: WorkContextId;
   /** Invoked when the ipollowork-server settings-changed event fires (the route bumps its settings version). */
   onServerSettingsChanged: () => void;
   /** Receives the local ipollowork-server host info discovered during refresh. */
@@ -61,7 +67,7 @@ export type UseWorkspaceRouteStateInput = {
 };
 
 export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
-  const { onServerSettingsChanged, onHostInfo } = input;
+  const { workContextId, onServerSettingsChanged, onHostInfo } = input;
   const navigate = useNavigate();
   const local = useLocal();
   const params = useParams<{ workspaceId?: string; sessionId?: string }>();
@@ -112,6 +118,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     [],
   );
   const refreshInFlightRef = useRef(false);
+  const workContextRef = useRef(workContextId);
   const workspacesRef = useRef<RouteWorkspace[]>([]);
   const workspaceOrderIdsRef = useRef(workspaceOrderIds);
   const remoteWorkspaceCheckRunRef = useRef<Record<string, string>>({});
@@ -123,6 +130,19 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const launchActivatedWorkspaceIdsRef = useRef(new Set<string>());
   const reconnectAttemptedWorkspaceIdRef = useRef("");
   const backgroundSessionLoadInFlight = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    workContextRef.current = workContextId;
+    refreshInFlightRef.current = false;
+    setLoading(true);
+    setRouteError(null);
+    workspacesRef.current = [];
+    sessionsByWorkspaceIdRef.current = {};
+    setWorkspaces([]);
+    setSessionsByWorkspaceId({});
+    setErrorsByWorkspaceId({});
+    setRetryingWorkspaceIds([]);
+    setLegacySelectedWorkspaceId("");
+  }, [workContextId]);
   const rememberPendingCreatedSession = useCallback((workspaceId: string, sessionId: string) => {
     const id = sessionId.trim();
     if (!workspaceId || !id) return;
@@ -165,10 +185,12 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   }, []);
   const loadWorkspaceSessionsInBackground = useCallback(
     async (workspaces: RouteWorkspace[]) => {
+      const requestedContextId = workContextRef.current;
       const MAX_ATTEMPTS = 6;
       const backoffMs = (attempt: number) => Math.min(500 * Math.pow(2, attempt), 4_000);
 
       const fetchOnce = async (workspace: RouteWorkspace, attempt: number): Promise<void> => {
+        if (workContextRef.current !== requestedContextId) return;
         const isRemoteiPolloWorkWorkspace = workspace.workspaceType === "remote" && workspace.remoteType !== "opencode";
         const endpoint = endpointForWorkspace(workspace);
         if (!endpoint) {
@@ -212,6 +234,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
                 normalizeDirectoryPath(session?.directory ?? "") === workspaceRoot,
               )
             : fetchedItems;
+          if (workContextRef.current !== requestedContextId) return;
           setSessionsByWorkspaceId((current) => {
             const nextItems = mergeFetchedSessionsWithPending(workspace.id, items, current[workspace.id] ?? []);
             const next = { ...current, [workspace.id]: nextItems };
@@ -252,6 +275,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
             }, 3_000);
           }
         } catch (error) {
+          if (workContextRef.current !== requestedContextId) return;
           const message = error instanceof Error ? error.message : t("app.unknown_error");
           // The first cold call to OpenCode's /session endpoint often hits
           // the 12s server timeout while the daemon finishes warming up
@@ -304,6 +328,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     // multiplied quickly on the event loop and caused the UI to freeze.
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
+    const requestedContextId = workContextId;
     setLoading(true);
     setRouteError(null);
     let desktopList: WorkspaceList | null = null;
@@ -313,7 +338,10 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       if (isDesktopRuntime()) {
         try {
           desktopList = await workspaceBootstrap() as WorkspaceList;
-          desktopWorkspaces = (desktopList.workspaces ?? []).map(mapDesktopWorkspace);
+          desktopWorkspaces = filterWorkspacesForWorkContext(
+            (desktopList.workspaces ?? []).map(mapDesktopWorkspace),
+            requestedContextId,
+          );
         } catch (error) {
           const message = describeRouteError(error);
           console.error("[session-route] workspaceBootstrap failed", error);
@@ -362,9 +390,14 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       });
       const list = await ipolloworkClient.listWorkspaces();
       const nextWorkspaces = orderRouteWorkspaces(
-        mergeRouteWorkspaces(list.items, desktopWorkspaces),
+        filterWorkspacesForWorkContext(
+          mergeRouteWorkspaces(list.items, desktopWorkspaces),
+          requestedContextId,
+        ),
         workspaceOrderIdsRef.current,
       );
+
+      if (workContextRef.current !== requestedContextId) return;
 
       // Preserve any sessions we already have cached so switching routes
       // doesn't erase the sidebar while we refetch.
@@ -460,6 +493,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         void loadWorkspaceSessionsInBackground(orderedWorkspaces);
       }
     } catch (error) {
+      if (workContextRef.current !== requestedContextId) return;
       const message = describeRouteError(error);
       console.error("[session-route] refreshRouteState failed", error);
       recordInspectorEvent("route.refresh.error", {
@@ -476,7 +510,10 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         );
       }
     } finally {
-      setLoading(false);
+      if (workContextRef.current === requestedContextId) {
+        setLoading(false);
+        finishWorkContextSwitch(requestedContextId);
+      }
       refreshInFlightRef.current = false;
       // Tell the boot overlay the first route data load has completed so
       // the overlay dismisses after BOTH the desktop boot and the workspace
@@ -485,7 +522,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         markBootRouteReady();
       }
     }
-  }, [loadWorkspaceSessionsInBackground, markBootRouteReady, routeWorkspaceId, selectedSessionId]);
+  }, [loadWorkspaceSessionsInBackground, markBootRouteReady, routeWorkspaceId, selectedSessionId, workContextId]);
   const handleRuntimeSessionUpdated = useCallback((update: { sessionId: string; info: Record<string, unknown> }) => {
     if (!selectedWorkspaceId) return;
     setSessionsByWorkspaceId((current) => {

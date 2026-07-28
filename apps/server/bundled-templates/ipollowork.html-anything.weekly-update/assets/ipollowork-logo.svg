@@ -1,7 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 476 500" role="img" aria-label="iPollo logo">
+<svg xmlns="http://www.w3.org/2000/svg" width="476" height="500" viewBox="-150 -150 776 800" role="img" aria-label="iPollo logo">
   <title>iPollo logo</title>
-  <rect x="193" y="0" width="90" height="86" rx="13" fill="#000"/>
-  <path d="M92 150 L238 250 L384 150" fill="none" stroke="#000" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M92 330 L238 230 L384 330" fill="none" stroke="#C5C4C4" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M238 230 L238 430" fill="none" stroke="#C5C4C4" stroke-width="72" stroke-linecap="round"/>
+  <rect x="193.000" y="200.000" width="90" height="300" rx="45" ry="45" fill="#C5C4C4"/>
+  <rect x="0.309" y="143.436" width="300" height="90" rx="45" ry="45" fill="#000000" transform="rotate(33 150.309 188.436)"/>
+  <rect x="174.827" y="143.436" width="300" height="90" rx="45" ry="45" fill="#000000" transform="rotate(-33 324.827 188.436)"/>
+  <rect x="195.000" y="0.000" width="86" height="86" rx="13" ry="13" fill="#000000"/>
+  <rect x="4.309" y="261.436" width="300" height="90" rx="45" ry="45" fill="#C5C4C4" transform="rotate(-33 154.309 306.436)"/>
+  <rect x="171.535" y="261.436" width="300" height="90" rx="45" ry="45" fill="#C5C4C4" transform="rotate(33 321.535 306.436)"/>
 </svg>
