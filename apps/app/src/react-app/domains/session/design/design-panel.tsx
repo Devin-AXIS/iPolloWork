@@ -27,6 +27,7 @@ import { useDesignAiSelectionStore } from "./design-ai-selection-store";
 import {
   buildDesignPreviewDocument,
   DESIGN_MESSAGE_CHANNEL,
+  DESIGN_MULTI_SELECTION_STYLE_FIELDS,
   DESIGN_STYLE_FIELDS,
   isLocalHtmlPath,
   resolveDesignNavigationPath,
@@ -34,8 +35,10 @@ import {
   type DesignDeckState,
   type DesignRuntimeMessage,
   type DesignSelection,
+  type DesignSelectionChange,
   type DesignStyleField,
 } from "./design-html-runtime";
+import { summarizeDesignSelection } from "./design-selection-summary";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
 import { DesignSystemDrawer } from "./design-system-drawer";
@@ -552,7 +555,12 @@ export function DesignPanel({
   const [editing, setEditing] = React.useState(false);
   const [deck, setDeck] = React.useState<DesignDeckState | null>(null);
   const hydratedPageRef = React.useRef("");
-  const [selection, setSelection] = React.useState<DesignSelection | null>(null);
+  const [selectionState, setSelectionState] = React.useState<DesignSelectionChange | null>(null);
+  const selectionSummary = selectionState
+    ? summarizeDesignSelection(selectionState.selection, selectionState.selections, selectionState.selectionRect)
+    : null;
+  const selection = selectionSummary?.primary ?? null;
+  const isMultiSelection = selectionSummary?.isMultiSelection ?? false;
   const [draft, setDraft] = React.useState("");
   const draftRef = React.useRef("");
   const [pendingCanvasChange, setPendingCanvasChange] = React.useState(false);
@@ -628,7 +636,7 @@ export function DesignPanel({
     setDraft(aiUndoCheckpoint.afterHtml);
     setSavedSource(aiUndoCheckpoint.afterHtml);
     setPendingCanvasChange(false);
-    setSelection(null);
+    setSelectionState(null);
     setQuickEdit(null);
     setPreviewSource(aiUndoCheckpoint.afterHtml);
     setHydratedPreviewSource("");
@@ -797,7 +805,7 @@ export function DesignPanel({
     setDraft(fileQuery.data.content);
     setSavedSource(fileQuery.data.content);
     setHistory([]);
-    setSelection(null);
+    setSelectionState(null);
     const pageIdentity = `${sessionId}:${activePagePath}`;
     if (hydratedPageRef.current !== pageIdentity) {
       hydratedPageRef.current = pageIdentity;
@@ -856,7 +864,7 @@ export function DesignPanel({
         return;
       }
       if (event.data.type === "deselected") {
-        setSelection(null);
+        setSelectionState(null);
         setQuickEdit(null);
         setAdvancedOpen(false);
         return;
@@ -868,9 +876,17 @@ export function DesignPanel({
         return;
       }
       if (event.data.type === "editing") setHistory((current) => [...current, draft]);
-      setSelection((current) => {
-        if (event.data.type === "selected" || current?.id !== event.data.selection.id) setQuickEdit(null);
-        return event.data.selection;
+      setSelectionState((current) => {
+        const currentIds = current
+          ? summarizeDesignSelection(current.selection, current.selections, current.selectionRect).selectionIds
+          : [];
+        const nextIds = summarizeDesignSelection(event.data.selection, event.data.selections, event.data.selectionRect).selectionIds;
+        if (current?.selection.id !== event.data.selection.id
+          || currentIds.length !== nextIds.length
+          || currentIds.some((id, index) => id !== nextIds[index])) {
+          setQuickEdit(null);
+        }
+        return event.data;
       });
       if (event.data.type === "draft") {
         draftRef.current = event.data.html;
@@ -893,7 +909,7 @@ export function DesignPanel({
 
   const navigateDeck = React.useCallback((direction: "previous" | "next") => {
     if (!deck) return;
-    setSelection(null);
+    setSelectionState(null);
     setQuickEdit(null);
     setAdvancedOpen(false);
     iframeRef.current?.contentWindow?.postMessage({
@@ -910,7 +926,7 @@ export function DesignPanel({
     // an IME composition is finishing. Flush that exact DOM value to the
     // canvas before requesting the snapshot so Chinese/Japanese/Korean text is
     // never visually changed but omitted from the saved HTML.
-    if (selection && quickEdit) {
+    if (selection && quickEdit && !isMultiSelection) {
       const inputSelector = quickEdit === "text"
           ? '[aria-label="Quick edit text"]'
           : quickEdit === "href"
@@ -927,7 +943,7 @@ export function DesignPanel({
         frameWindow.postMessage({
           channel: DESIGN_MESSAGE_CHANNEL,
           type: "set",
-          id: selection.id,
+          ids: [selection.id],
           field,
           value,
           scope: "element",
@@ -954,7 +970,7 @@ export function DesignPanel({
       window.addEventListener("message", receiveSnapshot);
       frameWindow.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "snapshot", requestId }, "*");
     });
-  }, [editing, quickEdit, selection]);
+  }, [editing, isMultiSelection, quickEdit, selection]);
 
   const exportDeckToPdf = React.useCallback(async () => {
     if (!deck || exportingPdf) return;
@@ -1376,7 +1392,7 @@ export function DesignPanel({
       setSavedSource(content);
       setPendingCanvasChange(false);
       setHistory([]);
-      setSelection(null);
+      setSelectionState(null);
       setQuickEdit(null);
       setAdvancedOpen(false);
       setPreviewSource(content);
@@ -1389,31 +1405,36 @@ export function DesignPanel({
   };
 
   const applyField = (field: DesignField, value: string, remember = true) => {
-    if (!selection || !editing) return;
+    if (!selection || !selectionSummary || !editing) return;
+    if (isMultiSelection && !DESIGN_MULTI_SELECTION_STYLE_FIELDS.some((styleField) => styleField === field)) return;
     setPendingCanvasChange(true);
     if (remember) setHistory((current) => [...current, draft]);
-    setSelection(updateSelectionValue(selection, field, value));
+    setSelectionState((current) => current ? {
+      ...current,
+      selection: updateSelectionValue(current.selection, field, value),
+      selections: current.selections.map((member) => updateSelectionValue(member, field, value)),
+    } : null);
     iframeRef.current?.contentWindow?.postMessage({
       channel: DESIGN_MESSAGE_CHANNEL,
       type: "set",
-      id: selection.id,
+      ids: selectionSummary.selectionIds,
       field,
       value,
-      scope: selection.rangeText && (field === "color" || field === "fontSize" || field === "fontWeight" || field === "letterSpacing") ? "range" : "element",
+      scope: isMultiSelection ? "element" : selection.rangeText && (field === "color" || field === "fontSize" || field === "fontWeight" || field === "letterSpacing") ? "range" : "element",
     }, "*");
   };
 
   const deleteSelection = () => {
-    if (!selection || !selection.canDelete || !editing) return;
+    if (!selectionSummary || !selectionSummary.selections.some((member) => member.canDelete) || !editing) return;
     setPendingCanvasChange(true);
     setHistory((current) => [...current, draft]);
-    setSelection(null);
+    setSelectionState(null);
     setQuickEdit(null);
     setAdvancedOpen(false);
     iframeRef.current?.contentWindow?.postMessage({
       channel: DESIGN_MESSAGE_CHANNEL,
       type: "delete",
-      id: selection.id,
+      ids: selectionSummary.selectionIds,
     }, "*");
   };
 
@@ -1514,7 +1535,7 @@ export function DesignPanel({
       setPendingCanvasChange(false);
       setDraft(previous);
       setHistory((current) => current.slice(0, -1));
-      setSelection(null);
+      setSelectionState(null);
       setQuickEdit(null);
       setPreviewSource(previous);
       setHydratedPreviewSource("");
@@ -1546,7 +1567,7 @@ export function DesignPanel({
       setDraft(restored.content);
       setSavedSource(restored.content);
       setPendingCanvasChange(false);
-      setSelection(null);
+      setSelectionState(null);
       setQuickEdit(null);
       setPreviewSource(restored.content);
       setHydratedPreviewSource("");
@@ -1619,16 +1640,17 @@ export function DesignPanel({
     () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, designTokenDraft || templateTokenQuery.data || "", false, usesNativeEditablePptx, isPresentationTemplate),
     [designTokenDraft, hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
+  const selectionRect = selectionSummary?.selectionRect;
   const selectionLeft = isPresentationTemplate
-    ? presentationCanvasLeft + (selection?.rect.left ?? 0) * presentationScale + (selection?.rect.width ?? 0) * presentationScale / 2 - presentationScroll.left
-    : (iframeRef.current?.offsetLeft ?? 0) + (selection?.rect.left ?? 0) + (selection?.rect.width ?? 0) / 2;
+    ? presentationCanvasLeft + (selectionRect?.left ?? 0) * presentationScale + (selectionRect?.width ?? 0) * presentationScale / 2 - presentationScroll.left
+    : (iframeRef.current?.offsetLeft ?? 0) + (selectionRect?.left ?? 0) + (selectionRect?.width ?? 0) / 2;
   const selectionTop = isPresentationTemplate
-    ? presentationCanvasTop + (selection?.rect.top ?? 0) * presentationScale - presentationScroll.top
-    : (iframeRef.current?.offsetTop ?? 0) + (selection?.rect.top ?? 0);
-  const floatingStyle = selection ? {
+    ? presentationCanvasTop + (selectionRect?.top ?? 0) * presentationScale - presentationScroll.top
+    : (iframeRef.current?.offsetTop ?? 0) + (selectionRect?.top ?? 0);
+  const floatingStyle = selectionRect ? {
     left: `clamp(112px, ${selectionLeft + 8}px, calc(100% - 112px))`,
     top: `${Math.max(8, selectionTop + 8)}px`,
-    transform: selection.rect.top > 58 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
+    transform: selectionRect.top > 58 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
   } satisfies React.CSSProperties : undefined;
   const compactToolbar = panelWidth < 480;
   const veryCompactToolbar = panelWidth < 360;
@@ -1693,7 +1715,7 @@ export function DesignPanel({
                 checked={editing}
                 onCheckedChange={(checked) => {
                   setEditing(checked);
-                  setSelection(null);
+                  setSelectionState(null);
                   setQuickEdit(null);
                   setAdvancedOpen(false);
                   setDesignSystemOpen(false);
@@ -1723,7 +1745,7 @@ export function DesignPanel({
                     const next = value[0];
                     if (next !== "desktop" && next !== "mobile") return;
                     setPreviewDevice(next);
-                    setSelection(null);
+                    setSelectionState(null);
                     setQuickEdit(null);
                     setAdvancedOpen(false);
                   }}
@@ -1828,7 +1850,7 @@ export function DesignPanel({
                   previewDevice={!isPresentationTemplate ? previewDevice : undefined}
                   onPreviewDeviceChange={!isPresentationTemplate ? (device) => {
                     setPreviewDevice(device);
-                    setSelection(null);
+                    setSelectionState(null);
                     setQuickEdit(null);
                     setAdvancedOpen(false);
                     setDesignSystemOpen(false);
@@ -1893,7 +1915,7 @@ export function DesignPanel({
                     />
                   </div>
                 </div>
-                {editing && selection ? (
+                {editing && selection && selectionSummary ? (
                   <div
                     className="absolute z-20 flex max-w-[calc(100%-24px)] items-center gap-1 rounded-2xl border border-border/80 bg-background/95 p-1 shadow-xl shadow-black/10 backdrop-blur-xl"
                     style={floatingStyle}
@@ -1904,7 +1926,7 @@ export function DesignPanel({
                     onPointerUp={(event) => event.stopPropagation()}
                     onClick={(event) => event.stopPropagation()}
                   >
-                    {quickEdit ? (
+                    {quickEdit && (!isMultiSelection || quickEdit === "color") ? (
                       <>
                         <Button
                           variant="ghost"
@@ -1976,9 +1998,9 @@ export function DesignPanel({
                     ) : (
                       <>
                         <span className="px-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          {selection.tag}
+                          {isMultiSelection ? `${selectionSummary.selectionCount} elements` : selection.tag}
                         </span>
-                        {selection.canEditText ? (
+                        {!isMultiSelection && selection.canEditText ? (
                           <>
                             <Button variant="ghost" size="xs" onClick={() => beginQuickEdit("text")} aria-label="Edit selected text">
                               <Type />
@@ -1989,7 +2011,7 @@ export function DesignPanel({
                             </Button>
                           </>
                         ) : null}
-                        {selection.tag !== "img" ? (
+                        {isMultiSelection || selection.tag !== "img" ? (
                           <Button
                             variant="ghost"
                             size="icon-xs"
@@ -2000,7 +2022,7 @@ export function DesignPanel({
                             <Palette />
                           </Button>
                         ) : null}
-                        {selection.href ? (
+                        {!isMultiSelection && selection.href ? (
                           <>
                             <Button variant="ghost" size="xs" onClick={() => beginQuickEdit("href")} aria-label="Edit selected link">
                               <Link2 />
@@ -2011,7 +2033,7 @@ export function DesignPanel({
                             </Button>
                           </>
                         ) : null}
-                        {selection.tag === "img" ? (
+                        {!isMultiSelection && selection.tag === "img" ? (
                           <>
                             <Button
                               variant="ghost"
@@ -2032,7 +2054,7 @@ export function DesignPanel({
                           size="icon-xs"
                           className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                           onClick={deleteSelection}
-                          disabled={!selection.canDelete}
+                          disabled={!selectionSummary.selections.some((member) => member.canDelete)}
                           aria-label="Delete selected element"
                           title="Delete selected element"
                         >
@@ -2050,24 +2072,29 @@ export function DesignPanel({
                         >
                           <SlidersHorizontal />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => void askAiAboutSelection()}
-                          disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
-                          aria-label="Ask AI about selected element"
-                        >
-                          <Sparkles />
-                        </Button>
+                        {!isMultiSelection ? (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => void askAiAboutSelection()}
+                            disabled={isMultiSelection || !selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
+                            aria-label="Ask AI about selected element"
+                          >
+                            <Sparkles />
+                          </Button>
+                        ) : null}
                       </>
                     )}
                   </div>
                 ) : null}
               </div>
               {editing && advancedOpen ? (
-                selection ? (
+                selection && selectionSummary ? (
                   <DesignPropertiesInspector
                     selection={selection}
+                    isMultiSelection={isMultiSelection}
+                    selectionCount={selectionSummary.selectionCount}
+                    mixedStyleFields={selectionSummary.mixedStyleFields}
                     onClose={() => setAdvancedOpen(false)}
                     onApplyField={applyField}
                     onChooseReplacementImage={() => void chooseReplacementImage()}

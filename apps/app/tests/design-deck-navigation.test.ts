@@ -84,7 +84,7 @@ describe("Design deck navigation", () => {
 
     expect(source).toContain('aria-label="Delete selected element"');
     expect(source).toContain('type: "delete"');
-    expect(source).toContain("disabled={!selection.canDelete}");
+    expect(source).toContain("disabled={!selectionSummary.selections.some((member) => member.canDelete)}");
   });
 
   test("places AI after every floating toolbar action", async () => {
@@ -97,7 +97,7 @@ describe("Design deck navigation", () => {
     const source = await Bun.file(panelUrl).text();
     const labelIndex = source.lastIndexOf('aria-label="Ask AI about selected element"');
     const actionStart = source.lastIndexOf("<Button", labelIndex);
-    expect(source.slice(actionStart, labelIndex)).toContain("disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== \"current\"}");
+    expect(source.slice(actionStart, labelIndex)).toContain("disabled={isMultiSelection || !selection.canDelete || saveMutation.isPending || viewedVersionPath !== \"current\"}");
   });
 
   test("pans the overflowed presentation canvas without moving the slide", async () => {
@@ -113,8 +113,26 @@ describe("Design deck navigation", () => {
     const source = await Bun.file(panelUrl).text();
 
     expect(source).toContain('event.data.type === "deselected"');
-    expect(source).toContain("setSelection(null);");
+    expect(source).toContain("setSelectionState(null);");
     expect(source).toContain("setQuickEdit(null);");
     expect(source).toContain("setAdvancedOpen(false);");
+  });
+
+  test("derives toolbar targets and placement from the complete selection", async () => {
+    const source = await Bun.file(panelUrl).text();
+    expect(source).toContain('import { summarizeDesignSelection } from "./design-selection-summary"');
+    expect(source).toContain("const selectionSummary = selectionState");
+    expect(source).toContain("const isMultiSelection = selectionSummary?.isMultiSelection ?? false");
+    expect(source).toContain("selectionSummary?.selectionRect");
+    expect(source).toContain("ids: selectionSummary.selectionIds");
+  });
+
+  test("hides single-element toolbar actions in a multi-selection", async () => {
+    const source = await Bun.file(panelUrl).text();
+    expect(source).toContain("{!isMultiSelection && selection.canEditText ?");
+    expect(source).toContain("{!isMultiSelection && selection.href ?");
+    expect(source).toContain('{!isMultiSelection && selection.tag === "img" ?');
+    expect(source).toContain("disabled={isMultiSelection || !selection.canDelete");
+    expect(source).toContain("{isMultiSelection ?");
   });
 });
