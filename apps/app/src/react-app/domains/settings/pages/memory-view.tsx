@@ -23,6 +23,7 @@ import {
 } from "@/react-app/domains/settings/settings-list";
 import { SettingsNotice, SettingsStack } from "@/react-app/domains/settings/settings-section";
 import { visibleMemories } from "./memory-utils";
+import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 
 // The server delete is deferred so "Undo" is a true reversal (no re-create; original id/
 // timestamps preserved). The undo toast dismisses BEFORE the delete fires, so a user is
@@ -41,13 +42,14 @@ export type MemoryViewProps = {
 
 export function MemoryView({ onOpenAccount }: MemoryViewProps) {
   const { activeOrganization, authToken, client, isSignedIn } = useCloudSession();
+  const activeEnterprise = useActiveEnterpriseConnection();
   const queryClient = useQueryClient();
   const activeOrgId = activeOrganization?.id ?? "";
   const queryKey = React.useMemo(() => ["memory", activeOrgId] as const, [activeOrgId]);
 
   const memoriesQuery = useQuery<DenMemory[]>({
     queryKey,
-    enabled: Boolean(authToken.trim() && activeOrgId),
+    enabled: Boolean(!activeEnterprise && authToken.trim() && activeOrgId),
     queryFn: () => client.listMemory(activeOrgId),
     staleTime: 30_000,
   });
@@ -161,6 +163,23 @@ export function MemoryView({ onOpenAccount }: MemoryViewProps) {
       toast.error(t("memory.copy_prompt_error"));
     }
   }, []);
+
+  if (activeEnterprise) {
+    return (
+      <SettingsStack>
+        <Separator />
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia>
+              <BrainCircuit className="text-muted-foreground" />
+            </EmptyMedia>
+            <EmptyTitle>{t("memory.enterprise_empty_title", { name: activeEnterprise.shortName })}</EmptyTitle>
+            <EmptyDescription>{t("memory.enterprise_empty_description")}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </SettingsStack>
+    );
+  }
 
   if (!isSignedIn) {
     return (

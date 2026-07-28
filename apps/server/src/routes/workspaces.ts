@@ -38,6 +38,15 @@ function readStringField(value: unknown, key: string): string {
   return typeof field === "string" ? field.trim() : "";
 }
 
+function readWorkContextId(value: unknown): `enterprise:${string}` | undefined {
+  const workContextId = readStringField(value, "workContextId");
+  if (!workContextId) return undefined;
+  if (!/^enterprise:ent_[A-Za-z0-9_-]+$/.test(workContextId)) {
+    throw new ApiError(400, "invalid_payload", "workContextId must identify an enterprise");
+  }
+  return workContextId as `enterprise:${string}`;
+}
+
 function normalizeRemoteDirectory(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
@@ -190,6 +199,7 @@ function serializeWorkspaceConfigEntry(workspace: WorkspaceInfo): Record<string,
     path: workspace.path,
     name: workspace.name,
     preset: workspace.preset,
+    ...(workspace.workContextId ? { workContextId: workspace.workContextId } : {}),
     workspaceType: workspace.workspaceType,
     ...(workspace.remoteType ? { remoteType: workspace.remoteType } : {}),
     ...(!isLocalWorkspace && workspace.baseUrl ? { baseUrl: workspace.baseUrl } : {}),
@@ -269,6 +279,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     const folderPath = typeof body.folderPath === "string" ? body.folderPath.trim() : "";
     const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : basename(folderPath || "Workspace");
     const preset = typeof body.preset === "string" && body.preset.trim() ? body.preset.trim() : "starter";
+    const workContextId = readWorkContextId(body);
 
     if (!folderPath) {
       throw new ApiError(400, "invalid_payload", "folderPath is required");
@@ -292,6 +303,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       name,
       path: workspacePath,
       preset,
+      ...(workContextId ? { workContextId } : {}),
       workspaceType: "local",
       ...inheritWorkspaceOpencodeConnection(config),
     };
@@ -332,6 +344,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     }
 
     const remoteType = readStringField(body, "remoteType") === "opencode" ? "opencode" : "ipollowork";
+    const workContextId = readWorkContextId(body);
     const directory = readStringField(body, "directory") || null;
     const displayName = readStringField(body, "displayName") || null;
     const rawiPolloWorkHostUrl = readStringField(body, "ipolloworkHostUrl") || null;
@@ -377,6 +390,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       name: displayName ?? ipolloworkWorkspaceName ?? "Remote workspace",
       path: directory ?? "",
       preset: "remote",
+      ...(workContextId ? { workContextId } : {}),
       workspaceType: "remote",
       remoteType,
       baseUrl: remoteType === "ipollowork" ? (ipolloworkHostUrl ?? baseUrl) : baseUrl,

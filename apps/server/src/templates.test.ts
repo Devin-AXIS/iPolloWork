@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import { TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
+import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
@@ -590,6 +590,21 @@ describe("template installations", () => {
       expect(existsSync(join(bundledTemplatesRoot, templateId))).toBe(false);
       expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
     }
+  });
+
+  test("keeps installed Enterprise templates isolated from the personal library", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-enterprise-templates-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const scope = parseTemplateLibraryScope("enterprise:ent_medical");
+    expect(await listTemplates(serverConfig, "alpha", scope)).toEqual([]);
+    const installed = await importTemplate(serverConfig, "alpha", localPackage(), "site", scope);
+    expect((await listTemplates(serverConfig, "beta", scope)).map((item) => item.manifest.id)).toContain(installed.manifest.id);
+    expect((await listTemplates(serverConfig, "beta", "personal")).map((item) => item.manifest.id)).not.toContain(installed.manifest.id);
+    const ws = workspace(root, "alpha");
+    await expect(materializeTemplate(serverConfig, ws, installed.manifest.id, "enterprise_session", undefined, scope)).resolves.toMatchObject({ manifest: { id: installed.manifest.id } });
+    await expect(materializeTemplate(serverConfig, ws, installed.manifest.id, "personal_session")).rejects.toMatchObject({ code: "template_not_installed" });
+    expect(() => parseTemplateLibraryScope("enterprise:medical")).toThrow("Template scope must be personal");
   });
 
   test("materializes a full session snapshot that survives template uninstall", async () => {
