@@ -132,7 +132,12 @@ export type SessionPageSidebarProps = {
   startupPhase: BootPhase;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
-  onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType, templateId?: iPolloWorkTemplateId) => void;
+  onCreateTaskInWorkspace: (
+    workspaceId: string,
+    type?: iPolloWorkSessionType,
+    templateId?: iPolloWorkTemplateId,
+    templateScope?: WorkContextId,
+  ) => void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
@@ -2097,13 +2102,20 @@ export function SessionPage(props: SessionPageProps) {
                         onOpenTarget={openTarget}
                         onConversationMessagesChange={handleConversationMessagesChange}
                         templateEntryPath={designTemplateEntryPath}
-                        onCreateSession={(type) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type)}
+                        onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
+                          props.selectedWorkspaceId,
+                          type,
+                          templateId,
+                          templateResourceScope,
+                        )}
                         onMaterializeTemplate={async (templateId, surface) => {
                           if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
                           const result = await props.ipolloworkServerClient.materializeTemplate(
                             props.runtimeWorkspaceId,
                             templateId,
                             props.selectedSessionId,
+                            undefined,
+                            templateResourceScope,
                           );
                           setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
                           setTemplateSessionData({ ...result, hasBrief: false });
@@ -2375,7 +2387,12 @@ export function SessionPage(props: SessionPageProps) {
             return;
           }
           setTemplateMarketOpen(false);
-          props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, sessionTypeForTemplate(template.manifest), template.manifest.id);
+          props.sidebar.onCreateTaskInWorkspace(
+            props.selectedWorkspaceId,
+            sessionTypeForTemplate(template.manifest),
+            template.manifest.id,
+            templateResourceScope,
+          );
         }}
       /> : null}
 

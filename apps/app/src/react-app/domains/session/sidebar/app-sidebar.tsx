@@ -25,6 +25,7 @@ import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
+import type { WorkContextId } from "../../../../app/lib/work-context";
 import { IPolloWorkDenHelpLink } from "../../workspace/ipollowork-den-help-link";
 import type {
   WorkspaceConnectionState,
@@ -486,7 +487,12 @@ export type AppSidebarProps = {
   newTaskDisabled: boolean;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
-  onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType, templateId?: iPolloWorkTemplateId) => void;
+  onCreateTaskInWorkspace: (
+    workspaceId: string,
+    type?: iPolloWorkSessionType,
+    templateId?: iPolloWorkTemplateId,
+    templateScope?: WorkContextId,
+  ) => void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
   onArchiveSession?: (sessionId: string, archived: boolean) => void;

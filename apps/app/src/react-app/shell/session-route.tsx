@@ -20,6 +20,7 @@ import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
 import {
   PERSONAL_WORK_CONTEXT_ID,
   readActiveWorkContextId,
+  type WorkContextId,
   workContextChangedEvent,
 } from "@/app/lib/work-context";
 import { trackSessionActive, trackTaskStarted } from "@/app/lib/den-telemetry";
@@ -182,6 +183,10 @@ function describeTaskCreateError(error: unknown) {
 
 function taskCreateUnavailableToastId(workspaceId: string) {
   return `opencode-unavailable:${workspaceId}`;
+}
+
+function templateCreateUnavailableToastId(workspaceId: string, templateId: string) {
+  return `template-unavailable:${workspaceId}:${templateId}`;
 }
 
 function focusPromptSoon() {
@@ -1315,7 +1320,12 @@ export function SessionRoute() {
     }
   }, [denAuth.isSignedIn, local, platform, sessionProviderAuthStore, setRouteError]);
 
-  const handleCreateTaskInWorkspace = useCallback(async (workspaceId: string, type: iPolloWorkSessionType = "work", templateId?: iPolloWorkTemplateId): Promise<string | null> => {
+  const handleCreateTaskInWorkspace = useCallback(async (
+    workspaceId: string,
+    type: iPolloWorkSessionType = "work",
+    templateId?: iPolloWorkTemplateId,
+    templateScope?: WorkContextId,
+  ): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     if (
       !workspace ||
@@ -1333,22 +1343,30 @@ export function SessionRoute() {
       workspace.path?.trim() || undefined,
       { token: endpoint.token, mode: "ipollowork" },
     );
+    let createdSessionId: string | null = null;
+    let templateMaterializationFailed = false;
     try {
       setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
       setRouteError(null);
       const session = unwrap(
         await workspaceClient.session.create({ directory: workspace.path?.trim() || undefined }),
       );
+      createdSessionId = session.id;
       let sessionType = type;
       if (templateId) {
-        const materialized = await endpoint.client.materializeTemplate(
-          endpoint.workspaceId,
-          templateId,
-          session.id,
-          undefined,
-          readActiveWorkContextId(),
-        );
-        sessionType = sessionTypeForTemplate(materialized.manifest);
+        try {
+          const materialized = await endpoint.client.materializeTemplate(
+            endpoint.workspaceId,
+            templateId,
+            session.id,
+            undefined,
+            templateScope ?? readActiveWorkContextId(),
+          );
+          sessionType = sessionTypeForTemplate(materialized.manifest);
+        } catch (error) {
+          templateMaterializationFailed = true;
+          throw error;
+        }
       }
       setSessionType(session.id, sessionType);
       captureAnalyticsEvent("task_created", {
@@ -1375,6 +1393,23 @@ export function SessionRoute() {
       return session.id;
     } catch (error) {
       const message = describeTaskCreateError(error);
+      if (templateId && templateMaterializationFailed) {
+        if (createdSessionId) {
+          await endpoint.client.deleteSession(endpoint.workspaceId, createdSessionId).catch(() => undefined);
+        }
+        setRouteError(null);
+        setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
+        toast.error("Template unavailable", {
+          id: templateCreateUnavailableToastId(workspaceId, templateId),
+          description: message,
+          action: {
+            label: "Retry",
+            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
+          },
+          duration: Infinity,
+        });
+        return null;
+      }
       setRouteError(message);
       setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: message }));
       toast.error("OpenCode unavailable", {
@@ -1382,7 +1417,7 @@ export function SessionRoute() {
         description: message,
         action: {
           label: "Retry",
-          onClick: () => void handleCreateTaskInWorkspace(workspaceId),
+          onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
         },
         duration: Infinity,
       });
@@ -1864,8 +1899,8 @@ export function SessionRoute() {
           navigateToWorkspaceSession(workspaceId, sessionId);
         },
         onPrefetchSession: () => {},
-        onCreateTaskInWorkspace: (workspaceId, type, templateId) => {
-          void handleCreateTaskInWorkspace(workspaceId, type, templateId);
+        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) => {
+          void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope);
         },
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
           void (async () => {

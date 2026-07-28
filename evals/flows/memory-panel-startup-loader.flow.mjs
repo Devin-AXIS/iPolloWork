@@ -27,7 +27,19 @@ export default {
             const alt = await ctx.eval(
               "document.querySelector('[data-testid=\"startup-logo-animation\"] img')?.getAttribute('alt') ?? ''",
             );
+            const presentation = await ctx.eval(`(() => {
+              const overlay = document.querySelector('[data-testid="startup-logo-animation"]');
+              const image = overlay?.querySelector('img');
+              return {
+                background: overlay ? getComputedStyle(overlay).backgroundColor : "",
+                source: image?.getAttribute('src') || "",
+                loaded: Boolean(image?.complete && image.naturalWidth > 0),
+              };
+            })()`);
             ctx.assert(/ipollowork loading/i.test(alt), `Expected the branded startup animation, got ${JSON.stringify(alt)}.`);
+            ctx.assert(presentation.source.includes("ipollowork-app-loading-v3.gif"), `Expected the branded GIF, got ${JSON.stringify(presentation)}.`);
+            ctx.assert(presentation.loaded, `Expected the branded GIF to be loaded, got ${JSON.stringify(presentation)}.`);
+            ctx.assert(presentation.background !== "rgb(0, 0, 0)", `Startup must not show a black frame: ${JSON.stringify(presentation)}.`);
           },
           screenshot: { name: "startup-loader-visible", requireText: ["Loading"] },
         });

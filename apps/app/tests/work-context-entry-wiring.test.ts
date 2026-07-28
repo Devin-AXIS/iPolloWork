@@ -15,6 +15,10 @@ const sessionRoute = readFileSync(
   resolve(import.meta.dir, "../src/react-app/shell/session-route.tsx"),
   "utf8",
 );
+const sessionPage = readFileSync(
+  resolve(import.meta.dir, "../src/react-app/domains/session/chat/session-page.tsx"),
+  "utf8",
+);
 const routeState = readFileSync(
   resolve(import.meta.dir, "../src/react-app/shell/use-workspace-route-state.ts"),
   "utf8",
@@ -58,6 +62,14 @@ describe("personal and Enterprise chat entry wiring", () => {
     expect(sessionRoute).not.toContain("ChatSpace");
     expect(workContext).toContain('joinDesktopPath(homeDir, ".ipollowork", "work-contexts", connection.id)');
     expect(workContext).not.toContain("rememberWorkspaceForWorkContext");
+  });
+
+  test("keeps the selected template library scope when an Enterprise launches a template", () => {
+    expect(sessionPage).toContain("template.manifest.id,\n            templateResourceScope,");
+    expect(sessionPage).toContain("props.selectedSessionId,\n                            undefined,\n                            templateResourceScope,");
+    expect(sessionRoute).toContain("templateScope ?? readActiveWorkContextId()");
+    expect(sessionRoute).toContain("Template unavailable");
+    expect(sessionRoute).toContain("deleteSession(endpoint.workspaceId, createdSessionId)");
   });
 
   test("removes the legacy workstation switch and cloud organization mapping", () => {
