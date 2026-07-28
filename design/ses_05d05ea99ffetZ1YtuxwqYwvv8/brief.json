@@ -1,0 +1,24 @@
+{
+  "templateId": "ipollowork.html-anything.web-proto-soft",
+  "template": "Apple-tier Soft Prototype",
+  "category": "site",
+  "surface": "design",
+  "sourcePath": "design/ses_05d05ea99ffetZ1YtuxwqYwvv8/entry.html",
+  "applyChecklist": [
+    "Replace all sample copy with the user's complete brief.",
+    "Replace the iPolloWork demo logo through the editable brand slot when needed.",
+    "Apply the selected palette through declared variables without breaking the template hierarchy.",
+    "Keep the soft visual language and site composition coherent.",
+    "Verify responsive layout, links, overflow and editable text before finishing."
+  ],
+  "title": "studio",
+  "audience": "pdf转换",
+  "details": "产品展示，产品订阅",
+  "colorPalette": {
+    "id": "violet",
+    "label": "Violet",
+    "canvas": "#faf5ff",
+    "text": "#2e1065",
+    "accent": "#7c3aed"
+  }
+}

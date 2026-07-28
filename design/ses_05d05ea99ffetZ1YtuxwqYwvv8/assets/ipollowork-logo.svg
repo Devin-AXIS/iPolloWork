@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Studio logo">
+  <title>Studio logo</title>
+  <rect x="60" y="60" width="200" height="200" rx="44" fill="#7c3aed"/>
+  <path d="M160 100c-22 0-36 14-36 32s12 28 26 34c-16 6-30 18-30 36 0 20 16 34 40 34s40-14 40-32-14-27-28-33c14-6 26-18 26-35 0-20-14-32-38-32zm-10 52c-10-4-16-10-16-18 0-10 10-18 26-18s24 8 24 18c0 10-12 18-26 18h-8zm2 16h6c16 0 28 10 28 22 0 12-10 20-28 20s-28-8-28-20c0-10 10-18 22-22z" fill="#ffffff" fill-rule="evenodd"/>
+</svg>
