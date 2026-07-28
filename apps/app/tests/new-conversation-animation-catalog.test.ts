@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dir, "..");
 const starter = readFileSync(resolve(root, "src/components/chat/new-conversation-starter.tsx"), "utf8");
 const surface = readFileSync(resolve(root, "src/react-app/domains/session/surface/session-surface.tsx"), "utf8");
+const sessionPage = readFileSync(resolve(root, "src/react-app/domains/session/chat/session-page.tsx"), "utf8");
 
 describe("new conversation animation catalog", () => {
   test("shows the video template picker and GSAP animation catalog", () => {
@@ -64,5 +65,11 @@ describe("new conversation animation catalog", () => {
     expect(surface).toContain("onMaterializeTemplate?: (templateId: string, surface: \"design\" | \"video\") => void | Promise<void>");
     expect(surface).toContain("onUseTemplate={props.onMaterializeTemplate ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface) : props.onCreateSession ?");
     expect(surface).toContain("props.onCreateSession?.(surface === \"video\" ? \"video\" : \"design\", templateId)");
+  });
+
+  test("opens a materialized design template in the Design panel", () => {
+    expect(sessionPage).toContain("const autoOpenedDesignTemplateRef = useRef<string | null>(null)");
+    expect(sessionPage).toContain("const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`");
+    expect(sessionPage).toContain("openDesignTab(designTemplateEntryPath)");
   });
 });

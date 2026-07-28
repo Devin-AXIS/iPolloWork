@@ -32,14 +32,14 @@ describe("template API", () => {
     const capabilities = await fetch(`${base}/capabilities`, { headers }).then((response) => response.json());
     expect(capabilities.templates).toEqual({ read: true, install: true, import: true, uninstall: true });
     const catalog = await fetch(`${base}/workspace/ws/templates`, { headers }).then((response) => response.json());
-    expect(catalog.items).toHaveLength(70);
+    expect(catalog.items).toHaveLength(73);
     expect(catalog.items.some((item: { manifest: { id: string } }) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
     for (const templateId of [
       "ipollowork.pptx-compatible-brief",
       "ipollowork.pptx-compatible-pitch",
       "ipollowork.pptx-compatible-report",
     ]) {
-      expect(catalog.items.some((item: { manifest: { id: string } }) => item.manifest.id === templateId)).toBe(false);
+      expect(catalog.items.some((item: { manifest: { id: string } }) => item.manifest.id === templateId)).toBe(true);
     }
 
     const invalidPackage = await fetch(`${base}/workspace/ws/templates/import`, {
