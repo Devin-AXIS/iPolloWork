@@ -85,6 +85,8 @@ describe("ipollowork runtime config file", () => {
     // Search-first (B1): never name tools that do not exist.
     expect(prompt).toContain("search_capabilities");
     expect(prompt).toContain("execute_capability");
+    expect(prompt).toContain('"query": { "q": "the user\'s recall words" }');
+    expect(prompt).toContain('"path": { "id": "mem_…" }');
     expect(prompt).not.toContain("memory_save");
     expect(prompt).not.toContain("memory_search");
     // No-secrets guidance is the only v0 plaintext-at-rest mitigation.

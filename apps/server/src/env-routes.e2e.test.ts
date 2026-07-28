@@ -131,6 +131,7 @@ describe("env routes", () => {
     });
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-methods")).toContain("PUT");
+    expect(response.headers.get("access-control-allow-headers")).toContain("X-iPolloWork-Resource-Scope");
   });
 
   test("PUT + GET round-trips a single entry and returns raw values", async () => {

@@ -1,0 +1,63 @@
+/* design-systems/agentic/tokens.css
+ * Structured token bindings for Agentic.
+ * Agent workflow interface with bright neutral surfaces, orange signals, and editorial typography.
+ */
+
+:root {
+  --bg: #ffffff;
+  --surface: #f6f6f1;
+  --surface-warm: #fff4ec;
+  --fg: #111827;
+  --fg-2: #374151;
+  --muted: #6b7280;
+  --meta: #ff5701;
+  --border: #d1d5db;
+  --border-soft: #e5e7eb;
+  --accent: #ff5701;
+  --accent-on: #ffffff;
+  --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+  --accent-active: color-mix(in oklab, var(--accent), black 14%);
+  --success: #16a34a;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --font-display: Playfair Display, Georgia, serif;
+  --font-body: Playfair Display, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+  --text-2xl: 32px;
+  --text-3xl: 48px;
+  --text-4xl: 66px;
+  --leading-body: 1.55;
+  --leading-tight: 1.06;
+  --tracking-display: -0.02em;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --section-y-desktop: 96px;
+  --section-y-tablet: 68px;
+  --section-y-phone: 48px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 9999px;
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised: 0 24px 72px rgba(0, 0, 0, 0.36);
+  --focus-ring: 0 0 0 4px rgba(255, 87, 1, 0.28);
+  --motion-fast: 130ms;
+  --motion-base: 220ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max: 1200px;
+  --container-gutter-desktop: 36px;
+  --container-gutter-tablet: 24px;
+  --container-gutter-phone: 16px;
+}

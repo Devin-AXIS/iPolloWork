@@ -244,7 +244,7 @@ export function templateBriefPrompt(input: {
   if (input.template.id === "ipollowork.wechat-article") {
     return `${base} This template has locked brand colors and fixed brand images. Ignore the brief's colorPalette completely. Update only the article copy and non-fixed middle article images. Preserve every data-ipw-fixed="true" node exactly, keep fixed-hero.jpg and fixed-footer-cta.jpg unchanged, and only edit the href on a.fixed-footer-cta when a CTA link is provided. Do not write instruction conflicts or process notes into the HTML.`;
   }
-  const colorInstruction = "Use the brief's colorPalette.canvas, colorPalette.text, and colorPalette.accent colors consistently through the template's existing theme tokens; do not introduce an unrelated palette.";
+  const colorInstruction = "Keep the template's final design-tokens.css link and use the shared --ipw-* variables for every themeable color, font, spacing, radius, and shadow. Do not move theme values into higher-priority inline styles or replace theme variables with hardcoded colors. Use the brief's colorPalette.canvas, colorPalette.text, and colorPalette.accent through those variables only; do not introduce an unrelated palette. Preserve the DOM skeleton, dimensions, layout, animation, and timing when changing theme values.";
   switch (input.template.category) {
     case "video":
       return `${base} ${colorInstruction} Build this exact video template, not a blank or unrelated project. Decide whether narration materially helps the stated goal; do not ask a separate narration question. Preserve the editable composition, variables, and scene structure while making the content fit the brief.`;

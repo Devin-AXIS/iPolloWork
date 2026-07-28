@@ -1,15 +1,20 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Film, Loader2, Maximize2, Minimize2, Plus, RefreshCw, X } from "lucide-react";
+import { AudioLines, Film, Loader2, Maximize2, Minimize2, Palette, Plus, RefreshCw, X } from "lucide-react";
 
 import type { HyperframesCatalogItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "../design/design-ai-selection";
+import { DesignSystemDrawer } from "../design/design-system-drawer";
+import { mergeTemplateTokenCss, parseDesignTokenValues, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
+import { buildTemplateTokenCss, type DesignSystemTheme } from "../design/design-system-registry";
+import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "../design/design-system-theme-contract";
 import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
   HYPERFRAMES_STUDIO_LABEL,
@@ -67,6 +72,10 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [voicePanelOpen, setVoicePanelOpen] = React.useState(false);
+  const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
+  const [designTokenSource, setDesignTokenSource] = React.useState("");
+  const designTokenSourceRef = React.useRef("");
+  const designTokenSaveTimerRef = React.useRef<number | null>(null);
   const studioPort = hyperframesStudioPort(sessionId);
   const [activeStudioPort, setActiveStudioPort] = React.useState(studioPort);
   const resolvedTheme = React.useSyncExternalStore(
@@ -83,6 +92,86 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     reloadToken,
   );
   const projectDirectory = videoProjectDirectory(sessionId);
+  const compositionPath = `${projectDirectory}/index.html`;
+  const designTokenPath = `${projectDirectory}/design-tokens.css`;
+  const designTokenValues = React.useMemo<DesignTokenValues>(
+    () => parseDesignTokenValues(designTokenSource),
+    [designTokenSource],
+  );
+  const appliedDesignSystemId = React.useMemo(
+    () => readAppliedDesignSystemId(designTokenSource),
+    [designTokenSource],
+  );
+
+  const loadDesignSystemFiles = React.useCallback(async () => {
+    if (!client || !workspaceId) return;
+    const tokens = await client.readWorkspaceFile(workspaceId, designTokenPath).catch(() => null);
+    const source = tokens?.content ?? "";
+    designTokenSourceRef.current = source;
+    setDesignTokenSource(source);
+  }, [client, designTokenPath, workspaceId]);
+
+  React.useEffect(() => {
+    if (!designSystemOpen) return;
+    void loadDesignSystemFiles();
+  }, [designSystemOpen, loadDesignSystemFiles]);
+
+  React.useEffect(() => () => {
+    if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
+  }, []);
+
+  const saveDesignTokenSource = React.useCallback((source: string) => {
+    if (!client || !workspaceId) return;
+    if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
+    designTokenSaveTimerRef.current = window.setTimeout(() => {
+      designTokenSaveTimerRef.current = null;
+      void client.writeWorkspaceFile(workspaceId, {
+        path: designTokenPath,
+        content: source,
+        force: true,
+      }).catch((error) => {
+        toast.error(error instanceof Error ? error.message : "Could not save video design tokens.");
+      });
+    }, 350);
+  }, [client, designTokenPath, workspaceId]);
+
+  const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
+    const next = replaceDesignTokenValue(designTokenSourceRef.current, name, value);
+    designTokenSourceRef.current = next;
+    setDesignTokenSource(next);
+    saveDesignTokenSource(next);
+  }, [saveDesignTokenSource]);
+
+  const handleApplyDesignSystem = React.useCallback(async (theme: DesignSystemTheme) => {
+    if (!client || !workspaceId) return;
+    try {
+      if (designTokenSaveTimerRef.current != null) {
+        window.clearTimeout(designTokenSaveTimerRef.current);
+        designTokenSaveTimerRef.current = null;
+      }
+      const current = await client.readWorkspaceFile(workspaceId, compositionPath);
+      const themedHtml = ensureHtmlDesignSystemContract(current.content, theme.id);
+      const nextTokens = mergeTemplateTokenCss(designTokenSourceRef.current, buildTemplateTokenCss(theme));
+      await client.writeWorkspaceFile(workspaceId, {
+        path: designTokenPath,
+        content: nextTokens,
+        force: true,
+      });
+      if (themedHtml !== current.content) {
+        await client.writeWorkspaceFile(workspaceId, {
+          path: compositionPath,
+          content: themedHtml,
+          baseUpdatedAt: current.updatedAt ?? null,
+          force: true,
+        });
+      }
+      designTokenSourceRef.current = nextTokens;
+      setDesignTokenSource(nextTokens);
+      toast.success(`Applied ${theme.name} to Video Studio.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not apply the video design system.");
+    }
+  }, [client, compositionPath, designTokenPath, workspaceId]);
 
   const syncStudioLocale = React.useCallback(() => {
     const frameWindow = studioFrameRef.current?.contentWindow;
@@ -309,8 +398,12 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
           </span>
         </div>
         <Tooltip>
-          <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => setVoicePanelOpen((open) => !open)} disabled={isRemoteWorkspace} aria-label={t("video.voice_settings")}><AudioLines /></Button>} />
+          <TooltipTrigger render={<Button variant={voicePanelOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => { setDesignSystemOpen(false); setVoicePanelOpen((open) => !open); }} disabled={isRemoteWorkspace} aria-label={t("video.voice_settings")}><AudioLines /></Button>} />
           <TooltipContent>{t("video.voice_settings")}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger render={<Button variant={designSystemOpen ? "secondary" : "ghost"} size="icon-xs" onClick={() => { setVoicePanelOpen(false); setDesignSystemOpen((open) => !open); }} disabled={isRemoteWorkspace || !client || !workspaceId} aria-label={t("video.design_system")}><Palette /></Button>} />
+          <TooltipContent>{t("video.design_system")}</TooltipContent>
         </Tooltip>
         <Button variant="ghost" size="icon-xs" onClick={() => { setStudioFrameLoaded(false); setStudioChromeReady(false); setStartupStage("loading-frame"); setDetail(t("video.reloading")); setReloadToken(Date.now()); setRevision((value) => value + 1); }} aria-label={t("video.reload")}><RefreshCw /></Button>
         <Tooltip>
@@ -368,7 +461,8 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       {isRemoteWorkspace ? (
         <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">{t("video.local_only")}</div>
       ) : (
-        <div className="relative min-h-0 flex-1 bg-[#0c0c0d]">
+        <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[#0c0c0d]">
+          <div className="relative min-w-0 flex-1">
           {status === "starting" || (status === "ready" && !studioChromeReady) ? (
             <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm" aria-live="polite">
               <div className="text-center">
@@ -396,6 +490,17 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             previewRequest={0}
             onClose={() => setVoicePanelOpen(false)}
           /> : null}
+          </div>
+          <DesignSystemDrawer
+            open={designSystemOpen}
+            templateName="Video Studio"
+            currentThemeId={appliedDesignSystemId}
+            variablesDisabled={!appliedDesignSystemId}
+            initialValues={designTokenValues}
+            onClose={() => setDesignSystemOpen(false)}
+            onTokenChange={handleDesignTokenChange}
+            onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
+          />
         </div>
       )}
     </div>

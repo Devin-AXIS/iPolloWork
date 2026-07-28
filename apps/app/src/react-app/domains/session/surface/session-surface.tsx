@@ -218,6 +218,7 @@ export type SessionSurfaceProps = {
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
+  onMaterializeTemplate?: (templateId: string, surface: "design" | "video") => void | Promise<void>;
   /** Marks the first prompt as a video task before it reaches the agent. */
   onActivateVideoStudio?: (sessionId: string) => void;
   designTemplates?: TemplateCatalogItem[];
@@ -511,6 +512,8 @@ function AnimationChip({ animation, onClear }: { animation: HyperframesAnimation
   );
 }
 
+const VIDEO_ANIMATION_PICKER_ENABLED = false;
+
 function animationSelectionInstruction(animations: HyperframesAnimationSelection[]): string | null {
   if (!animations.length) return null;
   const choices = animations.map((selection) => {
@@ -647,7 +650,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.sessionId]);
 
   useEffect(() => {
-    if (newConversationMode !== "video" || animationCatalog.length) return;
+    if (!VIDEO_ANIMATION_PICKER_ENABLED || newConversationMode !== "video" || animationCatalog.length) return;
     let cancelled = false;
     setAnimationCatalogLoading(true);
     setAnimationCatalogError(null);
@@ -1630,7 +1633,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
               templatesLoading={props.designTemplatesLoading}
               templateBusyId={props.designTemplateBusyId}
               getTemplateCover={getDesignTemplateCover}
-              onUseTemplate={props.onCreateSession ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId) : undefined}
               onInstallTemplate={props.onInstallDesignTemplate}
               onRequestTemplates={props.onRequestDesignTemplates}
               animationCatalog={animationCatalog}
@@ -1643,6 +1645,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 { item: animation, values },
               ])}
               onRetryAnimationCatalog={() => setAnimationCatalogRevision((current) => current + 1)}
+              onUseTemplate={props.onMaterializeTemplate ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface) : props.onCreateSession ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId) : undefined}
             />
             <div ref={composerShellRef} className="mt-12 shrink-0">
               {renderComposer("inline")}

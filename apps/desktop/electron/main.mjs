@@ -35,6 +35,7 @@ import { createWorkspaceStore } from "./workspace-store.mjs";
 import { openExternalUrl } from "./open-external.mjs";
 import { protectOutputStreamFromBrokenPipe } from "./stdio-safety.mjs";
 import { relaunchActionForMode } from "./relaunch-policy.mjs";
+import { listSystemFontFamilies } from "./system-font-catalog.mjs";
 import { createDesktopAuthWindow } from "./desktop-auth-window.mjs";
 import {
   registerDesktopProtocolClient,
@@ -2167,6 +2168,14 @@ const desktopCommandHandlers = {
   },
   "desktopNotificationShow": async (event, ...args) => {
       return showDesktopNotification(args[0] ?? {});
+  },
+  "listSystemFontFamilies": async () => {
+      try {
+        return listSystemFontFamilies();
+      } catch (error) {
+        console.warn("[system-fonts] failed to enumerate installed font families", error);
+        return [];
+      }
   },
   "getUiControlBridgeInfo": async (event, ...args) => {
       try {
