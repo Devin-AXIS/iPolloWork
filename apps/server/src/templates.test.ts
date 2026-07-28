@@ -640,10 +640,10 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(70);
+    expect(first.filter((item) => item.installed)).toHaveLength(73);
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
     for (const templateId of pptxCompatibleTemplateIds) {
-      expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
+      expect(first.some((item) => item.manifest.id === templateId)).toBe(true);
       expect(existsSync(join(bundledTemplatesRoot, templateId, "manifest.json"))).toBe(true);
     }
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);

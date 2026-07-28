@@ -511,13 +511,6 @@ async function installDirectory(input: {
   });
 }
 
-const HIDDEN_BUNDLED_TEMPLATE_IDS = new Set([
-  "ipollowork.pptx-compatible-brief",
-  "ipollowork.pptx-compatible-pitch",
-  "ipollowork.pptx-compatible-report",
-]);
-
-
 export async function listTemplates(config: ServerConfig, workspaceId: string, scope: TemplateLibraryScope = "personal"): Promise<TemplateCatalogItem[]> {
   const db = await templateDb(config);
   const libraryId = templateLibraryId(scope);
@@ -536,8 +529,7 @@ export async function listTemplates(config: ServerConfig, workspaceId: string, s
     const parsed = templateManifestV1Schema.safeParse(JSON.parse(row.manifestJson));
     if (parsed.success) items.push({ manifest: parsed.data, sourceType: row.sourceType, installed: true, installedVersion: row.version, updateAvailable: false, verified: row.sourceType === "market" });
   }
-  const visibleItems = items.filter((item) => !HIDDEN_BUNDLED_TEMPLATE_IDS.has(item.manifest.id));
-  return sortTemplatesForCatalog(visibleItems.map((item) => item.manifest)).map((manifest) => visibleItems.find((item) => item.manifest === manifest)!);
+  return sortTemplatesForCatalog(items.map((item) => item.manifest)).map((manifest) => items.find((item) => item.manifest === manifest)!);
 }
 
 export async function installBundledTemplate(config: ServerConfig, workspaceId: string, templateId: string, scope: TemplateLibraryScope = "personal") {

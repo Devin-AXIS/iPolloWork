@@ -509,6 +509,7 @@ export function SessionPage(props: SessionPageProps) {
     getArtifactsFromMessages(conversationMessages, accessibleTargets, { includeTargetFallbacks: true })
       .find(isVideoHtmlArtifact) ?? null
   ), [accessibleTargets, conversationMessages]);
+  const autoOpenedDesignTemplateRef = useRef<string | null>(null);
   const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
     props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
@@ -870,6 +871,14 @@ export function SessionPage(props: SessionPageProps) {
     }
     setCurrentSidePanel("panel");
   }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
+
+  useEffect(() => {
+    if (!props.selectedSessionId || !designTemplateEntryPath) return;
+    const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`;
+    if (autoOpenedDesignTemplateRef.current === templateKey) return;
+    autoOpenedDesignTemplateRef.current = templateKey;
+    openDesignTab(designTemplateEntryPath);
+  }, [designTemplateEntryPath, openDesignTab, props.selectedSessionId]);
 
   const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {
     setMainWorkspaceView(null);
