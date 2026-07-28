@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import type { WorkspaceConnectionState } from "../../../../app/types";
+import type { WorkContextId } from "../../../../app/lib/work-context";
 import type { iPolloWorkSessionType } from "./session-type";
 
 export type { iPolloWorkSessionType } from "./session-type";
@@ -15,25 +16,22 @@ export type SidebarContextValue = {
   newTaskDisabled: boolean;
   connectingWorkspaceId: string | null;
   workspaceConnectionStateById: Record<string, WorkspaceConnectionState>;
-  onSelectWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
-  onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType, templateId?: iPolloWorkTemplateId) => void;
+  onCreateTaskInWorkspace: (
+    workspaceId: string,
+    type?: iPolloWorkSessionType,
+    templateId?: iPolloWorkTemplateId,
+    templateScope?: WorkContextId,
+  ) => void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
   onArchiveSession?: (sessionId: string, archived: boolean) => void;
   onOpenCreateGroupModal?: (workspaceId: string) => void;
-  onOpenRenameWorkspace: (workspaceId: string) => void;
-  onShareWorkspace: (workspaceId: string) => void;
-  onRevealWorkspace: (workspaceId: string) => void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
   onEditWorkspaceConnection: (workspaceId: string) => void;
-  onForgetWorkspace: (workspaceId: string) => void;
-  expandWorkspace: (workspaceId: string) => void;
-  toggleWorkspaceExpanded: (workspaceId: string) => void;
   toggleSessionExpanded: (sessionId: string) => void;
-  expandedWorkspaceIds: Set<string>;
   expandedSessionIds: Set<string>;
 };
 

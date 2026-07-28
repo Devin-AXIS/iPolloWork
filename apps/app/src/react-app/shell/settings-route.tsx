@@ -5,9 +5,9 @@ import { toast } from "@/components/ui/sonner";
 
 import { FIGMA_MCP_QUICK_CONNECT, SUGGESTED_PLUGINS } from "@/app/constants";
 import {
-  filterWorkspacesForWorkContext,
-  finishWorkContextSwitch,
+  canonicalWorkspacesForWorkContext,
   PERSONAL_WORK_CONTEXT_ID,
+  pruneServerWorkspacesForWorkContext,
   readActiveWorkContextId,
   workContextChangedEvent,
 } from "@/app/lib/work-context";
@@ -20,7 +20,6 @@ import {
   iPolloWorkServerError,
   type iPolloWorkServerCapabilities,
   type iPolloWorkServerClient,
-  type iPolloWorkWorkspaceInfo,
 } from "@/app/lib/ipollowork-server";
 import { resolveWorkspaceEndpoint } from "@/app/lib/workspace-endpoint";
 import { buildiPolloWorkEnvRuntimeKey } from "@/app/lib/ipollowork-env-runtime";
@@ -33,30 +32,18 @@ import type {
   Client,
   ProviderListItem,
   SettingsTab,
-  WorkspaceConnectionState,
   WorkspaceDisplay,
-  WorkspacePreset,
-  WorkspaceSessionGroup,
 } from "@/app/types";
-import { getWorkspaceTaskLoadErrorDisplay } from "@/app/utils";
 import { currentLocale, t, setLocale, type Language } from "@/i18n";
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
 import {
   type RouteWorkspace,
   type RouteSession,
   describeRouteError,
-  describeWorkspaceCreateError,
-  downloadWorkspaceJson,
-  folderNameFromPath,
   getSessionStatus,
   isActiveSessionStatus,
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
-  orderRouteWorkspaces,
-  toSessionGroups,
-  userVisibleSessionsByWorkspaceId,
-  workspaceExportFilename,
-  workspaceLabel,
 } from "@/react-app/shell/route-workspaces";
 import { createConnectionsStore, useConnectionsStoreSnapshot } from "@/react-app/domains/connections/store";
 import { useOrgMcpConnections } from "@/react-app/domains/connections/use-org-mcp-connections";
@@ -108,22 +95,13 @@ import { createExtensionsStore, useExtensionsStoreSnapshot } from "@/react-app/d
 import { usePlatform } from "@/react-app/kernel/platform";
 import { useLocal } from "@/react-app/kernel/local-provider";
 import {
-  ipolloworkServerInfo,
   ipolloworkServerRestart,
   engineStart,
   engineRestart,
-  pickDirectory,
   resolveWorkspaceListSelectedId,
   workspaceBootstrap,
-  workspaceCreate,
-  workspaceCreateRemote,
-  workspaceForget,
-  workspaceSetRuntimeActive,
-  workspaceSetSelected,
   desktopBridge,
-  type WorkspaceInfo,
   type WorkspaceList,
-  revealDesktopItemInDir,
 } from "@/app/lib/desktop";
 import { isDesktopProviderBlocked } from "@/app/cloud/desktop-app-restrictions";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
@@ -137,27 +115,11 @@ import {
 } from "@/react-app/domains/cloud/ipollowork-models-promo";
 import {
   isDesktopRuntime,
-  isElectronRuntime,
   isMacPlatform,
   normalizeDirectoryPath,
-  resolveModelDisplayName,
-  resolveProviderDisplayName,
-  safeStringify,
 } from "@/app/utils";
-import { CreateRemoteWorkspaceModal } from "@/react-app/domains/workspace/create-remote-workspace-modal";
-import { CreateWorkspaceModal } from "@/react-app/domains/workspace/create-workspace-modal";
-import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
-import { ShareWorkspaceModal } from "@/react-app/domains/workspace/share-workspace-modal";
-import { useShareWorkspaceState } from "@/react-app/domains/workspace/share-workspace-state";
-import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
-import {
-  diagnoseRemoteWorkspaceTaskLoadFailure,
-  getRemoteWorkspaceConnectionKey,
-  testRemoteWorkspaceConnection,
-} from "@/react-app/domains/workspace/remote-workspace-diagnostics";
 import { ModelPickerModal } from "@/react-app/domains/session/modals/model-picker-modal";
 import type { ModelRef } from "@/app/types";
-import { workspaceSwatchColor } from "@/react-app/domains/session/sidebar/utils";
 import { recordInspectorEvent } from "../../app/lib/app-inspector";
 import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
@@ -174,7 +136,7 @@ import {
   OPENAI_IMAGE_EXTENSION_ID,
   OPENAI_IMAGE_MODEL,
 } from "@/react-app/domains/settings/openai-image-extension";
-import { OLLAMA_PROVIDER_CONFIG, type LocalProviderInstallInput } from "@/react-app/domains/settings/openai-image-extension";
+import type { LocalProviderInstallInput } from "@/react-app/domains/settings/openai-image-extension";
 
 const ROUTE_IPOLLOWORK_CAPABILITIES: iPolloWorkServerCapabilities = {
   skills: { read: true, write: true, source: "ipollowork" },
@@ -387,8 +349,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [activeWorkContextId, setActiveWorkContextId] = useState(() => readActiveWorkContextId());
   const [workspaces, setWorkspaces] = useState<RouteWorkspace[]>([]);
   const [sessionsByWorkspaceId, setSessionsByWorkspaceId] = useState<Record<string, RouteSession[]>>({});
-  const [errorsByWorkspaceId, setErrorsByWorkspaceId] = useState<Record<string, string | null>>({});
-  const [workspaceConnectionOverrides, setWorkspaceConnectionOverrides] = useState<Record<string, WorkspaceConnectionState>>({});
   const [legacySelectedWorkspaceId, setLegacySelectedWorkspaceId] = useState(() => navigationWorkspaceId ?? readActiveWorkspaceId() ?? "");
   const selectedWorkspaceId = routeWorkspaceId || legacySelectedWorkspaceId;
 
@@ -417,8 +377,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const refreshMcpServersRef = useRef<(() => void | Promise<void>) | null>(null);
   const notifyMcpReloadingRef = useRef<(() => void) | null>(null);
   const pollMcpServersAfterReloadRef = useRef<(() => void | Promise<void>) | null>(null);
-  const remoteWorkspaceCheckRunRef = useRef<Record<string, string>>({});
-  const remoteWorkspaceCheckRunCounterRef = useRef(0);
   const [providers, setProviders] = useState<ProviderListItem[]>([]);
   const [providerDefaults, setProviderDefaults] = useState<Record<string, string>>({});
   const [providerConnectedIds, setProviderConnectedIds] = useState<string[]>([]);
@@ -436,20 +394,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     readStoredBoolean(SETTINGS_UPDATE_AUTO_DOWNLOAD_KEY, false),
   );
   const [configActionStatus, setConfigActionStatus] = useState<string | null>(null);
-  const [revealConfigBusy, setRevealConfigBusy] = useState(false);
-  const [resetConfigBusy, setResetConfigBusy] = useState(false);
-  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
-  const [createWorkspaceBusy, setCreateWorkspaceBusy] = useState(false);
-  const [createWorkspaceError, setCreateWorkspaceError] = useState<string | null>(null);
-  const [createWorkspaceRemoteBusy, setCreateWorkspaceRemoteBusy] = useState(false);
-  const [createWorkspaceRemoteError, setCreateWorkspaceRemoteError] = useState<string | null>(null);
-  const [renameWorkspaceId, setRenameWorkspaceId] = useState<string | null>(null);
-  const [renameWorkspaceTitle, setRenameWorkspaceTitle] = useState("");
-  const [renameWorkspaceBusy, setRenameWorkspaceBusy] = useState(false);
-  const [exportWorkspaceBusy, setExportWorkspaceBusy] = useState(false);
   const [autoCompactContext, setAutoCompactContext] = useState(true);
   const [autoCompactContextBusy, setAutoCompactContextBusy] = useState(false);
-  const [autoCompactContextLoaded, setAutoCompactContextLoaded] = useState(false);
+  const [, setAutoCompactContextLoaded] = useState(false);
   const [localProviderBusy, setLocalProviderBusy] = useState(false);
   const [localProviderStatus, setLocalProviderStatus] = useState<string | null>(null);
   const [localProviderError, setLocalProviderError] = useState<string | null>(null);
@@ -498,20 +445,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? (selectedWorkspaceId ? null : workspaces[0] ?? null),
     [selectedWorkspaceId, workspaces],
   );
-  const workspaceConnectionStateById = useMemo(() => {
-    const next: Record<string, WorkspaceConnectionState> = { ...workspaceConnectionOverrides };
-    for (const workspace of workspaces) {
-      if (workspace.workspaceType !== "remote") continue;
-      const error = errorsByWorkspaceId[workspace.id]?.trim();
-      if (!error || next[workspace.id]?.status === "connecting") continue;
-      next[workspace.id] ??= {
-        status: "error",
-        message: getWorkspaceTaskLoadErrorDisplay(workspace, error).message || error,
-        checkedAt: null,
-      };
-    }
-    return next;
-  }, [errorsByWorkspaceId, workspaceConnectionOverrides, workspaces]);
   const selectedWorkspaceRoot = selectedWorkspace?.path?.trim() || "";
   const selectedWorkspaceDisplay = useMemo<WorkspaceDisplay>(
     () =>
@@ -769,16 +702,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       });
   }, [activeClient, checkDesktopRestriction, disabledProviders, providerAuthStore, selectedWorkspaceId, selectedWorkspaceRoot]);
 
-  const shareWorkspaceState = useShareWorkspaceState({
-    workspaces,
-    ipolloworkServerHostInfo: ipolloworkServerSnapshot.ipolloworkServerHostInfo,
-    ipolloworkServerSettings: ipolloworkServerSnapshot.ipolloworkServerSettings,
-    engineInfo: null,
-    exportWorkspaceBusy,
-    openLink: (url) => platform.openLink(url),
-    workspaceLabel,
-  });
-
   const debugViewProps = useDebugViewModel({
     developerMode,
     ipolloworkServerStore,
@@ -807,17 +730,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       }
     },
   });
-
-  const visibleSessionsByWorkspaceId = useMemo(
-    () => userVisibleSessionsByWorkspaceId(sessionsByWorkspaceId),
-    [sessionsByWorkspaceId],
-  );
-  const workspaceSessionGroups = useMemo(
-    // Settings has no per-workspace loading state; the empty set keeps the
-    // previous behavior (error -> "error", otherwise "ready").
-    () => toSessionGroups(workspaces, visibleSessionsByWorkspaceId, errorsByWorkspaceId, new Set()),
-    [errorsByWorkspaceId, visibleSessionsByWorkspaceId, workspaces],
-  );
 
   const selectedWorkspaceEndpoint = useMemo(
     () => resolveWorkspaceEndpoint(selectedWorkspace, { baseUrl, token }),
@@ -1117,9 +1029,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       if (isDesktopRuntime()) {
         try {
           desktopList = await workspaceBootstrap() as WorkspaceList;
-          desktopWorkspaces = filterWorkspacesForWorkContext(
+          desktopWorkspaces = canonicalWorkspacesForWorkContext(
             (desktopList.workspaces ?? []).map(mapDesktopWorkspace),
             requestedContextId,
+            [resolveWorkspaceListSelectedId(desktopList)],
           );
         } catch (error) {
           const message = describeRouteError(error);
@@ -1140,7 +1053,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         setToken("");
         setWorkspaces(desktopWorkspaces);
         setSessionsByWorkspaceId({});
-        setErrorsByWorkspaceId({});
         setLegacySelectedWorkspaceId((current) => {
           const next = current || readActiveWorkspaceId() || resolveWorkspaceListSelectedId(desktopList) || desktopWorkspaces[0]?.id || "";
           writeActiveWorkspaceId(next || null);
@@ -1156,15 +1068,32 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       });
       const list = await client.listWorkspaces();
       const serverWorkspaceIds = new Set(list.items.map((workspace) => workspace.id));
-      const nextWorkspaces = filterWorkspacesForWorkContext(
+      const nextWorkspaces = canonicalWorkspacesForWorkContext(
         mergeRouteWorkspaces(list.items, desktopWorkspaces),
         requestedContextId,
+        [
+          routeWorkspaceId,
+          readActiveWorkspaceId(),
+          resolveWorkspaceListSelectedId(desktopList),
+          list.activeId,
+        ],
       );
       if (workContextRef.current !== requestedContextId) return;
+      const canonicalServerWorkspaceId = nextWorkspaces.find((workspace) => serverWorkspaceIds.has(workspace.id))?.id ?? "";
+      if (canonicalServerWorkspaceId) {
+        void pruneServerWorkspacesForWorkContext(
+          client,
+          list.items,
+          requestedContextId,
+          canonicalServerWorkspaceId,
+        ).catch((error) => {
+          console.warn("[settings-route] failed to prune legacy workspace identities", error);
+        });
+      }
       const sessionEntries = await Promise.all(
         nextWorkspaces.map(async (workspace) => {
           if (!serverWorkspaceIds.has(workspace.id)) {
-            return { workspaceId: workspace.id, sessions: [], error: null as string | null };
+            return { workspaceId: workspace.id, sessions: [] };
           }
           try {
             const response = await client.listSessions(workspace.id, { limit: 200 });
@@ -1177,26 +1106,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             return {
               workspaceId: workspace.id,
               sessions: items,
-              error: null as string | null,
-              connectionState: null as WorkspaceConnectionState | null,
             };
-          } catch (error) {
-            const fallback = error instanceof Error ? error.message : t("app.unknown_error");
-            if (workspace.workspaceType === "remote") {
-              const connectionState = await diagnoseRemoteWorkspaceTaskLoadFailure(workspace, fallback);
-              return {
-                workspaceId: workspace.id,
-                sessions: [],
-                error: connectionState.message ?? "Remote worker connection failed.",
-                connectionState,
-              };
-            }
-            return {
-              workspaceId: workspace.id,
-              sessions: [],
-              error: fallback,
-              connectionState: null,
-            };
+          } catch {
+            return { workspaceId: workspace.id, sessions: [] };
           }
         }),
       );
@@ -1206,18 +1118,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       setToken(resolvedToken);
       setWorkspaces(nextWorkspaces);
       setSessionsByWorkspaceId(Object.fromEntries(sessionEntries.map((entry) => [entry.workspaceId, entry.sessions])));
-      setErrorsByWorkspaceId(Object.fromEntries(sessionEntries.map((entry) => [entry.workspaceId, entry.error])));
-      setWorkspaceConnectionOverrides((current) => {
-        const next = { ...current };
-        for (const entry of sessionEntries) {
-          if (entry.connectionState) {
-            next[entry.workspaceId] = entry.connectionState;
-          } else if (next[entry.workspaceId]?.status === "error") {
-            delete next[entry.workspaceId];
-          }
-        }
-        return next;
-      });
       setLegacySelectedWorkspaceId((current) => {
         const sessionWorkspaceId = findSessionWorkspaceId(navigationSessionId, sessionEntries);
         const preferred = routeWorkspaceId || sessionWorkspaceId || navigationWorkspaceId || current || readActiveWorkspaceId() || "";
@@ -1251,7 +1151,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     } finally {
       if (workContextRef.current === requestedContextId) {
         setLoading(false);
-        finishWorkContextSwitch(requestedContextId);
       }
       refreshInFlightRef.current = false;
       // Settings can be the first route a user lands on (direct link, deep
@@ -1309,99 +1208,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [workspaces]);
 
   useEffect(() => {
-    const activeWorkspaceIds = new Set(workspaces.map((workspace) => workspace.id));
-    setWorkspaceConnectionOverrides((current) => {
-      let changed = false;
-      const next: Record<string, WorkspaceConnectionState> = {};
-      for (const [workspaceId, state] of Object.entries(current)) {
-        if (activeWorkspaceIds.has(workspaceId)) {
-          next[workspaceId] = state;
-        } else {
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-  }, [workspaces]);
-
-  const handleRemoteWorkspaceConnectionSaved = useCallback(
-    async (workspaceId: string) => {
-      delete remoteWorkspaceCheckRunRef.current[workspaceId];
-      setWorkspaceConnectionOverrides((current) => {
-        const next = { ...current };
-        delete next[workspaceId];
-        return next;
-      });
-      setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
-      await refreshRouteState();
-    },
-    [refreshRouteState],
-  );
-
-  const remoteWorkspaceConnectionEditor = useRemoteWorkspaceConnectionEditor({
-    workspaces,
-    onSaved: handleRemoteWorkspaceConnectionSaved,
-  });
-
-  const runRemoteWorkspaceConnectionCheck = useCallback(
-    async (workspaceId: string, mode: "test" | "recover") => {
-      const workspace = workspacesRef.current.find((item) => item.id === workspaceId);
-      if (!workspace || workspace.workspaceType !== "remote") return false;
-      const connectionKey = getRemoteWorkspaceConnectionKey(workspace);
-      remoteWorkspaceCheckRunCounterRef.current += 1;
-      const runId = String(remoteWorkspaceCheckRunCounterRef.current);
-      remoteWorkspaceCheckRunRef.current[workspaceId] = runId;
-
-      setWorkspaceConnectionOverrides((current) => ({
-        ...current,
-        [workspaceId]: {
-          status: "connecting",
-          message: t("config.testing_connection"),
-          checkedAt: null,
-        },
-      }));
-
-      const result = await testRemoteWorkspaceConnection(workspace);
-      const currentWorkspace = workspacesRef.current.find((item) => item.id === workspaceId);
-      if (
-        remoteWorkspaceCheckRunRef.current[workspaceId] !== runId ||
-        !currentWorkspace ||
-        getRemoteWorkspaceConnectionKey(currentWorkspace) !== connectionKey
-      ) {
-        if (remoteWorkspaceCheckRunRef.current[workspaceId] === runId) {
-          delete remoteWorkspaceCheckRunRef.current[workspaceId];
-        }
-        return false;
-      }
-      setWorkspaceConnectionOverrides((current) => ({
-        ...current,
-        [workspaceId]: result.state,
-      }));
-
-      if (!result.ok) {
-        setErrorsByWorkspaceId((current) => ({
-          ...current,
-          [workspaceId]: result.state.message ?? "Remote worker connection failed.",
-        }));
-        if (remoteWorkspaceCheckRunRef.current[workspaceId] === runId) {
-          delete remoteWorkspaceCheckRunRef.current[workspaceId];
-        }
-        return false;
-      }
-
-      setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
-      if (mode === "recover") {
-        await refreshRouteState();
-      }
-      if (remoteWorkspaceCheckRunRef.current[workspaceId] === runId) {
-        delete remoteWorkspaceCheckRunRef.current[workspaceId];
-      }
-      return true;
-    },
-    [refreshRouteState],
-  );
-
-  useEffect(() => {
     if (!isDesktopRuntime()) return;
     if (loading) return;
     if (ipolloworkClient) {
@@ -1437,7 +1243,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       workspacesRef.current = [];
       setWorkspaces([]);
       setSessionsByWorkspaceId({});
-      setErrorsByWorkspaceId({});
       setLegacySelectedWorkspaceId("");
       setActiveWorkContextId(nextContextId);
     };
@@ -1570,12 +1375,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [activeClient, connectionsStore, providerAuthStore, selectedWorkspace?.id]);
 
   const selectedWorkspaceName = selectedWorkspace?.displayNameResolved ?? t("session.workspace_fallback");
-  const workspaceOptions = workspaces.map((workspace) => ({
-    id: workspace.id,
-    name: workspace.displayNameResolved,
-    color: workspaceSwatchColor(workspace.id),
-  }));
-  const selectedWorkspaceColor = workspaceSwatchColor(selectedWorkspaceId);
   const workspaceType = selectedWorkspace?.workspaceType ?? "local";
   const isRemoteWorkspace = workspaceType === "remote";
   const canWriteWorkspaceSkills =
@@ -1586,19 +1385,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     isRemoteWorkspace && !canWriteWorkspaceSkills ? t("app.skills_hint_readonly") : null;
   const pluginsAccessHint =
     isRemoteWorkspace && !canWriteWorkspacePlugins ? t("app.plugins_hint_readonly") : null;
-  const defaultModelLabel = local.prefs.defaultModel
-    ? (() => {
-        const provider = providers.find((item) => item.id === local.prefs.defaultModel?.providerID);
-        const model = provider?.models?.[local.prefs.defaultModel.modelID];
-        const providerLabel = provider?.name ?? resolveProviderDisplayName(local.prefs.defaultModel.providerID);
-        const modelLabel = model?.name ?? resolveModelDisplayName(local.prefs.defaultModel.modelID);
-        return `${providerLabel} - ${modelLabel}`;
-      })()
-    : t("session.default_model");
-  const defaultModelRef = local.prefs.defaultModel
-    ? `${local.prefs.defaultModel.providerID}/${local.prefs.defaultModel.modelID}`
-    : t("settings.default_label");
-  const defaultModelVariantLabel = local.prefs.modelVariant ?? t("settings.default_label");
   const providerStatusLabel = providerConnectedIds.length > 0 ? t("status.connected") : t("status.disconnected_label");
   const providerStatusStyle = providerConnectedIds.length > 0
     ? "bg-green-7/10 text-green-11 border-green-7/20"
@@ -1726,18 +1512,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     [extensionItems.orgMcpConnectionItems],
   );
   const routeiPolloWorkStatus = ipolloworkClient ? "connected" : "disconnected";
-  const notFoundRouteError = !loading && routeWorkspaceId && !selectedWorkspace
-    ? "Workspace was not found. Select a new workspace from the sidebar."
-    : null;
-  useEffect(() => {
-    if (notFoundRouteError) {
-      notifyAlert({
-        kind: "system",
-        title: notFoundRouteError,
-        dedupeKey: "workspace-not-found",
-      });
-    }
-  }, [notFoundRouteError]);
   const routeiPolloWorkCapabilities: iPolloWorkServerCapabilities | null = ipolloworkClient
     ? ROUTE_IPOLLOWORK_CAPABILITIES
     : null;
@@ -1781,195 +1555,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       return { statusMessage: t("settings.environment.apply_refresh_failed") };
     }
     await refreshRouteState();
-  };
-
-  const handleOpenCreateWorkspace = () => {
-    if (
-      workspaces.length > 0 &&
-      checkDesktopRestriction({ restriction: "allowMultipleWorkspaces" })
-    ) {
-      restrictionNotice.show({
-        title: "Additional workspaces are restricted",
-        message:
-          "Your organization administrator has restricted access to adding additional workspaces.",
-      });
-      return;
-    }
-
-    setCreateWorkspaceError(null);
-    setCreateWorkspaceRemoteError(null);
-    setCreateWorkspaceOpen(true);
-  };
-
-  const handleSelectSettingsWorkspace = useCallback((workspaceId: string) => {
-    if (workspaceId === selectedWorkspaceId) return;
-    setLegacySelectedWorkspaceId(workspaceId);
-    writeActiveWorkspaceId(workspaceId);
-    const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
-    const endpoint = resolveWorkspaceEndpoint(workspace, { baseUrl, token });
-    if (endpoint) {
-      void endpoint.client.activateWorkspace(endpoint.workspaceId, { persist: true }).catch(() => undefined);
-    }
-    if (isDesktopRuntime()) {
-      void workspaceSetSelected(workspaceId).catch(() => undefined);
-      void workspaceSetRuntimeActive(workspaceId).catch(() => undefined);
-    }
-    navigate(workspaceSettingsRoute(workspaceId, settingsPathForRoute(route)), { state: location.state });
-  }, [baseUrl, location, navigate, route, selectedWorkspaceId, token, workspaces]);
-
-  const handleOpenRenameWorkspace = useCallback((workspaceId: string) => {
-    const workspace = workspaces.find((item) => item.id === workspaceId);
-    if (!workspace) return;
-    setRenameWorkspaceId(workspaceId);
-    setRenameWorkspaceTitle(workspaceLabel(workspace));
-  }, [workspaces]);
-
-  const handleSaveRenameWorkspace = useCallback(async () => {
-    if (!renameWorkspaceId) return;
-    const trimmed = renameWorkspaceTitle.trim();
-    if (!trimmed) return;
-    setRenameWorkspaceBusy(true);
-    try {
-      if (!ipolloworkClient) {
-        toast.error("iPolloWork server is unavailable. Reconnect the server before renaming workspaces.");
-        return;
-      }
-      await ipolloworkClient.updateWorkspaceDisplayName(renameWorkspaceId, trimmed);
-      setRenameWorkspaceId(null);
-      setRenameWorkspaceTitle("");
-      await refreshRouteState();
-    } catch (error) {
-      toast.error("Workspace rename failed", {
-        description: describeRouteError(error),
-      });
-    } finally {
-      setRenameWorkspaceBusy(false);
-    }
-  }, [ipolloworkClient, refreshRouteState, renameWorkspaceId, renameWorkspaceTitle]);
-
-  const handleRevealWorkspace = useCallback(async (workspaceId: string) => {
-    const workspace = workspaces.find((item) => item.id === workspaceId);
-    const path = workspace?.path?.trim();
-    if (!path || !isDesktopRuntime()) return;
-    await revealDesktopItemInDir(path).catch(() => undefined);
-  }, [workspaces]);
-
-  const handleExportWorkspaceConfig = useCallback(async (workspaceId: string) => {
-    const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
-    if (!workspace) return;
-    const endpoint = resolveWorkspaceEndpoint(workspace, { baseUrl, token });
-    if (endpoint) {
-      setExportWorkspaceBusy(true);
-      try {
-        const payload = await endpoint.client.exportWorkspace(endpoint.workspaceId);
-        downloadWorkspaceJson(workspaceExportFilename(workspace), payload);
-      } finally {
-        setExportWorkspaceBusy(false);
-      }
-      return;
-    }
-    throw new Error("iPolloWork server is unavailable. Reconnect the server before exporting workspace config.");
-  }, [baseUrl, token, workspaces]);
-
-  const handleForgetWorkspace = useCallback(async (workspaceId: string) => {
-    if (typeof window !== "undefined") {
-      const message = t("workspace_list.remove_confirm") || "Remove this workspace from the sidebar?";
-      if (!window.confirm(message)) return;
-    }
-    if (ipolloworkClient) {
-      await ipolloworkClient.deleteWorkspace(workspaceId).catch(() => undefined);
-    }
-    if (isDesktopRuntime()) {
-      await workspaceForget(workspaceId).catch(() => undefined);
-    }
-    if (selectedWorkspaceId === workspaceId) {
-      const nextWorkspace = workspaces.find((workspace) => workspace.id !== workspaceId);
-      const nextId = nextWorkspace?.id ?? "";
-      setLegacySelectedWorkspaceId(nextId);
-      if (nextId) {
-        await workspaceSetSelected(nextId).catch(() => undefined);
-      }
-    }
-    await refreshRouteState();
-  }, [ipolloworkClient, refreshRouteState, selectedWorkspaceId, workspaces]);
-
-  const handleCreateWorkspace = async (preset: WorkspacePreset, folder: string | null) => {
-    if (!folder) return;
-    setCreateWorkspaceBusy(true);
-    setCreateWorkspaceError(null);
-    try {
-      const workspaceName = folderNameFromPath(folder);
-      const workContextId = activeWorkContextId === PERSONAL_WORK_CONTEXT_ID ? null : activeWorkContextId;
-      let list: WorkspaceList | null = null;
-      if (ipolloworkClient) {
-        list = await ipolloworkClient
-          .createLocalWorkspace({ folderPath: folder, name: workspaceName, preset, workContextId })
-          .catch(() => null);
-      }
-      if (!list) {
-        throw new Error("iPolloWork server is unavailable. Start or reconnect the server before creating a workspace.");
-      }
-      if (isDesktopRuntime()) {
-        await workspaceCreate({ folderPath: folder, name: workspaceName, preset, workContextId }).catch(() => undefined);
-      }
-      const createdId = resolveWorkspaceListSelectedId(list) || list.workspaces[list.workspaces.length - 1]?.id || "";
-      if (createdId) {
-        await workspaceSetSelected(createdId).catch(() => undefined);
-        await workspaceSetRuntimeActive(createdId).catch(() => undefined);
-      }
-      setCreateWorkspaceOpen(false);
-      await refreshRouteState();
-    } catch (error) {
-      setCreateWorkspaceError(describeWorkspaceCreateError(error));
-    } finally {
-      setCreateWorkspaceBusy(false);
-    }
-  };
-
-  const handleCreateRemoteWorkspace = async (input: {
-    ipolloworkHostUrl?: string | null;
-    ipolloworkToken?: string | null;
-    directory?: string | null;
-    displayName?: string | null;
-  }) => {
-    const baseUrlValue = input.ipolloworkHostUrl?.trim() ?? "";
-    if (!baseUrlValue) return false;
-    setCreateWorkspaceRemoteBusy(true);
-    setCreateWorkspaceRemoteError(null);
-    try {
-      const remoteType: "ipollowork" = "ipollowork";
-      const payload = {
-        baseUrl: baseUrlValue,
-        workContextId: activeWorkContextId === PERSONAL_WORK_CONTEXT_ID ? null : activeWorkContextId,
-        ipolloworkHostUrl: baseUrlValue,
-        ipolloworkToken: input.ipolloworkToken?.trim() || null,
-        displayName: input.displayName?.trim() || null,
-        directory: input.directory?.trim() || null,
-        remoteType,
-      };
-      let list: WorkspaceList | null = null;
-      if (isDesktopRuntime()) {
-        list = await workspaceCreateRemote(payload);
-      } else if (ipolloworkClient) {
-        list = await ipolloworkClient.createRemoteWorkspace(payload).catch(() => null);
-      }
-      if (!list) {
-        throw new Error("iPolloWork server is unavailable. Start or reconnect the server before connecting a remote workspace.");
-      }
-      const createdId = resolveWorkspaceListSelectedId(list) || list.workspaces[list.workspaces.length - 1]?.id || "";
-      if (createdId) {
-        await workspaceSetSelected(createdId).catch(() => undefined);
-        await workspaceSetRuntimeActive(createdId).catch(() => undefined);
-      }
-      setCreateWorkspaceOpen(false);
-      await refreshRouteState();
-      return true;
-    } catch (error) {
-      setCreateWorkspaceRemoteError(error instanceof Error ? error.message : t("app.unknown_error"));
-      return false;
-    } finally {
-      setCreateWorkspaceRemoteBusy(false);
-    }
   };
 
   // Hooks must run unconditionally: this useCallback used to sit below the
@@ -2359,7 +1944,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           <RecoveryView
             anyActiveRuns={false}
             workspaceConfigPath={selectedWorkspaceRoot ? `${selectedWorkspaceRoot}/.opencode/ipollowork.json` : ""}
-            resetConfigBusy={resetConfigBusy}
+            resetConfigBusy={false}
             onResetAppConfigDefaults={() => {}}
             configActionStatus={configActionStatus}
             cacheRepairBusy={false}
@@ -2413,11 +1998,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         activeTab={route.tab}
         onSelectTab={(tab) => navigateSettingsPath(tab)}
         developerMode={developerMode}
-        selectedWorkspaceId={selectedWorkspaceId}
-        selectedWorkspaceName={selectedWorkspaceName}
-        selectedWorkspaceColor={selectedWorkspaceColor}
-        workspaces={workspaceOptions}
-        onSelectWorkspace={handleSelectSettingsWorkspace}
         headerStatus={routeiPolloWorkStatus}
         busyHint={loading ? t("session.loading_detail") : busyLabel}
         onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId) : "/session"))}
@@ -2467,65 +2047,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         showiPolloWorkModelsSubscribe={showiPolloWorkModelsSubscribe}
         onSubscribeiPolloWorkModels={subscribeToiPolloWorkModels}
         onClose={() => providerAuthStore.closeProviderAuthModal()}
-      />
-      <CreateWorkspaceModal
-        open={createWorkspaceOpen}
-        onClose={() => {
-          setCreateWorkspaceOpen(false);
-          setCreateWorkspaceError(null);
-        }}
-        onConfirm={handleCreateWorkspace}
-        onConfirmRemote={handleCreateRemoteWorkspace}
-        onPickFolder={() => pickDirectory({ title: t("onboarding.authorize_folder") }) as Promise<string | null>}
-        submitting={createWorkspaceBusy}
-        localError={createWorkspaceError}
-        showProjectLabel={false}
-        remoteSubmitting={createWorkspaceRemoteBusy}
-        remoteError={createWorkspaceRemoteError}
-      />
-      <RenameWorkspaceModal
-        open={renameWorkspaceId !== null}
-        title={renameWorkspaceTitle}
-        busy={renameWorkspaceBusy}
-        canSave={!renameWorkspaceBusy && renameWorkspaceTitle.trim().length > 0}
-        onClose={() => {
-          if (renameWorkspaceBusy) return;
-          setRenameWorkspaceId(null);
-          setRenameWorkspaceTitle("");
-        }}
-        onSave={() => void handleSaveRenameWorkspace()}
-        onTitleChange={setRenameWorkspaceTitle}
-      />
-      {shareWorkspaceState.shareWorkspaceOpen ? (
-        <ShareWorkspaceModal
-          open
-          onClose={shareWorkspaceState.closeShareWorkspace}
-          workspaceName={shareWorkspaceState.shareWorkspaceName}
-          workspaceDetail={shareWorkspaceState.shareWorkspaceDetail}
-          fields={shareWorkspaceState.shareFields}
-          note={shareWorkspaceState.shareNote}
-          onExportConfig={
-            shareWorkspaceState.exportDisabledReason === null
-              ? () => {
-                  const id = shareWorkspaceState.shareWorkspaceId;
-                  if (!id) return;
-                  void handleExportWorkspaceConfig(id);
-                }
-              : undefined
-          }
-          exportDisabledReason={shareWorkspaceState.exportDisabledReason}
-        />
-      ) : null}
-      <CreateRemoteWorkspaceModal
-        open={remoteWorkspaceConnectionEditor.workspace !== null}
-        onClose={remoteWorkspaceConnectionEditor.close}
-        onConfirm={(input) => void remoteWorkspaceConnectionEditor.save(input)}
-        initialValues={remoteWorkspaceConnectionEditor.initialValues}
-        submitting={remoteWorkspaceConnectionEditor.busy}
-        error={remoteWorkspaceConnectionEditor.error}
-        title={t("dashboard.edit_remote_workspace_title")}
-        subtitle={t("dashboard.edit_remote_workspace_subtitle")}
-        confirmLabel={t("dashboard.edit_remote_workspace_confirm")}
       />
       <ConnectionsModals
         client={activeClient}

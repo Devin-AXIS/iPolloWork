@@ -5,8 +5,8 @@ import { publicAssetUrl } from "@/app/lib/public-asset";
 const RELEASES_URL = "https://github.com/Devin-AXIS/iPolloWork/releases";
 
 /**
- * Opaque branded boot overlay. It stays mounted until both the desktop boot
- * hook and the first route load are ready, then fades into the workspace.
+ * Branded boot overlay. It matches the application surface from the first
+ * renderer frame and stays mounted until both boot and route data are ready.
  */
 export function LoadingOverlay() {
   const { visible, fading } = useBootOverlayState();
@@ -16,7 +16,7 @@ export function LoadingOverlay() {
 
   return (
     <div
-      className={`pointer-events-auto fixed inset-0 z-[1000] flex items-center justify-center bg-black transition-opacity duration-[160ms] ${
+      className={`pointer-events-auto fixed inset-0 z-[1000] flex items-center justify-center bg-dls-surface transition-opacity duration-[160ms] ${
         fading ? "opacity-0" : "opacity-100"
       }`}
       aria-live="polite"
@@ -24,15 +24,14 @@ export function LoadingOverlay() {
       role="status"
       data-testid="startup-logo-animation"
     >
-      <div className="flex flex-col items-center gap-5 text-white">
+      <div className="flex items-center justify-center">
         <img
-          src={publicAssetUrl("ipollowork-mark.svg")}
+          src={publicAssetUrl("ipollowork-app-loading-v3.gif")}
           alt="iPolloWork Loading"
-          className="h-auto w-20 animate-pulse brightness-0 invert"
+          className="h-auto w-[min(288px,33.6vw)] max-[640px]:w-[min(224px,46.4vw)] dark:brightness-0 dark:invert"
         />
-        <span className="text-sm font-light tracking-[0.2em] text-white/65">Loading...</span>
       </div>
-      <span className="sr-only">{message || "Preparing workspace"}</span>
+      <span className="sr-only">Loading... {message || "Preparing workspace"}</span>
       {error ? (
           <div className="absolute inset-x-6 bottom-8 mx-auto flex max-w-xl flex-col gap-2 rounded-xl bg-black/80 p-4 text-center text-[12px] leading-5 text-red-300 backdrop-blur">
             <div>{error}</div>
