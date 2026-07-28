@@ -288,7 +288,12 @@ describe("workspace lifecycle registry", () => {
     const response = await fetch(`${base}/workspaces/local`, {
       method: "POST",
       headers: { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" },
-      body: JSON.stringify({ folderPath: workspaceRoot, name: "Persisted Local", preset: "starter" }),
+      body: JSON.stringify({
+        folderPath: workspaceRoot,
+        name: "Persisted Local",
+        preset: "starter",
+        workContextId: "enterprise:ent_alpha",
+      }),
     });
 
     expect(response.status).toBe(201);
@@ -299,6 +304,7 @@ describe("workspace lifecycle registry", () => {
     const workspaces = workspacesFromConfig(persisted);
     expect(workspaces[0]?.path).toBe(workspaceRoot);
     expect(workspaces[0]?.name).toBe("Persisted Local");
+    expect(workspaces[0]?.workContextId).toBe("enterprise:ent_alpha");
     expect(authorizedRootsFromConfig(persisted)).toEqual([workspaceRoot]);
   });
 

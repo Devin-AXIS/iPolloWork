@@ -152,6 +152,7 @@ type CreateProviderAuthStoreOptions = {
   checkDesktopAppRestriction: DesktopAppRestrictionChecker;
   selectedWorkspaceDisplay: () => WorkspaceDisplay;
   selectedWorkspaceRoot: () => string;
+  allowCloudImports?: () => boolean;
   runtimeWorkspaceId: () => string | null;
   ensureRuntimeWorkspaceId?: () => Promise<string | null | undefined>;
   ipolloworkServer: ProviderAuthiPolloWorkServer;
@@ -1655,6 +1656,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const hasCloudProviderSyncPrerequisites = () => {
+    if (options.allowCloudImports?.() === false) return false;
     const settings = readDenSettings();
     const workspaceTarget =
       options.selectedWorkspaceRoot().trim() || options.runtimeWorkspaceId() || "";

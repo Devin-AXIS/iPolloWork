@@ -3,6 +3,7 @@ import * as React from "react";
 import {
   AppWindow,
   BarChart3,
+  Building2,
   Eye,
   FileChartColumnIncreasing,
   FileText,
@@ -36,6 +37,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
+import type { WorkContextId } from "@/app/lib/work-context";
+import type { EnterpriseConnection, EnterpriseResource } from "@/app/lib/enterprise-connections";
+import { WorkResourceScopeSwitch } from "@/react-app/domains/enterprise/work-resource-scope-switch";
 
 type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
 
@@ -106,6 +110,11 @@ export type TemplateMarketDialogProps = {
   canSaveCurrent: boolean;
   currentSurface: "design" | "video" | null;
   currentCategory: TemplateCategory;
+  enterprise: EnterpriseConnection | null;
+  resourceScope: WorkContextId;
+  enterpriseResources: EnterpriseResource[];
+  onResourceScopeChange: (scope: WorkContextId) => void;
+  onInstallEnterprise: (resource: EnterpriseResource) => void;
   onRefresh: () => void;
   onUse: (template: TemplateCatalogItem) => void;
   onInstall: (templateId: string) => void;
@@ -125,6 +134,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   const [saveCategory, setSaveCategory] = React.useState<TemplateCategory>(props.currentCategory);
   const [previewTemplate, setPreviewTemplate] = React.useState<TemplateCatalogItem | null>(null);
   const importRef = React.useRef<HTMLInputElement>(null);
+  const enterpriseMode = props.resourceScope !== "personal";
 
   React.useEffect(() => { if (props.open) props.onRefresh(); }, [props.open, props.onRefresh]);
   React.useEffect(() => { setSaveCategory(props.currentCategory); }, [props.currentCategory]);
@@ -151,6 +161,14 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
         .join(" ").toLowerCase().includes(normalized);
     });
   }, [category, props.templates, query, source, style]);
+  const visibleEnterpriseResources = React.useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return props.enterpriseResources.filter((item) => {
+      if (category !== "all" && item.category !== category) return false;
+      return !normalized || [item.name, item.description, item.category, item.enterpriseCategory]
+        .join(" ").toLowerCase().includes(normalized);
+    });
+  }, [category, props.enterpriseResources, query]);
 
   const submitSave = () => {
     const title = saveTitle.trim();
@@ -175,11 +193,12 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
         </DialogHeader>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-6 py-3">
+          <WorkResourceScopeSwitch enterprise={props.enterprise} value={props.resourceScope} onChange={props.onResourceScopeChange} />
           <div className="relative min-w-48 flex-1 sm:max-w-xs"><Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t("template_market.search_placeholder")} className="h-9 rounded-xl pl-8 text-xs" /></div>
-          <Button variant={source === "mine" ? "default" : "outline"} size="sm" className="min-w-0 rounded-xl" onClick={() => setSource((value) => value === "mine" ? "all" : "mine")}><span className="truncate">{t("template_market.my_templates")}</span></Button>
+          {!enterpriseMode ? <Button variant={source === "mine" ? "default" : "outline"} size="sm" className="min-w-0 rounded-xl" onClick={() => setSource((value) => value === "mine" ? "all" : "mine")}><span className="truncate">{t("template_market.my_templates")}</span></Button> : null}
           <input ref={importRef} type="file" accept=".ipwt" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
-          <Button variant="outline" size="sm" className="min-w-0 rounded-xl" disabled={props.busyId !== null} onClick={() => importRef.current?.click()}><Upload className="size-3.5" /><span className="truncate">{t("template_market.import_ipwt")}</span></Button>
-          {props.canSaveCurrent ? <Button variant="outline" size="sm" className="min-w-0 rounded-xl" onClick={() => setSaveOpen((value) => !value)}><Sparkles className="size-3.5" /><span className="truncate">{t("template_market.save_current")}</span></Button> : null}
+          {!enterpriseMode ? <Button variant="outline" size="sm" className="min-w-0 rounded-xl" disabled={props.busyId !== null} onClick={() => importRef.current?.click()}><Upload className="size-3.5" /><span className="truncate">{t("template_market.import_ipwt")}</span></Button> : null}
+          {!enterpriseMode && props.canSaveCurrent ? <Button variant="outline" size="sm" className="min-w-0 rounded-xl" onClick={() => setSaveOpen((value) => !value)}><Sparkles className="size-3.5" /><span className="truncate">{t("template_market.save_current")}</span></Button> : null}
         </div>
 
         {pendingImport ? <div className="mx-6 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2"><Upload className="size-4 text-primary" /><span className="min-w-40 flex-1 truncate text-xs">{pendingImport.name} · {(pendingImport.size / 1024).toFixed(1)} KB</span><Button variant="ghost" size="sm" disabled={props.busyId !== null} onClick={() => setPendingImport(null)}>{t("common.cancel")}</Button><Button size="sm" className="rounded-lg" disabled={props.busyId !== null} onClick={async () => { if (await props.onImport(pendingImport)) setPendingImport(null); }}>{props.busyId === "import" ? <Loader2 className="size-3.5 animate-spin" /> : null}{t("template_market.install")}</Button></div> : null}
@@ -193,8 +212,8 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
           </aside>
           <section className="min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-5">
             <div className="mb-5 flex flex-wrap gap-2 md:hidden"><Button variant={category === "all" ? "default" : "outline"} size="sm" className="rounded-xl" onClick={() => setCategory("all")}>{t("template_market.all")}</Button>{CATEGORIES.map(({ id, labelKey }) => <Button key={id} variant={category === id ? "default" : "outline"} size="sm" className="rounded-xl" onClick={() => setCategory(id)}>{t(labelKey)}</Button>)}</div>
-            <div className="mb-5 flex flex-wrap items-center gap-2"><span className="mr-1 text-[11px] font-medium text-muted-foreground">{t("template_market.style_label")}</span><button type="button" onClick={() => setStyle("all")} className={cn("rounded-full px-2.5 py-1 text-[11px] transition", style === "all" ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>{t("template_market.all_styles")}</button>{styleOptions.map((option) => <button key={option.id} type="button" onClick={() => setStyle(option.id)} className={cn("rounded-full px-2.5 py-1 text-[11px] transition", style === option.id ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>{option.label}</button>)}</div>
-            {props.loading ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-60 animate-pulse rounded-2xl bg-muted" />)}</div> : props.error ? <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-xl" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : visible.length ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} onPreview={() => setPreviewTemplate(template)} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} onUninstall={() => props.onUninstall(template.manifest.id)} />)}</div> : <div className="rounded-2xl border border-dashed border-border p-10 text-center"><LayoutTemplate className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
+            {!enterpriseMode ? <div className="mb-5 flex flex-wrap items-center gap-2"><span className="mr-1 text-[11px] font-medium text-muted-foreground">{t("template_market.style_label")}</span><button type="button" onClick={() => setStyle("all")} className={cn("rounded-full px-2.5 py-1 text-[11px] transition", style === "all" ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>{t("template_market.all_styles")}</button>{styleOptions.map((option) => <button key={option.id} type="button" onClick={() => setStyle(option.id)} className={cn("rounded-full px-2.5 py-1 text-[11px] transition", style === option.id ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>{option.label}</button>)}</div> : null}
+            {props.loading ? <div data-testid="template-catalog-loading" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-60 animate-pulse rounded-2xl bg-muted" />)}</div> : props.error ? <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-xl" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : enterpriseMode ? (visible.length || visibleEnterpriseResources.length ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} onPreview={() => setPreviewTemplate(template)} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} onUninstall={() => props.onUninstall(template.manifest.id)} />)}{visibleEnterpriseResources.map((resource) => <EnterpriseTemplateCard key={resource.id} resource={resource} busy={props.busyId !== null} onInstall={() => props.onInstallEnterprise(resource)} />)}</div> : <div className="rounded-2xl border border-dashed border-border p-10 text-center"><Building2 className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("enterprise_connection.enterprise_templates_empty")}</p></div>) : visible.length ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} onPreview={() => setPreviewTemplate(template)} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} onUninstall={() => props.onUninstall(template.manifest.id)} />)}</div> : <div className="rounded-2xl border border-dashed border-border p-10 text-center"><LayoutTemplate className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
           </section>
         </div>
       </DialogContent>
@@ -212,6 +231,10 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
     </Dialog>
     </>
   );
+}
+
+function EnterpriseTemplateCard({ resource, busy, onInstall }: { resource: EnterpriseResource; busy: boolean; onInstall: () => void }) {
+  return <article className="overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm"><div className="flex items-start gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Building2 className="size-4" /></div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold">{resource.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{resource.description}</p></div></div><div className="mt-4 flex items-center justify-between gap-2"><div className="flex min-w-0 gap-1.5"><Badge variant="outline" className="truncate text-[10px]">{resource.enterpriseCategory}</Badge>{resource.latestVersion ? <Badge variant="secondary" className="text-[10px]">v{resource.latestVersion.version}</Badge> : null}</div><Button size="sm" className="h-7 rounded-lg px-2.5 text-[11px]" disabled={busy || !resource.latestVersion} onClick={onInstall}>{busy ? <Loader2 className="size-3 animate-spin" /> : null}{t("enterprise_connection.install_from_enterprise")}</Button></div></article>;
 }
 
 function TemplateCard({ template, getCover, busy, onPreview, onUse, onInstall, onUninstall }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; busy: boolean; onPreview: () => void; onUse: () => void; onInstall: () => void; onUninstall: () => void }) {

@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "id": "wechat-official",
+  "name": "微信公众号",
+  "description": "管理公众号图文、草稿、发布、评论、消息、粉丝、菜单与运营工作流。",
+  "category": "内容与运营",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://developers.weixin.qq.com/doc/service/guide/product/draft.html"
+  },
+  "icon": {
+    "simpleIconSlug": "wechat"
+  },
+  "composer": {
+    "prompt": "使用微信公众号运营插件，先检查账号能力与草稿状态，再按确认范围处理内容、评论、菜单或粉丝互动。"
+  },
+  "package": {
+    "version": "0.1.0",
+    "publisher": {
+      "id": "ipollowork",
+      "name": "iPolloWork"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.17.28",
+      "opencode": ">=1.18.0"
+    },
+    "updateId": "ipollowork/wechat-official",
+    "entrypoints": {
+      "service": "service/wechat-official.ts"
+    }
+  },
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "访问用户授权的微信公众号内容、评论、粉丝与菜单接口。"
+    },
+    {
+      "id": "workspace-read",
+      "reason": "读取当前工作区中用户选择上传到公众号的图片素材。"
+    }
+  ],
+  "authorization": {
+    "required": true,
+    "methods": [
+      {
+        "id": "wechat-official-account",
+        "kind": "secret-form",
+        "label": "连接微信公众号",
+        "description": "填写服务号的 AppID 与 AppSecret。凭据仅保存在 iPolloWork 加密授权仓库中；需要具备相应 API 发布权限的认证服务号。",
+        "fields": [
+          {
+            "id": "appId",
+            "label": "AppID",
+            "placeholder": "wx…",
+            "secret": false,
+            "required": true
+          },
+          {
+            "id": "appSecret",
+            "label": "AppSecret",
+            "placeholder": "请输入公众号 AppSecret",
+            "secret": true,
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  "resources": [
+    {
+      "type": "local-service",
+      "id": "wechat-official-service",
+      "label": "微信公众号运营服务",
+      "description": "以受控、可确认的动作调用微信公众号内容与运营 API。",
+      "path": "service/wechat-official.ts",
+      "requires": [
+        "authorization:wechat-official-account"
+      ],
+      "provides": [
+        "action:connection-status",
+        "action:upload-article-image",
+        "action:upload-cover-image",
+        "action:create-draft",
+        "action:get-draft",
+        "action:list-drafts",
+        "action:update-draft",
+        "action:submit-publish",
+        "action:get-publish-status",
+        "action:list-comments",
+        "action:reply-comment",
+        "action:set-comment-featured",
+        "action:delete-comment",
+        "action:set-comment-state",
+        "action:list-followers",
+        "action:get-menu",
+        "action:update-menu",
+        "action:send-customer-text"
+      ],
+      "required": true,
+      "actions": [
+        {
+          "id": "connection-status",
+          "title": "检查公众号连接",
+          "description": "验证 AppID 与 AppSecret 是否可获取公众号接口凭据。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+          "id": "upload-article-image",
+          "title": "上传正文图片",
+          "description": "从当前工作区上传一张图片并返回可用于公众号正文的图片 URL。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "sourcePath": { "type": "string" } }, "required": ["sourcePath"], "additionalProperties": false }
+        },
+        {
+          "id": "upload-cover-image",
+          "title": "上传封面图片",
+          "description": "从当前工作区上传一张永久图片素材并返回封面 media ID。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "sourcePath": { "type": "string" } }, "required": ["sourcePath"], "additionalProperties": false }
+        },
+        {
+          "id": "create-draft",
+          "title": "创建公众号草稿",
+          "description": "将已准备的图文文章写入公众号草稿箱，不会正式发布。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "articles": { "type": "array" } }, "required": ["articles"], "additionalProperties": false }
+        },
+        {
+          "id": "get-draft",
+          "title": "读取公众号草稿",
+          "description": "读取一个公众号草稿的完整内容。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": { "mediaId": { "type": "string" } }, "required": ["mediaId"], "additionalProperties": false }
+        },
+        {
+          "id": "list-drafts",
+          "title": "列出公众号草稿",
+          "description": "分页读取公众号草稿箱的有界摘要。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": { "offset": { "type": "number" }, "limit": { "type": "number" } }, "additionalProperties": false }
+        },
+        {
+          "id": "update-draft",
+          "title": "更新公众号草稿",
+          "description": "更新草稿中的一篇文章；执行前应先读取当前草稿。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "mediaId": { "type": "string" }, "index": { "type": "number" }, "article": { "type": "object" } }, "required": ["mediaId", "index", "article"], "additionalProperties": false }
+        },
+        {
+          "id": "submit-publish",
+          "title": "提交公众号发布",
+          "description": "将一个草稿提交到公众号发布队列；执行前必须获得用户明确确认。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "mediaId": { "type": "string" } }, "required": ["mediaId"], "additionalProperties": false }
+        },
+        {
+          "id": "get-publish-status",
+          "title": "查询公众号发布状态",
+          "description": "读取一个发布任务的状态、文章 ID 与链接。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": { "publishId": { "type": "string" } }, "required": ["publishId"], "additionalProperties": false }
+        },
+        {
+          "id": "list-comments",
+          "title": "查看文章评论",
+          "description": "分页读取指定已发布文章的评论。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "limit": { "type": "number" } }, "required": ["msgDataId"], "additionalProperties": false }
+        },
+        {
+          "id": "reply-comment",
+          "title": "回复文章评论",
+          "description": "回复一条公众号文章评论；执行前必须获得用户明确确认。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "userCommentId": { "type": "number" }, "content": { "type": "string" } }, "required": ["msgDataId", "index", "userCommentId", "content"], "additionalProperties": false }
+        },
+        {
+          "id": "set-comment-featured",
+          "title": "设置精选评论",
+          "description": "将评论设为精选或取消精选。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "userCommentId": { "type": "number" }, "featured": { "type": "boolean" } }, "required": ["msgDataId", "index", "userCommentId", "featured"], "additionalProperties": false }
+        },
+        {
+          "id": "delete-comment",
+          "title": "删除文章评论",
+          "description": "删除一条文章评论；这是不可逆操作，执行前必须获得用户明确确认。",
+          "effect": "destructive",
+          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "userCommentId": { "type": "number" } }, "required": ["msgDataId", "index", "userCommentId"], "additionalProperties": false }
+        },
+        {
+          "id": "set-comment-state",
+          "title": "开启或关闭文章评论",
+          "description": "为已发布文章开启或关闭评论能力。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "open": { "type": "boolean" } }, "required": ["msgDataId", "index", "open"], "additionalProperties": false }
+        },
+        {
+          "id": "list-followers",
+          "title": "列出公众号关注者",
+          "description": "分页读取公众号关注者 OpenID 列表。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": { "nextOpenId": { "type": "string" } }, "additionalProperties": false }
+        },
+        {
+          "id": "get-menu",
+          "title": "读取公众号菜单",
+          "description": "读取当前生效的公众号自定义菜单。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+          "id": "update-menu",
+          "title": "更新公众号菜单",
+          "description": "更新公众号自定义菜单；执行前必须展示并确认完整菜单。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "menu": { "type": "object" } }, "required": ["menu"], "additionalProperties": false }
+        },
+        {
+          "id": "send-customer-text",
+          "title": "发送客服文本消息",
+          "description": "在平台允许的客服消息窗口内向一个已知用户发送文本。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "openId": { "type": "string" }, "content": { "type": "string" } }, "required": ["openId", "content"], "additionalProperties": false }
+        }
+      ]
+    },
+    {
+      "type": "skill",
+      "id": "wechat-official-content",
+      "label": "公众号内容创作",
+      "description": "创作符合公众号图文结构的标题、摘要、正文与 CTA。",
+      "path": ".opencode/skills/wechat-official-content/SKILL.md",
+      "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
+      "provides": ["workflow:wechat-official-content"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "wechat-official-assets",
+      "label": "卡片与素材适配",
+      "description": "将工作区卡片与图片适配为公众号封面和正文素材。",
+      "path": ".opencode/skills/wechat-official-assets/SKILL.md",
+      "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
+      "provides": ["workflow:wechat-official-assets"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "wechat-official-publishing",
+      "label": "草稿与发布",
+      "description": "管理草稿、预览、发布确认和发布状态。",
+      "path": ".opencode/skills/wechat-official-publishing/SKILL.md",
+      "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
+      "provides": ["workflow:wechat-official-publishing"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "wechat-official-comments",
+      "label": "评论运营",
+      "description": "查看、筛选、回复、精选和处理文章评论。",
+      "path": ".opencode/skills/wechat-official-comments/SKILL.md",
+      "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
+      "provides": ["workflow:wechat-official-comments"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "wechat-official-messages",
+      "label": "消息自动化",
+      "description": "设计安全的私信回复策略，并在当前可用客服窗口内发送经确认的消息。",
+      "path": ".opencode/skills/wechat-official-messages/SKILL.md",
+      "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
+      "provides": ["workflow:wechat-official-messages"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "wechat-official-community",
+      "label": "粉丝与菜单运营",
+      "description": "理解关注者范围并审查、更新公众号自定义菜单。",
+      "path": ".opencode/skills/wechat-official-community/SKILL.md",
+      "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
+      "provides": ["workflow:wechat-official-community"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "wechat-official-review",
+      "label": "公众号运营复盘",
+      "description": "从草稿、发布和评论证据中整理运营复盘与下一步建议。",
+      "path": ".opencode/skills/wechat-official-review/SKILL.md",
+      "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
+      "provides": ["workflow:wechat-official-review"],
+      "required": true
+    }
+  ]
+}

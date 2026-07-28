@@ -190,6 +190,7 @@ export type iPolloWorkExtensionManifest = {
   id: string;
   name: string;
   description: string;
+  category?: string;
   preview?: boolean;
   source: iPolloWorkExtensionSource;
   icon?: {

@@ -13,7 +13,8 @@ describe("session scroll controller", () => {
     expect(controllerSource).toContain('behavior: ScrollBehavior = "auto"');
     expect(controllerSource).toContain('anchor.scrollIntoView({ block: "start", inline: "nearest", behavior })');
     expect(controllerSource).toContain("anchor.remove()");
-    expect(controllerSource).toContain('syncProgrammaticScrollTop(container, container.scrollHeight, "smooth")');
+    expect(controllerSource).toContain("syncProgrammaticScrollTop(container, container.scrollHeight, behavior)");
+    expect(controllerSource).toContain('const resetDelay = behavior === "smooth" ? 300 : 50');
     expect(controllerSource).not.toContain('container.scrollTo({ top: clampedTop, behavior: "auto" })');
   });
 

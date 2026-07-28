@@ -67,6 +67,7 @@ const serviceActionSchema = z.object({
   id: z.string().regex(SIMPLE_ID_RE),
   title: z.string().min(1),
   description: z.string().min(1),
+  effect: z.enum(["read", "write", "destructive"]).optional(),
   inputSchema: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
@@ -185,6 +186,7 @@ const manifestSchema = z.object({
   id: z.string().regex(SIMPLE_ID_RE),
   name: z.string().min(1),
   description: z.string(),
+  category: z.string().min(1).optional(),
   preview: z.boolean().optional(),
   source: z.object({
     format: sourceFormatSchema,

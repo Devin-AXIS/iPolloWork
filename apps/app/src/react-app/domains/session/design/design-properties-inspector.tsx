@@ -9,6 +9,7 @@ import {
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
   Bold,
+  Check,
   ChevronDown,
   FlipHorizontal2,
   Grip,
@@ -33,10 +34,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { listSystemFontFamilies } from "@/app/lib/desktop";
 import { cn } from "@/lib/utils";
 import type { DesignField, DesignSelection, DesignStyleField } from "./design-html-runtime";
 import { toggleTransformScale } from "./design-transform";
+import { FALLBACK_FONT_FAMILIES, filterFontFamilyOptions, fontFamilyOptions } from "./font-family-catalog";
+import { displayFontFamily } from "./font-family-display";
 
 type DesignPropertiesInspectorProps = {
   selection: DesignSelection;
@@ -91,29 +96,6 @@ export function DesignPropertiesInspector({
         <InspectorIconButton label="Delete layer" disabled><Trash2 /></InspectorIconButton>
       </div>
 
-      <InspectorSection title="Position">
-        <FieldCaption>Alignment</FieldCaption>
-        <div className="grid grid-cols-6 gap-1">
-          <PropertyButton active aria-label="Align left"><AlignLeft /></PropertyButton>
-          <PropertyButton aria-label="Align horizontal center"><AlignHorizontalJustifyCenter /></PropertyButton>
-          <PropertyButton aria-label="Align right"><AlignRight /></PropertyButton>
-          <PropertyButton aria-label="Align top"><AlignVerticalJustifyStart /></PropertyButton>
-          <PropertyButton aria-label="Align vertical center"><AlignVerticalJustifyCenter /></PropertyButton>
-          <PropertyButton aria-label="Align bottom"><AlignVerticalJustifyEnd /></PropertyButton>
-        </div>
-        <FieldCaption className="mt-3">Position</FieldCaption>
-        <div className="grid grid-cols-2 gap-2">
-          <DragNumberField label="X" value={selection.styles.left || `${Math.round(selection.rect.left)}px`} suffix="px" onChange={(value) => onApplyField("left", `${value}px`)} />
-          <DragNumberField label="Y" value={selection.styles.top || `${Math.round(selection.rect.top)}px`} suffix="px" onChange={(value) => onApplyField("top", `${value}px`)} />
-        </div>
-        <div className="mt-2 grid grid-cols-[1fr_42px_42px_42px] gap-1">
-          <DragNumberField label="Rotation" value={`${rotation}°`} suffix="°" onChange={(value) => onApplyField("transform", `rotate(${value}deg)`)} />
-          <PropertyButton aria-label="Rotate clockwise" onClick={() => onApplyField("transform", `rotate(${rotation + 90}deg)`)}><RotateCw /></PropertyButton>
-          <PropertyButton aria-label="Flip horizontal" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "x"))}><FlipHorizontal2 /></PropertyButton>
-          <PropertyButton aria-label="Flip vertical" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "y"))}><SeparatorHorizontal /></PropertyButton>
-        </div>
-      </InspectorSection>
-
       {selection.canEditText ? (
         <InspectorSection title="Text">
           <Input
@@ -124,7 +106,7 @@ export function DesignPropertiesInspector({
             onChange={(event) => onApplyField("text", event.currentTarget.value)}
           />
           <div className="mt-3">
-            <SelectLikeField label="Font family" value={selection.styles.fontFamily || "PingFang SC"} onChange={(value) => onApplyField("fontFamily", value)} />
+            <FontFamilyPicker value={selection.styles.fontFamily || "PingFang SC"} onChange={(value) => onApplyField("fontFamily", value)} />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <FontPresetField label="Size" value={String(fontSize)} presets={FONT_SIZE_PRESETS} onChange={(value) => applyPixels("fontSize", value)} />
@@ -150,6 +132,29 @@ export function DesignPropertiesInspector({
           </div>
         </InspectorSection>
       ) : null}
+
+      <InspectorSection title="Position">
+        <FieldCaption>Alignment</FieldCaption>
+        <div className="grid grid-cols-6 gap-1">
+          <PropertyButton active aria-label="Align left"><AlignLeft /></PropertyButton>
+          <PropertyButton aria-label="Align horizontal center"><AlignHorizontalJustifyCenter /></PropertyButton>
+          <PropertyButton aria-label="Align right"><AlignRight /></PropertyButton>
+          <PropertyButton aria-label="Align top"><AlignVerticalJustifyStart /></PropertyButton>
+          <PropertyButton aria-label="Align vertical center"><AlignVerticalJustifyCenter /></PropertyButton>
+          <PropertyButton aria-label="Align bottom"><AlignVerticalJustifyEnd /></PropertyButton>
+        </div>
+        <FieldCaption className="mt-3">Position</FieldCaption>
+        <div className="grid grid-cols-2 gap-2">
+          <DragNumberField label="X" value={selection.styles.left || `${Math.round(selection.rect.left)}px`} suffix="px" onChange={(value) => onApplyField("left", `${value}px`)} />
+          <DragNumberField label="Y" value={selection.styles.top || `${Math.round(selection.rect.top)}px`} suffix="px" onChange={(value) => onApplyField("top", `${value}px`)} />
+        </div>
+        <div className="mt-2 grid grid-cols-[1fr_42px_42px_42px] gap-1">
+          <DragNumberField label="Rotation" value={`${rotation}°`} suffix="°" onChange={(value) => onApplyField("transform", `rotate(${value}deg)`)} />
+          <PropertyButton aria-label="Rotate clockwise" onClick={() => onApplyField("transform", `rotate(${rotation + 90}deg)`)}><RotateCw /></PropertyButton>
+          <PropertyButton aria-label="Flip horizontal" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "x"))}><FlipHorizontal2 /></PropertyButton>
+          <PropertyButton aria-label="Flip vertical" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "y"))}><SeparatorHorizontal /></PropertyButton>
+        </div>
+      </InspectorSection>
 
       <InspectorSection title="Size">
         <div className="grid grid-cols-[1fr_1fr_34px] gap-2">
@@ -356,6 +361,95 @@ function SelectLikeField({ label, value, onChange }: { label: string; value: str
       <input className="min-w-0 flex-1 bg-transparent text-[12px] outline-none" value={value} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`Design ${label.toLowerCase()}`} />
       <ChevronDown className="size-3.5 shrink-0 text-[#858a94]" />
     </label>
+  );
+}
+
+function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [families, setFamilies] = React.useState<string[] | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const currentFamily = displayFontFamily(value || "PingFang SC");
+  const options = React.useMemo(
+    () => fontFamilyOptions(currentFamily, families ?? FALLBACK_FONT_FAMILIES),
+    [currentFamily, families],
+  );
+  const visibleFamilies = React.useMemo(
+    () => filterFontFamilyOptions(options, query),
+    [options, query],
+  );
+
+  const loadFontFamilies = React.useCallback(async () => {
+    if (families !== null || typeof window === "undefined") return;
+
+    if (!window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) {
+      setFamilies(FALLBACK_FONT_FAMILIES);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const systemFamilies = await listSystemFontFamilies();
+      setFamilies(systemFamilies);
+    } catch {
+      setFamilies(FALLBACK_FONT_FAMILIES);
+    } finally {
+      setLoading(false);
+    }
+  }, [families]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) return;
+    setQuery("");
+    void loadFontFamilies();
+  };
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
+        type="button"
+        className="flex h-9 w-full min-w-0 items-center rounded-lg bg-[#f4f5f8] px-2.5 text-[#202228] hover:bg-[#e9ebef]"
+        aria-label="Design font family"
+      >
+        <span className="min-w-0 flex-1 truncate text-left text-[12px]" style={{ fontFamily: currentFamily }}>{currentFamily}</span>
+        <ChevronDown className="size-3.5 shrink-0 text-[#858a94]" />
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={4} initialFocus={false} className="w-[310px] gap-2 rounded-lg p-2">
+        <Input
+          autoFocus
+          value={query}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          placeholder="Search fonts"
+          aria-label="Search fonts"
+          className="h-8 rounded-md bg-[#f4f5f8] px-2.5 text-[12px] shadow-none"
+        />
+        <div className="max-h-64 overflow-y-auto" role="listbox" aria-label="Font families">
+          {loading ? <p className="px-2.5 py-2 text-[12px] text-[#858a94]">Loading fonts…</p> : null}
+          {!loading && visibleFamilies.length === 0 ? <p className="px-2.5 py-2 text-[12px] text-[#858a94]">No matching fonts</p> : null}
+          {visibleFamilies.map((family) => {
+            const selected = family.toLocaleLowerCase() === currentFamily.toLocaleLowerCase();
+            return (
+              <button
+                key={family}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(family);
+                  setOpen(false);
+                }}
+                className={cn("flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f4f5f8]", selected && "bg-[#edf2ff]")}
+                style={{ fontFamily: family }}
+              >
+                <span className="min-w-0 flex-1 truncate">{family}</span>
+                {selected ? <Check className="size-3.5 shrink-0 text-[#2f6de1]" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

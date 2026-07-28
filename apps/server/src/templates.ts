@@ -36,6 +36,26 @@ const WITHDRAWN_BUNDLED_TEMPLATE_IDS = new Set([
 // the signed-in desktop profile rather than an individual workstation. The
 // workspace route remains the authorization and materialization boundary.
 const PERSONAL_TEMPLATE_LIBRARY = "__ipollowork_personal__";
+const ENTERPRISE_TEMPLATE_LIBRARY_PREFIX = "__ipollowork_enterprise__";
+
+export type TemplateLibraryScope = "personal" | `enterprise:${string}`;
+
+export function parseTemplateLibraryScope(scope: string | null | undefined): TemplateLibraryScope {
+  const normalized = scope?.trim() || "personal";
+  if (normalized === "personal") return normalized;
+  const match = /^enterprise:(ent_[A-Za-z0-9_-]+)$/u.exec(normalized);
+  if (!match) {
+    throw new ApiError(400, "invalid_template_scope", "Template scope must be personal or a valid Enterprise id");
+  }
+  return `enterprise:${match[1]}`;
+}
+
+function templateLibraryId(scope: string | null | undefined): string {
+  const normalized = parseTemplateLibraryScope(scope);
+  return normalized === "personal"
+    ? PERSONAL_TEMPLATE_LIBRARY
+    : `${ENTERPRISE_TEMPLATE_LIBRARY_PREFIX}${normalized.slice("enterprise:".length)}`;
+}
 const ALLOWED_EXTENSIONS = new Set([
   ".html", ".css", ".js", ".mjs", ".json", ".svg", ".png", ".jpg", ".jpeg",
   ".webp", ".gif", ".avif", ".woff", ".woff2", ".ttf", ".otf", ".txt", ".md",
@@ -497,13 +517,15 @@ const HIDDEN_BUNDLED_TEMPLATE_IDS = new Set([
   "ipollowork.pptx-compatible-report",
 ]);
 
-export async function listTemplates(config: ServerConfig, workspaceId: string): Promise<TemplateCatalogItem[]> {
+
+export async function listTemplates(config: ServerConfig, workspaceId: string, scope: TemplateLibraryScope = "personal"): Promise<TemplateCatalogItem[]> {
   const db = await templateDb(config);
-  const bundled = await bundledTemplates();
+  const libraryId = templateLibraryId(scope);
+  const bundled = scope === "personal" ? await bundledTemplates() : [];
   for (const item of bundled) {
-    if (!config.readOnly && !db.get(PERSONAL_TEMPLATE_LIBRARY, item.manifest.id)) await installDirectory({ config, workspaceId: PERSONAL_TEMPLATE_LIBRARY, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
+    if (!config.readOnly && !db.get(libraryId, item.manifest.id)) await installDirectory({ config, workspaceId: libraryId, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
   }
-  const rows = db.list(PERSONAL_TEMPLATE_LIBRARY);
+  const rows = db.list(libraryId);
   const byId = new Map(rows.map((row) => [row.templateId, row]));
   const items: TemplateCatalogItem[] = bundled.map((item) => {
     const row = byId.get(item.manifest.id);
@@ -518,13 +540,14 @@ export async function listTemplates(config: ServerConfig, workspaceId: string): 
   return sortTemplatesForCatalog(visibleItems.map((item) => item.manifest)).map((manifest) => visibleItems.find((item) => item.manifest === manifest)!);
 }
 
-export async function installBundledTemplate(config: ServerConfig, workspaceId: string, templateId: string) {
+export async function installBundledTemplate(config: ServerConfig, workspaceId: string, templateId: string, scope: TemplateLibraryScope = "personal") {
+  if (scope !== "personal") throw new ApiError(400, "enterprise_template_import_required", "Enterprise templates must be imported from their Enterprise Server");
   const item = (await bundledTemplates()).find((candidate) => candidate.manifest.id === templateId);
   if (!item) throw new ApiError(404, "template_not_found", "Bundled template not found");
-  return installDirectory({ config, workspaceId: PERSONAL_TEMPLATE_LIBRARY, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
+  return installDirectory({ config, workspaceId: templateLibraryId(scope), sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
 }
 
-export async function importTemplate(config: ServerConfig, workspaceId: string, archive: Uint8Array, declaredCategory?: string) {
+export async function importTemplate(config: ServerConfig, workspaceId: string, archive: Uint8Array, declaredCategory?: string, scope: TemplateLibraryScope = "personal") {
   const category = declaredCategory ? templateCategorySchema.safeParse(declaredCategory) : null;
   if (category && !category.success) throw new ApiError(400, "invalid_template_category", "Choose a supported template category before importing");
   const buffer = Buffer.from(archive);
@@ -543,13 +566,13 @@ export async function importTemplate(config: ServerConfig, workspaceId: string, 
       throw new ApiError(400, "template_category_mismatch", "The selected template category does not match manifest.json");
     }
     if (manifest.id.startsWith("ipollowork.")) throw new ApiError(400, "reserved_template_id", "Local templates cannot use the reserved ipollowork.* namespace");
-    return await installDirectory({ config, workspaceId: PERSONAL_TEMPLATE_LIBRARY, sourceType: "local", sourceDirectory, manifest, hash });
+    return await installDirectory({ config, workspaceId: templateLibraryId(scope), sourceType: "local", sourceDirectory, manifest, hash });
   } finally { await rm(tempParent, { recursive: true, force: true }); }
 }
 
-function localTemplateId(title: string) {
+function localTemplateId(title: string, scope: TemplateLibraryScope) {
   const stem = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "template";
-  return `personal.${stem}.${Date.now().toString(36)}`;
+  return `${scope === "personal" ? "personal" : "enterprise"}.${stem}.${Date.now().toString(36)}`;
 }
 
 function escapeSvgText(value: string) {
@@ -579,7 +602,7 @@ export async function saveTemplateFromSession(config: ServerConfig, workspace: W
   subcategory?: string;
   style?: string;
   tags?: string[];
-}) {
+}, scope: TemplateLibraryScope = "personal") {
   const category = templateCategorySchema.safeParse(input.category);
   if (!category.success) throw new ApiError(400, "invalid_template_category", "Unsupported template category");
   const title = input.title.trim().slice(0, 96);
@@ -594,7 +617,7 @@ export async function saveTemplateFromSession(config: ServerConfig, workspace: W
   const tags = (input.tags ?? []).map((tag) => tag.trim().slice(0, 32)).filter(Boolean).slice(0, 12);
   const template: TemplateManifestV1 = templateManifestV1Schema.parse({
     schemaVersion: 1,
-    id: localTemplateId(title),
+    id: localTemplateId(title, scope),
     version: "1.0.0",
     kind: "design",
     category: category.data,
@@ -603,10 +626,10 @@ export async function saveTemplateFromSession(config: ServerConfig, workspace: W
     tags,
     surface,
     title,
-    description: input.description?.trim().slice(0, 240) || `Personal ${category.data} template`,
+    description: input.description?.trim().slice(0, 240) || `${scope === "personal" ? "Personal" : "Enterprise"} ${category.data} template`,
     cover: "cover.svg",
     entry,
-    source: { name: "Personal template", license: "Private" },
+    source: { name: scope === "personal" ? "Personal template" : "Enterprise template", license: "Private" },
     designSystem: { tokenVersion: 1, tokens: existsSync(join(sourceRoot, "design-tokens.css")) ? "design-tokens.css" : undefined, editableGroups: ["theme", "background", "typography", "components"] },
     applyChecklist: ["Update copy, visual tokens, assets and calls to action."],
     minimumAppVersion: pkg.version.replace(/-.+$/, ""),
@@ -618,16 +641,17 @@ export async function saveTemplateFromSession(config: ServerConfig, workspace: W
     await Promise.all(["template.json", "brief.json", "manifest.json", "cover.svg"].map((file) => rm(join(sourceDirectory, file), { force: true })));
     await writeFile(join(sourceDirectory, "manifest.json"), `${JSON.stringify(template, null, 2)}\n`, "utf8");
     await writeFile(join(sourceDirectory, "cover.svg"), personalTemplateCover(template.title, template.category, template.style), "utf8");
-    return await installDirectory({ config, workspaceId: PERSONAL_TEMPLATE_LIBRARY, sourceType: "local", sourceDirectory, manifest: template, hash: await hashDirectory(sourceDirectory) });
+    return await installDirectory({ config, workspaceId: templateLibraryId(scope), sourceType: "local", sourceDirectory, manifest: template, hash: await hashDirectory(sourceDirectory) });
   } finally {
     await rm(tempParent, { recursive: true, force: true });
   }
 }
 
-export async function uninstallTemplate(config: ServerConfig, workspaceId: string, templateId: string) {
-  return withTemplateLock(`${runtimeDbPath(config)}:${PERSONAL_TEMPLATE_LIBRARY}:${templateId}`, async () => {
+export async function uninstallTemplate(config: ServerConfig, workspaceId: string, templateId: string, scope: TemplateLibraryScope = "personal") {
+  const libraryId = templateLibraryId(scope);
+  return withTemplateLock(`${runtimeDbPath(config)}:${libraryId}:${templateId}`, async () => {
     const db = await templateDb(config);
-    const current = db.get(PERSONAL_TEMPLATE_LIBRARY, templateId);
+    const current = db.get(libraryId, templateId);
     if (!current) throw new ApiError(404, "template_not_found", "Template not found");
     if (current.packagePath) await rm(current.packagePath, { recursive: true, force: true });
     db.upsert({ ...current, status: "uninstalled", packagePath: "", updatedAt: Date.now() });
@@ -635,11 +659,12 @@ export async function uninstallTemplate(config: ServerConfig, workspaceId: strin
   });
 }
 
-export async function readTemplateCover(config: ServerConfig, workspaceId: string, templateId: string) {
-  const item = (await listTemplates(config, workspaceId)).find((candidate) => candidate.manifest.id === templateId);
+export async function readTemplateCover(config: ServerConfig, workspaceId: string, templateId: string, scope: TemplateLibraryScope = "personal") {
+  const libraryId = templateLibraryId(scope);
+  const item = (await listTemplates(config, workspaceId, scope)).find((candidate) => candidate.manifest.id === templateId);
   if (!item) throw new ApiError(404, "template_not_found", "Template not found");
   const db = await templateDb(config);
-  const row = db.get(PERSONAL_TEMPLATE_LIBRARY, templateId);
+  const row = db.get(libraryId, templateId);
   const cover = validateStaticFile(item.manifest.cover);
   const bundled = item.sourceType === "bundled"
     ? (await bundledTemplates()).find((candidate) => candidate.manifest.id === templateId)
@@ -659,9 +684,9 @@ function sessionRoot(workspace: WorkspaceInfo, sessionId: string, surface: Templ
   return join(workspace.path, surface === "video" ? "video" : "design", sessionId);
 }
 
-export async function materializeTemplate(config: ServerConfig, workspace: WorkspaceInfo, templateId: string, sessionId: string, brief?: unknown) {
+export async function materializeTemplate(config: ServerConfig, workspace: WorkspaceInfo, templateId: string, sessionId: string, brief?: unknown, scope: TemplateLibraryScope = "personal") {
   const db = await templateDb(config);
-  const row = db.get(PERSONAL_TEMPLATE_LIBRARY, templateId);
+  const row = db.get(templateLibraryId(scope), templateId);
   if (!row || row.status !== "installed" || !existsSync(row.packagePath)) throw new ApiError(409, "template_not_installed", "Install this template before using it");
   const manifest = templateManifestV1Schema.parse(JSON.parse(row.manifestJson));
   const root = sessionRoot(workspace, sessionId, manifest.surface);

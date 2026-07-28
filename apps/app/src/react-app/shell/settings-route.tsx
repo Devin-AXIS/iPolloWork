@@ -4,6 +4,13 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 import { toast } from "@/components/ui/sonner";
 
 import { FIGMA_MCP_QUICK_CONNECT, SUGGESTED_PLUGINS } from "@/app/constants";
+import {
+  filterWorkspacesForWorkContext,
+  finishWorkContextSwitch,
+  PERSONAL_WORK_CONTEXT_ID,
+  readActiveWorkContextId,
+  workContextChangedEvent,
+} from "@/app/lib/work-context";
 import type { EnablementContext } from "@/app/enablement";
 import { createClient } from "@/app/lib/opencode";
 import {
@@ -108,6 +115,7 @@ import {
   pickDirectory,
   resolveWorkspaceListSelectedId,
   workspaceBootstrap,
+  workspaceCreate,
   workspaceCreateRemote,
   workspaceForget,
   workspaceSetRuntimeActive,
@@ -249,6 +257,7 @@ export function parseSettingsPath(pathname: string): {
   tab: SettingsTab;
   redirectPath: string | null;
   extensionsSection?: "all" | "mcp" | "plugins";
+  pluginPackageId?: string;
 } {
   const trimmed = pathname
     .replace(/^\/workspace\/[^/]+\/settings\/?/, "")
@@ -258,7 +267,7 @@ export function parseSettingsPath(pathname: string): {
     return { tab: "preferences", redirectPath: "preferences" };
   }
 
-  const [head, tail] = trimmed.split("/");
+  const [head, tail, detailId] = trimmed.split("/");
   switch (head) {
     case "general":
     case "ai":
@@ -283,6 +292,14 @@ export function parseSettingsPath(pathname: string): {
     case "cloud-workers":
       return { tab: "cloud-account", redirectPath: "cloud-account" };
     case "extensions":
+      if (tail === "plugin" && detailId) {
+        return {
+          tab: "extensions",
+          redirectPath: null,
+          extensionsSection: "all",
+          pluginPackageId: decodeURIComponent(detailId),
+        };
+      }
       if (tail === "mcp") return { tab: "extensions", redirectPath: null, extensionsSection: "mcp" };
       if (tail === "skills") return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
       if (tail === "plugins") return { tab: "extensions", redirectPath: null, extensionsSection: "plugins" };
@@ -334,6 +351,9 @@ function findSessionWorkspaceId(
 }
 
 function settingsPathForRoute(route: ReturnType<typeof parseSettingsPath>) {
+  if (route.tab === "extensions" && route.pluginPackageId) {
+    return `extensions/plugin/${encodeURIComponent(route.pluginPackageId)}`;
+  }
   if (route.tab === "extensions" && route.extensionsSection && route.extensionsSection !== "all") {
     return `extensions/${route.extensionsSection}`;
   }
@@ -364,6 +384,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const navigationSessionId = readNavigationSessionId(location.state);
 
   const [loading, setLoading] = useState(true);
+  const [activeWorkContextId, setActiveWorkContextId] = useState(() => readActiveWorkContextId());
   const [workspaces, setWorkspaces] = useState<RouteWorkspace[]>([]);
   const [sessionsByWorkspaceId, setSessionsByWorkspaceId] = useState<Record<string, RouteSession[]>>({});
   const [errorsByWorkspaceId, setErrorsByWorkspaceId] = useState<Record<string, string | null>>({});
@@ -391,6 +412,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const workspacesRef = useRef<RouteWorkspace[]>([]);
   const refreshInFlightRef = useRef(false);
+  const workContextRef = useRef(activeWorkContextId);
   const reconnectAttemptedWorkspaceIdRef = useRef("");
   const refreshMcpServersRef = useRef<(() => void | Promise<void>) | null>(null);
   const notifyMcpReloadingRef = useRef<(() => void) | null>(null);
@@ -609,6 +631,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         checkDesktopAppRestriction: checkDesktopRestriction,
         selectedWorkspaceDisplay: () => routeStateRef.current.selectedWorkspaceDisplay,
         selectedWorkspaceRoot: () => routeStateRef.current.selectedWorkspaceRoot,
+        allowCloudImports: () => readActiveWorkContextId() === PERSONAL_WORK_CONTEXT_ID,
         runtimeWorkspaceId: () => routeStateRef.current.runtimeWorkspaceId,
         ensureRuntimeWorkspaceId: async () =>
           routeStateRef.current.runtimeWorkspaceId?.trim() ||
@@ -638,6 +661,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         selectedWorkspaceId: () => routeStateRef.current.selectedWorkspaceId,
         selectedWorkspaceRoot: () => routeStateRef.current.selectedWorkspaceRoot,
         workspaceType: () => routeStateRef.current.selectedWorkspaceType,
+        allowGlobalExtensions: () => readActiveWorkContextId() === PERSONAL_WORK_CONTEXT_ID,
         ipolloworkServer: ipolloworkServerStore,
         ipolloworkServerConnection: () => ({
           ipolloworkServerClient: routeStateRef.current.ipolloworkServerClient,
@@ -1085,6 +1109,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const refreshRouteState = useMemo(() => async () => {
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
+    const requestedContextId = activeWorkContextId;
     setLoading(true);
     let desktopList: WorkspaceList | null = null;
     let desktopWorkspaces = workspacesRef.current;
@@ -1092,7 +1117,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       if (isDesktopRuntime()) {
         try {
           desktopList = await workspaceBootstrap() as WorkspaceList;
-          desktopWorkspaces = (desktopList.workspaces ?? []).map(mapDesktopWorkspace);
+          desktopWorkspaces = filterWorkspacesForWorkContext(
+            (desktopList.workspaces ?? []).map(mapDesktopWorkspace),
+            requestedContextId,
+          );
         } catch (error) {
           const message = describeRouteError(error);
           console.error("[settings-route] workspaceBootstrap failed", error);
@@ -1128,7 +1156,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       });
       const list = await client.listWorkspaces();
       const serverWorkspaceIds = new Set(list.items.map((workspace) => workspace.id));
-      const nextWorkspaces = mergeRouteWorkspaces(list.items, desktopWorkspaces);
+      const nextWorkspaces = filterWorkspacesForWorkContext(
+        mergeRouteWorkspaces(list.items, desktopWorkspaces),
+        requestedContextId,
+      );
+      if (workContextRef.current !== requestedContextId) return;
       const sessionEntries = await Promise.all(
         nextWorkspaces.map(async (workspace) => {
           if (!serverWorkspaceIds.has(workspace.id)) {
@@ -1208,7 +1240,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         body: message,
         dedupeKey: "settings-route-refresh",
       });
-      if (desktopWorkspaces.length > 0) {
+      if (workContextRef.current === requestedContextId && desktopWorkspaces.length > 0) {
         setWorkspaces(desktopWorkspaces);
         setLegacySelectedWorkspaceId((current) => {
           const next = current || readActiveWorkspaceId() || resolveWorkspaceListSelectedId(desktopList) || desktopWorkspaces[0]?.id || "";
@@ -1217,14 +1249,17 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         });
       }
     } finally {
-      setLoading(false);
+      if (workContextRef.current === requestedContextId) {
+        setLoading(false);
+        finishWorkContextSwitch(requestedContextId);
+      }
       refreshInFlightRef.current = false;
       // Settings can be the first route a user lands on (direct link, deep
       // link, or after reload). Let the boot overlay dismiss once we've
       // completed our first data load.
       markBootRouteReady();
     }
-  }, [markBootRouteReady, navigationSessionId, navigationWorkspaceId, routeWorkspaceId]);
+  }, [activeWorkContextId, markBootRouteReady, navigationSessionId, navigationWorkspaceId, routeWorkspaceId]);
 
   const reloadWorkspaceEngineFromUi = useCallback(async () => {
     const workspaceId = routeStateRef.current.runtimeWorkspaceId?.trim() || selectedWorkspaceId.trim();
@@ -1393,6 +1428,22 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       });
     });
   }, [loading, ipolloworkClient, selectedWorkspace, workspaces]);
+
+  useEffect(() => {
+    const handleWorkContextChanged = () => {
+      const nextContextId = readActiveWorkContextId();
+      workContextRef.current = nextContextId;
+      refreshInFlightRef.current = false;
+      workspacesRef.current = [];
+      setWorkspaces([]);
+      setSessionsByWorkspaceId({});
+      setErrorsByWorkspaceId({});
+      setLegacySelectedWorkspaceId("");
+      setActiveWorkContextId(nextContextId);
+    };
+    window.addEventListener(workContextChangedEvent, handleWorkContextChanged);
+    return () => window.removeEventListener(workContextChangedEvent, handleWorkContextChanged);
+  }, []);
 
   useEffect(() => {
     void refreshRouteState();
@@ -1848,14 +1899,18 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     setCreateWorkspaceError(null);
     try {
       const workspaceName = folderNameFromPath(folder);
+      const workContextId = activeWorkContextId === PERSONAL_WORK_CONTEXT_ID ? null : activeWorkContextId;
       let list: WorkspaceList | null = null;
       if (ipolloworkClient) {
         list = await ipolloworkClient
-          .createLocalWorkspace({ folderPath: folder, name: workspaceName, preset })
+          .createLocalWorkspace({ folderPath: folder, name: workspaceName, preset, workContextId })
           .catch(() => null);
       }
       if (!list) {
         throw new Error("iPolloWork server is unavailable. Start or reconnect the server before creating a workspace.");
+      }
+      if (isDesktopRuntime()) {
+        await workspaceCreate({ folderPath: folder, name: workspaceName, preset, workContextId }).catch(() => undefined);
       }
       const createdId = resolveWorkspaceListSelectedId(list) || list.workspaces[list.workspaces.length - 1]?.id || "";
       if (createdId) {
@@ -1885,6 +1940,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       const remoteType: "ipollowork" = "ipollowork";
       const payload = {
         baseUrl: baseUrlValue,
+        workContextId: activeWorkContextId === PERSONAL_WORK_CONTEXT_ID ? null : activeWorkContextId,
         ipolloworkHostUrl: baseUrlValue,
         ipolloworkToken: input.ipolloworkToken?.trim() || null,
         displayName: input.displayName?.trim() || null,
@@ -2051,17 +2107,34 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             }}
           />
         );
-      case "extensions":
+      case "extensions": {
+        const pluginPackagesView = (
+          <PluginPackagesPanel
+            client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+            workspaceId={runtimeWorkspaceId}
+            selectedPluginId={route.pluginPackageId ?? null}
+            onSelectPlugin={(pluginId) => {
+              navigateSettingsPath(pluginId ? `extensions/plugin/${encodeURIComponent(pluginId)}` : "extensions");
+            }}
+            onOpenUrl={(url) => platform.openLink(url)}
+            onConnectFigma={() => {
+              void connectionsStore.connectMcp(FIGMA_MCP_QUICK_CONNECT);
+            }}
+          />
+        );
+        if (route.pluginPackageId) return pluginPackagesView;
         return (
           <ExtensionsView
             busy={busy}
             selectedWorkspaceRoot={selectedWorkspaceRoot}
             isRemoteWorkspace={isRemoteWorkspace}
             canEditPlugins={canWriteWorkspacePlugins}
-            canUseGlobalScope={!isRemoteWorkspace}
+            canUseGlobalScope={!isRemoteWorkspace && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID}
             accessHint={pluginsAccessHint}
             suggestedPlugins={SUGGESTED_PLUGINS}
             extensions={extensionsStore}
+            client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+            workspaceId={runtimeWorkspaceId}
             mcpConnectedAppsCount={mcpConnectedAppsCount}
             initialSection={route.extensionsSection}
             setSectionRoute={(section) => {
@@ -2080,16 +2153,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               void extensionsStore.refreshCloudOrgMarketplaces({ force: true });
               void orgMcpConnections.refresh();
             }}
-            pluginPackagesView={
-              <PluginPackagesPanel
-                client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
-                workspaceId={runtimeWorkspaceId}
-                onOpenUrl={(url) => platform.openLink(url)}
-                onConnectFigma={() => {
-                  void connectionsStore.connectMcp(FIGMA_MCP_QUICK_CONNECT);
-                }}
-              />
-            }
+            pluginPackagesView={pluginPackagesView}
             mcpView={
               <McpView
                 busy={busy}
@@ -2165,6 +2229,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             }
           />
         );
+      }
       case "cloud-account":
         return (
           <CloudAccountView
@@ -2357,6 +2422,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         busyHint={loading ? t("session.loading_detail") : busyLabel}
         onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId) : "/session"))}
         compact={props.embedded}
+        hidePageHeader={Boolean(route.pluginPackageId)}
+        hideShellHeader={Boolean(route.pluginPackageId)}
       >
         {settingsView}
       </SettingsShell>

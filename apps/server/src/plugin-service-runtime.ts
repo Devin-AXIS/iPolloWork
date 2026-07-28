@@ -15,6 +15,7 @@ export type PluginServiceAction = {
   action: string;
   title: string;
   description: string;
+  effect: "read" | "write" | "destructive";
   inputSchema: Record<string, unknown>;
 };
 
@@ -54,6 +55,7 @@ function actionsForManifest(manifest: PluginPackageManifest): PluginServiceActio
     action: action.id,
     title: action.title,
     description: action.description,
+    effect: action.effect ?? "read",
     inputSchema: action.inputSchema ?? { type: "object", properties: {}, additionalProperties: false },
   })) ?? [];
 }

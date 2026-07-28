@@ -307,10 +307,12 @@ export type WorkspaceCreateInput = {
   folderPath: string;
   name?: string | null;
   preset?: string | null;
+  workContextId?: `enterprise:${string}` | null;
 };
 
 export type WorkspaceCreateRemoteInput = {
   baseUrl: string;
+  workContextId?: `enterprise:${string}` | null;
   remoteType?: "ipollowork" | "opencode" | null;
   directory?: string | null;
   displayName?: string | null;
@@ -422,6 +424,7 @@ export type DesktopCommandMap = {
     args: [input: DesktopNotificationInput];
     result: DesktopNotificationResult;
   };
+  listSystemFontFamilies: { args: []; result: string[] };
   getUiControlBridgeInfo: { args: []; result: UiControlBridgeInfo | null };
   getiPolloWorkUiMcpCommand: { args: []; result: string[] };
   getComputerUseMcpCommand: { args: []; result: string[] };

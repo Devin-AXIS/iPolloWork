@@ -64,6 +64,7 @@ declare global {
       ) => Promise<DesktopCommandResult<C>>;
       shell?: {
         openExternal?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
+        openAuth?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
         relaunch?: () => Promise<void>;
       };
       system?: {
@@ -365,6 +366,24 @@ export async function openDesktopUrl(url: string): Promise<void> {
   }
 }
 
+/**
+ * Open the first-party sign-in flow in Electron's isolated auth window.
+ * This must not be used for ordinary external links or provider settings.
+ */
+export async function openDesktopAuthUrl(url: string): Promise<void> {
+  const openAuth = window.__IPOLLOWORK_ELECTRON__?.shell?.openAuth;
+  if (openAuth) {
+    const result = await openAuth(url);
+    if (result && result.ok === false) {
+      throw new Error(result.error ?? "Failed to open sign-in window");
+    }
+    return;
+  }
+  if (typeof window !== "undefined") {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
 export async function openDesktopPath(target: string): Promise<void> {
   const result = await invokeElectronHelper("__openPath", target);
   if (typeof result === "string" && result.trim()) {
@@ -494,6 +513,7 @@ const {
   engineStop,
   engineRestart,
   appBuildInfo,
+  listSystemFontFamilies,
   getDesktopBootstrapConfig,
   debugDesktopBootstrapConfig,
   clearDesktopBootstrapConfig,
@@ -550,6 +570,7 @@ export {
   engineStop,
   engineRestart,
   appBuildInfo,
+  listSystemFontFamilies,
   getDesktopBootstrapConfig,
   debugDesktopBootstrapConfig,
   clearDesktopBootstrapConfig,

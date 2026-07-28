@@ -115,6 +115,49 @@ test("recovers empty desktop workspace state from token store paths", async () =
   }
 });
 
+test("persists an enterprise work context on its dedicated workspace", async () => {
+  await withIsolatedBootstrapStore(async ({ store, root }) => {
+    const folderPath = path.join(root, "enterprise-workspace");
+    const created = await store.createWorkspace({
+      folderPath,
+      name: "Medical Studio",
+      preset: "starter",
+      workContextId: "enterprise:ent_medical",
+    });
+
+    assert.equal(created.workspaces.length, 1);
+    assert.equal(created.workspaces[0].workContextId, "enterprise:ent_medical");
+    const reloaded = await store.readWorkspaceState();
+    assert.equal(reloaded.workspaces[0].workContextId, "enterprise:ent_medical");
+  });
+});
+
+test("migrates an older enterprise workspace from its dedicated context path", async () => {
+  await withIsolatedBootstrapStore(async ({ createStore, root, userDataPath }) => {
+    const folderPath = path.join(root, ".ipollowork", "work-contexts", "ent_medical");
+    await mkdir(userDataPath, { recursive: true });
+    await writeFile(
+      path.join(userDataPath, "ipollowork-workspaces.json"),
+      JSON.stringify({
+        selectedId: "ws_enterprise",
+        activeId: "ws_enterprise",
+        workspaces: [{
+          id: "ws_enterprise",
+          name: "Medical Studio",
+          path: folderPath,
+          preset: "starter",
+          workspaceType: "local",
+        }],
+      }),
+      "utf8",
+    );
+
+    const migrated = await createStore().readWorkspaceState();
+
+    assert.equal(migrated.workspaces[0].workContextId, "enterprise:ent_medical");
+  });
+});
+
 test("prefers server config workspaces when desktop state is empty", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ipollowork-workspace-store-"));
   const userData = path.join(root, "userData");

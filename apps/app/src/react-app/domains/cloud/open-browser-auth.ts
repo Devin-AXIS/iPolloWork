@@ -1,10 +1,10 @@
-import { openDesktopUrl } from "../../../app/lib/desktop";
+import { openDesktopAuthUrl } from "../../../app/lib/desktop";
 import { isDesktopRuntime } from "../../../app/utils";
 
 export async function tryOpenBrowserAuthUrl(url: string): Promise<boolean> {
   if (isDesktopRuntime()) {
     try {
-      await openDesktopUrl(url);
+      await openDesktopAuthUrl(url);
       return true;
     } catch (error) {
       console.error("[den-auth] failed to open browser:", error);

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
+import { ChevronDown, Settings2 } from "lucide-react";
 
 import type { ModelOption, ModelRef } from "@/app/types";
 import { t } from "@/i18n";
@@ -119,8 +119,8 @@ type ModelSelectModelItem = {
 };
 
 type TokenStarEntry = {
-  kind: "tokenstar";
-  id: "tokenstar-models";
+  kind: "tokenstar-connect";
+  id: "tokenstar-connect";
 };
 
 type ModelSelectItem = ModelSelectModelItem | TokenStarEntry;
@@ -134,7 +134,6 @@ function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
   const groups = new Map<string, ModelSelectModelItem[]>();
 
   for (const option of modelOptions) {
-    if (option.providerID === "tokenstar") continue;
     const providerLabel = option.description ?? getProviderDisplayName(option.providerID);
     const item: ModelSelectModelItem = {
       kind: "model",
@@ -157,13 +156,10 @@ function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
       items: [...options].sort((a, b) => a.option.title.localeCompare(b.option.title)),
     }))
     .sort((a, b) => a.value.localeCompare(b.value));
-  const openCodeZen = grouped.find((group) => group.value === "OpenCode Zen");
-  const tokenStarEntry: TokenStarEntry = { kind: "tokenstar", id: "tokenstar-models" };
-
-  if (openCodeZen) {
-    openCodeZen.items.unshift(tokenStarEntry);
-  } else {
-    grouped.unshift({ value: "OpenCode Zen", items: [tokenStarEntry] });
+  if (!modelOptions.some((option) => option.providerID === "tokenstar")) {
+    const tokenStarEntry: TokenStarEntry = { kind: "tokenstar-connect", id: "tokenstar-connect" };
+    grouped.push({ value: "TokenStar", items: [tokenStarEntry] });
+    grouped.sort((a, b) => a.value.localeCompare(b.value));
   }
 
   return grouped;
@@ -199,7 +195,6 @@ export function ModelListContent({
   autoFocus = true,
 }: ModelListContentProps) {
   const [search, setSearch] = React.useState("");
-  const [tokenStarView, setTokenStarView] = React.useState<"root" | "family" | "gpt" | "gpt-5.6" | "kimi">("root");
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const modelOptions = useModelOptions(true);
 
@@ -213,82 +208,16 @@ export function ModelListContent({
   }, [autoFocus]);
 
   const groups = React.useMemo(() => groupByProvider(modelOptions), [modelOptions]);
-  const tokenStarOptions = React.useMemo(
-    () => modelOptions.filter((option) => option.providerID === "tokenstar"),
-    [modelOptions],
-  );
 
   const handleSelect = (option: ModelOption) => {
     onChange({ providerID: option.providerID, modelID: option.modelID });
     setSearch("");
   };
 
-  const handleTokenStarOpen = () => {
+  const handleTokenStarConnect = () => {
     setSearch("");
-    if (tokenStarOptions.length > 0) {
-      setTokenStarView("family");
-      return;
-    }
     onConfigureTokenStar?.();
   };
-
-  const tokenStarGpt = tokenStarOptions.filter((option) => option.modelID.startsWith("gpt-"));
-  const tokenStarKimi = tokenStarOptions.filter((option) => option.modelID.startsWith("kimi-"));
-  const gpt56Variants = tokenStarGpt.filter((option) => option.modelID.startsWith("gpt-5.6-"));
-  const gpt56Base = tokenStarGpt.find((option) => option.modelID === "gpt-5.6") ?? null;
-
-  if (tokenStarView !== "root") {
-    const title = tokenStarView === "family"
-      ? "TokenStar"
-      : tokenStarView === "gpt"
-        ? "TokenStar / GPT"
-        : tokenStarView === "gpt-5.6"
-          ? "TokenStar / GPT / GPT 5.6"
-          : "TokenStar / Kimi";
-    const back = tokenStarView === "family"
-      ? () => setTokenStarView("root")
-      : tokenStarView === "gpt" || tokenStarView === "kimi"
-        ? () => setTokenStarView("family")
-        : () => setTokenStarView("gpt");
-    const modelItems = tokenStarView === "kimi"
-      ? tokenStarKimi
-      : tokenStarView === "gpt-5.6"
-        ? gpt56Variants
-        : [];
-
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <button type="button" className="flex items-center gap-2 border-b border-border px-3 py-2 text-left text-sm font-medium hover:bg-accent" onClick={back}>
-          <ChevronLeft className="size-4" />
-          {title}
-        </button>
-        <div className="min-h-0 flex-1 overflow-y-auto p-1">
-          {tokenStarView === "family" ? (
-            <>
-              <TokenStarNavigationItem label="GPT" onClick={() => setTokenStarView("gpt")} />
-              <TokenStarNavigationItem label="Kimi" onClick={() => setTokenStarView("kimi")} />
-              <TokenStarNavigationItem label="Manage API key" onClick={() => onConfigureTokenStar?.()} />
-            </>
-          ) : null}
-          {tokenStarView === "gpt" ? (
-            <>
-              {tokenStarGpt.filter((option) => option.modelID !== "gpt-5.6" && !option.modelID.startsWith("gpt-5.6-")).map((option) => (
-                <TokenStarModelItem key={option.modelID} option={option} onClick={() => handleSelect(option)} />
-              ))}
-              {gpt56Variants.length > 0 ? (
-                <TokenStarNavigationItem label="GPT 5.6" onClick={() => setTokenStarView("gpt-5.6")} />
-              ) : gpt56Base ? (
-                <TokenStarModelItem option={gpt56Base} onClick={() => handleSelect(gpt56Base)} />
-              ) : null}
-            </>
-          ) : null}
-          {modelItems.map((option) => (
-            <TokenStarModelItem key={option.modelID} option={option} onClick={() => handleSelect(option)} />
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <Command items={groups} value={search} onValueChange={setSearch}>
@@ -302,15 +231,14 @@ export function ModelListContent({
             <CommandGroupLabel>{group.value}</CommandGroupLabel>
             <CommandCollection>
               {(item: ModelSelectItem) => {
-                if (item.kind === "tokenstar") {
+                if (item.kind === "tokenstar-connect") {
                   return (
-                    <CommandItem className="gap-2" key={item.id} value="tokenstar models gpt kimi" onClick={handleTokenStarOpen}>
+                    <CommandItem className="gap-2" key={item.id} value="tokenstar connect" onClick={handleTokenStarConnect}>
                       <ProviderIcon providerId="tokenstar" providerName="TokenStar" className="size-3.5 opacity-70" size={14} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-foreground">TokenStar Models</span>
-                        <span className="block truncate text-xs text-muted-foreground">GPT and Kimi</span>
+                        <span className="block truncate text-foreground">Connect TokenStar</span>
+                        <span className="block truncate text-xs text-muted-foreground">Configure API key</span>
                       </span>
-                      <ChevronRight className="size-4 text-muted-foreground" />
                     </CommandItem>
                   );
                 }
@@ -355,24 +283,6 @@ export function ModelListContent({
         </button>
       </div>
     </Command>
-  );
-}
-
-function TokenStarNavigationItem({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button type="button" className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent" onClick={onClick}>
-      <span className="flex-1">{label}</span>
-      <ChevronRight className="size-4 text-muted-foreground" />
-    </button>
-  );
-}
-
-function TokenStarModelItem({ option, onClick }: { option: ModelOption; onClick: () => void }) {
-  return (
-    <button type="button" className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent" onClick={onClick}>
-      <ProviderIcon providerId="tokenstar" providerName="TokenStar" className="size-3.5 opacity-70" size={14} />
-      <span className="min-w-0 flex-1 truncate">{option.title}</span>
-    </button>
   );
 }
 
