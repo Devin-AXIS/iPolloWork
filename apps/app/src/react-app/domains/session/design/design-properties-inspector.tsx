@@ -35,13 +35,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { listSystemFontFamilies } from "@/app/lib/desktop";
 import { cn } from "@/lib/utils";
 import type { DesignField, DesignSelection, DesignStyleField } from "./design-html-runtime";
 import { toggleTransformScale } from "./design-transform";
 import { FALLBACK_FONT_FAMILIES, filterFontFamilyOptions, fontFamilyOptions } from "./font-family-catalog";
 import { displayFontFamily } from "./font-family-display";
+import { DesignColorField } from "./design-color-field";
+import { DesignImageFitSelect, type DesignImageFitMode } from "./design-image-fit-select";
+import { DesignPanelSelect } from "./design-panel-select";
+import panelSelectChevron from "./assets/panel-select-chevron.svg";
 
 type DesignPropertiesInspectorProps = {
   selection: DesignSelection | null;
@@ -198,7 +201,7 @@ function ElementPropertiesContent({
 
       <InspectorSection title="Border">
         <div className="grid grid-cols-2 gap-2">
-          <SelectLikeField label="Border style" value={selection.styles.borderStyle || "Solid"} onChange={(value) => onApplyField("borderStyle", value.toLowerCase())} />
+          <BorderStyleField value={selection.styles.borderStyle || "solid"} onChange={(value) => onApplyField("borderStyle", value)} />
           <PropertyField label="Width" value={selection.styles.borderWidth || "0px"} onChange={(value) => onApplyField("borderWidth", value)} />
         </div>
         <ColorField value={selection.styles.borderColor || "#000000"} onChange={(value) => onApplyField("borderColor", value)} />
@@ -235,7 +238,7 @@ export function DesignPropertiesInspector({ selection, activeTab, onClose, onAct
 function InspectorShell({ activeTab, onActiveTabChange, onClose, children }: Pick<DesignPropertiesInspectorProps, "activeTab" | "onActiveTabChange" | "onClose" | "children">) {
   return (
     <aside className="flex h-full w-[310px] shrink-0 flex-col overflow-hidden border-l border-[#ebebeb] bg-white text-[#202228]" aria-label="Design inspector">
-      <header className="sticky left-0 top-0 z-20 flex h-[52px] w-full shrink-0 items-center border-b border-[#ebebeb] bg-white !px-4">
+      <header className="sticky left-0 top-0 z-20 flex h-[58px] w-full shrink-0 items-center border-b border-[#ebebeb] bg-white !px-4">
         <div className="flex w-[240px] shrink-0 gap-1">
           <button type="button" onClick={() => onActiveTabChange("element")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-2 text-[12px] font-semibold leading-none text-[#24262b] transition-colors", activeTab === "element" ? "bg-[#f5f6f9]" : "hover:bg-[#f5f6f9]")} aria-pressed={activeTab === "element"}>Element</button>
           <button type="button" onClick={() => onActiveTabChange("design-system")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-1 text-[12px] font-semibold leading-none text-[#24262b] transition-colors", activeTab === "design-system" ? "bg-[#f5f6f9]" : "hover:bg-[#f5f6f9]")} aria-pressed={activeTab === "design-system"}>Design System</button>
@@ -274,27 +277,17 @@ function ImageFillPicker({ selection, onApplyFields, onChooseImage }: { selectio
 
   return (
     <div className="mt-3 space-y-3">
-      <Select value={mode} onValueChange={(value) => { if (value && isImageFitMode(value)) applyMode(value); }}>
-        <SelectTrigger className="h-[34px] w-full rounded-lg border-0 bg-[#f5f6f9] px-2 text-[13px] text-[#24262b] shadow-none focus:ring-0" aria-label="Image fit mode"><SelectValue>{imageFitLabel(mode)}</SelectValue></SelectTrigger>
-        <SelectContent align="start" className="min-w-[var(--radix-select-trigger-width)] rounded-xl bg-white p-1 text-[#24262b] shadow-lg before:hidden **:data-[slot=select-item]:focus:bg-[#f1f2f4] **:data-[slot=select-item]:data-highlighted:bg-[#f1f2f4]">
-          {(["fill", "fit", "crop"] as const).map((value) => <SelectItem key={value} value={value} className="rounded-lg py-1.5 text-[#24262b] focus:bg-[#f1f2f4] focus:text-[#24262b] data-[state=checked]:bg-[#f1f2f4] data-[state=checked]:text-[#24262b]">{imageFitLabel(value)}</SelectItem>)}
-        </SelectContent>
-      </Select>
+      <DesignImageFitSelect value={mode} onChange={applyMode} />
       <div className="relative flex h-[100px] w-full items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(45deg,#929292_25%,transparent_25%,transparent_75%,#929292_75%),linear-gradient(45deg,#929292_25%,#a0a0a0_25%,#a0a0a0_75%,#929292_75%)] bg-[length:52px_52px] bg-[position:0_0,26px_26px]">
         {backgroundSource ? <span className="absolute inset-0 bg-no-repeat" style={{ backgroundImage: `url(\"${backgroundSource}\")`, backgroundSize: imagePreviewSize(selection, mode), backgroundPosition: imagePosition(selection) }} /> : null}
         <span className="absolute inset-0 bg-black/45" />
         <button type="button" onClick={onChooseImage} className="relative rounded-lg bg-black px-4 py-2 text-[10px] text-white transition-colors hover:bg-[#202020] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">Choose Media</button>
       </div>
-      {mode === "crop" ? <CropControls selection={selection} onApplyFields={onApplyFields} /> : null}
     </div>
   );
 }
 
-type ImageFitMode = "fill" | "fit" | "crop";
-
-function isImageFitMode(value: string): value is ImageFitMode {
-  return value === "fill" || value === "fit" || value === "crop";
-}
+type ImageFitMode = DesignImageFitMode;
 
 function imageFitMode(selection: DesignSelection): ImageFitMode {
   const value = selection.tag === "img" ? selection.styles.objectFit : selection.styles.backgroundSize;
@@ -310,10 +303,6 @@ function imageModeStyles(selection: DesignSelection, mode: ImageFitMode): Partia
     : { backgroundSize: mode === "fill" ? "100% 100%" : value, backgroundPosition: "50% 50%" };
 }
 
-function imageFitLabel(mode: ImageFitMode) {
-  return mode === "fill" ? "Fill" : mode === "fit" ? "Fit" : "Crop";
-}
-
 function imagePreviewSize(selection: DesignSelection, mode: ImageFitMode) {
   if (mode !== "crop") return mode === "fill" ? "100% 100%" : "contain";
   return selection.tag === "img" ? "cover" : selection.styles.backgroundSize || "cover";
@@ -321,34 +310,6 @@ function imagePreviewSize(selection: DesignSelection, mode: ImageFitMode) {
 
 function imagePosition(selection: DesignSelection) {
   return selection.tag === "img" ? selection.styles.objectPosition || "50% 50%" : selection.styles.backgroundPosition || "50% 50%";
-}
-
-function CropControls({ selection, onApplyFields }: { selection: DesignSelection; onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void }) {
-  const zoom = cropZoom(selection);
-  const [x, y] = cropPosition(selection);
-  const apply = (nextZoom = zoom, nextX = x, nextY = y) => {
-    const position = `${nextX}% ${nextY}%`;
-    onApplyFields(selection.tag === "img"
-      ? { objectFit: "cover", objectPosition: position }
-      : { backgroundSize: `${nextZoom}%`, backgroundPosition: position });
-  };
-
-  return <div className="grid grid-cols-3 gap-2"><CropRange label="Zoom" value={zoom} min={100} max={200} suffix="%" onChange={(value) => apply(value)} /><CropRange label="X" value={x} min={0} max={100} suffix="%" onChange={(value) => apply(zoom, value)} /><CropRange label="Y" value={y} min={0} max={100} suffix="%" onChange={(value) => apply(zoom, x, value)} /></div>;
-}
-
-function CropRange({ label, value, min, max, suffix, onChange }: { label: string; value: number; min: number; max: number; suffix: string; onChange: (value: number) => void }) {
-  return <label className="rounded-lg bg-[#f5f6f9] px-2 py-1.5"><span className="mb-1 block text-[10px] text-[#858a94]">{label} {value}{suffix}</span><input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.currentTarget.value))} className="h-2 w-full cursor-pointer accent-black" aria-label={`Crop ${label.toLowerCase()}`} /></label>;
-}
-
-function cropZoom(selection: DesignSelection) {
-  if (selection.tag === "img") return 100;
-  const value = Number.parseFloat(selection.styles.backgroundSize);
-  return Number.isFinite(value) && value > 0 ? Math.max(100, Math.min(200, Math.round(value))) : 100;
-}
-
-function cropPosition(selection: DesignSelection): [number, number] {
-  const [rawX = "50", rawY = "50"] = imagePosition(selection).split(/\s+/);
-  return [clampPercentage(numericValue(rawX, 50)), clampPercentage(numericValue(rawY, 50))];
 }
 
 function ShadowIntensityControl({ value, shadow, onChange }: { value: number; shadow: string; onChange: (value: number, remember: boolean) => void }) {
@@ -491,25 +452,40 @@ function FontPresetField({ label, value, presets, onChange }: { label: string; v
       ) : (
         <span className="min-w-0 flex-1 text-right text-[12px]">{value}</span>
       )}
-      <Select value={value} onValueChange={(nextValue) => { if (nextValue) onChange(nextValue); }}>
-        <SelectTrigger className="h-auto w-auto shrink-0 border-0 bg-transparent p-0 shadow-none hover:bg-transparent focus-visible:ring-0" aria-label={`Select ${label.toLowerCase()}`} />
-        <SelectContent align="end">
-          {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-        </SelectContent>
-      </Select>
+      <DesignPanelSelect
+        value={value}
+        options={options}
+        onChange={onChange}
+        ariaLabel={`Select ${label.toLowerCase()}`}
+        className="h-7 w-6 shrink-0 rounded-lg"
+        menuClassName="left-auto right-0 w-[132px]"
+        showValue={false}
+      />
     </div>
   );
 }
 
-function SelectLikeField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+type BorderStyle = "none" | "dashed" | "solid";
+
+function BorderStyleField({ value, onChange }: { value: string; onChange: (value: BorderStyle) => void }) {
+  const borderStyle: BorderStyle = value === "none" || value === "dashed" ? value : "solid";
+
   return (
-    <label className="flex h-9 min-w-0 items-center rounded-lg bg-[#f4f5f8] px-2.5">
-      <span className="sr-only">{label}</span>
-      <input className="min-w-0 flex-1 bg-transparent text-[12px] outline-none" value={value} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`Design ${label.toLowerCase()}`} />
-      <ChevronDown className="size-3.5 shrink-0 text-[#858a94]" />
-    </label>
+    <DesignPanelSelect
+      value={borderStyle}
+      options={BORDER_STYLE_OPTIONS}
+      onChange={onChange}
+      ariaLabel="Design border style"
+      className="h-9 min-w-0 rounded-lg bg-[#f4f5f8]"
+    />
   );
 }
+
+const BORDER_STYLE_OPTIONS = [
+  { value: "none", label: "None" },
+  { value: "dashed", label: "Dashed" },
+  { value: "solid", label: "Solid" },
+] as const;
 
 function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const [open, setOpen] = React.useState(false);
@@ -560,16 +536,16 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value
         aria-label="Design font family"
       >
         <span className="min-w-0 flex-1 truncate text-left text-[12px]" style={{ fontFamily: currentFamily }}>{currentFamily}</span>
-        <ChevronDown className="size-3.5 shrink-0 text-[#858a94]" />
+        <img src={panelSelectChevron} alt="" className={cn("size-4 shrink-0 transition-transform", open && "rotate-180")} />
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={4} initialFocus={false} className="w-[310px] gap-2 rounded-lg p-2">
+      <PopoverContent align="start" sideOffset={12} initialFocus={false} className="w-[276px] gap-2 rounded-xl border-[#dedfe3] bg-white p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)] before:hidden">
         <Input
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
           placeholder="Search fonts"
           aria-label="Search fonts"
-          className="h-8 rounded-md bg-[#f4f5f8] px-2.5 text-[12px] shadow-none"
+          className="h-[34px] rounded-lg border-0 bg-[#f4f5f7] px-2.5 text-[12px] shadow-none"
         />
         <div className="max-h-64 overflow-y-auto" role="listbox" aria-label="Font families">
           {loading ? <p className="px-2.5 py-2 text-[12px] text-[#858a94]">Loading fonts…</p> : null}
@@ -601,79 +577,7 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value
 }
 
 function ColorField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const hex = normalizeHex(value);
-  const [mode, setMode] = React.useState<ColorMode>("hsb");
-  const displayValue = formatColor(hex, mode);
-  return (
-    <div className="mt-2 flex h-9 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
-      <label className="relative size-5 shrink-0 overflow-hidden rounded-[3px]" style={{ backgroundColor: hex }}>
-        <span className="sr-only">Choose color</span>
-        <input type="color" className="absolute inset-0 cursor-pointer opacity-0" value={hex} onChange={(event) => onChange(event.currentTarget.value)} />
-      </label>
-      <Select value={mode} onValueChange={(next) => { if (next && isColorMode(next)) setMode(next); }}>
-        <SelectTrigger className="h-7 w-[54px] border-0 bg-transparent p-0 text-[10px] text-[#858a94] shadow-none hover:bg-transparent focus-visible:ring-0" aria-label="Color mode"><SelectValue>{mode.toUpperCase()}</SelectValue></SelectTrigger>
-        <SelectContent align="start" className="min-w-[72px] rounded-lg bg-white p-1 text-[#24262b] shadow-lg before:hidden">
-          {(["hsb", "hex", "rgb"] as const).map((option) => <SelectItem key={option} value={option} className="rounded-md py-1 text-[11px] text-[#24262b] focus:bg-[#f1f2f4] focus:text-[#24262b] data-[state=checked]:bg-[#f1f2f4] data-[state=checked]:text-[#24262b]">{option.toUpperCase()}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      <Input className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-right text-[11px] uppercase shadow-none focus-visible:ring-0" value={displayValue} onChange={(event) => {
-        const parsed = parseColor(event.currentTarget.value, mode);
-        if (parsed) onChange(parsed);
-      }} aria-label="Design color value" />
-    </div>
-  );
-}
-
-type ColorMode = "hsb" | "hex" | "rgb";
-
-function isColorMode(value: string): value is ColorMode {
-  return value === "hsb" || value === "hex" || value === "rgb";
-}
-
-function formatColor(hex: string, mode: ColorMode) {
-  const { red, green, blue } = hexToRgb(hex);
-  if (mode === "hex") return hex.slice(1).toUpperCase();
-  if (mode === "rgb") return `${red}, ${green}, ${blue}`;
-  const { hue, saturation, brightness } = rgbToHsb(red, green, blue);
-  return `${hue}, ${saturation}, ${brightness}`;
-}
-
-function parseColor(value: string, mode: ColorMode) {
-  if (mode === "hex") return normalizeHex(value.startsWith("#") ? value : `#${value}`);
-  const parts = value.split(/[ ,/]+/).map((part) => Number(part)).filter(Number.isFinite);
-  if (parts.length !== 3) return null;
-  if (mode === "rgb") return rgbToHex(parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0);
-  return hsbToHex(parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0);
-}
-
-function hexToRgb(hex: string) {
-  return { red: Number.parseInt(hex.slice(1, 3), 16), green: Number.parseInt(hex.slice(3, 5), 16), blue: Number.parseInt(hex.slice(5, 7), 16) };
-}
-
-function rgbToHex(red: number, green: number, blue: number) {
-  return `#${[red, green, blue].map((part) => Math.round(Math.max(0, Math.min(255, part))).toString(16).padStart(2, "0")).join("")}`;
-}
-
-function rgbToHsb(red: number, green: number, blue: number) {
-  const r = red / 255;
-  const g = green / 255;
-  const b = blue / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const delta = max - min;
-  const hue = delta === 0 ? 0 : Math.round((60 * ((max === r ? (g - b) / delta : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4)) + 360) % 360);
-  return { hue, saturation: max === 0 ? 0 : Math.round((delta / max) * 100), brightness: Math.round(max * 100) };
-}
-
-function hsbToHex(hue: number, saturation: number, brightness: number) {
-  const h = ((hue % 360) + 360) % 360;
-  const s = Math.max(0, Math.min(100, saturation)) / 100;
-  const v = Math.max(0, Math.min(100, brightness)) / 100;
-  const chroma = v * s;
-  const x = chroma * (1 - Math.abs((h / 60) % 2 - 1));
-  const match = v - chroma;
-  const [r, g, b] = h < 60 ? [chroma, x, 0] : h < 120 ? [x, chroma, 0] : h < 180 ? [0, chroma, x] : h < 240 ? [0, x, chroma] : h < 300 ? [x, 0, chroma] : [chroma, 0, x];
-  return rgbToHex((r + match) * 255, (g + match) * 255, (b + match) * 255);
+  return <DesignColorField value={value} onChange={onChange} className="mt-2 h-9 bg-[#f4f5f8] px-2.5" />;
 }
 
 function PropertyButton({ active = false, disabled = false, onClick, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {

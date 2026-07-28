@@ -39,9 +39,10 @@ import {
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
 import { DesignSystemDrawer } from "./design-system-drawer";
-import { linkedDesignTokenPath, mergeTemplateTokenCss, parseDesignTokenValues, replaceDesignTokenValue, type DesignTokenValues } from "./design-system-files";
+import { linkedDesignTokenPath, mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "./design-system-files";
 import {
   buildTemplateTokenCss,
+  getDesignSystemTheme,
   type DesignSystemTheme,
 } from "./design-system-registry";
 import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "./design-system-theme-contract";
@@ -728,11 +729,13 @@ export function DesignPanel({
     if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
   }, []);
   const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
-    const next = replaceDesignTokenValue(designTokenDraftRef.current || templateTokenQuery.data || "", name, value);
+    const current = designTokenDraftRef.current || templateTokenQuery.data || "";
+    const appliedTheme = appliedDesignSystemId ? getDesignSystemTheme(appliedDesignSystemId) : undefined;
+    const next = replaceDesignTokenValue(appliedTheme ? refreshTemplateTokenCss(current, buildTemplateTokenCss(appliedTheme)) : current, name, value);
     designTokenDraftRef.current = next;
     setDesignTokenDraft(next);
     scheduleDesignTokenSave(next);
-  }, [scheduleDesignTokenSave, templateTokenQuery.data]);
+  }, [appliedDesignSystemId, scheduleDesignTokenSave, templateTokenQuery.data]);
   const handleApplyDesignSystem = React.useCallback((theme: DesignSystemTheme) => {
     const next = mergeTemplateTokenCss(
       designTokenDraftRef.current || templateTokenQuery.data || "",
@@ -1582,6 +1585,24 @@ export function DesignPanel({
     toast.success("Image added as the fill.");
   };
 
+  const chooseDesignSystemBackgroundImage = async () => {
+    const pickedPath = await pickLocalImageFile("选择全局背景图片");
+    if (!pickedPath) return;
+    const dataUrl = await readLocalImageAsDataUrl(pickedPath);
+    if (!dataUrl) {
+      toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
+      return;
+    }
+    handleDesignTokenChange("--ipw-bg-image", `url("${dataUrl}")`);
+    handleDesignTokenChange("--ipw-bg-gradient", "none");
+    handleDesignTokenChange("--ipw-bg-overlay", "linear-gradient(rgba(28,27,26,.45), rgba(28,27,26,.45))");
+    handleDesignTokenChange("--ipw-bg-overlay-opacity", "0.45");
+    handleDesignTokenChange("--ipw-bg-mode", "image");
+    handleDesignTokenChange("--ipw-bg-size", "cover");
+    handleDesignTokenChange("--ipw-bg-position", "50% 50%");
+    toast.success("Background image applied.");
+  };
+
   const dirty = pendingCanvasChange || draft !== savedSource;
   const publishMutation = useMutation({
     mutationFn: async () => {
@@ -2087,6 +2108,7 @@ export function DesignPanel({
                   onClose={() => setAdvancedOpen(false)}
                   onTokenChange={handleDesignTokenChange}
                   onApplyDesignSystem={handleApplyDesignSystem}
+                  onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}
                 />
               </DesignPropertiesInspector> : null}
             </div>
