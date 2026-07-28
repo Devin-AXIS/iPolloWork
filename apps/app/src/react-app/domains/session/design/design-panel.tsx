@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, Focus, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Trash2, Type, Undo2, Upload } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, Focus, ImagePlus, Link2, Loader2, Minus, Monitor, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Trash2, Type, Undo2, Upload } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
@@ -595,7 +595,7 @@ export function DesignPanel({
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
-  const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
+  const [propertiesTab, setPropertiesTab] = React.useState<"element" | "design-system">("element");
   const [designTokenDraft, setDesignTokenDraft] = React.useState("");
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
@@ -832,7 +832,6 @@ export function DesignPanel({
     }
     setQuickEdit(null);
     setAdvancedOpen(false);
-    setDesignSystemOpen(false);
     setPreviewSource(fileQuery.data.content);
     setHydratedPreviewSource("");
     setPreviewLoaded(false);
@@ -1430,6 +1429,16 @@ export function DesignPanel({
     }, "*");
   };
 
+  const applyStyleFields = (fields: Partial<Record<DesignStyleField, string>>) => {
+    if (!selection || !editing) return;
+    setPendingCanvasChange(true);
+    setHistory((current) => [...current, draft]);
+    setSelection((current) => current ? { ...current, styles: { ...current.styles, ...fields } } : current);
+    for (const [field, value] of Object.entries(fields)) {
+      iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set", id: selection.id, field, value, scope: "element" }, "*");
+    }
+  };
+
   const deleteSelection = () => {
     if (!selection || !selection.canDelete || !editing) return;
     setPendingCanvasChange(true);
@@ -1587,6 +1596,19 @@ export function DesignPanel({
     }
   };
 
+  const chooseBackgroundImage = async () => {
+    if (!selection || selection.tag === "img") return;
+    const pickedPath = await pickLocalImageFile("选择填充图片");
+    if (!pickedPath) return;
+    const dataUrl = await readLocalImageAsDataUrl(pickedPath);
+    if (!dataUrl) {
+      toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
+      return;
+    }
+    applyStyleFields({ backgroundColor: "transparent", backgroundImage: `url(\"${dataUrl}\")` });
+    toast.success("Image added as the fill.");
+  };
+
   const dirty = pendingCanvasChange || draft !== savedSource;
   const publishMutation = useMutation({
     mutationFn: async () => {
@@ -1723,7 +1745,6 @@ export function DesignPanel({
                   setSelection(null);
                   setQuickEdit(null);
                   setAdvancedOpen(false);
-                  setDesignSystemOpen(false);
                 }}
                 aria-label="Edit"
               />
@@ -1773,32 +1794,16 @@ export function DesignPanel({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && "bg-[#F3F4F6]")}
+                  className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && propertiesTab === "element" && "bg-[#F3F4F6]")}
                   onClick={() => {
-                    setDesignSystemOpen(false);
-                    setAdvancedOpen((current) => !current);
+                    setPropertiesTab("element");
+                    setAdvancedOpen((current) => current && propertiesTab === "element" ? false : true);
                   }}
                   aria-label="Toggle design properties"
                   title="Design properties"
-                  aria-pressed={advancedOpen}
+                  aria-pressed={advancedOpen && propertiesTab === "element"}
                 >
                   <SlidersHorizontal />
-                </Button>
-              ) : null}
-              {editing ? (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={cn(DESIGN_ACTION_BUTTON_CLASS, designSystemOpen && "bg-[#F3F4F6]")}
-                  onClick={() => {
-                    setAdvancedOpen(false);
-                    setDesignSystemOpen((current) => !current);
-                  }}
-                  aria-label="Open design system"
-                  title="Design system"
-                  aria-pressed={designSystemOpen}
-                >
-                  <Palette />
                 </Button>
               ) : null}
               <Button variant="ghost" size="icon-sm" className={DESIGN_ACTION_BUTTON_CLASS} onClick={() => void undo()} disabled={history.length === 0 && !aiUndoCheckpoint} aria-label="Undo design change">
@@ -1858,7 +1863,6 @@ export function DesignPanel({
                     setSelection(null);
                     setQuickEdit(null);
                     setAdvancedOpen(false);
-                    setDesignSystemOpen(false);
                   } : undefined}
                   onPublish={() => publishMutation.mutate()}
                   onExportPdf={() => void exportDeckToPdf()}
@@ -2069,8 +2073,8 @@ export function DesignPanel({
                           variant={advancedOpen ? "secondary" : "ghost"}
                           size="icon-xs"
                           onClick={() => {
-                            setDesignSystemOpen(false);
-                            setAdvancedOpen((current) => !current);
+                            setPropertiesTab("element");
+                            setAdvancedOpen((current) => current && propertiesTab === "element" ? false : true);
                           }}
                           aria-label="Toggle advanced design settings"
                           aria-pressed={advancedOpen}
@@ -2091,32 +2095,27 @@ export function DesignPanel({
                   </div>
                 ) : null}
               </div>
-              {editing && advancedOpen ? (
-                selection ? (
-                  <DesignPropertiesInspector
-                    selection={selection}
-                    onClose={() => setAdvancedOpen(false)}
-                    onApplyField={applyField}
-                    onChooseReplacementImage={() => void chooseReplacementImage()}
-                  />
-                ) : (
-                  <aside className="w-[310px] shrink-0 border-l border-[#e8e9ec] bg-white px-6 pt-12 text-center text-xs leading-5 text-muted-foreground" aria-label="Design inspector">
-                    <MousePointer2 className="mx-auto mb-2 size-5" />
-                    Click an element in the page to edit it.
-                  </aside>
-                )
-              ) : null}
-              {editing ? (
+              {editing && advancedOpen ? <DesignPropertiesInspector
+                selection={selection}
+                activeTab={propertiesTab}
+                onClose={() => setAdvancedOpen(false)}
+                onActiveTabChange={setPropertiesTab}
+                onApplyField={applyField}
+                onApplyFields={applyStyleFields}
+                onChooseReplacementImage={() => void chooseReplacementImage()}
+                onChooseBackgroundImage={() => void chooseBackgroundImage()}
+              >
                 <DesignSystemDrawer
-                  open={designSystemOpen}
+                  embedded
+                  open={propertiesTab === "design-system"}
                   templateName={designTemplate?.title ?? fileName(activePagePath)}
                   currentThemeId={appliedDesignSystemId}
                   initialValues={designTokenValues}
-                  onClose={() => setDesignSystemOpen(false)}
+                  onClose={() => setAdvancedOpen(false)}
                   onTokenChange={handleDesignTokenChange}
                   onApplyDesignSystem={handleApplyDesignSystem}
                 />
-              ) : null}
+              </DesignPropertiesInspector> : null}
             </div>
           )}
         </>

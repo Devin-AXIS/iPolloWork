@@ -3,6 +3,11 @@ export const DESIGN_MESSAGE_CHANNEL = "ipollowork-design-html-v1";
 export const DESIGN_STYLE_FIELDS = [
   "color",
   "backgroundColor",
+  "backgroundImage",
+  "backgroundSize",
+  "backgroundPosition",
+  "objectFit",
+  "objectPosition",
   "fontSize",
   "fontFamily",
   "fontWeight",

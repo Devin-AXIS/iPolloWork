@@ -55,6 +55,7 @@ export type DesignTokenValues = Record<string, string>;
 
 type DesignSystemDrawerProps = {
   open: boolean;
+  embedded?: boolean;
   templateName: string;
   currentThemeId?: string | null;
   initialValues?: DesignTokenValues;
@@ -77,6 +78,7 @@ function normalizeHex(value: string, fallback: string) {
 
 export function DesignSystemDrawer({
   open,
+  embedded = false,
   templateName,
   currentThemeId,
   initialValues,
@@ -142,21 +144,23 @@ export function DesignSystemDrawer({
   return (
     <aside
       className={cn(
-        "shrink-0 overflow-hidden border-l border-border/70 bg-background transition-[width,border-color] duration-200 ease-out",
-        open ? "w-[360px]" : "w-0 border-l-transparent",
+        embedded
+          ? "min-h-0 flex-1 overflow-hidden bg-background"
+          : "shrink-0 overflow-hidden border-l border-border/70 bg-background transition-[width,border-color] duration-200 ease-out",
+        !embedded && (open ? "w-[360px]" : "w-0 border-l-transparent"),
       )}
       aria-hidden={!open}
       data-testid="design-system-drawer"
     >
-      <div className="flex h-full w-[360px] flex-col">
-        <div className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3 py-3">
+      <div className={cn("flex h-full flex-col", embedded ? "w-full" : "w-[360px]")}>
+        {!embedded ? <div className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3 py-3">
           <div className="grid size-7 place-items-center rounded-lg bg-primary/10 text-primary"><Palette className="size-3.5" /></div>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold">Design system</p>
             <p className="truncate text-[10px] text-muted-foreground">{templateName}</p>
           </div>
           <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close design system"><X /></Button>
-        </div>
+        </div> : null}
 
         <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-border/70 p-2">
           {TABS.map(({ id, label, icon: Icon }) => (
