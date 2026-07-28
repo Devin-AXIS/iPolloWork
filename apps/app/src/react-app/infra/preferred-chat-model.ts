@@ -6,9 +6,9 @@ export type SelectableChatModelSnapshot = Array<{
 }>;
 
 /**
- * The historical Big Pickle default can be advertised by OpenCode even when
- * no backend route is available, which surfaces as a delayed 401. Prefer a
- * user-connected provider for that implicit default and for stale selections.
+ * Preserve every available selection, including the built-in OpenCode Zen
+ * default. Only replace a stale selection that the provider list no longer
+ * exposes, preferring a user-connected provider for that recovery path.
  */
 export function resolvePreferredSelectableChatModel(input: {
   providers: SelectableChatModelSnapshot;
@@ -23,9 +23,7 @@ export function resolvePreferredSelectableChatModel(input: {
         provider.modelIDs.includes(input.current.modelID),
     ),
   );
-  const isLegacyImplicitDefault =
-    input.current?.providerID === "opencode" && input.current.modelID === "big-pickle";
-  if (currentAvailable && !isLegacyImplicitDefault) return input.current ?? null;
+  if (currentAvailable) return input.current ?? null;
 
   for (const provider of input.providers) {
     if (provider.providerID === "opencode" || provider.modelIDs.length === 0) continue;
