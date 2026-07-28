@@ -140,11 +140,23 @@ interface ToastCardProps {
 }
 
 function ToastCard({ id, type, title, description, action, cancel, notification }: ToastCardProps) {
-  const dismiss = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const dismiss = (event: React.SyntheticEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
     sonnerToast.dismiss(id)
   }
+
+  const closeButton = (
+    <button
+      type="button"
+      aria-label="Close notification"
+      className="relative z-50 grid size-7 shrink-0 touch-manipulation place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      onPointerDown={dismiss}
+      onClick={dismiss}
+    >
+      <XIcon className="pointer-events-none size-4" />
+    </button>
+  )
 
   if (notification) {
     return (
@@ -152,10 +164,8 @@ function ToastCard({ id, type, title, description, action, cancel, notification 
         <ToastIcon type={type} size="sm" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">{title}</p>
-            <Button type="button" variant="ghost" size="sm" aria-label="Close notification" onClick={dismiss}>
-              <XIcon className="size-4" />
-            </Button>
+            <p className="min-w-0 flex-1 text-sm font-medium">{title}</p>
+            {closeButton}
           </div>
           {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
         </div>
@@ -168,10 +178,8 @@ function ToastCard({ id, type, title, description, action, cancel, notification 
       <ToastIcon type={type} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
-         <p className="text-sm font-medium">{title}</p>
-         <Button type="button" variant="ghost" size="sm" aria-label="Close notification" onClick={dismiss}>
-          <XIcon className="size-4" />
-          </Button>
+         <p className="min-w-0 flex-1 text-sm font-medium">{title}</p>
+         {closeButton}
         </div>
         {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
         {action || cancel ? (

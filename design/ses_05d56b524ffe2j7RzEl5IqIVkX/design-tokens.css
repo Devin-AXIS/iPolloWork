@@ -1,34 +1,34 @@
-/* ipw-design-system: elevenlabs */
+/* ipw-design-system: cohere */
 :root {
   --ipw-od-bg: #ffffff;
-  --ipw-od-surface: #f5f5f5;
-  --ipw-od-surface-warm: #f5f2ef;
+  --ipw-od-surface: #fafafa;
+  --ipw-od-surface-warm: var(--ipw-od-surface);
   --ipw-od-fg: #000000;
-  --ipw-od-fg-2: #4e4e4e;
-  --ipw-od-muted: #777169;
+  --ipw-od-fg-2: #212121;
+  --ipw-od-muted: #93939f;
   --ipw-od-meta: var(--ipw-od-muted);
-  --ipw-od-border: #e5e5e5;
-  --ipw-od-border-soft: rgba(0, 0, 0, 0.05);
-  --ipw-od-accent: #000000;
+  --ipw-od-border: #d9d9dd;
+  --ipw-od-border-soft: #f2f2f2;
+  --ipw-od-accent: #1863dc;
   --ipw-od-accent-on: #ffffff;
-  --ipw-od-accent-hover: #1a1a1a;
-  --ipw-od-accent-active: #333333;
+  --ipw-od-accent-hover: color-mix(in oklab, var(--ipw-od-accent), black 8%);
+  --ipw-od-accent-active: color-mix(in oklab, var(--ipw-od-accent), black 16%);
   --ipw-od-success: #16a34a;
   --ipw-od-warn: #eab308;
-  --ipw-od-danger: #dc2626;
-  --ipw-od-font-display: "Waldenburg", "Waldenburg Fallback", system-ui, sans-serif;
-  --ipw-od-font-body: "Inter", "Inter Fallback", system-ui, -apple-system, sans-serif;
-  --ipw-od-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --ipw-od-danger: #ef4444;
+  --ipw-od-font-display: "CohereText", "Space Grotesk", Inter, ui-sans-serif, sans-serif;
+  --ipw-od-font-body: "Unica77 Cohere Web", Inter, Arial, ui-sans-serif, sans-serif;
+  --ipw-od-font-mono: "CohereMono", "JetBrains Mono", ui-monospace, monospace;
   --ipw-od-text-xs: 12px;
-  --ipw-od-text-sm: 13px;
+  --ipw-od-text-sm: 14px;
   --ipw-od-text-base: 16px;
-  --ipw-od-text-lg: 20px;
+  --ipw-od-text-lg: 18px;
   --ipw-od-text-xl: 24px;
   --ipw-od-text-2xl: 32px;
-  --ipw-od-text-3xl: 36px;
-  --ipw-od-text-4xl: 48px;
+  --ipw-od-text-3xl: 60px;
+  --ipw-od-text-4xl: 72px;
   --ipw-od-leading-body: 1.5;
-  --ipw-od-leading-tight: 1.08;
+  --ipw-od-leading-tight: 1.0;
   --ipw-od-tracking-display: -0.02em;
   --ipw-od-space-1: 4px;
   --ipw-od-space-2: 8px;
@@ -38,23 +38,27 @@
   --ipw-od-space-6: 24px;
   --ipw-od-space-8: 32px;
   --ipw-od-space-12: 48px;
-  --ipw-od-section-y-desktop: 96px;
-  --ipw-od-section-y-tablet: 64px;
-  --ipw-od-section-y-phone: 48px;
-  --ipw-od-radius-sm: 8px;
-  --ipw-od-radius-md: 16px;
-  --ipw-od-radius-lg: 24px;
+  --ipw-od-section-y-desktop: 60px;
+  --ipw-od-section-y-tablet: 48px;
+  --ipw-od-section-y-phone: 32px;
+  --ipw-od-radius-sm: small utility elements (dialog boxes, nav pills)
+   * --radius-md: THE PRIMARY COHERE CARD — always 22px
+   * --radius-lg: large featured containers — same 22px treatment */
+  --radius-sm: 8px;
+  --ipw-od-radius-md: 22px;
+  --ipw-od-radius-lg: 22px;
   --ipw-od-radius-pill: 9999px;
-  --ipw-od-elev-ring: rgba(0, 0, 0, 0.06) 0px 0px 0px 1px, rgba(0, 0, 0, 0.04) 0px 1px 2px, rgba(0, 0, 0, 0.04) 0px 2px 4px;
-  --ipw-od-elev-raised: rgba(0, 0, 0, 0.4) 0px 0px 1px, rgba(0, 0, 0, 0.04) 0px 4px 4px;
-  --ipw-od-focus-ring: 0 0 0 3px rgba(147, 197, 253, 0.5);
+  --ipw-od-elev-flat: none;
+  --ipw-od-elev-ring: 0 0 0 1px var(--ipw-od-border-soft);
+  --ipw-od-elev-raised: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --ipw-od-focus-ring: 0 0 0 2px var(--ipw-od-accent);
   --ipw-od-motion-fast: 150ms;
   --ipw-od-motion-base: 200ms;
   --ipw-od-ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ipw-od-container-max: 1200px;
-  --ipw-od-container-gutter-desktop: 24px;
-  --ipw-od-container-gutter-tablet: 16px;
-  --ipw-od-container-gutter-phone: 12px;
+  --ipw-od-container-max: 1440px;
+  --ipw-od-container-gutter-desktop: 32px;
+  --ipw-od-container-gutter-tablet: 24px;
+  --ipw-od-container-gutter-phone: 16px;
 
   --ipw-color-bg: var(--ipw-od-bg);
   --ipw-color-surface: var(--ipw-od-surface);

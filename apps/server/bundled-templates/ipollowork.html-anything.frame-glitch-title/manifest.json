@@ -60,7 +60,8 @@
         "type": "color",
         "group": "theme"
       }
-    ]
+    ],
+    "tokens": "design-tokens.css"
   },
   "applyChecklist": [
     "Replace all sample copy with the user's complete brief.",

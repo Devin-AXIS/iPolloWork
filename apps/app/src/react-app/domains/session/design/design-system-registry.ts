@@ -455,6 +455,7 @@ export function buildTemplateTokenCss(theme: DesignSystemTheme) {
     `  ${designSystemTokenStorageName(name)}: ${rewriteThemeTokenReferences(value)};`,
   );
   const lines = [
+    `/* ipw-theme:start */`,
     designSystemMarker(theme.id),
     `:root {`,
     ...sourceTokenLines,
@@ -548,15 +549,12 @@ export function buildTemplateTokenCss(theme: DesignSystemTheme) {
     `  background-image: var(--ipw-bg-overlay), var(--ipw-bg-image), var(--ipw-bg-gradient) !important;`,
     `}`,
     `html:root :where(h1, h2, h3, h4, h5, h6, [data-ipw-theme-role="heading"]) { font-family: var(--ipw-font-display) !important; }`,
-    `html:root :where(button, [role="button"], [class*="button"], [class*="btn"]) { border-radius: var(--ipw-button-radius) !important; }`,
     `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell) { background-color: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
     `html:root :where([data-ipw-slide], section.slide, .slide-frame) { background: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
+    `html:root :where([data-composition-id], .composition, .scene.clip) { background-color: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
     `html:root :where([data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], article, [class~="card"], [class*="-card"], [class~="panel"], [class*="-panel"], [class~="tile"], [class~="task"]) {`,
     `  background-color: var(--ipw-card-bg) !important;`,
     `  border-color: var(--ipw-card-border) !important;`,
-    `  border-radius: var(--ipw-card-radius) !important;`,
-    `  box-shadow: var(--ipw-card-shadow) !important;`,
-    `  backdrop-filter: blur(var(--ipw-card-blur));`,
     `}`,
     `html:root :where([data-ipw-theme-role="primary-action"], .primary, .cta-primary, .button-primary, .btn-primary) { background-color: var(--ipw-color-primary) !important; border-color: var(--ipw-color-primary) !important; color: var(--ipw-color-on-primary) !important; }`,
     `html:root :where([data-ipw-theme-role="secondary-action"], .secondary, .quiet, .button-secondary, .btn-secondary) { background-color: var(--ipw-color-surface) !important; border-color: var(--ipw-color-border) !important; color: var(--ipw-color-text) !important; }`,
@@ -564,6 +562,10 @@ export function buildTemplateTokenCss(theme: DesignSystemTheme) {
     `html:root :where([data-ipw-theme-role="accent"], .eyebrow, .kicker, [class~="accent"]) { color: var(--ipw-color-accent) !important; }`,
     `html:root :where([data-ipw-theme-role="on-primary"], .primary > *, .cta-primary > *) { color: var(--ipw-color-on-primary) !important; }`,
     `html:root :where([data-ipw-theme-role="border"]) { border-color: var(--ipw-color-border) !important; }`,
+    `html:root [data-ipw-brand-slot] { position: fixed !important; right: 18px !important; bottom: 18px !important; z-index: 2147483000 !important; display: inline-flex !important; width: auto !important; height: auto !important; max-width: calc(100vw - 36px) !important; align-items: center !important; gap: 7px !important; padding: 7px 10px !important; border: 1px solid color-mix(in srgb, var(--ipw-color-primary) 35%, var(--ipw-color-border)) !important; border-radius: 999px !important; background: color-mix(in srgb, var(--ipw-color-surface) 84%, transparent) !important; color: var(--ipw-color-text) !important; box-shadow: 0 12px 44px color-mix(in srgb, var(--ipw-color-primary) 18%, transparent) !important; font: 600 11px/1 var(--ipw-font-body) !important; letter-spacing: 0 !important; backdrop-filter: blur(14px); }`,
+    `html:root [data-ipw-brand-slot] :where(img, [data-ipw-logo]) { display: block !important; width: 18px !important; height: 18px !important; min-width: 18px !important; max-width: 18px !important; min-height: 18px !important; max-height: 18px !important; object-fit: contain !important; }`,
+    `@media (max-width: 640px) { html:root [data-ipw-brand-slot] { right: 10px !important; bottom: 10px !important; } }`,
+    `/* ipw-theme:end */`,
   ];
   return lines.join("\n");
 }
