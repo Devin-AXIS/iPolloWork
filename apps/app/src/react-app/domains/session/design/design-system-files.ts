@@ -1,8 +1,7 @@
 export type DesignTokenValues = Record<string, string>;
 
-const THEME_START = "/* ipw-theme:start */";
-const THEME_END = "/* ipw-theme:end */";
-const CUSTOM_PROPERTY_PATTERN = /(--[A-Za-z0-9_-]+)\s*:\s*([^;{}]+)\s*(?=;|\})/g;
+const THEME_BLOCK_PATTERN = /\/\*\s*ipw-theme:start\s*\*\/[\s\S]*?\/\*\s*ipw-theme:end\s*\*\//i;
+const MANAGED_PROPERTY_PATTERN = /(--ipw-[A-Za-z0-9_-]+)\s*:\s*([^;{}]+)\s*(?=;|\})/g;
 
 function attributeValue(tag: string, name: string) {
   const match = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
@@ -10,14 +9,12 @@ function attributeValue(tag: string, name: string) {
 }
 
 function themeBlock(source: string) {
-  const start = source.indexOf(THEME_START);
-  if (start < 0) return null;
-  const end = source.indexOf(THEME_END, start + THEME_START.length);
-  if (end < 0) return null;
+  const match = THEME_BLOCK_PATTERN.exec(source);
+  if (!match || match.index === undefined) return null;
   return {
-    start,
-    end: end + THEME_END.length,
-    content: source.slice(start, end + THEME_END.length),
+    start: match.index,
+    end: match.index + match[0].length,
+    content: match[0],
   };
 }
 
@@ -25,22 +22,31 @@ function escapedPattern(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function linkedDesignTokenPath(html = "") {
-  for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
-    const href = attributeValue(tag, "href");
+function safeLocalPath(path: string) {
+  if (!path || path.startsWith("/") || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(path)) return "";
+  const pathname = path.split(/[?#]/, 1)[0] ?? "";
+  if (pathname.split("/").includes("..")) return "";
+  return path.replace(/^\.\//, "");
+}
+
+export function linkedDesignTokenPath(source: string | undefined): string {
+  for (const tag of source?.match(/<link\b[^>]*>/gi) ?? []) {
+    const href = attributeValue(tag, "href")?.trim();
     if (!href) continue;
     const rel = attributeValue(tag, "rel");
     const isTokenLink = /\bdata-ipw-design-tokens\b/i.test(tag)
       || (rel?.split(/\s+/).some((value) => value.toLowerCase() === "stylesheet")
-        && /(?:^|\/)design-tokens\.css(?:[?#].*)?$/i.test(href));
-    if (isTokenLink) return href;
+        && /(?:^|\/)design-tokens?\.css(?:[?#].*)?$/i.test(href));
+    if (!isTokenLink) continue;
+    const path = safeLocalPath(href);
+    if (path) return path;
   }
-  return null;
+  return "";
 }
 
-export function parseDesignTokenValues(source = "") {
+export function parseDesignTokenValues(source: string | undefined): DesignTokenValues {
   const values: DesignTokenValues = {};
-  for (const match of source.matchAll(CUSTOM_PROPERTY_PATTERN)) {
+  for (const match of (source ?? "").matchAll(MANAGED_PROPERTY_PATTERN)) {
     const name = match[1];
     const value = match[2];
     if (name && value) values[name] = value.trim();
@@ -49,7 +55,7 @@ export function parseDesignTokenValues(source = "") {
 }
 
 export function replaceDesignTokenValue(source: string, name: string, value: string) {
-  if (!/^--[A-Za-z0-9_-]+$/.test(name)) return source;
+  if (!/^--ipw-[A-Za-z0-9_-]+$/.test(name)) return source;
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
   const declaration = new RegExp(`(${escapedPattern(name)}\\s*:\\s*)([^;{}]*)(;)`);
   if (declaration.test(source)) {
@@ -71,8 +77,19 @@ export function replaceDesignTokenValue(source: string, name: string, value: str
   return `${before}${leadingNewline}  ${name}: ${value};${newline}${source.slice(closingBrace)}`;
 }
 
-export function mergeTemplateTokenCss(existing: string, next: string) {
-  const incoming = themeBlock(next);
+function removeLegacyIpwRootDeclarations(source: string) {
+  return source.replace(/:root\s*\{([\s\S]*?)\}/gi, (_block, body: string) => {
+    const declarations = body
+      .split(";")
+      .map((declaration) => declaration.trim())
+      .filter((declaration) => declaration && !declaration.startsWith("--ipw-"));
+    return declarations.length ? `:root {\n  ${declarations.join(";\n  ")};\n}` : "";
+  });
+}
+
+export function mergeTemplateTokenCss(existingCss: string | undefined, generatedThemeCss: string) {
+  const incoming = themeBlock(generatedThemeCss);
+  const existing = existingCss ?? "";
   if (!incoming) return existing;
 
   const current = themeBlock(existing);
@@ -80,12 +97,9 @@ export function mergeTemplateTokenCss(existing: string, next: string) {
     return `${existing.slice(0, current.start)}${incoming.content}${existing.slice(current.end)}`;
   }
 
-  const incomingNames = new Set(Object.keys(parseDesignTokenValues(incoming.content)));
-  const structuralCss = existing.replace(
-    CUSTOM_PROPERTY_PATTERN,
-    (declaration: string, name: string) => incomingNames.has(name) ? "" : declaration,
-  );
   const newline = existing.includes("\r\n") ? "\r\n" : "\n";
-  const separator = structuralCss.trim().length > 0 ? `${newline}${newline}` : newline;
-  return `${incoming.content}${separator}${structuralCss.trimStart()}`;
+  const preserved = removeLegacyIpwRootDeclarations(existing).trim();
+  return preserved
+    ? `${incoming.content}${newline}${newline}${preserved}${newline}`
+    : `${incoming.content}${newline}`;
 }
