@@ -8,5 +8,6 @@
   --ipw-color-border: #bdc5d3;
   --ipw-font-display: Arial, sans-serif;
   --ipw-font-body: Arial, sans-serif;
+  --ipw-button-radius: 8px;
   --ipw-card-radius: 14px;
 }

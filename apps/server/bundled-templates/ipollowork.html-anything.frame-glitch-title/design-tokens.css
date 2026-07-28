@@ -1,0 +1,30 @@
+:root {
+  --ipw-color-bg: #07090d;
+  --ipw-color-surface: #11151d;
+  --ipw-color-text: #f6f8fb;
+  --ipw-color-muted: #9aa4b2;
+  --ipw-color-border: #293241;
+  --ipw-color-primary: #19e6c4;
+  --ipw-color-secondary: #19e6c4;
+  --ipw-color-accent: #19e6c4;
+  --ipw-color-on-primary: #ffffff;
+  --ipw-font-display: Inter, ui-sans-serif, system-ui, sans-serif;
+  --ipw-font-body: Inter, ui-sans-serif, system-ui, sans-serif;
+  --ipw-body-line-height: 1.5;
+  --ipw-content-width: 1200px;
+  --ipw-page-padding: 32px;
+  --ipw-section-space: 72px;
+  --ipw-button-radius: 8px;
+  --ipw-card-bg: #11151d;
+  --ipw-card-border: #293241;
+  --ipw-card-radius: 14px;
+  --ipw-card-shadow: none;
+}
+html:root, html:root body, html:root [class] {
+  --bg: var(--ipw-color-bg) !important; --page: var(--ipw-color-bg) !important; --paper: var(--ipw-color-bg) !important;
+  --surface: var(--ipw-color-surface) !important; --panel: var(--ipw-color-surface) !important; --white: var(--ipw-color-surface) !important;
+  --ink: var(--ipw-color-text) !important; --fg: var(--ipw-color-text) !important; --text: var(--ipw-color-text) !important;
+  --muted: var(--ipw-color-muted) !important; --steel: var(--ipw-color-muted) !important;
+  --line: var(--ipw-color-border) !important; --border: var(--ipw-color-border) !important;
+  --accent: var(--ipw-color-primary) !important; --primary: var(--ipw-color-primary) !important;
+}

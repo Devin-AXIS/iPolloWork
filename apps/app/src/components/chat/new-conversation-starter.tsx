@@ -61,7 +61,9 @@ type NewConversationStarterProps = {
   onRetryAnimationCatalog?: () => void;
 };
 
-const VIDEO_TEMPLATE_PICKER_ENABLED = false;
+const VIDEO_TEMPLATE_PICKER_ENABLED = true;
+// Keep the animation catalog implementation available for a future rollout.
+const VIDEO_ANIMATION_PICKER_ENABLED = false;
 const RECENT_ANIMATION_STORAGE_KEY = "ipollowork.video.recent-animations.v1";
 const RECENT_ANIMATION_LIMIT = 6;
 const ANIMATION_CATEGORY_ORDER = ["scenes", "data", "code-animation", "social", "text-effects", "transitions", "captions", "effects", "vfx"];
@@ -182,6 +184,7 @@ function TemplateStrip({
   getTemplateCover,
   onUseTemplate,
   onInstallTemplate,
+  onRequestTemplates,
 }: {
   templates: TemplateCatalogItem[];
   loading: boolean;
@@ -190,6 +193,7 @@ function TemplateStrip({
   getTemplateCover?: TemplateCoverLoader;
   onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
   onInstallTemplate?: (templateId: string) => void;
+  onRequestTemplates?: () => void;
 }) {
   const categoryTemplates = templates.filter((template) => (
     template.manifest.category === category && (category !== "video" || template.manifest.surface === "video")
@@ -294,9 +298,27 @@ function TemplateStrip({
           ) : null}
         </div>
       ) : (
-        <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-[12px] text-muted-foreground">
-          {t("new_conversation.templates.empty", { category: categoryLabel })}
-        </p>
+        <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center">
+          <p className="text-[12px] text-muted-foreground">
+            {t("new_conversation.templates.empty", { category: categoryLabel })}
+          </p>
+          {category === "video" ? (
+            <div className="mt-3 space-y-2">
+              <p className="mx-auto max-w-[26rem] text-[11px] leading-4 text-muted-foreground">
+                {t("new_conversation.templates.video_empty_hint")}
+              </p>
+              {onRequestTemplates ? (
+                <button
+                  type="button"
+                  className="inline-flex h-7 items-center rounded-md border border-border bg-background px-2.5 text-[11px] font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={onRequestTemplates}
+                >
+                  {t("new_conversation.templates.retry")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       )}
     </section>
   );
@@ -747,7 +769,9 @@ export function NewConversationStarter({
   const selectMode = (mode: NewConversationMode) => {
     setActiveTemplateCategory(null);
     setShortcutEditorOpen(false);
-    if (mode === "design") onRequestTemplates?.();
+    if (mode === "design" || (mode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED)) {
+      onRequestTemplates?.();
+    }
     onSelectMode(mode);
   };
 
@@ -882,6 +906,7 @@ export function NewConversationStarter({
             getTemplateCover={getTemplateCover}
             onUseTemplate={onUseTemplate}
             onInstallTemplate={onInstallTemplate}
+            onRequestTemplates={onRequestTemplates}
           />
         ) : null}
         {selectedMode === "work" && savedPromptTemplates.length > 0 ? (
@@ -904,7 +929,7 @@ export function NewConversationStarter({
             </div>
           </div>
         ) : null}
-        {selectedMode === "video" ? (
+        {selectedMode === "video" && VIDEO_ANIMATION_PICKER_ENABLED ? (
           <AnimationCatalogStrip
             items={animationCatalog}
             loading={animationCatalogLoading}
@@ -923,6 +948,7 @@ export function NewConversationStarter({
             getTemplateCover={getTemplateCover}
             onUseTemplate={onUseTemplate}
             onInstallTemplate={onInstallTemplate}
+            onRequestTemplates={onRequestTemplates}
           />
         ) : null}
       </div>

@@ -6,7 +6,14 @@
   "category": "video",
   "subcategory": "data-story",
   "style": "data",
-  "tags": ["video", "data", "chart", "proof", "case-study", "metrics"],
+  "tags": [
+    "video",
+    "data",
+    "chart",
+    "proof",
+    "case-study",
+    "metrics"
+  ],
   "surface": "video",
   "title": "Data Proof Story",
   "description": "A data-led case-study template with count-up proof, animated bars, insight labels, and a confident conclusion.",
@@ -20,17 +27,63 @@
   },
   "designSystem": {
     "tokenVersion": 1,
-    "editableGroups": ["theme", "background", "typography", "components"],
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
     "variables": [
-      { "id": "title", "label": "Title", "type": "text", "group": "content" },
-      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
-      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
-      { "id": "accent", "label": "Accent", "type": "color", "group": "theme" },
-      { "id": "metric", "label": "Metric", "type": "text", "group": "content" },
-      { "id": "metricLabel", "label": "Metric label", "type": "text", "group": "content" },
-      { "id": "insight", "label": "Insight", "type": "text", "group": "content" },
-      { "id": "source", "label": "Source", "type": "text", "group": "content" }
-    ]
+      {
+        "id": "title",
+        "label": "Title",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "accent",
+        "label": "Accent",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "metric",
+        "label": "Metric",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "metricLabel",
+        "label": "Metric label",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "insight",
+        "label": "Insight",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "source",
+        "label": "Source",
+        "type": "text",
+        "group": "content"
+      }
+    ],
+    "tokens": "design-tokens.css"
   },
   "applyChecklist": [
     "Replace the metric, label, insight, and source with verified data from the brief.",

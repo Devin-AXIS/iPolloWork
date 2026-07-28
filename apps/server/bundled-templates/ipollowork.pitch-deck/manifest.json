@@ -16,7 +16,13 @@
   },
   "designSystem": {
     "tokenVersion": 1,
-    "editableGroups": ["theme", "background", "typography", "components"]
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "tokens": "design-tokens.css"
   },
   "applyChecklist": [
     "deck title, audience and decision goal",

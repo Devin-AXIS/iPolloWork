@@ -6,7 +6,14 @@
   "category": "video",
   "subcategory": "technical-explainer",
   "style": "technical",
-  "tags": ["video", "code", "technical", "tutorial", "diff", "developer"],
+  "tags": [
+    "video",
+    "code",
+    "technical",
+    "tutorial",
+    "diff",
+    "developer"
+  ],
   "surface": "video",
   "title": "Code Explainer",
   "description": "A technical teaching template with code typing, diff highlights, decoded terminology, and a measurable result card.",
@@ -20,17 +27,63 @@
   },
   "designSystem": {
     "tokenVersion": 1,
-    "editableGroups": ["theme", "background", "typography", "components"],
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
     "variables": [
-      { "id": "title", "label": "Title", "type": "text", "group": "content" },
-      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
-      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
-      { "id": "accent", "label": "Accent", "type": "color", "group": "theme" },
-      { "id": "question", "label": "Question", "type": "text", "group": "content" },
-      { "id": "codeLabel", "label": "Code label", "type": "text", "group": "content" },
-      { "id": "result", "label": "Result", "type": "text", "group": "content" },
-      { "id": "metric", "label": "Metric", "type": "text", "group": "content" }
-    ]
+      {
+        "id": "title",
+        "label": "Title",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "accent",
+        "label": "Accent",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "question",
+        "label": "Question",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "codeLabel",
+        "label": "Code label",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "result",
+        "label": "Result",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "metric",
+        "label": "Metric",
+        "type": "text",
+        "group": "content"
+      }
+    ],
+    "tokens": "design-tokens.css"
   },
   "applyChecklist": [
     "Replace the question, code label, result, and metric with a real technical narrative.",

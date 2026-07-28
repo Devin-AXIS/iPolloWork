@@ -2114,7 +2114,36 @@ export function SessionPage(props: SessionPageProps) {
                         onOpenTarget={openTarget}
                         onConversationMessagesChange={handleConversationMessagesChange}
                         templateEntryPath={designTemplateEntryPath}
-                        onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type, templateId)}
+                        onCreateSession={(type) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type)}
+                        onMaterializeTemplate={async (templateId, surface) => {
+                          if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
+                          const result = await props.ipolloworkServerClient.materializeTemplate(
+                            props.runtimeWorkspaceId,
+                            templateId,
+                            props.selectedSessionId,
+                          );
+                          setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
+                          setTemplateSessionData({ ...result, hasBrief: false });
+                          setDismissedTemplateBriefSessionIds((current) => {
+                            const next = new Set(current);
+                            next.delete(props.selectedSessionId!);
+                            return next;
+                          });
+                          setSessionTypeRevision((value) => value + 1);
+                          setTemplateSessionRevision((value) => value + 1);
+                          if (surface === "design") {
+                            openTab(props.selectedSessionId, {
+                              id: `design:${props.selectedSessionId}:${encodeURIComponent(result.state.entry)}`,
+                              type: "design",
+                              label: result.state.entry.split("/").filter(Boolean).pop() || "Design",
+                              sessionId: props.selectedSessionId,
+                              path: result.state.entry,
+                            });
+                            setSidePanelState(props.selectedSessionId, "design");
+                            return;
+                          }
+                          setSidePanelState(props.selectedSessionId, "video");
+                        }}
                         onActivateVideoStudio={activateVideoStudio}
                         designTemplates={templateCatalog}
                         designTemplatesLoading={templateCatalogLoading}

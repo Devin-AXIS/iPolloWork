@@ -63,7 +63,7 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 const EXECUTABLE_EXTENSIONS = new Set([".exe", ".dll", ".com", ".bat", ".cmd", ".sh", ".ps1", ".app", ".dmg", ".pkg"]);
 const HYPERFRAMES_VARIABLE_TYPES = new Set(["string", "number", "color", "boolean", "enum"]);
-const CURRENT_VIDEO_LOGO_URL = "assets/ipollowork-logo.svg?v=20260724";
+const CURRENT_IPOLLOWORK_LOGO_URL = "assets/ipollowork-logo.svg?v=20260724";
 const SLIDE_DOCUMENT_PATTERN = /\bdata-ipw-slide(?:\s|=|>)|\bclass\s*=\s*["'](?:[^"']*\s)?(?:slide|slide-frame)(?=\s|["'])|\bclassName\s*=\s*["'](?:slide|slide-frame)["']|\bclassList\.add\(\s*["'](?:slide|slide-frame)["']/i;
 const PPTX_OBJECT_PATTERN = /\bdata-pptx-(?:shape|text|image)\b/i;
 const inflateRawAsync = promisify(inflateRaw);
@@ -511,6 +511,13 @@ async function installDirectory(input: {
   });
 }
 
+const HIDDEN_BUNDLED_TEMPLATE_IDS = new Set([
+  "ipollowork.pptx-compatible-brief",
+  "ipollowork.pptx-compatible-pitch",
+  "ipollowork.pptx-compatible-report",
+]);
+
+
 export async function listTemplates(config: ServerConfig, workspaceId: string, scope: TemplateLibraryScope = "personal"): Promise<TemplateCatalogItem[]> {
   const db = await templateDb(config);
   const libraryId = templateLibraryId(scope);
@@ -529,7 +536,8 @@ export async function listTemplates(config: ServerConfig, workspaceId: string, s
     const parsed = templateManifestV1Schema.safeParse(JSON.parse(row.manifestJson));
     if (parsed.success) items.push({ manifest: parsed.data, sourceType: row.sourceType, installed: true, installedVersion: row.version, updateAvailable: false, verified: row.sourceType === "market" });
   }
-  return sortTemplatesForCatalog(items.map((item) => item.manifest)).map((manifest) => items.find((item) => item.manifest === manifest)!);
+  const visibleItems = items.filter((item) => !HIDDEN_BUNDLED_TEMPLATE_IDS.has(item.manifest.id));
+  return sortTemplatesForCatalog(visibleItems.map((item) => item.manifest)).map((manifest) => visibleItems.find((item) => item.manifest === manifest)!);
 }
 
 export async function installBundledTemplate(config: ServerConfig, workspaceId: string, templateId: string, scope: TemplateLibraryScope = "personal") {
@@ -694,7 +702,7 @@ export async function materializeTemplate(config: ServerConfig, workspace: Works
     await mkdir(dirname(root), { recursive: true });
     await rename(staged, root);
     moved = true;
-    if (manifest.surface === "video") await refreshVideoSessionLogo(workspace, sessionId);
+    await refreshTemplateSessionLogo(workspace, sessionId, manifest.surface, manifest.entry);
     db.upsertSession({
       workspaceId: workspace.id,
       sessionId,
@@ -791,21 +799,34 @@ function snapshotFromRow(row: TemplateSessionRow): TemplateSessionSnapshot {
   };
 }
 
-async function refreshVideoSessionLogo(workspace: WorkspaceInfo, sessionId: string) {
-  const root = sessionRoot(workspace, sessionId, "video");
+async function currentIpolloWorkLogoPath() {
   const currentLogo = join(await resolveBundledTemplatesRoot(), "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg");
+  return existsSync(currentLogo) ? currentLogo : undefined;
+}
+
+async function refreshTemplateSessionLogo(workspace: WorkspaceInfo, sessionId: string, surface: TemplateSurface, entryFile?: string) {
+  const root = sessionRoot(workspace, sessionId, surface);
+  const currentLogo = await currentIpolloWorkLogoPath();
   const sessionLogo = join(root, "assets", "ipollowork-logo.svg");
-  if (existsSync(currentLogo) && existsSync(dirname(sessionLogo))) {
+  if (currentLogo) {
+    await mkdir(dirname(sessionLogo), { recursive: true });
     await cp(currentLogo, sessionLogo, { force: true });
   }
 
-  const entryPath = join(root, "index.html");
+  const entryPath = join(root, ...(entryFile ?? (surface === "video" ? "index.html" : "entry.html")).split("/"));
   if (!existsSync(entryPath)) return;
   const entry = await readFile(entryPath, "utf8");
-  const repaired = entry.replace(/<img\b[^>]*\bdata-var-src=(['"])logoUrl\1[^>]*>/gi, (tag) => {
-    if (/\bdata-ipw-logo-fallback\b/i.test(tag)) return tag;
-    const fallback = ` data-ipw-logo-fallback="current" onerror="this.onerror=null;this.src='${CURRENT_VIDEO_LOGO_URL}'"`;
-    return tag.replace(/\s*\/?>$/, (ending) => `${fallback}${ending}`);
+  const logoTagPattern = surface === "video"
+    ? /<img\b[^>]*\bdata-var-src=(['"])logoUrl\1[^>]*>/gi
+    : /<img\b[^>]*\bdata-ipw-logo\b[^>]*>/gi;
+  const repaired = entry.replace(logoTagPattern, (tag) => {
+    const withCurrentSrc = tag.replace(/\ssrc\s*=\s*(["'])assets\/ipollowork-logo\.svg(?:\?v=\d+)?\1/i, ` src="${CURRENT_IPOLLOWORK_LOGO_URL}"`);
+    const withMarker = /\bdata-ipw-logo-fallback\s*=/i.test(withCurrentSrc)
+      ? withCurrentSrc.replace(/\sdata-ipw-logo-fallback\s*=\s*(["']).*?\1/i, ' data-ipw-logo-fallback="current"')
+      : withCurrentSrc.replace(/\s*\/?>$/, (ending) => ` data-ipw-logo-fallback="current"${ending}`);
+    return /\sonerror\s*=/i.test(withMarker)
+      ? withMarker.replace(/\sonerror\s*=\s*(["']).*?\1/i, ` onerror="this.onerror=null;this.src='${CURRENT_IPOLLOWORK_LOGO_URL}'"`)
+      : withMarker.replace(/\s*\/?>$/, (ending) => ` onerror="this.onerror=null;this.src='${CURRENT_IPOLLOWORK_LOGO_URL}'"${ending}`);
   });
   if (repaired !== entry) await writeFile(entryPath, repaired, "utf8");
 }
@@ -814,9 +835,9 @@ export async function readTemplateSession(config: ServerConfig, workspace: Works
   const row = (await templateDb(config)).getSession(workspace.id, sessionId);
   if (!row) throw new ApiError(404, "template_session_not_found", "This session has no template metadata");
   const snapshot = snapshotFromRow(row);
-  if (snapshot.surface === "video") {
-    await refreshVideoSessionLogo(workspace, sessionId);
-  }
+  const prefix = `${snapshot.surface === "video" ? "video" : "design"}/${sessionId}/`;
+  const entryFile = snapshot.state.entry.startsWith(prefix) ? snapshot.state.entry.slice(prefix.length) : undefined;
+  await refreshTemplateSessionLogo(workspace, sessionId, snapshot.surface, entryFile);
   return snapshot;
 }
 
