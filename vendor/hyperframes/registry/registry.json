@@ -570,6 +570,18 @@
     {
       "name": "parallax-unzoom",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "gsap-scrolltrigger-story",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-splittext-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-morphsvg-shape",
+      "type": "hyperframes:block"
     }
   ]
 }

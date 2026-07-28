@@ -1,0 +1,75 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "gsap-splittext-reveal",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "SplitText Reveal",
+  "description": "A cinematic character-by-character headline reveal powered by GSAP SplitText.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "tags": ["text", "text-effect", "effect", "split-text"],
+  "engine": {
+    "name": "gsap",
+    "version": "3.15.0",
+    "seekable": true,
+    "plugins": ["SplitText"]
+  },
+  "files": [
+    {
+      "path": "gsap-splittext-reveal.html",
+      "target": "compositions/gsap-splittext-reveal.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "headline",
+      "label": "Headline",
+      "type": "string",
+      "default": "MAKE MOTION MATTER",
+      "maxLength": 80,
+      "update": "reload"
+    },
+    {
+      "id": "backgroundColor",
+      "label": "Background color",
+      "type": "color",
+      "default": "#0B0A12",
+      "update": "live"
+    },
+    {
+      "id": "textColor",
+      "label": "Text color",
+      "type": "color",
+      "default": "#F5F0FF",
+      "update": "live"
+    },
+    {
+      "id": "stagger",
+      "label": "Character stagger",
+      "type": "number",
+      "default": 0.045,
+      "min": 0.01,
+      "max": 0.2,
+      "step": 0.005,
+      "unit": "s",
+      "update": "rebuild"
+    },
+    {
+      "id": "ease",
+      "label": "Entrance easing",
+      "type": "enum",
+      "default": "power4.out",
+      "options": [
+        { "label": "Cinematic", "value": "power4.out" },
+        { "label": "Elastic", "value": "back.out(1.7)" },
+        { "label": "Linear", "value": "none" }
+      ],
+      "update": "rebuild"
+    }
+  ],
+  "agentPrompt": "Use the SplitText Reveal composition for a cinematic headline moment. Preserve character-level timing, readable contrast, and the declared copy."
+}

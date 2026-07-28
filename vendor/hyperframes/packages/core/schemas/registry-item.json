@@ -137,7 +137,12 @@
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "version": { "type": "string", "minLength": 1 },
-        "seekable": { "type": "boolean" }
+        "seekable": { "type": "boolean" },
+        "plugins": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
       }
     },
     "variables": {

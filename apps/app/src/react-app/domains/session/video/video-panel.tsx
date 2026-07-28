@@ -261,6 +261,11 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         title: candidate.title,
         description: candidate.description,
         type: candidate.type === "hyperframes:block" ? "hyperframes:block" : "hyperframes:component",
+        kind: candidate.kind === "effect"
+          || candidate.type !== "hyperframes:block"
+          || ["scroll", "svg", "text-effects", "transitions", "captions", "effects", "vfx"].includes(candidate.category)
+          ? "effect"
+          : "animation",
         category: candidate.category,
         tags: Array.isArray(candidate.tags)
           ? candidate.tags.filter((tag: unknown): tag is string => typeof tag === "string")

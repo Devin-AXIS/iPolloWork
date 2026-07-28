@@ -52,4 +52,20 @@ describe("HyperFrames catalog parameters", () => {
     ]);
     expect(item?.variables.find((variable) => variable.id === "duration")?.update).toBe("rebuild");
   });
+
+  test("detects and classifies the complete bundled GSAP runtime catalog", async () => {
+    const catalog = await listHyperframesCatalog();
+    const gsapItems = catalog.filter((item) => item.engine?.name === "gsap");
+    const animations = gsapItems.filter((item) => item.kind === "animation");
+    const effects = gsapItems.filter((item) => item.kind === "effect");
+
+    expect(gsapItems).toHaveLength(129);
+    expect(animations).toHaveLength(69);
+    expect(effects).toHaveLength(60);
+    expect(gsapItems.every((item) => item.source?.provider === "hyperframes")).toBe(true);
+    expect(gsapItems.find((item) => item.name === "app-showcase")?.engine?.version).toBe("3.14.2");
+    expect(gsapItems.find((item) => item.name === "gsap-scrolltrigger-story")?.engine?.plugins).toEqual(["ScrollTrigger"]);
+    expect(gsapItems.find((item) => item.name === "gsap-splittext-reveal")?.engine?.plugins).toEqual(["SplitText"]);
+    expect(gsapItems.find((item) => item.name === "gsap-morphsvg-shape")?.engine?.plugins).toEqual(["MorphSVGPlugin"]);
+  });
 });

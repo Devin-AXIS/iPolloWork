@@ -70,13 +70,17 @@ export const hyperframesEffectEngineSchema = z.object({
   name: z.string().trim().min(1).max(32),
   version: z.string().trim().min(1).max(32).optional(),
   seekable: z.boolean().default(true),
+  plugins: z.array(z.string().trim().min(1).max(64)).optional(),
 }).strict();
+
+export const hyperframesCatalogKindSchema = z.enum(["animation", "effect"]);
 
 export const hyperframesCatalogItemSchema = z.object({
   name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   title: z.string().trim().min(1),
   description: z.string().trim().min(1),
   type: z.enum(["hyperframes:block", "hyperframes:component"]),
+  kind: hyperframesCatalogKindSchema.default("animation"),
   category: z.string().trim().min(1),
   tags: z.array(z.string().trim().min(1)).default([]),
   version: z.string().trim().min(1).optional(),
@@ -90,12 +94,19 @@ export const hyperframesCatalogItemSchema = z.object({
     video: z.string().optional(),
   }).strict().optional(),
   engine: hyperframesEffectEngineSchema.optional(),
+  source: z.object({
+    provider: z.string().trim().min(1).max(64),
+    label: z.string().trim().min(1).max(96),
+    url: z.string().url().optional(),
+  }).strict().optional(),
   variables: z.array(hyperframesEffectVariableSchema).default([]),
   agentPrompt: z.string().optional(),
 }).strict();
 
 export type HyperframesEffectVariableUpdate = z.infer<typeof hyperframesEffectVariableUpdateSchema>;
 export type HyperframesEffectVariable = z.infer<typeof hyperframesEffectVariableSchema>;
+export type HyperframesEffectEngine = z.infer<typeof hyperframesEffectEngineSchema>;
+export type HyperframesCatalogKind = z.infer<typeof hyperframesCatalogKindSchema>;
 export type HyperframesEffectVariableValue = string | number | boolean;
 export type HyperframesEffectVariableValues = Record<string, HyperframesEffectVariableValue>;
 export type HyperframesCatalogItem = z.infer<typeof hyperframesCatalogItemSchema>;

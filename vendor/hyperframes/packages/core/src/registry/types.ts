@@ -43,6 +43,7 @@ export interface RegistryItemEngine {
   name: string;
   version?: string;
   seekable?: boolean;
+  plugins?: string[];
 }
 
 /** Fields common to every registry item, regardless of type. */

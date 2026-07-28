@@ -84,16 +84,18 @@ type NewConversationStarterProps = {
 };
 
 const VIDEO_TEMPLATE_PICKER_ENABLED = true;
-// Keep the animation catalog implementation available for a future rollout.
-const VIDEO_ANIMATION_PICKER_ENABLED = false;
+const VIDEO_ANIMATION_PICKER_ENABLED = true;
 const RECENT_ANIMATION_STORAGE_KEY = "ipollowork.video.recent-animations.v1";
 const RECENT_ANIMATION_LIMIT = 6;
-const ANIMATION_CATEGORY_ORDER = ["scenes", "data", "code-animation", "social", "text-effects", "transitions", "captions", "effects", "vfx"];
+const HYPERFRAMES_LIBRARY_KINDS: ReadonlyArray<"animation" | "effect"> = ["animation", "effect"];
+const ANIMATION_CATEGORY_ORDER = ["scenes", "data", "code-animation", "social", "scroll", "svg", "text-effects", "transitions", "captions", "effects", "vfx"];
 const ANIMATION_CATEGORY_LABELS: Record<string, { en: string; zh: string }> = {
   scenes: { en: "Scenes", zh: "场景" },
   data: { en: "Data", zh: "数据动画" },
   "code-animation": { en: "Code", zh: "代码动画" },
   social: { en: "Social", zh: "社交元素" },
+  scroll: { en: "Scroll", zh: "滚动特效" },
+  svg: { en: "SVG", zh: "SVG 特效" },
   "text-effects": { en: "Text", zh: "文字特效" },
   transitions: { en: "Transitions", zh: "转场" },
   captions: { en: "Captions", zh: "动态字幕" },
@@ -439,7 +441,13 @@ function AnimationCatalogCard({
           {recent ? <span className="absolute left-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-medium text-foreground shadow-sm">{t("new_conversation.animations.recent")}</span> : null}
           {item.duration ? <span className="absolute bottom-1 right-1 rounded bg-black/65 px-1 text-[9px] text-white">{item.duration}s</span> : null}
         </div>
-        <div className="truncate px-2 py-1.5 text-[11px] font-medium text-foreground">{item.title}</div>
+        <div className="px-2 py-1.5">
+          <div className="truncate text-[11px] font-medium text-foreground">{item.title}</div>
+          <div className="mt-0.5 flex items-center justify-between gap-1 text-[9px] text-muted-foreground">
+            <span className="truncate">{item.engine?.plugins?.[0] ?? "GSAP Core"}</span>
+            <span className="shrink-0 text-emerald-600">{t("new_conversation.animations.bundled")}</span>
+          </div>
+        </div>
       </button>
       {item.variables.length ? (
         <button
@@ -588,6 +596,18 @@ function AnimationParameterDialog({
         <DialogHeader>
           <DialogTitle>{item ? t("new_conversation.animations.parameters_title", { title: item.title }) : ""}</DialogTitle>
           <DialogDescription>{t("new_conversation.animations.parameters_description")}</DialogDescription>
+          {item ? (
+            <div className="flex flex-wrap gap-1.5 pt-1 text-[10px] text-muted-foreground">
+              <span className="rounded-full bg-muted px-2 py-1">{item.source?.label ?? "HyperFrames"}</span>
+              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700">
+                {item.engine ? `${item.engine.name.toUpperCase()} ${item.engine.version ?? ""}` : item.category}
+              </span>
+              {(item.engine?.plugins ?? ["GSAP Core"]).map((pluginName) => (
+                <span key={pluginName} className="rounded-full bg-violet-500/10 px-2 py-1 text-violet-700">{pluginName}</span>
+              ))}
+              <span className="rounded-full bg-sky-500/10 px-2 py-1 text-sky-700">{t("new_conversation.animations.bundled")}</span>
+            </div>
+          ) : null}
         </DialogHeader>
         {item ? (
           <div className="grid min-h-0 grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] gap-4 max-[860px]:grid-cols-1">
@@ -676,14 +696,25 @@ function AnimationCatalogStrip({
   onChangeAnimationParams?: (animation: HyperframesCatalogItem, values: HyperframesEffectVariableValues) => void;
   onRetry?: () => void;
 }) {
+  const [libraryKind, setLibraryKind] = useState<"animation" | "effect">("effect");
   const [category, setCategory] = useState<string | null>(null);
+  const [plugin, setPlugin] = useState<string | null>(null);
   const [recentAnimationNames, setRecentAnimationNames] = useState<string[]>([]);
   const [editingItem, setEditingItem] = useState<HyperframesCatalogItem | null>(null);
   const selectedByName = new Map(selected.map((selection) => [selection.item.name, selection]));
   const selectedNames = new Set(selectedByName.keys());
   const locale = typeof document !== "undefined" && document.documentElement.lang === "zh" ? "zh" : "en";
   const recentNameSet = new Set(recentAnimationNames);
-  const filtered = [...(category ? items.filter((item) => item.category === category) : items)].sort((left, right) => {
+  const gsapItems = items.filter((item) => item.engine?.name.toLowerCase() === "gsap");
+  const kindItems = gsapItems.filter((item) => item.kind === libraryKind);
+  const animationCount = gsapItems.filter((item) => item.kind === "animation").length;
+  const effectCount = gsapItems.filter((item) => item.kind === "effect").length;
+  const pluginName = (item: HyperframesCatalogItem) => item.engine?.plugins?.[0] ?? "GSAP Core";
+  const plugins = Array.from(new Set(kindItems.map(pluginName)));
+  const filtered = [...kindItems.filter((item) => (
+    (!category || item.category === category)
+    && (!plugin || pluginName(item) === plugin)
+  ))].sort((left, right) => {
     const leftIndex = recentAnimationNames.indexOf(left.name);
     const rightIndex = recentAnimationNames.indexOf(right.name);
     if (leftIndex === -1 && rightIndex === -1) return 0;
@@ -691,7 +722,7 @@ function AnimationCatalogStrip({
     if (rightIndex === -1) return -1;
     return leftIndex - rightIndex;
   });
-  const categories = ANIMATION_CATEGORY_ORDER.filter((id) => items.some((item) => item.category === id));
+  const categories = ANIMATION_CATEGORY_ORDER.filter((id) => kindItems.some((item) => item.category === id));
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -719,13 +750,42 @@ function AnimationCatalogStrip({
 
   return (
     <>
-      <section className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3" aria-label={t("new_conversation.animations.title")}>
+      <section className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3" aria-label={t("new_conversation.animations.gsap_library")}>
       <div className="flex items-start justify-between gap-3 px-0.5">
         <div>
-          <p className="text-[13px] font-medium text-foreground">{t("new_conversation.animations.title")}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{t("new_conversation.animations.subtitle")}</p>
+          <p className="text-[13px] font-medium text-foreground">
+            {libraryKind === "effect" ? t("new_conversation.animations.effect_library") : t("new_conversation.animations.animation_library")}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {t("new_conversation.animations.gsap_summary", { total: gsapItems.length, animations: animationCount, effects: effectCount })}
+          </p>
         </div>
-        <span className={cn("shrink-0 rounded-full px-2 py-1 text-[11px] font-medium", selected.length ? "bg-primary/10 text-primary" : "bg-background text-muted-foreground")}>{t("new_conversation.animations.selected", { count: selected.length })}</span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-700">{t("new_conversation.animations.catalog_synced")}</span>
+          <span className={cn("rounded-full px-2 py-1 text-[11px] font-medium", selected.length ? "bg-primary/10 text-primary" : "bg-background text-muted-foreground")}>{t("new_conversation.animations.selected", { count: selected.length })}</span>
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-2 rounded-lg bg-background p-1">
+        {HYPERFRAMES_LIBRARY_KINDS.map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            onClick={() => {
+              setLibraryKind(kind);
+              setCategory(null);
+              setPlugin(null);
+            }}
+            className={cn("h-7 rounded-md text-[11px] font-medium transition-colors", libraryKind === kind ? "bg-foreground text-background shadow-sm" : "text-muted-foreground hover:text-foreground")}
+          >
+            {kind === "animation"
+              ? t("new_conversation.animations.animation_tab", { count: animationCount })
+              : t("new_conversation.animations.effect_tab", { count: effectCount })}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/70 px-2.5 py-1.5 text-[10px] text-muted-foreground">
+        <span>{t("new_conversation.animations.coverage", { count: kindItems.length })}</span>
+        <span>{t("new_conversation.animations.engine_version", { version: kindItems[0]?.engine?.version ?? "3" })}</span>
       </div>
       <div className="mt-2 flex gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button type="button" onClick={() => setCategory(null)} className={cn("h-6 shrink-0 rounded-full px-2.5 text-[10px]", category === null ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:text-foreground")}>{t("new_conversation.animations.all")}</button>
@@ -733,6 +793,14 @@ function AnimationCatalogStrip({
           <button key={id} type="button" onClick={() => setCategory(id)} className={cn("h-6 shrink-0 rounded-full px-2.5 text-[10px]", category === id ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:text-foreground")}>{ANIMATION_CATEGORY_LABELS[id]?.[locale] ?? id}</button>
         ))}
       </div>
+      {plugins.length > 1 ? (
+        <div className="flex gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button type="button" onClick={() => setPlugin(null)} className={cn("h-6 shrink-0 rounded-full border px-2.5 text-[10px]", plugin === null ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700" : "border-border bg-background text-muted-foreground hover:text-foreground")}>{t("new_conversation.animations.all_plugins")}</button>
+          {plugins.map((name) => (
+            <button key={name} type="button" onClick={() => setPlugin(name)} className={cn("h-6 shrink-0 rounded-full border px-2.5 text-[10px]", plugin === name ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700" : "border-border bg-background text-muted-foreground hover:text-foreground")}>{name}</button>
+          ))}
+        </div>
+      ) : null}
       {loading ? (
         <div className="flex h-[112px] items-center justify-center text-xs text-muted-foreground"><LoaderCircle className="mr-2 size-4 animate-spin" />{t("new_conversation.animations.loading")}</div>
       ) : error === "empty_catalog" ? (

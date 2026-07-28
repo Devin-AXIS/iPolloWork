@@ -1,0 +1,66 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "gsap-scrolltrigger-story",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "ScrollTrigger Story",
+  "description": "A pinned product story that reveals layered cards with GSAP ScrollTrigger.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "tags": ["scroll", "scroll-trigger", "effect", "showcase"],
+  "engine": {
+    "name": "gsap",
+    "version": "3.15.0",
+    "seekable": true,
+    "plugins": ["ScrollTrigger"]
+  },
+  "files": [
+    {
+      "path": "gsap-scrolltrigger-story.html",
+      "target": "compositions/gsap-scrolltrigger-story.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "backgroundColor",
+      "label": "Background color",
+      "type": "color",
+      "default": "#07111F",
+      "update": "live"
+    },
+    {
+      "id": "accentColor",
+      "label": "Accent color",
+      "type": "color",
+      "default": "#62F6B5",
+      "update": "live"
+    },
+    {
+      "id": "distance",
+      "label": "Reveal distance",
+      "type": "number",
+      "default": 120,
+      "min": 20,
+      "max": 320,
+      "step": 10,
+      "unit": "px",
+      "update": "rebuild"
+    },
+    {
+      "id": "duration",
+      "label": "Duration",
+      "type": "number",
+      "default": 8,
+      "min": 2,
+      "max": 20,
+      "step": 0.5,
+      "unit": "s",
+      "update": "rebuild"
+    }
+  ],
+  "agentPrompt": "Use the ScrollTrigger Story composition for a layered, scroll-led product reveal. Preserve its pinned depth, card sequence, and deterministic timeline."
+}
