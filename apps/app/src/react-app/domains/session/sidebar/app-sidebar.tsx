@@ -22,7 +22,6 @@ import {
   FolderOpen,
   Tag,
   UserRound,
-  Building2,
 } from "lucide-react";
 import { LazyMotion, Reorder, domMax, m, useDragControls } from "motion/react";
 
@@ -114,8 +113,7 @@ import { WorkspaceIcon } from "../../../design-system/workspace-icon";
 import { MarbleAvatar } from "../../../design-system/marble-avatar";
 import { getSessionActivityStatusLabel, type SessionActivityStatus } from "../status/session-activity-store";
 import { NotificationBell } from "../../../shell/notification-center";
-import { readEnterpriseConnections, type EnterpriseConnection } from "../../../../app/lib/enterprise-connections";
-import { EnterpriseServerDialog } from "./enterprise-server-dialog";
+import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 
 interface SessionStatusIndicatorProps {
   className?: string;
@@ -630,6 +628,7 @@ function isSessionActivityStatus(status: string | undefined): status is SessionA
 }
 
 export function AppSidebar(props: AppSidebarProps) {
+  const activeEnterprise = useActiveEnterpriseConnection();
   const [expandedWorkspaceIds, setExpandedWorkspaceIds] = React.useState<Set<string>>(
     () => new Set(),
   );
@@ -638,11 +637,6 @@ export function AppSidebar(props: AppSidebarProps) {
     () => new Set(),
   );
   const [language, setLanguage] = React.useState<Language>(() => currentLocale());
-  const [enterpriseDialogOpen, setEnterpriseDialogOpen] = React.useState(false);
-  const [enterpriseConnection, setEnterpriseConnection] = React.useState<EnterpriseConnection | null>(
-    () => readEnterpriseConnections()[0] ?? null,
-  );
-
   const switchLanguage = React.useCallback((nextLanguage: Language) => {
     setLanguage(nextLanguage);
     setLocale(nextLanguage);
@@ -765,7 +759,6 @@ export function AppSidebar(props: AppSidebarProps) {
 
   const brandLogoUrl = useBrandLogoUrl();
   const brandAppName = useBrandAppName();
-  const hasManagedBrand = brandLogoUrl || brandAppName !== "iPolloWork";
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -783,21 +776,18 @@ export function AppSidebar(props: AppSidebarProps) {
               title={t("sidebar.collapse")}
             />
           </div>
-          <div className="flex w-full items-center justify-between gap-3 px-3">
-            {hasManagedBrand && brandLogoUrl ? (
+          <div className="flex h-14 shrink-0 items-center justify-between gap-3 px-3">
+            {brandLogoUrl ? (
               <img
                 src={brandLogoUrl}
                 alt={`${brandAppName} logo`}
-                className="h-3.5 w-auto max-w-[140px] object-contain object-left"
+                className="max-h-9 w-auto max-w-[140px] object-contain object-left"
                 data-testid="brand-logo"
               />
             ) : (
-              <img
-                src={publicAssetUrl("sidebar-icon/ipollo-work.svg")}
-                alt="iPollo Work"
-                className="h-3.5 w-auto max-w-[140px] object-contain object-left"
-                data-testid="brand-logo"
-              />
+              <span className="truncate text-sm font-semibold" data-testid="brand-app-name">
+                {brandAppName}
+              </span>
             )}
             {props.onOpenSessionSearch ? (
               <button
@@ -887,10 +877,12 @@ export function AppSidebar(props: AppSidebarProps) {
                 <SidebarMenuButton
                   onClick={props.onOpenAccount}
                   className="h-9 gap-2 rounded-lg px-2"
-                  aria-label={props.account.name || props.account.email || t("settings.tab_cloud_account")}
+                  aria-label={activeEnterprise?.name || props.account.name || props.account.email || t("settings.tab_cloud_account")}
                 >
-                  <MarbleAvatar seed={props.account.email || props.account.name || "ipollowork"} className="size-5 shrink-0 rounded-full" />
-                  <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">{props.account.name || props.account.email}</span>
+                  <MarbleAvatar seed={activeEnterprise?.id || props.account.email || props.account.name || "ipollowork"} className="size-5 shrink-0 rounded-full" />
+                  <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
+                    {activeEnterprise?.shortName || props.account.name || props.account.email}
+                  </span>
                 </SidebarMenuButton>
               ) : (
                 <SidebarMenuButton
@@ -914,13 +906,6 @@ export function AppSidebar(props: AppSidebarProps) {
                   <Settings className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="end" className="w-44 min-w-44">
-                  <DropdownMenuItem onClick={() => setEnterpriseDialogOpen(true)}>
-                    <Building2 className="size-4" />
-                    {enterpriseConnection
-                      ? t("enterprise_connection.connected_menu", { name: enterpriseConnection.shortName })
-                      : t("enterprise_connection.menu")}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => props.onOpenSettings("/settings/general")}>
                     <Settings className="size-4" />
                     {t("status.settings")}
@@ -960,11 +945,6 @@ export function AppSidebar(props: AppSidebarProps) {
             event.preventDefault();
           } : undefined}
           onPointerDown={props.onStartResize}
-        />
-        <EnterpriseServerDialog
-          open={enterpriseDialogOpen}
-          onOpenChange={setEnterpriseDialogOpen}
-          onConnected={setEnterpriseConnection}
         />
       </Sidebar>
     </SidebarContext.Provider>

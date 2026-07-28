@@ -135,6 +135,8 @@ export type iPolloWorkSessionSnapshot = {
     | { type: "retry"; attempt: number; message: string; next: number };
 };
 
+export type iPolloWorkResourceScope = "personal" | `enterprise:${string}`;
+
 export type iPolloWorkPluginItem = {
   spec: string;
   source: "config" | "dir.project" | "dir.global";
@@ -1070,7 +1072,7 @@ async function fetchWithTimeout(
 async function requestJson<T>(
   baseUrl: string,
   path: string,
-  options: { method?: string; token?: string; hostToken?: string; body?: unknown; timeoutMs?: number } = {},
+  options: { method?: string; token?: string; hostToken?: string; headers?: Record<string, string>; body?: unknown; timeoutMs?: number } = {},
 ): Promise<T> {
   const url = `${baseUrl}${path}`;
   const fetchImpl = resolveFetch(url);
@@ -1079,7 +1081,7 @@ async function requestJson<T>(
     url,
     {
       method: options.method ?? "GET",
-      headers: buildHeaders(options.token, options.hostToken),
+      headers: buildHeaders(options.token, options.hostToken, options.headers),
       body: options.body ? JSON.stringify(options.body) : undefined,
     },
     options.timeoutMs ?? DEFAULT_IPOLLOWORK_SERVER_TIMEOUT_MS,
@@ -1121,7 +1123,7 @@ async function requestMultipartRaw(
 async function requestBinary(
   baseUrl: string,
   path: string,
-  options: { method?: string; token?: string; hostToken?: string; timeoutMs?: number; direct?: boolean } = {},
+  options: { method?: string; token?: string; hostToken?: string; headers?: Record<string, string>; timeoutMs?: number; direct?: boolean } = {},
 ): Promise<{ data: ArrayBuffer; contentType: string | null; filename: string | null }>{
   const url = `${baseUrl}${path}`;
   const fetchImpl = options.direct ? globalThis.fetch : resolveFetch(url);
@@ -1130,7 +1132,7 @@ async function requestBinary(
     url,
     {
       method: options.method ?? "GET",
-      headers: buildAuthHeaders(options.token, options.hostToken),
+      headers: buildAuthHeaders(options.token, options.hostToken, options.headers),
     },
     options.timeoutMs ?? DEFAULT_IPOLLOWORK_SERVER_TIMEOUT_MS,
   );
@@ -1182,6 +1184,9 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
   const token = options.token;
   const hostToken = options.hostToken;
+  const resourceScopeHeaders = (scope: iPolloWorkResourceScope = "personal") => ({
+    "X-iPolloWork-Resource-Scope": scope,
+  });
 
   const timeouts = {
     health: 3_000,
@@ -1240,7 +1245,12 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         timeoutMs: timeouts.binary,
       }),
     listWorkspaces: () => requestJson<iPolloWorkWorkspaceList>(baseUrl, "/workspaces", { token, hostToken, timeoutMs: timeouts.listWorkspaces }),
-    createLocalWorkspace: (payload: { folderPath: string; name: string; preset: string }) =>
+    createLocalWorkspace: (payload: {
+      folderPath: string;
+      name: string;
+      preset: string;
+      workContextId?: `enterprise:${string}` | null;
+    }) =>
       requestJson<WorkspaceList>(baseUrl, "/workspaces/local", {
         token,
         hostToken,
@@ -1250,6 +1260,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       }),
     createRemoteWorkspace: (payload: {
       baseUrl: string;
+      workContextId?: `enterprise:${string}` | null;
       ipolloworkHostUrl?: string | null;
       ipolloworkToken?: string | null;
       ipolloworkWorkspaceId?: string | null;
@@ -1296,13 +1307,13 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
         { token, hostToken, method: "DELETE", timeoutMs: timeouts.deleteSession },
       ),
-    listTemplates: (workspaceId: string) =>
-      requestJson<{ items: TemplateCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates`, { token, hostToken }),
+    listTemplates: (workspaceId: string, scope: iPolloWorkResourceScope = "personal") =>
+      requestJson<{ items: TemplateCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates`, { token, hostToken, headers: resourceScopeHeaders(scope) }),
     listHyperframesCatalog: (workspaceId: string) =>
       requestJson<{ items: HyperframesCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/hyperframes-catalog`, { token, hostToken }),
-    installTemplate: (workspaceId: string, templateId: string) =>
-      requestJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/install`, { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceImport }),
-    importTemplate: (workspaceId: string, file: File, category?: TemplateCategory) =>
+    installTemplate: (workspaceId: string, templateId: string, scope: iPolloWorkResourceScope = "personal") =>
+      requestJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/install`, { token, hostToken, method: "POST", headers: resourceScopeHeaders(scope), timeoutMs: timeouts.workspaceImport }),
+    importTemplate: (workspaceId: string, file: File, category?: TemplateCategory, scope: iPolloWorkResourceScope = "personal") =>
       requestRawJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/import`, {
         token,
         hostToken,
@@ -1310,24 +1321,26 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         headers: {
           "Content-Type": "application/vnd.ipollowork-template+zip",
           "X-iPolloWork-Filename": encodeURIComponent(file.name),
+          ...resourceScopeHeaders(scope),
           ...(category ? { "X-iPolloWork-Template-Category": category } : {}),
         },
         timeoutMs: timeouts.workspaceImport,
       }),
-    saveTemplateFromSession: (workspaceId: string, input: { sessionId: string; category: TemplateManifestV1["category"]; title: string; description?: string; subcategory?: string; style?: TemplateManifestV1["style"]; tags?: string[] }) =>
+    saveTemplateFromSession: (workspaceId: string, input: { sessionId: string; category: TemplateManifestV1["category"]; title: string; description?: string; subcategory?: string; style?: TemplateManifestV1["style"]; tags?: string[] }, scope: iPolloWorkResourceScope = "personal") =>
       requestJson<{ item: TemplateCatalogItem }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/from-session`, {
         token,
         hostToken,
         method: "POST",
         body: input,
+        headers: resourceScopeHeaders(scope),
         timeoutMs: timeouts.workspaceImport,
       }),
-    uninstallTemplate: (workspaceId: string, templateId: string) =>
-      requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}`, { token, hostToken, method: "DELETE", timeoutMs: timeouts.workspaceImport }),
-    getTemplateCover: (workspaceId: string, templateId: string) =>
-      requestBinary(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/cover`, { token, hostToken, direct: true }),
-    materializeTemplate: (workspaceId: string, templateId: string, sessionId: string, brief?: unknown) =>
-      requestJson<{ state: TemplateSessionState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/materialize`, { token, hostToken, method: "POST", body: { sessionId, brief }, timeoutMs: timeouts.workspaceImport }),
+    uninstallTemplate: (workspaceId: string, templateId: string, scope: iPolloWorkResourceScope = "personal") =>
+      requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}`, { token, hostToken, method: "DELETE", headers: resourceScopeHeaders(scope), timeoutMs: timeouts.workspaceImport }),
+    getTemplateCover: (workspaceId: string, templateId: string, scope: iPolloWorkResourceScope = "personal") =>
+      requestBinary(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/cover`, { token, hostToken, headers: resourceScopeHeaders(scope), direct: true }),
+    materializeTemplate: (workspaceId: string, templateId: string, sessionId: string, brief?: unknown, scope: iPolloWorkResourceScope = "personal") =>
+      requestJson<{ state: TemplateSessionState; manifest: TemplateManifestV1 }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/${encodeURIComponent(templateId)}/materialize`, { token, hostToken, method: "POST", headers: resourceScopeHeaders(scope), body: { sessionId, brief }, timeoutMs: timeouts.workspaceImport }),
     getTemplateSession: (workspaceId: string, sessionId: string) =>
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}`, { token, hostToken }),
     adoptLegacyVideoSession: (workspaceId: string, sessionId: string) =>

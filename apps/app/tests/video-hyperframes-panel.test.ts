@@ -160,7 +160,7 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
-    expect(sessionRouteSource).toContain("[envSystemContext, videoSystemContext, capabilitySystemContext]");
+    expect(sessionRouteSource).toContain("[envSystemContext, videoSystemContext, designSystemContext, capabilitySystemContext]");
   });
 
   test("gives the agent the same session-scoped project as the Studio", () => {

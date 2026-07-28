@@ -307,10 +307,12 @@ export type WorkspaceCreateInput = {
   folderPath: string;
   name?: string | null;
   preset?: string | null;
+  workContextId?: `enterprise:${string}` | null;
 };
 
 export type WorkspaceCreateRemoteInput = {
   baseUrl: string;
+  workContextId?: `enterprise:${string}` | null;
   remoteType?: "ipollowork" | "opencode" | null;
   directory?: string | null;
   displayName?: string | null;

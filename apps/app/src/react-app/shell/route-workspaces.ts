@@ -146,6 +146,7 @@ export function mergeRouteWorkspaces(
             ? workspace.displayName
             : match.displayName,
           name: match.name?.trim() ? match.name : workspace.name,
+          workContextId: workspace.workContextId ?? match.workContextId,
         }
       : workspace;
     return {

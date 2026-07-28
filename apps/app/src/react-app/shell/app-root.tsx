@@ -140,31 +140,6 @@ function DenSigninGate({ children }: DenSigninGateProps) {
     requireSignin,
   ]);
 
-  // After a fresh sign-in, navigate to the onboarding page so the
-  // user sees what their org provides.
-  // Poll for activeOrgId (set asynchronously by refreshOrgs) rather
-  // than using a fixed delay — handles both fast and slow org lookups.
-  useEffect(() => {
-    const handler = (event: WindowEventMap[typeof denSessionUpdatedEvent]) => {
-      if (event.detail?.status !== "success") return;
-      let attempts = 0;
-      const check = () => {
-        attempts++;
-        const settings = readDenSettings();
-        if (settings.authToken?.trim() && settings.activeOrgId?.trim()) {
-          navigate("/onboarding", { replace: true });
-        } else if (attempts < 10) {
-          // Org not selected yet — retry (max ~5 seconds)
-          setTimeout(check, 500);
-        }
-      };
-      // First check after a short delay for the auth to settle
-      setTimeout(check, 500);
-    };
-    window.addEventListener(denSessionUpdatedEvent, handler);
-    return () => window.removeEventListener(denSessionUpdatedEvent, handler);
-  }, [navigate]);
-
   useEffect(() => {
     if (denAuth.status !== "unavailable") {
       setCloudUnavailableDismissed(false);

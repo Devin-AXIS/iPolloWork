@@ -751,11 +751,19 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
   }
 
   function normalizeWorkspaceEntry(input) {
+    const workspacePath = String(input.path ?? "").replace(/\\/g, "/");
+    const enterprisePathMatch = workspacePath.match(/(?:^|\/)\.ipollowork\/work-contexts\/(ent_[A-Za-z0-9_-]+)(?:\/|$)/);
+    const workContextId = typeof input.workContextId === "string" && /^enterprise:ent_[A-Za-z0-9_-]+$/.test(input.workContextId.trim())
+      ? input.workContextId.trim()
+      : enterprisePathMatch
+        ? `enterprise:${enterprisePathMatch[1]}`
+        : null;
     return {
       id: String(input.id),
       name: String(input.name ?? "Workspace"),
       path: String(input.path ?? ""),
       preset: String(input.preset ?? "starter"),
+      workContextId,
       workspaceType: input.workspaceType === "remote" ? "remote" : "local",
       remoteType: input.remoteType ?? null,
       baseUrl: input.baseUrl ?? null,
@@ -867,7 +875,9 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     }
     const idMap = new Map();
     const migratedWorkspaces = workspaces.map((entry) => {
-      const workspace = entry && typeof entry === "object" ? entry : normalizeWorkspaceEntry(entry ?? {});
+      const rawWorkspace = entry && typeof entry === "object" ? entry : {};
+      const workspace = normalizeWorkspaceEntry(rawWorkspace);
+      if (rawWorkspace.workContextId !== workspace.workContextId) changed = true;
       if (workspace.workspaceType !== "remote" || workspace.remoteType !== "ipollowork") return workspace;
 
       const remoteWorkspaceId = String(workspace.ipolloworkWorkspaceId ?? "").trim()
@@ -976,6 +986,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       displayName: String(input.name ?? (path.basename(folderPath) || "Workspace")),
       path: folderPath,
       preset,
+      workContextId: input.workContextId,
       workspaceType: "local",
     });
     await mkdir(path.join(folderPath, ".opencode"), { recursive: true });
@@ -1041,6 +1052,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       displayName: input.displayName ?? null,
       path: directory ?? "",
       preset: "remote",
+      workContextId: input.workContextId,
       workspaceType: "remote",
       remoteType,
       baseUrl: remoteType === "ipollowork" ? (ipolloworkHostUrl ?? baseUrl) : baseUrl,

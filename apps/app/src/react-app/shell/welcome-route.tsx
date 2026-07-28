@@ -6,6 +6,7 @@ import { t } from "../../i18n";
 import {
   pickDirectory,
   resolveWorkspaceListSelectedId,
+  workspaceCreate,
   workspaceCreateRemote,
   workspaceSetRuntimeActive,
   workspaceSetSelected,
@@ -14,6 +15,7 @@ import {
 } from "../../app/lib/desktop";
 import { isDesktopRuntime } from "../../app/utils";
 import { createClient, unwrap } from "../../app/lib/opencode";
+import { PERSONAL_WORK_CONTEXT_ID, readActiveWorkContextId } from "../../app/lib/work-context";
 import { useLocal } from "../kernel/local-provider";
 import { usePlatform } from "../kernel/platform";
 import { CloudSignInComingSoonDialog } from "../domains/cloud/cloud-signin-coming-soon-dialog";
@@ -183,6 +185,8 @@ export function WelcomeRoute() {
       dispatch({ type: "create:start" });
       try {
         const workspaceName = folderNameFromPath(folder);
+        const activeWorkContextId = readActiveWorkContextId();
+        const workContextId = activeWorkContextId === PERSONAL_WORK_CONTEXT_ID ? null : activeWorkContextId;
         let list: WorkspaceList | null = null;
         let serverBaseUrl = "";
         let serverToken = "";
@@ -199,6 +203,7 @@ export function WelcomeRoute() {
               folderPath: folder,
               name: workspaceName,
               preset: "starter",
+              workContextId,
             });
             serverBaseUrl = normalizedBaseUrl;
             serverToken = resolvedToken;
@@ -208,6 +213,9 @@ export function WelcomeRoute() {
         }
         if (!list) {
           throw new Error("iPolloWork server is unavailable. Start or reconnect the server before creating a workspace.");
+        }
+        if (isDesktopRuntime()) {
+          await workspaceCreate({ folderPath: folder, name: workspaceName, preset: "starter", workContextId }).catch(() => undefined);
         }
         const createdId =
           resolveWorkspaceListSelectedId(list) ||
@@ -249,7 +257,9 @@ export function WelcomeRoute() {
               label: projectLabel,
             });
           }
-          if (targetSessionId) writeLastSessionFor(targetWorkspaceId, targetSessionId);
+          if (targetSessionId) {
+            writeLastSessionFor(targetWorkspaceId, targetSessionId);
+          }
         }
         markOnboardingComplete();
         dispatch({ type: "close" });
@@ -280,8 +290,10 @@ export function WelcomeRoute() {
       dispatch({ type: "remote:start" });
       try {
         const remoteType: "ipollowork" = "ipollowork";
+        const contextId = readActiveWorkContextId();
         const payload = {
           baseUrl: baseUrlValue,
+          workContextId: contextId === PERSONAL_WORK_CONTEXT_ID ? null : contextId,
           ipolloworkHostUrl: baseUrlValue,
           ipolloworkToken: input.ipolloworkToken?.trim() || null,
           displayName: input.displayName?.trim() || null,

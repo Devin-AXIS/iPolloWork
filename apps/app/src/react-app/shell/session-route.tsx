@@ -17,6 +17,11 @@ import type {
 } from "@opencode-ai/sdk/v2/client";
 
 import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
+import {
+  PERSONAL_WORK_CONTEXT_ID,
+  readActiveWorkContextId,
+  workContextChangedEvent,
+} from "@/app/lib/work-context";
 import { trackSessionActive, trackTaskStarted } from "@/app/lib/den-telemetry";
 import { buildDiagnosticsBundleJson } from "@/app/lib/diagnostics-bundle";
 import { downloadTextAsFile } from "@/app/lib/download";
@@ -41,6 +46,7 @@ import {
   pickDirectory,
   resolveWorkspaceListSelectedId,
   workspaceBootstrap,
+  workspaceCreate,
   workspaceCreateRemote,
   workspaceForget,
   workspaceSetRuntimeActive,
@@ -450,6 +456,7 @@ export function SessionRoute() {
   const restrictionNotice = useRestrictionNotice();
   const [ipolloworkServerHostInfoState, setiPolloWorkServerHostInfoState] = useState<iPolloWorkServerInfo | null>(null);
   const [ipolloworkServerSettingsVersion, setiPolloWorkServerSettingsVersion] = useState(0);
+  const [activeWorkContextId, setActiveWorkContextId] = useState(() => readActiveWorkContextId());
   const {
     navigateToWorkspaceSession,
     routeWorkspaceId,
@@ -497,11 +504,12 @@ export function SessionRoute() {
     handleRemoteWorkspaceConnectionSaved,
     runRemoteWorkspaceConnectionCheck,
   } = useWorkspaceRouteState({
+    workContextId: activeWorkContextId,
     onServerSettingsChanged: () => setiPolloWorkServerSettingsVersion((value) => value + 1),
     onHostInfo: setiPolloWorkServerHostInfoState,
   });
   useSessionMcpMaintenance({
-    cloudSignedIn: denAuth.isSignedIn,
+    cloudSignedIn: denAuth.isSignedIn && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID,
     client: selectedWorkspaceEndpoint?.client ?? null,
     workspaceId: selectedWorkspaceEndpoint?.workspaceId ?? null,
     opencodeClient,
@@ -553,6 +561,11 @@ export function SessionRoute() {
     const handler = () => setDenSessionVersion((v) => v + 1);
     window.addEventListener(denSessionUpdatedEvent, handler);
     return () => window.removeEventListener(denSessionUpdatedEvent, handler);
+  }, []);
+  useEffect(() => {
+    const handler = () => setActiveWorkContextId(readActiveWorkContextId());
+    window.addEventListener(workContextChangedEvent, handler);
+    return () => window.removeEventListener(workContextChangedEvent, handler);
   }, []);
 
   // Provider IDs that were just added — used to highlight them as
@@ -661,6 +674,25 @@ export function SessionRoute() {
     () => toSessionGroups(workspaces, visibleSessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
     [errorsByWorkspaceId, retryingWorkspaceIds, visibleSessionsByWorkspaceId, workspaces],
   );
+  useEffect(() => {
+    if (loading || !selectedWorkspaceId) return;
+    if (selectedSessionId && (visibleSessionsByWorkspaceId[selectedWorkspaceId] ?? []).some((session) => session.id === selectedSessionId)) {
+      return;
+    }
+    const sessions = visibleSessionsByWorkspaceId[selectedWorkspaceId] ?? [];
+    const remembered = readLastSessionFor(selectedWorkspaceId);
+    const targetSessionId = remembered && sessions.some((session) => session.id === remembered)
+      ? remembered
+      : sessions[0]?.id ?? null;
+    if (selectedSessionId === targetSessionId) return;
+    navigateToWorkspaceSession(selectedWorkspaceId, targetSessionId, { replace: true });
+  }, [
+    loading,
+    navigateToWorkspaceSession,
+    selectedSessionId,
+    selectedWorkspaceId,
+    visibleSessionsByWorkspaceId,
+  ]);
   useSessionGroupSync({ workspaces, endpointForWorkspace });
   const selectedWorkspaceGroupState = sessionManagementStore((state) => (
     selectedWorkspaceId ? state.groupsByWorkspace[selectedWorkspaceId] : undefined
@@ -954,7 +986,6 @@ export function SessionRoute() {
     if (!client || !selectedWorkspaceId || !selectedSessionId || !opencodeBaseUrl || !token || !opencodeClient) {
       return null;
     }
-
     // Transient-safety: when the user switches workspaces the URL-driven
     // selectedSessionId may still point at a session from the old workspace
     // for one render tick. Only block rendering when we KNOW the session
@@ -1512,7 +1543,13 @@ export function SessionRoute() {
       );
       let sessionType = type;
       if (templateId) {
-        const materialized = await endpoint.client.materializeTemplate(endpoint.workspaceId, templateId, session.id);
+        const materialized = await endpoint.client.materializeTemplate(
+          endpoint.workspaceId,
+          templateId,
+          session.id,
+          undefined,
+          readActiveWorkContextId(),
+        );
         sessionType = sessionTypeForTemplate(materialized.manifest);
       }
       setSessionType(session.id, sessionType);
@@ -1614,7 +1651,7 @@ export function SessionRoute() {
     ) {
       dismissFirstRunLoader();
     }
-  }, [firstRunLoaderActive, dismissFirstRunLoader, selectedSessionId, routeError, selectedWorkspaceError, errorsByWorkspaceId, loading, selectedWorkspaceId, sessionsByWorkspaceId]);
+  }, [sessionsByWorkspaceId, firstRunLoaderActive, dismissFirstRunLoader, selectedSessionId, routeError, selectedWorkspaceError, errorsByWorkspaceId, loading, selectedWorkspaceId]);
 
   // A workspace without sessions always lands on a fresh chat. This covers
   // first launch and deleting the final conversation; there is no separate
@@ -1630,7 +1667,7 @@ export function SessionRoute() {
     void handleCreateTaskInWorkspace(selectedWorkspaceId).then((createdSessionId) => {
       if (!createdSessionId) firstRunSessionRef.current = false;
     });
-  }, [canCreateSession, selectedSessionId, selectedWorkspaceId, sessionsByWorkspaceId, handleCreateTaskInWorkspace]);
+  }, [canCreateSession, sessionsByWorkspaceId, selectedSessionId, selectedWorkspaceId, handleCreateTaskInWorkspace]);
 
   const {
     commandPaletteOpen,
@@ -1942,11 +1979,12 @@ export function SessionRoute() {
     setCreateWorkspaceError(null);
     try {
       const workspaceName = folderNameFromPath(folder);
+      const workContextId = activeWorkContextId === PERSONAL_WORK_CONTEXT_ID ? null : activeWorkContextId;
       let list: WorkspaceList | null = null;
       let createdOnServer = false;
       if (client) {
         list = await client
-          .createLocalWorkspace({ folderPath: folder, name: workspaceName, preset })
+          .createLocalWorkspace({ folderPath: folder, name: workspaceName, preset, workContextId })
           .then((serverList) => {
             createdOnServer = true;
             return serverList;
@@ -1955,6 +1993,9 @@ export function SessionRoute() {
       }
       if (!list) {
         throw new Error("iPolloWork server is unavailable. Start or reconnect the server before creating a workspace.");
+      }
+      if (isDesktopRuntime()) {
+        await workspaceCreate({ folderPath: folder, name: workspaceName, preset, workContextId }).catch(() => undefined);
       }
       const createdId = resolveWorkspaceListSelectedId(list) || list.workspaces[list.workspaces.length - 1]?.id || "";
       let targetWorkspaceId = createdId;
@@ -2032,7 +2073,7 @@ export function SessionRoute() {
     } finally {
       setCreateWorkspaceBusy(false);
     }
-  }, [baseUrl, client, local, navigateToWorkspaceSession, refreshRouteState, rememberPendingCreatedSession, token]);
+  }, [activeWorkContextId, baseUrl, client, local, navigateToWorkspaceSession, refreshRouteState, rememberPendingCreatedSession, token]);
 
   const createWorkspaceControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "workspace.create",
@@ -2069,6 +2110,7 @@ export function SessionRoute() {
       const remoteType: "ipollowork" = "ipollowork";
       const payload = {
         baseUrl: baseUrlValue,
+        workContextId: activeWorkContextId === PERSONAL_WORK_CONTEXT_ID ? null : activeWorkContextId,
         ipolloworkHostUrl: baseUrlValue,
         ipolloworkToken: input.ipolloworkToken?.trim() || null,
         displayName: input.displayName?.trim() || null,
@@ -2103,7 +2145,7 @@ export function SessionRoute() {
     } finally {
       setCreateWorkspaceRemoteBusy(false);
     }
-  }, [client, local, refreshRouteState]);
+  }, [activeWorkContextId, client, local, refreshRouteState]);
 
   return (
     <WorkspaceProvider
@@ -2456,7 +2498,11 @@ export function SessionRoute() {
           void handleCreateTaskInWorkspace(selectedWorkspaceId);
         }
       }}
-      onOpenSession={(workspaceId, sessionId) => navigateToWorkspaceSession(workspaceId, sessionId)}
+      onOpenSession={(workspaceId, sessionId) => {
+        writeActiveWorkspaceId(workspaceId);
+        writeLastSessionFor(workspaceId, sessionId);
+        navigateToWorkspaceSession(workspaceId, sessionId);
+      }}
       onOpenSettings={(route) => handleOpenSettings(route ?? "/settings/preferences")}
       onOpenHelp={handleOpenHelp}
       onOpenModelPicker={() => {
@@ -2495,7 +2541,11 @@ export function SessionRoute() {
       onClose={() => setSessionSearchOpen(false)}
       sessions={paletteSessionOptions}
       fetchMessages={sessionSearchFetcher}
-      onOpenSession={(workspaceId, sessionId) => navigateToWorkspaceSession(workspaceId, sessionId)}
+      onOpenSession={(workspaceId, sessionId) => {
+        writeActiveWorkspaceId(workspaceId);
+        writeLastSessionFor(workspaceId, sessionId);
+        navigateToWorkspaceSession(workspaceId, sessionId);
+      }}
     />
     <ModelPickerModal
       open={modelPicker.open}
