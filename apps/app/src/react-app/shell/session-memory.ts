@@ -4,16 +4,9 @@
  * their spot when switching between shells during the port.
  */
 
-import {
-  PERSONAL_WORK_CONTEXT_ID,
-  readActiveWorkContextId,
-  readLastWorkspaceForWorkContext,
-  rememberWorkspaceForWorkContext,
-} from "@/app/lib/work-context";
-
 const ACTIVE_WORKSPACE_KEY = "ipollowork.react.activeWorkspace";
 const SESSION_BY_WORKSPACE_KEY = "ipollowork.react.sessionByWorkspace";
-const WORKSPACE_ORDER_KEY = "ipollowork.react.workspaceOrder";
+const LEGACY_WORKSPACE_ORDER_KEY = "ipollowork.react.workspaceOrder";
 const WORKSPACE_PROJECT_DIMENSION_KEY = "ipollowork.react.workspaceProjectDimension";
 
 function safeGet(key: string): string | null {
@@ -39,40 +32,12 @@ function safeSet(key: string, value: string | null): void {
 }
 
 export function readActiveWorkspaceId(): string | null {
-  const contextId = readActiveWorkContextId();
-  const remembered = readLastWorkspaceForWorkContext(contextId);
-  if (remembered) return remembered;
-  if (contextId !== PERSONAL_WORK_CONTEXT_ID) return null;
   return safeGet(ACTIVE_WORKSPACE_KEY)?.trim() || null;
 }
 
 export function writeActiveWorkspaceId(id: string | null): void {
   const normalized = id?.trim() || null;
-  rememberWorkspaceForWorkContext(readActiveWorkContextId(), normalized);
   safeSet(ACTIVE_WORKSPACE_KEY, normalized);
-}
-
-export function readWorkspaceOrderIds(): string[] {
-  const raw = safeGet(WORKSPACE_ORDER_KEY);
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((value) => {
-      const trimmed = typeof value === "string" ? value.trim() : "";
-      return trimmed ? [trimmed] : [];
-    });
-  } catch {
-    return [];
-  }
-}
-
-export function writeWorkspaceOrderIds(ids: string[]): void {
-  const normalized = ids.flatMap((id) => {
-    const trimmed = id.trim();
-    return trimmed ? [trimmed] : [];
-  });
-  safeSet(WORKSPACE_ORDER_KEY, normalized.length ? JSON.stringify(normalized) : null);
 }
 
 type SessionByWorkspace = Record<string, string>;
@@ -193,7 +158,7 @@ export function resetFirstRunClientState(): void {
     for (const key of [
       ACTIVE_WORKSPACE_KEY,
       SESSION_BY_WORKSPACE_KEY,
-      WORKSPACE_ORDER_KEY,
+      LEGACY_WORKSPACE_ORDER_KEY,
       WORKSPACE_PROJECT_DIMENSION_KEY,
       ...ONBOARDING_FLAG_KEYS,
     ]) {
@@ -208,26 +173,5 @@ export function resetFirstRunClientState(): void {
     }
   } catch {
     // ignore storage errors (quota, privacy modes, etc.)
-  }
-}
-
-export function forgetWorkspaceMemory(workspaceId: string): void {
-  const wsId = workspaceId?.trim();
-  if (!wsId) return;
-  const map = readSessionByWorkspaceMap();
-  if (wsId in map) {
-    delete map[wsId];
-    safeSet(SESSION_BY_WORKSPACE_KEY, Object.keys(map).length ? JSON.stringify(map) : null);
-  }
-  const dimensionMap = readWorkspaceProjectDimensionMap();
-  if (wsId in dimensionMap) {
-    delete dimensionMap[wsId];
-    safeSet(WORKSPACE_PROJECT_DIMENSION_KEY, Object.keys(dimensionMap).length ? JSON.stringify(dimensionMap) : null);
-  }
-  const active = readActiveWorkspaceId();
-  if (active === wsId) writeActiveWorkspaceId(null);
-  const workspaceOrderIds = readWorkspaceOrderIds();
-  if (workspaceOrderIds.includes(wsId)) {
-    writeWorkspaceOrderIds(workspaceOrderIds.filter((id) => id !== wsId));
   }
 }

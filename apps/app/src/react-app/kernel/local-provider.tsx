@@ -47,7 +47,7 @@ export type LocalPreferences = {
   /**
    * Set to true after the user completes the welcome/onboarding flow
    * (creates or connects their first workspace). When false and the
-   * workspace list is empty, the app redirects to /welcome.
+   * workspace list is empty, the app stays on the current space error state.
    */
   hasCompletedOnboarding: boolean;
   /**

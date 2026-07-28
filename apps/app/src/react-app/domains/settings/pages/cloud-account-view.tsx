@@ -168,7 +168,7 @@ function DenSignedOutPanel({
 }
 
 export function CloudAccountView({ developerMode, session }: CloudAccountViewProps) {
-  const { activeOrganization, isSignedIn, statusMessage } = useCloudSession();
+  const { isSignedIn, statusMessage } = useCloudSession();
 
   return (
     <SettingsStack>
@@ -217,11 +217,7 @@ export function CloudAccountView({ developerMode, session }: CloudAccountViewPro
 
         {isSignedIn ? (
           <CloudAccountSection
-            activeOrgId={activeOrganization?.id ?? ""}
             authBusy={session.authBusy}
-            orgs={session.orgs}
-            orgsBusy={session.orgsBusy}
-            orgsError={session.orgsError}
             sessionBusy={session.sessionBusy}
             onSignOut={session.onSignOut}
           />
