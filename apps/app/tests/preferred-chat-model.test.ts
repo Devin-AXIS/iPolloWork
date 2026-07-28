@@ -8,12 +8,22 @@ describe("resolvePreferredSelectableChatModel", () => {
     { providerID: "tokenstar", modelIDs: ["gpt-5.6-sol", "kimi-k2.7-code"] },
   ];
 
-  test("moves the implicit Big Pickle default to a connected user provider", () => {
+  test("keeps the available OpenCode Zen default", () => {
     expect(
       resolvePreferredSelectableChatModel({
         providers,
         defaults: { tokenstar: "kimi-k2.7-code" },
         current: { providerID: "opencode", modelID: "big-pickle" },
+      }),
+    ).toEqual({ providerID: "opencode", modelID: "big-pickle" });
+  });
+
+  test("recovers an unavailable model with a connected user provider", () => {
+    expect(
+      resolvePreferredSelectableChatModel({
+        providers,
+        defaults: { tokenstar: "kimi-k2.7-code" },
+        current: { providerID: "missing", modelID: "missing-model" },
       }),
     ).toEqual({ providerID: "tokenstar", modelID: "kimi-k2.7-code" });
   });
