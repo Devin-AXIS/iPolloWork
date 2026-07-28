@@ -49,3 +49,10 @@ export function mergeTemplateTokenCss(existingCss: string | undefined, generated
   const preserved = removeLegacyIpwRootDeclarations(existing).trim();
   return preserved ? `${generated}\n\n${preserved}\n` : `${generated}\n`;
 }
+
+export function refreshTemplateTokenCss(existingCss: string | undefined, generatedThemeCss: string) {
+  const currentValues = parseDesignTokenValues(existingCss);
+  let refreshed = mergeTemplateTokenCss(existingCss, generatedThemeCss);
+  for (const [name, value] of Object.entries(currentValues)) refreshed = replaceDesignTokenValue(refreshed, name, value);
+  return refreshed;
+}

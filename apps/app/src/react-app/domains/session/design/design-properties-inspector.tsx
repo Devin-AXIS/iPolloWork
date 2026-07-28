@@ -24,7 +24,7 @@ import {
   Palette,
   RotateCw,
   SeparatorHorizontal,
-  SlidersHorizontal,
+  MousePointer2,
   Strikethrough,
   Trash2,
   Underline,
@@ -35,19 +35,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { listSystemFontFamilies } from "@/app/lib/desktop";
 import { cn } from "@/lib/utils";
 import type { DesignField, DesignSelection, DesignStyleField } from "./design-html-runtime";
 import { toggleTransformScale } from "./design-transform";
 import { FALLBACK_FONT_FAMILIES, filterFontFamilyOptions, fontFamilyOptions } from "./font-family-catalog";
 import { displayFontFamily } from "./font-family-display";
+import { DesignColorField } from "./design-color-field";
+import { DesignImageFitSelect, type DesignImageFitMode } from "./design-image-fit-select";
+import { DesignPanelSelect } from "./design-panel-select";
+import panelSelectChevron from "./assets/panel-select-chevron.svg";
 
 type DesignPropertiesInspectorProps = {
-  selection: DesignSelection;
+  selection: DesignSelection | null;
+  activeTab: "element" | "design-system";
   onClose: () => void;
+  onActiveTabChange: (tab: "element" | "design-system") => void;
   onApplyField: (field: DesignField, value: string, remember?: boolean) => void;
+  onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void;
   onChooseReplacementImage: () => void;
+  onChooseBackgroundImage: () => void;
+  children?: React.ReactNode;
 };
 
 const FILL_COLORS = ["#2f6de1", "#111827", "#ffffff", "#7c3aed", "#059669", "#ea580c"];
@@ -61,12 +69,14 @@ const FONT_WEIGHT_PRESETS = [
   { value: "800", label: "Extra bold" },
 ];
 
-export function DesignPropertiesInspector({
+function ElementPropertiesContent({
   selection,
   onClose,
   onApplyField,
+  onApplyFields,
   onChooseReplacementImage,
-}: DesignPropertiesInspectorProps) {
+  onChooseBackgroundImage,
+}: Omit<DesignPropertiesInspectorProps, "selection" | "activeTab" | "onActiveTabChange" | "children"> & { selection: DesignSelection }) {
   const fontSize = numericValue(selection.styles.fontSize, 16);
   const lineHeight = numericValue(selection.styles.lineHeight, 14);
   const letterSpacing = numericValue(selection.styles.letterSpacing, 0);
@@ -74,20 +84,31 @@ export function DesignPropertiesInspector({
   const opacity = Math.round(numericValue(selection.styles.opacity, 1) * 100);
   const shadowIntensity = shadowIntensityValue(selection.styles.boxShadow);
   const fillField = selection.colorField;
+  const backgroundValue = selection.styles[fillField];
+  const [imageFillOpen, setImageFillOpen] = React.useState(false);
+  const fillType = imageFillOpen && selection.tag !== "img" ? "image" : fillTypeFor(selection);
+
+  const applyFillType = (type: FillType) => {
+    if (type === "none") {
+      setImageFillOpen(false);
+      onApplyFields({ backgroundColor: "transparent", backgroundImage: "none" });
+    }
+    if (type === "solid") {
+      setImageFillOpen(false);
+      onApplyFields({ backgroundColor: isTransparentColor(backgroundValue) ? FILL_COLORS[0] ?? "#2f6de1" : backgroundValue, backgroundImage: "none" });
+    }
+    if (type === "gradient") {
+      setImageFillOpen(false);
+      onApplyFields({ backgroundColor: "transparent", backgroundImage: DEFAULT_GRADIENT });
+    }
+    if (type === "image") setImageFillOpen(true);
+  };
 
   const applyPixels = (field: DesignStyleField, value: string) => {
     onApplyField(field, value.trim() && !Number.isNaN(Number(value)) ? `${value}px` : value);
   };
 
-  return (
-    <aside className="w-[310px] shrink-0 overflow-x-hidden overflow-y-auto border-l border-[#e8e9ec] bg-white text-[#202228]" aria-label="Design inspector">
-      <header className="sticky left-0 top-0 z-20 flex h-11 w-full items-center gap-2 border-b border-[#e8e9ec] bg-white !pl-4 !pr-3">
-        <SlidersHorizontal className="size-[18px] shrink-0 text-[#202228]" strokeWidth={1.7} />
-        <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium tracking-[-0.01em]">Design properties</h2>
-        <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg text-[#5f636b] transition-colors hover:bg-[#f3f4f6] hover:text-[#202228]" onClick={onClose} aria-label="Close design properties">
-          <X className="size-[18px]" strokeWidth={1.7} />
-        </button>
-      </header>
+  return <>
 
       <div className="flex h-[52px] items-center border-b border-[#e8e9ec] px-4">
         <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{selection.canEditText ? "Text layer" : `${selection.tag.charAt(0).toUpperCase()}${selection.tag.slice(1).toLowerCase()} layer`}</span>
@@ -168,21 +189,19 @@ export function DesignPropertiesInspector({
 
       <InspectorSection title="Fill">
         <div className="grid grid-cols-4 gap-1.5">
-          <PropertyButton aria-label="No fill" onClick={() => onApplyField(fillField, "transparent")}><Minus /></PropertyButton>
-          <PropertyButton active aria-label="Solid fill"><span className="size-3 rounded-[2px] border border-current" /></PropertyButton>
-          <PropertyButton aria-label="Pattern fill" disabled><Grip /></PropertyButton>
-          {selection.tag === "img" ? (
-            <PropertyButton aria-label="Replace image" onClick={onChooseReplacementImage}><Image /></PropertyButton>
-          ) : (
-            <PropertyButton aria-label="Image fill" disabled><Image /></PropertyButton>
-          )}
+          <PropertyButton active={fillType === "none"} aria-label="No fill" onClick={() => applyFillType("none")}><Minus /></PropertyButton>
+          <PropertyButton active={fillType === "solid"} aria-label="Solid fill" onClick={() => applyFillType("solid")}><span className="size-3 rounded-[2px] border border-current" /></PropertyButton>
+          <PropertyButton active={fillType === "gradient"} aria-label="Gradient fill" onClick={() => applyFillType("gradient")}><Grip /></PropertyButton>
+          <PropertyButton active={fillType === "image"} aria-label="Image fill" onClick={() => applyFillType("image")}><Image /></PropertyButton>
         </div>
-        <ColorField value={selection.styles[fillField] || "#000000"} onChange={(value) => onApplyField(fillField, value)} />
+        {fillType === "solid" ? <ColorField value={backgroundValue || "#000000"} onChange={(value) => onApplyField(fillField, value)} /> : null}
+        {fillType === "gradient" ? <FillSummary swatchClassName="bg-[linear-gradient(180deg,#2e6bdb_0%,#76e3e9_100%)]" label="Gradient" /> : null}
+        {fillType === "image" ? <ImageFillPicker selection={selection} onApplyFields={onApplyFields} onChooseImage={selection.tag === "img" ? onChooseReplacementImage : onChooseBackgroundImage} /> : null}
       </InspectorSection>
 
       <InspectorSection title="Border">
         <div className="grid grid-cols-2 gap-2">
-          <SelectLikeField label="Border style" value={selection.styles.borderStyle || "Solid"} onChange={(value) => onApplyField("borderStyle", value.toLowerCase())} />
+          <BorderStyleField value={selection.styles.borderStyle || "solid"} onChange={(value) => onApplyField("borderStyle", value)} />
           <PropertyField label="Width" value={selection.styles.borderWidth || "0px"} onChange={(value) => onApplyField("borderWidth", value)} />
         </div>
         <ColorField value={selection.styles.borderColor || "#000000"} onChange={(value) => onApplyField("borderColor", value)} />
@@ -200,8 +219,97 @@ export function DesignPropertiesInspector({
           onChange={(value, remember) => onApplyField("boxShadow", shadowWithIntensity(selection.styles.boxShadow, value), remember)}
         />
       </InspectorSection>
+  </>;
+}
+
+export function DesignPropertiesInspector({ selection, activeTab, onClose, onActiveTabChange, children, ...contentProps }: DesignPropertiesInspectorProps) {
+  return (
+    <InspectorShell activeTab={activeTab} onActiveTabChange={onActiveTabChange} onClose={onClose}>
+      {activeTab === "design-system" ? children : selection ? <ElementPropertiesContent selection={selection} onClose={onClose} {...contentProps} /> : (
+        <div className="flex min-h-[180px] flex-col items-center justify-center px-6 text-center text-xs leading-5 text-muted-foreground">
+          <MousePointer2 className="mb-2 size-5" />
+          Click an element in the page to edit it.
+        </div>
+      )}
+    </InspectorShell>
+  );
+}
+
+function InspectorShell({ activeTab, onActiveTabChange, onClose, children }: Pick<DesignPropertiesInspectorProps, "activeTab" | "onActiveTabChange" | "onClose" | "children">) {
+  return (
+    <aside className="flex h-full w-[310px] shrink-0 flex-col overflow-hidden border-l border-[#ebebeb] bg-white text-[#202228]" aria-label="Design inspector">
+      <header className="sticky left-0 top-0 z-20 flex h-[58px] w-full shrink-0 items-center border-b border-[#ebebeb] bg-white !px-4">
+        <div className="flex w-[240px] shrink-0 gap-1">
+          <button type="button" onClick={() => onActiveTabChange("element")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-2 text-[12px] font-semibold leading-none text-[#24262b] transition-colors", activeTab === "element" ? "bg-[#f5f6f9]" : "hover:bg-[#f5f6f9]")} aria-pressed={activeTab === "element"}>Element</button>
+          <button type="button" onClick={() => onActiveTabChange("design-system")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-1 text-[12px] font-semibold leading-none text-[#24262b] transition-colors", activeTab === "design-system" ? "bg-[#f5f6f9]" : "hover:bg-[#f5f6f9]")} aria-pressed={activeTab === "design-system"}>Design System</button>
+        </div>
+        <button type="button" className="absolute right-4 grid size-8 place-items-center rounded-lg text-[#5f636b] transition-colors hover:bg-[#f3f4f6] hover:text-[#202228]" onClick={onClose} aria-label="Close design properties">
+          <X className="size-4" strokeWidth={1.7} />
+        </button>
+      </header>
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        {children}
+      </div>
     </aside>
   );
+}
+
+type FillType = "none" | "solid" | "gradient" | "image";
+
+const DEFAULT_GRADIENT = "linear-gradient(180deg, #2e6bdb 0%, #76e3e9 100%)";
+
+function fillTypeFor(selection: DesignSelection): FillType {
+  if (selection.tag === "img") return "image";
+  const image = selection.styles.backgroundImage.trim();
+  if (/^url\(/i.test(image)) return "image";
+  if (image !== "none" && image) return "gradient";
+  return isTransparentColor(selection.styles.backgroundColor) ? "none" : "solid";
+}
+
+function FillSummary({ swatchClassName, label }: { swatchClassName: string; label: string }) {
+  return <div className="mt-3 flex h-[34px] items-center justify-between rounded-lg bg-[#f5f6f9] px-2 pr-4"><span className="flex items-center gap-2 text-[13px] text-[#24262b]"><span className={cn("size-5 rounded-[4px]", swatchClassName)} />{label}</span><ChevronDown className="size-4 text-[#858a94]" /></div>;
+}
+
+function ImageFillPicker({ selection, onApplyFields, onChooseImage }: { selection: DesignSelection; onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void; onChooseImage: () => void }) {
+  const backgroundSource = selection.styles.backgroundImage.match(/^url\(["']?(.*?)["']?\)$/i)?.[1] ?? (selection.tag === "img" ? selection.source : "");
+  const mode = imageFitMode(selection);
+  const applyMode = (next: ImageFitMode) => onApplyFields(imageModeStyles(selection, next));
+
+  return (
+    <div className="mt-3 space-y-3">
+      <DesignImageFitSelect value={mode} onChange={applyMode} />
+      <div className="relative flex h-[100px] w-full items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(45deg,#929292_25%,transparent_25%,transparent_75%,#929292_75%),linear-gradient(45deg,#929292_25%,#a0a0a0_25%,#a0a0a0_75%,#929292_75%)] bg-[length:52px_52px] bg-[position:0_0,26px_26px]">
+        {backgroundSource ? <span className="absolute inset-0 bg-no-repeat" style={{ backgroundImage: `url(\"${backgroundSource}\")`, backgroundSize: imagePreviewSize(selection, mode), backgroundPosition: imagePosition(selection) }} /> : null}
+        <span className="absolute inset-0 bg-black/45" />
+        <button type="button" onClick={onChooseImage} className="relative rounded-lg bg-black px-4 py-2 text-[10px] text-white transition-colors hover:bg-[#202020] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">Choose Media</button>
+      </div>
+    </div>
+  );
+}
+
+type ImageFitMode = DesignImageFitMode;
+
+function imageFitMode(selection: DesignSelection): ImageFitMode {
+  const value = selection.tag === "img" ? selection.styles.objectFit : selection.styles.backgroundSize;
+  if (value === "contain") return "fit";
+  if (value === "cover") return "crop";
+  return "fill";
+}
+
+function imageModeStyles(selection: DesignSelection, mode: ImageFitMode): Partial<Record<DesignStyleField, string>> {
+  const value = mode === "fill" ? "fill" : mode === "fit" ? "contain" : "cover";
+  return selection.tag === "img"
+    ? { objectFit: value, objectPosition: "50% 50%" }
+    : { backgroundSize: mode === "fill" ? "100% 100%" : value, backgroundPosition: "50% 50%" };
+}
+
+function imagePreviewSize(selection: DesignSelection, mode: ImageFitMode) {
+  if (mode !== "crop") return mode === "fill" ? "100% 100%" : "contain";
+  return selection.tag === "img" ? "cover" : selection.styles.backgroundSize || "cover";
+}
+
+function imagePosition(selection: DesignSelection) {
+  return selection.tag === "img" ? selection.styles.objectPosition || "50% 50%" : selection.styles.backgroundPosition || "50% 50%";
 }
 
 function ShadowIntensityControl({ value, shadow, onChange }: { value: number; shadow: string; onChange: (value: number, remember: boolean) => void }) {
@@ -344,25 +452,40 @@ function FontPresetField({ label, value, presets, onChange }: { label: string; v
       ) : (
         <span className="min-w-0 flex-1 text-right text-[12px]">{value}</span>
       )}
-      <Select value={value} onValueChange={(nextValue) => { if (nextValue) onChange(nextValue); }}>
-        <SelectTrigger className="h-auto w-auto shrink-0 border-0 bg-transparent p-0 shadow-none hover:bg-transparent focus-visible:ring-0" aria-label={`Select ${label.toLowerCase()}`} />
-        <SelectContent align="end">
-          {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-        </SelectContent>
-      </Select>
+      <DesignPanelSelect
+        value={value}
+        options={options}
+        onChange={onChange}
+        ariaLabel={`Select ${label.toLowerCase()}`}
+        className="h-7 w-6 shrink-0 rounded-lg"
+        menuClassName="left-auto right-0 w-[132px]"
+        showValue={false}
+      />
     </div>
   );
 }
 
-function SelectLikeField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+type BorderStyle = "none" | "dashed" | "solid";
+
+function BorderStyleField({ value, onChange }: { value: string; onChange: (value: BorderStyle) => void }) {
+  const borderStyle: BorderStyle = value === "none" || value === "dashed" ? value : "solid";
+
   return (
-    <label className="flex h-9 min-w-0 items-center rounded-lg bg-[#f4f5f8] px-2.5">
-      <span className="sr-only">{label}</span>
-      <input className="min-w-0 flex-1 bg-transparent text-[12px] outline-none" value={value} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`Design ${label.toLowerCase()}`} />
-      <ChevronDown className="size-3.5 shrink-0 text-[#858a94]" />
-    </label>
+    <DesignPanelSelect
+      value={borderStyle}
+      options={BORDER_STYLE_OPTIONS}
+      onChange={onChange}
+      ariaLabel="Design border style"
+      className="h-9 min-w-0 rounded-lg bg-[#f4f5f8]"
+    />
   );
 }
+
+const BORDER_STYLE_OPTIONS = [
+  { value: "none", label: "None" },
+  { value: "dashed", label: "Dashed" },
+  { value: "solid", label: "Solid" },
+] as const;
 
 function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const [open, setOpen] = React.useState(false);
@@ -413,16 +536,16 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value
         aria-label="Design font family"
       >
         <span className="min-w-0 flex-1 truncate text-left text-[12px]" style={{ fontFamily: currentFamily }}>{currentFamily}</span>
-        <ChevronDown className="size-3.5 shrink-0 text-[#858a94]" />
+        <img src={panelSelectChevron} alt="" className={cn("size-4 shrink-0 transition-transform", open && "rotate-180")} />
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={4} initialFocus={false} className="w-[310px] gap-2 rounded-lg p-2">
+      <PopoverContent align="start" sideOffset={12} initialFocus={false} className="w-[276px] gap-2 rounded-xl border-[#dedfe3] bg-white p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)] before:hidden">
         <Input
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
           placeholder="Search fonts"
           aria-label="Search fonts"
-          className="h-8 rounded-md bg-[#f4f5f8] px-2.5 text-[12px] shadow-none"
+          className="h-[34px] rounded-lg border-0 bg-[#f4f5f7] px-2.5 text-[12px] shadow-none"
         />
         <div className="max-h-64 overflow-y-auto" role="listbox" aria-label="Font families">
           {loading ? <p className="px-2.5 py-2 text-[12px] text-[#858a94]">Loading fonts…</p> : null}
@@ -454,18 +577,7 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value
 }
 
 function ColorField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const hex = normalizeHex(value);
-  return (
-    <div className="mt-2 flex h-9 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
-      <label className="relative size-5 shrink-0 overflow-hidden rounded-[3px]" style={{ backgroundColor: hex }}>
-        <span className="sr-only">Choose color</span>
-        <input type="color" className="absolute inset-0 cursor-pointer opacity-0" value={hex} onChange={(event) => onChange(event.currentTarget.value)} />
-      </label>
-      <span className="text-[10px] text-[#858a94]">HSB</span>
-      <ChevronDown className="size-3 text-[#858a94]" />
-      <Input className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-right text-[11px] uppercase shadow-none focus-visible:ring-0" value={hex.slice(1)} onChange={(event) => onChange(`#${event.currentTarget.value}`)} aria-label="Design color value" />
-    </div>
-  );
+  return <DesignColorField value={value} onChange={onChange} className="mt-2 h-9 bg-[#f4f5f8] px-2.5" />;
 }
 
 function PropertyButton({ active = false, disabled = false, onClick, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
@@ -531,4 +643,9 @@ function normalizeHex(value: string) {
   const rgb = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
   if (!rgb) return FILL_COLORS[1] ?? "#111827";
   return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function isTransparentColor(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return !normalized || normalized === "transparent" || normalized === "none" || /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0(?:\.0+)?\s*\)$/i.test(normalized) || /^rgb\([^/]+\/\s*0%\s*\)$/i.test(normalized);
 }

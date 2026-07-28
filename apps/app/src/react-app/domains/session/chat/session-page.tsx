@@ -1050,7 +1050,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [browserPanelRef]);
   useEffect(() => {
     const panel = browserPanelRef.current;
-    if (!panel || effectiveSidePanelView === "design") return;
+    if (!panel) return;
 
     window.requestAnimationFrame(() => {
       if (rightPanelExpanded) {
