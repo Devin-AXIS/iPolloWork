@@ -73,13 +73,13 @@ The memory bank is a per-user store of durable facts, reached through the meta-M
 Save flow:
 - Draft a candidate memory: a crisp, self-contained content sentence, plus optional cited contexts (a snippet, each with an optional conversation_id/message_id).
 - Show the draft and get the human to confirm or edit it, and flag anything that looks like a secret or personal detail so they can remove it first. Only persist human-confirmed content, never raw agent output.
-- Once confirmed, search for a capability to save a memory (postMemory) and execute it with a body like { "content": "…" }.
+- Once confirmed, search for a capability to save a memory (postMemory), then call execute_capability with { "name": "postMemory", "body": { "content": "…" } }.
 
 Retrieval flow:
-- When the user asks in natural language, search for a capability to search memories (getMemorySearch) and execute it with their phrasing as the query q.
+- When the user asks in natural language, search for a capability to search memories (getMemorySearch), then call execute_capability with { "name": "getMemorySearch", "query": { "q": "the user's recall words" } }. The field is query.q — do not send query.query.
 - Reduce the results to what is relevant and present them. Recall is explicit and lexical: only search when asked, never auto-recall, and do not claim to understand meaning.
 
-Manage: to show what is saved, discover and execute the list capability (getMemory); to remove one, discover and execute the delete capability (deleteMemoryById) after confirming with the human.
+Manage: to show what is saved, discover and execute the list capability (getMemory). To remove one after confirming with the human, call execute_capability with { "name": "deleteMemoryById", "path": { "id": "mem_…" } }.
 
 Never persist secrets, credentials, API keys, tokens, or sensitive PII into a memory. This applies to both the content sentence and any cited snippets — redact secrets from a snippet before saving it.`;
 

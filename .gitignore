@@ -70,6 +70,8 @@ evals/results/
 .playwright-mcp/
 .vscode/
 .ipollowork-dev/
-
+/design/
+/nba-story/
+.superpowers/
 # Local design-system experiments; keep out of commits for now.
-/apps/app/src/react-app/domains/session/design/design-systems/
+# /apps/app/src/react-app/domains/session/design/design-systems/

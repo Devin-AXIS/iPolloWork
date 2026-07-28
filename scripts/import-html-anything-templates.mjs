@@ -97,6 +97,7 @@ const STYLE_BY_NAME = {
   "weekly-update": "editorial",
   "wireframe-sketch": "sketch",
 };
+const CURRENT_IPOLLOWORK_LOGO_URL = "assets/ipollowork-logo.svg?v=20260724";
 
 const PALETTES = {
   minimal: ["#111827", "#ffffff", "#f8fafc", "#475569"],
@@ -466,7 +467,7 @@ function adaptDesignHtml(source, meta) {
   let html = adaptBranding(source);
   const link = '<link rel="stylesheet" href="design-tokens.css">';
   html = /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${link}</head>`) : `${link}${html}`;
-  const slot = '<div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>';
+  const slot = `<div class="ipw-brand-slot" data-ipw-brand-slot><img src="${CURRENT_IPOLLOWORK_LOGO_URL}" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>`;
   html = /<body\b[^>]*>/i.test(html) ? html.replace(/<body\b([^>]*)>/i, `<body$1>${slot}`) : `${slot}${html}`;
   return html.replace(/<html\b([^>]*)>/i, `<html$1 data-ipw-template="${meta.name}" data-ipw-style="${STYLE_BY_NAME[meta.name]}">`);
 }
@@ -476,11 +477,11 @@ function adaptVideoHtml(source, meta, accent) {
   const declarations = JSON.stringify([
     { id: "title", type: "string", label: "Title", default: meta.title },
     { id: "brandName", type: "string", label: "Brand name", default: "iPolloWork" },
-    { id: "logoUrl", type: "string", label: "Brand logo", default: "assets/ipollowork-logo.svg" },
+    { id: "logoUrl", type: "string", label: "Brand logo", default: CURRENT_IPOLLOWORK_LOGO_URL },
     { id: "accent", type: "color", label: "Accent", default: accent },
   ]).replaceAll("'", "\\u0027");
   html = html.replace(/<html\b([^>]*)>/i, `<html$1 data-composition-variables='${declarations}' data-ipw-template="${meta.name}">`);
-  const overlay = `<div class="ipw-video-brand"><img src="assets/ipollowork-logo.svg" data-var-src="logoUrl" alt="Brand logo"><span data-var-text="brandName">iPolloWork</span><b data-var-text="title">${escapeXml(meta.title)}</b></div>`;
+  const overlay = `<div class="ipw-video-brand"><img src="${CURRENT_IPOLLOWORK_LOGO_URL}" data-var-src="logoUrl" alt="Brand logo"><span data-var-text="brandName">iPolloWork</span><b data-var-text="title">${escapeXml(meta.title)}</b></div>`;
   const css = `<style>:root{--accent:${accent}}.ipw-composition-root{position:relative;width:100%;min-height:100vh;overflow:hidden}.ipw-video-brand{position:absolute;right:42px;bottom:32px;z-index:999999;display:flex;align-items:center;gap:10px;color:#fff;font:600 16px/1.2 Inter,system-ui,sans-serif;text-shadow:0 1px 16px #000}.ipw-video-brand img{width:28px;height:28px;object-fit:contain}.ipw-video-brand b{margin-left:10px;color:var(--accent);font-size:12px;letter-spacing:.08em;text-transform:uppercase}</style>`;
   html = /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${css}</head>`) : `${css}${html}`;
   html = html.replace(/<body\b([^>]*)>/i, `<body$1><div id="root" class="ipw-composition-root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="8">${overlay}`);

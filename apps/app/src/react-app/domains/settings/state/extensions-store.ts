@@ -390,6 +390,7 @@ export function createExtensionsStore(options: {
   selectedWorkspaceId: () => string;
   selectedWorkspaceRoot: () => string;
   workspaceType: () => "local" | "remote";
+  allowGlobalExtensions?: () => boolean;
   ipolloworkServer: iPolloWorkServerStore;
   ipolloworkServerConnection?: () => {
     ipolloworkServerClient: iPolloWorkServerClient | null;
@@ -1947,7 +1948,9 @@ export function createExtensionsStore(options: {
       refreshSkillsAborted = false;
       try {
         setStateField("skillsStatus", null);
-        const response = await ipolloworkClient.listSkills(ipolloworkWorkspaceId, { includeGlobal: isLocalWorkspace });
+        const response = await ipolloworkClient.listSkills(ipolloworkWorkspaceId, {
+          includeGlobal: isLocalWorkspace && (options.allowGlobalExtensions?.() ?? true),
+        });
         if (refreshSkillsAborted) return;
         const next: SkillCard[] = Array.isArray(response.items)
           ? response.items.map((entry) => ({
@@ -2638,7 +2641,9 @@ export function createExtensionsStore(options: {
     if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
       try {
         setStateField("skillsStatus", null);
-        const result = await ipolloworkClient.getSkill(ipolloworkWorkspaceId, trimmed, { includeGlobal: isLocalWorkspace });
+        const result = await ipolloworkClient.getSkill(ipolloworkWorkspaceId, trimmed, {
+          includeGlobal: isLocalWorkspace && (options.allowGlobalExtensions?.() ?? true),
+        });
         return { name: result.item.name, path: result.item.path, content: result.content };
       } catch (error) {
         setStateField("skillsStatus", error instanceof Error ? error.message : t("skills.failed_to_load"));

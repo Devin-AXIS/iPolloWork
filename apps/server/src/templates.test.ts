@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import { TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
+import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
@@ -237,6 +237,37 @@ function videoPackage(id = "local.product-video", entry = "<!doctype html><html 
 }
 
 describe("template installations", () => {
+  test("ships every built-in design, presentation, and video with the shared theme contract", async () => {
+    const currentLogo = await readFile(join(bundledTemplatesRoot, "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg"), "utf8");
+    expect(currentLogo).toContain('viewBox="-150 -150 776 800"');
+    expect(currentLogo).not.toContain('viewBox="0 0 476 500"');
+    for (const directory of await readdir(bundledTemplatesRoot)) {
+      const root = join(bundledTemplatesRoot, directory);
+      const manifestPath = join(root, "manifest.json");
+      if (!existsSync(manifestPath)) continue;
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as TemplateManifestV1;
+      if (manifest.kind !== "design") continue;
+      expect(manifest.designSystem.tokens).toBe("design-tokens.css");
+      const tokens = await readFile(join(root, manifest.designSystem.tokens!), "utf8");
+      const entry = await readFile(join(root, manifest.entry), "utf8");
+      expect(tokens).toContain("--ipw-color-bg");
+      expect(tokens).toContain("--ipw-color-primary");
+      expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
+      expect(entry.lastIndexOf("design-tokens.css")).toBeGreaterThan(entry.lastIndexOf("</style>"));
+      const logoPath = join(root, "assets", "ipollowork-logo.svg");
+      if (existsSync(logoPath)) {
+        expect(await readFile(logoPath, "utf8")).toBe(currentLogo);
+        expect(entry).not.toContain("assets/ipollowork-logo.svg?v=20260721");
+      }
+      if (manifest.surface === "video") {
+        expect(tokens).toContain("--accent: var(--ipw-color-primary) !important");
+        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
+      } else {
+        expect(entry).not.toContain('src="assets/ipollowork-logo.svg"');
+      }
+    }
+  });
+
   test("claims one legacy Video Studio folder as its persisted session source", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-legacy-video-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
@@ -305,7 +336,9 @@ describe("template installations", () => {
       const entry = await readFile(join(root, manifest.entry), "utf8");
       expect(entry).toMatch(manifest.surface === "video" ? /(data-var-src="logoUrl"|data-var-text="brandName")/ : /data-ipw-brand-slot/);
       expect(entry).not.toMatch(/HTML[- ]ANYTHING|OPEN DESIGN|Open Design/i);
-      expect(entry).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
+      if (manifest.surface !== "video") {
+        expect(entry).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
+      }
       if (manifest.surface === "video") {
         const currentLogo = await readFile(join(
           bundledTemplatesRoot,
@@ -313,7 +346,8 @@ describe("template installations", () => {
           "assets",
           "ipollowork-logo.svg",
         ), "utf8");
-        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260721");
+        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
+        expect(entry).not.toContain("assets/ipollowork-logo.svg?v=20260721");
         const bundledLogo = await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8");
         expect(bundledLogo).toBe(currentLogo);
         expect(bundledLogo).not.toMatch(/<rect[^>]+fill=["'](?:white|#fff(?:fff)?)["']/i);
@@ -353,17 +387,22 @@ describe("template installations", () => {
       const root = join(bundledTemplatesRoot, templateId);
       const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
       const entry = await readFile(join(root, manifest.entry), "utf8");
+      expect(manifest.designSystem.tokens).toBe("design-tokens.css");
+      expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
       expect(manifest.category).toBe("video");
       expect(manifest.surface).toBe("video");
       expect(manifest.version).toBe("1.0.1");
       expect(manifest.entry).toBe("index.html");
+      expect(manifest.designSystem.tokens).toBe("design-tokens.css");
+      expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
       expect(manifest.cover).toBe("cover.png");
       expect(manifest.source.license).toBe("Apache-2.0");
       expect(entry).toContain('data-composition-id="main"');
       expect(entry).toContain("data-composition-variables");
       expect(entry).toContain("gsap.timeline({ paused: true })");
       expect(entry).toContain("window.__timelines.main");
-      expect(entry).toContain("assets/ipollowork-logo.svg?v=20260721");
+      expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
+      expect(entry).not.toContain("assets/ipollowork-logo.svg?v=20260721");
       expect(entry).not.toMatch(/(?:src|href)\s*=\s*["']https?:\/\//i);
       for (const variable of manifest.designSystem.variables) expect(entry).toContain(`"id":"${variable.id}"`);
       const cover = await readFile(join(root, manifest.cover));
@@ -412,17 +451,45 @@ describe("template installations", () => {
     const entryPath = join(ws.path, "video", "session_logo", "index.html");
     const entry = await readFile(entryPath, "utf8");
     await writeFile(entryPath, entry.replaceAll(
-      "assets/ipollowork-logo.svg?v=20260721",
+      "assets/ipollowork-logo.svg?v=20260724",
       "assets/missing-custom-logo.svg",
     ));
 
     await readTemplateSession(serverConfig, ws, "session_logo");
 
     const refreshedLogo = await readFile(logoPath, "utf8");
-    expect(refreshedLogo).toContain('viewBox="0 0 476 500"');
+    expect(refreshedLogo).toContain('viewBox="-150 -150 776 800"');
     expect(refreshedLogo).not.toContain('fill="white"');
     const repairedEntry = await readFile(entryPath, "utf8");
     expect(repairedEntry).toContain('src="assets/missing-custom-logo.svg"');
+    expect(repairedEntry).toContain('data-ipw-logo-fallback="current"');
+    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260724'");
+  });
+
+  test("refreshes the current iPolloWork logo when an existing design session opens", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-design-logo-refresh-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await listTemplates(serverConfig, ws.id);
+    await materializeTemplate(serverConfig, ws, "ipollowork.html-anything.saas-landing", "session_logo");
+    const logoPath = join(ws.path, "design", "session_logo", "assets", "ipollowork-logo.svg");
+    await writeFile(logoPath, '<svg viewBox="0 0 476 500"><rect fill="white"/></svg>');
+    const entryPath = join(ws.path, "design", "session_logo", "entry.html");
+    const entry = await readFile(entryPath, "utf8");
+    await writeFile(entryPath, entry.replaceAll(
+      "assets/ipollowork-logo.svg?v=20260724",
+      "assets/ipollowork-logo.svg",
+    ));
+
+    await readTemplateSession(serverConfig, ws, "session_logo");
+
+    const refreshedLogo = await readFile(logoPath, "utf8");
+    expect(refreshedLogo).toContain('viewBox="-150 -150 776 800"');
+    expect(refreshedLogo).not.toContain('viewBox="0 0 476 500"');
+    expect(refreshedLogo).not.toContain('fill="white"');
+    const repairedEntry = await readFile(entryPath, "utf8");
+    expect(repairedEntry).toContain('src="assets/ipollowork-logo.svg?v=20260724"');
     expect(repairedEntry).toContain('data-ipw-logo-fallback="current"');
     expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260724'");
   });
@@ -573,7 +640,12 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(73);
+    expect(first.filter((item) => item.installed)).toHaveLength(70);
+    expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
+    for (const templateId of pptxCompatibleTemplateIds) {
+      expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
+      expect(existsSync(join(bundledTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+    }
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
@@ -590,6 +662,21 @@ describe("template installations", () => {
       expect(existsSync(join(bundledTemplatesRoot, templateId))).toBe(false);
       expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
     }
+  });
+
+  test("keeps installed Enterprise templates isolated from the personal library", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-enterprise-templates-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const scope = parseTemplateLibraryScope("enterprise:ent_medical");
+    expect(await listTemplates(serverConfig, "alpha", scope)).toEqual([]);
+    const installed = await importTemplate(serverConfig, "alpha", localPackage(), "site", scope);
+    expect((await listTemplates(serverConfig, "beta", scope)).map((item) => item.manifest.id)).toContain(installed.manifest.id);
+    expect((await listTemplates(serverConfig, "beta", "personal")).map((item) => item.manifest.id)).not.toContain(installed.manifest.id);
+    const ws = workspace(root, "alpha");
+    await expect(materializeTemplate(serverConfig, ws, installed.manifest.id, "enterprise_session", undefined, scope)).resolves.toMatchObject({ manifest: { id: installed.manifest.id } });
+    await expect(materializeTemplate(serverConfig, ws, installed.manifest.id, "personal_session")).rejects.toMatchObject({ code: "template_not_installed" });
+    expect(() => parseTemplateLibraryScope("enterprise:medical")).toThrow("Template scope must be personal");
   });
 
   test("materializes a full session snapshot that survives template uninstall", async () => {

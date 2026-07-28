@@ -53,6 +53,7 @@ export function buildWorkspaceInfos(
       name,
       path: resolvedPath,
       preset: workspace.preset?.trim() || (workspaceType === "remote" ? "remote" : "starter"),
+      workContextId: workspace.workContextId,
       workspaceType,
       remoteType,
       baseUrl: workspace.baseUrl,

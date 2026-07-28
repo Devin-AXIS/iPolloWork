@@ -4,6 +4,26 @@ import { readFileSync } from "node:fs";
 import { hyperframesStudioPort, hyperframesStudioUrl, shouldInjectVideoTaskContext, videoProjectDirectory, videoProjectId, videoProjectPath, videoTaskSystemContext } from "../src/react-app/domains/session/video/video-project";
 
 describe("HyperFrames Video Studio", () => {
+  test("reuses the Design system drawer for the active video composition", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const registrySource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-system-registry.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("<DesignSystemDrawer");
+    expect(panelSource).toContain('aria-label={t("video.design_system")}');
+    expect(panelSource).toContain('`${projectDirectory}/design-tokens.css`');
+    expect(panelSource).toContain("ensureHtmlDesignSystemContract(current.content, theme.id)");
+    expect(panelSource).toContain("buildTemplateTokenCss(theme)");
+    expect(panelSource).toContain("replaceDesignTokenValue(designTokenSourceRef.current, name, value)");
+    expect(panelSource).toContain("variablesDisabled={!appliedDesignSystemId}");
+    expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
+  });
+
   test("keeps a visible fullscreen control in the iPolloWork Video Studio header", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
@@ -160,7 +180,7 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
-    expect(sessionRouteSource).toContain("[envSystemContext, videoSystemContext, capabilitySystemContext]");
+    expect(sessionRouteSource).toContain("[envSystemContext, videoSystemContext, designSystemContext, capabilitySystemContext]");
   });
 
   test("gives the agent the same session-scoped project as the Studio", () => {

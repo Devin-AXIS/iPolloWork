@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Why we rewrote our sync engine in Rust ‚Äî iPolloWork</title>
+  <title>Why we rewrote our sync engine in Rust ‚Ä?iPolloWork</title>
   <style>
     :root {
       --bg: #fafaf9; --fg: #1c1b1a; --muted: #6b6964; --border: #e6e4e0;
@@ -32,10 +32,10 @@
     .endnote { font-family: -apple-system, system-ui, sans-serif; font-size: 13px; color: var(--muted); margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); }
     .endnote a { color: var(--accent); text-decoration: none; }
   </style>
-<link rel="stylesheet" href="design-tokens.css"></head>
-<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
+<link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens></head>
+<body><div class="ipw-brand-slot" data-ipw-brand-slot><img src="assets/ipollowork-logo.svg?v=20260724" alt="iPolloWork logo" data-ipw-logo><span data-ipw-text="brand.name">iPolloWork</span></div>
   <article class="wrap" data-od-id="article">
-    <nav class="top"><a href="#">‚Üê iPolloWork blog</a></nav>
+    <nav class="top"><a href="#">‚Ü?iPolloWork blog</a></nav>
     <div class="eyebrow">Engineering</div>
     <h1>Why we rewrote our sync engine in Rust</h1>
     <div class="byline">
@@ -50,7 +50,7 @@
     <p>Rewriting an entire sync engine sounds like the kind of project a startup is told never to do. We did it anyway. Here's how it went, what surprised us, and the parts I'd do differently.</p>
 
     <h2>The trigger: GC pauses we couldn't fix</h2>
-    <p>Go's garbage collector is brilliant. It is also, fundamentally, a tradeoff. Our hot path allocated short-lived buffer slices on every block diff ‚Äî and at our scale, on a heavy uploader, the collector ran often enough that the P99 pause crept past 50ms.</p>
+    <p>Go's garbage collector is brilliant. It is also, fundamentally, a tradeoff. Our hot path allocated short-lived buffer slices on every block diff ‚Ä?and at our scale, on a heavy uploader, the collector ran often enough that the P99 pause crept past 50ms.</p>
 
     <p>We tried the usual fixes: pooling buffers with <code>sync.Pool</code>, tuning <code>GOGC</code>, reducing allocations in the merge path. They each helped a little. None of them got us under 20ms, and the customers we cared about needed under 5.</p>
 
@@ -59,10 +59,10 @@
     <p>Our staff engineer Sasha said this in a meeting in October. He was right. The question wasn't whether to leave Go. It was what to leave it for, and how much we could keep.</p>
 
     <h2>What we kept; what we threw out</h2>
-    <p>The CLI stayed in Go. The control plane stayed in Go. The bit that does block-level diffing in a hot loop on a customer's laptop ‚Äî that became Rust. The boundary became a single FFI surface with a small, opinionated protocol.</p>
+    <p>The CLI stayed in Go. The control plane stayed in Go. The bit that does block-level diffing in a hot loop on a customer's laptop ‚Ä?that became Rust. The boundary became a single FFI surface with a small, opinionated protocol.</p>
 
     <figure class="numbers">
-      <div class="stat"><div class="value">38ms ‚Üí 4ms</div><div class="label">P99 sync latency</div></div>
+      <div class="stat"><div class="value">38ms ‚Ü?4ms</div><div class="label">P99 sync latency</div></div>
       <div class="stat"><div class="value">62%</div><div class="label">Memory drop</div></div>
       <div class="stat"><div class="value">11 weeks</div><div class="label">From RFC to ship</div></div>
     </figure>
@@ -70,11 +70,11 @@
     <p>The numbers above are real and from production. They are also misleading without context: the Rust port doesn't just remove the GC, it also removes a layer of abstraction we'd been carrying since the Go MVP.</p>
 
     <h2>What I'd do differently</h2>
-    <p>One thing: the FFI boundary. We chose <code>cgo</code> for symmetry ‚Äî Go calling Rust feels right when you already have Go everywhere. But the binding ceremony is brittle, and we ate two production incidents from string lifetime mistakes before we wrote a wrapper layer that handled them once.</p>
+    <p>One thing: the FFI boundary. We chose <code>cgo</code> for symmetry ‚Ä?Go calling Rust feels right when you already have Go everywhere. But the binding ceremony is brittle, and we ate two production incidents from string lifetime mistakes before we wrote a wrapper layer that handled them once.</p>
 
     <p>If I were starting today, I'd reach for <code>uniffi</code> or generate the bindings from a schema. The lessons isn't <em>don't use cgo</em>; it's <em>treat the boundary like an external API the moment you cross language families</em>.</p>
 
-    <div class="endnote">iPolloWork is hiring engineers who like writing this kind of post. <a href="#">See open roles ‚Üí</a></div>
+    <div class="endnote">iPolloWork is hiring engineers who like writing this kind of post. <a href="#">See open roles ‚Ü?/a></div>
   </article>
 </body>
 </html>

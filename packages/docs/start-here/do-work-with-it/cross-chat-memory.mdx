@@ -1,9 +1,29 @@
 ---
 title: "Cross-chat memory"
-description: "How iPolloWork can answer questions about past sessions."
+description: "How the Memory Bank and saved chat history work together."
 ---
 
-iPolloWork's cross-chat memory currently comes from saved session history. It is not a separate long-term memory database, and it does not automatically inject every old chat into every new prompt.
+iPolloWork has two separate ways to carry information across chats:
+
+- **Memory Bank** stores durable facts, preferences, decisions, and commitments for your signed-in iPolloWork Cloud account.
+- **Saved chat history** lets the agent inspect a specific earlier session when you ask about what was said or done there.
+
+Neither source automatically injects every old chat into every new prompt. The agent queries the relevant source when your request needs it.
+
+## Memory Bank
+
+Ask the agent to remember a stable fact or preference, for example:
+
+- `Remember that I prefer short weekly updates.`
+- `Save this decision: the launch review is every Friday.`
+- `What do you remember about my reporting preferences?`
+- `Forget the Friday launch-review memory.`
+
+Before saving a new memory, the agent shows the proposed memory and waits for your confirmation. After you confirm, it saves the item to your own Cloud account. A new chat can later search and recall that saved item. You can review or delete saved items from **Settings → Memory**.
+
+Memory is user-scoped: switching workspace does not give another user access to your Memory Bank, and one signed-in account cannot read or delete another account's memories.
+
+## Saved chat history
 
 When an agent is running inside the iPolloWork app, it can use iPolloWork's semantic UI actions to look up past chats:
 
@@ -19,7 +39,7 @@ That means you can ask things like:
 - `Open the onboarding bug chat and summarize the next steps.`
 - `What did I ask you to do in session ses_abc123?`
 
-## What happens
+### What happens
 
 1. The agent lists sessions and matches by session ID, title, workspace, or topic words you provided.
 2. If there is one clear match, the agent opens that session.
@@ -30,11 +50,13 @@ Because this uses the iPolloWork UI, the agent may briefly navigate away from yo
 
 ## Current limits
 
+- Memory recall is explicit and lexical in the current version. Give the agent a useful person, project, preference, or decision keyword when asking it to recall something.
+- The Memory Bank stores the confirmed memory, not a copy of every message in the original chat.
 - Session lookup is based on the sessions iPolloWork has loaded for the current app and workspace context.
 - Transcript reads return a bounded set of recent messages from the opened session. If an older part of a long chat is not returned, the agent should say that instead of guessing.
-- This is not semantic search over every message yet. Clear titles, session IDs, workspace names, or topic clues help the agent find the right chat.
+- Saved-chat lookup is not semantic search over every message yet. Clear titles, session IDs, workspace names, or topic clues help the agent find the right chat.
 - The agent can only read sessions available to the current iPolloWork app and user.
 
 ## How to ask
 
-Give the agent whatever clue you have: a session ID, title, person name, project name, workspace, or rough topic. For example: `Use the iPolloWork app UI to find the customer migration chat and tell me what I said about customer references.`
+For a durable fact, say `remember`, `save this`, `what do you remember`, or `forget`. For a past conversation, give the agent whatever clue you have: a session ID, title, person name, project name, workspace, or rough topic. For example: `Use the iPolloWork app UI to find the customer migration chat and tell me what I said about customer references.`

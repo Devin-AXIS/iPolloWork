@@ -123,6 +123,20 @@ function updateRecord(
   };
 }
 
+function resetRecordToIdle(record: SessionActivityRecord): SessionActivityRecord {
+  return {
+    ...record,
+    status: "idle",
+    runActive: false,
+    assistantOutput: false,
+    errorActive: false,
+    errorMessage: null,
+    compacting: false,
+    waitingPermissionIds: [],
+    waitingQuestionIds: [],
+  };
+}
+
 function removeValue(values: string[], value: string) {
   return values.filter((item) => item !== value);
 }
@@ -168,7 +182,7 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
           ...updateRecord(nextState, id, sessionId, (record) => {
             const normalized = normalizeRunStatus(status);
             const runActive = normalized === "running" || normalized === "retry";
-            if (!runActive && record.status !== "idle") return record;
+            if (!runActive && record.status !== "idle") return resetRecordToIdle(record);
             return {
               ...record,
               runActive,
@@ -192,7 +206,7 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
     set((state) => updateRecord(state, workspace, session, (record) => {
       const normalized = normalizeRunStatus(status);
       const runActive = normalized === "running" || normalized === "retry";
-      if (!runActive && record.status !== "idle") return record;
+      if (!runActive && record.status !== "idle") return resetRecordToIdle(record);
       return {
         ...record,
         runActive,
@@ -212,6 +226,7 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
     set((state) => updateRecord(state, workspace, session, (record) => {
       const normalized = normalizeRunStatus(status);
       const runActive = normalized === "running" || normalized === "retry";
+      if (!runActive) return resetRecordToIdle(record);
       return {
         ...record,
         runActive,

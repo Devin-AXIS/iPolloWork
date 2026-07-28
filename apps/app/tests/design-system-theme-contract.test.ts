@@ -3,6 +3,12 @@ import {
   ensureHtmlDesignSystemContract,
   readAppliedDesignSystemId,
 } from "../src/react-app/domains/session/design/design-system-theme-contract";
+import {
+  linkedDesignTokenPath,
+  mergeTemplateTokenCss,
+  parseDesignTokenValues,
+  replaceDesignTokenValue,
+} from "../src/react-app/domains/session/design/design-system-files";
 
 const registryPath = new URL(
   "../src/react-app/domains/session/design/design-system-registry.ts",
@@ -29,6 +35,12 @@ describe("Design system theme contract", () => {
     expect(source).toContain("color: var(--ipw-color-on-primary) !important");
     expect(source).toContain(":where([data-ipw-slide], section.slide, .slide-frame) { background: var(--ipw-color-bg) !important");
     expect(source).not.toContain(".cover > *");
+    expect(source).not.toContain("border-radius: var(--ipw-card-radius) !important");
+    expect(source).not.toContain("box-shadow: var(--ipw-card-shadow) !important");
+    expect(source).not.toContain(":where(button, [role=\"button\"], [class*=\"button\"], [class*=\"btn\"])");
+    expect(source).toContain("html:root [data-ipw-brand-slot]");
+    expect(source).toContain("width: 18px !important; height: 18px !important");
+    expect(source).toContain("object-fit: contain !important");
   });
 
   test("moves the shared token link after generated page styles and removes stale root token overrides", () => {
@@ -47,6 +59,31 @@ describe("Design system theme contract", () => {
     expect(readAppliedDesignSystemId(":root {}" )).toBeNull();
   });
 
+  test("shares token file parsing and updates across Design and Video Studio", () => {
+    const source = ":root {\n  --ipw-od-bg: #111111;\n}\n";
+    expect(linkedDesignTokenPath('<link rel="stylesheet" href="design-tokens.css">')).toBe("design-tokens.css");
+    expect(parseDesignTokenValues(source)["--ipw-od-bg"]).toBe("#111111");
+    expect(replaceDesignTokenValue(source, "--ipw-od-bg", "#ffffff")).toContain("--ipw-od-bg: #ffffff;");
+    expect(replaceDesignTokenValue(source, "--ipw-od-accent", "#2563eb")).toContain("--ipw-od-accent: #2563eb;");
+  });
+
+  test("replaces only the managed theme block and preserves template CSS", () => {
+    const existing = `/* ipw-theme:start */\n:root { --ipw-color-bg: red; }\n/* ipw-theme:end */\n.logo { width: 18px; }`;
+    const next = mergeTemplateTokenCss(existing, `/* ipw-theme:start */\n:root { --ipw-color-bg: blue; }\n/* ipw-theme:end */`);
+    expect(next).toContain("--ipw-color-bg: blue");
+    expect(next).not.toContain("--ipw-color-bg: red");
+    expect(next).toContain(".logo { width: 18px; }");
+  });
+
+  test("migrates legacy variables without dropping structural rules", () => {
+    const existing = `:root { --ipw-color-bg: red; --template-ratio: 1.5; }\n.ipw-brand-slot img { width: 18px; }`;
+    const next = mergeTemplateTokenCss(existing, `/* ipw-theme:start */\n:root { --ipw-color-bg: blue; }\n/* ipw-theme:end */`);
+    expect(next).toContain("--ipw-color-bg: blue");
+    expect(next).not.toContain("--ipw-color-bg: red");
+    expect(next).toContain("--template-ratio: 1.5");
+    expect(next).toContain(".ipw-brand-slot img { width: 18px; }");
+  });
+
   test("renders only source tokens from the persisted current theme", async () => {
     const [drawer, panel] = await Promise.all([
       Bun.file(drawerPath).text(),
@@ -54,13 +91,36 @@ describe("Design system theme contract", () => {
     ]);
 
     expect(drawer).toContain("currentThemeId");
+    expect(drawer).toContain("currentTheme");
+    expect(drawer).toContain('t("design_system.current_theme"');
+    expect(drawer).toContain('t("design_system.no_theme")');
+    expect(drawer).toContain('t("design_system.variables_disabled_hint")');
+    expect(drawer).toContain("function ThemePreview");
+    expect(drawer).toContain("preview_loading");
+    expect(drawer).toContain("preview_failed");
     expect(drawer).toContain("buildDesignSystemTokenControls(selectedTheme)");
     expect(drawer).toContain("selectedThemeControls.map");
-    expect(drawer).toContain("仅显示当前主题 tokens.css 中存在的变量。");
+    expect(drawer).toContain('t("design_system.variables_footer")');
+    expect(drawer).not.toContain(">Design system<");
+    expect(drawer).not.toContain("Search themes...");
+    expect(drawer).not.toContain("No themes found.");
+    expect(drawer).not.toContain("Reset all</Button>");
+    expect(drawer).not.toContain(">当前主题<");
+    expect(drawer).not.toContain(">应用主题<");
     expect(drawer).not.toContain("Gradient");
     expect(drawer).not.toContain("Background image");
     expect(drawer).not.toContain("Image overlay");
     expect(drawer).not.toContain("Glass effect");
+    expect(drawer).toContain("absolute inset-y-0 right-0");
+    expect(drawer).toContain("translate-x-full");
+    expect(drawer).not.toContain("transition-[width,border-color]");
+    expect(drawer).toContain("DRAWER_WIDTH_STORAGE_KEY");
+    expect(drawer).toContain('role="separator"');
+    expect(drawer).toContain("onPointerDown={startResize}");
+    expect(drawer).toContain("onKeyDown={handleResizeKeyDown}");
+    expect(drawer).toContain("left-0 z-10 w-1");
+    expect(drawer).not.toContain("-translate-x-1/2 cursor-col-resize");
+    expect(drawer).not.toContain('w-[360px]');
     expect(panel).toContain("readAppliedDesignSystemId");
     expect(panel).toContain("currentThemeId={appliedDesignSystemId}");
     expect(panel).not.toContain('type: "set-token",\n      name,\n      value');

@@ -6,7 +6,14 @@
   "category": "video",
   "subcategory": "course-explainer",
   "style": "editorial",
-  "tags": ["video", "course", "teaching", "explainer", "diagram", "chapters"],
+  "tags": [
+    "video",
+    "course",
+    "teaching",
+    "explainer",
+    "diagram",
+    "chapters"
+  ],
   "surface": "video",
   "title": "Course Journey",
   "description": "A structured teaching template for lessons, concepts, chapters, diagrams, examples, and memorable takeaways.",
@@ -20,17 +27,63 @@
   },
   "designSystem": {
     "tokenVersion": 1,
-    "editableGroups": ["theme", "background", "typography", "components"],
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
     "variables": [
-      { "id": "title", "label": "Title", "type": "text", "group": "content" },
-      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
-      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
-      { "id": "accent", "label": "Accent", "type": "color", "group": "theme" },
-      { "id": "chapter", "label": "Chapter", "type": "text", "group": "content" },
-      { "id": "definition", "label": "Definition", "type": "text", "group": "content" },
-      { "id": "example", "label": "Example", "type": "text", "group": "content" },
-      { "id": "takeaway", "label": "Takeaway", "type": "text", "group": "content" }
-    ]
+      {
+        "id": "title",
+        "label": "Title",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "accent",
+        "label": "Accent",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "chapter",
+        "label": "Chapter",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "definition",
+        "label": "Definition",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "example",
+        "label": "Example",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "takeaway",
+        "label": "Takeaway",
+        "type": "text",
+        "group": "content"
+      }
+    ],
+    "tokens": "design-tokens.css"
   },
   "applyChecklist": [
     "Replace the lesson title, definition, example, and takeaway with real teaching content.",

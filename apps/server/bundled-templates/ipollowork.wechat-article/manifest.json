@@ -6,7 +6,12 @@
   "category": "other",
   "subcategory": "wechat",
   "style": "editorial",
-  "tags": ["wechat", "article", "公众号", "editorial"],
+  "tags": [
+    "wechat",
+    "article",
+    "公众号",
+    "editorial"
+  ],
   "surface": "design",
   "title": "iPollo 公众号长图",
   "description": "适用于 iPollo 公众号文章与品牌内容发布的轻技术编辑风格长图模板。",
@@ -19,7 +24,10 @@
   },
   "designSystem": {
     "tokenVersion": 1,
-    "editableGroups": ["typography"]
+    "editableGroups": [
+      "typography"
+    ],
+    "tokens": "design-tokens.css"
   },
   "applyChecklist": [
     "只替换文章标题、正文和中间内容图片；中间图片必须继续使用 img 标签，不能改成渐变、色块、纯色 div 或其他占位元素。",
