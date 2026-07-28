@@ -70,6 +70,6 @@ evals/results/
 .playwright-mcp/
 .vscode/
 .ipollowork-dev/
-design/
+/design/
 # Local design-system experiments; keep out of commits for now.
 # /apps/app/src/react-app/domains/session/design/design-systems/
