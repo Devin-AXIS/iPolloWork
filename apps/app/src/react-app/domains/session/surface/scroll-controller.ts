@@ -170,25 +170,17 @@ export function useSessionScrollController(
       setStickyBottom(selectedSessionId, null);
       programmaticScrollRef.current = true;
 
-      if (behavior === "smooth") {
-        lastKnownScrollTopRef.current = syncProgrammaticScrollTop(container, container.scrollHeight, "smooth");
-        releaseProgrammaticScrollSoon();
-        return;
-      }
+      // Keep Electron compatibility but simplify state management
+      lastKnownScrollTopRef.current = syncProgrammaticScrollTop(container, container.scrollHeight, behavior);
 
-      lastKnownScrollTopRef.current = syncProgrammaticScrollTop(container, container.scrollHeight);
-      window.requestAnimationFrame(() => {
-        const next = options.containerRef.current;
-        if (!next) {
-          programmaticScrollRef.current = false;
-          return;
-        }
-        lastKnownScrollTopRef.current = syncProgrammaticScrollTop(next, next.scrollHeight);
+      // Simplified: use single timeout instead of double RAF
+      const resetDelay = behavior === "smooth" ? 300 : 50;
+      setTimeout(() => {
+        programmaticScrollRef.current = false;
         refreshTopClippedMessage();
-        releaseProgrammaticScrollSoon();
-      });
+      }, resetDelay);
     },
-    [options.containerRef, refreshTopClippedMessage, releaseProgrammaticScrollSoon, selectedSessionId, setStickyBottom],
+    [options.containerRef, refreshTopClippedMessage, selectedSessionId, setStickyBottom],
   );
 
   const saveScrollPosition = useCallback(
@@ -266,8 +258,16 @@ export function useSessionScrollController(
       const target = messageElementById(container, messageId);
       if (!target) return;
 
+      // Set programmatic scroll state first
+      programmaticScrollRef.current = true;
       setManualScroll(selectedSessionId, container.scrollTop, messageId);
       target.scrollIntoView({ behavior, block: "start" });
+
+      // Reset programmatic state after animation
+      const resetDelay = behavior === "smooth" ? 300 : 50;
+      setTimeout(() => {
+        programmaticScrollRef.current = false;
+      }, resetDelay);
     },
     [options.containerRef, selectedSessionId, setManualScroll],
   );
