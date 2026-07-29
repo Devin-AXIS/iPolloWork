@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en" data-ipw-template="connector-pulse" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Meet every workflow where the team already works."},{"id":"brandName","type":"string","label":"Brand name","default":"iPolloWork"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260724"},{"id":"trigger","type":"string","label":"Trigger message","default":"Prepare the weekly launch update"},{"id":"response","type":"string","label":"Response","default":"Update ready — sources checked"},{"id":"channelA","type":"string","label":"Channel one","default":"Team chat"},{"id":"channelB","type":"string","label":"Channel two","default":"Mobile"},{"id":"channelC","type":"string","label":"Channel three","default":"Inbox"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Connector Pulse</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--ipw-color-bg); }
+      #root::before { content: ""; position: absolute; inset: 0; opacity: .36; background-image: linear-gradient(90deg, var(--ipw-color-border) 1px, transparent 1px), linear-gradient(var(--ipw-color-border) 1px, transparent 1px); background-size: 48px 48px; }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .topbar { position: absolute; left: 70px; right: 70px; top: 50px; z-index: 60; display: flex; align-items: center; justify-content: space-between; }
+      .brand { display: flex; align-items: center; gap: 13px; font-size: 22px; font-weight: 900; letter-spacing: -.035em; }
+      .brand img { width: 32px; height: 32px; object-fit: contain; }
+      .edition { padding: 10px 16px; border: 2px solid var(--ipw-color-text); border-radius: var(--ipw-button-radius); background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); font: 850 13px/1 ui-monospace, monospace; letter-spacing: .1em; }
+      .scene { padding: 158px 100px 100px; }
+      h1, h2, p { margin: 0; }
+      .kicker { color: var(--ipw-color-primary); font: 850 15px/1.2 ui-monospace, monospace; letter-spacing: .2em; text-transform: uppercase; }
+      h1 { margin-top: 30px; max-width: 1370px; font-family: var(--ipw-font-display); font-size: calc(103px * var(--ipw-type-scale)); line-height: .92; letter-spacing: -.075em; }
+      .intro p { max-width: 650px; margin-top: 30px; color: var(--ipw-color-muted); font-size: 26px; line-height: var(--ipw-body-line-height); }
+      .message { position: absolute; right: 130px; bottom: 155px; width: 600px; padding: 30px 34px; border: 2px solid var(--ipw-color-text); border-radius: 28px 28px 4px 28px; background: var(--ipw-card-bg); box-shadow: var(--ipw-card-shadow); }
+      .message small { color: var(--ipw-color-muted); font: 750 13px/1 ui-monospace, monospace; letter-spacing: .12em; }
+      .message strong { display: block; margin-top: 17px; font-size: 27px; line-height: 1.25; }
+      .network { position: absolute; left: 50%; top: 53%; width: 1320px; height: 720px; transform: translate(-50%, -50%); }
+      .hub { position: absolute; left: 510px; top: 210px; display: grid; place-items: center; width: 300px; height: 300px; border: 3px solid var(--ipw-color-text); border-radius: 50%; background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); box-shadow: 18px 20px 0 color-mix(in srgb, var(--ipw-color-text) 15%, transparent); text-align: center; z-index: 5; }
+      .hub strong { font-size: 31px; letter-spacing: -.04em; }
+      .hub span { display: block; margin-top: 10px; font: 800 13px/1 ui-monospace, monospace; letter-spacing: .14em; }
+      .channel { position: absolute; display: grid; place-items: center; width: 240px; height: 150px; padding: 20px; border: 2px solid var(--ipw-color-text); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); box-shadow: var(--ipw-card-shadow); font-size: 23px; font-weight: 850; text-align: center; z-index: 4; }
+      .channel-a { left: 0; top: 75px; }
+      .channel-b { left: 0; bottom: 72px; }
+      .channel-c { right: 0; top: 75px; }
+      .channel-d { right: 0; bottom: 72px; }
+      .wire { position: absolute; height: 3px; width: 400px; background: var(--ipw-color-text); transform-origin: left; }
+      .wire-a { left: 220px; top: 210px; transform: rotate(17deg); }
+      .wire-b { left: 220px; top: 510px; transform: rotate(-17deg); }
+      .wire-c { right: 220px; top: 210px; transform: rotate(163deg); transform-origin: right; }
+      .wire-d { right: 220px; top: 510px; transform: rotate(197deg); transform-origin: right; }
+      .pulse { position: absolute; left: 625px; top: 325px; width: 70px; height: 70px; border: 4px solid var(--ipw-color-on-primary); border-radius: 50%; }
+      .workflow { position: absolute; left: 125px; right: 125px; top: 220px; bottom: 120px; display: grid; grid-template-columns: repeat(3, 1fr); align-items: center; gap: 80px; }
+      .step { position: relative; min-height: 450px; padding: 38px; border: 2px solid var(--ipw-color-text); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); box-shadow: var(--ipw-card-shadow); }
+      .step:not(:last-child)::after { content: "→"; position: absolute; right: -58px; top: 190px; color: var(--ipw-color-primary); font-size: 45px; font-weight: 900; }
+      .step-no { display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; background: var(--ipw-color-text); color: var(--ipw-color-bg); font-weight: 900; }
+      .step h2 { margin-top: 65px; font-size: 45px; line-height: 1; letter-spacing: -.055em; }
+      .step p { margin-top: 22px; color: var(--ipw-color-muted); font-size: 20px; line-height: 1.45; }
+      .step:nth-child(2) { background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); }
+      .step:nth-child(2) p { color: color-mix(in srgb, var(--ipw-color-on-primary) 72%, transparent); }
+      .reply { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+      .reply-inner { width: 1380px; }
+      .reply-bubble { max-width: 1120px; margin: 0 auto; padding: 54px 66px; border: 3px solid var(--ipw-color-text); border-radius: 38px 38px 38px 6px; background: var(--ipw-card-bg); box-shadow: 20px 22px 0 var(--ipw-color-primary); }
+      .reply-bubble small { color: var(--ipw-color-success); font: 850 14px/1 ui-monospace, monospace; letter-spacing: .16em; }
+      .reply-bubble h2 { margin-top: 26px; font-size: 74px; line-height: .98; letter-spacing: -.065em; }
+      .reply p { margin-top: 40px; color: var(--ipw-color-muted); font-size: 24px; }
+    </style>
+    <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="12">
+      <header class="topbar"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260724" alt="Brand logo" /><span data-var-text="brandName">iPolloWork</span></div><div class="edition">CONNECTED WORK</div></header>
+      <section class="scene clip intro" id="scene-trigger" data-start="0" data-duration="3" data-track-index="1"><div class="kicker">One message can start the work</div><h1 data-var-text="title">Meet every workflow where the team already works.</h1><p>Connect the conversation to a capable agent without adding another place to check.</p><article class="message"><small>NEW REQUEST / TEAM CHAT</small><strong data-var-text="trigger">Prepare the weekly launch update</strong></article></section>
+      <section class="clip" id="scene-network" data-start="3" data-duration="3" data-track-index="2"><div class="network"><i class="wire wire-a"></i><i class="wire wire-b"></i><i class="wire wire-c"></i><i class="wire wire-d"></i><div class="channel channel-a" data-var-text="channelA">Team chat</div><div class="channel channel-b" data-var-text="channelB">Mobile</div><div class="channel channel-c" data-var-text="channelC">Inbox</div><div class="channel channel-d">Server API</div><div class="hub"><div><strong>iPolloWork</strong><span>ROUTE / RUN / RETURN</span></div><i class="pulse"></i></div></div></section>
+      <section class="clip" id="scene-workflow" data-start="6" data-duration="3" data-track-index="3"><div class="workflow"><article class="step"><span class="step-no">1</span><h2>Receive the request</h2><p>Preserve the channel, sender, and task context.</p></article><article class="step"><span class="step-no">2</span><h2>Run the workflow</h2><p>Use the right agent, skill, and connected source.</p></article><article class="step"><span class="step-no">3</span><h2>Return the proof</h2><p>Send the finished result back to the conversation.</p></article></div></section>
+      <section class="clip" id="scene-reply" data-start="9" data-duration="3" data-track-index="4"><div class="reply"><div class="reply-inner"><article class="reply-bubble"><small>WORKFLOW COMPLETE ✓</small><h2 data-var-text="response">Update ready — sources checked</h2></article><p>One connected loop, from message to observable result.</p></div></div></section>
+    </main>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#scene-trigger h1, #scene-trigger p', { opacity: 0, y: 45 }, { opacity: 1, y: 0, duration: .72, stagger: .14, ease: 'power3.out' }, .18);
+      tl.fromTo('.message', { opacity: 0, x: 70, y: 35 }, { opacity: 1, x: 0, y: 0, duration: .78, ease: 'back.out(1.35)' }, .7);
+      tl.fromTo('.channel', { opacity: 0, scale: .74 }, { opacity: 1, scale: 1, duration: .54, stagger: .11, ease: 'back.out(1.6)' }, 3.18);
+      tl.fromTo('.wire', { scaleX: 0 }, { scaleX: 1, duration: .58, stagger: .1, ease: 'power2.out' }, 3.62);
+      tl.fromTo('.hub', { opacity: 0, scale: .6 }, { opacity: 1, scale: 1, duration: .74, ease: 'expo.out' }, 4);
+      tl.fromTo('.pulse', { opacity: .9, scale: .25 }, { opacity: 0, scale: 3.3, duration: 1.1, ease: 'power2.out' }, 4.5);
+      tl.fromTo('.step', { opacity: 0, y: 54 }, { opacity: 1, y: 0, duration: .62, stagger: .18, ease: 'power3.out' }, 6.18);
+      tl.fromTo('.reply-inner', { opacity: 0, y: 58, scale: .95 }, { opacity: 1, y: 0, scale: 1, duration: .88, ease: 'expo.out' }, 9.18);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

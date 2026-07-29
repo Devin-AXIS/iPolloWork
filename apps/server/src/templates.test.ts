@@ -85,11 +85,38 @@ const pptxCompatibleTemplateIds = [
 ];
 const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.app-device-launch",
+  "ipollowork.hyperframes.automation-day-planner",
+  "ipollowork.hyperframes.agent-command-center",
+  "ipollowork.hyperframes.cost-saving-waterfall",
+  "ipollowork.hyperframes.connector-pulse",
   "ipollowork.hyperframes.feature-orbit",
   "ipollowork.hyperframes.course-journey",
   "ipollowork.hyperframes.code-explainer",
   "ipollowork.hyperframes.brand-liquid-sizzle",
   "ipollowork.hyperframes.data-proof-story",
+  "ipollowork.hyperframes.human-approval-branch",
+  "ipollowork.hyperframes.local-file-cascade",
+  "ipollowork.hyperframes.meeting-action-conveyor",
+  "ipollowork.hyperframes.multilingual-type-stage",
+  "ipollowork.hyperframes.multi-agent-relay",
+  "ipollowork.hyperframes.permission-vault",
+  "ipollowork.hyperframes.plugin-exploded-blueprint",
+  "ipollowork.hyperframes.prompt-ab-laboratory",
+  "ipollowork.hyperframes.release-spotlight",
+  "ipollowork.hyperframes.research-evidence-wall",
+  "ipollowork.hyperframes.remote-worker-connect",
+];
+const novelVideoTemplates = [
+  { id: "ipollowork.hyperframes.meeting-action-conveyor", composition: "meeting-action-conveyor", duration: "11", scenes: 4 },
+  { id: "ipollowork.hyperframes.research-evidence-wall", composition: "research-evidence-wall", duration: "14", scenes: 5 },
+  { id: "ipollowork.hyperframes.permission-vault", composition: "permission-vault", duration: "10", scenes: 3 },
+  { id: "ipollowork.hyperframes.local-file-cascade", composition: "local-file-cascade", duration: "13", scenes: 4 },
+  { id: "ipollowork.hyperframes.prompt-ab-laboratory", composition: "prompt-ab-laboratory", duration: "15", scenes: 3 },
+  { id: "ipollowork.hyperframes.automation-day-planner", composition: "automation-day-planner", duration: "16", scenes: 5 },
+  { id: "ipollowork.hyperframes.multilingual-type-stage", composition: "multilingual-type-stage", duration: "9", scenes: 3 },
+  { id: "ipollowork.hyperframes.cost-saving-waterfall", composition: "cost-saving-waterfall", duration: "18", scenes: 6 },
+  { id: "ipollowork.hyperframes.plugin-exploded-blueprint", composition: "plugin-exploded-blueprint", duration: "12", scenes: 4 },
+  { id: "ipollowork.hyperframes.human-approval-branch", composition: "human-approval-branch", duration: "17", scenes: 5 },
 ];
 
 function importedTemplateId(id: string) {
@@ -374,7 +401,7 @@ describe("template installations", () => {
     expect(categoryCounts).toEqual({ article: 4, cards: 6, other: 4, report: 4, slides: 22, video: 8, poster: 2, site: 8 });
   });
 
-  test("ships six flagship HyperFrames video templates with local deterministic runtimes", async () => {
+  test("ships flagship HyperFrames video templates with local deterministic runtimes", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => name.startsWith("ipollowork.hyperframes."));
     expect(directories).toHaveLength(flagshipVideoTemplateIds.length);
     const currentLogo = await readFile(join(
@@ -397,10 +424,15 @@ describe("template installations", () => {
       expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
       expect(manifest.cover).toBe("cover.png");
       expect(manifest.source.license).toBe("Apache-2.0");
-      expect(entry).toContain('data-composition-id="main"');
+      const compositionId = entry.match(/\bdata-composition-id=["']([^"']+)["']/i)?.[1];
+      expect(compositionId).toBeTruthy();
       expect(entry).toContain("data-composition-variables");
       expect(entry).toContain("gsap.timeline({ paused: true })");
-      expect(entry).toContain("window.__timelines.main");
+      expect(entry).toContain(
+        compositionId === "main"
+          ? "window.__timelines.main"
+          : `window.__timelines["${compositionId}"]`,
+      );
       expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
       expect(entry).not.toContain("assets/ipollowork-logo.svg?v=20260721");
       expect(entry).not.toMatch(/(?:src|href)\s*=\s*["']https?:\/\//i);
@@ -434,9 +466,36 @@ describe("template installations", () => {
       const sessionId = `session_${templateId.split(".").at(-1)}`;
       const created = await materializeTemplate(serverConfig, ws, templateId, sessionId);
       expect(created.state.entry).toBe(`video/${sessionId}/index.html`);
-      expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain("window.__timelines.main");
+      const entry = await readFile(join(ws.path, created.state.entry), "utf8");
+      const compositionId = entry.match(/\bdata-composition-id=["']([^"']+)["']/i)?.[1];
+      expect(compositionId).toBeTruthy();
+      expect(entry).toContain(
+        compositionId === "main"
+          ? "window.__timelines.main"
+          : `window.__timelines["${compositionId}"]`,
+      );
       expect(existsSync(join(ws.path, "video", sessionId, "brief.json"))).toBe(true);
     }
+  });
+
+  test("keeps the ten new HyperFrames compositions structurally distinct", async () => {
+    const durations = new Set<string>();
+    const compositions = new Set<string>();
+    for (const template of novelVideoTemplates) {
+      const root = join(bundledTemplatesRoot, template.id);
+      const entry = await readFile(join(root, "index.html"), "utf8");
+      expect(entry).toContain(`data-composition-id="${template.composition}"`);
+      expect(entry).toContain(`data-duration="${template.duration}"`);
+      expect(Array.from(entry.matchAll(/\bdata-ipw-scene(?:\s|>)/g))).toHaveLength(template.scenes);
+      expect(entry).not.toContain('data-composition-id="main"');
+      for (const file of ["manifest.json", "index.html", "design-tokens.css", "cover.svg", "cover.png", "NOTICE", "assets/gsap.min.js", "assets/ipollowork-logo.svg"]) {
+        expect(existsSync(join(root, file))).toBe(true);
+      }
+      durations.add(template.duration);
+      compositions.add(template.composition);
+    }
+    expect(durations.size).toBe(novelVideoTemplates.length);
+    expect(compositions.size).toBe(novelVideoTemplates.length);
   });
 
   test("refreshes the current iPolloWork logo when an existing video session opens", async () => {
@@ -599,7 +658,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(73);
+    expect(directories).toHaveLength(88);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -612,7 +671,7 @@ describe("template installations", () => {
       expect(cover.byteLength).toBeGreaterThan(15_000);
       hashes.add(Bun.hash(cover).toString());
     }
-    expect(hashes.size).toBe(73);
+    expect(hashes.size).toBe(88);
   });
 
   test("ships strict PPTX-compatible slide templates with explicit editable object markers", async () => {
@@ -640,7 +699,7 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(73);
+    expect(first.filter((item) => item.installed)).toHaveLength(88);
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
     for (const templateId of pptxCompatibleTemplateIds) {
       expect(first.some((item) => item.manifest.id === templateId)).toBe(true);

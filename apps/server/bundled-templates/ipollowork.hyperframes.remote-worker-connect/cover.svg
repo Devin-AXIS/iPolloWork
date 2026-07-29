@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#071417"/>
+  <circle cx="220" cy="300" r="190" fill="#2dd4bf" opacity=".08"/><circle cx="750" cy="300" r="190" fill="#22d3ee" opacity=".07"/>
+  <text x="55" y="62" fill="#2dd4bf" font-family="Arial" font-size="15" font-weight="700" letter-spacing="3">REMOTE WORKER CONNECT</text>
+  <text x="55" y="137" fill="#eefcf8" font-family="Arial" font-size="46" font-weight="800">Start local.</text>
+  <text x="55" y="188" fill="#eefcf8" font-family="Arial" font-size="46" font-weight="800">Scale on demand.</text>
+  <g transform="translate(58 250)">
+    <rect width="300" height="185" rx="22" fill="#102428" stroke="#28504b"/><rect x="542" width="300" height="185" rx="22" fill="#102428" stroke="#28504b"/>
+    <text x="25" y="38" fill="#8bb5ad" font-family="Arial" font-size="12" font-weight="700">LOCAL WORKSPACE</text><text x="567" y="38" fill="#8bb5ad" font-family="Arial" font-size="12" font-weight="700">REMOTE WORKER</text>
+    <rect x="73" y="70" width="150" height="92" rx="9" fill="none" stroke="#eefcf8" stroke-width="3"/><path d="M123 174h50" stroke="#eefcf8" stroke-width="3"/>
+    <path d="M626 137h135a38 38 0 0 0 0-76 55 55 0 0 0-103-8 42 42 0 0 0-32 84z" fill="none" stroke="#22d3ee" stroke-width="3"/>
+    <path d="M358 94h184" stroke="#2dd4bf" stroke-width="3" stroke-dasharray="12 12"/>
+    <circle cx="450" cy="94" r="39" fill="#071417" stroke="#2dd4bf" stroke-width="2"/><text x="422" y="100" fill="#2dd4bf" font-family="Arial" font-size="13" font-weight="700">LINK</text>
+  </g>
+</svg>

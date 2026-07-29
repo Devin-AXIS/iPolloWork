@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#f4f0e8"/>
+  <g stroke="#cfc7b9" opacity=".45"><path d="M0 48h960M0 96h960M0 144h960M0 192h960M0 240h960M0 288h960M0 336h960M0 384h960M0 432h960M0 480h960"/><path d="M48 0v540M96 0v540M144 0v540M192 0v540M240 0v540M288 0v540M336 0v540M384 0v540M432 0v540M480 0v540M528 0v540M576 0v540M624 0v540M672 0v540M720 0v540M768 0v540M816 0v540M864 0v540M912 0v540"/></g>
+  <text x="52" y="62" fill="#ff4f1f" font-family="Arial" font-size="15" font-weight="700" letter-spacing="3">CONNECTOR PULSE</text>
+  <text x="52" y="132" fill="#171717" font-family="Arial" font-size="44" font-weight="800">One message.</text>
+  <text x="52" y="180" fill="#171717" font-family="Arial" font-size="44" font-weight="800">One connected loop.</text>
+  <g transform="translate(95 230)">
+    <path d="M170 72L385 150M170 226l215-76M600 72L385 150M600 226L385 150" fill="none" stroke="#171717" stroke-width="3"/>
+    <g fill="#fffdf8" stroke="#171717" stroke-width="2"><rect width="170" height="90" rx="20"/><rect y="180" width="170" height="90" rx="20"/><rect x="600" width="170" height="90" rx="20"/><rect x="600" y="180" width="170" height="90" rx="20"/></g>
+    <circle cx="385" cy="150" r="92" fill="#ff4f1f" stroke="#171717" stroke-width="3"/>
+    <text x="333" y="145" fill="#fff" font-family="Arial" font-size="21" font-weight="800">ROUTE</text><text x="346" y="171" fill="#fff" font-family="Arial" font-size="13" font-weight="700">RUN / RETURN</text>
+    <g fill="#171717" font-family="Arial" font-size="16" font-weight="700"><text x="46" y="53">CHAT</text><text x="46" y="233">MOBILE</text><text x="650" y="53">INBOX</text><text x="642" y="233">SERVER</text></g>
+  </g>
+</svg>

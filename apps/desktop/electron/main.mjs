@@ -2169,7 +2169,7 @@ const desktopCommandHandlers = {
   "desktopNotificationShow": async (event, ...args) => {
       return showDesktopNotification(args[0] ?? {});
   },
-  "listSystemFontFamilies": async () => {
+  "listSystemFontFamilies": async (event, ...args) => {
       try {
         return listSystemFontFamilies();
       } catch (error) {

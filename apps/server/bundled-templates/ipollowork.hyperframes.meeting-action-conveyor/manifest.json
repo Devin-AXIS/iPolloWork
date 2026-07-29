@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.meeting-action-conveyor",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "meeting-productivity",
+  "style": "technical",
+  "tags": [
+    "video",
+    "hyperframes",
+    "meeting-productivity"
+  ],
+  "surface": "video",
+  "title": "Meeting Action Conveyor",
+  "description": "Meeting notes travel across task lanes and leave as assigned, scheduled action items.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames deterministic timeline patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": [
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "title",
+        "label": "title",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "source",
+        "label": "source",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "actionA",
+        "label": "action A",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "actionB",
+        "label": "action B",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "owner",
+        "label": "owner",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "deadline",
+        "label": "deadline",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "cta",
+        "label": "cta",
+        "type": "text",
+        "group": "content"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Replace editable copy with one coherent story.",
+    "Preserve the unique composition geometry and deterministic timeline.",
+    "Use design-system tokens for theme colors and typography.",
+    "Verify at 30 fps and keep the lower caption-safe band readable."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

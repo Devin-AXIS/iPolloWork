@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#111315"/>
+  <g opacity=".35" fill="#3a4144"><circle cx="20" cy="20" r="1.5"/><circle cx="44" cy="20" r="1.5"/><circle cx="68" cy="20" r="1.5"/><circle cx="92" cy="20" r="1.5"/></g>
+  <text x="58" y="64" fill="#facc15" font-family="Arial" font-size="15" font-weight="700" letter-spacing="3">MULTI-AGENT RELAY</text>
+  <text x="58" y="144" fill="#f4f4f0" font-family="Arial" font-size="48" font-weight="800">Split the work.</text>
+  <text x="58" y="197" fill="#f4f4f0" font-family="Arial" font-size="48" font-weight="800">Finish as one.</text>
+  <g transform="translate(60 252)">
+    <rect width="840" height="210" rx="18" fill="#1b1f22" stroke="#3a4144"/>
+    <g font-family="Arial" font-size="15" font-weight="700"><text x="30" y="55" fill="#f4f4f0">RESEARCH</text><text x="30" y="112" fill="#f4f4f0">BUILD</text><text x="30" y="169" fill="#f4f4f0">VERIFY</text></g>
+    <g fill="#3a4144"><rect x="160" y="43" width="420" height="8" rx="4"/><rect x="160" y="100" width="420" height="8" rx="4"/><rect x="160" y="157" width="420" height="8" rx="4"/></g>
+    <rect x="160" y="43" width="375" height="8" rx="4" fill="#facc15"/><rect x="160" y="100" width="375" height="8" rx="4" fill="#38bdf8"/><rect x="160" y="157" width="375" height="8" rx="4" fill="#fb7185"/>
+    <path d="M580 47L660 105M580 104h80M580 161l80-56" fill="none" stroke="#facc15" stroke-width="3"/>
+    <rect x="660" y="57" width="145" height="96" rx="15" fill="#111315" stroke="#4ade80"/>
+    <text x="687" y="112" fill="#4ade80" font-family="Arial" font-size="17" font-weight="700">MERGED ✓</text>
+  </g>
+</svg>
