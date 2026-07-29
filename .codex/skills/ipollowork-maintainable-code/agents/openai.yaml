@@ -1,0 +1,4 @@
+interface:
+  display_name: "iPolloWork Maintainable Code"
+  short_description: "Reuse existing code and enforce iPolloWork repository boundaries"
+  default_prompt: "Use $ipollowork-maintainable-code to implement this change with reuse-first decisions, correct file placement, and a focused maintainability audit."
