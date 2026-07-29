@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.local-file-cascade",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "local-files",
+  "style": "technical",
+  "tags": [
+    "video",
+    "hyperframes",
+    "local-files"
+  ],
+  "surface": "video",
+  "title": "Local File Cascade",
+  "description": "A vertical file tree opens branch by branch while selected files cascade into a focused working path.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames deterministic timeline patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": [
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "title",
+        "label": "title",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "root",
+        "label": "root",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "folderA",
+        "label": "folder A",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "folderB",
+        "label": "folder B",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "fileA",
+        "label": "file A",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "fileB",
+        "label": "file B",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "result",
+        "label": "result",
+        "type": "text",
+        "group": "content"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Replace editable copy with one coherent story.",
+    "Preserve the unique composition geometry and deterministic timeline.",
+    "Use design-system tokens for theme colors and typography.",
+    "Verify at 30 fps and keep the lower caption-safe band readable."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

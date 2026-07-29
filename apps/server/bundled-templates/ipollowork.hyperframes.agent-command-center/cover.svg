@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#07111f"/>
+  <g stroke="#29405c" stroke-width="1" opacity=".55"><path d="M0 80h960M0 144h960M0 208h960M0 272h960M0 336h960M0 400h960M0 464h960"/><path d="M64 0v540M128 0v540M192 0v540M256 0v540M320 0v540M384 0v540M448 0v540M512 0v540M576 0v540M640 0v540M704 0v540M768 0v540M832 0v540M896 0v540"/></g>
+  <text x="54" y="60" fill="#5eead4" font-family="Arial" font-size="15" font-weight="700" letter-spacing="3">AGENT COMMAND CENTER</text>
+  <text x="54" y="150" fill="#f5f8ff" font-family="Arial" font-size="54" font-weight="800">One workspace.</text>
+  <text x="54" y="208" fill="#f5f8ff" font-family="Arial" font-size="54" font-weight="800">Every capability.</text>
+  <g transform="translate(55 290)">
+    <g fill="#0e1b2d" stroke="#29405c"><rect width="175" height="118" rx="18"/><rect x="210" width="175" height="118" rx="18"/><rect x="420" width="175" height="118" rx="18"/><rect x="630" width="175" height="118" rx="18"/></g>
+    <g fill="#92a5bf" font-family="Arial" font-size="12" font-weight="700"><text x="18" y="28">01 / TASK</text><text x="228" y="28">02 / AGENT</text><text x="438" y="28">03 / TOOL</text><text x="648" y="28">04 / RESULT</text></g>
+    <g fill="#f5f8ff" font-family="Arial" font-size="18" font-weight="700"><text x="18" y="70">Request</text><text x="228" y="70">Reason</text><text x="438" y="70">Connect</text><text x="648" y="70">Deliver</text></g>
+    <g fill="#5eead4" font-family="Arial" font-size="24"><text x="182" y="70">→</text><text x="392" y="70">→</text><text x="602" y="70">→</text></g>
+  </g>
+</svg>
