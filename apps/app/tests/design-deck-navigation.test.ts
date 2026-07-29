@@ -184,6 +184,14 @@ describe("Design deck navigation", () => {
     expect(source).toContain("setAdvancedOpen(false);");
   });
 
+  test("leaves snapshot replies to their dedicated requester instead of treating them as selection updates", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const snapshotGuard = 'if (event.data.type !== "selected" && event.data.type !== "editing" && event.data.type !== "draft") return;';
+
+    expect(source).toContain(snapshotGuard);
+    expect(source.indexOf(snapshotGuard)).toBeLessThan(source.indexOf("setSelectionState((current) =>"));
+  });
+
   test("derives toolbar targets and placement from the complete selection", async () => {
     const source = await Bun.file(panelUrl).text();
     expect(source).toContain('import { summarizeDesignSelection } from "./design-selection-summary"');
