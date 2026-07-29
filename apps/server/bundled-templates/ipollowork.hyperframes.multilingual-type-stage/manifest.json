@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.multilingual-type-stage",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "localization",
+  "style": "bold",
+  "tags": [
+    "video",
+    "hyperframes",
+    "localization"
+  ],
+  "surface": "video",
+  "title": "Multilingual Type Stage",
+  "description": "Full-canvas typography morphs between Chinese, English, and subtitle forms without relying on cards.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames deterministic timeline patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": [
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "titleZh",
+        "label": "title Zh",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "titleEn",
+        "label": "title En",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "subtitle",
+        "label": "subtitle",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "captionZh",
+        "label": "caption Zh",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "captionEn",
+        "label": "caption En",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "cta",
+        "label": "cta",
+        "type": "text",
+        "group": "content"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Replace editable copy with one coherent story.",
+    "Preserve the unique composition geometry and deterministic timeline.",
+    "Use design-system tokens for theme colors and typography.",
+    "Verify at 30 fps and keep the lower caption-safe band readable."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

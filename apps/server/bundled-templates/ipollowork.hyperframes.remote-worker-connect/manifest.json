@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.remote-worker-connect",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "remote-workflow",
+  "style": "glass",
+  "tags": ["video", "remote", "worker", "cloud", "local-first", "connection"],
+  "surface": "video",
+  "title": "Remote Worker Connect",
+  "description": "A local-to-remote product story that adds a worker, establishes a secure connection, and scales one active task.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames connection and interface-motion patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "workerName", "label": "Worker name", "type": "text", "group": "content" },
+      { "id": "taskLabel", "label": "Task", "type": "text", "group": "content" },
+      { "id": "region", "label": "Region", "type": "text", "group": "content" },
+      { "id": "result", "label": "Result", "type": "text", "group": "content" },
+      { "id": "cta", "label": "Call to action", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the worker, region, task, and result with a truthful remote-work scenario.",
+    "Keep the local and remote surfaces distinct until the connection is visibly established.",
+    "Use design-system tokens for all themeable color, type, border, radius, and shadow values.",
+    "Verify the connection path and status labels remain readable at 30 fps."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

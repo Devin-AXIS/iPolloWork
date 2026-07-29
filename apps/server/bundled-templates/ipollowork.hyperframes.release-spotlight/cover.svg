@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#f6f7fb"/>
+  <path d="M55 90H905" stroke="#cbd5e1"/>
+  <rect x="55" y="48" width="120" height="25" fill="#2447f9"/><text x="66" y="65" fill="#fff" font-family="Arial" font-size="11" font-weight="700">VERSION 1.0</text>
+  <text x="55" y="150" fill="#111827" font-family="Arial" font-size="47" font-weight="800">A faster, clearer way</text>
+  <text x="55" y="201" fill="#111827" font-family="Arial" font-size="47" font-weight="800">to run agentic work.</text>
+  <g transform="translate(55 260)">
+    <g fill="#fff" stroke="#cbd5e1"><rect width="260" height="205" rx="7"/><rect x="292" width="260" height="205" rx="7"/><rect x="584" width="260" height="205" rx="7"/></g>
+    <g font-family="Arial" font-weight="700"><text x="25" y="35" fill="#64748b" font-size="13">01</text><text x="317" y="35" fill="#64748b" font-size="13">02</text><text x="609" y="35" fill="#64748b" font-size="13">03</text><text x="25" y="160" fill="#111827" font-size="20">Agent workflows</text><text x="317" y="160" fill="#111827" font-size="20">Remote workers</text><text x="609" y="160" fill="#111827" font-size="20">Built-in proof</text></g>
+    <circle cx="62" cy="91" r="27" fill="none" stroke="#111827" stroke-width="2"/><circle cx="354" cy="91" r="27" fill="none" stroke="#111827" stroke-width="2"/><circle cx="646" cy="91" r="27" fill="none" stroke="#111827" stroke-width="2"/>
+    <rect y="196" width="260" height="9" fill="#2447f9"/><rect x="292" y="196" width="260" height="9" fill="#0f766e"/><rect x="584" y="196" width="260" height="9" fill="#f43f5e"/>
+  </g>
+</svg>

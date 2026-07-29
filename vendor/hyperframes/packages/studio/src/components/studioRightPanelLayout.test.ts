@@ -27,4 +27,21 @@ describe("Studio right panel layout", () => {
     expect(translations).toContain('"right.renders": "导出"');
     expect(header).not.toContain('<circle cx="12" cy="12" r="10" />');
   });
+
+  it("keeps catalog controls fixed above an accessible persistent scroll region", () => {
+    const catalog = readFileSync(new URL("./sidebar/BlocksTab.tsx", import.meta.url), "utf8");
+    const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
+
+    expect(catalog).toContain("flex h-full min-h-0 flex-1 flex-col overflow-hidden");
+    expect(catalog).toContain("hf-block-catalog-scroll min-h-0 flex-1 px-2 pb-4");
+    expect(catalog).toContain('data-testid="block-catalog-scroll"');
+    expect(catalog).toContain("tabIndex={0}");
+    expect(catalog).toContain('"Animation template list"');
+    expect(catalog).toContain('"Effect template list"');
+    expect(catalog).toContain('data-testid="block-catalog-card"');
+    expect(styles).toContain(".hf-block-catalog-scroll {");
+    expect(styles).toContain("overflow-y: scroll;");
+    expect(styles).toContain("scrollbar-gutter: stable;");
+    expect(styles).toContain(':root[data-ipollowork-theme="light"] .hf-block-catalog-scroll');
+  });
 });

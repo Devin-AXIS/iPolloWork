@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.multi-agent-relay",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "agent-collaboration",
+  "style": "technical",
+  "tags": ["video", "agents", "parallel", "collaboration", "workflow"],
+  "surface": "video",
+  "title": "Multi-Agent Relay",
+  "description": "A technical relay that splits one objective across focused agents, shows parallel progress, and merges verified outputs.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames workflow and diagram-motion patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "leadTask", "label": "Lead task", "type": "text", "group": "content" },
+      { "id": "researchTask", "label": "Research task", "type": "text", "group": "content" },
+      { "id": "buildTask", "label": "Build task", "type": "text", "group": "content" },
+      { "id": "verifyTask", "label": "Verify task", "type": "text", "group": "content" },
+      { "id": "outcome", "label": "Outcome", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the lead objective and three delegated tasks with one realistic workflow.",
+    "Keep parallel lanes visually independent until the verified merge scene.",
+    "Use design-system tokens for every themeable color and typographic role.",
+    "Confirm task labels remain readable throughout the 12-second timeline."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

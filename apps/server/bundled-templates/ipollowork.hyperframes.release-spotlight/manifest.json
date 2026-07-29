@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.release-spotlight",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "release-announcement",
+  "style": "swiss",
+  "tags": ["video", "release", "changelog", "features", "announcement"],
+  "surface": "video",
+  "title": "Release Spotlight",
+  "description": "A disciplined release announcement with a version reveal, three feature beats, one proof metric, and a clean call to action.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames kinetic-type and product-release patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "version", "label": "Version", "type": "text", "group": "content" },
+      { "id": "featureA", "label": "Feature one", "type": "text", "group": "content" },
+      { "id": "featureB", "label": "Feature two", "type": "text", "group": "content" },
+      { "id": "featureC", "label": "Feature three", "type": "text", "group": "content" },
+      { "id": "metric", "label": "Metric", "type": "text", "group": "content" },
+      { "id": "cta", "label": "Call to action", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the version, three features, and metric with verified release information.",
+    "Keep the three feature beats concise enough to read before the final frame.",
+    "Use design-system tokens for every themeable color, type, border, and card surface.",
+    "Confirm the proof metric is sourced and the call to action is accurate."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

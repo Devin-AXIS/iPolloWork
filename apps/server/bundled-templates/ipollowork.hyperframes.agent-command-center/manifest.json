@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.agent-command-center",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "product-overview",
+  "style": "dark",
+  "tags": ["video", "agents", "workflow", "tools", "command-center"],
+  "surface": "video",
+  "title": "Agent Command Center",
+  "description": "A precise product overview that carries one task through agent reasoning, connected tools, and a finished result.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames timeline and product-story patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "taskLabel", "label": "Task", "type": "text", "group": "content" },
+      { "id": "agentLabel", "label": "Agent", "type": "text", "group": "content" },
+      { "id": "toolLabel", "label": "Tool", "type": "text", "group": "content" },
+      { "id": "resultLabel", "label": "Result", "type": "text", "group": "content" },
+      { "id": "cta", "label": "Call to action", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the task, agent, tool, and result labels with one coherent product story.",
+    "Keep the four beats in order so the task visibly progresses toward completion.",
+    "Use design-system tokens for all theme colors and typography.",
+    "Verify every scene at 30 fps and keep the caption-safe lower band clear."
+  ],
+  "minimumAppVersion": "0.17.28"
+}
