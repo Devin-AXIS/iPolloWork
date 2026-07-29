@@ -9,11 +9,13 @@ export type DesignColorFormat = "hsb" | "rgb" | "hex";
 
 type DesignColorFieldProps = {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, remember?: boolean) => void;
+  label?: string;
+  mixed?: boolean;
   className?: string;
 };
 
-export function DesignColorField({ value, onChange, className }: DesignColorFieldProps) {
+export function DesignColorField({ value, onChange, label = "Color", mixed = false, className }: DesignColorFieldProps) {
   const hex = normalizeDesignColorHex(value);
   const [format, setFormat] = React.useState<DesignColorFormat>("hsb");
   const formattedValue = formatDesignColor(hex, format);
@@ -24,14 +26,20 @@ export function DesignColorField({ value, onChange, className }: DesignColorFiel
   const applyDraft = (next: string) => {
     setDraft(next);
     const parsed = parseDesignColor(next, format);
-    if (parsed) onChange(parsed);
+    if (parsed) onChange(parsed, false);
   };
 
   return (
     <div className={cn("flex h-[34px] items-center gap-2 rounded-lg bg-[#f5f6f9] px-2 pr-4", className)}>
-      <label className="relative size-5 shrink-0 cursor-pointer overflow-hidden rounded-[4px]" style={{ backgroundColor: hex }}>
-        <span className="sr-only">Choose color</span>
-        <input type="color" className="absolute inset-0 cursor-pointer opacity-0" value={hex} onChange={(event) => onChange(event.currentTarget.value)} />
+      <label className="relative size-5 shrink-0 cursor-pointer overflow-hidden rounded-[4px]" style={mixed ? { background: "linear-gradient(135deg, #d1d5db 50%, #f9fafb 50%)" } : { backgroundColor: hex }}>
+        <span className="sr-only">Choose {label.toLowerCase()}</span>
+        <input
+          type="color"
+          className="absolute inset-0 cursor-pointer opacity-0"
+          value={hex}
+          onPointerDown={() => onChange(hex, true)}
+          onChange={(event) => onChange(event.currentTarget.value, false)}
+        />
       </label>
       <DesignPanelSelect
         value={format}
@@ -47,10 +55,12 @@ export function DesignColorField({ value, onChange, className }: DesignColorFiel
       />
       <Input
         className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-right text-[13px] uppercase shadow-none focus-visible:ring-0"
-        value={draft}
+        value={mixed ? "" : draft}
+        placeholder={mixed ? "Mixed" : undefined}
+        onFocus={() => onChange(hex, true)}
         onChange={(event) => applyDraft(event.currentTarget.value)}
         onBlur={() => setDraft(formatDesignColor(normalizeDesignColorHex(value), format))}
-        aria-label="Color value"
+        aria-label={`Design ${label.toLowerCase()} value`}
       />
     </div>
   );

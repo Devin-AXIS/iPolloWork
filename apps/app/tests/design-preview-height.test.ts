@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 const panelUrl = new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url);
 const inspectorUrl = new URL("../src/react-app/domains/session/design/design-properties-inspector.tsx", import.meta.url);
+const colorFieldUrl = new URL("../src/react-app/domains/session/design/design-color-field.tsx", import.meta.url);
 
 describe("Design preview height", () => {
   test("fills the panel for ordinary previews without changing the presentation canvas", async () => {
@@ -30,7 +31,7 @@ describe("Design property number fields", () => {
   test("keeps font size on the left and font weight on the right with preset menus", async () => {
     const source = await Bun.file(inspectorUrl).text();
 
-    const sizeField = '<FontPresetField label="Size" value={String(fontSize)} presets={FONT_SIZE_PRESETS} onChange={(value) => applyPixels("fontSize", value)} />';
+    const sizeField = '<FontPresetField label="Size" value={String(fontSize)} presets={FONT_SIZE_PRESETS} onChange={(value, remember) => applyPixels("fontSize", value, remember)} />';
     const weightField = '<FontPresetField label="Weight" value={selection.styles.fontWeight || "400"} presets={FONT_WEIGHT_PRESETS} onChange={(value) => onApplyField("fontWeight", value)} />';
 
     expect(source.indexOf(sizeField)).toBeGreaterThanOrEqual(0);
@@ -47,8 +48,8 @@ describe("Design property number fields", () => {
 
     expect(source.indexOf(textSection)).toBeGreaterThanOrEqual(0);
     expect(source.indexOf(positionSection)).toBeGreaterThan(source.indexOf(textSection));
-    expect(source).toContain('onApplyField("left", `${value}px`)');
-    expect(source).toContain('onApplyField("top", `${value}px`)');
+    expect(source).toContain('onApplyField("left", `${value}px`, remember)');
+    expect(source).toContain('onApplyField("top", `${value}px`, remember)');
   });
 
   test("uses a lazy searchable font picker with self-rendered options", async () => {
@@ -75,5 +76,75 @@ describe("Design property number fields", () => {
     expect(source).toContain('toggleTransformScale(selection.styles.transform, "y")');
     expect(source).not.toContain('onApplyField("transform", "scaleX(-1)")');
     expect(source).not.toContain('onApplyField("transform", "scaleY(-1)")');
+  });
+
+  test("supports batch inspector metadata and mixed fields", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+    expect(source).toContain("isMultiSelection: boolean");
+    expect(source).toContain("selectionCount: number");
+    expect(source).toContain("mixedStyleFields: readonly DesignStyleField[]");
+    expect(source).toContain("const isMixed = (field: DesignStyleField)");
+    expect(source).toContain("Batch selection");
+    expect(source).toContain("MixedValueHint");
+    expect(source).toContain("{!isMultiSelection && selection.canEditText ?");
+  });
+
+  test("renders independent batch text and background fill controls", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+    const colorFieldSource = await Bun.file(colorFieldUrl).text();
+
+    expect(source).toContain('<ColorField label="Text color" mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value, remember) => onApplyField("color", value, remember)} />');
+    expect(source).toContain('<ColorField label="Background color" mixed={isMixed("backgroundColor")} value={selection.styles.backgroundColor || "#000000"} onChange={(value, remember) => onApplyField("backgroundColor", value, remember)} />');
+    expect(colorFieldSource).toContain('aria-label={`Design ${label.toLowerCase()} value`}');
+    expect(colorFieldSource).toContain("Choose {label.toLowerCase()}");
+  });
+
+  test("applies mixed batch typography buttons instead of toggling from the primary style", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+
+    expect(source).toContain('isMixed("fontWeight") ? "700" : numericValue(selection.styles.fontWeight, 400) >= 600 ? "400" : "700"');
+    expect(source).toContain('isMixed("fontStyle") ? "italic" : selection.styles.fontStyle === "italic" ? "normal" : "italic"');
+    expect(source).toContain('isMixed("textDecoration") ? ensureDecoration(selection.styles.textDecoration, "underline") : toggleDecoration(selection.styles.textDecoration, "underline")');
+    expect(source).toContain('isMixed("textDecoration") ? ensureDecoration(selection.styles.textDecoration, "line-through") : toggleDecoration(selection.styles.textDecoration, "line-through")');
+  });
+
+  test("remembers only the first actual move of every drag number interaction", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+    const panelSource = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("const remember = !activeDrag.moved;");
+    expect(source).toContain("onChange(nextValue, remember);");
+    expect(source).toContain("onChange={(event) => onChange(numericValue(event.currentTarget.value, numericValue(value, 0)), false)}");
+    expect(source).toContain('onChange={(value, remember) => applyPixels("lineHeight", String(value), remember)}');
+    expect(source).toContain('onChange={(value, remember) => onApplyField("letterSpacing", `${value}%`, remember)}');
+    expect(source).toContain('onChange={(value, remember) => onApplyField("left", `${value}px`, remember)}');
+    expect(source).toContain('onChange={(value, remember) => onApplyField("top", `${value}px`, remember)}');
+    expect(source).toContain('onChange={(value, remember) => onApplyField("transform", `rotate(${value}deg)`, remember)}');
+    expect(source).toContain('onChange={(value, remember) => onApplyField("width", `${value}px`, remember)}');
+    expect(source).toContain('onChange={(value, remember) => onApplyField("height", `${value}px`, remember)}');
+    expect(source).toContain('onChange={(value, remember) => applyPixels("fontSize", value, remember)}');
+    expect(panelSource).toContain("const applyField = (field: DesignField, value: string, remember = true) =>");
+  });
+
+  test("groups typed property changes into one undo interaction", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+    const colorFieldSource = await Bun.file(colorFieldUrl).text();
+
+    expect(source).toContain('onFocus={() => onApplyField("text", selection.text, true)}');
+    expect(source).toContain('onChange={(event) => onApplyField("text", event.currentTarget.value, false)}');
+    expect(source).toContain("onFocus={() => onChange(value, true)}");
+    expect(source).toContain("onChange={(event) => onChange(event.currentTarget.value, false)}");
+    expect(source).toContain("onChange={(value, remember) => onApplyField(\"borderStyle\", value.toLowerCase(), remember)}");
+    expect(source).toContain('<DesignColorField label={label} mixed={mixed} value={value} onChange={onChange}');
+    expect(colorFieldSource).toContain("onFocus={() => onChange(hex, true)}");
+    expect(colorFieldSource).toContain("onPointerDown={() => onChange(hex, true)}");
+    expect(source).toContain("onChange={(next, remember) => onChange(clampPercentage(numericValue(next, value)), remember ?? true)}");
+  });
+
+  test("passes selection summary metadata to the inspector", async () => {
+    const source = await Bun.file(panelUrl).text();
+    expect(source).toContain("isMultiSelection={isMultiSelection}");
+    expect(source).toContain("selectionCount={selectionSummary.selectionCount}");
+    expect(source).toContain("mixedStyleFields={selectionSummary.mixedStyleFields}");
   });
 });

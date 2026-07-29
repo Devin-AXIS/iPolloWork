@@ -84,7 +84,7 @@ describe("Design deck navigation", () => {
 
     expect(source).toContain('aria-label="Delete selected element"');
     expect(source).toContain('type: "delete"');
-    expect(source).toContain("disabled={!selection.canDelete}");
+    expect(source).toContain("disabled={!selectionSummary.selections.some((member) => member.canDelete)}");
   });
 
   test("places AI after every floating toolbar action", async () => {
@@ -97,7 +97,7 @@ describe("Design deck navigation", () => {
     const source = await Bun.file(panelUrl).text();
     const labelIndex = source.lastIndexOf('aria-label="Ask AI about selected element"');
     const actionStart = source.lastIndexOf("<Button", labelIndex);
-    expect(source.slice(actionStart, labelIndex)).toContain("disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== \"current\"}");
+    expect(source.slice(actionStart, labelIndex)).toContain("disabled={isMultiSelection || !selection.canDelete || saveMutation.isPending || viewedVersionPath !== \"current\"}");
   });
 
   test("pans the overflowed presentation canvas without moving the slide", async () => {
@@ -109,12 +109,96 @@ describe("Design deck navigation", () => {
     expect(source).toContain("presentationCanvasStageSize");
   });
 
+  test("restores the current view after undo instead of jumping to the beginning", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("pendingViewRestoreRef");
+    expect(source).toContain("frameViewRef");
+    expect(source).toContain("deckRef");
+    expect(source).toContain('type: "restore-view"');
+    expect(source).toContain('event.data.type === "view-restored"');
+    expect(source).toContain("presentationPanRef.current?.scrollTo");
+    expect(source).toContain("if (activePageHash && !pending)");
+    expect(source).not.toContain('postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");\n                        iframeRef');
+  });
+
+  test("accepts normal deck messages and waits for a revision-matched restore acknowledgement", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("if (pending) {");
+    expect(source).toContain("event.data.viewRevision !== pending.id");
+    expect(source).not.toContain("pending?.deckIndex !== null");
+    expect(source).toContain('type: "deck-navigate", direction: "index", index: deckIndex, viewRevision: pending?.id ?? ""');
+  });
+
+  test("ignores draft messages until the replacement iframe has restored the undo view", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('if ((event.data.type === "draft" || event.data.type === "document-draft") && shouldIgnoreDesignDraftMessage(pendingViewRestoreRef.current)) return;');
+    expect(source).toContain("expectsDesignRestoreFrame(pending, previewSource, previewRevision, activeFrameRevision)");
+    expect(source).toContain("event.data.frameRevision !== activeFrameRevisionRef.current");
+  });
+
+  test("keeps undo history when saving the current design", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const saveMutation = source.match(/const saveMutation = useMutation\(\{[\s\S]*?\n  \}\);/)?.[0] ?? "";
+
+    expect(saveMutation).not.toContain("setHistory([])");
+    expect(source).toContain("shouldHydrateDesignSource(pageChanged, fileQuery.data.content, draftRef.current)");
+  });
+
+  test("uses an atomic deduplicated stack for consecutive undo actions", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('from "./design-undo-history"');
+    expect(source).toContain("historyRef");
+    expect(source).toContain("pushDesignUndoHistory(current, snapshot)");
+    expect(source).toContain("popDesignUndoHistory(historyRef.current, draftRef.current)");
+    expect(source).not.toContain('if (event.data.type === "editing") setHistory((current) => [...current, draft]);');
+  });
+
+  test("recreates the preview frame when undoing a live canvas edit", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const undo = source.match(/const undo = async \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+
+    // A drag changes only the live iframe DOM. Its pre-drag HTML may already
+    // equal previewSource, so Undo must invalidate the hydrated frame instead
+    // of relying on previewSource changing to trigger a reload.
+    expect(undo).toContain('setHydratedPreviewSource("");');
+    expect(undo).toContain('setPreviewLoaded(false);');
+    expect(undo).toContain('setPreviewRevision(restore.previewRevision);');
+  });
+
+  test("explains why Undo is disabled before the first change", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('title={history.length === 0 && !aiUndoCheckpoint ? "Make a change first to undo it" : "Undo last design change"}');
+  });
+
   test("dismisses the floating selection toolbar when the editor deselects", async () => {
     const source = await Bun.file(panelUrl).text();
 
     expect(source).toContain('event.data.type === "deselected"');
-    expect(source).toContain("setSelection(null);");
+    expect(source).toContain("setSelectionState(null);");
     expect(source).toContain("setQuickEdit(null);");
     expect(source).toContain("setAdvancedOpen(false);");
+  });
+
+  test("derives toolbar targets and placement from the complete selection", async () => {
+    const source = await Bun.file(panelUrl).text();
+    expect(source).toContain('import { summarizeDesignSelection } from "./design-selection-summary"');
+    expect(source).toContain("const selectionSummary = selectionState");
+    expect(source).toContain("const isMultiSelection = selectionSummary?.isMultiSelection ?? false");
+    expect(source).toContain("selectionSummary?.selectionRect");
+    expect(source).toContain("ids: selectionSummary.selectionIds");
+  });
+
+  test("hides single-element toolbar actions in a multi-selection", async () => {
+    const source = await Bun.file(panelUrl).text();
+    expect(source).toContain("{!isMultiSelection && selection.canEditText ?");
+    expect(source).toContain("{!isMultiSelection && selection.href ?");
+    expect(source).toContain('{!isMultiSelection && selection.tag === "img" ?');
+    expect(source).toContain("disabled={isMultiSelection || !selection.canDelete");
+    expect(source).toContain("{isMultiSelection ?");
   });
 });

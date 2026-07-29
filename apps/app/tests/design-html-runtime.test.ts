@@ -41,8 +41,31 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain("backgroundColor");
     expect(preview).toContain("ipollowork-design-transform-overlay");
     expect(preview).toContain('data-handle="se"');
-    expect(preview).toContain('prepareTransform(selected, handle === "move" ? "move" : "resize"');
-    expect(preview).toContain('selected.style.width = `${width}px`');
+    expect(preview).toContain('prepareTransform(handle === "move" ? "move" : "resize"');
+    expect(preview).toContain('target.element.style.width = `${width}px`');
+  });
+
+  test("recovers a selected multi-selection after any valid member double-click", async () => {
+    const runtimePath = new URL(
+      "../src/react-app/domains/session/design/design-html-runtime.ts",
+      import.meta.url,
+    );
+    const runtimeSource = await Bun.file(runtimePath).text();
+
+    expect(runtimeSource).toContain("selectedElements: HTMLElement[];");
+    expect(runtimeSource).toContain("primaryElement: HTMLElement | null;");
+    expect(runtimeSource).toContain("const deferSelectionReplacement = (element: HTMLElement) => {");
+    expect(runtimeSource).toContain("const restorePendingSelection = (element: HTMLElement) => {");
+    expect(runtimeSource).toContain("pending.selectedElements.includes(element)");
+    expect(runtimeSource).toContain("selectionCandidate(target, pendingSelectionClick.primaryElement, pendingSelectionClick.selectedElements)");
+    expect(runtimeSource).toContain("pendingSelectionClick.selectedElements");
+    expect(runtimeSource).toContain("candidateSelection.includes(element)");
+    expect(runtimeSource).toContain("candidateSelection.includes(control)");
+    expect(runtimeSource).toContain("event.detail > 1");
+    expect(runtimeSource).toContain('post("selected")');
+    expect(runtimeSource).toContain("deferSelectionReplacement(element);");
+    expect(runtimeSource).not.toContain("}, 250);");
+    expect(runtimeSource).not.toContain("pendingSelectionClick.timeout");
   });
 
   test("describes an editable element with a stable CSS locator", () => {
@@ -75,6 +98,32 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('const slideWrappers = slides.map((slide) => slide.closest(".slide-wrap"))');
     expect(preview).toContain('const wrapperIndex = slideWrappers.findIndex((wrapper) => wrapper && !wrapper.classList.contains("hidden")');
     expect(preview).toContain("event.stopImmediatePropagation();");
+  });
+
+  test("reports and restores the iframe viewport without treating cursor movement as an undo step", () => {
+    const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
+    const preview = buildDesignPreviewDocument(source, true, "", true, false, true);
+
+    expect(preview).toContain('type: "view"');
+    expect(preview).toContain('data.type === "restore-view"');
+    expect(preview).toContain('type: "view-restored"');
+    expect(preview).toContain('direction === "index"');
+
+    const selectionChange = preview.match(/document\.addEventListener\("selectionchange",[\s\S]*?\n\s*\}\);/)?.[0] ?? "";
+    expect(selectionChange).toContain('post("selected")');
+    expect(selectionChange).not.toContain('post("editing")');
+  });
+
+  test("acknowledges a restored deck index even when it matches the initial slide", () => {
+    const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
+    const preview = buildDesignPreviewDocument(source, true, "", true, false, true, "frame-7");
+
+    expect(preview).toContain("viewRevision");
+    expect(preview).toContain("frameRevision");
+    expect(preview).toContain('"frame-7"');
+    expect(preview).toMatch(/report\(data\.viewRevision\)/);
+    expect(preview).toContain('data.direction === "index" && typeof data.index === "number"');
+    expect(preview).toMatch(/addEventListener\("hashchange",\s*\(\)\s*=>\s*report\(\)\)/);
   });
 
   test("treats a one-page canvas as a presentation so it can be exported", () => {
@@ -130,8 +179,8 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain("element.children.length === 0");
     expect(preview).toContain("Boolean(element.textContent?.trim())");
     expect(preview).toContain('data.type === "delete"');
-    expect(preview).toContain("canDeleteElement(selected)");
-    expect(preview).toContain("selected.remove()");
+    expect(preview).toContain("selectedTargets(data.ids).filter(canDeleteElement)");
+    expect(preview).toContain("targets.forEach((target) => target.remove())");
     expect(preview).toContain('type: "zoom"');
     expect(preview).not.toContain('event.key === "Delete"');
     expect(preview).not.toContain('event.key === "Backspace"');
@@ -152,7 +201,7 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain("!isPresentationRoot(element)");
     expect(preview).toContain("slideRoot && !slideRoot.contains(element)");
     expect(preview).toContain("isPresentationSlideRoot(element)");
-    expect(preview).toContain("],false,false,true);");
+    expect(preview).toContain("],false,false,true,[");
   });
 
   test("reports a drag on empty presentation canvas space as a pan", () => {
@@ -182,8 +231,56 @@ describe("Design HTML runtime", () => {
     const presentationPreview = buildDesignPreviewDocument("<!doctype html><html><body><section class=\"slide\"><h1>Slide</h1></section></body></html>", true, "", false, false, true);
 
     expect(sitePreview).toContain("if (!presentationCanvas || !event.ctrlKey && !event.metaKey)");
-    expect(sitePreview).toContain("],false,false,false);</script>");
-    expect(presentationPreview).toContain("],false,false,true);</script>");
+    expect(sitePreview).toContain("],false,false,false,[");
+    expect(presentationPreview).toContain("],false,false,true,[");
     expect(presentationPreview).toContain('type: "zoom"');
+  });
+
+  test("emits ordered modifier selections and their union rectangle", async () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><p>One</p><p>Two</p></body></html>", true);
+    const runtimeSource = await Bun.file(new URL("../src/react-app/domains/session/design/design-html-runtime.ts", import.meta.url)).text();
+    expect(preview).toContain('const primaryAttribute = "data-ipollowork-design-primary"');
+    expect(preview).toContain("let selectedElements: HTMLElement[] = []");
+    expect(preview).toContain("let primaryElement: HTMLElement | null = null");
+    expect(preview).toContain("event.ctrlKey || event.metaKey");
+    expect(preview).toContain("toggleSelection(element)");
+    expect(preview).toContain("selectionRect: selectionBounds()");
+    expect(preview).toContain("selections: selectedElements.map(describe)");
+    expect(runtimeSource).toContain('const primaryAttribute = "data-ipollowork-design-primary"');
+    expect(runtimeSource).toContain("let selectedElements: HTMLElement[] = []");
+    expect(runtimeSource).toContain("let primaryElement: HTMLElement | null = null");
+  });
+
+  test("modifier-click exits active text editing before toggling that selection", async () => {
+    const runtimeSource = await Bun.file(new URL("../src/react-app/domains/session/design/design-html-runtime.ts", import.meta.url)).text();
+
+    expect(runtimeSource).toContain("primaryElement?.hasAttribute(editingAttribute) && !event.ctrlKey && !event.metaKey");
+    expect(runtimeSource).toContain("const selectionModifier = event.ctrlKey || event.metaKey;");
+    expect(runtimeSource).toContain("if (selectionModifier && element.hasAttribute(editingAttribute)) {");
+    expect(runtimeSource).toContain("element.removeAttribute(editingAttribute);");
+    expect(runtimeSource).toContain('element.removeAttribute("contenteditable");');
+    expect(runtimeSource).toContain("window.getSelection()?.removeAllRanges();");
+    expect(runtimeSource).toContain("textRange = null;");
+    expect(runtimeSource.indexOf("const selectionModifier = event.ctrlKey || event.metaKey;")).toBeLessThan(runtimeSource.indexOf("if (selectionModifier && element.hasAttribute(editingAttribute)) {"));
+  });
+
+  test("moves a selected set and prevents its resize", async () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><p>One</p><p>Two</p></body></html>", true);
+    const runtimeSource = await Bun.file(new URL("../src/react-app/domains/session/design/design-html-runtime.ts", import.meta.url)).text();
+    expect(preview).toContain('const effectiveMode = selectedElements.length > 1 ? "move" : mode');
+    expect(preview).toContain('overlay.classList.toggle("ipollowork-design-multi-selection", selectedElements.length > 1)');
+    expect(preview).toContain("transform.targets.forEach((target) =>");
+    expect(runtimeSource).toContain('const effectiveMode = selectedElements.length > 1 ? "move" : mode');
+    expect(runtimeSource).toContain("element !== target.element && element.contains(target.element)");
+    expect(runtimeSource).toContain("restorePendingSelection(element)");
+  });
+
+  test("uses selected IDs for safe batch delete and styles", async () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><p>One</p><p>Two</p></body></html>", true);
+    const runtimeSource = await Bun.file(new URL("../src/react-app/domains/session/design/design-html-runtime.ts", import.meta.url)).text();
+    expect(preview).toContain("const selectedTargets = (ids: unknown) =>");
+    expect(preview).toContain("selectedTargets(data.ids)");
+    expect(preview).toContain("targets.length > 1 && !multiSelectionStyleFields.includes(data.field)");
+    expect(runtimeSource).toContain("const selectedTargets = (ids: unknown) =>");
   });
 });

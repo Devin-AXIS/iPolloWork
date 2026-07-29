@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { listSystemFontFamilies } from "@/app/lib/desktop";
 import { cn } from "@/lib/utils";
 import type { DesignField, DesignSelection, DesignStyleField } from "./design-html-runtime";
@@ -48,6 +49,9 @@ import panelSelectChevron from "./assets/panel-select-chevron.svg";
 
 type DesignPropertiesInspectorProps = {
   selection: DesignSelection | null;
+  isMultiSelection: boolean;
+  selectionCount: number;
+  mixedStyleFields: readonly DesignStyleField[];
   activeTab: "element" | "design-system";
   onClose: () => void;
   onActiveTabChange: (tab: "element" | "design-system") => void;
@@ -71,6 +75,9 @@ const FONT_WEIGHT_PRESETS = [
 
 function ElementPropertiesContent({
   selection,
+  isMultiSelection,
+  selectionCount,
+  mixedStyleFields,
   onClose,
   onApplyField,
   onApplyFields,
@@ -87,6 +94,7 @@ function ElementPropertiesContent({
   const backgroundValue = selection.styles[fillField];
   const [imageFillOpen, setImageFillOpen] = React.useState(false);
   const fillType = imageFillOpen && selection.tag !== "img" ? "image" : fillTypeFor(selection);
+  const isMixed = (field: DesignStyleField) => mixedStyleFields.includes(field);
 
   const applyFillType = (type: FillType) => {
     if (type === "none") {
@@ -104,38 +112,41 @@ function ElementPropertiesContent({
     if (type === "image") setImageFillOpen(true);
   };
 
-  const applyPixels = (field: DesignStyleField, value: string) => {
-    onApplyField(field, value.trim() && !Number.isNaN(Number(value)) ? `${value}px` : value);
+  const applyPixels = (field: DesignStyleField, value: string, remember?: boolean) => {
+    onApplyField(field, value.trim() && !Number.isNaN(Number(value)) ? `${value}px` : value, remember);
   };
 
   return <>
 
       <div className="flex h-[52px] items-center border-b border-[#e8e9ec] px-4">
-        <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{selection.canEditText ? "Text layer" : `${selection.tag.charAt(0).toUpperCase()}${selection.tag.slice(1).toLowerCase()} layer`}</span>
-        <InspectorIconButton label="Edit link" disabled={!selection.href}><Link2 /></InspectorIconButton>
-        <InspectorIconButton label="Lock layer" disabled><Lock /></InspectorIconButton>
-        <InspectorIconButton label="Delete layer" disabled><Trash2 /></InspectorIconButton>
+        <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{isMultiSelection ? `${selectionCount} elements · Batch selection` : selection.canEditText ? "Text layer" : `${selection.tag.charAt(0).toUpperCase()}${selection.tag.slice(1).toLowerCase()} layer`}</span>
+        {!isMultiSelection ? <>
+          <InspectorIconButton label="Edit link" disabled={!selection.href}><Link2 /></InspectorIconButton>
+          <InspectorIconButton label="Lock layer" disabled><Lock /></InspectorIconButton>
+          <InspectorIconButton label="Delete layer" disabled><Trash2 /></InspectorIconButton>
+        </> : null}
       </div>
 
-      {selection.canEditText ? (
+      {!isMultiSelection && selection.canEditText ? (
         <InspectorSection title="Text">
           <Input
             aria-label="Design text"
             className="h-11 rounded-lg border-[#77a0ff] bg-white px-3 text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-[#77a0ff]"
             value={selection.text}
             placeholder="预览文本可编辑内容框..."
-            onChange={(event) => onApplyField("text", event.currentTarget.value)}
+            onFocus={() => onApplyField("text", selection.text, true)}
+            onChange={(event) => onApplyField("text", event.currentTarget.value, false)}
           />
           <div className="mt-3">
             <FontFamilyPicker value={selection.styles.fontFamily || "PingFang SC"} onChange={(value) => onApplyField("fontFamily", value)} />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <FontPresetField label="Size" value={String(fontSize)} presets={FONT_SIZE_PRESETS} onChange={(value) => applyPixels("fontSize", value)} />
+            <FontPresetField label="Size" value={String(fontSize)} presets={FONT_SIZE_PRESETS} onChange={(value, remember) => applyPixels("fontSize", value, remember)} />
             <FontPresetField label="Weight" value={selection.styles.fontWeight || "400"} presets={FONT_WEIGHT_PRESETS} onChange={(value) => onApplyField("fontWeight", value)} />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <DragNumberField label="Line height" value={String(lineHeight)} onChange={(value) => applyPixels("lineHeight", String(value))} />
-            <DragNumberField label="Letter spacing" value={String(letterSpacing)} suffix="%" onChange={(value) => onApplyField("letterSpacing", `${value}%`)} />
+            <DragNumberField label="Line height" value={String(lineHeight)} onChange={(value, remember) => applyPixels("lineHeight", String(value), remember)} />
+            <DragNumberField label="Letter spacing" value={String(letterSpacing)} suffix="%" onChange={(value, remember) => onApplyField("letterSpacing", `${value}%`, remember)} />
           </div>
           <div className="mt-3 grid grid-cols-6 gap-1">
             <PropertyButton active={selection.styles.textAlign === "left"} aria-label="Align text left" onClick={() => onApplyField("textAlign", "left")}><AlignLeft /></PropertyButton>
@@ -154,7 +165,34 @@ function ElementPropertiesContent({
         </InspectorSection>
       ) : null}
 
-      <InspectorSection title="Position">
+      {isMultiSelection ? (
+        <InspectorSection title="Typography">
+          <div className="mb-1 flex items-center justify-between"><FieldCaption>Font family</FieldCaption><MixedValueHint mixed={isMixed("fontFamily")} /></div>
+          <FontFamilyPicker mixed={isMixed("fontFamily")} value={selection.styles.fontFamily || "PingFang SC"} onChange={(value) => onApplyField("fontFamily", value)} />
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <FontPresetField mixed={isMixed("fontSize")} label="Size" value={String(fontSize)} presets={FONT_SIZE_PRESETS} onChange={(value, remember) => applyPixels("fontSize", value, remember)} />
+            <FontPresetField mixed={isMixed("fontWeight")} label="Weight" value={selection.styles.fontWeight || "400"} presets={FONT_WEIGHT_PRESETS} onChange={(value) => onApplyField("fontWeight", value)} />
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <DragNumberField mixed={isMixed("lineHeight")} label="Line height" value={String(lineHeight)} onChange={(value, remember) => applyPixels("lineHeight", String(value), remember)} />
+            <DragNumberField mixed={isMixed("letterSpacing")} label="Letter spacing" value={String(letterSpacing)} suffix="%" onChange={(value, remember) => onApplyField("letterSpacing", `${value}%`, remember)} />
+          </div>
+          <div className="mt-3 flex items-center justify-between"><FieldCaption>Alignment</FieldCaption><MixedValueHint mixed={isMixed("textAlign")} /></div>
+          <div className="grid grid-cols-3 gap-1">
+            <PropertyButton active={!isMixed("textAlign") && selection.styles.textAlign === "left"} aria-label="Align text left" onClick={() => onApplyField("textAlign", "left")}><AlignLeft /></PropertyButton>
+            <PropertyButton active={!isMixed("textAlign") && selection.styles.textAlign === "center"} aria-label="Align text center" onClick={() => onApplyField("textAlign", "center")}><AlignCenter /></PropertyButton>
+            <PropertyButton active={!isMixed("textAlign") && selection.styles.textAlign === "right"} aria-label="Align text right" onClick={() => onApplyField("textAlign", "right")}><AlignRight /></PropertyButton>
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-1">
+            <BatchPropertyButton mixed={isMixed("fontWeight")} label="Bold"><PropertyButton active={!isMixed("fontWeight") && numericValue(selection.styles.fontWeight, 400) >= 600} aria-label="Bold" onClick={() => onApplyField("fontWeight", isMixed("fontWeight") ? "700" : numericValue(selection.styles.fontWeight, 400) >= 600 ? "400" : "700")}><Bold /></PropertyButton></BatchPropertyButton>
+            <BatchPropertyButton mixed={isMixed("fontStyle")} label="Italic"><PropertyButton active={!isMixed("fontStyle") && selection.styles.fontStyle === "italic"} aria-label="Italic" onClick={() => onApplyField("fontStyle", isMixed("fontStyle") ? "italic" : selection.styles.fontStyle === "italic" ? "normal" : "italic")}><Italic /></PropertyButton></BatchPropertyButton>
+            <BatchPropertyButton mixed={isMixed("textDecoration")} label="Underline"><PropertyButton active={!isMixed("textDecoration") && selection.styles.textDecoration.includes("underline")} aria-label="Underline" onClick={() => onApplyField("textDecoration", isMixed("textDecoration") ? ensureDecoration(selection.styles.textDecoration, "underline") : toggleDecoration(selection.styles.textDecoration, "underline"))}><Underline /></PropertyButton></BatchPropertyButton>
+            <BatchPropertyButton mixed={isMixed("textDecoration")} label="Strikethrough"><PropertyButton active={!isMixed("textDecoration") && selection.styles.textDecoration.includes("line-through")} aria-label="Strikethrough" onClick={() => onApplyField("textDecoration", isMixed("textDecoration") ? ensureDecoration(selection.styles.textDecoration, "line-through") : toggleDecoration(selection.styles.textDecoration, "line-through"))}><Strikethrough /></PropertyButton></BatchPropertyButton>
+          </div>
+        </InspectorSection>
+      ) : null}
+
+      {!isMultiSelection ? <InspectorSection title="Position">
         <FieldCaption>Alignment</FieldCaption>
         <div className="grid grid-cols-6 gap-1">
           <PropertyButton active aria-label="Align left"><AlignLeft /></PropertyButton>
@@ -166,58 +204,67 @@ function ElementPropertiesContent({
         </div>
         <FieldCaption className="mt-3">Position</FieldCaption>
         <div className="grid grid-cols-2 gap-2">
-          <DragNumberField label="X" value={selection.styles.left || `${Math.round(selection.rect.left)}px`} suffix="px" onChange={(value) => onApplyField("left", `${value}px`)} />
-          <DragNumberField label="Y" value={selection.styles.top || `${Math.round(selection.rect.top)}px`} suffix="px" onChange={(value) => onApplyField("top", `${value}px`)} />
+          <DragNumberField label="X" value={selection.styles.left || `${Math.round(selection.rect.left)}px`} suffix="px" onChange={(value, remember) => onApplyField("left", `${value}px`, remember)} />
+          <DragNumberField label="Y" value={selection.styles.top || `${Math.round(selection.rect.top)}px`} suffix="px" onChange={(value, remember) => onApplyField("top", `${value}px`, remember)} />
         </div>
         <div className="mt-2 grid grid-cols-[1fr_42px_42px_42px] gap-1">
-          <DragNumberField label="Rotation" value={`${rotation}°`} suffix="°" onChange={(value) => onApplyField("transform", `rotate(${value}deg)`)} />
+          <DragNumberField label="Rotation" value={`${rotation}°`} suffix="°" onChange={(value, remember) => onApplyField("transform", `rotate(${value}deg)`, remember)} />
           <PropertyButton aria-label="Rotate clockwise" onClick={() => onApplyField("transform", `rotate(${rotation + 90}deg)`)}><RotateCw /></PropertyButton>
           <PropertyButton aria-label="Flip horizontal" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "x"))}><FlipHorizontal2 /></PropertyButton>
           <PropertyButton aria-label="Flip vertical" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "y"))}><SeparatorHorizontal /></PropertyButton>
         </div>
-      </InspectorSection>
+      </InspectorSection> : null}
 
-      <InspectorSection title="Size">
+      {!isMultiSelection ? <InspectorSection title="Size">
         <div className="grid grid-cols-[1fr_1fr_34px] gap-2">
-          <DragNumberField label="Width" value={selection.styles.width || `${Math.round(selection.rect.width)}px`} suffix="px" onChange={(value) => onApplyField("width", `${value}px`)} />
-          <DragNumberField label="Height" value={selection.styles.height || `${Math.round(selection.rect.height)}px`} suffix="px" onChange={(value) => onApplyField("height", `${value}px`)} />
+          <DragNumberField label="Width" value={selection.styles.width || `${Math.round(selection.rect.width)}px`} suffix="px" onChange={(value, remember) => onApplyField("width", `${value}px`, remember)} />
+          <DragNumberField label="Height" value={selection.styles.height || `${Math.round(selection.rect.height)}px`} suffix="px" onChange={(value, remember) => onApplyField("height", `${value}px`, remember)} />
           <button type="button" className="grid h-9 w-[34px] place-items-center rounded-lg text-[#858a94] disabled:opacity-55" disabled aria-label="Lock aspect ratio">
             <Lock className="size-4" />
           </button>
         </div>
-      </InspectorSection>
+      </InspectorSection> : null}
 
       <InspectorSection title="Fill">
-        <div className="grid grid-cols-4 gap-1.5">
+        {!isMultiSelection ? <div className="grid grid-cols-4 gap-1.5">
           <PropertyButton active={fillType === "none"} aria-label="No fill" onClick={() => applyFillType("none")}><Minus /></PropertyButton>
           <PropertyButton active={fillType === "solid"} aria-label="Solid fill" onClick={() => applyFillType("solid")}><span className="size-3 rounded-[2px] border border-current" /></PropertyButton>
           <PropertyButton active={fillType === "gradient"} aria-label="Gradient fill" onClick={() => applyFillType("gradient")}><Grip /></PropertyButton>
           <PropertyButton active={fillType === "image"} aria-label="Image fill" onClick={() => applyFillType("image")}><Image /></PropertyButton>
-        </div>
-        {fillType === "solid" ? <ColorField value={backgroundValue || "#000000"} onChange={(value) => onApplyField(fillField, value)} /> : null}
-        {fillType === "gradient" ? <FillSummary swatchClassName="bg-[linear-gradient(180deg,#2e6bdb_0%,#76e3e9_100%)]" label="Gradient" /> : null}
-        {fillType === "image" ? <ImageFillPicker selection={selection} onApplyFields={onApplyFields} onChooseImage={selection.tag === "img" ? onChooseReplacementImage : onChooseBackgroundImage} /> : null}
+        </div> : null}
+        {isMultiSelection ? <>
+          <ColorField label="Text color" mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value, remember) => onApplyField("color", value, remember)} />
+          <ColorField label="Background color" mixed={isMixed("backgroundColor")} value={selection.styles.backgroundColor || "#000000"} onChange={(value, remember) => onApplyField("backgroundColor", value, remember)} />
+        </> : <>
+          {fillType === "solid" ? <ColorField value={backgroundValue || "#000000"} onChange={(value, remember) => onApplyField(fillField, value, remember)} /> : null}
+          {fillType === "gradient" ? <FillSummary swatchClassName="bg-[linear-gradient(180deg,#2e6bdb_0%,#76e3e9_100%)]" label="Gradient" /> : null}
+          {fillType === "image" ? <ImageFillPicker selection={selection} onApplyFields={onApplyFields} onChooseImage={selection.tag === "img" ? onChooseReplacementImage : onChooseBackgroundImage} /> : null}
+        </>}
       </InspectorSection>
 
       <InspectorSection title="Border">
         <div className="grid grid-cols-2 gap-2">
-          <BorderStyleField value={selection.styles.borderStyle || "solid"} onChange={(value) => onApplyField("borderStyle", value)} />
-          <PropertyField label="Width" value={selection.styles.borderWidth || "0px"} onChange={(value) => onApplyField("borderWidth", value)} />
+          <BorderStyleField value={selection.styles.borderStyle || "solid"} onChange={(value, remember) => onApplyField("borderStyle", value.toLowerCase(), remember)} />
+          <PropertyField mixed={isMultiSelection && isMixed("borderWidth")} label="Width" value={selection.styles.borderWidth || "0px"} onChange={(value, remember) => onApplyField("borderWidth", value, remember)} />
         </div>
-        <ColorField value={selection.styles.borderColor || "#000000"} onChange={(value) => onApplyField("borderColor", value)} />
+        <ColorField mixed={isMultiSelection && isMixed("borderColor")} value={selection.styles.borderColor || "#000000"} onChange={(value, remember) => onApplyField("borderColor", value, remember)} />
       </InspectorSection>
 
       <InspectorSection title="Appearance" last>
         <div className="grid grid-cols-2 gap-2">
-          <PropertyField label="Radius" value={selection.styles.borderRadius || "0px"} onChange={(value) => onApplyField("borderRadius", value)} />
-          <PropertyField label="Opacity" value={String(opacity)} suffix="%" onChange={(value) => onApplyField("opacity", String(Math.max(0, Math.min(100, numericValue(value, 100))) / 100))} />
+          <PropertyField mixed={isMultiSelection && isMixed("borderRadius")} label="Radius" value={selection.styles.borderRadius || "0px"} onChange={(value, remember) => onApplyField("borderRadius", value, remember)} />
+          <PropertyField mixed={isMultiSelection && isMixed("opacity")} label="Opacity" value={String(opacity)} suffix="%" onChange={(value, remember) => onApplyField("opacity", String(Math.max(0, Math.min(100, numericValue(value, 100))) / 100), remember)} />
         </div>
+        {isMultiSelection ? <div className="mt-2 grid grid-cols-2 gap-2">
+          <PropertyField mixed={isMixed("padding")} label="Padding" value={selection.styles.padding || "0px"} onChange={(value, remember) => onApplyField("padding", value, remember)} />
+          <PropertyField mixed={isMixed("margin")} label="Margin" value={selection.styles.margin || "0px"} onChange={(value, remember) => onApplyField("margin", value, remember)} />
+        </div> : null}
         <FieldCaption className="mt-3">Shadow</FieldCaption>
-        <ShadowIntensityControl
+        {isMultiSelection ? <PropertyField mixed={isMixed("boxShadow")} label="Shadow" value={selection.styles.boxShadow || "none"} onChange={(value, remember) => onApplyField("boxShadow", value, remember)} /> : <ShadowIntensityControl
           value={shadowIntensity}
           shadow={selection.styles.boxShadow}
           onChange={(value, remember) => onApplyField("boxShadow", shadowWithIntensity(selection.styles.boxShadow, value), remember)}
-        />
+        />}
       </InspectorSection>
   </>;
 }
@@ -347,7 +394,7 @@ function ShadowIntensityControl({ value, shadow, onChange }: { value: number; sh
           onChange={(event) => onChange(Number(event.currentTarget.value), !interactionStarted.current)}
         />
       </label>
-      <PropertyField label="Intensity" value={String(value)} suffix="%" onChange={(next) => onChange(clampPercentage(numericValue(next, value)), true)} />
+      <PropertyField label="Intensity" value={String(value)} suffix="%" onChange={(next, remember) => onChange(clampPercentage(numericValue(next, value)), remember ?? true)} />
       <span className="sr-only" aria-live="polite">Shadow intensity {value} percent. Current shadow: {shadow || "none"}.</span>
     </div>
   );
@@ -366,27 +413,27 @@ function FieldCaption({ className, children }: { className?: string; children: R
   return <p className={cn("mb-1 text-[10px] text-[#969ba5]", className)}>{children}</p>;
 }
 
-function PropertyField({ label, value, suffix, onChange, disabled = false }: { label: string; value: string; suffix?: string; onChange: (value: string) => void; disabled?: boolean }) {
+function PropertyField({ label, value, suffix, onChange, disabled = false, mixed = false }: { label: string; value: string; suffix?: string; onChange: (value: string, remember?: boolean) => void; disabled?: boolean; mixed?: boolean }) {
   return (
     <label className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
       <span className="shrink-0 text-[10px] text-[#969ba5]">{label}</span>
-      <input className="min-w-0 flex-1 bg-transparent text-right text-[12px] outline-none disabled:cursor-default" value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`Design ${label.toLowerCase()}`} />
-      {suffix ? <span className="text-[10px] text-[#969ba5]">{suffix}</span> : null}
+      <input className="min-w-0 flex-1 bg-transparent text-right text-[12px] outline-none placeholder:text-[#6b7280] disabled:cursor-default" value={mixed ? "" : value} placeholder={mixed ? "Mixed" : undefined} disabled={disabled} onFocus={() => onChange(value, true)} onChange={(event) => onChange(event.currentTarget.value, false)} aria-label={`Design ${label.toLowerCase()} value`} />
+      {suffix && !mixed ? <span className="text-[10px] text-[#969ba5]">{suffix}</span> : null}
     </label>
   );
 }
 
-function DragNumberField({ label, value, suffix = "", onChange }: { label: string; value: string; suffix?: string; onChange: (value: number) => void }) {
+function DragNumberField({ label, value, suffix = "", onChange, mixed = false }: { label: string; value: string; suffix?: string; onChange: (value: number, remember?: boolean) => void; mixed?: boolean }) {
   return (
     <label className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
       <span className="shrink-0 text-[10px] text-[#969ba5]">{label}</span>
-      <DragNumberInput label={label} value={String(numericValue(value, 0))} onChange={onChange} />
-      {suffix ? <span className="text-[10px] text-[#969ba5]">{suffix}</span> : null}
+      <DragNumberInput label={label} value={String(numericValue(value, 0))} mixed={mixed} onChange={onChange} />
+      {suffix && !mixed ? <span className="text-[10px] text-[#969ba5]">{suffix}</span> : null}
     </label>
   );
 }
 
-function DragNumberInput({ label, value, onChange }: { label: string; value: string; onChange: (value: number) => void }) {
+function DragNumberInput({ label, value, onChange, mixed = false }: { label: string; value: string; onChange: (value: number, remember?: boolean) => void; mixed?: boolean }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const drag = React.useRef<{ pointerId: number; startX: number; startValue: number; moved: boolean } | null>(null);
 
@@ -408,9 +455,10 @@ function DragNumberInput({ label, value, onChange }: { label: string; value: str
       const distance = moveEvent.clientX - activeDrag.startX;
       if (!activeDrag.moved && Math.abs(distance) < 3) return;
 
+      const remember = !activeDrag.moved;
       activeDrag.moved = true;
       const nextValue = Math.round((activeDrag.startValue + distance) * 100) / 100;
-      onChange(nextValue);
+      onChange(nextValue, remember);
     };
     const end = (endEvent: PointerEvent) => {
       const activeDrag = drag.current;
@@ -432,42 +480,41 @@ function DragNumberInput({ label, value, onChange }: { label: string; value: str
     <input
       ref={inputRef}
       className="min-w-0 flex-1 cursor-ew-resize bg-transparent text-right text-[12px] outline-none focus:cursor-text"
-      value={value}
+      value={mixed ? "" : value}
+      placeholder={mixed ? "Mixed" : undefined}
       onPointerDown={beginDrag}
-      onChange={(event) => onChange(numericValue(event.currentTarget.value, numericValue(value, 0)))}
+      onFocus={() => onChange(numericValue(value, 0), true)}
+      onChange={(event) => onChange(numericValue(event.currentTarget.value, numericValue(value, 0)), false)}
       aria-label={`Design ${label.toLowerCase()}`}
       title="Drag left or right to adjust; click to type"
     />
   );
 }
 
-function FontPresetField({ label, value, presets, onChange }: { label: string; value: string; presets: string[] | { value: string; label: string }[]; onChange: (value: string) => void }) {
+function FontPresetField({ label, value, presets, onChange, mixed = false }: { label: string; value: string; presets: string[] | { value: string; label: string }[]; onChange: (value: string, remember?: boolean) => void; mixed?: boolean }) {
   const options = presets.map((preset) => typeof preset === "string" ? { value: preset, label: preset } : preset);
 
   return (
     <div className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
       <span className="shrink-0 text-[10px] text-[#969ba5]">{label}</span>
       {label === "Size" ? (
-        <DragNumberInput label={label} value={value} onChange={(nextValue) => onChange(String(nextValue))} />
+        <DragNumberInput label={label} value={value} mixed={mixed} onChange={(nextValue, remember) => onChange(String(nextValue), remember)} />
       ) : (
-        <span className="min-w-0 flex-1 text-right text-[12px]">{value}</span>
+        <span className="min-w-0 flex-1 text-right text-[12px]">{mixed ? "Mixed" : value}</span>
       )}
-      <DesignPanelSelect
-        value={value}
-        options={options}
-        onChange={onChange}
-        ariaLabel={`Select ${label.toLowerCase()}`}
-        className="h-7 w-6 shrink-0 rounded-lg"
-        menuClassName="left-auto right-0 w-[132px]"
-        showValue={false}
-      />
+      <Select value={mixed ? undefined : value} onValueChange={(nextValue) => { if (nextValue) onChange(nextValue); }}>
+        <SelectTrigger className="h-auto w-auto shrink-0 border-0 bg-transparent p-0 shadow-none hover:bg-transparent focus-visible:ring-0" aria-label={`Select ${label.toLowerCase()}`} />
+        <SelectContent align="end">
+          {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
 
 type BorderStyle = "none" | "dashed" | "solid";
 
-function BorderStyleField({ value, onChange }: { value: string; onChange: (value: BorderStyle) => void }) {
+function BorderStyleField({ value, onChange }: { value: string; onChange: (value: BorderStyle, remember?: boolean) => void }) {
   const borderStyle: BorderStyle = value === "none" || value === "dashed" ? value : "solid";
 
   return (
@@ -487,7 +534,7 @@ const BORDER_STYLE_OPTIONS = [
   { value: "solid", label: "Solid" },
 ] as const;
 
-function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function FontFamilyPicker({ value, onChange, mixed = false }: { value: string; onChange: (value: string) => void; mixed?: boolean }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [families, setFamilies] = React.useState<string[] | null>(null);
@@ -535,7 +582,7 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value
         className="flex h-9 w-full min-w-0 items-center rounded-lg bg-[#f4f5f8] px-2.5 text-[#202228] hover:bg-[#e9ebef]"
         aria-label="Design font family"
       >
-        <span className="min-w-0 flex-1 truncate text-left text-[12px]" style={{ fontFamily: currentFamily }}>{currentFamily}</span>
+        <span className="min-w-0 flex-1 truncate text-left text-[12px]" style={mixed ? undefined : { fontFamily: currentFamily }}>{mixed ? "Mixed" : currentFamily}</span>
         <img src={panelSelectChevron} alt="" className={cn("size-4 shrink-0 transition-transform", open && "rotate-180")} />
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={12} initialFocus={false} className="w-[276px] gap-2 rounded-xl border-[#dedfe3] bg-white p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)] before:hidden">
@@ -576,8 +623,8 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (value
   );
 }
 
-function ColorField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  return <DesignColorField value={value} onChange={onChange} className="mt-2 h-9 bg-[#f4f5f8] px-2.5" />;
+function ColorField({ label = "Color", value, onChange, mixed = false }: { label?: string; value: string; onChange: (value: string, remember?: boolean) => void; mixed?: boolean }) {
+  return <DesignColorField label={label} mixed={mixed} value={value} onChange={onChange} className="mt-2 h-9 bg-[#f4f5f8] px-2.5" />;
 }
 
 function PropertyButton({ active = false, disabled = false, onClick, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
@@ -585,6 +632,19 @@ function PropertyButton({ active = false, disabled = false, onClick, children, .
     <button type="button" className={cn("grid h-9 min-w-0 place-items-center rounded-lg bg-[#f4f5f8] text-[#858a94] transition-colors [&_svg]:size-4", active && "bg-black text-white", !disabled && "hover:bg-[#e9ebef] hover:text-black", active && !disabled && "hover:bg-black hover:text-white")} disabled={disabled} onClick={onClick} {...props}>
       {children}
     </button>
+  );
+}
+
+function MixedValueHint({ mixed }: { mixed?: boolean }) {
+  return mixed ? <span className="text-[10px] font-medium text-[#6b7280]">Mixed</span> : null;
+}
+
+function BatchPropertyButton({ mixed, label, children }: { mixed: boolean; label: string; children: React.ReactNode }) {
+  return (
+    <div className="relative min-w-0" title={mixed ? `${label}: Mixed` : label}>
+      {children}
+      {mixed ? <span className="pointer-events-none absolute right-0.5 top-0.5 size-1.5 rounded-full bg-[#2f6de1]" aria-label={`${label}: Mixed`} /> : null}
+    </div>
   );
 }
 
@@ -635,6 +695,11 @@ function rotationValue(value: string) {
 function toggleDecoration(value: string, decoration: "underline" | "line-through") {
   const values = value.split(/\s+/).filter(Boolean).filter((item) => item !== "none");
   return values.includes(decoration) ? values.filter((item) => item !== decoration).join(" ") || "none" : [...values, decoration].join(" ");
+}
+
+function ensureDecoration(value: string, decoration: "underline" | "line-through") {
+  const values = value.split(/\s+/).filter(Boolean).filter((item) => item !== "none");
+  return values.includes(decoration) ? values.join(" ") : [...values, decoration].join(" ");
 }
 
 function normalizeHex(value: string) {
