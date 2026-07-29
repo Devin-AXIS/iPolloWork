@@ -37,39 +37,6 @@ function run(command, args, cwd, env) {
   }
 }
 
-function resolveBunPackageDir(packagePrefix, packageName) {
-  const bunRoot = resolve(hyperframesRoot, "node_modules", ".bun");
-  if (!existsSync(bunRoot)) return null;
-  const entry = readdirSync(bunRoot, { withFileTypes: true })
-    .find((dirent) => dirent.isDirectory() && dirent.name.startsWith(packagePrefix));
-  if (!entry) return null;
-  const packageDir = resolve(bunRoot, entry.name, "node_modules", packageName);
-  return existsSync(packageDir) ? packageDir : null;
-}
-
-function ensureHyperframesFfmpegBinary() {
-  const ffmpegDir = resolveBunPackageDir("ffmpeg-static@", "ffmpeg-static");
-  if (!ffmpegDir) {
-    throw new Error("ffmpeg-static is missing from vendor/hyperframes dependencies.");
-  }
-  const binaryPath = resolve(ffmpegDir, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
-  const probe = existsSync(binaryPath)
-    ? spawnSync(binaryPath, ["-version"], { stdio: "ignore" })
-    : null;
-  if (probe?.status === 0) return;
-  if (probe?.status !== 0) {
-    rmSync(binaryPath, { force: true });
-  }
-  run(nodeCmd, ["install.js"], ffmpegDir, {
-    npm_config_platform: process.platform,
-    npm_config_arch: process.arch,
-  });
-  const verified = spawnSync(binaryPath, ["-version"], { stdio: "ignore" });
-  if (verified.status !== 0) {
-    throw new Error("ffmpeg-static installed, but the ffmpeg binary cannot run on this platform.");
-  }
-}
-
 function newestMtimeMs(root) {
   if (!existsSync(root)) return 0;
   const stat = statSync(root);
@@ -160,7 +127,6 @@ function ensureHyperframesDependencies() {
 
 function ensureHyperframesBuild() {
   ensureHyperframesDependencies();
-  ensureHyperframesFfmpegBinary();
 
   const beforeBuildKey = currentHyperframesBuildKey();
   const stamp = readHyperframesBuildStamp();
