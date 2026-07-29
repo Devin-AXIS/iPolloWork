@@ -1,6 +1,9 @@
 .turbo/
 node_modules/
 apps/desktop/dist-electron/
+apps/desktop/dist-electron-windows-0.17.34-20260728101109/
+
+
 packages/*/node_modules/
 apps/*/node_modules/
 .next/

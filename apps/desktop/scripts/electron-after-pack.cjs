@@ -3,6 +3,10 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const computerUseHelperAppName = "iPolloWork Computer Use.app";
+const requiredAsarEntries = [
+  "/server/dist/ipollowork-types/hyperframes.js",
+  "/server/dist/ipollowork-types/templates.js",
+];
 
 // Only native executables are copied to their canonical aliases. The server
 // runs in-process inside Electron and Chrome DevTools MCP is an OpenCode
@@ -86,6 +90,30 @@ function assertPackagedNodePty(context) {
   );
 }
 
+function resolveResourcesDir(context) {
+  const appPath = resolveMacAppPath(context);
+  return appPath
+    ? path.join(appPath, "Contents", "Resources")
+    : path.join(context.appOutDir, "resources");
+}
+
+function assertPackagedRuntimeTypes(context) {
+  const asarPath = path.join(resolveResourcesDir(context), "app.asar");
+  if (!fs.existsSync(asarPath)) {
+    throw new Error(`Missing packaged Electron archive: ${asarPath}`);
+  }
+
+  const { listPackage, uncache } = require("@electron/asar");
+  uncache(asarPath);
+  const entries = new Set(listPackage(asarPath).map((entry) => entry.replaceAll("\\", "/")));
+  const missing = requiredAsarEntries.filter((entry) => !entries.has(entry));
+  if (missing.length === 0) return;
+
+  throw new Error(
+    "Missing @ipollowork/types runtime files in app.asar: " + missing.join(", "),
+  );
+}
+
 function signComputerUseHelper(context) {
   const appPath = resolveMacAppPath(context);
   if (!appPath) return;
@@ -161,9 +189,11 @@ async function afterPack(context) {
   }
 
   assertPackagedNodePty(context);
+  assertPackagedRuntimeTypes(context);
   signComputerUseHelper(context);
 }
 
 module.exports = afterPack;
 module.exports.default = afterPack;
 module.exports.assertPackagedNodePty = assertPackagedNodePty;
+module.exports.assertPackagedRuntimeTypes = assertPackagedRuntimeTypes;

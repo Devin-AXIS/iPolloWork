@@ -1,0 +1,29 @@
+/* ipw-theme:start */
+/* ipw-design-system: site-kindred-care */
+:root {
+  --ipw-color-bg: #f4f1ea;
+  --ipw-color-surface: #fffdf8;
+  --ipw-color-text: #26332e;
+  --ipw-color-muted: #6c756f;
+  --ipw-color-border: #d2d7d2;
+  --ipw-color-primary: #315346;
+  --ipw-color-secondary: #d8eadf;
+  --ipw-color-accent: #d97757;
+  --ipw-color-success: #3c8064;
+  --ipw-color-warning: #b67a21;
+  --ipw-color-danger: #bd453c;
+  --ipw-color-on-primary: #ffffff;
+  --ipw-font-display: Georgia, serif;
+  --ipw-font-body: Arial, sans-serif;
+  --ipw-type-scale: 1;
+  --ipw-body-line-height: 1.55;
+  --ipw-content-width: 1180px;
+  --ipw-page-padding: 32px;
+  --ipw-section-space: 96px;
+  --ipw-button-radius: 18px;
+  --ipw-card-bg: #fffdf8;
+  --ipw-card-border: #d2d7d2;
+  --ipw-card-radius: 24px;
+  --ipw-card-shadow: 0 18px 46px rgb(15 23 42 / 10%);
+}
+/* ipw-theme:end */

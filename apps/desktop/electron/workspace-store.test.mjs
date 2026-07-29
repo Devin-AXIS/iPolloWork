@@ -25,12 +25,14 @@ async function withIsolatedBootstrapStore(callback) {
   const previousOverride = process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH;
   const previousBundleDir = process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR;
   const previousDevMode = process.env.IPOLLOWORK_DEV_MODE;
+  const previousAppData = process.env.APPDATA;
   const previousLocalAppData = process.env.LOCALAPPDATA;
   const previousUserProfile = process.env.USERPROFILE;
 
   process.env.HOME = home;
   process.env.USERPROFILE = home;
   process.env.XDG_CONFIG_HOME = xdg;
+  process.env.APPDATA = path.join(root, "appdata");
   delete process.env.LOCALAPPDATA;
   delete process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH;
   delete process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR;
@@ -59,6 +61,7 @@ async function withIsolatedBootstrapStore(callback) {
     restoreEnv("IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH", previousOverride);
     restoreEnv("IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR", previousBundleDir);
     restoreEnv("IPOLLOWORK_DEV_MODE", previousDevMode);
+    restoreEnv("APPDATA", previousAppData);
     restoreEnv("LOCALAPPDATA", previousLocalAppData);
     restoreEnv("USERPROFILE", previousUserProfile);
   }
@@ -645,6 +648,52 @@ test("replaces an installed hosted default with a custom organization Windows bu
     assert.equal(config.baseUrl, "https://custom.organization.internal.example");
     const persisted = JSON.parse(await readFile(canonicalPath, "utf8"));
     assert.equal(persisted.baseUrl, "https://custom.organization.internal.example");
+  });
+});
+
+test("treats the old hosted desktop URL as replaceable default bootstrap config", async () => {
+  await withIsolatedBootstrapStore(async ({ store, canonicalPath, root }) => {
+    const bundleDir = path.join(root, "downloads");
+    process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
+    await writeBootstrapConfig(canonicalPath, {
+      baseUrl: "https://app.ipolloworklabs.com/",
+      requireSignin: false,
+      writtenAt: "2026-07-10T13:00:00.000Z",
+    });
+    await mkdir(bundleDir, { recursive: true });
+    await writeFile(path.join(bundleDir, "ipollowork-win-x64-9.9.9.exe"), "signed installer", "utf8");
+    await writeBootstrapConfig(path.join(bundleDir, "desktop-bootstrap.json"), {
+      baseUrl: "https://custom.organization.internal.example",
+      requireSignin: true,
+      writtenAt: "2026-07-09T12:00:00.000Z",
+    });
+
+    assert.equal(await store.importBundledDesktopBootstrapConfigIfPreferred(), true);
+    const config = await store.getDesktopBootstrapConfig();
+    assert.equal(config.baseUrl, "https://custom.organization.internal.example");
+  });
+});
+
+test("treats the previous HTTPS iPollo hosted URL as replaceable default bootstrap config", async () => {
+  await withIsolatedBootstrapStore(async ({ store, canonicalPath, root }) => {
+    const bundleDir = path.join(root, "downloads");
+    process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
+    await writeBootstrapConfig(canonicalPath, {
+      baseUrl: "https://i.ipollo.ai/",
+      requireSignin: false,
+      writtenAt: "2026-07-10T13:00:00.000Z",
+    });
+    await mkdir(bundleDir, { recursive: true });
+    await writeFile(path.join(bundleDir, "ipollowork-win-x64-9.9.9.exe"), "signed installer", "utf8");
+    await writeBootstrapConfig(path.join(bundleDir, "desktop-bootstrap.json"), {
+      baseUrl: "https://custom.organization.internal.example",
+      requireSignin: true,
+      writtenAt: "2026-07-09T12:00:00.000Z",
+    });
+
+    assert.equal(await store.importBundledDesktopBootstrapConfigIfPreferred(), true);
+    const config = await store.getDesktopBootstrapConfig();
+    assert.equal(config.baseUrl, "https://custom.organization.internal.example");
   });
 });
 

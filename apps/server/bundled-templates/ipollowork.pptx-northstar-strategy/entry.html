@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Northstar Strategy</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { display: grid; place-items: center; overflow: hidden; background: #d7d9d5; font-family: var(--ipw-font-body); }
+    .deck { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; overflow: hidden; background: var(--ipw-color-bg); box-shadow: var(--ipw-card-shadow); }
+    .slide { position: absolute; inset: 0; display: none; flex-direction: column; padding: 52px 64px 44px; background: var(--ipw-color-bg); color: var(--ipw-color-text); }
+    .slide.is-active { display: flex; }
+    .slide.inverse { background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); }
+    .slide.accent-slide { background: var(--ipw-color-accent); color: var(--ipw-color-on-primary); }
+    h1, h2, h3, p { margin: 0; }
+    h1, h2, .big-number { font-family: var(--ipw-font-display); font-weight: 560; }
+    h1 { max-width: 920px; font-size: 72px; line-height: .96; }
+    h2 { max-width: 880px; font-size: 48px; line-height: 1.02; }
+    h3 { font-size: 20px; line-height: 1.2; }
+    .topline { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--ipw-color-border); color: var(--ipw-color-muted); font-size: 11px; font-weight: 750; text-transform: uppercase; }
+    .inverse .topline, .accent-slide .topline { border-color: color-mix(in srgb, var(--ipw-color-on-primary) 25%, transparent); color: color-mix(in srgb, var(--ipw-color-on-primary) 68%, transparent); }
+    .folio { font-variant-numeric: tabular-nums; }
+    .hero-layout { display: grid; grid-template-columns: 1.35fr .65fr; gap: 48px; flex: 1; align-items: end; }
+    .hero-copy { align-self: center; }
+    .kicker { margin-bottom: 20px; color: var(--ipw-color-accent); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .accent-slide .kicker { color: var(--ipw-color-primary); }
+    .lede { max-width: 760px; margin-top: 22px; color: var(--ipw-color-muted); font-size: 21px; line-height: 1.4; }
+    .inverse .lede, .accent-slide .lede { color: color-mix(in srgb, var(--ipw-color-on-primary) 75%, transparent); }
+    .hero-stamp { min-height: 180px; display: flex; flex-direction: column; justify-content: space-between; padding: 24px; border: 1px solid color-mix(in srgb, var(--ipw-color-on-primary) 28%, transparent); border-radius: var(--ipw-card-radius); }
+    .hero-stamp strong { font-family: var(--ipw-font-display); font-size: 46px; font-weight: 500; line-height: .95; }
+    .hero-stamp p { color: color-mix(in srgb, var(--ipw-color-on-primary) 68%, transparent); font-size: 12px; }
+    .slide-title { margin-top: 36px; }
+    .slide-title .kicker { margin-bottom: 14px; }
+    .content { flex: 1; min-height: 0; margin-top: 34px; }
+    .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .card { min-width: 0; padding: 24px; border: 1px solid var(--ipw-card-border); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); box-shadow: var(--ipw-card-shadow); }
+    .card-number { color: var(--ipw-color-accent); font-size: 12px; font-weight: 800; }
+    .card h3 { margin-top: 52px; }
+    .card p { margin-top: 10px; color: var(--ipw-color-muted); font-size: 14px; line-height: 1.4; }
+    .quote-layout { display: grid; grid-template-columns: 1.05fr .95fr; gap: 54px; flex: 1; align-items: center; }
+    .quote-mark { margin-bottom: 18px; color: var(--ipw-color-accent); font-family: var(--ipw-font-display); font-size: 60px; line-height: .6; }
+    blockquote { margin: 0; font-family: var(--ipw-font-display); font-size: 43px; line-height: 1.08; }
+    .quote-source { margin-top: 24px; color: var(--ipw-color-muted); font-size: 12px; }
+    .evidence { display: grid; gap: 10px; }
+    .evidence-row { display: grid; grid-template-columns: 90px 1fr; gap: 18px; align-items: center; padding: 18px 0; border-bottom: 1px solid var(--ipw-color-border); }
+    .evidence-row strong { color: var(--ipw-color-accent); font-family: var(--ipw-font-display); font-size: 38px; font-weight: 550; }
+    .evidence-row p { color: var(--ipw-color-muted); font-size: 13px; }
+    .chart-layout { display: grid; grid-template-columns: .75fr 1.25fr; gap: 60px; flex: 1; align-items: center; }
+    .big-number { color: var(--ipw-color-accent); font-size: 112px; line-height: .8; }
+    .big-caption { max-width: 310px; margin-top: 24px; color: var(--ipw-color-muted); font-size: 16px; }
+    .bar-chart { height: 280px; display: flex; align-items: end; gap: 18px; padding: 20px 20px 0; border-left: 1px solid var(--ipw-color-border); border-bottom: 1px solid var(--ipw-color-border); }
+    .bar-group { min-width: 0; height: 100%; display: flex; flex: 1; flex-direction: column; justify-content: flex-end; align-items: stretch; gap: 10px; }
+    .bar { height: var(--height); display: grid; place-items: start center; padding-top: 10px; border-radius: 4px 4px 0 0; background: var(--ipw-color-secondary); color: var(--ipw-color-primary); font-size: 11px; font-weight: 800; }
+    .bar-group:nth-child(4) .bar { background: var(--ipw-color-accent); color: var(--ipw-color-on-primary); }
+    .bar-label { color: var(--ipw-color-muted); font-size: 10px; text-align: center; }
+    .choice-list { display: grid; gap: 0; margin-top: 30px; border-top: 1px solid var(--ipw-color-border); }
+    .choice { display: grid; grid-template-columns: 54px 1fr 1.15fr; gap: 24px; align-items: center; padding: 21px 0; border-bottom: 1px solid var(--ipw-color-border); }
+    .choice span { color: var(--ipw-color-accent); font-weight: 800; }
+    .choice h3 { font-family: var(--ipw-font-display); font-size: 25px; font-weight: 560; }
+    .choice p { color: var(--ipw-color-muted); font-size: 13px; }
+    .roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; height: 260px; align-items: stretch; }
+    .phase { display: flex; flex-direction: column; padding: 20px; border: 1px solid var(--ipw-card-border); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); }
+    .phase:nth-child(2) { background: var(--ipw-color-secondary); }
+    .phase:nth-child(3) { background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); }
+    .phase:nth-child(4) { background: var(--ipw-color-accent); color: var(--ipw-color-on-primary); }
+    .phase small { font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .phase h3 { margin-top: auto; font-family: var(--ipw-font-display); font-size: 25px; font-weight: 560; }
+    .phase p { margin-top: 8px; color: var(--ipw-color-muted); font-size: 11px; }
+    .phase:nth-child(3) p, .phase:nth-child(4) p { color: color-mix(in srgb, var(--ipw-color-on-primary) 72%, transparent); }
+    .closing { display: grid; grid-template-columns: 1.4fr .6fr; gap: 56px; flex: 1; align-items: center; }
+    .closing h1 { max-width: 780px; }
+    .closing-note { padding: 24px 0 24px 24px; border-left: 2px solid var(--ipw-color-on-primary); }
+    .closing-note strong { display: block; font-family: var(--ipw-font-display); font-size: 30px; font-weight: 550; }
+    .closing-note p { margin-top: 10px; color: color-mix(in srgb, var(--ipw-color-on-primary) 72%, transparent); font-size: 12px; }
+    .footer-note { margin-top: auto; padding-top: 15px; color: var(--ipw-color-muted); font-size: 10px; }
+    .inverse .footer-note, .accent-slide .footer-note { color: color-mix(in srgb, var(--ipw-color-on-primary) 64%, transparent); }
+    @media (max-width: 720px) { .slide { padding: 28px 34px 24px; } h1 { font-size: 43px; } h2 { font-size: 31px; } .lede { font-size: 15px; } .content { margin-top: 20px; } .card { padding: 14px; } .card h3 { margin-top: 20px; } .card p { font-size: 10px; } .big-number { font-size: 68px; } blockquote { font-size: 28px; } }
+  </style>
+  <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+</head>
+<body>
+  <main class="deck" data-ipw-template-kind="slides" data-ipw-template="northstar-strategy" aria-label="Northstar strategy deck">
+    <section class="slide inverse is-active" data-ipw-slide="1" data-title="Northstar">
+      <div class="topline"><span data-pptx-text>Northstar / Strategy 2026</span><span class="folio" data-pptx-text>01</span></div>
+      <div class="hero-layout"><div class="hero-copy"><p class="kicker" data-pptx-text>Strategic direction</p><h1 data-pptx-text>Grow by making the complex feel inevitable.</h1><p class="lede" data-pptx-text>A focused plan to turn customer trust into durable category leadership.</p></div><aside class="hero-stamp" data-pptx-shape="roundRect"><strong data-pptx-text>One<br>clear bet.</strong><p data-pptx-text>Prepared for the leadership offsite / Replace with your company and date.</p></aside></div>
+    </section>
+    <section class="slide" data-ipw-slide="2" data-title="Context">
+      <div class="topline"><span data-pptx-text>Northstar / Context</span><span class="folio" data-pptx-text>02</span></div>
+      <div class="slide-title"><p class="kicker" data-pptx-text>01 / What changed</p><h2 data-pptx-text>The market moved from access to confidence.</h2></div>
+      <div class="content three-col"><article class="card" data-pptx-shape="roundRect"><span class="card-number" data-pptx-text>01</span><h3 data-pptx-text>Capability is abundant</h3><p data-pptx-text>Customers can reach similar features through more vendors and more channels than ever.</p></article><article class="card" data-pptx-shape="roundRect"><span class="card-number" data-pptx-text>02</span><h3 data-pptx-text>Attention is scarce</h3><p data-pptx-text>Every additional tool has to prove its value before it earns a place in the workflow.</p></article><article class="card" data-pptx-shape="roundRect"><span class="card-number" data-pptx-text>03</span><h3 data-pptx-text>Trust compounds</h3><p data-pptx-text>The brands that reduce risk and cognitive load become the system customers expand around.</p></article></div>
+      <p class="footer-note" data-pptx-text>Replace these observations with evidence from customer research and market analysis.</p>
+    </section>
+    <section class="slide" data-ipw-slide="3" data-title="Insight">
+      <div class="topline"><span data-pptx-text>Northstar / Insight</span><span class="folio" data-pptx-text>03</span></div>
+      <div class="quote-layout"><div><div class="quote-mark" data-pptx-text>&ldquo;</div><blockquote data-pptx-text>We do not need more options. We need to know what will work for our team.</blockquote><p class="quote-source" data-pptx-text>VP Product / Enterprise customer interview</p></div><div class="evidence"><div class="evidence-row"><strong data-pptx-text>68%</strong><p data-pptx-text>say implementation confidence matters more than feature breadth.</p></div><div class="evidence-row"><strong data-pptx-text>2.4x</strong><p data-pptx-text>higher expansion when the first workflow succeeds within 30 days.</p></div><div class="evidence-row"><strong data-pptx-text>11d</strong><p data-pptx-text>average time lost when teams have to rebuild context at handoff.</p></div></div></div>
+      <p class="footer-note" data-pptx-text>Illustrative figures only. Replace with verified research and cite the source.</p>
+    </section>
+    <section class="slide" data-ipw-slide="4" data-title="Opportunity">
+      <div class="topline"><span data-pptx-text>Northstar / Opportunity</span><span class="folio" data-pptx-text>04</span></div>
+      <div class="chart-layout"><div><p class="kicker" data-pptx-text>02 / Opportunity</p><div class="big-number" data-pptx-text>3.6x</div><p class="big-caption" data-pptx-text>Potential account value when customers adopt one connected operating workflow.</p></div><div><h2 data-pptx-text>Expansion follows confidence.</h2><div class="bar-chart" data-pptx-shape="chart"><div class="bar-group"><div class="bar" style="--height:32%" data-pptx-shape="rect"><span data-pptx-text>1.0x</span></div><span class="bar-label" data-pptx-text>Single tool</span></div><div class="bar-group"><div class="bar" style="--height:48%" data-pptx-shape="rect"><span data-pptx-text>1.7x</span></div><span class="bar-label" data-pptx-text>Team use</span></div><div class="bar-group"><div class="bar" style="--height:68%" data-pptx-shape="rect"><span data-pptx-text>2.5x</span></div><span class="bar-label" data-pptx-text>Shared workflow</span></div><div class="bar-group"><div class="bar" style="--height:92%" data-pptx-shape="rect"><span data-pptx-text>3.6x</span></div><span class="bar-label" data-pptx-text>Operating layer</span></div></div></div></div>
+      <p class="footer-note" data-pptx-text>Example model for storytelling. Replace with audited cohort or revenue data.</p>
+    </section>
+    <section class="slide" data-ipw-slide="5" data-title="Choices">
+      <div class="topline"><span data-pptx-text>Northstar / Choices</span><span class="folio" data-pptx-text>05</span></div>
+      <div class="slide-title"><p class="kicker" data-pptx-text>03 / Strategic choices</p><h2 data-pptx-text>Win by being narrower, deeper, and easier to trust.</h2></div>
+      <div class="choice-list"><article class="choice"><span data-pptx-text>01</span><h3 data-pptx-text>Own the first outcome</h3><p data-pptx-text>Design onboarding around a visible customer win, not feature discovery.</p></article><article class="choice"><span data-pptx-text>02</span><h3 data-pptx-text>Connect the workflow</h3><p data-pptx-text>Expand through adjacent jobs that strengthen the same source of truth.</p></article><article class="choice"><span data-pptx-text>03</span><h3 data-pptx-text>Productize confidence</h3><p data-pptx-text>Make governance, evidence, and expert guidance part of the core experience.</p></article></div>
+    </section>
+    <section class="slide" data-ipw-slide="6" data-title="Roadmap">
+      <div class="topline"><span data-pptx-text>Northstar / Roadmap</span><span class="folio" data-pptx-text>06</span></div>
+      <div class="slide-title"><p class="kicker" data-pptx-text>04 / Roadmap</p><h2 data-pptx-text>Sequence the proof before the scale.</h2></div>
+      <div class="content roadmap"><article class="phase" data-pptx-shape="roundRect"><small data-pptx-text>Q1 / Focus</small><h3 data-pptx-text>First outcome</h3><p data-pptx-text>Cut time to value and define the activation signal.</p></article><article class="phase" data-pptx-shape="roundRect"><small data-pptx-text>Q2 / Connect</small><h3 data-pptx-text>Team workflow</h3><p data-pptx-text>Link the critical handoffs around the first use case.</p></article><article class="phase" data-pptx-shape="roundRect"><small data-pptx-text>Q3 / Expand</small><h3 data-pptx-text>Trusted system</h3><p data-pptx-text>Add governance and reusable organizational memory.</p></article><article class="phase" data-pptx-shape="roundRect"><small data-pptx-text>Q4 / Lead</small><h3 data-pptx-text>Category proof</h3><p data-pptx-text>Publish the customer evidence that defines the market.</p></article></div>
+    </section>
+    <section class="slide accent-slide" data-ipw-slide="7" data-title="Decision">
+      <div class="topline"><span data-pptx-text>Northstar / Decision</span><span class="folio" data-pptx-text>07</span></div>
+      <div class="closing"><div><p class="kicker" data-pptx-text>The decision</p><h1 data-pptx-text>Choose the outcome we want to be known for.</h1><p class="lede" data-pptx-text>Align the organization around one customer promise, one adoption signal, and one proof point for the next twelve months.</p></div><aside class="closing-note" data-pptx-shape="line"><strong data-pptx-text>Next step</strong><p data-pptx-text>Name the executive owner and the decision date.</p></aside></div>
+      <p class="footer-note" data-pptx-text>Northstar Strategy / Native Editable PPTX</p>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.pptx-clinical-handoff",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "slides",
+  "subcategory": "healthcare",
+  "style": "minimal",
+  "tags": [
+    "healthcare",
+    "minimal",
+    "pptx-compatible",
+    "themeable"
+  ],
+  "pptxCompatibility": "native-editable",
+  "surface": "design",
+  "title": "Clinical Handoff",
+  "description": "A calm clinical handoff deck for patient context, risk triage, care plan, and shift ownership.",
+  "cover": "cover.png",
+  "entry": "entry.html",
+  "source": {
+    "name": "iPolloWork",
+    "license": "MIT"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "tokens": "design-tokens.css",
+    "variables": [
+      {
+        "id": "--ipw-color-primary",
+        "label": "Primary",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-secondary",
+        "label": "Secondary",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-accent",
+        "label": "Accent",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-success",
+        "label": "Success",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-warning",
+        "label": "Warning",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-danger",
+        "label": "Danger",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-bg",
+        "label": "Page background",
+        "type": "color",
+        "group": "background"
+      },
+      {
+        "id": "--ipw-color-surface",
+        "label": "Surface",
+        "type": "color",
+        "group": "background"
+      },
+      {
+        "id": "--ipw-color-text",
+        "label": "Text",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-muted",
+        "label": "Muted text",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-border",
+        "label": "Border",
+        "type": "color",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-color-on-primary",
+        "label": "On primary",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-font-display",
+        "label": "Display font",
+        "type": "font",
+        "group": "typography"
+      },
+      {
+        "id": "--ipw-font-body",
+        "label": "Body font",
+        "type": "font",
+        "group": "typography"
+      },
+      {
+        "id": "--ipw-type-scale",
+        "label": "Type scale",
+        "type": "number",
+        "group": "typography"
+      },
+      {
+        "id": "--ipw-body-line-height",
+        "label": "Line height",
+        "type": "number",
+        "group": "typography"
+      },
+      {
+        "id": "--ipw-content-width",
+        "label": "Content width",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-page-padding",
+        "label": "Page padding",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-section-space",
+        "label": "Section spacing",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-button-radius",
+        "label": "Button radius",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-card-bg",
+        "label": "Card background",
+        "type": "color",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-card-border",
+        "label": "Card border",
+        "type": "color",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-card-radius",
+        "label": "Card radius",
+        "type": "number",
+        "group": "components"
+      },
+      {
+        "id": "--ipw-card-shadow",
+        "label": "Card shadow",
+        "type": "text",
+        "group": "components"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Replace every sample claim and metric with verified brief content.",
+    "Preserve the six-slide narrative, template-specific composition, and object geometry.",
+    "Preserve every data-pptx-text and data-pptx-shape marker so exported objects remain editable.",
+    "Apply brand styling only through design tokens without replacing the DOM skeleton.",
+    "Check text bounds, contrast, source labels, and slide order before exporting."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

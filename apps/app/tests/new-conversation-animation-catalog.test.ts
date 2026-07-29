@@ -8,10 +8,10 @@ const surface = readFileSync(resolve(root, "src/react-app/domains/session/surfac
 const sessionPage = readFileSync(resolve(root, "src/react-app/domains/session/chat/session-page.tsx"), "utf8");
 
 describe("new conversation animation catalog", () => {
-  test("shows the video template picker and GSAP animation catalog", () => {
+  test("shows the video template picker without the GSAP animation catalog", () => {
     expect(starter).toContain("const VIDEO_TEMPLATE_PICKER_ENABLED = true");
-    expect(starter).toContain("const VIDEO_ANIMATION_PICKER_ENABLED = true");
-    expect(surface).toContain("const VIDEO_ANIMATION_PICKER_ENABLED = true");
+    expect(starter).toContain("const VIDEO_ANIMATION_PICKER_ENABLED = false");
+    expect(surface).toContain("const VIDEO_ANIMATION_PICKER_ENABLED = false");
     expect(starter).toContain('selectedMode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED');
     expect(starter).toContain('selectedMode === "video" && VIDEO_ANIMATION_PICKER_ENABLED');
     expect(starter).toContain('mode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED');

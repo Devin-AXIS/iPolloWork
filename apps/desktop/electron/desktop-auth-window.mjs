@@ -31,6 +31,7 @@ export function classifyDesktopAuthNavigation(value) {
   const url = typeof value === "string" ? value.trim() : "";
   if (!url) return { kind: "block" };
   if (url === "about:blank") return { kind: "allow", url };
+  if (url.startsWith("data:text/html;charset=utf-8,")) return { kind: "allow", url };
   if (isDenAuthCallbackUrl(url)) return { kind: "complete", url };
 
   try {
@@ -76,6 +77,52 @@ function installDesktopAuthNavigation(window, { onComplete, openExternal }) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function desktopAuthLoadErrorHtml({ url, errorCode, errorDescription }) {
+  let host = "";
+  try {
+    host = new URL(url).host;
+  } catch {
+    host = String(url ?? "");
+  }
+  const safeHost = escapeHtml(host || "the sign-in server");
+  const safeUrl = escapeHtml(url || "");
+  const safeDescription = escapeHtml(errorDescription || "The sign-in page could not be loaded.");
+  const safeCode = Number.isFinite(errorCode) ? String(errorCode) : "unknown";
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iPollo Sign in</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #fff; color: #18181b; }
+    main { width: min(420px, calc(100vw - 48px)); }
+    h1 { margin: 0 0 12px; font-size: 18px; font-weight: 650; letter-spacing: 0; }
+    p { margin: 8px 0; color: #52525b; font-size: 13px; line-height: 1.5; }
+    code { display: block; margin-top: 12px; padding: 10px 12px; overflow-wrap: anywhere; border: 1px solid #e4e4e7; border-radius: 6px; background: #fafafa; color: #27272a; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Unable to load ${safeHost}</h1>
+    <p>${safeDescription}</p>
+    <p>Error code: ${safeCode}</p>
+    ${safeUrl ? `<code>${safeUrl}</code>` : ""}
+  </main>
+</body>
+</html>`;
+}
+
 export function createDesktopAuthWindow({
   BrowserWindow,
   parent,
@@ -110,6 +157,19 @@ export function createDesktopAuthWindow({
 
   window.setMenuBarVisibility?.(false);
   installDesktopAuthNavigation(window, { onComplete, openExternal });
+  window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
+    if (!isMainFrame || window.isDestroyed()) return;
+    if (errorCode === -3) return;
+    const failedUrl = validatedUrl || url;
+    window.show();
+    void window.webContents.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(desktopAuthLoadErrorHtml({
+        url: failedUrl,
+        errorCode,
+        errorDescription,
+      }))}`,
+    ).catch(() => undefined);
+  });
   window.once("ready-to-show", () => {
     if (!window.isDestroyed()) window.show();
   });

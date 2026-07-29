@@ -512,7 +512,7 @@ function AnimationChip({ animation, onClear }: { animation: HyperframesAnimation
   );
 }
 
-const VIDEO_ANIMATION_PICKER_ENABLED = true;
+const VIDEO_ANIMATION_PICKER_ENABLED = false;
 
 function animationSelectionInstruction(animations: HyperframesAnimationSelection[]): string | null {
   if (!animations.length) return null;

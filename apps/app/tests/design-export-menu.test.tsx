@@ -112,4 +112,12 @@ describe("design export download menu", () => {
     expect(Reflect.get(findByAriaLabel(menu({ exportingPptx: true }), "Download").props, "disabled")).toBe(false);
     expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true, exportingPptx: true }), "Download").props, "disabled")).toBe(true);
   });
+
+  test("keeps the menu available while the preview is preparing", () => {
+    const preparing = menu({ exportReady: false });
+
+    expect(Reflect.get(findByAriaLabel(preparing, "Download").props, "disabled")).toBe(false);
+    expect(Reflect.get(findByText(preparing, "Download PDF").props, "disabled")).toBe(true);
+    expect(Reflect.get(findByText(preparing, "Download PPTX").props, "disabled")).toBe(true);
+  });
 });

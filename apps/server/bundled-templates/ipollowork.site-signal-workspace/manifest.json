@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.site-signal-workspace",
+  "version": "1.0.0",
+  "kind": "design",
+  "category": "site",
+  "subcategory": "product-landing",
+  "style": "editorial",
+  "tags": ["product", "saas", "workspace", "editorial", "dashboard"],
+  "surface": "design",
+  "title": "Signal Workspace",
+  "description": "A polished product website with an editorial hero, live workspace preview, proof points, and conversion sections.",
+  "cover": "cover.png",
+  "entry": "entry.html",
+  "source": {
+    "name": "iPolloWork",
+    "license": "MIT"
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "tokens": "design-tokens.css",
+    "variables": [
+      { "id": "--ipw-color-primary", "label": "Primary", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-secondary", "label": "Secondary", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-accent", "label": "Accent", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-success", "label": "Success", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-warning", "label": "Warning", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-danger", "label": "Danger", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-bg", "label": "Page background", "type": "color", "group": "background" },
+      { "id": "--ipw-color-surface", "label": "Surface", "type": "color", "group": "background" },
+      { "id": "--ipw-color-text", "label": "Text", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-muted", "label": "Muted text", "type": "color", "group": "theme" },
+      { "id": "--ipw-color-border", "label": "Border", "type": "color", "group": "components" },
+      { "id": "--ipw-color-on-primary", "label": "On primary", "type": "color", "group": "theme" },
+      { "id": "--ipw-font-display", "label": "Display font", "type": "font", "group": "typography" },
+      { "id": "--ipw-font-body", "label": "Body font", "type": "font", "group": "typography" },
+      { "id": "--ipw-type-scale", "label": "Type scale", "type": "number", "group": "typography" },
+      { "id": "--ipw-body-line-height", "label": "Line height", "type": "number", "group": "typography" },
+      { "id": "--ipw-content-width", "label": "Content width", "type": "number", "group": "components" },
+      { "id": "--ipw-page-padding", "label": "Page padding", "type": "number", "group": "components" },
+      { "id": "--ipw-section-space", "label": "Section spacing", "type": "number", "group": "components" },
+      { "id": "--ipw-button-radius", "label": "Button radius", "type": "number", "group": "components" },
+      { "id": "--ipw-card-bg", "label": "Card background", "type": "color", "group": "components" },
+      { "id": "--ipw-card-border", "label": "Card border", "type": "color", "group": "components" },
+      { "id": "--ipw-card-radius", "label": "Card radius", "type": "number", "group": "components" },
+      { "id": "--ipw-card-shadow", "label": "Card shadow", "type": "text", "group": "components" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the sample product name, value proposition, proof points, and call to action with the complete brief.",
+    "Keep the workspace preview as the primary product visual and update its labels to match the actual workflow.",
+    "Preserve responsive navigation, anchored sections, and visible interaction feedback.",
+    "Apply brand styling through the declared design tokens without changing the page hierarchy or preview geometry.",
+    "Verify mobile layout, focus states, links, text overflow, and button actions before publishing."
+  ],
+  "minimumAppVersion": "0.17.28"
+}
