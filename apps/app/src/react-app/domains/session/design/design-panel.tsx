@@ -2309,7 +2309,7 @@ export function DesignPanel({
                           aria-pressed={elementPropertiesOpen}
                         >
                           <img src={floatingToolbarSettings} alt="" className="size-[18px] select-none" draggable={false} />
-                        </button>
+                        </Button>
                         {isMultiSelection || selection.tag !== "img" ? (
                           <button
                             type="button"
