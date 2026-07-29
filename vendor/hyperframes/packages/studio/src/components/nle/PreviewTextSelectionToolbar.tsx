@@ -466,9 +466,10 @@ export function PreviewTextSelectionToolbar({
       type: "ipollowork:hyperframes:ask-ai-selection",
       target: {
         file: activeSelection.sourceFile || "index.html",
+        hfId: activeSelection.hfId,
+        id: activeSelection.id ?? undefined,
         selector: activeSelection.selector,
         selectorIndex: activeSelection.selectorIndex,
-        id: activeSelection.id ?? undefined,
       },
       tag: element.tagName.toLowerCase(),
       text: element.textContent || "",

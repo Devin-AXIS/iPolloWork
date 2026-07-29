@@ -33,6 +33,7 @@ import {
 } from "lexical";
 import type { InitialConfigType } from "@lexical/react/LexicalComposer.js";
 import { decodeComposerMentionValue, encodeComposerMentionValue, type ComposerMentionKind } from "./mention-encoding";
+import { removeComposerDesignSelectionToken } from "./design-selection-token";
 import { useDesignAiSelectionStore } from "../../design/design-ai-selection-store";
 
 type EditorProps = {
@@ -311,6 +312,51 @@ function $createComposerSkillNode(skillName: string) {
   return $applyNodeReplacement(new ComposerSkillNode(skillName));
 }
 
+function createDesignSelectionChipDom(contextId: string, label: string) {
+  const dom = document.createElement("span");
+  dom.className = "inline-flex items-center gap-1 rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11";
+  dom.contentEditable = "false";
+  dom.setAttribute("data-composer-token", "design-selection");
+  dom.setAttribute("spellcheck", "false");
+  dom.title = `Design selection: ${label}`;
+
+  const text = document.createElement("span");
+  text.dataset.designSelectionLabel = "true";
+  text.textContent = label;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-violet-10 transition-colors hover:bg-violet-4 hover:text-violet-12";
+  button.title = "Remove selected element";
+  button.setAttribute("aria-label", "Remove selected element from Ask AI");
+  button.dataset.designSelectionRemove = contextId;
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.75");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "h-3 w-3");
+  const first = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  first.setAttribute("d", "M4 4l8 8");
+  const second = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  second.setAttribute("d", "M12 4l-8 8");
+  svg.append(first, second);
+  button.append(svg);
+  dom.append(text, button);
+  return dom;
+}
+
+function updateDesignSelectionChipDom(dom: HTMLElement, contextId: string, label: string) {
+  const text = dom.querySelector("[data-design-selection-label]");
+  if (text) text.textContent = label;
+  const button = dom.querySelector("button[data-design-selection-remove]");
+  if (button instanceof HTMLButtonElement) button.dataset.designSelectionRemove = contextId;
+  dom.title = `Design selection: ${label}`;
+}
+
 class ComposerDesignSelectionNode extends TextNode {
   __contextId: string;
   __label: string;
@@ -344,20 +390,12 @@ class ComposerDesignSelectionNode extends TextNode {
   }
 
   override createDOM(_config: EditorConfig) {
-    const dom = document.createElement("span");
-    dom.className = "inline-flex items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11";
-    dom.textContent = this.__label;
-    dom.contentEditable = "false";
-    dom.setAttribute("data-composer-token", "design-selection");
-    dom.setAttribute("spellcheck", "false");
-    dom.title = `Design selection: ${this.__label}`;
-    return dom;
+    return createDesignSelectionChipDom(this.__contextId, this.__label);
   }
 
   override updateDOM(prevNode: ComposerDesignSelectionNode, dom: HTMLElement) {
-    if (prevNode.__label !== this.__label) {
-      dom.textContent = this.__label;
-      dom.title = `Design selection: ${this.__label}`;
+    if (prevNode.__contextId !== this.__contextId || prevNode.__label !== this.__label) {
+      updateDesignSelectionChipDom(dom, this.__contextId, this.__label);
     }
     return false;
   }
@@ -928,9 +966,20 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
     [],
   );
 
-  const handlePastedTextExpandPointer = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+  const handleComposerTokenActionClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    const removeButton = target.closest("button[data-design-selection-remove]");
+    if (removeButton instanceof HTMLButtonElement) {
+      const contextId = removeButton.dataset.designSelectionRemove;
+      if (!contextId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const next = removeComposerDesignSelectionToken(valueRef.current, contextId);
+      valueRef.current = next;
+      onChangeRef.current(next);
+      return;
+    }
     const button = target.closest("button[data-pasted-expand-label]");
     if (!(button instanceof HTMLButtonElement)) return;
     const label = button.dataset.pastedExpandLabel;
@@ -940,10 +989,10 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
     props.onExpandPastedText?.(label);
   }, [props.onExpandPastedText]);
 
-  const handlePastedTextExpandMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+  const handleComposerTokenActionMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    if (!target.closest("button[data-pasted-expand-label]")) return;
+    if (!target.closest("button[data-pasted-expand-label], button[data-design-selection-remove]")) return;
     event.preventDefault();
     event.stopPropagation();
   }, []);
@@ -956,7 +1005,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
         - max-h caps the composer — long pastes / multi-paragraph drafts scroll
           inside the editor instead of pushing the transcript out of view.
       */}
-      <div className="relative" onClickCapture={handlePastedTextExpandPointer} onMouseDownCapture={handlePastedTextExpandMouseDown}>
+      <div className="relative" onClickCapture={handleComposerTokenActionClick} onMouseDownCapture={handleComposerTokenActionMouseDown}>
         <PlainTextPlugin
           contentEditable={
             <ContentEditable

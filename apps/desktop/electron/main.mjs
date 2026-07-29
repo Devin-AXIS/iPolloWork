@@ -3436,7 +3436,13 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const scope = composition.querySelector('[data-hf-inner-root]') || composition;
         const matches = [...scope.querySelectorAll(selector)];
         const selectorIndex = Math.max(0, matches.indexOf(element));
-        return { file, selector, selectorIndex };
+        return {
+          file,
+          hfId: element.getAttribute('data-hf-id') || undefined,
+          id: element.id || undefined,
+          selector,
+          selectorIndex,
+        };
       };
 
       const saveTextTarget = (target, value, immediate = false) => {

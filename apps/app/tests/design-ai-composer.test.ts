@@ -87,6 +87,8 @@ describe("Design AI composer integration", () => {
     expect(source).toContain('contentEditable = "false"');
     expect(source).toContain("violet");
     expect(source).toContain("ComposerDesignSelectionNode");
+    expect(source).toContain("data-design-selection-remove");
+    expect(source).toContain("Remove selected element from Ask AI");
   });
 
   test("wires Ask AI through the composer draft store and focuses the prompt", async () => {

@@ -25,6 +25,7 @@ import { useStudioSdkSessions } from "./hooks/useStudioSdkSessions";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAddAssetAtPlayhead } from "./hooks/useAddAssetAtPlayhead";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
+import { useIPolloWorkHostHistoryBridge } from "./hooks/useIPolloWorkHostHistoryBridge";
 import { useClipboard } from "./hooks/useClipboard";
 import { deleteSelectedKeyframes } from "./hooks/timelineEditingHelpers";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
@@ -274,6 +275,14 @@ export function StudioApp() {
     onToggleRecording: STUDIO_KEYFRAMES_ENABLED
       ? () => handleToggleRecordingRef.current()
       : undefined,
+  });
+  useIPolloWorkHostHistoryBridge({
+    projectId,
+    loaded: editHistory.loaded,
+    recordEdit: editHistory.recordEdit,
+    handleUndo: appHotkeys.handleUndo,
+    handleRedo: appHotkeys.handleRedo,
+    showToast,
   });
   const sidebarTabRef = useRef({
     select: (t: SidebarTab) => leftSidebarRef.current?.selectTab(t),
