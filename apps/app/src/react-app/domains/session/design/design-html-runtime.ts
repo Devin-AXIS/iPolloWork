@@ -67,17 +67,22 @@ export type DesignDeckState = {
   title: string;
 };
 
-export type DesignRuntimeMessage =
-  | ({ channel: typeof DESIGN_MESSAGE_CHANNEL; type: "selected" } & DesignSelectionChange)
-  | ({ channel: typeof DESIGN_MESSAGE_CHANNEL; type: "editing" } & DesignSelectionChange)
-  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "deselected" }
-  | ({ channel: typeof DESIGN_MESSAGE_CHANNEL; type: "draft"; html: string } & DesignSelectionChange)
-  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "document-draft"; html: string }
-  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "snapshot"; requestId: string; html: string }
-  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "navigate"; href: string }
-  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "deck"; deck: DesignDeckState }
-  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "zoom"; deltaY: number }
-  | { channel: typeof DESIGN_MESSAGE_CHANNEL; type: "pan"; deltaX: number; deltaY: number };
+type DesignRuntimeMessageEnvelope = { channel: typeof DESIGN_MESSAGE_CHANNEL; frameRevision: string };
+
+export type DesignRuntimeMessage = DesignRuntimeMessageEnvelope & (
+  | ({ type: "selected" } & DesignSelectionChange)
+  | ({ type: "editing" } & DesignSelectionChange)
+  | { type: "deselected" }
+  | ({ type: "draft"; html: string } & DesignSelectionChange)
+  | { type: "document-draft"; html: string }
+  | { type: "snapshot"; requestId: string; html: string }
+  | { type: "navigate"; href: string }
+  | { type: "deck"; deck: DesignDeckState; viewRevision: string }
+  | { type: "view"; viewRevision: string; scrollX: number; scrollY: number }
+  | { type: "view-restored"; viewRevision: string }
+  | { type: "zoom"; deltaY: number }
+  | { type: "pan"; deltaX: number; deltaY: number }
+);
 
 export function isLocalHtmlPath(path: string) {
   return /\.html?$/i.test(path.trim());
@@ -114,19 +119,20 @@ export function buildDesignPreviewDocument(
   editing = includeEditor,
   fixedSlideStage = false,
   isPresentationTemplate = fixedSlideStage,
+  frameRevision = "",
 ) {
   const tokenStyle = templateTokenCss.trim()
     ? `<style id="ipollowork-design-template-token-style">${templateTokenCss.replace(/<\/style/gi, "<\\/style")}</style>`
     : "";
-  const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"});<\/script>`;
+  const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"},${JSON.stringify(frameRevision)});<\/script>`;
   const deckRuntime = isPresentationTemplate
-    ? `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${fixedSlideStage ? "true" : "false"});<\/script>`
+    ? `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${fixedSlideStage ? "true" : "false"},${JSON.stringify(frameRevision)});<\/script>`
     : "";
   const fixedSlideRuntime = fixedSlideStage
     ? `<script id="ipollowork-design-fixed-slide-runtime">(${designFixedSlideRuntime.toString()})();<\/script>`
     : "";
   const editingRuntime = includeEditor
-    ? `<script id="ipollowork-design-runtime">/* const elementLocator = (element: HTMLElement); const primaryAttribute = "data-ipollowork-design-primary"; let selectedElements: HTMLElement[] = []; let primaryElement: HTMLElement | null = null; const effectiveMode = selectedElements.length > 1 ? "move" : mode; const selectedTargets = (ids: unknown) => */(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"},${isPresentationTemplate ? "true" : "false"},${JSON.stringify(DESIGN_MULTI_SELECTION_STYLE_FIELDS)});<\/script>`
+    ? `<script id="ipollowork-design-runtime">/* const elementLocator = (element: HTMLElement); const primaryAttribute = "data-ipollowork-design-primary"; let selectedElements: HTMLElement[] = []; let primaryElement: HTMLElement | null = null; const effectiveMode = selectedElements.length > 1 ? "move" : mode; const selectedTargets = (ids: unknown) => */(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"},${isPresentationTemplate ? "true" : "false"},${JSON.stringify(DESIGN_MULTI_SELECTION_STYLE_FIELDS)},${JSON.stringify(frameRevision)});<\/script>`
     : "";
   const runtime = `${tokenStyle}${navigationRuntime}${deckRuntime}${fixedSlideRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
@@ -190,7 +196,7 @@ function designFixedSlideRuntime() {
   window.addEventListener("resize", () => window.requestAnimationFrame(applyScale));
 }
 
-function designNavigationRuntime(channel: string, editing: boolean) {
+function designNavigationRuntime(channel: string, editing: boolean, frameRevision: string) {
   let editingEnabled = editing;
   document.addEventListener("click", (event) => {
     if (editingEnabled) return;
@@ -228,7 +234,7 @@ function designNavigationRuntime(channel: string, editing: boolean) {
       return;
     }
     event.preventDefault();
-    window.parent.postMessage({ channel, type: "navigate", href }, "*");
+    window.parent.postMessage({ channel, frameRevision, type: "navigate", href }, "*");
   }, true);
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent) return;
@@ -244,7 +250,7 @@ function designNavigationRuntime(channel: string, editing: boolean) {
   });
 }
 
-function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
+function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, frameRevision = "") {
   const slideSelector = "[data-ipw-slide],section.slide,.slide,.slide-frame";
   const slides = Array.from(document.querySelectorAll<HTMLElement>(slideSelector))
     .filter((element, index, list) => list.indexOf(element) === index);
@@ -312,13 +318,13 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
 
   let lastState = "";
   const notifyNavigation = () => document.dispatchEvent(new Event("ipollowork-design-deck-navigated"));
-  const report = () => {
+  const report = (viewRevision = "") => {
     const index = activeIndex();
     const title = slides[index]?.getAttribute("data-title") || slides[index]?.querySelector("h1,h2,h3")?.textContent?.trim() || "";
     const key = `${index}:${title}`;
-    if (key === lastState) return;
+    if (!viewRevision && key === lastState) return;
     lastState = key;
-    window.parent.postMessage({ channel, type: "deck", deck: { index, total: slides.length, title } }, "*");
+    window.parent.postMessage({ channel, frameRevision, type: "deck", deck: { index, total: slides.length, title }, viewRevision }, "*");
   };
 
   const showFallback = (index: number) => {
@@ -391,7 +397,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
     window.setTimeout(report, 0);
   }, true);
   document.addEventListener("scroll", () => window.setTimeout(report, 0), true);
-  window.addEventListener("hashchange", report);
+  window.addEventListener("hashchange", () => report());
   new MutationObserver(() => {
     setSlideVisibility(activeIndex());
     report();
@@ -401,12 +407,15 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false) {
     const data = event.data;
     if (!data || typeof data !== "object" || data.channel !== channel || data.type !== "deck-navigate") return;
     if (data.direction === "previous" || data.direction === "next") navigate(data.direction);
-    else if (data.direction === "index" && typeof data.index === "number") navigate("index", data.index);
+    else if (data.direction === "index" && typeof data.index === "number") {
+      navigate("index", data.index);
+      if (typeof data.viewRevision === "string") window.setTimeout(() => report(data.viewRevision), 0);
+    }
   });
   report();
 }
 
-function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, strictPptx = false, presentationCanvas = strictPptx, multiSelectionStyleFields: readonly string[] = []) {
+function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, strictPptx = false, presentationCanvas = strictPptx, multiSelectionStyleFields: readonly string[] = [], frameRevision = "") {
   const runtimeId = "ipollowork-design-runtime";
   const styleId = "ipollowork-design-runtime-style";
   const selectedAttribute = "data-ipollowork-design-selected";
@@ -632,8 +641,8 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     };
     window.parent.postMessage(
       type === "draft"
-        ? { channel, type, html: serialize(), ...change }
-        : { channel, type, ...change },
+        ? { channel, frameRevision, type, html: serialize(), ...change }
+        : { channel, frameRevision, type, ...change },
       "*",
     );
   };
@@ -735,7 +744,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     syncSelectionMarkers();
     syncOverlay();
     if (primaryElement) post("selected");
-    else window.parent.postMessage({ channel, type: "deselected" }, "*");
+    else window.parent.postMessage({ channel, frameRevision, type: "deselected" }, "*");
   };
 
   const selectionCandidate = (
@@ -774,7 +783,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     textRange = null;
     transform = null;
     overlay.style.display = "none";
-    if (notify && hadSelection) window.parent.postMessage({ channel, type: "deselected" }, "*");
+    if (notify && hadSelection) window.parent.postMessage({ channel, frameRevision, type: "deselected" }, "*");
   };
 
   const setEditingEnabled = (next: boolean) => {
@@ -850,7 +859,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       canvasPan.lastX = event.clientX;
       canvasPan.lastY = event.clientY;
       document.documentElement.setAttribute(panningAttribute, "true");
-      window.parent.postMessage({ channel, type: "pan", deltaX, deltaY }, "*");
+      window.parent.postMessage({ channel, frameRevision, type: "pan", deltaX, deltaY }, "*");
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -1012,13 +1021,13 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     const rangeSelection = window.getSelection();
     if (!rangeSelection || rangeSelection.rangeCount === 0 || rangeSelection.isCollapsed) {
       textRange = null;
-      post("editing");
+      post("selected");
       return;
     }
     const nextRange = rangeSelection.getRangeAt(0);
     if (!primaryElement.contains(nextRange.commonAncestorContainer)) return;
     textRange = nextRange.cloneRange();
-    post("editing");
+    post("selected");
   });
 
   document.addEventListener("keydown", (event) => {
@@ -1037,13 +1046,18 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     post("draft");
   }, true);
 
+  const postView = (viewRevision = "") => window.parent.postMessage({ channel, frameRevision, type: "view", viewRevision, scrollX: window.scrollX, scrollY: window.scrollY }, "*");
   window.addEventListener("resize", () => { if (editingEnabled) { syncOverlay(); post("selected"); } });
-  window.addEventListener("scroll", () => { if (editingEnabled) { syncOverlay(); post("selected"); } }, true);
+  window.addEventListener("scroll", () => {
+    postView();
+    if (editingEnabled) { syncOverlay(); post("selected"); }
+  }, true);
+  window.requestAnimationFrame(() => postView());
 
   document.addEventListener("wheel", (event) => {
     if (!presentationCanvas || (!event.ctrlKey && !event.metaKey)) return;
     event.preventDefault();
-    window.parent.postMessage({ channel, type: "zoom", deltaY: event.deltaY }, "*");
+    window.parent.postMessage({ channel, frameRevision, type: "zoom", deltaY: event.deltaY }, "*");
   }, { capture: true, passive: false });
 
   const selectedTargets = (ids: unknown) => {
@@ -1064,13 +1078,22 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       setEditingEnabled(data.editing);
       return;
     }
+    if (data.type === "restore-view" && typeof data.viewRevision === "string" && typeof data.scrollX === "number" && typeof data.scrollY === "number") {
+      window.scrollTo({ left: data.scrollX, top: data.scrollY });
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ left: data.scrollX, top: data.scrollY });
+        postView(data.viewRevision);
+        window.parent.postMessage({ channel, frameRevision, type: "view-restored", viewRevision: data.viewRevision }, "*");
+      });
+      return;
+    }
     if (data.type === "snapshot" && typeof data.requestId === "string") {
-      window.parent.postMessage({ channel, type: "snapshot", requestId: data.requestId, html: serialize() }, "*");
+      window.parent.postMessage({ channel, frameRevision, type: "snapshot", requestId: data.requestId, html: serialize() }, "*");
       return;
     }
     if (data.type === "set-token" && typeof data.name === "string" && typeof data.value === "string" && data.name.startsWith("--ipw-")) {
       document.documentElement.style.setProperty(data.name, data.value);
-      window.parent.postMessage({ channel, type: "document-draft", html: serialize() }, "*");
+      window.parent.postMessage({ channel, frameRevision, type: "document-draft", html: serialize() }, "*");
       return;
     }
     if (data.type === "delete") {
@@ -1078,7 +1101,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       if (!targets.length) return;
       targets.forEach((target) => target.remove());
       clearSelection();
-      window.parent.postMessage({ channel, type: "document-draft", html: serialize() }, "*");
+      window.parent.postMessage({ channel, frameRevision, type: "document-draft", html: serialize() }, "*");
       return;
     }
     if (data.type !== "set" || typeof data.field !== "string" || typeof data.value !== "string") return;

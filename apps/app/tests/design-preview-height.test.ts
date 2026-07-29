@@ -91,8 +91,8 @@ describe("Design property number fields", () => {
   test("renders independent batch text and background fill controls", async () => {
     const source = await Bun.file(inspectorUrl).text();
 
-    expect(source).toContain('<ColorField label="Text color" mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value) => onApplyField("color", value)} />');
-    expect(source).toContain('<ColorField label="Background color" mixed={isMixed("backgroundColor")} value={selection.styles.backgroundColor || "#000000"} onChange={(value) => onApplyField("backgroundColor", value)} />');
+    expect(source).toContain('<ColorField label="Text color" mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value, remember) => onApplyField("color", value, remember)} />');
+    expect(source).toContain('<ColorField label="Background color" mixed={isMixed("backgroundColor")} value={selection.styles.backgroundColor || "#000000"} onChange={(value, remember) => onApplyField("backgroundColor", value, remember)} />');
     expect(source).toContain('aria-label={`Design ${label.toLowerCase()} value`}');
     expect(source).toContain("Choose {label.toLowerCase()}");
   });
@@ -112,7 +112,7 @@ describe("Design property number fields", () => {
 
     expect(source).toContain("const remember = !activeDrag.moved;");
     expect(source).toContain("onChange(nextValue, remember);");
-    expect(source).toContain("onChange={(event) => onChange(numericValue(event.currentTarget.value, numericValue(value, 0)))}");
+    expect(source).toContain("onChange={(event) => onChange(numericValue(event.currentTarget.value, numericValue(value, 0)), false)}");
     expect(source).toContain('onChange={(value, remember) => applyPixels("lineHeight", String(value), remember)}');
     expect(source).toContain('onChange={(value, remember) => onApplyField("letterSpacing", `${value}%`, remember)}');
     expect(source).toContain('onChange={(value, remember) => onApplyField("left", `${value}px`, remember)}');
@@ -122,6 +122,19 @@ describe("Design property number fields", () => {
     expect(source).toContain('onChange={(value, remember) => onApplyField("height", `${value}px`, remember)}');
     expect(source).toContain('onChange={(value, remember) => applyPixels("fontSize", value, remember)}');
     expect(panelSource).toContain("const applyField = (field: DesignField, value: string, remember = true) =>");
+  });
+
+  test("groups typed property changes into one undo interaction", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+
+    expect(source).toContain('onFocus={() => onApplyField("text", selection.text, true)}');
+    expect(source).toContain('onChange={(event) => onApplyField("text", event.currentTarget.value, false)}');
+    expect(source).toContain("onFocus={() => onChange(value, true)}");
+    expect(source).toContain("onChange={(event) => onChange(event.currentTarget.value, false)}");
+    expect(source).toContain("onChange={(value, remember) => onApplyField(\"borderStyle\", value.toLowerCase(), remember)}");
+    expect(source).toContain("onFocus={() => onChange(hex, true)}");
+    expect(source).toContain("onPointerDown={() => onChange(hex, true)}");
+    expect(source).toContain("onChange={(next, remember) => onChange(clampPercentage(numericValue(next, value)), remember ?? true)}");
   });
 
   test("passes selection summary metadata to the inspector", async () => {

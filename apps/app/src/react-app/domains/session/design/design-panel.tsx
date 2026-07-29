@@ -39,6 +39,13 @@ import {
   type DesignStyleField,
 } from "./design-html-runtime";
 import { summarizeDesignSelection } from "./design-selection-summary";
+import { popDesignUndoHistory, pushDesignUndoHistory, shouldHydrateDesignSource } from "./design-undo-history";
+import {
+  acceptsDesignDeckMessage,
+  expectsDesignRestoreFrame,
+  shouldIgnoreDesignDraftMessage,
+  type DesignViewRestore,
+} from "./design-view-restore";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
 import { DesignSystemDrawer } from "./design-system-drawer";
@@ -120,7 +127,8 @@ const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent te
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
   return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
+    && typeof Reflect.get(value, "frameRevision") === "string"
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "view" || Reflect.get(value, "type") === "view-restored" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
 }
 
 function fileName(path: string) {
@@ -554,6 +562,9 @@ export function DesignPanel({
   const [panelWidth, setPanelWidth] = React.useState(480);
   const [editing, setEditing] = React.useState(false);
   const [deck, setDeck] = React.useState<DesignDeckState | null>(null);
+  const deckRef = React.useRef<DesignDeckState | null>(null);
+  const frameViewRef = React.useRef({ scrollX: 0, scrollY: 0 });
+  const pendingViewRestoreRef = React.useRef<DesignViewRestore | null>(null);
   const hydratedPageRef = React.useRef("");
   const [selectionState, setSelectionState] = React.useState<DesignSelectionChange | null>(null);
   const selectionSummary = selectionState
@@ -565,10 +576,23 @@ export function DesignPanel({
   const draftRef = React.useRef("");
   const [pendingCanvasChange, setPendingCanvasChange] = React.useState(false);
   const [savedSource, setSavedSource] = React.useState("");
-  const [history, setHistory] = React.useState<string[]>([]);
+  const [history, setHistoryState] = React.useState<string[]>([]);
+  const historyRef = React.useRef<string[]>([]);
+  const setHistory = React.useCallback((update: React.SetStateAction<string[]>) => {
+    const current = historyRef.current;
+    const next = typeof update === "function" ? update(current) : update;
+    historyRef.current = next;
+    setHistoryState(next);
+  }, []);
+  const rememberHistory = React.useCallback((snapshot = draftRef.current) => {
+    setHistory((current) => pushDesignUndoHistory(current, snapshot));
+  }, [setHistory]);
   const [previewSource, setPreviewSource] = React.useState("");
   const [hydratedPreviewSource, setHydratedPreviewSource] = React.useState("");
   const [previewRevision, setPreviewRevision] = React.useState(0);
+  const activeFrameRevision = `${activePagePath}:${previewRevision}`;
+  const activeFrameRevisionRef = React.useRef(activeFrameRevision);
+  activeFrameRevisionRef.current = activeFrameRevision;
   const [previewLoaded, setPreviewLoaded] = React.useState(false);
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
@@ -753,7 +777,7 @@ export function DesignPanel({
       linkedDesignTokenPath(currentHtml) || "design-tokens.css",
     );
     if (themedHtml !== currentHtml) {
-      setHistory((current) => [...current, currentHtml]);
+      rememberHistory(currentHtml);
       draftRef.current = themedHtml;
       setDraft(themedHtml);
       setPendingCanvasChange(true);
@@ -766,7 +790,7 @@ export function DesignPanel({
     setDesignTokenDraft(next);
     scheduleDesignTokenSave(next);
     toast.success(`Applied ${theme.name}.`);
-  }, [fileQuery.data?.content, scheduleDesignTokenSave, templateTokenQuery.data]);
+  }, [fileQuery.data?.content, rememberHistory, scheduleDesignTokenSave, templateTokenQuery.data]);
 
   const openDesignLink = React.useCallback(async (href: string) => {
     if (!client || !workspaceId || !lockedPath || !activePagePath) return;
@@ -800,16 +824,21 @@ export function DesignPanel({
     setViewedVersionPath("current");
     setViewedVersionUpdatedAt(fileQuery.data.updatedAt);
     if (typeof window !== "undefined") window.localStorage.setItem(`ipollowork.session-design-version.${sessionId}`, "current");
+    const pageIdentity = `${sessionId}:${activePagePath}`;
+    const pageChanged = hydratedPageRef.current !== pageIdentity;
+    if (!shouldHydrateDesignSource(pageChanged, fileQuery.data.content, draftRef.current)) return;
     draftRef.current = fileQuery.data.content;
     setPendingCanvasChange(false);
     setDraft(fileQuery.data.content);
     setSavedSource(fileQuery.data.content);
     setHistory([]);
     setSelectionState(null);
-    const pageIdentity = `${sessionId}:${activePagePath}`;
-    if (hydratedPageRef.current !== pageIdentity) {
+    if (pageChanged) {
       hydratedPageRef.current = pageIdentity;
+      deckRef.current = null;
       setDeck(null);
+      frameViewRef.current = { scrollX: 0, scrollY: 0 };
+      pendingViewRestoreRef.current = null;
     }
     setQuickEdit(null);
     setAdvancedOpen(false);
@@ -847,12 +876,34 @@ export function DesignPanel({
   React.useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow || !isDesignRuntimeMessage(event.data)) return;
+      if (event.data.frameRevision !== activeFrameRevisionRef.current) return;
       if (event.data.type === "navigate") {
         void openDesignLink(event.data.href);
         return;
       }
       if (event.data.type === "deck") {
+        const pending = pendingViewRestoreRef.current;
+        if (!acceptsDesignDeckMessage(pending, { index: event.data.deck.index, viewRevision: event.data.viewRevision })) return;
+        deckRef.current = event.data.deck;
         setDeck(event.data.deck);
+        if (pending && pending.deckIndex === event.data.deck.index) {
+          pending.deckRestored = true;
+          if (pending.frameRestored) pendingViewRestoreRef.current = null;
+        }
+        return;
+      }
+      if (event.data.type === "view") {
+        const pending = pendingViewRestoreRef.current;
+        if (pending && event.data.viewRevision !== pending.id) return;
+        frameViewRef.current = { scrollX: event.data.scrollX, scrollY: event.data.scrollY };
+        return;
+      }
+      if (event.data.type === "view-restored") {
+        const pending = pendingViewRestoreRef.current;
+        if (pending && event.data.viewRevision === pending.id) {
+          pending.frameRestored = true;
+          if (pending.deckIndex === null || pending.deckRestored) pendingViewRestoreRef.current = null;
+        }
         return;
       }
       if (event.data.type === "zoom") {
@@ -869,13 +920,14 @@ export function DesignPanel({
         setAdvancedOpen(false);
         return;
       }
+      if ((event.data.type === "draft" || event.data.type === "document-draft") && shouldIgnoreDesignDraftMessage(pendingViewRestoreRef.current)) return;
       if (event.data.type === "document-draft") {
         draftRef.current = event.data.html;
         setDraft(event.data.html);
         setPendingCanvasChange(false);
         return;
       }
-      if (event.data.type === "editing") setHistory((current) => [...current, draft]);
+      if (event.data.type === "editing") rememberHistory();
       setSelectionState((current) => {
         const currentIds = current
           ? summarizeDesignSelection(current.selection, current.selections, current.selectionRect).selectionIds
@@ -896,7 +948,7 @@ export function DesignPanel({
     };
     window.addEventListener("message", receiveMessage);
     return () => window.removeEventListener("message", receiveMessage);
-  }, [draft, openDesignLink]);
+  }, [openDesignLink, rememberHistory]);
 
   React.useEffect(() => {
     if (!previewLoaded) return;
@@ -951,6 +1003,7 @@ export function DesignPanel({
       }
     }
     const requestId = crypto.randomUUID();
+    const frameRevision = activeFrameRevisionRef.current;
     return new Promise<string>((resolve) => {
       let settled = false;
       const finish = (html: string) => {
@@ -963,7 +1016,7 @@ export function DesignPanel({
       const receiveSnapshot = (event: MessageEvent) => {
         const data = event.data;
         if (event.source !== frameWindow || !data || typeof data !== "object") return;
-        if (data.channel !== DESIGN_MESSAGE_CHANNEL || data.type !== "snapshot" || data.requestId !== requestId || typeof data.html !== "string") return;
+        if (data.channel !== DESIGN_MESSAGE_CHANNEL || data.frameRevision !== frameRevision || data.type !== "snapshot" || data.requestId !== requestId || typeof data.html !== "string") return;
         finish(data.html);
       };
       const timeout = window.setTimeout(() => finish(draftRef.current), 1_000);
@@ -1362,7 +1415,6 @@ export function DesignPanel({
       setDraft(content);
       setSavedSource(content);
       setPendingCanvasChange(false);
-      setHistory([]);
       toast.success(isCurrent ? "Design saved to the workspace." : "This version was saved.");
     },
     onError: (cause) => {
@@ -1408,7 +1460,7 @@ export function DesignPanel({
     if (!selection || !selectionSummary || !editing) return;
     if (isMultiSelection && !DESIGN_MULTI_SELECTION_STYLE_FIELDS.some((styleField) => styleField === field)) return;
     setPendingCanvasChange(true);
-    if (remember) setHistory((current) => [...current, draft]);
+    if (remember) rememberHistory();
     setSelectionState((current) => current ? {
       ...current,
       selection: updateSelectionValue(current.selection, field, value),
@@ -1427,7 +1479,7 @@ export function DesignPanel({
   const deleteSelection = () => {
     if (!selectionSummary || !selectionSummary.selections.some((member) => member.canDelete) || !editing) return;
     setPendingCanvasChange(true);
-    setHistory((current) => [...current, draft]);
+    rememberHistory();
     setSelectionState(null);
     setQuickEdit(null);
     setAdvancedOpen(false);
@@ -1483,7 +1535,7 @@ export function DesignPanel({
   };
 
   const beginQuickEdit = (kind: "text" | "href" | "src" | "color" | "fontSize") => {
-    setHistory((current) => [...current, draft]);
+    rememberHistory();
     setQuickEdit(kind);
   };
 
@@ -1502,7 +1554,7 @@ export function DesignPanel({
     }
     try {
       const result = await imageFileToPortableDataUrl(file);
-      setHistory((current) => [...current, draft]);
+      rememberHistory();
       applyField("src", result, false);
       toast.success("Image replaced in the design.");
     } catch {
@@ -1519,7 +1571,7 @@ export function DesignPanel({
         toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
         return;
       }
-      setHistory((current) => [...current, draft]);
+      rememberHistory();
       applyField("src", dataUrl, false);
       toast.success("Image replaced in the design.");
       return;
@@ -1529,12 +1581,28 @@ export function DesignPanel({
   };
 
   const undo = async () => {
-    const previous = history[history.length - 1];
+    const pan = presentationPanRef.current;
+    const restoreView = (targetSource: string): DesignViewRestore => ({
+      id: crypto.randomUUID(),
+      targetSource,
+      previewRevision: previewRevision + 1,
+      frameLoaded: false,
+      frameRestored: false,
+      deckRestored: false,
+      deckIndex: deckRef.current?.index ?? null,
+      frameScrollX: frameViewRef.current.scrollX,
+      frameScrollY: frameViewRef.current.scrollY,
+      panLeft: pan?.scrollLeft ?? 0,
+      panTop: pan?.scrollTop ?? 0,
+    });
+    const popped = popDesignUndoHistory(historyRef.current, draftRef.current);
+    setHistory(popped.history);
+    const previous = popped.previous;
     if (previous !== undefined) {
+      pendingViewRestoreRef.current = restoreView(previous);
       draftRef.current = previous;
       setPendingCanvasChange(false);
       setDraft(previous);
-      setHistory((current) => current.slice(0, -1));
       setSelectionState(null);
       setQuickEdit(null);
       setPreviewSource(previous);
@@ -1544,7 +1612,10 @@ export function DesignPanel({
       return;
     }
     const checkpoint = useDesignAiSelectionStore.getState().latestUndoCheckpoint(sessionId, activePagePath);
-    if (!checkpoint || !client || !workspaceId) return;
+    if (!checkpoint || !client || !workspaceId) {
+      return;
+    }
+    pendingViewRestoreRef.current = restoreView(checkpoint.beforeHtml);
     try {
       const current = await client.readWorkspaceFile(workspaceId, activePagePath);
       if (current.content !== checkpoint.afterHtml) {
@@ -1574,6 +1645,7 @@ export function DesignPanel({
       setPreviewLoaded(false);
       setPreviewRevision((current) => current + 1);
     } catch (error) {
+      pendingViewRestoreRef.current = null;
       const message = error instanceof Error ? error.message : "";
       toast.error(message.includes("changed since")
         ? "Could not undo the AI Design change because the file changed. Reload before trying again."
@@ -1637,8 +1709,8 @@ export function DesignPanel({
   const preview = React.useMemo(
     // The bridge is always present but starts inactive. Toggling editing is
     // a message to that bridge, not a new srcDoc, so a deck stays on its slide.
-    () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, designTokenDraft || templateTokenQuery.data || "", false, usesNativeEditablePptx, isPresentationTemplate),
-    [designTokenDraft, hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
+    () => buildDesignPreviewDocument(hydratedPreviewSource || previewSource, true, designTokenDraft || templateTokenQuery.data || "", false, usesNativeEditablePptx, isPresentationTemplate, activeFrameRevision),
+    [activeFrameRevision, designTokenDraft, hydratedPreviewSource, isPresentationTemplate, previewSource, templateTokenQuery.data, usesNativeEditablePptx],
   );
   const selectionRect = selectionSummary?.selectionRect;
   const selectionLeft = isPresentationTemplate
@@ -1796,7 +1868,15 @@ export function DesignPanel({
                   <Palette />
                 </Button>
               ) : null}
-              <Button variant="ghost" size="icon-sm" className={DESIGN_ACTION_BUTTON_CLASS} onClick={() => void undo()} disabled={history.length === 0 && !aiUndoCheckpoint} aria-label="Undo design change">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={DESIGN_ACTION_BUTTON_CLASS}
+                onClick={() => void undo()}
+                disabled={history.length === 0 && !aiUndoCheckpoint}
+                aria-label="Undo design change"
+                title={history.length === 0 && !aiUndoCheckpoint ? "Make a change first to undo it" : "Undo last design change"}
+              >
                 <Undo2 />
               </Button>
               {isPresentationTemplate ? (
@@ -1908,9 +1988,26 @@ export function DesignPanel({
                       data-preview-loaded={previewLoaded ? "true" : "false"}
                       onLoad={() => {
                         setPreviewLoaded(true);
-                        iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
-                        iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
-                        if (deck) iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "deck-navigate", direction: "index", index: deck.index }, "*");
+                        const frameWindow = iframeRef.current?.contentWindow;
+                        const pending = pendingViewRestoreRef.current;
+                        if (pending && !expectsDesignRestoreFrame(pending, previewSource, previewRevision)) return;
+                        if (pending) pending.frameLoaded = true;
+                        if (activePageHash && !pending) frameWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
+                        frameWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
+                        const deckIndex = pending?.deckIndex ?? deckRef.current?.index;
+                        if (deckIndex !== undefined && deckIndex !== null) {
+                          frameWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "deck-navigate", direction: "index", index: deckIndex, viewRevision: pending?.id ?? "" }, "*");
+                        }
+                        if (pending) {
+                          frameWindow?.postMessage({
+                            channel: DESIGN_MESSAGE_CHANNEL,
+                            type: "restore-view",
+                            viewRevision: pending.id,
+                            scrollX: pending.frameScrollX,
+                            scrollY: pending.frameScrollY,
+                          }, "*");
+                          window.requestAnimationFrame(() => presentationPanRef.current?.scrollTo({ left: pending.panLeft, top: pending.panTop }));
+                        }
                       }}
                     />
                   </div>

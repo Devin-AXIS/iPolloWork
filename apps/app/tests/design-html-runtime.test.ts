@@ -100,6 +100,32 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain("event.stopImmediatePropagation();");
   });
 
+  test("reports and restores the iframe viewport without treating cursor movement as an undo step", () => {
+    const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
+    const preview = buildDesignPreviewDocument(source, true, "", true, false, true);
+
+    expect(preview).toContain('type: "view"');
+    expect(preview).toContain('data.type === "restore-view"');
+    expect(preview).toContain('type: "view-restored"');
+    expect(preview).toContain('direction === "index"');
+
+    const selectionChange = preview.match(/document\.addEventListener\("selectionchange",[\s\S]*?\n\s*\}\);/)?.[0] ?? "";
+    expect(selectionChange).toContain('post("selected")');
+    expect(selectionChange).not.toContain('post("editing")');
+  });
+
+  test("acknowledges a restored deck index even when it matches the initial slide", () => {
+    const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
+    const preview = buildDesignPreviewDocument(source, true, "", true, false, true, "frame-7");
+
+    expect(preview).toContain("viewRevision");
+    expect(preview).toContain("frameRevision");
+    expect(preview).toContain('"frame-7"');
+    expect(preview).toMatch(/report\(data\.viewRevision\)/);
+    expect(preview).toContain('data.direction === "index" && typeof data.index === "number"');
+    expect(preview).toMatch(/addEventListener\("hashchange",\s*\(\)\s*=>\s*report\(\)\)/);
+  });
+
   test("treats a one-page canvas as a presentation so it can be exported", () => {
     const source = "<!doctype html><html><body><div class=\"slide-frame\"><h1>Only slide</h1></div></body></html>";
     const preview = buildDesignPreviewDocument(source, true, "", false, false, true);
