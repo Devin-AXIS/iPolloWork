@@ -1,0 +1,40 @@
+/* ipw-theme:start */
+/* ipw-design-system: site-forma-portfolio */
+:root {
+  --ipw-color-bg: #f2f0e9;
+  --ipw-color-surface: #ffffff;
+  --ipw-color-text: #171717;
+  --ipw-color-muted: #6a6964;
+  --ipw-color-border: #cac8c0;
+  --ipw-color-primary: #191919;
+  --ipw-color-secondary: #e7ff4f;
+  --ipw-color-accent: #ff5f3b;
+  --ipw-color-success: #27805e;
+  --ipw-color-warning: #bd7815;
+  --ipw-color-danger: #c53f3a;
+  --ipw-color-on-primary: #ffffff;
+  --ipw-font-display: Arial, sans-serif;
+  --ipw-font-body: Arial, sans-serif;
+  --ipw-type-scale: 1;
+  --ipw-body-line-height: 1.55;
+  --ipw-content-width: 1180px;
+  --ipw-page-padding: 32px;
+  --ipw-section-space: 96px;
+  --ipw-button-radius: 0px;
+  --ipw-card-bg: #ffffff;
+  --ipw-card-border: #cac8c0;
+  --ipw-card-radius: 0px;
+  --ipw-card-shadow: 0 18px 46px rgb(15 23 42 / 10%);
+}
+/* ipw-theme:end */
+
+@media (max-width: 760px) {
+  .shell { padding-inline: 18px; }
+  .masthead { overflow: hidden; }
+  .masthead h1 { font-size: 68px; line-height: .76; }
+  .work-head { min-width: 0; align-items: flex-start; flex-direction: column; }
+  .work-head h2 { font-size: 58px; }
+  .project-info h3 { font-size: 22px; }
+  .project-art::before { font-size: 250px; }
+  .services-title h2 { font-size: 50px; }
+}

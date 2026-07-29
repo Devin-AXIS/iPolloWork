@@ -287,6 +287,7 @@ export default {
   "template_market.save_to_my_templates": "Save to my templates",
   "template_market.cover_failed": "Cover failed to load",
   "template_market.retry_cover": "Retry cover",
+  "template_market.pptx_compatible": "PPTX-compatible",
   "template_market.cover_alt": "{title} cover",
   "template_market.preview_alt": "{title} preview",
   "template_market.preview_aria": "Preview {title}",

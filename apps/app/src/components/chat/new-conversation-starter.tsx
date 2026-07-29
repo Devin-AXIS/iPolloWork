@@ -272,7 +272,7 @@ function TemplateStrip({
                   }}
                 >
                   <TemplateThumbnail template={template} getTemplateCover={getTemplateCover} />
-                  {isPptxCompatibleTemplate(template.manifest) ? <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-primary px-1.5 py-0.5 text-[9px] font-medium text-primary-foreground shadow-sm">PPTX-compatible</span> : null}
+                  {isPptxCompatibleTemplate(template.manifest) ? <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-primary px-1.5 py-0.5 text-[9px] font-medium text-primary-foreground shadow-sm">{t("template_market.pptx_compatible")}</span> : null}
                   <span
                     aria-hidden
                     className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-active:opacity-100 group-data-[busy=true]:opacity-100"

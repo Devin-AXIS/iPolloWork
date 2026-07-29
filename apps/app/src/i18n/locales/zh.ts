@@ -289,6 +289,7 @@ export default {
   "template_market.save_to_my_templates": "保存到我的模板",
   "template_market.cover_failed": "封面加载失败",
   "template_market.retry_cover": "重试封面",
+  "template_market.pptx_compatible": "兼容 PPTX",
   "template_market.cover_alt": "{title} 封面",
   "template_market.preview_alt": "{title} 预览",
   "template_market.preview_aria": "预览 {title}",

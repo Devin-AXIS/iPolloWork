@@ -163,10 +163,7 @@ function ToastCard({ id, type, title, description, action, cancel, notification 
       <div className={cn("flex w-full gap-3 rounded-2xl border border-border bg-popover/95 backdrop-blur-sm p-4 text-popover-foreground shadow-md md:max-w-sm ring-1 ring-popover-border/20 items-center")}>
         <ToastIcon type={type} size="sm" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <p className="min-w-0 flex-1 text-sm font-medium">{title}</p>
-            {closeButton}
-          </div>
+          <p className="min-w-0 text-sm font-medium">{title}</p>
           {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
         </div>
       </div>

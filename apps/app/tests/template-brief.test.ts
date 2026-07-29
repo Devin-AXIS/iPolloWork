@@ -114,4 +114,21 @@ describe("template brief", () => {
     expect(prompt).toContain("Do not replace the template with a generic deck");
     expect(prompt).toContain("colored blocks, artwork, decorative elements, and template-specific components");
   });
+
+  test("requires website generation to retain the selected template's distinct composition", () => {
+    const prompt = templateBriefPrompt({
+      template: {
+        category: "site",
+        title: "Architecture Index",
+        applyChecklist: ["Keep the project index"],
+      },
+      entryPath: "design/ses_site/entry.html",
+      briefPath: "design/ses_site/brief.json",
+    });
+
+    expect(prompt).toContain("existing website HTML and CSS are the layout source of truth");
+    expect(prompt).toContain("Update existing elements in place");
+    expect(prompt).toContain("template-specific class names");
+    expect(prompt).toContain("do not rebuild it as a generic split hero");
+  });
 });

@@ -523,7 +523,13 @@ export async function listTemplates(config: ServerConfig, workspaceId: string, s
   const libraryId = templateLibraryId(scope);
   const bundled = scope === "personal" ? await bundledTemplates() : [];
   for (const item of bundled) {
-    if (!config.readOnly && !db.get(libraryId, item.manifest.id)) await installDirectory({ config, workspaceId: libraryId, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
+    const current = db.get(libraryId, item.manifest.id);
+    const shouldInstall = !current || (
+      current.status === "installed"
+      && current.sourceType === "bundled"
+      && compareVersions(item.manifest.version, current.version) > 0
+    );
+    if (!config.readOnly && shouldInstall) await installDirectory({ config, workspaceId: libraryId, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
   }
   const rows = db.list(libraryId);
   const byId = new Map(rows.map((row) => [row.templateId, row]));
