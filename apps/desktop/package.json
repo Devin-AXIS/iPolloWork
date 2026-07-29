@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/desktop",
   "private": true,
-  "version": "0.17.34",
+  "version": "0.17.39",
   "description": "iPolloWork desktop shell",
   "author": {
     "name": "iPolloWork",
@@ -39,6 +39,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@ipollowork/types": "workspace:*",
     "electron": "^35.0.0",
     "electron-builder": "^25.1.8",

@@ -4,7 +4,7 @@ import { copyFileSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, st
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { stageServerConstants } from "./server-packaging.mjs";
+import { stageServerConstants, stageServerRuntimeTypes } from "./server-packaging.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, "..");
@@ -13,6 +13,7 @@ const electronSidecarDir = resolve(desktopRoot, "resources", "sidecars");
 const electronHelperDir = resolve(desktopRoot, "resources", "helpers");
 const electronRoot = resolve(desktopRoot, "electron");
 const packagedServerRoot = resolve(desktopRoot, "server");
+const runtimeTypesRoot = resolve(repoRoot, "packages", "types");
 const hyperframesRoot = resolve(repoRoot, "vendor", "hyperframes");
 const hyperframesBuildStamp = resolve(desktopRoot, ".hyperframes-build-stamp.json");
 const hyperframesInstallStamp = resolve(desktopRoot, ".hyperframes-install-stamp.json");
@@ -161,6 +162,7 @@ run(nodeCmd, [resolve(__dirname, "validate-renderer-assets.mjs")], repoRoot);
 const serverDistDir = resolve(repoRoot, "apps", "server", "dist");
 const constantsSrc = resolve(repoRoot, "constants.json");
 stageServerConstants({ serverDistDir, constantsSrc });
+stageServerRuntimeTypes({ serverDistDir, runtimeTypesDistDir: resolve(runtimeTypesRoot, "dist") });
 rmSync(packagedServerRoot, { recursive: true, force: true });
 cpSync(serverDistDir, resolve(packagedServerRoot, "dist"), { recursive: true });
 copyFileSync(resolve(repoRoot, "apps", "server", "package.json"), resolve(packagedServerRoot, "package.json"));

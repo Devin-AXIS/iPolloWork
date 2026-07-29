@@ -121,7 +121,9 @@ const DEFAULT_DESKTOP_BOOTSTRAP_PATH = (() => {
 const LEGACY_DESKTOP_BOOTSTRAP_PATH = path.join(os.homedir(), ".config", "ipollowork", "desktop-bootstrap.json");
 const DESKTOP_BOOTSTRAP_FILENAME = "desktop-bootstrap.json";
 const STANDARD_DESKTOP_INSTALLER_PATTERN = /^ipollowork-(?:mac-(?:arm64|x64)-.+\.dmg|win-x64-.+\.exe)$/i;
-const HOSTED_DESKTOP_WEB_URL = "https://app.ipolloworklabs.com";
+const HOSTED_DESKTOP_WEB_URL = "http://i.ipollo.ai";
+const LEGACY_HOSTED_IPOLLO_HTTPS_WEB_URL = "https://i.ipollo.ai";
+const LEGACY_HOSTED_DESKTOP_WEB_URL = "https://app.ipolloworklabs.com";
 const HOSTED_DESKTOP_API_URL = "https://api.ipolloworklabs.com";
 
 function bootstrapUrlOrigin(value) {
@@ -135,7 +137,21 @@ function bootstrapUrlOrigin(value) {
 
 function isHostedDesktopBootstrapConfig(config) {
   const baseUrlOrigin = bootstrapUrlOrigin(config?.baseUrl);
-  return baseUrlOrigin === HOSTED_DESKTOP_WEB_URL || baseUrlOrigin === HOSTED_DESKTOP_API_URL;
+  return (
+    baseUrlOrigin === HOSTED_DESKTOP_WEB_URL ||
+    baseUrlOrigin === LEGACY_HOSTED_IPOLLO_HTTPS_WEB_URL ||
+    baseUrlOrigin === LEGACY_HOSTED_DESKTOP_WEB_URL ||
+    baseUrlOrigin === HOSTED_DESKTOP_API_URL
+  );
+}
+
+function normalizeHostedDesktopBootstrapConfig(config) {
+  if (!isHostedDesktopBootstrapConfig(config)) return config;
+  const next = { ...config, baseUrl: HOSTED_DESKTOP_WEB_URL };
+  if (bootstrapUrlOrigin(next.apiBaseUrl) === HOSTED_DESKTOP_API_URL) {
+    delete next.apiBaseUrl;
+  }
+  return next;
 }
 
 export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSignin, forceRequireSignin }) {
@@ -313,7 +329,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
         exists: true,
         raw,
         parsed,
-        normalized: normalizeDesktopBootstrapConfig(parsed),
+        normalized: normalizeHostedDesktopBootstrapConfig(normalizeDesktopBootstrapConfig(parsed)),
         mtimeMs,
         error: null,
       };

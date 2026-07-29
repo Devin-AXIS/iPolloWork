@@ -601,6 +601,20 @@ export function DesignPanel({
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [propertiesTab, setPropertiesTab] = React.useState<"element" | "design-system">("element");
+  const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
+  const elementPropertiesOpen = advancedOpen;
+  const designSystemPropertiesOpen = designSystemOpen;
+  const toggleElementProperties = React.useCallback(() => {
+    setDesignSystemOpen(false);
+    setAdvancedOpen((current) => !current);
+  }, []);
+  const toggleDesignSystemProperties = React.useCallback(() => {
+    setAdvancedOpen(false);
+    setDesignSystemOpen((current) => !current);
+  }, []);
+  const handlePropertiesTabChange = React.useCallback((tab: "element" | "design-system") => {
+    setPropertiesTab(tab);
+  }, []);
   const [designTokenDraft, setDesignTokenDraft] = React.useState("");
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
@@ -847,6 +861,7 @@ export function DesignPanel({
     }
     setQuickEdit(null);
     setAdvancedOpen(false);
+    setDesignSystemOpen(false);
     setPreviewSource(fileQuery.data.content);
     setHydratedPreviewSource("");
     setPreviewLoaded(false);
@@ -922,6 +937,7 @@ export function DesignPanel({
         setSelectionState(null);
         setQuickEdit(null);
         setAdvancedOpen(false);
+        setDesignSystemOpen(false);
         return;
       }
       if ((event.data.type === "draft" || event.data.type === "document-draft") && shouldIgnoreDesignDraftMessage(pendingViewRestoreRef.current)) return;
@@ -969,6 +985,7 @@ export function DesignPanel({
     setSelectionState(null);
     setQuickEdit(null);
     setAdvancedOpen(false);
+    setDesignSystemOpen(false);
     iframeRef.current?.contentWindow?.postMessage({
       channel: DESIGN_MESSAGE_CHANNEL,
       type: "deck-navigate",
@@ -1451,6 +1468,7 @@ export function DesignPanel({
       setSelectionState(null);
       setQuickEdit(null);
       setAdvancedOpen(false);
+      setDesignSystemOpen(false);
       setPreviewSource(content);
       setHydratedPreviewSource("");
       setPreviewLoaded(false);
@@ -1501,6 +1519,7 @@ export function DesignPanel({
     setSelectionState(null);
     setQuickEdit(null);
     setAdvancedOpen(false);
+    setDesignSystemOpen(false);
     iframeRef.current?.contentWindow?.postMessage({
       channel: DESIGN_MESSAGE_CHANNEL,
       type: "delete",
@@ -1841,6 +1860,7 @@ export function DesignPanel({
                   setSelectionState(null);
                   setQuickEdit(null);
                   setAdvancedOpen(false);
+                  setDesignSystemOpen(false);
                 }}
                 aria-label="Edit"
               />
@@ -1870,6 +1890,7 @@ export function DesignPanel({
                     setSelectionState(null);
                     setQuickEdit(null);
                     setAdvancedOpen(false);
+                    setDesignSystemOpen(false);
                   }}
                   variant="outline"
                   size="sm"
@@ -1891,28 +1912,24 @@ export function DesignPanel({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && propertiesTab === "element" && "bg-[#F3F4F6]")}
-                    onClick={() => {
-                      setPropertiesTab("element");
-                      setAdvancedOpen((current) => current && propertiesTab === "element" ? false : true);
-                    }}
+                    className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-[#F3F4F6]")}
+                    onClick={toggleElementProperties}
                     aria-label="Toggle design properties"
                     title="Design properties"
-                    aria-pressed={advancedOpen && propertiesTab === "element"}
+                    aria-pressed={elementPropertiesOpen}
+                    data-testid="design-properties-button"
                   >
                     <SlidersHorizontal />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && propertiesTab === "design-system" && "bg-[#F3F4F6]")}
-                    onClick={() => {
-                      setPropertiesTab("design-system");
-                      setAdvancedOpen((current) => current && propertiesTab === "design-system" ? false : true);
-                    }}
+                    className={cn(DESIGN_ACTION_BUTTON_CLASS, designSystemPropertiesOpen && "bg-[#F3F4F6]")}
+                    onClick={toggleDesignSystemProperties}
                     aria-label="Toggle design system"
                     title="Design System"
-                    aria-pressed={advancedOpen && propertiesTab === "design-system"}
+                    aria-pressed={designSystemPropertiesOpen}
+                    data-testid="design-system-button"
                   >
                     <Palette />
                   </Button>
@@ -1983,6 +2000,7 @@ export function DesignPanel({
                     setSelectionState(null);
                     setQuickEdit(null);
                     setAdvancedOpen(false);
+                    setDesignSystemOpen(false);
                   } : undefined}
                   onPublish={() => publishMutation.mutate()}
                   onExportPdf={() => void exportDeckToPdf()}
@@ -2207,14 +2225,11 @@ export function DesignPanel({
                           <Trash2 />
                         </Button>
                         <Button
-                          variant={advancedOpen ? "secondary" : "ghost"}
+                          variant={elementPropertiesOpen ? "secondary" : "ghost"}
                           size="icon-xs"
-                          onClick={() => {
-                            setPropertiesTab("element");
-                            setAdvancedOpen((current) => current && propertiesTab === "element" ? false : true);
-                          }}
+                          onClick={toggleElementProperties}
                           aria-label="Toggle advanced design settings"
-                          aria-pressed={advancedOpen}
+                          aria-pressed={elementPropertiesOpen}
                         >
                           <SlidersHorizontal />
                         </Button>
@@ -2232,14 +2247,14 @@ export function DesignPanel({
                   </div>
                 ) : null}
               </div>
-              {editing && advancedOpen && (propertiesTab === "design-system" || selectionSummary) ? <DesignPropertiesInspector
+              {editing && advancedOpen ? <DesignPropertiesInspector
                 selection={selection}
                 isMultiSelection={isMultiSelection}
                 selectionCount={selectionSummary?.selectionCount ?? 0}
                 mixedStyleFields={selectionSummary?.mixedStyleFields ?? []}
                 activeTab={propertiesTab}
                 onClose={() => setAdvancedOpen(false)}
-                onActiveTabChange={setPropertiesTab}
+                onActiveTabChange={handlePropertiesTabChange}
                 onApplyField={applyField}
                 onApplyFields={applyStyleFields}
                 onChooseReplacementImage={() => void chooseReplacementImage()}
@@ -2257,6 +2272,16 @@ export function DesignPanel({
                   onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}
                 />
               </DesignPropertiesInspector> : null}
+              {editing ? <DesignSystemDrawer
+                open={designSystemOpen}
+                templateName={designTemplate?.title ?? fileName(activePagePath)}
+                currentThemeId={appliedDesignSystemId}
+                initialValues={designTokenValues}
+                onClose={() => setDesignSystemOpen(false)}
+                onTokenChange={handleDesignTokenChange}
+                onApplyDesignSystem={handleApplyDesignSystem}
+                onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}
+              /> : null}
             </div>
           )}
         </>

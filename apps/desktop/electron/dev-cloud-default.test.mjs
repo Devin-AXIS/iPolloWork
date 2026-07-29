@@ -9,5 +9,5 @@ const main = readFileSync(fileURLToPath(new URL("./main.mjs", import.meta.url)),
 test("Electron development defaults to the configured iPolloCloud URL", () => {
   assert.match(devScript, /process\.env\.VITE_DEN_BASE_URL\?\.trim\(\) \|\| "http:\/\/i\.ipollo\.ai"/);
   assert.match(devScript, /VITE_DEN_BASE_URL: developmentCloudUrl/);
-  assert.match(main, /process\.env\.VITE_DEN_BASE_URL\?\.trim\(\) \|\| "https:\/\/app\.ipolloworklabs\.com"/);
+  assert.match(main, /process\.env\.VITE_DEN_BASE_URL\?\.trim\(\) \|\| "http:\/\/i\.ipollo\.ai"/);
 });

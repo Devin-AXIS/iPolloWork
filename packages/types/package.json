@@ -43,7 +43,7 @@
     "./templates": {
       "types": "./src/templates.ts",
       "development": "./src/templates.ts",
-      "default": "./src/templates.ts"
+      "default": "./dist/templates.js"
     }
   },
   "files": [

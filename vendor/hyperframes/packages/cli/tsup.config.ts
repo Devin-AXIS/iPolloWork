@@ -19,7 +19,10 @@ export default defineConfig({
   bundle: true,
   splitting: false,
   sourcemap: false,
-  clean: true,
+  // dist also contains Studio and Player assets copied for preview/runtime use.
+  // A running preview can have those files open on Windows, so tsup must only
+  // overwrite its fixed entry outputs instead of unlinking the whole tree.
+  clean: false,
   banner: {
     js: `import { createRequire as __hf_createRequire } from "node:module";
 import { fileURLToPath as __hf_fileURLToPath } from "node:url";

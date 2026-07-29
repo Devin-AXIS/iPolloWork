@@ -300,6 +300,8 @@ function controlStringArg(args: unknown, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const TEMPLATE_COVER_TIMEOUT_MS = 12_000;
+
 function sessionMessageToPromptText(message: UIMessage) {
   const header = message.role === "user" ? "You" : message.role === "assistant" ? "iPolloWork" : message.role;
   const body = message.parts

@@ -262,6 +262,9 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
+      '@electron/asar':
+        specifier: ^3.4.1
+        version: 3.4.1
       '@ipollowork/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -332,6 +335,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@ipollowork/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@opencode-ai/sdk':
         specifier: ^1.18.3
         version: 1.18.3
@@ -354,9 +360,6 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@ipollowork/types':
-        specifier: workspace:*
-        version: link:../../packages/types
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13

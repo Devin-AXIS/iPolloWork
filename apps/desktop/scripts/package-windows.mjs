@@ -1,15 +1,17 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(desktopRoot, "../..");
 const appPackagePath = path.join(repoRoot, "apps/app/package.json");
 const desktopPackagePath = path.join(desktopRoot, "package.json");
+const outputDir = path.join(desktopRoot, "dist-electron");
+const unpackedDir = path.join(outputDir, "win-unpacked");
+const executablePath = path.join(unpackedDir, "iPollo.exe");
 const iconPath = path.join(desktopRoot, "resources/icons/windows/icon.ico");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const shouldBuildInstaller = process.env.IPOLLOWORK_WINDOWS_INSTALLER !== "0";
@@ -98,54 +100,32 @@ async function main() {
   const packageVersion = writeWindowsPackageVersion();
   console.log(`Windows package version: ${packageVersion}`);
 
-  const runId = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
-  const runOutputRoot = path.join(desktopRoot, `dist-electron-windows-${packageVersion}-${runId}`);
-  const runtimeConfigPath = path.join(runOutputRoot, "electron-builder.windows.runtime.yml");
-  const runtimeOutputDir = path.join(runOutputRoot, "dist-electron");
-  const runtimeUnpackedDir = path.join(runtimeOutputDir, "win-unpacked");
-  const runtimeExecutablePath = path.join(runtimeUnpackedDir, "iPollo.exe");
-  const baseConfig = parseYaml(await readFile(path.join(desktopRoot, "electron-builder.yml"), "utf8"));
-  const runtimeConfig = {
-    ...baseConfig,
-    directories: {
-      ...(baseConfig.directories ?? {}),
-      output: runtimeOutputDir,
-    },
-    win: {
-      ...(baseConfig.win ?? {}),
-      signAndEditExecutable: false,
-    },
-  };
-
   try {
-    await mkdir(runOutputRoot, { recursive: true });
-    await writeFile(runtimeConfigPath, `${stringifyYaml(runtimeConfig)}`, "utf8");
-    await removeDirectoryWithRetry(runtimeOutputDir);
+    await removeDirectoryWithRetry(outputDir);
     run(process.execPath, [path.join(desktopRoot, "scripts/electron-build.mjs")]);
 
     const env = { ...process.env, ELECTRON_MIRROR: process.env.ELECTRON_MIRROR ?? "https://npmmirror.com/mirrors/electron/" };
-    run(pnpm, ["exec", "electron-builder", "--config", runtimeConfigPath, "--projectDir", desktopRoot, "--win", "--x64", "--dir", "--publish", "never"], desktopRoot, env);
+    run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.windows.yml", "--win", "--x64", "--dir", "--publish", "never"], desktopRoot, env);
 
     const rcedit = findRcedit();
     if (!rcedit) throw new Error("rcedit-x64.exe is missing from the electron-builder cache.");
-    execFileSync(rcedit, [runtimeExecutablePath, "--set-icon", iconPath], { stdio: "inherit" });
+    execFileSync(rcedit, [executablePath, "--set-icon", iconPath], { stdio: "inherit" });
 
     if (!shouldBuildInstaller) {
-      console.log(`Windows unpacked app ready: ${runtimeExecutablePath}`);
+      console.log(`Windows unpacked app ready: ${executablePath}`);
       console.log("Set IPOLLOWORK_WINDOWS_INSTALLER=0 to skip the NSIS installer.");
       return;
     }
 
-    run(pnpm, ["exec", "electron-builder", "--config", runtimeConfigPath, "--projectDir", desktopRoot, "--win", "--x64", "--prepackaged", runtimeUnpackedDir, "--publish", "never"], desktopRoot, env);
+    run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.windows.yml", "--win", "--x64", "--prepackaged", unpackedDir, "--publish", "never"], desktopRoot, env);
 
-    const expectedInstaller = path.join(runtimeOutputDir, `ipollowork-win-x64-${packageVersion}.exe`);
+    const expectedInstaller = path.join(outputDir, `ipollowork-win-x64-${packageVersion}.exe`);
     if (!existsSync(expectedInstaller)) {
       throw new Error(`Versioned Windows installer was not created: ${expectedInstaller}`);
     }
     console.log(`Windows package ready: ${expectedInstaller}`);
   } catch (error) {
     await restorePackageFiles(snapshot);
-    await rm(runOutputRoot, { recursive: true, force: true });
     throw error;
   }
 }
