@@ -76,13 +76,41 @@ export interface TimelineElement {
   /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
   timelineRole?: string;
   /**
+   * Optional editor presentation kind from data-timeline-kind. `tag` remains
+   * the DOM/media primitive; this field describes how the layer reads to users.
+   */
+  timelineKind?: TimelineKind;
+  /**
+   * Optional presentation group from data-timeline-group. Clips in the same
+   * authored group share one timeline color; independent clips remain distinct.
+   */
+  timelineGroupId?: string;
+  /**
    * Set by useExpandedTimelineElements on an inline-expanded sub-composition
    * child: the absolute master-timeline start of the sub-comp host the child
    * lives in. Presence marks the element as expanded; edits subtract it to get
    * the child's local (sourceFile-relative) time. Works at any nesting depth.
    */
   expandedParentStart?: number;
+  /**
+   * Display-only key of the expanded composition row that owns this derived
+   * child row. Parent time-drag previews use it to move the child visually;
+   * it never joins selection or persistence writes.
+   */
+  expandedDisplayHostKey?: string;
 }
+
+export type TimelineKind =
+  | "text"
+  | "logo"
+  | "image"
+  | "video"
+  | "effect"
+  | "music"
+  | "voiceover"
+  | "audio"
+  | "composition"
+  | "element";
 
 export type ZoomMode = "fit" | "manual";
 type TimelineTool = "select" | "razor";

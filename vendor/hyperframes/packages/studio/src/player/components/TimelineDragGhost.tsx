@@ -4,6 +4,8 @@ import { getTimelineEditCapabilities } from "./timelineEditing";
 import { CLIP_Y, TRACK_H } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineElement } from "../store/playerStore";
+import { getTrackStyle } from "./timelineIcons";
+import { resolveTimelineKind } from "./timelineLayerPresentation";
 
 interface TimelineDragGhostProps {
   element: TimelineElement;
@@ -45,6 +47,7 @@ export function TimelineDragGhost({
         hasCustomContent={hasCustomContent}
         capabilities={getTimelineEditCapabilities(element)}
         theme={theme}
+        visualStyle={getTrackStyle(resolveTimelineKind(element))}
         isComposition={!!element.compositionSrc}
         onHoverStart={() => {}}
         onHoverEnd={() => {}}

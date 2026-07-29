@@ -147,7 +147,8 @@ export const Timeline = memo(function Timeline({
     return Number.isFinite(result) ? result : safeDur;
   }, [rawElements, duration]);
 
-  const { tracks, trackStyles, trackOrder } = useTimelineTrackDerivations(expandedElements);
+  const { tracks, trackStyles, elementStyles, trackOrder } =
+    useTimelineTrackDerivations(expandedElements);
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
   const expandedElementsRef = useRef(expandedElements);
@@ -454,6 +455,7 @@ export const Timeline = memo(function Timeline({
           trackOrder={trackOrder}
           tracks={tracks}
           trackStyles={trackStyles}
+          elementStyles={elementStyles}
           selectedElementId={selectedElementId}
           selectedElementIds={selectedElementIds}
           hoveredClip={hoveredClip}

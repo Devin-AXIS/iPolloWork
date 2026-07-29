@@ -1,12 +1,12 @@
-import { type ReactNode } from "react";
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
+import { TimelineLayerHeader } from "./TimelineLayerHeader";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
 import type { TimelineTheme } from "./timelineTheme";
-import { GUTTER, TRACK_H, TRACKS_LEFT_PAD, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
+import { TRACK_H, TRACKS_LEFT_PAD, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
 import {
   usePlayerStore,
   type TimelineElement,
@@ -14,17 +14,20 @@ import {
 } from "../store/playerStore";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
 import {
+  captureTimelineDragSelection,
+  expandedChildDragOffsetPx,
   isMultiDragPassenger,
   multiDragPassengerOffsetPx,
+  toggleTimelineSelection,
   type MultiDragPreviewInput,
 } from "./timelineMultiDragPreview";
 import type { TrackVisualStyle } from "./timelineIcons";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
-import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
-import { Music } from "../../icons/SystemIcons";
+import { isMusicTrack } from "../../utils/timelineInspector";
 import { renderClipChildren } from "./timelineClipChildren";
+import { resolveTimelineKind } from "./timelineLayerPresentation";
 
 /**
  * Props shared by the scroll container ({@link TimelineCanvas}) and the lane
@@ -40,6 +43,7 @@ export interface TimelineLaneBaseProps {
   trackOrder: number[];
   tracks: [number, TimelineElement[]][];
   trackStyles: Map<number, TrackVisualStyle>;
+  elementStyles: Map<string, TrackVisualStyle>;
   selectedElementId: string | null;
   selectedElementIds: Set<string>;
   hoveredClip: string | null;
@@ -108,6 +112,7 @@ export function TimelineLanes({
   trackOrder,
   tracks,
   trackStyles,
+  elementStyles,
   selectedElementId,
   selectedElementIds,
   hoveredClip,
@@ -147,6 +152,54 @@ export function TimelineLanes({
   onRazorSplit,
   onRazorSplitAll,
 }: TimelineLanesProps) {
+  const collectGestureEligibleKeys = (
+    canEdit: (element: TimelineElement) => boolean,
+  ): ReadonlySet<string> => {
+    const eligibleKeys = new Set<string>();
+    for (const [, elements] of tracks) {
+      for (const element of elements) {
+        if (canEdit(element)) eligibleKeys.add(element.key ?? element.id);
+      }
+    }
+    return eligibleKeys;
+  };
+
+  const startClipDrag = (
+    element: TimelineElement,
+    event: ReactPointerEvent,
+    mode: DraggedClipState["mode"],
+    bounds: DOMRect,
+    selectionKeys: ReadonlySet<string>,
+  ) => {
+    blockedClipRef.current = null;
+    setShowPopover(false);
+    setRangeSelection(null);
+    setDraggedClip({
+      element,
+      mode,
+      selectionKeys: new Set(selectionKeys),
+      originClientX: event.clientX,
+      originClientY: event.clientY,
+      originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
+      originScrollTop: scrollRef.current?.scrollTop ?? 0,
+      pointerClientX: event.clientX,
+      pointerClientY: event.clientY,
+      pointerOffsetX: event.clientX - bounds.left,
+      pointerOffsetY:
+        mode === "layer-order"
+          ? event.clientY - bounds.top - CLIP_Y
+          : event.clientY - bounds.top,
+      previewStart: element.start,
+      previewTrack: element.track,
+      desiredTrack: element.track,
+      insertRow: null,
+      snapTime: null,
+      snapType: null,
+      started: false,
+    });
+    syncClipDragAutoScroll(event.clientX, event.clientY);
+  };
+
   return (
     <>
       {
@@ -156,7 +209,7 @@ export function TimelineLanes({
         // bounded and virtualization's complexity isn't worth it. TODO: revisit and swap
         // in a virtualizer if editorial workflows ever push very high clip counts.
         // fallow-ignore-next-line complexity
-        displayTrackOrder.map((trackNum) => {
+        displayTrackOrder.map((trackNum, rowIndex) => {
           const els = tracks.find(([t]) => t === trackNum)?.[1] ?? [];
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
@@ -172,45 +225,63 @@ export function TimelineLanes({
               ? els.some((e) => (e.key ?? e.id) === selectedElementId)
               : els.some(isMusicTrack));
           const isTrackHidden = els.length > 0 && els.every((element) => element.hidden === true);
-          const isAudioTrack = els.length > 0 && els.some(isAudioTimelineElement);
+          const isTrackSelected = els.some((element) => {
+            const key = element.key ?? element.id;
+            return selectedElementId === key || selectedElementIds.has(key);
+          });
+          const nextTrack = displayTrackOrder[rowIndex + 1];
+          const hasExpandedChildren =
+            nextTrack !== undefined && nextTrack > trackNum && nextTrack < Math.floor(trackNum) + 1;
           return (
-            <div key={trackNum} className="hf-timeline-lane relative flex" style={{ height: TRACK_H }}>
-              <div
-                className="hf-timeline-gutter sticky left-0 z-[12] flex-shrink-0 flex flex-col items-center justify-center gap-0.5"
-                style={{
-                  width: GUTTER,
-                  background: theme.gutterBackground,
-                  borderRight: `1px solid ${theme.gutterBorder}`,
-                  borderBottom: `1px solid ${theme.rowBorder}`,
+            <div
+              key={trackNum}
+              className="hf-timeline-lane relative flex"
+              style={{ height: TRACK_H }}
+            >
+              <TimelineLayerHeader
+                track={trackNum}
+                elements={els}
+                hidden={isTrackHidden}
+                selected={isTrackSelected}
+                expanded={hasExpandedChildren}
+                theme={theme}
+                visualStyle={ts}
+                onToggleHidden={(hidden) => {
+                  void onToggleTrackHidden?.(trackNum, hidden);
                 }}
-              >
-                {isAudioTrack && (
-                  <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
-                )}
-                <button
-                  type="button"
-                  aria-label={isTrackHidden ? `Show track ${trackNum}` : `Hide track ${trackNum}`}
-                  title={isTrackHidden ? `Show track ${trackNum}` : `Hide track ${trackNum}`}
-                  className={`flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[#3CE6AC] ${
-                    isTrackHidden
-                      ? "text-[#3CE6AC] hover:text-white"
-                      : "text-white/35 hover:text-white/75"
-                  }`}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void onToggleTrackHidden?.(trackNum, !isTrackHidden);
-                  }}
-                >
-                  {isTrackHidden ? (
-                    <EyeSlash size={14} weight="bold" aria-hidden="true" />
-                  ) : (
-                    <Eye size={14} weight="bold" aria-hidden="true" />
-                  )}
-                </button>
-              </div>
+                onSelect={(element) => {
+                  usePlayerStore.getState().clearSelectedElementIds();
+                  setSelectedElementId(element ? (element.key ?? element.id) : null);
+                  onSelectElement?.(element);
+                }}
+                onReorderPointerDown={
+                  onMoveElement
+                    ? (event, element) => {
+                        if (
+                          event.button !== 0 ||
+                          usePlayerStore.getState().activeTool === "razor"
+                        ) {
+                          return;
+                        }
+                        const elementKey = element.key ?? element.id;
+                        setSelectedElementId(elementKey);
+                        onSelectElement?.(element);
+                        const lane = event.currentTarget.closest(".hf-timeline-lane");
+                        const bounds =
+                          lane instanceof HTMLElement
+                            ? lane.getBoundingClientRect()
+                            : event.currentTarget.getBoundingClientRect();
+                        startClipDrag(
+                          element,
+                          event,
+                          "layer-order",
+                          bounds,
+                          new Set([elementKey]),
+                        );
+                      }
+                    : undefined
+                }
+              />
               {/* Left breathing pad — empty lane surface before t=0, scrolling
                   with the content (the horizontal TRACKS_TOP_PAD). Sits OUTSIDE
                   the time-mapped content div so clip/beat/menu math stays
@@ -280,8 +351,9 @@ export function TimelineLanes({
                 {
                   // fallow-ignore-next-line complexity
                   els.map((el) => {
-                    const clipStyle = getTrackStyle(el.tag);
                     const elementKey = el.key ?? el.id;
+                    const clipStyle =
+                      elementStyles.get(elementKey) ?? getTrackStyle(resolveTimelineKind(el));
                     const capabilities = getTimelineEditCapabilities(el);
                     const isSelected =
                       selectedElementId === elementKey || selectedElementIds.has(elementKey);
@@ -300,11 +372,24 @@ export function TimelineLanes({
                     // compositor transform on a same-geometry wrapper (absolute
                     // inset-0 → identical offset parent, so the clip's own
                     // left/top are preserved), plus the ghost's elevated z/opacity.
-                    const isPassenger =
+                    const isSelectionPassenger =
                       multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
-                    const passengerOffsetPx = isPassenger
-                      ? multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview)
-                      : 0;
+                    const hierarchyOffsetPx =
+                      multiDragPreview == null
+                        ? 0
+                        : expandedChildDragOffsetPx(
+                            el.expandedDisplayHostKey,
+                            pps,
+                            multiDragPreview,
+                          );
+                    const selectionOffsetPx =
+                      multiDragPreview == null
+                        ? 0
+                        : multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview);
+                    const isPassenger = isSelectionPassenger || hierarchyOffsetPx !== 0;
+                    const passengerOffsetPx = isSelectionPassenger
+                      ? selectionOffsetPx
+                      : hierarchyOffsetPx;
                     const clip = (
                       <TimelineClip
                         key={clipKey}
@@ -321,6 +406,7 @@ export function TimelineLanes({
                         hasCustomContent={!!renderClipContent}
                         capabilities={capabilities}
                         theme={theme}
+                        visualStyle={clipStyle}
                         isComposition={isComposition}
                         onHoverStart={() => setHoveredClip(clipKey)}
                         onHoverEnd={() => setHoveredClip(null)}
@@ -334,9 +420,28 @@ export function TimelineLanes({
                             blockedClipRef.current = null;
                             setShowPopover(false);
                             setRangeSelection(null);
+                            const elementKey = el.key ?? el.id;
+                            const moveSelectionTogether = e.ctrlKey || e.metaKey;
+                            const eligibleKeys = collectGestureEligibleKeys((element) => {
+                              const elementCapabilities = getTimelineEditCapabilities(element);
+                              return edge === "start"
+                                ? elementCapabilities.canTrimStart
+                                : elementCapabilities.canTrimEnd;
+                            });
+                            const gestureSelection = captureTimelineDragSelection(
+                              elementKey,
+                              usePlayerStore.getState().selectedElementIds,
+                              moveSelectionTogether,
+                              eligibleKeys,
+                            );
+                            if (!moveSelectionTogether && gestureSelection.size === 1) {
+                              setSelectedElementId(elementKey);
+                              onSelectElement?.(el);
+                            }
                             setResizingClip({
                               element: el,
                               edge,
+                              selectionKeys: gestureSelection,
                               originClientX: e.clientX,
                               originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
                               previewStart: el.start,
@@ -382,28 +487,24 @@ export function TimelineLanes({
                               return;
                             }
                             if (!onMoveElement || !capabilities.canMove) return;
-                            blockedClipRef.current = null;
-                            setShowPopover(false);
-                            setRangeSelection(null);
-                            setDraggedClip({
-                              element: el,
-                              originClientX: e.clientX,
-                              originClientY: e.clientY,
-                              originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
-                              originScrollTop: scrollRef.current?.scrollTop ?? 0,
-                              pointerClientX: e.clientX,
-                              pointerClientY: e.clientY,
-                              pointerOffsetX: e.clientX - rect.left,
-                              pointerOffsetY: e.clientY - rect.top,
-                              previewStart: el.start,
-                              previewTrack: el.track,
-                              desiredTrack: el.track,
-                              insertRow: null,
-                              snapTime: null,
-                              snapType: null,
-                              started: false,
-                            });
-                            syncClipDragAutoScroll(e.clientX, e.clientY);
+                            const currentSelection =
+                              usePlayerStore.getState().selectedElementIds;
+                            const moveSelectionTogether = e.ctrlKey || e.metaKey;
+                            const eligibleKeys = collectGestureEligibleKeys(
+                              (element) => getTimelineEditCapabilities(element).canMove,
+                            );
+                            const gestureSelection = captureTimelineDragSelection(
+                              elementKey,
+                              currentSelection,
+                              moveSelectionTogether,
+                              eligibleKeys,
+                            );
+                            const preserveMultiSelection = gestureSelection.size > 1;
+                            if (!moveSelectionTogether && !preserveMultiSelection) {
+                              setSelectedElementId(elementKey);
+                              onSelectElement?.(el);
+                            }
+                            startClipDrag(el, e, "time", rect, gestureSelection);
                           }
                         }
                         onClick={
@@ -432,6 +533,30 @@ export function TimelineLanes({
                               } else {
                                 onRazorSplit(el, clampedTime);
                               }
+                              return;
+                            }
+                            if (e.ctrlKey || e.metaKey) {
+                              const store = usePlayerStore.getState();
+                              const nextSelection = toggleTimelineSelection(
+                                elementKey,
+                                store.selectedElementIds,
+                                store.selectedElementId,
+                              );
+                              store.setSelection(
+                                nextSelection.selectedKeys,
+                                nextSelection.anchorKey,
+                              );
+                              const anchorElement =
+                                nextSelection.anchorKey === elementKey
+                                  ? el
+                                  : tracks
+                                      .flatMap(([, elements]) => elements)
+                                      .find(
+                                        (element) =>
+                                          (element.key ?? element.id) ===
+                                          nextSelection.anchorKey,
+                                      ) ?? null;
+                              onSelectElement?.(anchorElement);
                               return;
                             }
                             // Plain click single-selects: drop any marquee multi-selection.

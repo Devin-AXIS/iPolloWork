@@ -68,6 +68,25 @@ function resolveClipTag(clip: ClipManifestClip): string {
   return clip.tagName || clip.kind || "div";
 }
 
+const TIMELINE_KINDS = new Set([
+  "text",
+  "logo",
+  "image",
+  "video",
+  "effect",
+  "music",
+  "voiceover",
+  "audio",
+  "composition",
+  "element",
+]);
+
+function isTimelineKind(
+  value: string | null,
+): value is NonNullable<TimelineElement["timelineKind"]> {
+  return value !== null && TIMELINE_KINDS.has(value);
+}
+
 // fallow-ignore-next-line complexity
 export function createTimelineElementFromManifestClip(params: {
   clip: ClipManifestClip;
@@ -124,6 +143,8 @@ export function createTimelineElementFromManifestClip(params: {
     // Runtime-computed stacking context — authoritative; helpers read it, never
     // re-derive it.
     stackingContextId: clip.stackingContextId ?? null,
+    parentCompositionId: clip.parentCompositionId,
+    compositionAncestors: clip.compositionAncestors,
     domId,
     hfId,
     selector,
@@ -131,11 +152,19 @@ export function createTimelineElementFromManifestClip(params: {
     sourceFile,
   };
 
+  if (clip.timelineRole) entry.timelineRole = clip.timelineRole;
+  const manifestGroupId = clip.timelineGroup?.trim();
+  if (manifestGroupId) entry.timelineGroupId = manifestGroupId;
+
   if (hostEl) {
     applyMediaMetadataFromElement(entry, hostEl);
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    const timelineKind = hostEl.getAttribute("data-timeline-kind");
+    if (isTimelineKind(timelineKind)) entry.timelineKind = timelineKind;
+    const timelineGroupId = hostEl.getAttribute("data-timeline-group");
+    if (timelineGroupId) entry.timelineGroupId = timelineGroupId;
     entry.zIndex = readTimelineElementZIndex(hostEl);
   }
   if (clip.assetUrl) entry.src = clip.assetUrl;
@@ -219,7 +248,7 @@ export function createImplicitTimelineLayersFromDOM(
     });
     if (existingKeys.has(identity.key) || existingKeys.has(identity.id)) continue;
 
-    layers.push({
+    const layer: TimelineElement = {
       domId: child.id || undefined,
       hfId: child.getAttribute("data-hf-id") || undefined,
       zIndex: readTimelineElementZIndex(child),
@@ -235,7 +264,14 @@ export function createImplicitTimelineLayersFromDOM(
       tag: child.tagName.toLowerCase(),
       timingSource: "implicit",
       track: maxTrack + 1 + layers.length,
-    });
+    };
+    const timelineKind = child.getAttribute("data-timeline-kind");
+    if (isTimelineKind(timelineKind)) layer.timelineKind = timelineKind;
+    const timelineRole = child.getAttribute("data-timeline-role");
+    if (timelineRole) layer.timelineRole = timelineRole;
+    const timelineGroupId = child.getAttribute("data-timeline-group");
+    if (timelineGroupId) layer.timelineGroupId = timelineGroupId;
+    layers.push(layer);
   }
 
   return layers;
@@ -303,7 +339,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       selectorIndex,
       sourceFile,
       stackingContextId: resolveCssStackingContextId(el),
-      timingSource: "authored",
+      timingSource: el.hasAttribute("data-hf-autostamped") ? "implicit" : "authored",
       zIndex: readTimelineElementZIndex(el),
     };
 
@@ -331,6 +367,10 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
 
     const timelineRole = el.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    const timelineKind = el.getAttribute("data-timeline-kind");
+    if (isTimelineKind(timelineKind)) entry.timelineKind = timelineKind;
+    const timelineGroupId = el.getAttribute("data-timeline-group");
+    if (timelineGroupId) entry.timelineGroupId = timelineGroupId;
 
     // Sub-compositions
     const compSrc =

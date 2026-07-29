@@ -232,8 +232,18 @@ export function useTimelineGroupEditing({
         const attrs: Array<[string, string]> = [
           ["data-start", formatTimelineAttributeNumber(change.start)],
         ];
-        if (change.track != null) {
-          attrs.push(["data-track-index", formatTimelineAttributeNumber(change.track)]);
+        const materializesTiming = change.element.timingSource === "implicit";
+        if (materializesTiming) {
+          attrs.push([
+            "data-duration",
+            formatTimelineAttributeNumber(change.element.duration),
+          ]);
+          attrs.push(["data-hf-preserve-flow", "1"]);
+        }
+        if (change.track != null || materializesTiming) {
+          const track =
+            change.track ?? change.element.authoredTrack ?? change.element.track;
+          attrs.push(["data-track-index", formatTimelineAttributeNumber(track)]);
         }
         patchIframeDomTiming(previewIframeRef.current, change.element, attrs, activeCompPath);
       }
@@ -272,7 +282,9 @@ export function useTimelineGroupEditing({
         const handledBySdk = await trySdkBatchPersist({
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({ start: change.start })),
-          eligible: changes.every((change) => change.track == null),
+          eligible: changes.every(
+            (change) => change.track == null && change.element.timingSource !== "implicit",
+          ),
           needsExtension,
           label: "Move timeline clips",
           coalesceKey,
@@ -285,14 +297,20 @@ export function useTimelineGroupEditing({
           "Move timeline clips",
           changes.map((change) => ({
             element: change.element,
-            buildPatches: (original, target) =>
-              buildTimelineMoveTimingPatch(
+            buildPatches: (original, target) => {
+              const materializesTiming = change.element.timingSource === "implicit";
+              const track = materializesTiming
+                ? (change.track ?? change.element.authoredTrack ?? change.element.track)
+                : change.track;
+              return buildTimelineMoveTimingPatch(
                 original,
                 target,
                 change.start,
                 change.element.duration,
-                change.track,
-              ),
+                track,
+                materializesTiming,
+              );
+            },
           })),
           coalesceKey,
           coalesceMs,
@@ -354,6 +372,15 @@ export function useTimelineGroupEditing({
               : "data-media-start";
           liveAttrs.push([liveAttr, formatTimelineAttributeNumber(change.playbackStart)]);
         }
+        if (change.element.timingSource === "implicit") {
+          liveAttrs.push(["data-hf-preserve-flow", "1"]);
+          liveAttrs.push([
+            "data-track-index",
+            formatTimelineAttributeNumber(
+              change.element.authoredTrack ?? change.element.track,
+            ),
+          ]);
+        }
         patchIframeDomTiming(previewIframeRef.current, change.element, liveAttrs, activeCompPath);
       }
 
@@ -377,7 +404,11 @@ export function useTimelineGroupEditing({
             start: change.start,
             duration: change.duration,
           })),
-          eligible: changes.every((change) => !resizeHasPlaybackStartAdjustment(change)),
+          eligible: changes.every(
+            (change) =>
+              change.element.timingSource !== "implicit" &&
+              !resizeHasPlaybackStartAdjustment(change),
+          ),
           needsExtension,
           label: "Resize timeline clips",
           coalesceKey,

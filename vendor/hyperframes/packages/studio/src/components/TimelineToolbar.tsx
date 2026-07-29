@@ -86,6 +86,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   // Subscribe (not getState) so the split button enables/disables the moment
   // the selection changes, not only on the next playhead tick.
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const elements = usePlayerStore((s) => s.elements);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
@@ -355,6 +356,14 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               </Tooltip>
             );
           })()}
+          {selectedElementIds.size > 1 && (
+            <span
+              className="ml-1 rounded bg-white/[0.06] px-2 py-1 text-[10px] text-neutral-400"
+              title="Plain drag moves one clip. Hold Ctrl (or Command) while dragging to move the selection together."
+            >
+              {selectedElementIds.size} selected · Ctrl-drag together
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-0.5">
           <Tooltip label="Fit timeline to width">

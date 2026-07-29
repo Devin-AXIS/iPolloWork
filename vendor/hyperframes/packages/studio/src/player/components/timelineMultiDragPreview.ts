@@ -32,6 +32,45 @@ export interface MultiDragPreviewInput {
   selectedKeys: ReadonlySet<string>;
 }
 
+export function captureTimelineDragSelection(
+  draggedKey: string,
+  selectedKeys: ReadonlySet<string>,
+  moveSelectionTogether: boolean,
+  eligibleKeys?: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const frozenSelection =
+    eligibleKeys == null
+      ? selectedKeys
+      : new Set([...selectedKeys].filter((key) => eligibleKeys.has(key)));
+  if (
+    moveSelectionTogether &&
+    frozenSelection.size > 1 &&
+    frozenSelection.has(draggedKey)
+  ) {
+    return new Set(frozenSelection);
+  }
+  return new Set([draggedKey]);
+}
+
+export function toggleTimelineSelection(
+  clickedKey: string,
+  selectedKeys: ReadonlySet<string>,
+  anchorKey: string | null,
+): { selectedKeys: ReadonlySet<string>; anchorKey: string | null } {
+  const next = new Set(selectedKeys);
+  if (next.has(clickedKey)) {
+    next.delete(clickedKey);
+  } else {
+    next.add(clickedKey);
+    return { selectedKeys: next, anchorKey: clickedKey };
+  }
+
+  return {
+    selectedKeys: next,
+    anchorKey: anchorKey && next.has(anchorKey) ? anchorKey : (next.values().next().value ?? null),
+  };
+}
+
 /**
  * Whether a live multi-selection drag is in effect: the drag started, and the
  * dragged clip is itself part of a 2+ multi-selection. Below this, single-drag
@@ -79,6 +118,22 @@ export function multiDragPassengerOffsetPx(
   if (!isMultiDragPassenger(clipKey, input)) return 0;
   const pps = Number.isFinite(pixelsPerSecond) ? pixelsPerSecond : 0;
   return multiDragDeltaSeconds(input) * pps;
+}
+
+export function expandedChildDragOffsetPx(
+  expandedDisplayHostKey: string | undefined,
+  pixelsPerSecond: number,
+  input: MultiDragPreviewInput,
+): number {
+  if (
+    !input.dragStarted ||
+    !expandedDisplayHostKey ||
+    expandedDisplayHostKey !== input.draggedKey
+  ) {
+    return 0;
+  }
+  const pps = Number.isFinite(pixelsPerSecond) ? pixelsPerSecond : 0;
+  return (input.draggedPreviewStart - input.draggedOriginStart) * pps;
 }
 
 /**
