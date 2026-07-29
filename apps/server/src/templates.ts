@@ -63,7 +63,7 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 const EXECUTABLE_EXTENSIONS = new Set([".exe", ".dll", ".com", ".bat", ".cmd", ".sh", ".ps1", ".app", ".dmg", ".pkg"]);
 const HYPERFRAMES_VARIABLE_TYPES = new Set(["string", "number", "color", "boolean", "enum"]);
-const CURRENT_IPOLLOWORK_LOGO_URL = "assets/ipollowork-logo.svg?v=20260724";
+const CURRENT_IPOLLOWORK_LOGO_URL = "assets/ipollowork-logo.svg?v=20260729";
 const SLIDE_DOCUMENT_PATTERN = /\bdata-ipw-slide(?:\s|=|>)|\bclass\s*=\s*["'](?:[^"']*\s)?(?:slide|slide-frame)(?=\s|["'])|\bclassName\s*=\s*["'](?:slide|slide-frame)["']|\bclassList\.add\(\s*["'](?:slide|slide-frame)["']/i;
 const PPTX_OBJECT_PATTERN = /\bdata-pptx-(?:shape|text|image)\b/i;
 const inflateRawAsync = promisify(inflateRaw);

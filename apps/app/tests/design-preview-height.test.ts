@@ -26,6 +26,9 @@ describe("Design property number fields", () => {
     expect(source).toContain('className="min-w-0 flex-1 cursor-ew-resize');
     expect(source).toContain('<DragNumberField label="Width"');
     expect(source).toContain('<DragNumberField label="Height"');
+    expect(source).toContain('active={aspectRatioLocked}');
+    expect(source).toContain('applySize("width", value, remember)');
+    expect(source).toContain('applySize("height", value, remember)');
   });
 
   test("keeps font size on the left and font weight on the right with preset menus", async () => {
@@ -50,6 +53,13 @@ describe("Design property number fields", () => {
     expect(source.indexOf(positionSection)).toBeGreaterThan(source.indexOf(textSection));
     expect(source).toContain('onApplyField("left", `${value}px`, remember)');
     expect(source).toContain('onApplyField("top", `${value}px`, remember)');
+  });
+
+  test("keeps position alignment buttons neutral until selected", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+
+    expect(source).toContain('<PropertyButton aria-label="Align left"><AlignLeft /></PropertyButton>');
+    expect(source).not.toContain('<PropertyButton active aria-label="Align left"><AlignLeft /></PropertyButton>');
   });
 
   test("uses a lazy searchable font picker with self-rendered options", async () => {
@@ -120,8 +130,8 @@ describe("Design property number fields", () => {
     expect(source).toContain('onChange={(value, remember) => onApplyField("left", `${value}px`, remember)}');
     expect(source).toContain('onChange={(value, remember) => onApplyField("top", `${value}px`, remember)}');
     expect(source).toContain('onChange={(value, remember) => onApplyField("transform", `rotate(${value}deg)`, remember)}');
-    expect(source).toContain('onChange={(value, remember) => onApplyField("width", `${value}px`, remember)}');
-    expect(source).toContain('onChange={(value, remember) => onApplyField("height", `${value}px`, remember)}');
+    expect(source).toContain('onChange={(value, remember) => applySize("width", value, remember)}');
+    expect(source).toContain('onChange={(value, remember) => applySize("height", value, remember)}');
     expect(source).toContain('onChange={(value, remember) => applyPixels("fontSize", value, remember)}');
     expect(panelSource).toContain("const applyField = (field: DesignField, value: string, remember = true) =>");
   });
@@ -146,5 +156,35 @@ describe("Design property number fields", () => {
     expect(source).toContain("isMultiSelection={isMultiSelection}");
     expect(source).toContain("selectionCount={selectionSummary.selectionCount}");
     expect(source).toContain("mixedStyleFields={selectionSummary.mixedStyleFields}");
+  });
+
+  test("connects layer link, lock, and delete actions with shared icon states", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+    const panelSource = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('label={selection.href ? "Edit link" : "Add link"}');
+    expect(source).toContain('onChange={(event) => setLinkDraft(event.currentTarget.value)}');
+    expect(source).toContain('onApplyField("href", href, true)');
+    expect(source).toContain('setLinkOpen(Boolean(selection.href))');
+    expect(source).toContain('type="submit" size="sm"');
+    expect(source).toContain('>保存</Button>');
+    expect(source).toContain('label={selection.locked ? "Unlock layer" : "Lock layer"}');
+    expect(source).toContain('label="Delete layer"');
+    expect(source).toContain('hover:bg-[#f4f5f8] hover:text-[#202228] active:bg-black active:text-white');
+    expect(source).toContain('active && "bg-black text-white hover:bg-black hover:text-white"');
+    expect(panelSource).toContain("const toggleSelectionLock = () => {");
+    expect(panelSource).toContain('type: "lock"');
+    expect(panelSource).toContain('onDelete={() => setDeleteConfirmationOpen(true)}');
+  });
+
+  test("shows the selected element HTML at the bottom of the Element inspector", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+    const htmlSection = '<InspectorSection title="HTML" last>';
+
+    expect(source).toContain(htmlSection);
+    expect(source).toContain('value={selection.html}');
+    expect(source).toContain('aria-label="Selected element HTML code"');
+    expect(source).toContain('h-[220px]');
+    expect(source.indexOf(htmlSection)).toBeGreaterThan(source.indexOf('<InspectorSection title="Appearance">'));
   });
 });

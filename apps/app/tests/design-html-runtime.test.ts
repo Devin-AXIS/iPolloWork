@@ -107,6 +107,8 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('type: "view"');
     expect(preview).toContain('data.type === "restore-view"');
     expect(preview).toContain('type: "view-restored"');
+    expect(preview).toContain('data.type === "select-locator"');
+    expect(preview).toContain("document.querySelector(data.locator)");
     expect(preview).toContain('direction === "index"');
 
     const selectionChange = preview.match(/document\.addEventListener\("selectionchange",[\s\S]*?\n\s*\}\);/)?.[0] ?? "";
@@ -184,6 +186,29 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('type: "zoom"');
     expect(preview).not.toContain('event.key === "Delete"');
     expect(preview).not.toContain('event.key === "Backspace"');
+  });
+
+  test("adds links and persists locked layers through the existing editor bridge", () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><h1>Linked title</h1></body></html>", true);
+
+    expect(preview).toContain('data.type === "lock"');
+    expect(preview).toContain('target.toggleAttribute("data-ipw-locked", data.locked)');
+    expect(preview).toContain("selectedTargets(data.ids).filter((target) => !isLockedElement(target))");
+    expect(preview).toContain('const link = document.createElement("a")');
+    expect(preview).toContain('link.setAttribute("href", data.value)');
+    expect(preview).toContain('link.style.color = "inherit"');
+    expect(preview).toContain('link.style.textDecoration = "none"');
+    expect(preview).toContain("link.appendChild(target)");
+    expect(preview).toContain("locked: isLockedElement(element)");
+    expect(preview).toContain("ipollowork-design-locked");
+  });
+
+  test("reports clean HTML for the selected element", () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><p>Selected</p></body></html>", true);
+
+    expect(preview).toContain("elementHtml = (element) =>");
+    expect(preview).toContain("html: elementHtml(element)");
+    expect(preview).toContain("return clone.outerHTML");
   });
 
   test("keeps the selection overlay from blocking clicks on text inside a selected card", () => {

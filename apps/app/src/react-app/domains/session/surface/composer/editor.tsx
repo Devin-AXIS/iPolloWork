@@ -12,6 +12,7 @@ import {
   $createRangeSelection,
   $createParagraphNode,
   $createTextNode,
+  $getNodeByKey,
   $getRoot,
   $getSelection,
   $setSelection,
@@ -345,18 +346,46 @@ class ComposerDesignSelectionNode extends TextNode {
 
   override createDOM(_config: EditorConfig) {
     const dom = document.createElement("span");
-    dom.className = "inline-flex items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11";
-    dom.textContent = this.__label;
+    dom.className = "inline-flex items-center gap-1 rounded-full border border-violet-6/35 bg-violet-3/20 py-1 pl-2.5 pr-1.5 text-xs font-medium text-violet-11";
     dom.contentEditable = "false";
     dom.setAttribute("data-composer-token", "design-selection");
     dom.setAttribute("spellcheck", "false");
     dom.title = `Design selection: ${this.__label}`;
+
+    const text = document.createElement("span");
+    text.textContent = this.__label;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "inline-flex h-4 w-4 items-center justify-center rounded-full text-violet-10 transition-colors hover:bg-violet-4 hover:text-violet-12 active:bg-violet-5";
+    button.title = "Remove design selection";
+    button.setAttribute("aria-label", `Remove design selection: ${this.__label}`);
+    button.dataset.designSelectionRemoveKey = this.getKey();
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.75");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("class", "h-3 w-3");
+    svg.setAttribute("aria-hidden", "true");
+    const firstLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    firstLine.setAttribute("d", "M4 4l8 8");
+    const secondLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    secondLine.setAttribute("d", "M12 4l-8 8");
+    svg.append(firstLine, secondLine);
+    button.append(svg);
+    dom.append(text, button);
     return dom;
   }
 
   override updateDOM(prevNode: ComposerDesignSelectionNode, dom: HTMLElement) {
     if (prevNode.__label !== this.__label) {
-      dom.textContent = this.__label;
+      const text = dom.firstElementChild;
+      if (text) text.textContent = this.__label;
+      const button = dom.querySelector("button[data-design-selection-remove-key]");
+      if (button instanceof HTMLButtonElement) button.setAttribute("aria-label", `Remove design selection: ${this.__label}`);
       dom.title = `Design selection: ${this.__label}`;
     }
     return false;
@@ -770,6 +799,8 @@ function MentionChipNavigationPlugin() {
         if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
         const anchorNode = selection.anchor.getNode();
 
+        if (anchorNode instanceof ComposerDesignSelectionNode) return true;
+
         // --- Slash command chip: atomic delete ---
         // When cursor is in the text node right after a slash chip,
         // remove the chip (and any trailing whitespace text) in one action.
@@ -802,7 +833,8 @@ function MentionChipNavigationPlugin() {
         // --- Mention / pasted-text chips: atomic delete (same as before) ---
         if ($isTextNode(anchorNode) && selection.anchor.offset === 0) {
           const previous = anchorNode.getPreviousSibling();
-          if (previous instanceof ComposerMentionNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode || previous instanceof ComposerDesignSelectionNode) {
+          if (previous instanceof ComposerDesignSelectionNode) return true;
+          if (previous instanceof ComposerMentionNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode) {
             previous.remove();
             return true;
           }
@@ -810,7 +842,8 @@ function MentionChipNavigationPlugin() {
 
         if ($isElementNode(anchorNode)) {
           const previous = anchorNode.getChildAtIndex(selection.anchor.offset - 1);
-          if (previous instanceof ComposerSlashCommandNode || previous instanceof ComposerMentionNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode || previous instanceof ComposerDesignSelectionNode) {
+          if (previous instanceof ComposerDesignSelectionNode) return true;
+          if (previous instanceof ComposerSlashCommandNode || previous instanceof ComposerMentionNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode) {
             previous.remove();
             return true;
           }
@@ -872,6 +905,37 @@ function MentionChipNavigationPlugin() {
       unregisterRight();
     };
   }, [editor]);
+
+  return null;
+}
+
+function DesignSelectionDeletePlugin({ disabled }: { disabled: boolean }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    const handlePointer = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest("button[data-design-selection-remove-key]");
+      if (!(button instanceof HTMLButtonElement)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type !== "click" || disabled) return;
+      const key = button.dataset.designSelectionRemoveKey;
+      if (!key) return;
+      editor.update(() => {
+        const node = $getNodeByKey(key);
+        if (node instanceof ComposerDesignSelectionNode) node.remove();
+      });
+    };
+
+    return editor.registerRootListener((root, previousRoot) => {
+      previousRoot?.removeEventListener("mousedown", handlePointer);
+      previousRoot?.removeEventListener("click", handlePointer);
+      root?.addEventListener("mousedown", handlePointer);
+      root?.addEventListener("click", handlePointer);
+    });
+  }, [disabled, editor]);
 
   return null;
 }
@@ -982,6 +1046,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
         <SubmitPlugin onSubmit={props.onSubmit} disabled={props.disabled} />
         <PasteChipPlugin onPasteText={props.onPasteText} />
         <MentionChipNavigationPlugin />
+        <DesignSelectionDeletePlugin disabled={props.disabled} />
         <ImperativeHandlePlugin editorRef={ref} />
       </div>
     </LexicalComposer>
