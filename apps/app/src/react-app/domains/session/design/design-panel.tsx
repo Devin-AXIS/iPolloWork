@@ -931,6 +931,7 @@ export function DesignPanel({
         setPendingCanvasChange(false);
         return;
       }
+      if (event.data.type !== "selected" && event.data.type !== "editing" && event.data.type !== "draft") return;
       if (event.data.type === "editing") rememberHistory();
       setSelectionState((current) => {
         const currentIds = current
