@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   CheckIcon,
@@ -24,13 +24,34 @@ import {
   PanelsTopLeft,
   Presentation,
   Plus,
+  RotateCcw,
+  SlidersHorizontal,
   Table2,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { isPptxCompatibleTemplate, type TemplateCatalogItem } from "@ipollowork/types/templates";
-import type { HyperframesCatalogItem } from "@/app/lib/ipollowork-server";
+import type {
+  HyperframesAnimationSelection,
+  HyperframesCatalogItem,
+  HyperframesEffectVariable,
+  HyperframesEffectVariableValue,
+  HyperframesEffectVariableValues,
+} from "@/app/lib/ipollowork-server";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { resolveHyperframesEffectVariableValues } from "@ipollowork/types/hyperframes";
+import {
+  hyperframesSelectionUpdateMode,
+  updateHyperframesEffectVariableOverride,
+} from "@/app/lib/hyperframes-effect-params";
 import { publicAssetUrl } from "@/app/lib/public-asset";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -56,22 +77,25 @@ type NewConversationStarterProps = {
   animationCatalog?: HyperframesCatalogItem[];
   animationCatalogLoading?: boolean;
   animationCatalogError?: string | null;
-  selectedAnimations?: HyperframesCatalogItem[];
+  selectedAnimations?: HyperframesAnimationSelection[];
   onToggleAnimation?: (animation: HyperframesCatalogItem) => void;
+  onChangeAnimationParams?: (animation: HyperframesCatalogItem, values: HyperframesEffectVariableValues) => void;
   onRetryAnimationCatalog?: () => void;
 };
 
 const VIDEO_TEMPLATE_PICKER_ENABLED = true;
-// Keep the animation catalog implementation available for a future rollout.
-const VIDEO_ANIMATION_PICKER_ENABLED = false;
+const VIDEO_ANIMATION_PICKER_ENABLED = true;
 const RECENT_ANIMATION_STORAGE_KEY = "ipollowork.video.recent-animations.v1";
 const RECENT_ANIMATION_LIMIT = 6;
-const ANIMATION_CATEGORY_ORDER = ["scenes", "data", "code-animation", "social", "text-effects", "transitions", "captions", "effects", "vfx"];
+const HYPERFRAMES_LIBRARY_KINDS: ReadonlyArray<"animation" | "effect"> = ["animation", "effect"];
+const ANIMATION_CATEGORY_ORDER = ["scenes", "data", "code-animation", "social", "scroll", "svg", "text-effects", "transitions", "captions", "effects", "vfx"];
 const ANIMATION_CATEGORY_LABELS: Record<string, { en: string; zh: string }> = {
   scenes: { en: "Scenes", zh: "场景" },
   data: { en: "Data", zh: "数据动画" },
   "code-animation": { en: "Code", zh: "代码动画" },
   social: { en: "Social", zh: "社交元素" },
+  scroll: { en: "Scroll", zh: "滚动特效" },
+  svg: { en: "SVG", zh: "SVG 特效" },
   "text-effects": { en: "Text", zh: "文字特效" },
   transitions: { en: "Transitions", zh: "转场" },
   captions: { en: "Captions", zh: "动态字幕" },
@@ -326,21 +350,26 @@ function TemplateStrip({
 function AnimationCatalogCard({
   item,
   active,
+  configuredCount,
   recent,
   locale,
   onToggle,
+  onConfigure,
 }: {
   item: HyperframesCatalogItem;
   active: boolean;
+  configuredCount: number;
   recent: boolean;
   locale: "en" | "zh";
   onToggle?: (animation: HyperframesCatalogItem) => void;
+  onConfigure?: (animation: HyperframesCatalogItem) => void;
 }) {
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const hoveredRef = useRef(false);
   const focusedRef = useRef(false);
   const [previewing, setPreviewing] = useState(false);
   const previewVideo = item.preview?.video;
+  const categoryLabel = ANIMATION_CATEGORY_LABELS[item.category]?.[locale] ?? item.category;
 
   useEffect(() => {
     if (!previewing) return;
@@ -363,53 +392,290 @@ function AnimationCatalogCard({
   };
 
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={() => onToggle?.(item)}
-      onMouseEnter={() => {
-        hoveredRef.current = true;
-        updatePreview();
-      }}
-      onMouseLeave={() => {
-        hoveredRef.current = false;
-        updatePreview();
-      }}
-      onFocus={() => {
-        focusedRef.current = true;
-        updatePreview();
-      }}
-      onBlur={() => {
-        focusedRef.current = false;
-        updatePreview();
-      }}
-      className={cn("group w-[154px] shrink-0 snap-start overflow-hidden rounded-lg border bg-background text-left transition", active ? "border-primary ring-2 ring-primary/20" : "border-border/80 hover:border-primary/45")}
-    >
-      <div className="relative aspect-video overflow-hidden bg-muted">
-        {previewing && previewVideo ? (
-          <video
-            ref={previewRef}
-            src={previewVideo}
-            poster={item.preview?.poster}
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            className="h-full w-full object-cover"
-          />
-        ) : item.preview?.poster ? (
-          <img src={item.preview.poster} alt="" loading="lazy" className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">{ANIMATION_CATEGORY_LABELS[item.category]?.[locale] ?? item.category}</div>
-        )}
-        <span className={cn("absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm", active ? "border-primary bg-primary text-primary-foreground" : "border-white/70 bg-black/45 text-white opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100")}>
-          {active ? <CheckIcon className="size-3" /> : <Plus className="size-3" />}
+    <div className={cn("group w-[154px] shrink-0 snap-start overflow-hidden rounded-lg border bg-background text-left transition", active ? "border-primary ring-2 ring-primary/20" : "border-border/80 hover:border-primary/45")}>
+      <button
+        type="button"
+        aria-pressed={active}
+        onClick={() => onToggle?.(item)}
+        onMouseEnter={() => {
+          hoveredRef.current = true;
+          updatePreview();
+        }}
+        onMouseLeave={() => {
+          hoveredRef.current = false;
+          updatePreview();
+        }}
+        onFocus={() => {
+          focusedRef.current = true;
+          updatePreview();
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          updatePreview();
+        }}
+        className="block w-full text-left"
+      >
+        <div className="relative aspect-video overflow-hidden bg-muted">
+          {previewing && previewVideo ? (
+            <video
+              ref={previewRef}
+              src={previewVideo}
+              poster={item.preview?.poster}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+            />
+          ) : item.preview?.poster ? (
+            <img src={item.preview.poster} alt="" loading="lazy" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">{ANIMATION_CATEGORY_LABELS[item.category]?.[locale] ?? item.category}</div>
+          )}
+          <span className={cn("absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm", active ? "border-primary bg-primary text-primary-foreground" : "border-white/70 bg-black/45 text-white opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100")}>
+            {active ? <CheckIcon className="size-3" /> : <Plus className="size-3" />}
+          </span>
+          <span className="absolute left-1.5 top-1.5 max-w-[125px] truncate rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-medium text-white">
+            {item.engine ? `${item.engine.name.toUpperCase()} · ${categoryLabel}` : categoryLabel}
+          </span>
+          {recent ? <span className="absolute left-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-medium text-foreground shadow-sm">{t("new_conversation.animations.recent")}</span> : null}
+          {item.duration ? <span className="absolute bottom-1 right-1 rounded bg-black/65 px-1 text-[9px] text-white">{item.duration}s</span> : null}
+        </div>
+        <div className="px-2 py-1.5">
+          <div className="truncate text-[11px] font-medium text-foreground">{item.title}</div>
+          <div className="mt-0.5 flex items-center justify-between gap-1 text-[9px] text-muted-foreground">
+            <span className="truncate">{item.engine?.plugins?.[0] ?? "GSAP Core"}</span>
+            <span className="shrink-0 text-emerald-600">{t("new_conversation.animations.bundled")}</span>
+          </div>
+        </div>
+      </button>
+      {item.variables.length ? (
+        <button
+          type="button"
+          className="flex h-7 w-full items-center justify-center gap-1 border-t border-border/70 px-2 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={() => onConfigure?.(item)}
+        >
+          <SlidersHorizontal className="size-3" />
+          {configuredCount
+            ? t("new_conversation.animations.customized", { count: configuredCount })
+            : t("new_conversation.animations.configure")}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function AnimationVariableControl({
+  variable,
+  value,
+  onChange,
+}: {
+  variable: HyperframesEffectVariable;
+  value: HyperframesEffectVariableValue;
+  onChange: (value: HyperframesEffectVariableValue) => void;
+}) {
+  const inputId = `hyperframes-variable-${variable.id}`;
+  return (
+    <div className="space-y-1.5 rounded-lg border border-border/70 bg-background/65 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={inputId} className="text-[12px] font-medium text-foreground">{variable.label}</label>
+        <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase", variable.update === "live" ? "bg-emerald-500/10 text-emerald-600" : variable.update === "rebuild" ? "bg-amber-500/10 text-amber-600" : "bg-sky-500/10 text-sky-600")}>
+          {variable.update}
         </span>
-        {recent ? <span className="absolute left-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-medium text-foreground shadow-sm">{t("new_conversation.animations.recent")}</span> : null}
-        {item.duration ? <span className="absolute bottom-1 right-1 rounded bg-black/65 px-1 text-[9px] text-white">{item.duration}s</span> : null}
       </div>
-      <div className="truncate px-2 py-1.5 text-[11px] font-medium text-foreground">{item.title}</div>
-    </button>
+      {variable.description ? <p className="text-[10px] text-muted-foreground">{variable.description}</p> : null}
+      {variable.type === "color" ? (
+        <div className="flex items-center gap-2">
+          <input
+            id={inputId}
+            type="color"
+            value={typeof value === "string" ? value : variable.default}
+            aria-label={variable.label}
+            className="size-9 cursor-pointer rounded-md border border-border bg-transparent p-1"
+            onChange={(event) => onChange(event.target.value)}
+          />
+          <code className="text-[11px] text-muted-foreground">{value}</code>
+        </div>
+      ) : null}
+      {variable.type === "number" ? (
+        <div className="flex items-center gap-3">
+          <input
+            id={inputId}
+            type="range"
+            min={variable.min}
+            max={variable.max}
+            step={variable.step}
+            value={typeof value === "number" ? value : variable.default}
+            aria-label={variable.label}
+            className="min-w-0 flex-1 accent-primary"
+            onChange={(event) => onChange(Number(event.target.value))}
+          />
+          <output htmlFor={inputId} className="w-14 text-right text-[11px] tabular-nums text-foreground">
+            {value}{variable.unit ?? ""}
+          </output>
+        </div>
+      ) : null}
+      {variable.type === "enum" ? (
+        <select
+          id={inputId}
+          value={typeof value === "string" ? value : variable.default}
+          aria-label={variable.label}
+          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground"
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {variable.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      ) : null}
+      {variable.type === "string" ? (
+        <input
+          id={inputId}
+          type="text"
+          value={typeof value === "string" ? value : variable.default}
+          maxLength={variable.maxLength}
+          aria-label={variable.label}
+          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground"
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : null}
+      {variable.type === "boolean" ? (
+        <input
+          id={inputId}
+          type="checkbox"
+          checked={typeof value === "boolean" ? value : variable.default}
+          aria-label={variable.label}
+          className="size-4 accent-primary"
+          onChange={(event) => onChange(event.target.checked)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AnimationParameterDialog({
+  item,
+  values,
+  onChange,
+  onClose,
+}: {
+  item: HyperframesCatalogItem | null;
+  values: HyperframesEffectVariableValues;
+  onChange: (values: HyperframesEffectVariableValues) => void;
+  onClose: () => void;
+}) {
+  const previewRef = useRef<HTMLVideoElement | null>(null);
+  const preservedTimeRef = useRef(0);
+  const [previewRevision, setPreviewRevision] = useState(0);
+  const [lastUpdate, setLastUpdate] = useState<"live" | "rebuild" | "reload" | null>(null);
+  const resolvedValues = useMemo(
+    () => item ? resolveHyperframesEffectVariableValues(item, values) : {},
+    [item, values],
+  );
+  const backgroundColor = typeof resolvedValues.backgroundColor === "string" ? resolvedValues.backgroundColor : "#09090b";
+  const textColor = typeof resolvedValues.textColor === "string" ? resolvedValues.textColor : "#ffffff";
+  const waveIntensity = typeof resolvedValues.waveIntensity === "number" ? resolvedValues.waveIntensity : 1;
+  const animationSpeed = typeof resolvedValues.animationSpeed === "number" ? resolvedValues.animationSpeed : 1;
+
+  useEffect(() => {
+    if (previewRef.current) previewRef.current.playbackRate = animationSpeed;
+  }, [animationSpeed, previewRevision]);
+
+  const handleVariableChange = (variable: HyperframesEffectVariable, value: HyperframesEffectVariableValue) => {
+    if (!item) return;
+    const update = hyperframesSelectionUpdateMode(item, variable.id);
+    if (update !== "live") {
+      preservedTimeRef.current = previewRef.current?.currentTime ?? preservedTimeRef.current;
+      setPreviewRevision((current) => current + 1);
+    }
+    setLastUpdate(update);
+    onChange(updateHyperframesEffectVariableOverride(item, values, variable.id, value));
+  };
+
+  return (
+    <Dialog open={Boolean(item)} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-[980px] gap-4">
+        <DialogHeader>
+          <DialogTitle>{item ? t("new_conversation.animations.parameters_title", { title: item.title }) : ""}</DialogTitle>
+          <DialogDescription>{t("new_conversation.animations.parameters_description")}</DialogDescription>
+          {item ? (
+            <div className="flex flex-wrap gap-1.5 pt-1 text-[10px] text-muted-foreground">
+              <span className="rounded-full bg-muted px-2 py-1">{item.source?.label ?? "HyperFrames"}</span>
+              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700">
+                {item.engine ? `${item.engine.name.toUpperCase()} ${item.engine.version ?? ""}` : item.category}
+              </span>
+              {(item.engine?.plugins ?? ["GSAP Core"]).map((pluginName) => (
+                <span key={pluginName} className="rounded-full bg-violet-500/10 px-2 py-1 text-violet-700">{pluginName}</span>
+              ))}
+              <span className="rounded-full bg-sky-500/10 px-2 py-1 text-sky-700">{t("new_conversation.animations.bundled")}</span>
+            </div>
+          ) : null}
+        </DialogHeader>
+        {item ? (
+          <div className="grid min-h-0 grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] gap-4 max-[860px]:grid-cols-1">
+            <div className="space-y-2">
+              <div
+                className="relative aspect-video overflow-hidden rounded-xl border border-border"
+                style={{ backgroundColor }}
+              >
+                {item.preview?.video ? (
+                  <video
+                    key={previewRevision}
+                    ref={previewRef}
+                    src={item.preview.video}
+                    poster={item.preview.poster}
+                    muted
+                    loop
+                    autoPlay
+                    playsInline
+                    className="h-full w-full object-cover transition-[filter,transform] duration-150"
+                    style={{
+                      filter: `saturate(${Math.max(0.4, waveIntensity)}) contrast(${1 + waveIntensity * 0.04})`,
+                      transform: `scale(${1 + waveIntensity * 0.005})`,
+                    }}
+                    onLoadedMetadata={(event) => {
+                      event.currentTarget.currentTime = Math.min(preservedTimeRef.current, event.currentTarget.duration || preservedTimeRef.current);
+                      event.currentTarget.playbackRate = animationSpeed;
+                    }}
+                  />
+                ) : item.preview?.poster ? (
+                  <img src={item.preview.poster} alt="" className="h-full w-full object-cover" />
+                ) : null}
+                <div
+                  className="pointer-events-none absolute inset-0 transition-colors duration-150"
+                  style={{ backgroundColor, mixBlendMode: "color", opacity: 0.65 }}
+                />
+                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-8 text-[10px]" style={{ color: textColor }}>
+                  <span>{t("new_conversation.animations.live_preview")}</span>
+                  <span>{item.engine ? `${item.engine.name.toUpperCase()} ${item.engine.version ?? ""}` : item.category}</span>
+                </div>
+              </div>
+              <div className="flex min-h-7 items-center justify-between rounded-lg bg-muted/60 px-2.5 text-[10px] text-muted-foreground">
+                <span>{lastUpdate ? t(`new_conversation.animations.update_${lastUpdate}`) : t("new_conversation.animations.preview_defaults")}</span>
+                <span>{t("new_conversation.animations.current_time", { time: preservedTimeRef.current.toFixed(1) })}</span>
+              </div>
+            </div>
+            <div className="grid max-h-[390px] grid-cols-2 gap-2 overflow-y-auto pr-1 max-[860px]:grid-cols-1">
+              {item.variables.map((variable) => (
+                <AnimationVariableControl
+                  key={variable.id}
+                  variable={variable}
+                  value={resolvedValues[variable.id] ?? variable.default}
+                  onChange={(value) => handleVariableChange(variable, value)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <DialogFooter className="flex-row justify-between sm:justify-between">
+          <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => onChange({})}>
+            <RotateCcw className="size-3.5" />
+            {t("common.reset")}
+          </button>
+          <button type="button" className="h-8 rounded-lg bg-foreground px-4 text-[11px] font-medium text-background" onClick={onClose}>
+            {t("common.close")}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -419,21 +685,36 @@ function AnimationCatalogStrip({
   error,
   selected,
   onToggle,
+  onChangeAnimationParams,
   onRetry,
 }: {
   items: HyperframesCatalogItem[];
   loading: boolean;
   error?: string | null;
-  selected: HyperframesCatalogItem[];
+  selected: HyperframesAnimationSelection[];
   onToggle?: (animation: HyperframesCatalogItem) => void;
+  onChangeAnimationParams?: (animation: HyperframesCatalogItem, values: HyperframesEffectVariableValues) => void;
   onRetry?: () => void;
 }) {
+  const [libraryKind, setLibraryKind] = useState<"animation" | "effect">("effect");
   const [category, setCategory] = useState<string | null>(null);
+  const [plugin, setPlugin] = useState<string | null>(null);
   const [recentAnimationNames, setRecentAnimationNames] = useState<string[]>([]);
-  const selectedNames = new Set(selected.map((item) => item.name));
+  const [editingItem, setEditingItem] = useState<HyperframesCatalogItem | null>(null);
+  const selectedByName = new Map(selected.map((selection) => [selection.item.name, selection]));
+  const selectedNames = new Set(selectedByName.keys());
   const locale = typeof document !== "undefined" && document.documentElement.lang === "zh" ? "zh" : "en";
   const recentNameSet = new Set(recentAnimationNames);
-  const filtered = [...(category ? items.filter((item) => item.category === category) : items)].sort((left, right) => {
+  const gsapItems = items.filter((item) => item.engine?.name.toLowerCase() === "gsap");
+  const kindItems = gsapItems.filter((item) => item.kind === libraryKind);
+  const animationCount = gsapItems.filter((item) => item.kind === "animation").length;
+  const effectCount = gsapItems.filter((item) => item.kind === "effect").length;
+  const pluginName = (item: HyperframesCatalogItem) => item.engine?.plugins?.[0] ?? "GSAP Core";
+  const plugins = Array.from(new Set(kindItems.map(pluginName)));
+  const filtered = [...kindItems.filter((item) => (
+    (!category || item.category === category)
+    && (!plugin || pluginName(item) === plugin)
+  ))].sort((left, right) => {
     const leftIndex = recentAnimationNames.indexOf(left.name);
     const rightIndex = recentAnimationNames.indexOf(right.name);
     if (leftIndex === -1 && rightIndex === -1) return 0;
@@ -441,7 +722,7 @@ function AnimationCatalogStrip({
     if (rightIndex === -1) return -1;
     return leftIndex - rightIndex;
   });
-  const categories = ANIMATION_CATEGORY_ORDER.filter((id) => items.some((item) => item.category === id));
+  const categories = ANIMATION_CATEGORY_ORDER.filter((id) => kindItems.some((item) => item.category === id));
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -468,13 +749,43 @@ function AnimationCatalogStrip({
   };
 
   return (
-    <section className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3" aria-label={t("new_conversation.animations.title")}>
+    <>
+      <section className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3" aria-label={t("new_conversation.animations.gsap_library")}>
       <div className="flex items-start justify-between gap-3 px-0.5">
         <div>
-          <p className="text-[13px] font-medium text-foreground">{t("new_conversation.animations.title")}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{t("new_conversation.animations.subtitle")}</p>
+          <p className="text-[13px] font-medium text-foreground">
+            {libraryKind === "effect" ? t("new_conversation.animations.effect_library") : t("new_conversation.animations.animation_library")}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {t("new_conversation.animations.gsap_summary", { total: gsapItems.length, animations: animationCount, effects: effectCount })}
+          </p>
         </div>
-        <span className={cn("shrink-0 rounded-full px-2 py-1 text-[11px] font-medium", selected.length ? "bg-primary/10 text-primary" : "bg-background text-muted-foreground")}>{t("new_conversation.animations.selected", { count: selected.length })}</span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-700">{t("new_conversation.animations.catalog_synced")}</span>
+          <span className={cn("rounded-full px-2 py-1 text-[11px] font-medium", selected.length ? "bg-primary/10 text-primary" : "bg-background text-muted-foreground")}>{t("new_conversation.animations.selected", { count: selected.length })}</span>
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-2 rounded-lg bg-background p-1">
+        {HYPERFRAMES_LIBRARY_KINDS.map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            onClick={() => {
+              setLibraryKind(kind);
+              setCategory(null);
+              setPlugin(null);
+            }}
+            className={cn("h-7 rounded-md text-[11px] font-medium transition-colors", libraryKind === kind ? "bg-foreground text-background shadow-sm" : "text-muted-foreground hover:text-foreground")}
+          >
+            {kind === "animation"
+              ? t("new_conversation.animations.animation_tab", { count: animationCount })
+              : t("new_conversation.animations.effect_tab", { count: effectCount })}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/70 px-2.5 py-1.5 text-[10px] text-muted-foreground">
+        <span>{t("new_conversation.animations.coverage", { count: kindItems.length })}</span>
+        <span>{t("new_conversation.animations.engine_version", { version: kindItems[0]?.engine?.version ?? "3" })}</span>
       </div>
       <div className="mt-2 flex gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button type="button" onClick={() => setCategory(null)} className={cn("h-6 shrink-0 rounded-full px-2.5 text-[10px]", category === null ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:text-foreground")}>{t("new_conversation.animations.all")}</button>
@@ -482,6 +793,14 @@ function AnimationCatalogStrip({
           <button key={id} type="button" onClick={() => setCategory(id)} className={cn("h-6 shrink-0 rounded-full px-2.5 text-[10px]", category === id ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:text-foreground")}>{ANIMATION_CATEGORY_LABELS[id]?.[locale] ?? id}</button>
         ))}
       </div>
+      {plugins.length > 1 ? (
+        <div className="flex gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button type="button" onClick={() => setPlugin(null)} className={cn("h-6 shrink-0 rounded-full border px-2.5 text-[10px]", plugin === null ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700" : "border-border bg-background text-muted-foreground hover:text-foreground")}>{t("new_conversation.animations.all_plugins")}</button>
+          {plugins.map((name) => (
+            <button key={name} type="button" onClick={() => setPlugin(name)} className={cn("h-6 shrink-0 rounded-full border px-2.5 text-[10px]", plugin === name ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700" : "border-border bg-background text-muted-foreground hover:text-foreground")}>{name}</button>
+          ))}
+        </div>
+      ) : null}
       {loading ? (
         <div className="flex h-[112px] items-center justify-center text-xs text-muted-foreground"><LoaderCircle className="mr-2 size-4 animate-spin" />{t("new_conversation.animations.loading")}</div>
       ) : error === "empty_catalog" ? (
@@ -506,18 +825,33 @@ function AnimationCatalogStrip({
                 key={item.name}
                 item={item}
                 active={active}
+                configuredCount={Object.keys(selectedByName.get(item.name)?.values ?? {}).length}
                 recent={recentNameSet.has(item.name)}
                 locale={locale}
                 onToggle={(animation) => {
                   rememberAnimation(animation);
                   onToggle?.(animation);
                 }}
+                onConfigure={(animation) => {
+                  rememberAnimation(animation);
+                  onChangeAnimationParams?.(animation, selectedByName.get(animation.name)?.values ?? {});
+                  setEditingItem(animation);
+                }}
               />
             );
           })}
         </div>
       )}
-    </section>
+      </section>
+      <AnimationParameterDialog
+        item={editingItem}
+        values={editingItem ? selectedByName.get(editingItem.name)?.values ?? {} : {}}
+        onChange={(values) => {
+          if (editingItem) onChangeAnimationParams?.(editingItem, values);
+        }}
+        onClose={() => setEditingItem(null)}
+      />
+    </>
   );
 }
 
@@ -650,6 +984,7 @@ export function NewConversationStarter({
   animationCatalogError = null,
   selectedAnimations = [],
   onToggleAnimation,
+  onChangeAnimationParams,
   onRetryAnimationCatalog,
 }: NewConversationStarterProps) {
   const [activeTemplateCategory, setActiveTemplateCategory] = useState<TemplateCategory | null>(null);
@@ -936,6 +1271,7 @@ export function NewConversationStarter({
             error={animationCatalogError}
             selected={selectedAnimations}
             onToggle={onToggleAnimation}
+            onChangeAnimationParams={onChangeAnimationParams}
             onRetry={onRetryAnimationCatalog}
           />
         ) : null}

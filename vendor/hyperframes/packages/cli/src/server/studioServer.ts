@@ -17,7 +17,7 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
-import { resolve, join, basename, dirname } from "node:path";
+import { resolve, join, basename, dirname, isAbsolute, relative } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
 import {
   hashSignatureParts,
@@ -45,6 +45,7 @@ import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 import type { RegistryItem } from "@hyperframes/core";
+import { resolveGsapRegistryItemEngine } from "@hyperframes/core/registry";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 const REMOTE_GIF_IMG_SRC_RE =
@@ -369,7 +370,22 @@ function loadBundledRegistryItems(registryRoot: string): RegistryItem[] {
       try {
         const item = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
         if (item.type === "hyperframes:block" || item.type === "hyperframes:component") {
-          items.push(item);
+          const itemRoot = join(dir, entry.name);
+          const runtimeSources = item.files.flatMap((file) => {
+            if (!/\.(?:html|js|mjs|ts|tsx)$/i.test(file.path)) return [];
+            const sourcePath = resolve(itemRoot, file.path);
+            const relativePath = relative(itemRoot, sourcePath);
+            if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+              return [];
+            }
+            try {
+              return [readFileSync(sourcePath, "utf-8")];
+            } catch {
+              return [];
+            }
+          });
+          const engine = resolveGsapRegistryItemEngine(item, runtimeSources);
+          items.push(engine ? { ...item, engine } : item);
         }
       } catch {
         // Skip malformed vendored manifests without hiding the rest of the catalog.

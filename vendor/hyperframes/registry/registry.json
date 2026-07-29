@@ -570,6 +570,106 @@
     {
       "name": "parallax-unzoom",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "gsap-scrolltrigger-story",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-splittext-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-morphsvg-shape",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-scroll-smoother-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-scroll-to-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-scramble-text-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-text-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-draw-svg-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-motion-path-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-motion-path-helper-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-flip-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-draggable-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-inertia-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-observer-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-physics-2d-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-physics-props-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-gs-dev-tools-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-easel-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-pixi-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-rough-ease-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-expo-scale-ease-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-slow-mo-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-custom-ease-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-custom-bounce-official",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gsap-custom-wiggle-official",
+      "type": "hyperframes:block"
     }
   ]
 }

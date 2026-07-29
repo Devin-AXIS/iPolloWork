@@ -30,7 +30,6 @@ import type {
   WorkspaceConnectionState,
   WorkspaceSessionGroup,
 } from "../../../../app/types";
-import type { ShareWorkspaceModalProps } from "../../workspace/types";
 import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
 import { buildSessionMarkdown, sessionMarkdownFilename } from "@/components/chat/utils";
 import { getArtifactsFromMessages, isVideoHtmlArtifact } from "@/lib/artifacts";
@@ -68,7 +67,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { ShareWorkspaceModal } from "../../workspace/share-workspace-modal";
 import { OwDotTicker } from "../../../shell/dot-ticker";
 import { useReactRenderWatchdog } from "../../../shell/react-render-watchdog";
 import { useShellConfig } from "../../../shell/shell-config";
@@ -133,22 +131,20 @@ export type SessionPageSidebarProps = {
   newTaskDisabled: boolean;
   sidebarHydratedFromCache: boolean;
   startupPhase: BootPhase;
-  onSelectWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
-  onCreateTaskInWorkspace: (workspaceId: string, type?: iPolloWorkSessionType, templateId?: iPolloWorkTemplateId) => void;
+  onCreateTaskInWorkspace: (
+    workspaceId: string,
+    type?: iPolloWorkSessionType,
+    templateId?: iPolloWorkTemplateId,
+    templateScope?: WorkContextId,
+  ) => void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
-  onOpenRenameWorkspace: (workspaceId: string) => void;
-  onShareWorkspace: (workspaceId: string) => void;
-  onRevealWorkspace: (workspaceId: string) => void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
   onEditWorkspaceConnection: (workspaceId: string) => void;
-  onForgetWorkspace: (workspaceId: string) => void;
-  onOpenCreateWorkspace: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
-  onReorderWorkspaces?: (workspaceIds: string[]) => void;
 };
 
 export type SessionPageSurfaceProps = Omit<
@@ -195,7 +191,6 @@ export type SessionPageProps = {
   history?: SessionPageHistoryControls | null;
   todos: TodoItem[];
   sessionLoadingById: (sessionId: string | null) => boolean;
-  shareWorkspaceModal?: ShareWorkspaceModalProps | null;
   providerAuthModal?: ProviderAuthModalProps | null;
   activePermission?: PendingPermission | null;
   permissionReplyBusy?: boolean;
@@ -538,6 +533,7 @@ export function SessionPage(props: SessionPageProps) {
     getArtifactsFromMessages(conversationMessages, accessibleTargets, { includeTargetFallbacks: true })
       .find(isVideoHtmlArtifact) ?? null
   ), [accessibleTargets, conversationMessages]);
+  const autoOpenedDesignTemplateRef = useRef<string | null>(null);
   const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
     props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
@@ -900,6 +896,14 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel("panel");
   }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
 
+  useEffect(() => {
+    if (!props.selectedSessionId || !designTemplateEntryPath) return;
+    const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`;
+    if (autoOpenedDesignTemplateRef.current === templateKey) return;
+    autoOpenedDesignTemplateRef.current = templateKey;
+    openDesignTab(designTemplateEntryPath);
+  }, [designTemplateEntryPath, openDesignTab, props.selectedSessionId]);
+
   const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {
     setMainWorkspaceView(null);
     setSessionPanelView(null);
@@ -1074,7 +1078,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [browserPanelRef]);
   useEffect(() => {
     const panel = browserPanelRef.current;
-    if (!panel || effectiveSidePanelView === "design") return;
+    if (!panel) return;
 
     window.requestAnimationFrame(() => {
       if (rightPanelExpanded) {
@@ -1832,7 +1836,6 @@ export function SessionPage(props: SessionPageProps) {
           connectingWorkspaceId={props.sidebar.connectingWorkspaceId}
           workspaceConnectionStateById={props.sidebar.workspaceConnectionStateById}
           newTaskDisabled={props.sidebar.newTaskDisabled}
-          onSelectWorkspace={props.sidebar.onSelectWorkspace}
           onOpenSession={props.sidebar.onOpenSession}
           onPrefetchSession={props.sidebar.onPrefetchSession}
           onCreateTaskInWorkspace={props.sidebar.onCreateTaskInWorkspace}
@@ -1849,14 +1852,9 @@ export function SessionPage(props: SessionPageProps) {
             setCreateGroupLabel("");
             setCreateGroupOpen(true);
           }}
-          onOpenRenameWorkspace={props.sidebar.onOpenRenameWorkspace}
-          onShareWorkspace={props.sidebar.onShareWorkspace}
-          onRevealWorkspace={props.sidebar.onRevealWorkspace}
           onRecoverWorkspace={props.sidebar.onRecoverWorkspace}
           onTestWorkspaceConnection={props.sidebar.onTestWorkspaceConnection}
           onEditWorkspaceConnection={props.sidebar.onEditWorkspaceConnection}
-          onForgetWorkspace={props.sidebar.onForgetWorkspace}
-          onOpenCreateWorkspace={props.sidebar.onOpenCreateWorkspace}
           account={{
             loading: denAuth.status === "checking",
             signedIn: denAuth.isSignedIn,
@@ -1871,7 +1869,6 @@ export function SessionPage(props: SessionPageProps) {
           onOpenExtensions={openExtensionsRailPane}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch}
-          onReorderWorkspaces={props.sidebar.onReorderWorkspaces}
           onStartResize={startLeftSidebarResize}
         />
         <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80 mac:[&_header]:transition-[padding-left] mac:[&_header]:duration-200 mac:[&_header]:ease-linear mac:peer-data-[state=collapsed]:[&_header]:pl-28 mac:max-md:[&_header]:pl-28">
@@ -1936,7 +1933,7 @@ export function SessionPage(props: SessionPageProps) {
               {showMainHeaderTitle ? (
                 <h1 className="truncate text-[14px] font-medium text-dls-text">
                   {showWorkspaceSetupEmptyState
-                    ? t("session.create_or_connect_workspace")
+                    ? t("workspace.empty_state_body")
                     : selectedSessionTitle || t("session.default_title")}
                 </h1>
               ) : null}
@@ -2138,13 +2135,20 @@ export function SessionPage(props: SessionPageProps) {
                         onOpenTarget={openTarget}
                         onConversationMessagesChange={handleConversationMessagesChange}
                         templateEntryPath={designTemplateEntryPath}
-                        onCreateSession={(type) => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, type)}
+                        onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
+                          props.selectedWorkspaceId,
+                          type,
+                          templateId,
+                          templateResourceScope,
+                        )}
                         onMaterializeTemplate={async (templateId, surface) => {
                           if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
                           const result = await props.ipolloworkServerClient.materializeTemplate(
                             props.runtimeWorkspaceId,
                             templateId,
                             props.selectedSessionId,
+                            undefined,
+                            templateResourceScope,
                           );
                           setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
                           setTemplateSessionData({ ...result, hasBrief: false });
@@ -2194,13 +2198,7 @@ export function SessionPage(props: SessionPageProps) {
                         <Zap className="text-dls-secondary" />
                       </div>
                       <div className="space-y-2">
-                        <h3 className="text-xl font-medium">{t("session.create_or_connect_workspace")}</h3>
-                        <p className="mx-auto max-w-sm text-sm text-dls-secondary">
-                          {t("workspace.empty_state_body")}
-                        </p>
-                      </div>
-                      <div className="flex justify-center">
-                        <Button onClick={props.sidebar.onOpenCreateWorkspace}>{t("workspace.create_workspace")}</Button>
+                        <h3 className="text-xl font-medium">{t("workspace.empty_state_body")}</h3>
                       </div>
                     </div>
                   ) : showSelectedWorkspaceError ? (
@@ -2422,7 +2420,12 @@ export function SessionPage(props: SessionPageProps) {
             return;
           }
           setTemplateMarketOpen(false);
-          props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, sessionTypeForTemplate(template.manifest), template.manifest.id);
+          props.sidebar.onCreateTaskInWorkspace(
+            props.selectedWorkspaceId,
+            sessionTypeForTemplate(template.manifest),
+            template.manifest.id,
+            templateResourceScope,
+          );
         }}
       /> : null}
 
@@ -2498,8 +2501,6 @@ export function SessionPage(props: SessionPageProps) {
         open={cloudSignInComingSoonOpen}
         onOpenChange={setCloudSignInComingSoonOpen}
       />
-
-      {props.shareWorkspaceModal ? <ShareWorkspaceModal {...props.shareWorkspaceModal} /> : null}
 
       {/* Cloud provider notifications are now handled globally by CloudProvidersToast in app-root.tsx */}
     </div>

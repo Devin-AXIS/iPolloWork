@@ -34,6 +34,12 @@
       "development": "./src/desktop-ipc.ts",
       "default": "./src/desktop-ipc.ts"
     },
+    "./hyperframes": {
+      "types": "./src/hyperframes.ts",
+      "development": "./src/hyperframes.ts",
+      "bun": "./src/hyperframes.ts",
+      "default": "./dist/hyperframes.js"
+    },
     "./templates": {
       "types": "./src/templates.ts",
       "development": "./src/templates.ts",
