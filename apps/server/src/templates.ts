@@ -104,6 +104,7 @@ type TemplateDb = {
   get(workspaceId: string, templateId: string): InstallationRow | undefined;
   list(workspaceId: string): InstallationRow[];
   upsert(row: InstallationRow): void;
+  delete(workspaceId: string, templateId: string): void;
   getSession(workspaceId: string, sessionId: string): TemplateSessionRow | undefined;
   listSessions(workspaceId: string): TemplateSessionRow[];
   upsertSession(row: TemplateSessionRow): void;
@@ -180,6 +181,7 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
     const get = sqlite.query("SELECT workspace_id AS workspaceId, template_id AS templateId, version, source_type AS sourceType, package_path AS packagePath, package_hash AS packageHash, status, manifest_json AS manifestJson, installed_at AS installedAt, updated_at AS updatedAt FROM template_installations WHERE workspace_id = ? AND template_id = ?");
     const list = sqlite.query("SELECT workspace_id AS workspaceId, template_id AS templateId, version, source_type AS sourceType, package_path AS packagePath, package_hash AS packageHash, status, manifest_json AS manifestJson, installed_at AS installedAt, updated_at AS updatedAt FROM template_installations WHERE workspace_id = ? ORDER BY template_id");
     const upsert = sqlite.query("INSERT INTO template_installations (workspace_id, template_id, version, source_type, package_path, package_hash, status, manifest_json, installed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, template_id) DO UPDATE SET version=excluded.version, source_type=excluded.source_type, package_path=excluded.package_path, package_hash=excluded.package_hash, status=excluded.status, manifest_json=excluded.manifest_json, installed_at=excluded.installed_at, updated_at=excluded.updated_at");
+    const remove = sqlite.query("DELETE FROM template_installations WHERE workspace_id = ? AND template_id = ?");
     const getSession = sqlite.query("SELECT workspace_id AS workspaceId, session_id AS sessionId, surface, template_id AS templateId, version, source_type AS sourceType, entry, brief_path AS briefPath, manifest_json AS manifestJson, created_at AS createdAt FROM template_session_snapshots WHERE workspace_id = ? AND session_id = ?");
     const listSessions = sqlite.query("SELECT workspace_id AS workspaceId, session_id AS sessionId, surface, template_id AS templateId, version, source_type AS sourceType, entry, brief_path AS briefPath, manifest_json AS manifestJson, created_at AS createdAt FROM template_session_snapshots WHERE workspace_id = ? ORDER BY created_at DESC, session_id");
     const upsertSession = sqlite.query("INSERT INTO template_session_snapshots (workspace_id, session_id, surface, template_id, version, source_type, entry, brief_path, manifest_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, session_id) DO UPDATE SET surface=excluded.surface, template_id=excluded.template_id, version=excluded.version, source_type=excluded.source_type, entry=excluded.entry, brief_path=excluded.brief_path, manifest_json=excluded.manifest_json, created_at=excluded.created_at");
@@ -187,6 +189,7 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
       get: (workspaceId, templateId) => get.get(workspaceId, templateId) as InstallationRow | undefined,
       list: (workspaceId) => list.all(workspaceId) as InstallationRow[],
       upsert: (row) => { upsert.run(row.workspaceId, row.templateId, row.version, row.sourceType, row.packagePath, row.packageHash, row.status, row.manifestJson, row.installedAt, row.updatedAt); },
+      delete: (workspaceId, templateId) => { remove.run(workspaceId, templateId); },
       getSession: (workspaceId, sessionId) => getSession.get(workspaceId, sessionId) as TemplateSessionRow | undefined,
       listSessions: (workspaceId) => listSessions.all(workspaceId) as TemplateSessionRow[],
       upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
@@ -198,6 +201,7 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
   const get = sqlite.prepare("SELECT workspace_id AS workspaceId, template_id AS templateId, version, source_type AS sourceType, package_path AS packagePath, package_hash AS packageHash, status, manifest_json AS manifestJson, installed_at AS installedAt, updated_at AS updatedAt FROM template_installations WHERE workspace_id = ? AND template_id = ?");
   const list = sqlite.prepare("SELECT workspace_id AS workspaceId, template_id AS templateId, version, source_type AS sourceType, package_path AS packagePath, package_hash AS packageHash, status, manifest_json AS manifestJson, installed_at AS installedAt, updated_at AS updatedAt FROM template_installations WHERE workspace_id = ? ORDER BY template_id");
   const upsert = sqlite.prepare("INSERT INTO template_installations (workspace_id, template_id, version, source_type, package_path, package_hash, status, manifest_json, installed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, template_id) DO UPDATE SET version=excluded.version, source_type=excluded.source_type, package_path=excluded.package_path, package_hash=excluded.package_hash, status=excluded.status, manifest_json=excluded.manifest_json, installed_at=excluded.installed_at, updated_at=excluded.updated_at");
+  const remove = sqlite.prepare("DELETE FROM template_installations WHERE workspace_id = ? AND template_id = ?");
   const getSession = sqlite.prepare("SELECT workspace_id AS workspaceId, session_id AS sessionId, surface, template_id AS templateId, version, source_type AS sourceType, entry, brief_path AS briefPath, manifest_json AS manifestJson, created_at AS createdAt FROM template_session_snapshots WHERE workspace_id = ? AND session_id = ?");
   const listSessions = sqlite.prepare("SELECT workspace_id AS workspaceId, session_id AS sessionId, surface, template_id AS templateId, version, source_type AS sourceType, entry, brief_path AS briefPath, manifest_json AS manifestJson, created_at AS createdAt FROM template_session_snapshots WHERE workspace_id = ? ORDER BY created_at DESC, session_id");
   const upsertSession = sqlite.prepare("INSERT INTO template_session_snapshots (workspace_id, session_id, surface, template_id, version, source_type, entry, brief_path, manifest_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, session_id) DO UPDATE SET surface=excluded.surface, template_id=excluded.template_id, version=excluded.version, source_type=excluded.source_type, entry=excluded.entry, brief_path=excluded.brief_path, manifest_json=excluded.manifest_json, created_at=excluded.created_at");
@@ -205,6 +209,7 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
     get: (workspaceId, templateId) => get.get(workspaceId, templateId) as unknown as InstallationRow | undefined,
     list: (workspaceId) => list.all(workspaceId) as unknown as InstallationRow[],
     upsert: (row) => { upsert.run(row.workspaceId, row.templateId, row.version, row.sourceType, row.packagePath, row.packageHash, row.status, row.manifestJson, row.installedAt, row.updatedAt); },
+    delete: (workspaceId, templateId) => { remove.run(workspaceId, templateId); },
     getSession: (workspaceId, sessionId) => getSession.get(workspaceId, sessionId) as unknown as TemplateSessionRow | undefined,
     listSessions: (workspaceId) => listSessions.all(workspaceId) as unknown as TemplateSessionRow[],
     upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
@@ -511,10 +516,21 @@ async function installDirectory(input: {
   });
 }
 
+async function purgeWithdrawnBundledTemplates(config: ServerConfig, libraryId: string, bundled: readonly BundledTemplate[]) {
+  const db = await templateDb(config);
+  const activeIds = new Set(bundled.map((item) => item.manifest.id));
+  const withdrawn = db.list(libraryId).filter((row) => row.sourceType === "bundled" && !activeIds.has(row.templateId));
+  await Promise.all(withdrawn.map(async (row) => {
+    db.delete(libraryId, row.templateId);
+    await rm(row.packagePath, { recursive: true, force: true }).catch(() => undefined);
+  }));
+}
+
 export async function listTemplates(config: ServerConfig, workspaceId: string, scope: TemplateLibraryScope = "personal"): Promise<TemplateCatalogItem[]> {
   const db = await templateDb(config);
   const libraryId = templateLibraryId(scope);
-  const bundled = scope === "personal" ? await bundledTemplates() : [];
+  const bundled = await bundledTemplates();
+  if (!config.readOnly) await purgeWithdrawnBundledTemplates(config, libraryId, bundled);
   for (const item of bundled) {
     if (!config.readOnly && !db.get(libraryId, item.manifest.id)) await installDirectory({ config, workspaceId: libraryId, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
   }

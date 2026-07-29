@@ -35,10 +35,13 @@ describe("Design undo view restoration", () => {
     expect(acceptsDesignDeckMessage(pending({ frameLoaded: true }), { index: 3, viewRevision: "undo-2" })).toBe(true);
   });
 
-  test("only marks the replacement iframe for the current undo as loaded", () => {
+  test("accepts a hydrated replacement iframe after its frame revision advances", () => {
     expect(expectsDesignRestoreFrame(pending(), "A", 7)).toBe(false);
     expect(expectsDesignRestoreFrame(pending(), "B", 6)).toBe(false);
     expect(expectsDesignRestoreFrame(pending(), "B", 7)).toBe(true);
+    // Asset hydration creates a second iframe after undo. That later frame
+    // must finish the same restore rather than leaving undo locked.
+    expect(expectsDesignRestoreFrame(pending(), "B", 8, "design/page.html:8")).toBe(true);
     expect(expectsDesignRestoreFrame(pending(), "B", 7, "design/page.html:6")).toBe(false);
     expect(expectsDesignRestoreFrame(pending(), "B", 7, "design/page.html:7")).toBe(true);
   });

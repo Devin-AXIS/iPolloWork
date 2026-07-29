@@ -13,6 +13,20 @@ export type DesignViewRestore = {
   panTop: number;
 };
 
+function isCurrentOrHydratedDesignFrame(frameRevision: string, baseline: string) {
+  const frameSeparator = frameRevision.lastIndexOf(":");
+  const baselineSeparator = baseline.lastIndexOf(":");
+  if (frameSeparator < 1 || baselineSeparator < 1) return frameRevision === baseline;
+  const framePath = frameRevision.slice(0, frameSeparator);
+  const baselinePath = baseline.slice(0, baselineSeparator);
+  const frameVersion = Number(frameRevision.slice(frameSeparator + 1));
+  const baselineVersion = Number(baseline.slice(baselineSeparator + 1));
+  return framePath === baselinePath
+    && Number.isSafeInteger(frameVersion)
+    && Number.isSafeInteger(baselineVersion)
+    && frameVersion >= baselineVersion;
+}
+
 export function expectsDesignRestoreFrame(
   pending: DesignViewRestore | null,
   source: string,
@@ -23,7 +37,7 @@ export function expectsDesignRestoreFrame(
     pending
       && pending.targetSource === source
       && previewRevision >= pending.previewRevision
-      && (frameRevision === undefined || pending.frameRevision === frameRevision),
+      && (frameRevision === undefined || isCurrentOrHydratedDesignFrame(frameRevision, pending.frameRevision)),
   );
 }
 

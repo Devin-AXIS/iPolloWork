@@ -78,11 +78,6 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
 }
 
 const bundledTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "bundled-templates");
-const pptxCompatibleTemplateIds = [
-  "ipollowork.pptx-compatible-brief",
-  "ipollowork.pptx-compatible-pitch",
-  "ipollowork.pptx-compatible-report",
-];
 const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.app-device-launch",
   "ipollowork.hyperframes.feature-orbit",
@@ -599,7 +594,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(73);
+    expect(directories).toHaveLength(70);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -612,27 +607,7 @@ describe("template installations", () => {
       expect(cover.byteLength).toBeGreaterThan(15_000);
       hashes.add(Bun.hash(cover).toString());
     }
-    expect(hashes.size).toBe(73);
-  });
-
-  test("ships strict PPTX-compatible slide templates with explicit editable object markers", async () => {
-    for (const templateId of pptxCompatibleTemplateIds) {
-      const root = join(bundledTemplatesRoot, templateId);
-      const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
-      const entry = await readFile(join(root, manifest.entry), "utf8");
-      expect(manifest.category).toBe("slides");
-      expect(manifest.pptxCompatibility).toBe("native-editable");
-      expect(entry).toContain("data-pptx-text");
-      expect(entry).toContain("data-pptx-shape");
-      expect(entry).not.toMatch(/(?:linear|radial)-gradient|\bfilter\s*:/i);
-    }
-  });
-
-  test("build copies strict PPTX-compatible templates into the embedded server catalog", async () => {
-    const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
-    for (const templateId of pptxCompatibleTemplateIds) {
-      expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
-    }
+    expect(hashes.size).toBe(70);
   });
 
   test("seeds the full personal template market and keeps its install state global", async () => {
@@ -640,16 +615,56 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(73);
+    expect(first.filter((item) => item.installed)).toHaveLength(70);
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
-    for (const templateId of pptxCompatibleTemplateIds) {
-      expect(first.some((item) => item.manifest.id === templateId)).toBe(true);
-      expect(existsSync(join(bundledTemplatesRoot, templateId, "manifest.json"))).toBe(true);
-    }
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
     expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
+  });
+
+  test("seeds only the remaining bundled templates into personal and Enterprise libraries", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-enterprise-bundled-templates-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const scope = parseTemplateLibraryScope("enterprise:ent_medical");
+    const personal = await listTemplates(serverConfig, "alpha");
+    const enterprise = await listTemplates(serverConfig, "alpha", scope);
+
+    expect(personal).toHaveLength(70);
+    expect(enterprise).toHaveLength(70);
+    expect(personal.every((item) => item.manifest.pptxCompatibility !== "native-editable")).toBe(true);
+    expect(enterprise.every((item) => item.manifest.pptxCompatibility !== "native-editable")).toBe(true);
+  }, 15_000);
+
+  test("purges persisted bundled packages that are no longer shipped", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-withdrawn-bundled-template-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    await listTemplates(serverConfig, "alpha");
+    const templateId = "test.withdrawn-bundled-template";
+    const packagePath = join(root, "templates", "__ipollowork_personal__", templateId, "1.0.0");
+    await mkdir(packagePath, { recursive: true });
+    await writeFile(join(packagePath, "manifest.json"), JSON.stringify({ id: templateId }), "utf8");
+    const { Database } = await import("bun:sqlite");
+    const sqlite = new Database(join(root, "runtime.sqlite"));
+    try {
+      sqlite.query("INSERT INTO template_installations (workspace_id, template_id, version, source_type, package_path, package_hash, status, manifest_json, installed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+        "__ipollowork_personal__", templateId, "1.0.0", "bundled", packagePath, "stale", "installed", JSON.stringify({ id: templateId }), Date.now(), Date.now(),
+      );
+    } finally {
+      sqlite.close();
+    }
+
+    await listTemplates(serverConfig, "alpha");
+
+    expect(existsSync(packagePath)).toBe(false);
+    const verification = new Database(join(root, "runtime.sqlite"));
+    try {
+      expect(verification.query("SELECT COUNT(*) AS count FROM template_installations WHERE template_id = ?").get(templateId)).toEqual({ count: 0 });
+    } finally {
+      verification.close();
+    }
   });
 
   test("does not ship removed templates into the personal template market", async () => {
@@ -664,12 +679,12 @@ describe("template installations", () => {
     }
   });
 
-  test("keeps installed Enterprise templates isolated from the personal library", async () => {
+  test("keeps Enterprise-imported templates isolated from the personal library", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-enterprise-templates-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const scope = parseTemplateLibraryScope("enterprise:ent_medical");
-    expect(await listTemplates(serverConfig, "alpha", scope)).toEqual([]);
+    expect((await listTemplates(serverConfig, "alpha", scope)).every((item) => item.sourceType === "bundled")).toBe(true);
     const installed = await importTemplate(serverConfig, "alpha", localPackage(), "site", scope);
     expect((await listTemplates(serverConfig, "beta", scope)).map((item) => item.manifest.id)).toContain(installed.manifest.id);
     expect((await listTemplates(serverConfig, "beta", "personal")).map((item) => item.manifest.id)).not.toContain(installed.manifest.id);
