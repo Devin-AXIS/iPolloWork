@@ -5,7 +5,7 @@ import type { UIMessage } from "ai";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
 import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
-import { MAX_TEMPLATE_PACKAGE_BYTES, isPptxCompatibleTemplate, type TemplateCatalogItem, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateStyle } from "@ipollowork/types/templates";
+import { MAX_TEMPLATE_PACKAGE_BYTES, isPptxCompatibleTemplate, type TemplateCatalogItem, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState } from "@ipollowork/types/templates";
 
 import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
@@ -83,7 +83,7 @@ import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
 import { VideoPanel } from "../video/video-panel";
-import { customTemplateColorPalette, DEFAULT_TEMPLATE_COLOR_PALETTE, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt, templateColorPaletteLabel, type TemplateBrief, type TemplateColorPalette } from "../templates/template-brief";
+import { templateBriefConfigFor, templateBriefPrompt, type TemplateBrief } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
@@ -393,50 +393,10 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
-const TEMPLATE_PALETTE_FIELDS = [
-  { key: "canvas", labelKey: "templates.palette_field.canvas" },
-  { key: "text", labelKey: "templates.palette_field.text" },
-  { key: "accent", labelKey: "templates.palette_field.accent" },
-] as const;
-
-function TemplatePalettePreview({ palette }: { palette: TemplateColorPalette }) {
-  return <span className="flex gap-1" aria-hidden="true">{paletteColors(palette).map((color) => <span key={color} className="size-4 rounded-full border border-black/10" style={{ backgroundColor: color }} />)}</span>;
-}
-
-function TemplatePalettePicker({ selectedId, customPalette, onSelect, onCustomColorChange }: {
-  selectedId: string;
-  customPalette: TemplateColorPalette;
-  onSelect: (id: string) => void;
-  onCustomColorChange: (key: (typeof TEMPLATE_PALETTE_FIELDS)[number]["key"], value: string) => void;
-}) {
-  const selectedClass = "border-primary ring-2 ring-primary/20";
-  const unselectedClass = "border-dls-border hover:border-dls-secondary";
-  return <div>
-    <div className="flex items-baseline justify-between gap-3"><p className="text-sm font-medium">{t("templates.palette.title")}</p><p className="text-[11px] text-dls-secondary">{t("templates.palette.summary")}</p></div>
-    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-      {TEMPLATE_COLOR_PRESETS.map((palette) => <button key={palette.id} type="button" aria-pressed={selectedId === palette.id} onClick={() => onSelect(palette.id)} className={cn("rounded-xl border p-2 text-left transition", selectedId === palette.id ? selectedClass : unselectedClass)}><span className="mb-2 block"><TemplatePalettePreview palette={palette} /></span><span className="text-xs font-medium">{templateColorPaletteLabel(palette.id)}</span></button>)}
-      <div className={cn("rounded-xl border p-2 transition", selectedId === "custom" ? selectedClass : unselectedClass)}>
-        <span className="mb-2 flex gap-1" aria-label={t("templates.palette.custom_group")}>
-          {TEMPLATE_PALETTE_FIELDS.map((field) => {
-            const label = t(field.labelKey);
-            return <label key={field.key} title={t("templates.palette.choose_color", { field: label })} className="relative size-4 cursor-pointer overflow-hidden rounded-full border border-black/10" style={{ backgroundColor: customPalette[field.key] }} onPointerDown={() => onSelect("custom")}><input type="color" value={customPalette[field.key]} onChange={(event) => onCustomColorChange(field.key, event.currentTarget.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label={t("templates.palette.custom_color_aria", { field: label })} /></label>;
-          })}
-        </span>
-        <button type="button" aria-pressed={selectedId === "custom"} onClick={() => onSelect("custom")} className="w-full text-left text-xs font-medium">{templateColorPaletteLabel("custom")}</button>
-      </div>
-    </div>
-  </div>;
-}
-
 function TemplateBriefCard({ template, onSubmit, onClose }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief) => void; onClose: () => void | Promise<void> }) {
   const config = templateBriefConfigFor(template);
-  const [brief, setBrief] = useState<Omit<TemplateBrief, "colorPalette">>({ title: "", audience: "", details: "" });
-  const [selectedPaletteId, setSelectedPaletteId] = useState(DEFAULT_TEMPLATE_COLOR_PALETTE.id);
-  const [customPalette, setCustomPalette] = useState(() => customTemplateColorPalette(paletteColors(DEFAULT_TEMPLATE_COLOR_PALETTE)));
-  const colorPalette = selectedPaletteId === "custom"
-    ? customPalette
-    : TEMPLATE_COLOR_PRESETS.find((palette) => palette.id === selectedPaletteId) ?? DEFAULT_TEMPLATE_COLOR_PALETTE;
-  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("relative p-5 pr-14", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><Button type="button" variant="ghost" size="icon-sm" className={cn("absolute right-4 top-4 rounded-full", template.surface === "video" ? "text-white/70 hover:text-white" : "text-dls-secondary hover:text-dls-text")} aria-label={t("common.close")} onClick={() => void onClose()}><X className="size-4" /></Button><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<TemplatePalettePicker selectedId={selectedPaletteId} customPalette={customPalette} onSelect={setSelectedPaletteId} onCustomColorChange={(key, value) => setCustomPalette((current) => ({ ...current, [key]: value }))} /><Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim()} onClick={() => onSubmit({ ...brief, title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim(), colorPalette })}>{config.submitLabel}</Button></div></div></div>;
+  const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
+  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("relative p-5 pr-14", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><Button type="button" variant="ghost" size="icon-sm" className={cn("absolute right-4 top-4 rounded-full", template.surface === "video" ? "text-white/70 hover:text-white" : "text-dls-secondary hover:text-dls-text")} aria-label={t("common.close")} onClick={() => void onClose()}><X className="size-4" /></Button><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim()} onClick={() => onSubmit({ title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() })}>{config.submitLabel}</Button></div></div></div>;
 }
 
 export function SessionPage(props: SessionPageProps) {
@@ -686,24 +646,6 @@ export function SessionPage(props: SessionPageProps) {
       setTemplateBusyId(null);
     }
   }, [activeEnterprise, importDesignTemplate, templateResourceScope]);
-  const saveCurrentAsTemplate = useCallback(async (input: { title: string; category: TemplateManifestV1["category"]; style: TemplateStyle }) => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
-    try {
-      setTemplateBusyId("save");
-      const result = await props.ipolloworkServerClient.saveTemplateFromSession(props.runtimeWorkspaceId, {
-        sessionId: props.selectedSessionId,
-        category: input.category,
-        title: input.title,
-        style: input.style,
-      }, templateResourceScope);
-      toast.success(t("templates.toast_saved", { title: result.item.manifest.title }));
-      await refreshTemplateCatalog();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("templates.error_save"));
-    } finally {
-      setTemplateBusyId(null);
-    }
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog, templateResourceScope]);
   const submitTemplateBrief = useCallback(async (brief: TemplateBrief) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     const templateSession = templateSessionData;
@@ -2401,9 +2343,6 @@ export function SessionPage(props: SessionPageProps) {
         error={templateCatalogError}
         busyId={templateBusyId}
         getCover={getTemplateCover}
-        canSaveCurrent={Boolean(props.selectedSessionId && (isDesignSession || isVideoSession))}
-        currentSurface={isVideoSession ? "video" : isDesignSession ? "design" : null}
-        currentCategory={isVideoSession ? "video" : selectedTemplate?.category ?? "site"}
         enterprise={activeEnterprise}
         resourceScope={templateResourceScope}
         enterpriseResources={enterpriseTemplateResources}
@@ -2413,7 +2352,6 @@ export function SessionPage(props: SessionPageProps) {
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
         onImport={importDesignTemplate}
-        onSaveCurrent={(input) => void saveCurrentAsTemplate(input)}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {
             toast.error(t("templates.video_local_only"));

@@ -84,7 +84,7 @@ type NewConversationStarterProps = {
 };
 
 const VIDEO_TEMPLATE_PICKER_ENABLED = true;
-const VIDEO_ANIMATION_PICKER_ENABLED = true;
+const VIDEO_ANIMATION_PICKER_ENABLED = false;
 const RECENT_ANIMATION_STORAGE_KEY = "ipollowork.video.recent-animations.v1";
 const RECENT_ANIMATION_LIMIT = 6;
 const HYPERFRAMES_LIBRARY_KINDS: ReadonlyArray<"animation" | "effect"> = ["animation", "effect"];

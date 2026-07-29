@@ -1886,20 +1886,36 @@ export function DesignPanel({
             ) : null}
             <div className={cn("ml-auto flex shrink-0 items-center", isPresentationTemplate ? "order-3" : "order-2", compactToolbar ? "gap-1" : "gap-2")}>
               {editing ? (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && propertiesTab === "element" && "bg-[#F3F4F6]")}
-                  onClick={() => {
-                    setPropertiesTab("element");
-                    setAdvancedOpen((current) => current && propertiesTab === "element" ? false : true);
-                  }}
-                  aria-label="Toggle design properties"
-                  title="Design properties"
-                  aria-pressed={advancedOpen && propertiesTab === "element"}
-                >
-                  <SlidersHorizontal />
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && propertiesTab === "element" && "bg-[#F3F4F6]")}
+                    onClick={() => {
+                      setPropertiesTab("element");
+                      setAdvancedOpen((current) => current && propertiesTab === "element" ? false : true);
+                    }}
+                    aria-label="Toggle design properties"
+                    title="Design properties"
+                    aria-pressed={advancedOpen && propertiesTab === "element"}
+                  >
+                    <SlidersHorizontal />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && propertiesTab === "design-system" && "bg-[#F3F4F6]")}
+                    onClick={() => {
+                      setPropertiesTab("design-system");
+                      setAdvancedOpen((current) => current && propertiesTab === "design-system" ? false : true);
+                    }}
+                    aria-label="Toggle design system"
+                    title="Design System"
+                    aria-pressed={advancedOpen && propertiesTab === "design-system"}
+                  >
+                    <Palette />
+                  </Button>
+                </>
               ) : null}
               <Button
                 variant="ghost"
@@ -2215,11 +2231,11 @@ export function DesignPanel({
                   </div>
                 ) : null}
               </div>
-              {editing && advancedOpen && selectionSummary ? <DesignPropertiesInspector
+              {editing && advancedOpen && (propertiesTab === "design-system" || selectionSummary) ? <DesignPropertiesInspector
                 selection={selection}
                 isMultiSelection={isMultiSelection}
-                selectionCount={selectionSummary.selectionCount}
-                mixedStyleFields={selectionSummary.mixedStyleFields}
+                selectionCount={selectionSummary?.selectionCount ?? 0}
+                mixedStyleFields={selectionSummary?.mixedStyleFields ?? []}
                 activeTab={propertiesTab}
                 onClose={() => setAdvancedOpen(false)}
                 onActiveTabChange={setPropertiesTab}

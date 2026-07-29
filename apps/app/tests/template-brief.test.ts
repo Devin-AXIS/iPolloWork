@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import { setLocale } from "../src/i18n";
-import { customTemplateColorPalette, isVideoStudioReady, paletteColors, TEMPLATE_COLOR_PRESETS, templateBriefConfigFor, templateBriefPrompt } from "../src/react-app/domains/session/templates/template-brief";
+import { isVideoStudioReady, templateBriefConfigFor, templateBriefPrompt } from "../src/react-app/domains/session/templates/template-brief";
 
 describe("template brief", () => {
   beforeEach(() => {
@@ -53,15 +53,6 @@ describe("template brief", () => {
     expect(isVideoStudioReady(true, true)).toBe(true);
   });
 
-  test("offers complete three-color presets and a fully editable custom palette", () => {
-    expect(TEMPLATE_COLOR_PRESETS).toHaveLength(4);
-    expect(TEMPLATE_COLOR_PRESETS.every((palette) => paletteColors(palette).every((color) => /^#[0-9a-f]{6}$/i.test(color)))).toBe(true);
-
-    const custom = customTemplateColorPalette(["#fef3c7", "#422006", "#d97706"]);
-    expect(custom).toMatchObject({ id: "custom", canvas: "#fef3c7", text: "#422006", accent: "#d97706" });
-    expect(paletteColors(custom)).toEqual(["#fef3c7", "#422006", "#d97706"]);
-  });
-
   test("keeps each template category on its own application contract", () => {
     const video = templateBriefPrompt({
       template: { category: "video", title: "Launch Film", applyChecklist: ["Keep composition"] },
@@ -76,7 +67,9 @@ describe("template brief", () => {
 
     expect(video).toContain("Decide whether narration materially helps");
     expect(video).toContain("not a blank or unrelated project");
-    expect(video).toContain("colorPalette.canvas");
+    expect(video).toContain("preserve its current theme as the visual source of truth");
+    expect(video).toContain("do not change the managed theme block");
+    expect(video).not.toContain("colorPalette");
     expect(app).toContain("complete App prototype");
     expect(app).toContain("do not turn it into a marketing website");
   });

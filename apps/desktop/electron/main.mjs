@@ -1324,7 +1324,7 @@ if (extraLaunchArgs) {
   }
 }
 configureFakeMediaForTests(app, envFlagEnabled("IPOLLOWORK_ELECTRON_FAKE_MEDIA"));
-const DEFAULT_DEN_BASE_URL = "https://app.ipolloworklabs.com";
+const DEFAULT_DEN_BASE_URL = process.env.VITE_DEN_BASE_URL?.trim() || "https://app.ipolloworklabs.com";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:4096";
 const FORCE_DESKTOP_REQUIRE_SIGNIN = envFlagEnabled("IPOLLOWORK_FORCE_SIGNIN");
 const DEFAULT_DESKTOP_REQUIRE_SIGNIN = FORCE_DESKTOP_REQUIRE_SIGNIN;

@@ -17,7 +17,6 @@ import {
   PanelsTopLeft,
   Presentation,
   Search,
-  Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -34,7 +33,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { WorkContextId } from "@/app/lib/work-context";
@@ -65,6 +63,7 @@ const CATEGORIES: CategoryDefinition[] = [
 const STYLE_ORDER = Object.keys(TEMPLATE_STYLE_LABELS) as TemplateStyle[];
 const templateStyleLabel = (style: TemplateStyle) => t(`template_market.style.${style}`);
 const TEMPLATE_COVER_TIMEOUT_MS = 12_000;
+const TEMPLATE_COVER_ROOT_MARGIN = "480px 0px";
 
 function templateMatches(input: { template: TemplateCatalogItem; category: TemplateCategory | "all"; style: TemplateStyle | "all"; source: "all" | "mine"; query: string }) {
   const { template, category, style, source, query } = input;
@@ -87,11 +86,34 @@ function isTemplateCategory(value: string): value is TemplateCategory {
   return CATEGORIES.some((entry) => entry.id === value);
 }
 
-function TemplateCover({ template, getCover, className, alt = "" }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; className?: string; alt?: string }) {
+function TemplateCover({ template, getCover, className, alt = "", eager = false }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; className?: string; alt?: string; eager?: boolean }) {
+  const placeholderRef = React.useRef<HTMLDivElement>(null);
+  const [shouldLoad, setShouldLoad] = React.useState(eager);
   const [src, setSrc] = React.useState("");
   const [failed, setFailed] = React.useState(false);
   const [retry, setRetry] = React.useState(0);
+
   React.useEffect(() => {
+    if (eager || shouldLoad) {
+      if (eager) setShouldLoad(true);
+      return;
+    }
+    const target = placeholderRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") {
+      setShouldLoad(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setShouldLoad(true);
+      observer.disconnect();
+    }, { rootMargin: TEMPLATE_COVER_ROOT_MARGIN });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [eager, shouldLoad]);
+
+  React.useEffect(() => {
+    if (!shouldLoad) return;
     let active = true;
     let objectUrl = "";
     const timeout = window.setTimeout(() => {
@@ -109,7 +131,8 @@ function TemplateCover({ template, getCover, className, alt = "" }: { template: 
       if (active) setFailed(true);
     });
     return () => { active = false; window.clearTimeout(timeout); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [getCover, retry, template.installedVersion, template.manifest.id, template.manifest.version]);
+  }, [getCover, retry, shouldLoad, template.installedVersion, template.manifest.id, template.manifest.version]);
+  if (!shouldLoad) return <div ref={placeholderRef} data-template-cover-lazy className={cn("h-full w-full bg-muted", className)} />;
   if (failed) {
     return (
       <div className={cn("grid h-full w-full place-items-center bg-muted p-4 text-center", className)}>
@@ -123,7 +146,7 @@ function TemplateCover({ template, getCover, className, alt = "" }: { template: 
       </div>
     );
   }
-  return src ? <img src={src} alt={alt} className={cn("h-full w-full object-cover", className)} /> : <div className={cn("h-full w-full animate-pulse bg-muted", className)} />;
+  return src ? <img src={src} alt={alt} decoding="async" className={cn("h-full w-full object-cover", className)} /> : <div className={cn("h-full w-full animate-pulse bg-muted", className)} />;
 }
 
 export type TemplateMarketDialogProps = {
@@ -134,9 +157,6 @@ export type TemplateMarketDialogProps = {
   error: string | null;
   busyId: string | null;
   getCover: TemplateCoverLoader;
-  canSaveCurrent: boolean;
-  currentSurface: "design" | "video" | null;
-  currentCategory: TemplateCategory;
   enterprise: EnterpriseConnection | null;
   resourceScope: WorkContextId;
   enterpriseResources: EnterpriseResource[];
@@ -147,7 +167,6 @@ export type TemplateMarketDialogProps = {
   onInstall: (templateId: string) => void;
   onUninstall: (templateId: string) => void;
   onImport: (file: File) => Promise<boolean>;
-  onSaveCurrent: (input: { title: string; category: TemplateCategory; style: TemplateStyle }) => void;
 };
 
 export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
@@ -156,18 +175,11 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   const [source, setSource] = React.useState<"all" | "mine">("all");
   const [query, setQuery] = React.useState("");
   const [pendingImport, setPendingImport] = React.useState<File | null>(null);
-  const [saveOpen, setSaveOpen] = React.useState(false);
-  const [saveTitle, setSaveTitle] = React.useState("");
-  const [saveCategory, setSaveCategory] = React.useState<TemplateCategory>(props.currentCategory);
   const [previewTemplate, setPreviewTemplate] = React.useState<TemplateCatalogItem | null>(null);
   const importRef = React.useRef<HTMLInputElement>(null);
   const enterpriseMode = props.resourceScope !== "personal";
 
   React.useEffect(() => { if (props.open) props.onRefresh(); }, [props.open, props.onRefresh]);
-  React.useEffect(() => { setSaveCategory(props.currentCategory); }, [props.currentCategory]);
-
-  const saveCategories = props.currentSurface === "video" ? CATEGORIES.filter((entry) => entry.id === "video") : CATEGORIES.filter((entry) => entry.id !== "video");
-
   const styleOptions = React.useMemo(() => {
     const available = new Set(props.templates.map((item) => item.manifest.style));
     return STYLE_ORDER.filter((id) => available.has(id)).map((id) => ({ id, label: templateStyleLabel(id) }));
@@ -212,14 +224,6 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
     return count;
   }, [categoryCounts]);
 
-  const submitSave = () => {
-    const title = saveTitle.trim();
-    if (!title) return;
-    props.onSaveCurrent({ title, category: saveCategory, style: "custom" });
-    setSaveOpen(false);
-    setSaveTitle("");
-  };
-
   return (
     <>
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -240,12 +244,9 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
           {!enterpriseMode ? <Button variant={source === "mine" ? "default" : "outline"} size="sm" className="min-w-0 rounded-xl" onClick={() => setSource((value) => value === "mine" ? "all" : "mine")}><span className="truncate">{t("template_market.my_templates")}</span></Button> : null}
           <input ref={importRef} type="file" accept=".ipwt" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
           {!enterpriseMode ? <Button variant="outline" size="sm" className="min-w-0 rounded-xl" disabled={props.busyId !== null} onClick={() => importRef.current?.click()}><Upload className="size-3.5" /><span className="truncate">{t("template_market.import_ipwt")}</span></Button> : null}
-          {!enterpriseMode && props.canSaveCurrent ? <Button variant="outline" size="sm" className="min-w-0 rounded-xl" onClick={() => setSaveOpen((value) => !value)}><Sparkles className="size-3.5" /><span className="truncate">{t("template_market.save_current")}</span></Button> : null}
         </div>
 
         {pendingImport ? <div className="mx-6 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2"><Upload className="size-4 text-primary" /><span className="min-w-40 flex-1 truncate text-xs">{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB</span><Button variant="ghost" size="sm" disabled={props.busyId !== null} onClick={() => setPendingImport(null)}>{t("common.cancel")}</Button><Button size="sm" className="rounded-lg" disabled={props.busyId !== null} onClick={async () => { if (await props.onImport(pendingImport)) setPendingImport(null); }}>{props.busyId === "import" ? <Loader2 className="size-3.5 animate-spin" /> : null}{t("template_market.install")}</Button></div> : null}
-
-        {saveOpen ? <div className="mx-6 mt-3 flex flex-wrap items-end gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="min-w-48 flex-1"><p className="mb-1.5 text-[11px] font-medium text-muted-foreground">{t("template_market.template_name")}</p><Input autoFocus value={saveTitle} onChange={(event) => setSaveTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") submitSave(); }} placeholder={t("template_market.template_name_placeholder")} className="h-9 rounded-lg text-xs" /></div><div><p className="mb-1.5 text-[11px] font-medium text-muted-foreground">{t("template_market.category")}</p><Select value={saveCategory} onValueChange={(value) => { if (saveCategories.some((entry) => entry.id === value)) setSaveCategory(value as TemplateCategory); }}><SelectTrigger size="sm" className="h-9 rounded-lg"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{saveCategories.map((entry) => <SelectItem key={entry.id} value={entry.id}>{t(entry.labelKey)}</SelectItem>)}</SelectGroup></SelectContent></Select></div><Button size="sm" className="h-9 rounded-lg" disabled={!saveTitle.trim() || props.busyId !== null} onClick={submitSave}>{t("template_market.save_to_my_templates")}</Button></div> : null}
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <aside className="hidden w-48 shrink-0 border-r border-border bg-muted/10 p-3 md:block">
@@ -263,7 +264,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
     <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}>
       <DialogContent showCloseButton className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">
         {previewTemplate ? <>
-          <div className="aspect-video overflow-hidden bg-muted"><TemplateCover template={previewTemplate} getCover={props.getCover} alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} /></div>
+          <div className="aspect-video overflow-hidden bg-muted"><TemplateCover template={previewTemplate} getCover={props.getCover} alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} eager /></div>
           <div className="flex flex-col gap-4 border-t border-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle>{isPptxCompatibleTemplate(previewTemplate.manifest) ? <Badge className="text-[10px]">{t("template_market.pptx_compatible")}</Badge> : null}<Badge variant="outline" className="text-[10px]">{t(CATEGORIES.find((item) => item.id === previewTemplate.manifest.category)?.labelKey ?? "template_market.category.other")}</Badge><Badge variant="outline" className="text-[10px]">{templateStyleLabel(previewTemplate.manifest.style)}</Badge></div><DialogDescription className="mt-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-muted-foreground">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div>
             <div className="flex shrink-0 items-center gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>{t("common.back")}</Button><Button size="sm" className="rounded-xl" disabled={props.busyId !== null} onClick={() => { if (previewTemplate.updateAvailable || !previewTemplate.installed) props.onInstall(previewTemplate.manifest.id); else { const template = previewTemplate; setPreviewTemplate(null); props.onUse(template); } }}>{props.busyId === previewTemplate.manifest.id ? <Loader2 className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? t("template_market.update_template") : previewTemplate.installed ? t("template_market.use_template") : t("template_market.install_template")}</Button></div>

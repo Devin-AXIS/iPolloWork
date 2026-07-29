@@ -5,52 +5,9 @@ export type TemplateBrief = {
   title: string;
   audience: string;
   details: string;
-  colorPalette: TemplateColorPalette;
 };
 
-export type TemplateBriefFields = Omit<TemplateBrief, "colorPalette">;
-
-export type TemplateColorPalette = {
-  id: string;
-  label: string;
-  canvas: string;
-  text: string;
-  accent: string;
-};
-
-export const TEMPLATE_COLOR_PRESETS: readonly TemplateColorPalette[] = [
-  { id: "ember", label: "Warm Ember", canvas: "#fafaf9", text: "#1c1b1a", accent: "#c96442" },
-  { id: "ocean", label: "Deep Ocean", canvas: "#f8fafc", text: "#172554", accent: "#2563eb" },
-  { id: "violet", label: "Violet", canvas: "#faf5ff", text: "#2e1065", accent: "#7c3aed" },
-  { id: "forest", label: "Forest", canvas: "#f0fdf4", text: "#064e3b", accent: "#059669" },
-];
-
-export const DEFAULT_TEMPLATE_COLOR_PALETTE = TEMPLATE_COLOR_PRESETS[0];
-
-export function paletteColors(palette: TemplateColorPalette): [string, string, string] {
-  return [palette.canvas, palette.text, palette.accent];
-}
-
-export function customTemplateColorPalette(colors: [string, string, string]): TemplateColorPalette {
-  return { id: "custom", label: "Custom", canvas: colors[0], text: colors[1], accent: colors[2] };
-}
-
-export function templateColorPaletteLabel(id: string): string {
-  switch (id) {
-    case "ember":
-      return t("templates.palette.ember");
-    case "ocean":
-      return t("templates.palette.ocean");
-    case "violet":
-      return t("templates.palette.violet");
-    case "forest":
-      return t("templates.palette.forest");
-    case "custom":
-      return t("templates.palette.custom");
-    default:
-      return id;
-  }
-}
+export type TemplateBriefFields = TemplateBrief;
 
 type TemplateBriefField = {
   key: keyof TemplateBriefFields;
@@ -242,9 +199,9 @@ export function templateBriefPrompt(input: {
 }): string {
   const base = `Read \`${input.briefPath}\` and apply it to the selected \`${input.template.title}\` template at \`${input.entryPath}\`. Keep the template's visual language and update every applicable item in this checklist: ${input.template.applyChecklist.join("; ")}.`;
   if (input.template.id === "ipollowork.wechat-article") {
-    return `${base} This template has locked brand colors and fixed brand images. Ignore the brief's colorPalette completely. Update only the article copy and non-fixed middle article images. Preserve every data-ipw-fixed="true" node exactly, keep fixed-hero.jpg and fixed-footer-cta.jpg unchanged, and only edit the href on a.fixed-footer-cta when a CTA link is provided. Do not write instruction conflicts or process notes into the HTML.`;
+    return `${base} This template has locked brand colors and fixed brand images. Update only the article copy and non-fixed middle article images. Preserve every data-ipw-fixed="true" node exactly, keep fixed-hero.jpg and fixed-footer-cta.jpg unchanged, and only edit the href on a.fixed-footer-cta when a CTA link is provided. Do not write instruction conflicts or process notes into the HTML.`;
   }
-  const colorInstruction = "Keep the template's final design-tokens.css link and use the shared --ipw-* variables for every themeable color, font, spacing, radius, and shadow. Do not move theme values into higher-priority inline styles or replace theme variables with hardcoded colors. Use the brief's colorPalette.canvas, colorPalette.text, and colorPalette.accent through those variables only; do not introduce an unrelated palette. Preserve the DOM skeleton, dimensions, layout, animation, and timing when changing theme values.";
+  const colorInstruction = "Keep the template's final design-tokens.css link and preserve its current theme as the visual source of truth. During this initial brief application, do not change the managed theme block, existing --ipw-* token values, palette, fonts, radii, shadows, or background treatment. Do not introduce higher-priority inline styles or hardcoded colors that override the template theme. Theme changes belong to the Design System panel after initialization. Preserve the DOM skeleton, dimensions, layout, animation, and timing.";
   switch (input.template.category) {
     case "video":
       return `${base} ${colorInstruction} Build this exact video template, not a blank or unrelated project. Decide whether narration materially helps the stated goal; do not ask a separate narration question. Preserve the editable composition, variables, and scene structure while making the content fit the brief.`;
