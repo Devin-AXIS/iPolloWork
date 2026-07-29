@@ -609,7 +609,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
         </div>
       ) : null}
       <div className="shrink-0 border-b border-border bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
-        <div className="flex h-10 items-center gap-2 pe-2 ps-4">
+        <div className="flex h-10 items-center gap-2 pe-2 ps-4 mac:titlebar-drag">
           <div className="min-w-0 flex-1 flex items-center gap-1.5">
             {fileIcon ? (
               <img src={fileIcon} alt="" className="h-4 w-4 shrink-0 object-contain" />

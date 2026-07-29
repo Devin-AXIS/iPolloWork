@@ -82,9 +82,11 @@ describe("Design deck navigation", () => {
   test("offers selected-element deletion only from the floating toolbar", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source).toContain('aria-label="Delete selected element"');
+    expect(source).toContain('aria-label={isMultiSelection ? "Delete selected elements" : "Delete selected element"}');
     expect(source).toContain('type: "delete"');
     expect(source).toContain("disabled={!selectionSummary.selections.some((member) => member.canDelete)}");
+    expect(source).toContain("onClick={() => setDeleteConfirmationOpen(true)}");
+    expect(source).toContain("deleteSelection();");
   });
 
   test("places AI after every floating toolbar action", async () => {
@@ -96,8 +98,8 @@ describe("Design deck navigation", () => {
   test("keeps protected runtime controls unavailable to AI", async () => {
     const source = await Bun.file(panelUrl).text();
     const labelIndex = source.lastIndexOf('aria-label="Ask AI about selected element"');
-    const actionStart = source.lastIndexOf("<Button", labelIndex);
-    expect(source.slice(actionStart, labelIndex)).toContain("disabled={isMultiSelection || !selection.canDelete || saveMutation.isPending || viewedVersionPath !== \"current\"}");
+    const actionStart = source.lastIndexOf("<button", labelIndex);
+    expect(source.slice(actionStart, labelIndex)).toContain("disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== \"current\"}");
   });
 
   test("pans the overflowed presentation canvas without moving the slide", async () => {
@@ -117,6 +119,8 @@ describe("Design deck navigation", () => {
     expect(source).toContain("deckRef");
     expect(source).toContain('type: "restore-view"');
     expect(source).toContain('event.data.type === "view-restored"');
+    expect(source).toContain('type: "select-locator", locator');
+    expect(source).toContain("const selectionLocator = selection?.locator ?? null");
     expect(source).toContain("presentationPanRef.current?.scrollTo");
     expect(source).toContain("if (activePageHash && !pending)");
     expect(source).not.toContain('postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");\n                        iframeRef');
@@ -194,7 +198,7 @@ describe("Design deck navigation", () => {
 
   test("derives toolbar targets and placement from the complete selection", async () => {
     const source = await Bun.file(panelUrl).text();
-    expect(source).toContain('import { summarizeDesignSelection } from "./design-selection-summary"');
+    expect(source).toContain('import { isDesignSelectionMember, summarizeDesignSelection } from "./design-selection-summary"');
     expect(source).toContain("const selectionSummary = selectionState");
     expect(source).toContain("const isMultiSelection = selectionSummary?.isMultiSelection ?? false");
     expect(source).toContain("selectionSummary?.selectionRect");
@@ -204,9 +208,17 @@ describe("Design deck navigation", () => {
   test("hides single-element toolbar actions in a multi-selection", async () => {
     const source = await Bun.file(panelUrl).text();
     expect(source).toContain("{!isMultiSelection && selection.canEditText ?");
-    expect(source).toContain("{!isMultiSelection && selection.href ?");
-    expect(source).toContain('{!isMultiSelection && selection.tag === "img" ?');
-    expect(source).toContain("disabled={isMultiSelection || !selection.canDelete");
-    expect(source).toContain("{isMultiSelection ?");
+    expect(source).toContain("{!isMultiSelection ? <button");
+    expect(source).toContain('aria-label={isMultiSelection ? "Delete selected elements" : "Delete selected element"}');
+  });
+
+  test("uses the Figma toolbar assets and constrains free dragging to the preview", async () => {
+    const source = await Bun.file(panelUrl).text();
+    expect(source).toContain('import floatingToolbarGrip from "./assets/floating-toolbar-grip.svg"');
+    expect(source).toContain('import floatingToolbarEditText from "./assets/floating-toolbar-edit-text.svg"');
+    expect(source).toContain('aria-label="Move floating toolbar"');
+    expect(source).toContain("onPointerMove={moveFloatingToolbar}");
+    expect(source).toContain("viewport.clientWidth - toolbar.offsetWidth - padding");
+    expect(source).toContain("viewport.clientHeight - toolbar.offsetHeight - padding");
   });
 });

@@ -11,6 +11,7 @@ export type DesignViewRestore = {
   frameScrollY: number;
   panLeft: number;
   panTop: number;
+  selectionLocator: string | null;
 };
 
 function isCurrentOrHydratedDesignFrame(frameRevision: string, baseline: string) {
@@ -25,6 +26,12 @@ function isCurrentOrHydratedDesignFrame(frameRevision: string, baseline: string)
     && Number.isSafeInteger(frameVersion)
     && Number.isSafeInteger(baselineVersion)
     && frameVersion >= baselineVersion;
+}
+
+export function restoredSelectionLocator(pending: DesignViewRestore | null) {
+  if (!pending?.frameLoaded || !pending.frameRestored) return null;
+  if (pending.deckIndex !== null && !pending.deckRestored) return null;
+  return pending.selectionLocator;
 }
 
 export function expectsDesignRestoreFrame(

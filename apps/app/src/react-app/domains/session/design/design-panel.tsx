@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, ExternalLink, Focus, ImagePlus, Link2, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Trash2, Type, Undo2, Upload } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Undo2 } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
@@ -38,17 +38,25 @@ import {
   type DesignSelectionChange,
   type DesignStyleField,
 } from "./design-html-runtime";
-import { summarizeDesignSelection } from "./design-selection-summary";
+import { isDesignSelectionMember, summarizeDesignSelection } from "./design-selection-summary";
 import { popDesignUndoHistory, pushDesignUndoHistory, shouldHydrateDesignSource } from "./design-undo-history";
 import {
   acceptsDesignDeckMessage,
   expectsDesignRestoreFrame,
+  restoredSelectionLocator,
   shouldIgnoreDesignDraftMessage,
   type DesignViewRestore,
 } from "./design-view-restore";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
 import { DesignSystemDrawer } from "./design-system-drawer";
+import floatingToolbarAiIcon from "./assets/floating-toolbar-ai.svg";
+import floatingToolbarDivider from "./assets/floating-toolbar-divider.svg";
+import floatingToolbarEditText from "./assets/floating-toolbar-edit-text.svg";
+import floatingToolbarGrip from "./assets/floating-toolbar-grip.svg";
+import floatingToolbarPalette from "./assets/floating-toolbar-palette.svg";
+import floatingToolbarSettings from "./assets/floating-toolbar-settings.svg";
+import floatingToolbarTrash from "./assets/floating-toolbar-trash.svg";
 import { linkedDesignTokenPath, mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "./design-system-files";
 import {
   buildTemplateTokenCss,
@@ -124,12 +132,17 @@ const PDF_PAGE_WIDTH_MM = 297;
 const PDF_PAGE_HEIGHT_MM = 167.0625;
 const LOCAL_IMAGE_ACCEPT = "image/*";
 const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-[#202228] shadow-none hover:bg-[#F3F4F6] hover:text-[#202228] [&_svg]:!size-[18px]";
+const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-6 shrink-0 place-items-center rounded transition-colors hover:bg-[#F3F4F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
 
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
-  return typeof Reflect.get(value, "frameRevision") === "string"
-    && Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "snapshot" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "view" || Reflect.get(value, "type") === "view-restored" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
+  if (typeof Reflect.get(value, "frameRevision") !== "string" || Reflect.get(value, "channel") !== DESIGN_MESSAGE_CHANNEL) return false;
+  const type = Reflect.get(value, "type");
+  if (type === "selected" || type === "editing" || type === "draft") {
+    return isDesignSelectionMember(Reflect.get(value, "selection"))
+      && (type !== "draft" || typeof Reflect.get(value, "html") === "string");
+  }
+  return type === "deselected" || type === "document-draft" || type === "snapshot" || type === "navigate" || type === "deck" || type === "view" || type === "view-restored" || type === "zoom" || type === "pan";
 }
 
 function fileName(path: string) {
@@ -599,12 +612,16 @@ export function DesignPanel({
   const [previewLoaded, setPreviewLoaded] = React.useState(false);
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
+  const [floatingPosition, setFloatingPosition] = React.useState<{ left: number; top: number } | null>(null);
+  const floatingToolbarRef = React.useRef<HTMLDivElement>(null);
+  const floatingDragRef = React.useRef<{ pointerId: number; startX: number; startY: number; left: number; top: number } | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [propertiesTab, setPropertiesTab] = React.useState<"element" | "design-system">("element");
   const [designTokenDraft, setDesignTokenDraft] = React.useState("");
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = React.useState(false);
   const aiUndoCheckpoint = useDesignAiSelectionStore((state) => {
     const checkpoint = state.undoCheckpoints[sessionId]?.[activePagePath]?.at(-1);
     const context = checkpoint ? state.contexts[checkpoint.contextId] : undefined;
@@ -892,7 +909,11 @@ export function DesignPanel({
         setDeck(event.data.deck);
         if (pending && pending.deckIndex === event.data.deck.index) {
           pending.deckRestored = true;
-          if (pending.frameRestored) pendingViewRestoreRef.current = null;
+          if (pending.frameRestored) {
+            const locator = restoredSelectionLocator(pending);
+            if (locator) event.source?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "select-locator", locator }, { targetOrigin: "*" });
+            pendingViewRestoreRef.current = null;
+          }
         }
         return;
       }
@@ -906,7 +927,11 @@ export function DesignPanel({
         const pending = pendingViewRestoreRef.current;
         if (pending && event.data.viewRevision === pending.id) {
           pending.frameRestored = true;
-          if (pending.deckIndex === null || pending.deckRestored) pendingViewRestoreRef.current = null;
+          if (pending.deckIndex === null || pending.deckRestored) {
+            const locator = restoredSelectionLocator(pending);
+            if (locator) event.source?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "select-locator", locator }, { targetOrigin: "*" });
+            pendingViewRestoreRef.current = null;
+          }
         }
         return;
       }
@@ -937,13 +962,18 @@ export function DesignPanel({
         const currentIds = current
           ? summarizeDesignSelection(current.selection, current.selections, current.selectionRect).selectionIds
           : [];
-        const nextIds = summarizeDesignSelection(event.data.selection, event.data.selections, event.data.selectionRect).selectionIds;
+        const nextSummary = summarizeDesignSelection(event.data.selection, event.data.selections, event.data.selectionRect);
+        const nextIds = nextSummary.selectionIds;
         if (current?.selection.id !== event.data.selection.id
           || currentIds.length !== nextIds.length
           || currentIds.some((id, index) => id !== nextIds[index])) {
           setQuickEdit(null);
         }
-        return event.data;
+        return {
+          ...event.data,
+          selections: nextSummary.selections,
+          selectionRect: nextSummary.selectionRect,
+        };
       });
       if (event.data.type === "draft") {
         draftRef.current = event.data.html;
@@ -1461,7 +1491,7 @@ export function DesignPanel({
   };
 
   const applyField = (field: DesignField, value: string, remember = true) => {
-    if (!selection || !selectionSummary || !editing) return;
+    if (!selection || selection.locked || !selectionSummary || !editing) return;
     if (isMultiSelection && !DESIGN_MULTI_SELECTION_STYLE_FIELDS.some((styleField) => styleField === field)) return;
     setPendingCanvasChange(true);
     if (remember) rememberHistory();
@@ -1480,10 +1510,10 @@ export function DesignPanel({
     }, "*");
   };
 
-  const applyStyleFields = (fields: Partial<Record<DesignStyleField, string>>) => {
-    if (!selection || !selectionSummary || !editing) return;
+  const applyStyleFields = (fields: Partial<Record<DesignStyleField, string>>, remember = true) => {
+    if (!selection || selection.locked || !selectionSummary || !editing) return;
     setPendingCanvasChange(true);
-    rememberHistory();
+    if (remember) rememberHistory();
     setSelectionState((current) => current ? {
       ...current,
       selection: { ...current.selection, styles: { ...current.selection.styles, ...fields } },
@@ -1505,6 +1535,27 @@ export function DesignPanel({
       channel: DESIGN_MESSAGE_CHANNEL,
       type: "delete",
       ids: selectionSummary.selectionIds,
+    }, "*");
+  };
+
+  const toggleSelectionLock = () => {
+    if (!selection || !selectionSummary || isMultiSelection || !editing) return;
+    const locked = !selection.locked;
+    setPendingCanvasChange(true);
+    rememberHistory();
+    setQuickEdit(null);
+    setSelectionState((current) => current ? {
+      ...current,
+      selection: { ...current.selection, locked },
+      selections: current.selections.map((member) => member.id === selection.id
+        ? { ...member, locked }
+        : member),
+    } : null);
+    iframeRef.current?.contentWindow?.postMessage({
+      channel: DESIGN_MESSAGE_CHANNEL,
+      type: "lock",
+      ids: [selection.id],
+      locked,
     }, "*");
   };
 
@@ -1600,6 +1651,7 @@ export function DesignPanel({
 
   const undo = async () => {
     const pan = presentationPanRef.current;
+    const selectionLocator = selection?.locator ?? null;
     const restoreView = (targetSource: string): DesignViewRestore => ({
       id: crypto.randomUUID(),
       targetSource,
@@ -1613,6 +1665,7 @@ export function DesignPanel({
       frameScrollY: frameViewRef.current.scrollY,
       panLeft: pan?.scrollLeft ?? 0,
       panTop: pan?.scrollTop ?? 0,
+      selectionLocator,
     });
     if (pendingViewRestoreRef.current) return;
     const popped = popDesignUndoHistory(historyRef.current, draftRef.current);
@@ -1770,11 +1823,53 @@ export function DesignPanel({
   const selectionTop = isPresentationTemplate
     ? presentationCanvasTop + (selectionRect?.top ?? 0) * presentationScale - presentationScroll.top
     : (iframeRef.current?.offsetTop ?? 0) + (selectionRect?.top ?? 0);
-  const floatingStyle = selection ? {
-    left: `clamp(112px, ${selectionLeft + 8}px, calc(100% - 112px))`,
-    top: `${Math.max(8, selectionTop + 8)}px`,
-    transform: (selectionRect?.top ?? 0) > 58 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
-  } satisfies React.CSSProperties : undefined;
+  React.useLayoutEffect(() => {
+    const toolbar = floatingToolbarRef.current;
+    const viewport = previewViewportRef.current;
+    if (!selection || !toolbar || !viewport) return;
+    const padding = 8;
+    const desiredLeft = selectionLeft + 8 - toolbar.offsetWidth / 2;
+    const desiredTop = (selectionRect?.top ?? 0) > 58
+      ? selectionTop + 8 - toolbar.offsetHeight
+      : selectionTop + 8;
+    setFloatingPosition({
+      left: Math.min(Math.max(padding, desiredLeft), Math.max(padding, viewport.clientWidth - toolbar.offsetWidth - padding)),
+      top: Math.min(Math.max(padding, desiredTop), Math.max(padding, viewport.clientHeight - toolbar.offsetHeight - padding)),
+    });
+  }, [advancedOpen, panelWidth, previewDevice, quickEdit, selection?.id, selectionLeft, selectionRect?.top, selectionSummary?.selectionCount, selectionTop]);
+  const floatingStyle = selection ? floatingPosition
+    ? { left: floatingPosition.left, top: floatingPosition.top }
+    : { left: selectionLeft + 8, top: Math.max(8, selectionTop + 8), transform: "translateX(-50%)" } satisfies React.CSSProperties
+    : undefined;
+  const startFloatingDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const toolbar = floatingToolbarRef.current;
+    const viewport = previewViewportRef.current;
+    if (!toolbar || !viewport || event.button !== 0) return;
+    const toolbarRect = toolbar.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    const left = toolbarRect.left - viewportRect.left;
+    const top = toolbarRect.top - viewportRect.top;
+    floatingDragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left, top };
+    setFloatingPosition({ left, top });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+  const moveFloatingToolbar = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = floatingDragRef.current;
+    const toolbar = floatingToolbarRef.current;
+    const viewport = previewViewportRef.current;
+    if (!drag || !toolbar || !viewport || drag.pointerId !== event.pointerId) return;
+    const padding = 8;
+    setFloatingPosition({
+      left: Math.min(Math.max(padding, drag.left + event.clientX - drag.startX), Math.max(padding, viewport.clientWidth - toolbar.offsetWidth - padding)),
+      top: Math.min(Math.max(padding, drag.top + event.clientY - drag.startY), Math.max(padding, viewport.clientHeight - toolbar.offsetHeight - padding)),
+    });
+  };
+  const stopFloatingDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (floatingDragRef.current?.pointerId !== event.pointerId) return;
+    floatingDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
   const compactToolbar = panelWidth < 480;
   const veryCompactToolbar = panelWidth < 360;
   const currentVersionLabel = `V${versionTargets.length + 1}`;
@@ -2047,7 +2142,8 @@ export function DesignPanel({
                 </div>
                 {editing && selection && selectionSummary ? (
                   <div
-                    className="absolute z-20 flex max-w-[calc(100%-24px)] items-center gap-1 rounded-2xl border border-border/80 bg-background/95 p-1 shadow-xl shadow-black/10 backdrop-blur-xl"
+                    ref={floatingToolbarRef}
+                    className="absolute z-20 flex w-max items-center gap-[17px] rounded-lg border border-[#EBEBEB] bg-white px-4 py-2 shadow-[0_4px_4.2px_rgba(0,0,0,0.09)]"
                     style={floatingStyle}
                     role="toolbar"
                     aria-label="Design floating toolbar"
@@ -2056,8 +2152,21 @@ export function DesignPanel({
                     onPointerUp={(event) => event.stopPropagation()}
                     onClick={(event) => event.stopPropagation()}
                   >
+                    <button
+                      type="button"
+                      className="grid size-6 shrink-0 touch-none cursor-grab place-items-center rounded transition-colors hover:bg-[#F3F4F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+                      onPointerDown={startFloatingDrag}
+                      onPointerMove={moveFloatingToolbar}
+                      onPointerUp={stopFloatingDrag}
+                      onPointerCancel={stopFloatingDrag}
+                      onLostPointerCapture={stopFloatingDrag}
+                      aria-label="Move floating toolbar"
+                      title="Drag toolbar"
+                    >
+                      <img src={floatingToolbarGrip} alt="" className="size-4 select-none" draggable={false} />
+                    </button>
                     {quickEdit && (!isMultiSelection || quickEdit === "color") ? (
-                      <>
+                      <div className="flex items-center gap-1">
                         <Button
                           variant="ghost"
                           size="icon-xs"
@@ -2124,94 +2233,75 @@ export function DesignPanel({
                         <Button variant="ghost" size="icon-xs" onClick={() => setQuickEdit(null)} aria-label="Done quick editing">
                           <Check />
                         </Button>
-                      </>
+                      </div>
                     ) : (
-                      <>
-                        <span className="px-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          {isMultiSelection ? `${selectionSummary.selectionCount} elements` : selection.tag}
-                        </span>
+                      <div className="flex items-center gap-6">
                         {!isMultiSelection && selection.canEditText ? (
                           <>
-                            <Button variant="ghost" size="xs" onClick={() => beginQuickEdit("text")} aria-label="Edit selected text">
-                              <Type />
-                              Edit text
-                            </Button>
-                            <Button variant="ghost" size="xs" onClick={() => beginQuickEdit("fontSize")} aria-label="Change selected font size">
-                              {fontSize}
-                            </Button>
-                          </>
-                        ) : null}
-                        {isMultiSelection || selection.tag !== "img" ? (
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => beginQuickEdit("color")}
-                            aria-label={selection.colorField === "color" ? "Change selected text color" : "Change selected background color"}
-                            title={selection.colorField === "color" ? "Text color" : "Background color"}
-                          >
-                            <Palette />
-                          </Button>
-                        ) : null}
-                        {!isMultiSelection && selection.href ? (
-                          <>
-                            <Button variant="ghost" size="xs" onClick={() => beginQuickEdit("href")} aria-label="Edit selected link">
-                              <Link2 />
-                              Link
-                            </Button>
-                            <Button variant="ghost" size="icon-xs" onClick={() => void openDesignLink(selection.href)} aria-label="Open linked Design page" title="Open page">
-                              <ExternalLink />
-                            </Button>
-                          </>
-                        ) : null}
-                        {!isMultiSelection && selection.tag === "img" ? (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              onClick={() => void chooseReplacementImage()}
-                              aria-label="Upload replacement image"
+                            <button
+                              type="button"
+                              className="flex h-6 shrink-0 items-center rounded px-1 transition-colors hover:bg-[#F3F4F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              onClick={() => beginQuickEdit("text")}
+                              aria-label="Edit selected text"
                             >
-                              <Upload />
-                              Replace
-                            </Button>
-                            <Button variant="ghost" size="icon-xs" onClick={() => beginQuickEdit("src")} aria-label="Edit image URL">
-                              <ImagePlus />
-                            </Button>
+                              <img src={floatingToolbarEditText} alt="" className="h-4 w-auto select-none" draggable={false} />
+                            </button>
+                            <button
+                              type="button"
+                              className="h-6 shrink-0 rounded px-1 text-base font-normal leading-6 text-[#858A94] transition-colors hover:bg-[#F3F4F6] hover:text-[#202228] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              onClick={() => beginQuickEdit("fontSize")}
+                              aria-label="Change selected font size"
+                            >
+                              {fontSize}
+                            </button>
                           </>
                         ) : null}
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={deleteSelection}
-                          disabled={!selectionSummary.selections.some((member) => member.canDelete)}
-                          aria-label="Delete selected element"
-                          title="Delete selected element"
-                        >
-                          <Trash2 />
-                        </Button>
-                        <Button
-                          variant={advancedOpen ? "secondary" : "ghost"}
-                          size="icon-xs"
+                        <button
+                          type="button"
+                          className={FLOATING_TOOLBAR_BUTTON_CLASS}
                           onClick={() => {
                             setPropertiesTab("element");
                             setAdvancedOpen((current) => current && propertiesTab === "element" ? false : true);
                           }}
                           aria-label="Toggle advanced design settings"
-                          aria-pressed={advancedOpen}
+                          aria-pressed={advancedOpen && propertiesTab === "element"}
+                          title="Element properties"
                         >
-                          <SlidersHorizontal />
-                        </Button>
-                        {!isMultiSelection ? <Button
-                          variant="ghost"
-                          size="icon-xs"
+                          <img src={floatingToolbarSettings} alt="" className="size-[18px] select-none" draggable={false} />
+                        </button>
+                        {isMultiSelection || selection.tag !== "img" ? (
+                          <button
+                            type="button"
+                            className={FLOATING_TOOLBAR_BUTTON_CLASS}
+                            onClick={() => beginQuickEdit("color")}
+                            aria-label={selection.colorField === "color" ? "Change selected text color" : "Change selected background color"}
+                            title={selection.colorField === "color" ? "Text color" : "Background color"}
+                          >
+                            <img src={floatingToolbarPalette} alt="" className="size-[18px] select-none" draggable={false} />
+                          </button>
+                        ) : null}
+                        {!isMultiSelection ? <button
+                          type="button"
+                          className={FLOATING_TOOLBAR_BUTTON_CLASS}
                           onClick={() => void askAiAboutSelection()}
-                          disabled={isMultiSelection || !selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
+                          disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
                           aria-label="Ask AI about selected element"
+                          title="Ask AI"
                         >
-                          <Sparkles />
-                        </Button> : null}
-                      </>
+                          <img src={floatingToolbarAiIcon} alt="" className="size-[18px] select-none" draggable={false} />
+                        </button> : null}
+                        <img src={floatingToolbarDivider} alt="" className="h-[22.5px] w-px shrink-0 select-none" draggable={false} />
+                        <button
+                          type="button"
+                          className={FLOATING_TOOLBAR_BUTTON_CLASS}
+                          onClick={() => setDeleteConfirmationOpen(true)}
+                          disabled={!selectionSummary.selections.some((member) => member.canDelete)}
+                          aria-label={isMultiSelection ? "Delete selected elements" : "Delete selected element"}
+                          title={isMultiSelection ? "Delete selected elements" : "Delete selected element"}
+                        >
+                          <img src={floatingToolbarTrash} alt="" className="size-[18px] select-none" draggable={false} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 ) : null}
@@ -2226,6 +2316,8 @@ export function DesignPanel({
                 onActiveTabChange={setPropertiesTab}
                 onApplyField={applyField}
                 onApplyFields={applyStyleFields}
+                onToggleLock={toggleSelectionLock}
+                onDelete={() => setDeleteConfirmationOpen(true)}
                 onChooseReplacementImage={() => void chooseReplacementImage()}
                 onChooseBackgroundImage={() => void chooseBackgroundImage()}
               >
@@ -2245,6 +2337,21 @@ export function DesignPanel({
           )}
         </>
       )}
+      <ConfirmModal
+        open={deleteConfirmationOpen}
+        title={isMultiSelection ? "Delete selected elements?" : "Delete selected element?"}
+        message={isMultiSelection
+          ? `${selectionSummary?.selectionCount ?? 0} selected elements will be removed. You can still use Undo before saving.`
+          : "This element will be removed from the design. You can still use Undo before saving."}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onCancel={() => setDeleteConfirmationOpen(false)}
+        onConfirm={() => {
+          setDeleteConfirmationOpen(false);
+          deleteSelection();
+        }}
+      />
       <ConfirmModal
         open={pptxConfirmationOpen}
         title={PPTX_EXPORT_CONFIRMATION.title}
