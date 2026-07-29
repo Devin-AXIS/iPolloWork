@@ -102,10 +102,9 @@ const STARTUP_SKELETON_ROWS = [
 ];
 const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowork_voice__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
-const MAIN_WORKSPACE_MIN_WIDTH = 520;
-const MAIN_WORKSPACE_FALLBACK_MIN_WIDTH = 240;
-const AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH = 520;
-const AUTO_COLLAPSE_RIGHT_PANEL_WIDTH = 520;
+const MAIN_WORKSPACE_MIN_WIDTH = 480;
+const AUTO_COLLAPSE_WORKSPACE_WIDTH = 480;
+const AUTO_RESTORE_WORKSPACE_WIDTH = 600;
 const MIN_DESIGN_PANEL_WIDTH = 420;
 const MIN_RIGHT_PANEL_WIDTH = 320;
 const NARROW_LAYOUT_WIDTH = 960;
@@ -484,18 +483,6 @@ export function SessionPage(props: SessionPageProps) {
   const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
     setConversationMessageState({ sessionId, messages });
   }, []);
-  const handleDesignAskAi = useCallback((context: DesignAiSelectionContext) => {
-    useDesignAiSelectionStore.getState().createContext(context);
-    const composerStore = useComposerStateStore.getState();
-    composerStore.setDraft(
-      context.sessionId,
-      replaceDesignSelectionToken(
-        getComposerDraft(composerStore, context.sessionId),
-        designAiSelectionToken(context.id),
-      ),
-    );
-    window.dispatchEvent(new Event("ipollowork:focusPrompt"));
-  }, []);
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
     : [];
@@ -815,6 +802,7 @@ export function SessionPage(props: SessionPageProps) {
       panel = "panel";
     }
     if (panel) {
+      userOpenedSidebarWhileNarrowRef.current = false;
       userOpenedSidePanelWhileNarrowRef.current = true;
       autoCollapsedSidePanelRef.current = null;
     }
@@ -934,12 +922,27 @@ export function SessionPage(props: SessionPageProps) {
   const desiredRightPanelWidth = designTabActive || effectiveSidePanelView === "design"
     ? MIN_DESIGN_PANEL_WIDTH
     : MIN_RIGHT_PANEL_WIDTH;
-  const effectiveRightPanelMinWidth = Math.min(viewportWidth, desiredRightPanelWidth);
+  const visibleLeftSidebarWidth = shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0;
+  const availableRightPanelWidth = Math.max(
+    0,
+    viewportWidth - visibleLeftSidebarWidth - MAIN_WORKSPACE_MIN_WIDTH,
+  );
+  const effectiveRightPanelMinWidth = Math.min(availableRightPanelWidth, desiredRightPanelWidth);
+  const preferredBrowserPanelWidth = effectiveSidePanelView === "video"
+    ? Math.max(browserPanelDefaultWidth, 1120)
+    : effectiveSidePanelView === "launcher"
+      ? 320
+      : effectiveSidePanelView === "outputs"
+        ? Math.max(browserPanelDefaultWidth, 360)
+        : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" || designTabActive
+          ? Math.max(browserPanelDefaultWidth, 480)
+          : browserPanelDefaultWidth;
+  const requestedBrowserPanelWidth = narrowLayout
+    ? Math.max(effectiveRightPanelMinWidth, Math.min(preferredBrowserPanelWidth, 180))
+    : Math.max(effectiveRightPanelMinWidth, preferredBrowserPanelWidth);
   const effectiveBrowserPanelWidth = Math.min(
-    viewportWidth,
-    narrowLayout
-      ? Math.max(effectiveRightPanelMinWidth, Math.min(browserPanelDefaultWidth, 180))
-      : Math.max(effectiveRightPanelMinWidth, browserPanelDefaultWidth),
+    availableRightPanelWidth,
+    requestedBrowserPanelWidth,
   );
   const sidebarProviderStyle: CSSProperties & Record<"--sidebar-width", string> = {
     "--sidebar-width": `${effectiveLeftSidebarWidth}px`,
@@ -947,17 +950,19 @@ export function SessionPage(props: SessionPageProps) {
   const availableMainWorkspaceWidth = viewportWidth
     - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0)
     - (sidePanelOpen ? effectiveBrowserPanelWidth : 0);
+  const requestedMainWorkspaceWidth = viewportWidth
+    - visibleLeftSidebarWidth
+    - (sidePanelOpen ? requestedBrowserPanelWidth : 0);
   const expandedMainWorkspaceWidth = viewportWidth
     - (shellConfig.sidebar ? effectiveLeftSidebarWidth : 0)
-    - (autoCollapsedSidePanelRef.current ? effectiveBrowserPanelWidth : 0);
+    - (sidePanelOpen ? effectiveBrowserPanelWidth : 0);
   const expandedRightPanelWorkspaceWidth = viewportWidth
-    - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0)
+    - visibleLeftSidebarWidth
     - (autoCollapsedSidePanelRef.current ? effectiveBrowserPanelWidth : 0);
-  const mainWorkspaceMinWidth = viewportWidth >= effectiveLeftSidebarWidth + effectiveBrowserPanelWidth + MAIN_WORKSPACE_MIN_WIDTH
-    ? MAIN_WORKSPACE_MIN_WIDTH
-    : viewportWidth >= effectiveBrowserPanelWidth + MAIN_WORKSPACE_FALLBACK_MIN_WIDTH
-      ? MAIN_WORKSPACE_FALLBACK_MIN_WIDTH
-      : 0;
+  const mainWorkspaceMinWidth = Math.min(
+    MAIN_WORKSPACE_MIN_WIDTH,
+    Math.max(0, viewportWidth - visibleLeftSidebarWidth),
+  );
   const sidebarVisuallyCollapsed = !sidebarOpen;
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
@@ -968,7 +973,7 @@ export function SessionPage(props: SessionPageProps) {
   useEffect(() => {
     if (!shellConfig.sidebar) return;
     if (
-      availableMainWorkspaceWidth < AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH &&
+      requestedMainWorkspaceWidth < AUTO_COLLAPSE_WORKSPACE_WIDTH &&
       sidebarOpen &&
       !userOpenedSidebarWhileNarrowRef.current
     ) {
@@ -979,15 +984,14 @@ export function SessionPage(props: SessionPageProps) {
     if (
       autoCollapsedSidebarRef.current &&
       !sidebarOpen &&
-      !sidePanelOpen &&
-      expandedMainWorkspaceWidth >= AUTO_COLLAPSE_LEFT_SIDEBAR_WIDTH
+      expandedMainWorkspaceWidth >= AUTO_RESTORE_WORKSPACE_WIDTH
     ) {
       autoCollapsedSidebarRef.current = false;
       userOpenedSidebarWhileNarrowRef.current = false;
       setSidebarOpen(true);
     }
   }, [
-    availableMainWorkspaceWidth,
+    requestedMainWorkspaceWidth,
     expandedMainWorkspaceWidth,
     setSidebarOpen,
     shellConfig.sidebar,
@@ -1164,9 +1168,16 @@ export function SessionPage(props: SessionPageProps) {
   }, [setCurrentSidePanel]);
   useEffect(() => {
     if (
-      availableMainWorkspaceWidth < AUTO_COLLAPSE_RIGHT_PANEL_WIDTH &&
+      (
+        sidebarOpen
+          ? requestedMainWorkspaceWidth < AUTO_COLLAPSE_WORKSPACE_WIDTH
+          : availableMainWorkspaceWidth < AUTO_COLLAPSE_WORKSPACE_WIDTH
+      ) &&
       sidePanelOpen &&
-      !userOpenedSidePanelWhileNarrowRef.current
+      (
+        (sidebarOpen && userOpenedSidebarWhileNarrowRef.current) ||
+        (!sidebarOpen && !userOpenedSidePanelWhileNarrowRef.current)
+      )
     ) {
       autoCollapsedSidePanelRef.current = effectiveSidePanelView;
       closeRightPane({ preserveAutoCollapse: true });
@@ -1176,7 +1187,7 @@ export function SessionPage(props: SessionPageProps) {
     if (
       restoredPanel &&
       !sidePanelOpen &&
-      expandedRightPanelWorkspaceWidth >= AUTO_COLLAPSE_RIGHT_PANEL_WIDTH
+      expandedRightPanelWorkspaceWidth >= AUTO_RESTORE_WORKSPACE_WIDTH
     ) {
       autoCollapsedSidePanelRef.current = null;
       userOpenedSidePanelWhileNarrowRef.current = false;
@@ -1191,7 +1202,9 @@ export function SessionPage(props: SessionPageProps) {
     closeRightPane,
     effectiveSidePanelView,
     expandedRightPanelWorkspaceWidth,
+    requestedMainWorkspaceWidth,
     setCurrentSidePanel,
+    sidebarOpen,
     sidePanelOpen,
   ]);
   const openBrowserRailPane = useCallback(() => {
@@ -1223,6 +1236,7 @@ export function SessionPage(props: SessionPageProps) {
       closeRightPane();
       return;
     }
+    userOpenedSidebarWhileNarrowRef.current = false;
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
     const restoredPanel = lastRightPanelViewRef.current;
@@ -2239,18 +2253,8 @@ export function SessionPage(props: SessionPageProps) {
                 <ResizableHandle withHandle className={cn("hidden lg:flex", rightPanelExpanded && "lg:hidden")} />
                 <ResizablePanel
                   panelRef={browserPanelRef}
-      defaultSize={`${narrowLayout ? effectiveBrowserPanelWidth : effectiveSidePanelView === "video" ? Math.max(browserPanelDefaultWidth, 1120) : effectiveSidePanelView === "launcher" ? 320 : effectiveSidePanelView === "outputs" ? Math.max(browserPanelDefaultWidth, 360) : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" || designTabActive ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
-                  minSize={narrowLayout
-                    ? `${effectiveRightPanelMinWidth}px`
-                    : effectiveSidePanelView === "video"
-                      ? "760px"
-                      : effectiveSidePanelView === "launcher"
-                        ? "320px"
-                        : effectiveSidePanelView === "outputs"
-                          ? "320px"
-                          : effectiveSidePanelView === "extensions" || effectiveSidePanelView === "design" || designTabActive
-                            ? `${MIN_DESIGN_PANEL_WIDTH}px`
-                            : `${MIN_RIGHT_PANEL_WIDTH}px`}
+                  defaultSize={`${effectiveBrowserPanelWidth}px`}
+                  minSize={`${effectiveRightPanelMinWidth}px`}
                   maxSize={rightPanelExpanded ? "100%" : effectiveSidePanelView === "video" ? "82%" : "70%"}
                   className="min-h-0 overflow-hidden lg:flex lg:flex-col"
                 >

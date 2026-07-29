@@ -89,6 +89,18 @@ describe("Design AI composer integration", () => {
     expect(source).toContain("ComposerDesignSelectionNode");
   });
 
+  test("lets the user remove a Design token from its inline icon", async () => {
+    const source = await Bun.file(editorUrl).text();
+
+    expect(source).toContain("data-design-selection-remove-key");
+    expect(source).toContain("Remove design selection:");
+    expect(source).toContain("function DesignSelectionDeletePlugin");
+    expect(source).toContain("$getNodeByKey(key)");
+    expect(source).toContain("<DesignSelectionDeletePlugin disabled={props.disabled} />");
+    expect(source).not.toContain("previous instanceof ComposerPastedTextNode || previous instanceof ComposerDesignSelectionNode");
+    expect(source).toContain("if (previous instanceof ComposerDesignSelectionNode) return true;");
+  });
+
   test("wires Ask AI through the composer draft store and focuses the prompt", async () => {
     const source = await Bun.file(sessionPageUrl).text();
 

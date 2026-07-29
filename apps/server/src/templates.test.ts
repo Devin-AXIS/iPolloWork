@@ -288,8 +288,8 @@ function videoPackage(id = "local.product-video", entry = "<!doctype html><html 
 describe("template installations", () => {
   test("ships every built-in design, presentation, and video with the shared theme contract", async () => {
     const currentLogo = await readFile(join(bundledTemplatesRoot, "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg"), "utf8");
-    expect(currentLogo).toContain('viewBox="-150 -150 776 800"');
-    expect(currentLogo).not.toContain('viewBox="0 0 476 500"');
+    expect(currentLogo).toContain('viewBox="0 0 281 298"');
+    expect(currentLogo).not.toContain('viewBox="-150 -150 776 800"');
     for (const directory of await readdir(bundledTemplatesRoot)) {
       const root = join(bundledTemplatesRoot, directory);
       const manifestPath = join(root, "manifest.json");
@@ -310,9 +310,13 @@ describe("template installations", () => {
       }
       if (manifest.surface === "video") {
         expect(tokens).toContain("--accent: var(--ipw-color-primary) !important");
-        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
+        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260729");
       } else {
         expect(entry).not.toContain('src="assets/ipollowork-logo.svg"');
+      }
+      if (manifest.id === "ipollowork.html-anything.web-proto-soft") {
+        expect(entry).toContain("data-ipw-brand-critical");
+        expect(entry).toContain(".ipw-brand-slot img{display:block;width:18px;height:18px");
       }
     }
   });
@@ -395,7 +399,7 @@ describe("template installations", () => {
           "assets",
           "ipollowork-logo.svg",
         ), "utf8");
-        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
+        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260729");
         expect(entry).not.toContain("assets/ipollowork-logo.svg?v=20260721");
         const bundledLogo = await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8");
         expect(bundledLogo).toBe(currentLogo);
@@ -455,7 +459,7 @@ describe("template installations", () => {
           ? "window.__timelines.main"
           : `window.__timelines["${compositionId}"]`,
       );
-      expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
+      expect(entry).toContain("assets/ipollowork-logo.svg?v=20260729");
       expect(entry).not.toContain("assets/ipollowork-logo.svg?v=20260721");
       expect(entry).not.toMatch(/(?:src|href)\s*=\s*["']https?:\/\//i);
       for (const variable of manifest.designSystem.variables) expect(entry).toContain(`"id":"${variable.id}"`);
@@ -532,19 +536,19 @@ describe("template installations", () => {
     const entryPath = join(ws.path, "video", "session_logo", "index.html");
     const entry = await readFile(entryPath, "utf8");
     await writeFile(entryPath, entry.replaceAll(
-      "assets/ipollowork-logo.svg?v=20260724",
+      "assets/ipollowork-logo.svg?v=20260729",
       "assets/missing-custom-logo.svg",
     ));
 
     await readTemplateSession(serverConfig, ws, "session_logo");
 
     const refreshedLogo = await readFile(logoPath, "utf8");
-    expect(refreshedLogo).toContain('viewBox="-150 -150 776 800"');
+    expect(refreshedLogo).toContain('viewBox="0 0 281 298"');
     expect(refreshedLogo).not.toContain('fill="white"');
     const repairedEntry = await readFile(entryPath, "utf8");
     expect(repairedEntry).toContain('src="assets/missing-custom-logo.svg"');
     expect(repairedEntry).toContain('data-ipw-logo-fallback="current"');
-    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260724'");
+    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260729'");
   });
 
   test("refreshes the current iPolloWork logo when an existing design session opens", async () => {
@@ -559,20 +563,20 @@ describe("template installations", () => {
     const entryPath = join(ws.path, "design", "session_logo", "entry.html");
     const entry = await readFile(entryPath, "utf8");
     await writeFile(entryPath, entry.replaceAll(
-      "assets/ipollowork-logo.svg?v=20260724",
+      "assets/ipollowork-logo.svg?v=20260729",
       "assets/ipollowork-logo.svg",
     ));
 
     await readTemplateSession(serverConfig, ws, "session_logo");
 
     const refreshedLogo = await readFile(logoPath, "utf8");
-    expect(refreshedLogo).toContain('viewBox="-150 -150 776 800"');
+    expect(refreshedLogo).toContain('viewBox="0 0 281 298"');
     expect(refreshedLogo).not.toContain('viewBox="0 0 476 500"');
     expect(refreshedLogo).not.toContain('fill="white"');
     const repairedEntry = await readFile(entryPath, "utf8");
-    expect(repairedEntry).toContain('src="assets/ipollowork-logo.svg?v=20260724"');
+    expect(repairedEntry).toContain('src="assets/ipollowork-logo.svg?v=20260729"');
     expect(repairedEntry).toContain('data-ipw-logo-fallback="current"');
-    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260724'");
+    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260729'");
   });
 
   test("ships every website template with accessible navigation and observable actions", async () => {

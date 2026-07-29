@@ -394,7 +394,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel" data-expanded={expanded ? "true" : "false"}>
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px]">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px] mac:titlebar-drag">
         <Film className="size-4 text-primary" />
         <div className="flex min-w-0 flex-1 items-center">
           <p className="truncate text-sm font-medium">{t("video.title")}</p>

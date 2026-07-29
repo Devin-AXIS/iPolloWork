@@ -629,8 +629,7 @@ export function AppSidebar(props: AppSidebarProps) {
         collapsible="offcanvas"
         className="bg-sidebar mac:**:data-[sidebar=sidebar]:bg-transparent"
       >
-        <div className="hidden h-0 mac:block mac:titlebar-drag"/>
-        <SidebarHeader className="gap-4 px-2 pb-6 pt-1">
+        <SidebarHeader className="gap-4 px-2 pb-6 pt-1 mac:titlebar-drag">
           <div className="flex w-full justify-end px-3">
             <SidebarTrigger
               className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"

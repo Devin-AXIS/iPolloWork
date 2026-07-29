@@ -1,0 +1,12 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="lucide/grip-vertical">
+<g id="Vector">
+<path d="M6 8.66667C6.36819 8.66667 6.66667 8.36819 6.66667 8C6.66667 7.63181 6.36819 7.33333 6 7.33333C5.63181 7.33333 5.33333 7.63181 5.33333 8C5.33333 8.36819 5.63181 8.66667 6 8.66667Z" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M6 4C6.36819 4 6.66667 3.70152 6.66667 3.33333C6.66667 2.96514 6.36819 2.66667 6 2.66667C5.63181 2.66667 5.33333 2.96514 5.33333 3.33333C5.33333 3.70152 5.63181 4 6 4Z" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M6 13.3333C6.36819 13.3333 6.66667 13.0349 6.66667 12.6667C6.66667 12.2985 6.36819 12 6 12C5.63181 12 5.33333 12.2985 5.33333 12.6667C5.33333 13.0349 5.63181 13.3333 6 13.3333Z" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M10 8.66667C10.3682 8.66667 10.6667 8.36819 10.6667 8C10.6667 7.63181 10.3682 7.33333 10 7.33333C9.63181 7.33333 9.33333 7.63181 9.33333 8C9.33333 8.36819 9.63181 8.66667 10 8.66667Z" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M10 4C10.3682 4 10.6667 3.70152 10.6667 3.33333C10.6667 2.96514 10.3682 2.66667 10 2.66667C9.63181 2.66667 9.33333 2.96514 9.33333 3.33333C9.33333 3.70152 9.63181 4 10 4Z" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M10 13.3333C10.3682 13.3333 10.6667 13.0349 10.6667 12.6667C10.6667 12.2985 10.3682 12 10 12C9.63181 12 9.33333 12.2985 9.33333 12.6667C9.33333 13.0349 9.63181 13.3333 10 13.3333Z" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</g>
+</svg>
