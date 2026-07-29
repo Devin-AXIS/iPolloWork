@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.cost-saving-waterfall",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "finance",
+  "style": "data",
+  "tags": [
+    "video",
+    "hyperframes",
+    "finance"
+  ],
+  "surface": "video",
+  "title": "Cost Saving Waterfall",
+  "description": "A horizontal waterfall calculation reduces operating cost step by step and aggregates the final savings.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames deterministic timeline patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": [
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "title",
+        "label": "title",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "start",
+        "label": "start",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "savingA",
+        "label": "saving A",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "savingB",
+        "label": "saving B",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "savingC",
+        "label": "saving C",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "result",
+        "label": "result",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "metric",
+        "label": "metric",
+        "type": "text",
+        "group": "content"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Replace editable copy with one coherent story.",
+    "Preserve the unique composition geometry and deterministic timeline.",
+    "Use design-system tokens for theme colors and typography.",
+    "Verify at 30 fps and keep the lower caption-safe band readable."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

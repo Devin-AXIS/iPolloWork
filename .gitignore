@@ -71,5 +71,6 @@ evals/results/
 .vscode/
 .ipollowork-dev/
 design/
+!apps/app/src/react-app/domains/session/design/
 # Local design-system experiments; keep out of commits for now.
 # /apps/app/src/react-app/domains/session/design/design-systems/

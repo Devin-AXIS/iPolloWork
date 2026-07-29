@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en" data-ipw-template="release-spotlight" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"A faster, clearer way to run agentic work."},{"id":"brandName","type":"string","label":"Brand name","default":"iPolloWork"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260724"},{"id":"version","type":"string","label":"Version","default":"Version 1.0"},{"id":"featureA","type":"string","label":"Feature one","default":"Unified agent workflows"},{"id":"featureB","type":"string","label":"Feature two","default":"Remote workers on demand"},{"id":"featureC","type":"string","label":"Feature three","default":"Proof built into every run"},{"id":"metric","type":"string","label":"Metric","default":"3× faster setup"},{"id":"cta","type":"string","label":"Call to action","default":"Available now"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Release Spotlight</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--ipw-color-bg); }
+      #root::before { content: ""; position: absolute; left: 72px; right: 72px; top: 118px; height: 1px; background: var(--ipw-color-border); }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .topbar { position: absolute; left: 72px; right: 72px; top: 48px; z-index: 50; display: flex; align-items: center; justify-content: space-between; }
+      .brand { display: flex; align-items: center; gap: 13px; font-size: 21px; font-weight: 900; letter-spacing: -.035em; }
+      .brand img { width: 32px; height: 32px; object-fit: contain; }
+      .date { color: var(--ipw-color-muted); font: 750 13px/1 ui-monospace, monospace; letter-spacing: .15em; }
+      h1, h2, p { margin: 0; }
+      .scene { padding: 174px 74px 76px; }
+      .version { display: inline-block; padding: 9px 13px; background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); font: 850 14px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+      .intro h1 { margin-top: 42px; max-width: 1510px; font-family: var(--ipw-font-display); font-size: calc(115px * var(--ipw-type-scale)); line-height: .9; letter-spacing: -.082em; }
+      .intro-grid { position: absolute; left: 74px; right: 74px; bottom: 90px; display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--ipw-color-border); }
+      .intro-grid span { padding-top: 20px; color: var(--ipw-color-muted); font: 750 13px/1 ui-monospace, monospace; letter-spacing: .12em; }
+      .intro-grid span:nth-child(2) { text-align: center; }
+      .intro-grid span:last-child { text-align: right; }
+      .feature-stage { position: absolute; inset: 182px 74px 92px; display: grid; grid-template-columns: 420px 1fr; gap: 74px; }
+      .feature-index { border-right: 1px solid var(--ipw-color-border); padding-right: 55px; }
+      .feature-index small { color: var(--ipw-color-primary); font: 850 14px/1 ui-monospace, monospace; letter-spacing: .16em; }
+      .feature-index h2 { margin-top: 30px; font-size: 58px; line-height: .96; letter-spacing: -.065em; }
+      .feature-index p { margin-top: 24px; color: var(--ipw-color-muted); font-size: 21px; line-height: 1.5; }
+      .feature-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; align-items: center; }
+      .feature-card { position: relative; height: 485px; padding: 34px; border: 1px solid var(--ipw-card-border); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); box-shadow: var(--ipw-card-shadow); overflow: hidden; }
+      .feature-card::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 10px; background: var(--ipw-color-primary); }
+      .feature-card:nth-child(2)::after { background: var(--ipw-color-secondary); }
+      .feature-card:nth-child(3)::after { background: var(--ipw-color-accent); }
+      .feature-no { color: var(--ipw-color-muted); font: 800 14px/1 ui-monospace, monospace; }
+      .feature-icon { display: grid; place-items: center; width: 74px; height: 74px; margin-top: 82px; border: 2px solid var(--ipw-color-text); border-radius: 50%; font-size: 29px; font-weight: 900; }
+      .feature-card h2 { position: absolute; left: 34px; right: 34px; bottom: 60px; font-size: 37px; line-height: 1.02; letter-spacing: -.055em; }
+      .proof { position: absolute; inset: 0; display: grid; grid-template-columns: 1.05fr .95fr; }
+      .proof-copy { display: flex; flex-direction: column; justify-content: center; padding: 140px 95px 90px; background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); }
+      .proof-copy small { font: 850 14px/1 ui-monospace, monospace; letter-spacing: .18em; opacity: .72; }
+      .proof-copy h2 { margin-top: 35px; font-size: 102px; line-height: .9; letter-spacing: -.08em; }
+      .proof-copy p { margin-top: 30px; max-width: 650px; font-size: 25px; line-height: 1.45; opacity: .75; }
+      .proof-metric { display: grid; place-items: center; padding: 100px; background: var(--ipw-color-surface); text-align: center; }
+      .proof-metric strong { display: block; color: var(--ipw-color-primary); font-size: 150px; line-height: .82; letter-spacing: -.09em; }
+      .proof-metric span { display: block; margin-top: 38px; color: var(--ipw-color-muted); font: 800 14px/1 ui-monospace, monospace; letter-spacing: .16em; }
+      .final { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; background: var(--ipw-color-text); color: var(--ipw-color-bg); }
+      .final-inner { width: 1400px; }
+      .final small { color: var(--ipw-color-primary); font: 850 14px/1 ui-monospace, monospace; letter-spacing: .18em; }
+      .final h2 { margin-top: 34px; font-size: 112px; line-height: .9; letter-spacing: -.08em; }
+      .cta { display: inline-block; margin-top: 44px; padding: 17px 28px; border-radius: var(--ipw-button-radius); background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); font-size: 20px; font-weight: 900; }
+    </style>
+    <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="12">
+      <header class="topbar"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260724" alt="Brand logo" /><span data-var-text="brandName">iPolloWork</span></div><div class="date">RELEASE SPOTLIGHT</div></header>
+      <section class="scene clip intro" id="scene-version" data-start="0" data-duration="3" data-track-index="1"><span class="version" data-var-text="version">Version 1.0</span><h1 data-var-text="title">A faster, clearer way to run agentic work.</h1><div class="intro-grid"><span>01 / WHAT'S NEW</span><span>02 / PROOF</span><span>03 / AVAILABLE NOW</span></div></section>
+      <section class="clip" id="scene-features" data-start="3" data-duration="3" data-track-index="2"><div class="feature-stage"><aside class="feature-index"><small>THREE NEW CAPABILITIES</small><h2>Everything you need to move from intent to result.</h2><p>Focused improvements, designed around real agentic work.</p></aside><div class="feature-cards"><article class="feature-card"><span class="feature-no">01</span><div class="feature-icon">A</div><h2 data-var-text="featureA">Unified agent workflows</h2></article><article class="feature-card"><span class="feature-no">02</span><div class="feature-icon">R</div><h2 data-var-text="featureB">Remote workers on demand</h2></article><article class="feature-card"><span class="feature-no">03</span><div class="feature-icon">✓</div><h2 data-var-text="featureC">Proof built into every run</h2></article></div></div></section>
+      <section class="clip" id="scene-proof" data-start="6" data-duration="3" data-track-index="3"><div class="proof"><div class="proof-copy"><small>MEASURABLE FROM THE FIRST RUN</small><h2>Less setup.<br/>More finished work.</h2><p>Keep the metric honest, specific, and connected to the release.</p></div><div class="proof-metric"><div><strong data-var-text="metric">3× faster setup</strong><span>VERIFIED RELEASE METRIC</span></div></div></div></section>
+      <section class="clip" id="scene-final" data-start="9" data-duration="3" data-track-index="4"><div class="final"><div class="final-inner"><small data-var-text="version">VERSION 1.0</small><h2>A clearer control surface for agentic work.</h2><span class="cta" data-var-text="cta">Available now</span></div></div></section>
+    </main>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('.version', { opacity: 0, x: -34 }, { opacity: 1, x: 0, duration: .52, ease: 'power3.out' }, .15);
+      tl.fromTo('#scene-version h1', { opacity: 0, y: 52 }, { opacity: 1, y: 0, duration: .82, ease: 'expo.out' }, .42);
+      tl.fromTo('.intro-grid span', { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: .42, stagger: .1, ease: 'power2.out' }, 1.05);
+      tl.fromTo('.feature-index', { opacity: 0, x: -44 }, { opacity: 1, x: 0, duration: .68, ease: 'power3.out' }, 3.18);
+      tl.fromTo('.feature-card', { opacity: 0, y: 58 }, { opacity: 1, y: 0, duration: .62, stagger: .16, ease: 'power3.out' }, 3.55);
+      tl.fromTo('.proof-copy', { opacity: 0, x: -70 }, { opacity: 1, x: 0, duration: .75, ease: 'expo.out' }, 6.12);
+      tl.fromTo('.proof-metric strong, .proof-metric span', { opacity: 0, y: 45 }, { opacity: 1, y: 0, duration: .64, stagger: .14, ease: 'power3.out' }, 6.55);
+      tl.fromTo('.final-inner', { opacity: 0, y: 52, scale: .95 }, { opacity: 1, y: 0, scale: 1, duration: .88, ease: 'expo.out' }, 9.18);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

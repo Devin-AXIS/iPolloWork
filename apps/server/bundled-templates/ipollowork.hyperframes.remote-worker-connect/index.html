@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-ipw-template="remote-worker-connect" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Start local. Scale when the work demands it."},{"id":"brandName","type":"string","label":"Brand name","default":"iPolloWork"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260724"},{"id":"workerName","type":"string","label":"Worker name","default":"Production worker"},{"id":"taskLabel","type":"string","label":"Task","default":"Render launch assets"},{"id":"region","type":"string","label":"Region","default":"Remote / APAC"},{"id":"result","type":"string","label":"Result","default":"All assets delivered"},{"id":"cta","type":"string","label":"Call to action","default":"Connect remote"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Remote Worker Connect</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: radial-gradient(circle at 22% 46%, color-mix(in srgb, var(--ipw-color-primary) 14%, transparent), transparent 31%), radial-gradient(circle at 81% 44%, color-mix(in srgb, var(--ipw-color-secondary) 12%, transparent), transparent 30%), var(--ipw-color-bg); }
+      #root::after { content: ""; position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(115deg, transparent 47%, var(--ipw-color-border) 48%, transparent 49%); background-size: 90px 90px; }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .topbar { position: absolute; left: 72px; right: 72px; top: 52px; z-index: 50; display: flex; align-items: center; justify-content: space-between; }
+      .brand { display: flex; align-items: center; gap: 13px; font-size: 21px; font-weight: 850; }
+      .brand img { width: 32px; height: 32px; object-fit: contain; }
+      .mode { padding: 10px 16px; border: 1px solid var(--ipw-color-border); border-radius: var(--ipw-button-radius); color: var(--ipw-color-muted); font: 750 13px/1 ui-monospace, monospace; letter-spacing: .12em; }
+      h1, h2, p { margin: 0; }
+      .scene { padding: 160px 110px 100px; }
+      .kicker { color: var(--ipw-color-primary); font: 800 15px/1.2 ui-monospace, monospace; letter-spacing: .19em; text-transform: uppercase; }
+      h1 { margin-top: 30px; max-width: 1250px; font-family: var(--ipw-font-display); font-size: calc(104px * var(--ipw-type-scale)); line-height: .93; letter-spacing: -.075em; }
+      .intro p { margin-top: 30px; max-width: 680px; color: var(--ipw-color-muted); font-size: 27px; line-height: var(--ipw-body-line-height); }
+      .local-window { position: absolute; right: 130px; top: 300px; width: 540px; height: 380px; border: 1px solid var(--ipw-card-border); border-radius: var(--ipw-card-radius); background: color-mix(in srgb, var(--ipw-card-bg) 90%, transparent); box-shadow: var(--ipw-card-shadow); overflow: hidden; }
+      .window-bar { height: 52px; padding: 0 20px; border-bottom: 1px solid var(--ipw-color-border); display: flex; align-items: center; gap: 8px; }
+      .window-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--ipw-color-muted); }
+      .terminal { padding: 35px; font: 700 17px/1.8 ui-monospace, monospace; }
+      .terminal span { display: block; color: var(--ipw-color-muted); }
+      .terminal strong { color: var(--ipw-color-primary); }
+      .connect-stage { position: absolute; inset: 176px 108px 108px; display: grid; grid-template-columns: 1fr 420px 1fr; align-items: center; }
+      .endpoint { min-height: 520px; padding: 40px; border: 1px solid var(--ipw-card-border); border-radius: var(--ipw-card-radius); background: color-mix(in srgb, var(--ipw-card-bg) 86%, transparent); box-shadow: var(--ipw-card-shadow); }
+      .endpoint-label { color: var(--ipw-color-muted); font: 800 14px/1 ui-monospace, monospace; letter-spacing: .15em; }
+      .endpoint h2 { margin-top: 32px; font-size: 54px; line-height: .98; letter-spacing: -.06em; }
+      .endpoint p { margin-top: 22px; color: var(--ipw-color-muted); font-size: 20px; line-height: 1.5; }
+      .device { position: relative; width: 240px; height: 160px; margin: 70px auto 0; border: 3px solid var(--ipw-color-text); border-radius: 15px; }
+      .device::after { content: ""; position: absolute; left: 65px; right: 65px; bottom: -18px; height: 15px; border-top: 3px solid var(--ipw-color-text); }
+      .cloud { position: relative; width: 240px; height: 92px; margin: 100px auto 0; border: 2px solid var(--ipw-color-secondary); border-radius: 55px; }
+      .cloud::before, .cloud::after { content: ""; position: absolute; border: 2px solid var(--ipw-color-secondary); background: var(--ipw-card-bg); border-bottom: 0; border-radius: 80px 80px 0 0; }
+      .cloud::before { left: 46px; top: -62px; width: 100px; height: 70px; }
+      .cloud::after { right: 31px; top: -38px; width: 72px; height: 45px; }
+      .bridge { position: relative; height: 520px; display: grid; place-items: center; }
+      .bridge-line { width: 100%; height: 3px; background: repeating-linear-gradient(90deg, var(--ipw-color-primary) 0 13px, transparent 13px 25px); }
+      .bridge-node { position: absolute; display: grid; place-items: center; width: 118px; height: 118px; border: 1px solid var(--ipw-color-primary); border-radius: 50%; background: var(--ipw-color-bg); color: var(--ipw-color-primary); font: 850 14px/1.15 ui-monospace, monospace; text-align: center; box-shadow: 0 0 60px color-mix(in srgb, var(--ipw-color-primary) 22%, transparent); }
+      .worker-card { position: absolute; left: 50%; top: 50%; width: 900px; padding: 50px; transform: translate(-50%, -50%); border: 1px solid var(--ipw-color-primary); border-radius: 30px; background: var(--ipw-card-bg); box-shadow: 0 0 110px color-mix(in srgb, var(--ipw-color-primary) 18%, transparent); }
+      .worker-head { display: flex; align-items: center; justify-content: space-between; }
+      .worker-head h2 { margin-top: 14px; font-size: 54px; letter-spacing: -.055em; }
+      .online { padding: 11px 17px; border-radius: var(--ipw-button-radius); background: color-mix(in srgb, var(--ipw-color-success) 15%, transparent); color: var(--ipw-color-success); font: 800 13px/1 ui-monospace, monospace; }
+      .task-row { margin-top: 46px; padding: 27px 30px; border: 1px solid var(--ipw-color-border); border-radius: 18px; display: grid; grid-template-columns: 1fr 220px; gap: 30px; align-items: center; }
+      .task-row strong { font-size: 25px; }
+      .task-row small { display: block; margin-top: 9px; color: var(--ipw-color-muted); font: 700 13px/1 ui-monospace, monospace; }
+      .meter { height: 10px; border-radius: 999px; background: var(--ipw-color-border); overflow: hidden; }
+      .meter i { display: block; width: 100%; height: 100%; transform: scaleX(.04); transform-origin: left; background: var(--ipw-color-primary); }
+      .done { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+      .done-inner { width: 1320px; }
+      .done-badge { display: inline-flex; align-items: center; gap: 12px; padding: 12px 19px; border: 1px solid var(--ipw-color-success); border-radius: var(--ipw-button-radius); color: var(--ipw-color-success); font: 800 14px/1 ui-monospace, monospace; letter-spacing: .12em; }
+      .done h2 { margin-top: 34px; font-size: 106px; line-height: .92; letter-spacing: -.075em; }
+      .done p { margin-top: 27px; color: var(--ipw-color-muted); font-size: 25px; }
+      .cta { display: inline-block; margin-top: 35px; padding: 16px 25px; border-radius: var(--ipw-button-radius); background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); font-weight: 850; }
+    </style>
+    <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="12">
+      <header class="topbar"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260724" alt="Brand logo" /><span data-var-text="brandName">iPolloWork</span></div><div class="mode">LOCAL-FIRST / CLOUD-READY</div></header>
+      <section class="scene clip intro" id="scene-local" data-start="0" data-duration="3" data-track-index="1"><div class="kicker">Begin on your machine</div><h1 data-var-text="title">Start local. Scale when the work demands it.</h1><p>Your workspace stays close. Remote capacity arrives only when you choose it.</p><div class="local-window"><div class="window-bar"><i></i><i></i><i></i></div><div class="terminal"><span>$ ipollowork</span><strong>Workspace ready</strong><span>Local files mounted</span><span>1 task waiting</span></div></div></section>
+      <section class="clip" id="scene-connect" data-start="3" data-duration="3" data-track-index="2"><div class="connect-stage"><article class="endpoint"><span class="endpoint-label">LOCAL WORKSPACE</span><h2>Context stays where the work starts.</h2><div class="device"></div></article><div class="bridge"><div class="bridge-line"></div><div class="bridge-node">ADD A<br/>WORKER</div></div><article class="endpoint"><span class="endpoint-label" data-var-text="region">REMOTE / APAC</span><h2 data-var-text="workerName">Production worker</h2><div class="cloud"></div></article></div></section>
+      <section class="clip" id="scene-run" data-start="6" data-duration="3" data-track-index="3"><article class="worker-card"><div class="worker-head"><div><span class="kicker" data-var-text="region">Remote / APAC</span><h2 data-var-text="workerName">Production worker</h2></div><span class="online">● CONNECTED</span></div><div class="task-row"><div><strong data-var-text="taskLabel">Render launch assets</strong><small>SECURE REMOTE EXECUTION</small></div><div><div class="meter"><i></i></div><small>100% COMPLETE</small></div></div></article></section>
+      <section class="clip" id="scene-result" data-start="9" data-duration="3" data-track-index="4"><div class="done"><div class="done-inner"><span class="done-badge">✓ REMOTE RUN COMPLETE</span><h2 data-var-text="result">All assets delivered</h2><p>The result returns to the same workspace with its context intact.</p><span class="cta" data-var-text="cta">Connect remote</span></div></div></section>
+    </main>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#scene-local h1, #scene-local p', { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: .72, stagger: .14, ease: 'power3.out' }, .18);
+      tl.fromTo('.local-window', { opacity: 0, x: 60, scale: .94 }, { opacity: 1, x: 0, scale: 1, duration: .86, ease: 'expo.out' }, .56);
+      tl.fromTo('#scene-connect .endpoint', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: .62, stagger: .2, ease: 'power3.out' }, 3.18);
+      tl.fromTo('.bridge-line', { scaleX: 0 }, { scaleX: 1, duration: .72, ease: 'power2.out' }, 3.72);
+      tl.fromTo('.bridge-node', { opacity: 0, scale: .62 }, { opacity: 1, scale: 1, duration: .68, ease: 'back.out(1.7)' }, 4.05);
+      tl.fromTo('.worker-card', { opacity: 0, y: 58, scale: .94 }, { opacity: 1, y: 0, scale: 1, duration: .78, ease: 'expo.out' }, 6.18);
+      tl.to('.meter i', { scaleX: 1, duration: 1.5, ease: 'power2.inOut' }, 6.8);
+      tl.fromTo('.done-inner', { opacity: 0, y: 48, scale: .95 }, { opacity: 1, y: 0, scale: 1, duration: .9, ease: 'expo.out' }, 9.18);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

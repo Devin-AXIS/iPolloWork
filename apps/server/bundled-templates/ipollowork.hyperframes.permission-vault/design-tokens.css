@@ -1,0 +1,40 @@
+/* ipw-theme:start */
+/* ipw-design-system: vault-emerald */
+:root {
+  --ipw-color-bg: #061410;
+  --ipw-color-surface: #0b241c;
+  --ipw-color-text: #effff8;
+  --ipw-color-muted: #8db7a5;
+  --ipw-color-border: #245342;
+  --ipw-color-primary: #5de2a5;
+  --ipw-color-secondary: #6ca9ff;
+  --ipw-color-accent: #f4c96b;
+  --ipw-color-success: #22c55e;
+  --ipw-color-warning: #f59e0b;
+  --ipw-color-danger: #ef4444;
+  --ipw-color-on-primary: #061410;
+  --ipw-font-display: Inter, ui-sans-serif, system-ui, sans-serif;
+  --ipw-font-body: Inter, ui-sans-serif, system-ui, sans-serif;
+  --ipw-type-scale: 1;
+  --ipw-body-line-height: 1.5;
+  --ipw-content-width: 1720px;
+  --ipw-page-padding: 64px;
+  --ipw-section-space: 64px;
+  --ipw-button-radius: 10px;
+  --ipw-card-bg: var(--ipw-color-surface);
+  --ipw-card-border: var(--ipw-color-border);
+  --ipw-card-radius: 18px;
+  --ipw-card-shadow: 0 24px 70px rgb(0 0 0 / 22%);
+}
+/* ipw-theme:end */
+
+html:root,
+html:root body,
+html:root [class] {
+  --accent: var(--ipw-color-primary) !important;
+  --bg: var(--ipw-color-bg) !important;
+  --surface: var(--ipw-color-surface) !important;
+  --ink: var(--ipw-color-text) !important;
+  --muted: var(--ipw-color-muted) !important;
+  --line: var(--ipw-color-border) !important;
+}
