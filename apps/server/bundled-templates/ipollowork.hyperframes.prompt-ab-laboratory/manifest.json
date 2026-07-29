@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.prompt-ab-laboratory",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "ai-testing",
+  "style": "cyber",
+  "tags": [
+    "video",
+    "hyperframes",
+    "ai-testing"
+  ],
+  "surface": "video",
+  "title": "Prompt A/B Laboratory",
+  "description": "A mirrored laboratory compares two prompts and their outputs before a measurable winner is selected.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames deterministic timeline patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": [
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "title",
+        "label": "title",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "promptA",
+        "label": "prompt A",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "promptB",
+        "label": "prompt B",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "resultA",
+        "label": "result A",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "resultB",
+        "label": "result B",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "metric",
+        "label": "metric",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "winner",
+        "label": "winner",
+        "type": "text",
+        "group": "content"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Replace editable copy with one coherent story.",
+    "Preserve the unique composition geometry and deterministic timeline.",
+    "Use design-system tokens for theme colors and typography.",
+    "Verify at 30 fps and keep the lower caption-safe band readable."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

@@ -71,8 +71,8 @@ export const BlocksTab = memo(function BlocksTab({
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <div className="mx-3 mt-2 rounded-md border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[10px] leading-relaxed text-neutral-400">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="mx-3 mt-2 flex-shrink-0 rounded-md border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[10px] leading-relaxed text-neutral-400">
         <div className="flex items-center justify-between gap-2">
           <span className="font-medium text-neutral-200">
             {kind === "animation"
@@ -182,7 +182,20 @@ export const BlocksTab = memo(function BlocksTab({
       ) : null}
 
       {/* Block grid */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2">
+      <div
+        className="hf-block-catalog-scroll min-h-0 flex-1 px-2 pb-4"
+        data-testid="block-catalog-scroll"
+        tabIndex={0}
+        aria-label={
+          kind === "animation"
+            ? locale === "zh"
+              ? "动画模板列表"
+              : "Animation template list"
+            : locale === "zh"
+              ? "特效模板列表"
+              : "Effect template list"
+        }
+      >
         {category === "vfx" && (
           <div className="mb-2 px-2 py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-[9px] text-purple-300 leading-relaxed">
             VFX blocks use WebGL via HTML-in-Canvas. Enable{" "}
@@ -493,6 +506,7 @@ function BlockCard({
   return (
     <div
       className="group/card rounded-md overflow-hidden cursor-pointer transition-colors bg-neutral-900 hover:bg-neutral-800"
+      data-testid="block-catalog-card"
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "copy";

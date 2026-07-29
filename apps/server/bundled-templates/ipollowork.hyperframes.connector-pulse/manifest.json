@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.connector-pulse",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "connector-overview",
+  "style": "bold",
+  "tags": ["video", "connectors", "messages", "automation", "channels"],
+  "surface": "video",
+  "title": "Connector Pulse",
+  "description": "A bold connector story that receives a message, routes it through one workflow, and returns the result across team channels.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames radial-network and message-motion patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "title", "label": "Title", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "Brand name", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "Brand logo", "type": "image", "group": "brand" },
+      { "id": "trigger", "label": "Trigger message", "type": "text", "group": "content" },
+      { "id": "response", "label": "Response", "type": "text", "group": "content" },
+      { "id": "channelA", "label": "Channel one", "type": "text", "group": "content" },
+      { "id": "channelB", "label": "Channel two", "type": "text", "group": "content" },
+      { "id": "channelC", "label": "Channel three", "type": "text", "group": "content" }
+    ]
+  },
+  "applyChecklist": [
+    "Replace the trigger, response, and channel labels with the actual connected workflow.",
+    "Keep every channel logo-neutral unless approved brand assets are supplied.",
+    "Use design-system tokens for all themeable surfaces, lines, text, and states.",
+    "Verify the inbound and outbound message order remains obvious at 30 fps."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

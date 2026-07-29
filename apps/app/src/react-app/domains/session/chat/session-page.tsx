@@ -109,8 +109,13 @@ const AUTO_COLLAPSE_RIGHT_PANEL_WIDTH = 520;
 const MIN_DESIGN_PANEL_WIDTH = 420;
 const MIN_RIGHT_PANEL_WIDTH = 320;
 const NARROW_LAYOUT_WIDTH = 960;
-const TEMPLATE_COVER_TIMEOUT_MS = 12_000;
 type SessionPanelView = SidePanelItem | "launcher";
+type TemplateSessionData = {
+  sessionId: string;
+  state: TemplateSessionState;
+  manifest: TemplateManifestV1;
+  hasBrief: boolean;
+};
 
 export type SessionPageHistoryControls = {
   canUndo: boolean;
@@ -445,7 +450,7 @@ export function SessionPage(props: SessionPageProps) {
   const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
   const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
-  const [templateSessionData, setTemplateSessionData] = useState<{ state: TemplateSessionState; manifest: TemplateManifestV1; hasBrief: boolean } | null>(null);
+  const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
   useEffect(() => {
     const nextScope = readActiveWorkContextId();
@@ -460,11 +465,14 @@ export function SessionPage(props: SessionPageProps) {
   ), [props.selectedSessionId, sessionTypeRevision]);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
-  const hasTemplateSession = Boolean(templateSessionData);
-  const hasTemplateBrief = templateSessionData?.hasBrief === true;
-  const selectedTemplate = templateSessionData?.manifest ?? null;
-  const designTemplateEntryPath = templateSessionData?.manifest.surface === "design"
-    ? templateSessionData.state.entry
+  const currentTemplateSessionData = templateSessionData?.sessionId === props.selectedSessionId
+    ? templateSessionData
+    : null;
+  const hasTemplateSession = Boolean(currentTemplateSessionData);
+  const hasTemplateBrief = currentTemplateSessionData?.hasBrief === true;
+  const selectedTemplate = currentTemplateSessionData?.manifest ?? null;
+  const designTemplateEntryPath = currentTemplateSessionData?.manifest.surface === "design"
+    ? currentTemplateSessionData.state.entry
     : undefined;
   const [conversationMessageState, setConversationMessageState] = useState<{ sessionId: string | null; messages: UIMessage[] }>({
     sessionId: null,
@@ -531,6 +539,9 @@ export function SessionPage(props: SessionPageProps) {
     return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, templateResourceScope);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
   useEffect(() => {
+    setTemplateSessionData(null);
+  }, [props.selectedSessionId]);
+  useEffect(() => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) {
       setTemplateSessionData(null);
       setTemplateSessionLoading(false);
@@ -578,7 +589,7 @@ export function SessionPage(props: SessionPageProps) {
       setTemplateBusyId(templateId);
       const result = await props.ipolloworkServerClient.materializeTemplate(props.runtimeWorkspaceId, templateId, props.selectedSessionId, undefined, templateResourceScope);
       setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
-      setTemplateSessionData({ ...result, hasBrief: false });
+      setTemplateSessionData({ sessionId: props.selectedSessionId, ...result, hasBrief: false });
       setDismissedTemplateBriefSessionIds((current) => {
         const next = new Set(current);
         next.delete(props.selectedSessionId!);
@@ -648,7 +659,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [activeEnterprise, importDesignTemplate, templateResourceScope]);
   const submitTemplateBrief = useCallback(async (brief: TemplateBrief) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
-    const templateSession = templateSessionData;
+    const templateSession = currentTemplateSessionData;
     if (!templateSession) return;
     const { manifest: template, state } = templateSession;
     await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
@@ -665,7 +676,7 @@ export function SessionPage(props: SessionPageProps) {
       }, null, 2),
       baseUpdatedAt: null,
     });
-    setTemplateSessionData((current) => current ? { ...current, hasBrief: true } : current);
+    setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
     setTemplateSessionRevision((value) => value + 1);
     setDismissedTemplateBriefSessionIds((current) => {
       if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
@@ -685,11 +696,11 @@ export function SessionPage(props: SessionPageProps) {
       text: visibleTemplateMessage,
       resolvedText: visibleTemplateMessage,
     }, props.selectedSessionId);
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface, templateSessionData]);
+  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const closeTemplateBrief = useCallback(async () => {
     const sessionId = props.selectedSessionId;
     if (!sessionId) return;
-    const emptyGeneratedTemplateSession = !templateSessionData?.hasBrief && conversationMessages.length === 0;
+    const emptyGeneratedTemplateSession = !currentTemplateSessionData?.hasBrief && conversationMessages.length === 0;
     if (emptyGeneratedTemplateSession && props.onDeleteSession) {
       try {
         await props.onDeleteSession(sessionId);
@@ -709,7 +720,7 @@ export function SessionPage(props: SessionPageProps) {
       next.add(sessionId);
       return next;
     });
-  }, [conversationMessages.length, props.onDeleteSession, props.selectedSessionId, templateSessionData?.hasBrief]);
+  }, [conversationMessages.length, currentTemplateSessionData?.hasBrief, props.onDeleteSession, props.selectedSessionId]);
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
@@ -1060,7 +1071,7 @@ export function SessionPage(props: SessionPageProps) {
       return null;
     }
 
-    const binding = templateSessionData
+    const binding = templateSessionData?.sessionId === sourceSessionId
       ? Promise.resolve({ surface: templateSessionData.manifest.surface, entry: templateSessionData.state.entry })
       : props.ipolloworkServerClient
         .getTemplateSession(props.runtimeWorkspaceId, sourceSessionId)
@@ -1287,7 +1298,7 @@ export function SessionPage(props: SessionPageProps) {
           baseUpdatedAt: existing?.updatedAt ?? null,
         });
         setSessionType(props.selectedSessionId, sessionTypeForTemplate(materialized.manifest));
-        setTemplateSessionData({ ...materialized, hasBrief: false });
+        setTemplateSessionData({ sessionId: props.selectedSessionId, ...materialized, hasBrief: false });
         setSessionTypeRevision((value) => value + 1);
         setTemplateSessionRevision((value) => value + 1);
         setCurrentSidePanel("design");
@@ -1373,7 +1384,7 @@ export function SessionPage(props: SessionPageProps) {
           baseUpdatedAt: existing?.updatedAt ?? null,
         });
         setSessionType(props.selectedSessionId, sessionTypeForTemplate(materialized.manifest));
-        setTemplateSessionData({ ...materialized, hasBrief: false });
+        setTemplateSessionData({ sessionId: props.selectedSessionId, ...materialized, hasBrief: false });
         setSessionTypeRevision((value) => value + 1);
         setTemplateSessionRevision((value) => value + 1);
         setCurrentSidePanel("design");
@@ -2049,8 +2060,8 @@ export function SessionPage(props: SessionPageProps) {
                           onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
                           onImport={importDesignTemplate}
                         />
-                      ) : templateSessionData && !hasTemplateBrief && !templateBriefDismissed ? (
-                        <TemplateBriefCard template={templateSessionData.manifest} onSubmit={(brief) => void submitTemplateBrief(brief)} onClose={() => void closeTemplateBrief()} />
+                      ) : currentTemplateSessionData && !hasTemplateBrief && !templateBriefDismissed ? (
+                        <TemplateBriefCard template={currentTemplateSessionData.manifest} onSubmit={(brief) => void submitTemplateBrief(brief)} onClose={() => void closeTemplateBrief()} />
                       ) : <SessionSurface
                         // Spread `surface` first so the explicit per-workspace
                         // routing props below CAN'T be silently overridden by
@@ -2093,7 +2104,7 @@ export function SessionPage(props: SessionPageProps) {
                             templateResourceScope,
                           );
                           setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
-                          setTemplateSessionData({ ...result, hasBrief: false });
+                          setTemplateSessionData({ sessionId: props.selectedSessionId, ...result, hasBrief: false });
                           setDismissedTemplateBriefSessionIds((current) => {
                             const next = new Set(current);
                             next.delete(props.selectedSessionId!);

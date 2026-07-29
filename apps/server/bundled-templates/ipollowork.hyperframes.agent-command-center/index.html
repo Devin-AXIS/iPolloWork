@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en" data-ipw-template="agent-command-center" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"One workspace. Every capability."},{"id":"brandName","type":"string","label":"Brand name","default":"iPolloWork"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260724"},{"id":"taskLabel","type":"string","label":"Task","default":"Launch the campaign"},{"id":"agentLabel","type":"string","label":"Agent","default":"Strategy agent"},{"id":"toolLabel","type":"string","label":"Tool","default":"Connected workspace"},{"id":"resultLabel","type":"string","label":"Result","default":"Ready to publish"},{"id":"cta","type":"string","label":"Call to action","default":"Run the work"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Agent Command Center</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: radial-gradient(circle at 50% 44%, color-mix(in srgb, var(--ipw-color-primary) 12%, transparent), transparent 34%), var(--ipw-color-bg); }
+      #root::before { content: ""; position: absolute; inset: 0; opacity: .28; background-image: linear-gradient(var(--ipw-color-border) 1px, transparent 1px), linear-gradient(90deg, var(--ipw-color-border) 1px, transparent 1px); background-size: 64px 64px; mask-image: linear-gradient(to bottom, black, transparent 86%); }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .chrome { position: absolute; left: 72px; right: 72px; top: 54px; z-index: 40; display: flex; align-items: center; justify-content: space-between; }
+      .brand { display: flex; align-items: center; gap: 14px; font-size: 22px; font-weight: 800; letter-spacing: -.03em; }
+      .brand img { width: 34px; height: 34px; object-fit: contain; }
+      .status { display: flex; align-items: center; gap: 10px; padding: 11px 17px; border: 1px solid var(--ipw-color-border); border-radius: var(--ipw-button-radius); background: color-mix(in srgb, var(--ipw-card-bg) 72%, transparent); color: var(--ipw-color-muted); font: 700 14px/1 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+      .status::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--ipw-color-success); box-shadow: 0 0 20px var(--ipw-color-success); }
+      .scene { padding: 154px 110px 110px; }
+      .eyebrow { color: var(--ipw-color-primary); font: 750 16px/1.2 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+      h1, h2, p { margin: 0; }
+      h1 { max-width: 1250px; margin-top: 28px; font-family: var(--ipw-font-display); font-size: calc(112px * var(--ipw-type-scale)); line-height: .92; letter-spacing: -.075em; }
+      .lede { max-width: 670px; margin-top: 30px; color: var(--ipw-color-muted); font-size: 28px; line-height: var(--ipw-body-line-height); }
+      .hero-orb { position: absolute; right: 160px; top: 250px; width: 430px; height: 430px; border: 1px solid var(--ipw-color-border); border-radius: 50%; box-shadow: inset 0 0 90px color-mix(in srgb, var(--ipw-color-primary) 12%, transparent), 0 0 100px color-mix(in srgb, var(--ipw-color-secondary) 18%, transparent); }
+      .hero-orb::before, .hero-orb::after { content: ""; position: absolute; border-radius: 50%; border: 1px dashed var(--ipw-color-primary); }
+      .hero-orb::before { inset: 54px; }
+      .hero-orb::after { inset: 126px; background: var(--ipw-color-primary); box-shadow: 0 0 80px var(--ipw-color-primary); }
+      .task-flow { position: absolute; left: 150px; right: 150px; top: 360px; display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; gap: 46px; }
+      .flow-card { position: relative; min-height: 245px; padding: 28px; border: 1px solid var(--ipw-card-border); border-radius: var(--ipw-card-radius); background: color-mix(in srgb, var(--ipw-card-bg) 88%, transparent); box-shadow: var(--ipw-card-shadow); }
+      .flow-card:not(:last-child)::after { content: "→"; position: absolute; right: -38px; top: 98px; color: var(--ipw-color-primary); font-size: 28px; }
+      .flow-no { color: var(--ipw-color-muted); font: 700 14px/1 ui-monospace, monospace; letter-spacing: .12em; }
+      .flow-card h2 { margin-top: 64px; font-size: 31px; letter-spacing: -.045em; }
+      .flow-card p { margin-top: 12px; color: var(--ipw-color-muted); font-size: 17px; }
+      .tool-stage { position: absolute; left: 132px; right: 132px; top: 220px; bottom: 150px; display: grid; grid-template-columns: 1.05fr .95fr; gap: 70px; align-items: center; }
+      .tool-copy h2 { margin-top: 24px; max-width: 700px; font-size: 82px; line-height: .96; letter-spacing: -.065em; }
+      .tool-copy p { margin-top: 26px; max-width: 560px; color: var(--ipw-color-muted); font-size: 25px; line-height: 1.45; }
+      .tool-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+      .tool { height: 176px; padding: 25px; border: 1px solid var(--ipw-card-border); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); }
+      .tool i { display: block; width: 38px; height: 38px; border: 2px solid var(--ipw-color-primary); border-radius: 12px; }
+      .tool strong { display: block; margin-top: 28px; font-size: 22px; }
+      .tool span { display: block; margin-top: 8px; color: var(--ipw-color-muted); font-size: 15px; }
+      .result-wrap { position: absolute; inset: 0; display: grid; place-items: center; }
+      .result-card { width: 1180px; padding: 64px 72px; border: 1px solid var(--ipw-color-primary); border-radius: 34px; background: color-mix(in srgb, var(--ipw-card-bg) 94%, transparent); box-shadow: 0 0 100px color-mix(in srgb, var(--ipw-color-primary) 18%, transparent); text-align: center; }
+      .check { display: grid; place-items: center; width: 82px; height: 82px; margin: 0 auto 30px; border-radius: 50%; background: var(--ipw-color-success); color: var(--ipw-color-bg); font-size: 40px; font-weight: 900; }
+      .result-card h2 { font-size: 88px; line-height: .95; letter-spacing: -.07em; }
+      .result-card p { margin-top: 22px; color: var(--ipw-color-muted); font-size: 24px; }
+      .cta { display: inline-block; margin-top: 34px; padding: 16px 26px; border-radius: var(--ipw-button-radius); background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); font-weight: 850; }
+      .timeline { position: absolute; left: 72px; right: 72px; bottom: 46px; z-index: 40; height: 3px; background: var(--ipw-color-border); }
+      .timeline-fill { width: 100%; height: 100%; transform: scaleX(0); transform-origin: left; background: var(--ipw-color-primary); }
+    </style>
+    <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="12">
+      <header class="chrome"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260724" alt="Brand logo" /><span data-var-text="brandName">iPolloWork</span></div><div class="status">System ready</div></header>
+      <section class="scene clip" id="scene-intro" data-start="0" data-duration="3" data-track-index="1"><div class="eyebrow">Agent command center</div><h1 data-var-text="title">One workspace. Every capability.</h1><p class="lede">Turn an intent into finished work without losing the thread between agents, skills, and tools.</p><div class="hero-orb"></div></section>
+      <section class="scene clip" id="scene-flow" data-start="3" data-duration="3" data-track-index="2"><div class="eyebrow">A visible path from request to result</div><div class="task-flow"><article class="flow-card"><span class="flow-no">01 / TASK</span><h2 data-var-text="taskLabel">Launch the campaign</h2><p>One clear objective enters the workspace.</p></article><article class="flow-card"><span class="flow-no">02 / AGENT</span><h2 data-var-text="agentLabel">Strategy agent</h2><p>The right capability takes ownership.</p></article><article class="flow-card"><span class="flow-no">03 / TOOL</span><h2 data-var-text="toolLabel">Connected workspace</h2><p>Context arrives exactly when needed.</p></article><article class="flow-card"><span class="flow-no">04 / RESULT</span><h2 data-var-text="resultLabel">Ready to publish</h2><p>The work returns complete and traceable.</p></article></div></section>
+      <section class="scene clip" id="scene-tools" data-start="6" data-duration="3" data-track-index="3"><div class="tool-stage"><div class="tool-copy"><div class="eyebrow">Bring every capability into reach</div><h2>Agents that can actually do the work.</h2><p>Compose skills, local files, connected services, and deterministic checks inside one controlled flow.</p></div><div class="tool-grid"><div class="tool"><i></i><strong>Agents</strong><span>Focused ownership</span></div><div class="tool"><i></i><strong>Skills</strong><span>Repeatable expertise</span></div><div class="tool"><i></i><strong>Connectors</strong><span>Live workspace context</span></div><div class="tool"><i></i><strong>Checks</strong><span>Observable proof</span></div></div></div></section>
+      <section class="scene clip" id="scene-result" data-start="9" data-duration="3" data-track-index="4"><div class="result-wrap"><div class="result-card"><div class="check">✓</div><h2 data-var-text="resultLabel">Ready to publish</h2><p>One workspace. One complete chain of evidence.</p><span class="cta" data-var-text="cta">Run the work</span></div></div></section>
+      <div class="timeline"><div class="timeline-fill"></div></div>
+    </main>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to('.timeline-fill', { scaleX: 1, duration: 12, ease: 'none' }, 0);
+      tl.fromTo('#scene-intro h1, #scene-intro .lede', { opacity: 0, y: 44 }, { opacity: 1, y: 0, duration: .72, stagger: .14, ease: 'power3.out' }, .18);
+      tl.fromTo('.hero-orb', { opacity: 0, scale: .72, rotation: -20 }, { opacity: 1, scale: 1, rotation: 0, duration: 1.1, ease: 'expo.out' }, .4);
+      tl.fromTo('.flow-card', { opacity: 0, y: 54 }, { opacity: 1, y: 0, duration: .58, stagger: .16, ease: 'power3.out' }, 3.18);
+      tl.fromTo('.tool-copy', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .72, ease: 'power3.out' }, 6.18);
+      tl.fromTo('.tool', { opacity: 0, scale: .84 }, { opacity: 1, scale: 1, duration: .52, stagger: .12, ease: 'back.out(1.5)' }, 6.55);
+      tl.fromTo('.result-card', { opacity: 0, y: 70, scale: .92 }, { opacity: 1, y: 0, scale: 1, duration: .82, ease: 'expo.out' }, 9.2);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

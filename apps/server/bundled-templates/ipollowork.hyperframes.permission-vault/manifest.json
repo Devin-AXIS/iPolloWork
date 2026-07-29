@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.permission-vault",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "security",
+  "style": "dark",
+  "tags": [
+    "video",
+    "hyperframes",
+    "security"
+  ],
+  "surface": "video",
+  "title": "Permission Vault",
+  "description": "Concentric vault gates verify scope, identity, and approval before revealing controlled access.",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition adapted from HyperFrames deterministic timeline patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": [
+      {
+        "id": "brandName",
+        "label": "Brand name",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "Brand logo",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "title",
+        "label": "title",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "gateA",
+        "label": "gate A",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "gateB",
+        "label": "gate B",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "gateC",
+        "label": "gate C",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "result",
+        "label": "result",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "cta",
+        "label": "cta",
+        "type": "text",
+        "group": "content"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Replace editable copy with one coherent story.",
+    "Preserve the unique composition geometry and deterministic timeline.",
+    "Use design-system tokens for theme colors and typography.",
+    "Verify at 30 fps and keep the lower caption-safe band readable."
+  ],
+  "minimumAppVersion": "0.17.28"
+}

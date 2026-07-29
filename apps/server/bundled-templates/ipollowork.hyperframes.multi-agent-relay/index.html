@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-ipw-template="multi-agent-relay" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Break down the work. Bring every result home."},{"id":"brandName","type":"string","label":"Brand name","default":"iPolloWork"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260724"},{"id":"leadTask","type":"string","label":"Lead task","default":"Ship the launch plan"},{"id":"researchTask","type":"string","label":"Research task","default":"Map the market"},{"id":"buildTask","type":"string","label":"Build task","default":"Create the story"},{"id":"verifyTask","type":"string","label":"Verify task","default":"Check every claim"},{"id":"outcome","type":"string","label":"Outcome","default":"Launch package complete"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Multi-Agent Relay</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: linear-gradient(135deg, color-mix(in srgb, var(--ipw-color-surface) 62%, transparent), transparent 48%), var(--ipw-color-bg); }
+      #root::before { content: ""; position: absolute; inset: 0; opacity: .22; background-image: radial-gradient(var(--ipw-color-border) 1px, transparent 1px); background-size: 24px 24px; }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .topbar { position: absolute; left: 76px; right: 76px; top: 52px; z-index: 50; display: flex; align-items: center; justify-content: space-between; }
+      .brand { display: flex; align-items: center; gap: 13px; font-size: 21px; font-weight: 850; }
+      .brand img { width: 32px; height: 32px; object-fit: contain; }
+      .clock { color: var(--ipw-color-muted); font: 700 14px/1 ui-monospace, monospace; letter-spacing: .14em; }
+      .scene { padding: 154px 92px 94px; }
+      .label { color: var(--ipw-color-primary); font: 800 15px/1.2 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+      h1, h2, p { margin: 0; }
+      h1 { margin-top: 28px; max-width: 1410px; font-family: var(--ipw-font-display); font-size: calc(100px * var(--ipw-type-scale)); line-height: .94; letter-spacing: -.07em; }
+      .lead-card { position: absolute; left: 530px; top: 610px; width: 860px; padding: 30px 36px; border: 1px solid var(--ipw-color-primary); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); box-shadow: var(--ipw-card-shadow); display: flex; align-items: center; gap: 22px; }
+      .lead-card .node { display: grid; place-items: center; width: 54px; height: 54px; flex: 0 0 54px; border-radius: 50%; background: var(--ipw-color-primary); color: var(--ipw-color-on-primary); font-weight: 900; }
+      .lead-card small { display: block; color: var(--ipw-color-muted); font: 700 13px/1.2 ui-monospace, monospace; letter-spacing: .13em; }
+      .lead-card strong { display: block; margin-top: 8px; font-size: 26px; }
+      .lane-board { position: absolute; left: 110px; right: 110px; top: 196px; bottom: 114px; display: grid; grid-template-columns: 290px 1fr; border: 1px solid var(--ipw-color-border); border-radius: 24px; background: color-mix(in srgb, var(--ipw-card-bg) 84%, transparent); overflow: hidden; box-shadow: var(--ipw-card-shadow); }
+      .lane-meta { padding: 42px 34px; border-right: 1px solid var(--ipw-color-border); }
+      .lane-meta h2 { margin-top: 24px; font-size: 42px; line-height: 1; letter-spacing: -.05em; }
+      .lane-meta p { margin-top: 20px; color: var(--ipw-color-muted); font-size: 18px; line-height: 1.4; }
+      .lanes { padding: 24px 36px; display: grid; grid-template-rows: repeat(3, 1fr); }
+      .lane { position: relative; display: grid; grid-template-columns: 200px 1fr 150px; align-items: center; gap: 28px; border-bottom: 1px solid var(--ipw-color-border); }
+      .lane:last-child { border-bottom: 0; }
+      .agent-name { font: 800 15px/1 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+      .task-name { font-size: 26px; font-weight: 780; }
+      .track { height: 8px; border-radius: 999px; background: var(--ipw-color-border); overflow: hidden; }
+      .track i { display: block; width: 100%; height: 100%; transform: scaleX(.04); transform-origin: left; background: var(--ipw-color-primary); }
+      .lane:nth-child(2) .track i { background: var(--ipw-color-secondary); }
+      .lane:nth-child(3) .track i { background: var(--ipw-color-accent); }
+      .state { color: var(--ipw-color-muted); font: 700 13px/1 ui-monospace, monospace; text-align: right; }
+      .merge-stage { position: absolute; inset: 160px 120px 104px; display: grid; grid-template-columns: 1fr 280px 1fr; align-items: center; }
+      .result-stack { display: grid; gap: 20px; }
+      .result-chip { padding: 25px 30px; border: 1px solid var(--ipw-color-border); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); font-size: 24px; font-weight: 800; }
+      .merge-lines { position: relative; height: 500px; }
+      .merge-lines i { position: absolute; left: 0; width: 100%; height: 2px; background: var(--ipw-color-primary); transform-origin: left; }
+      .merge-lines i:nth-child(1) { top: 105px; transform: rotate(24deg); }
+      .merge-lines i:nth-child(2) { top: 249px; }
+      .merge-lines i:nth-child(3) { top: 393px; transform: rotate(-24deg); }
+      .verified { padding: 48px; border: 1px solid var(--ipw-color-success); border-radius: 28px; background: var(--ipw-card-bg); box-shadow: 0 0 90px color-mix(in srgb, var(--ipw-color-success) 15%, transparent); }
+      .verified small { color: var(--ipw-color-success); font: 800 14px/1 ui-monospace, monospace; letter-spacing: .16em; }
+      .verified h2 { margin-top: 26px; font-size: 58px; line-height: .98; letter-spacing: -.06em; }
+      .verified p { margin-top: 22px; color: var(--ipw-color-muted); font-size: 20px; line-height: 1.45; }
+      .final { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+      .final-inner { width: 1350px; }
+      .final-mark { display: grid; place-items: center; width: 86px; height: 86px; margin: 0 auto 32px; border: 2px solid var(--ipw-color-primary); border-radius: 20px; color: var(--ipw-color-primary); font-size: 36px; font-weight: 900; transform: rotate(45deg); }
+      .final-mark span { transform: rotate(-45deg); }
+      .final h2 { font-size: 104px; line-height: .92; letter-spacing: -.075em; }
+      .final p { margin-top: 24px; color: var(--ipw-color-muted); font-size: 25px; }
+    </style>
+    <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+  </head>
+  <body>
+    <main id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="12">
+      <header class="topbar"><div class="brand"><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260724" alt="Brand logo" /><span data-var-text="brandName">iPolloWork</span></div><div class="clock">MULTI-AGENT / LIVE</div></header>
+      <section class="scene clip" id="scene-brief" data-start="0" data-duration="3" data-track-index="1"><div class="label">One objective enters</div><h1 data-var-text="title">Break down the work. Bring every result home.</h1><div class="lead-card"><div class="node">01</div><div><small>LEAD OBJECTIVE</small><strong data-var-text="leadTask">Ship the launch plan</strong></div></div></section>
+      <section class="clip" id="scene-parallel" data-start="3" data-duration="3" data-track-index="2"><div class="lane-board"><aside class="lane-meta"><div class="label">Parallel run</div><h2>Focused ownership.</h2><p>Each agent gets a bounded task and a visible finish line.</p></aside><div class="lanes"><div class="lane"><span class="agent-name">Research agent</span><strong class="task-name" data-var-text="researchTask">Map the market</strong><div><div class="track"><i></i></div><div class="state">COMPLETE</div></div></div><div class="lane"><span class="agent-name">Build agent</span><strong class="task-name" data-var-text="buildTask">Create the story</strong><div><div class="track"><i></i></div><div class="state">COMPLETE</div></div></div><div class="lane"><span class="agent-name">Verify agent</span><strong class="task-name" data-var-text="verifyTask">Check every claim</strong><div><div class="track"><i></i></div><div class="state">COMPLETE</div></div></div></div></div></section>
+      <section class="clip" id="scene-merge" data-start="6" data-duration="3" data-track-index="3"><div class="merge-stage"><div class="result-stack"><div class="result-chip">Market map</div><div class="result-chip">Launch narrative</div><div class="result-chip">Evidence log</div></div><div class="merge-lines"><i></i><i></i><i></i></div><article class="verified"><small>VERIFIED MERGE</small><h2>Every output returns with context.</h2><p>One lead agent assembles the result without losing provenance or ownership.</p></article></div></section>
+      <section class="clip" id="scene-done" data-start="9" data-duration="3" data-track-index="4"><div class="final"><div class="final-inner"><div class="final-mark"><span>✓</span></div><h2 data-var-text="outcome">Launch package complete</h2><p>Split with intent. Run in parallel. Finish as one.</p></div></div></section>
+    </main>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#scene-brief h1', { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: .8, ease: 'power3.out' }, .18);
+      tl.fromTo('.lead-card', { opacity: 0, y: 55, scale: .96 }, { opacity: 1, y: 0, scale: 1, duration: .72, ease: 'expo.out' }, .74);
+      tl.fromTo('.lane', { opacity: 0, x: 70 }, { opacity: 1, x: 0, duration: .56, stagger: .16, ease: 'power3.out' }, 3.18);
+      tl.to('.track i', { scaleX: 1, duration: 1.55, stagger: .12, ease: 'power2.inOut' }, 3.68);
+      tl.fromTo('.result-chip', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .5, stagger: .14, ease: 'power3.out' }, 6.18);
+      tl.fromTo('.merge-lines i', { scaleX: 0 }, { scaleX: 1, duration: .6, stagger: .12, ease: 'power2.out' }, 6.64);
+      tl.fromTo('.verified', { opacity: 0, x: 60 }, { opacity: 1, x: 0, duration: .72, ease: 'expo.out' }, 7.05);
+      tl.fromTo('.final-inner', { opacity: 0, y: 54, scale: .94 }, { opacity: 1, y: 0, scale: 1, duration: .9, ease: 'expo.out' }, 9.18);
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

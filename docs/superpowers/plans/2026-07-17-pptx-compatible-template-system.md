@@ -44,20 +44,6 @@
 - [ ] Validate unsupported CSS and unmarked visible content before writing a native PPTX.
 - [ ] Route manifest opt-ins to native export and keep legacy templates on their visual-first fallback.
 
-### Task 3: PPTX-Compatible Templates
-
-**Files:**
-- Create: `apps/server/bundled-templates/ipollowork.pptx-compatible-brief/*`
-- Create: `apps/server/bundled-templates/ipollowork.pptx-compatible-pitch/*`
-- Create: `apps/server/bundled-templates/ipollowork.pptx-compatible-report/*`
-- Test: `apps/app/tests/design-pptx-compatible-template.test.ts`
-- Test: `apps/server/src/templates.test.ts`
-
-- [ ] Add three 16:9 templates with explicit `pptxCompatibility: "native-editable"` metadata.
-- [ ] Mark every exported visual element with the native contract and exclude presentation controls.
-- [ ] Ship distinct 960 by 540 PNG template covers and editable design tokens.
-- [ ] Test that each template has semantic export markers and does not use unsupported visual effects.
-
 ### Task 4: Clear Product Signaling
 
 **Files:**

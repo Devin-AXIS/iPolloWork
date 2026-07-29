@@ -72,4 +72,12 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`");
     expect(sessionPage).toContain("openDesignTab(designTemplateEntryPath)");
   });
+
+  test("does not carry a previous session's template preview into a new task", () => {
+    expect(sessionPage).toContain("sessionId: string;");
+    expect(sessionPage).toContain("const currentTemplateSessionData = templateSessionData?.sessionId === props.selectedSessionId");
+    expect(sessionPage).toContain("setTemplateSessionData({ ...result, hasBrief });");
+    expect(sessionPage).toContain("setTemplateSessionData({ sessionId: props.selectedSessionId, ...result, hasBrief: false });");
+    expect(sessionPage).toContain("const designTemplateEntryPath = currentTemplateSessionData?.manifest.surface === \"design\"");
+  });
 });
