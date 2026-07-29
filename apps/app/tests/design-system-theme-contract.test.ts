@@ -35,12 +35,15 @@ describe("Design system theme contract", () => {
     expect(source).toContain("color: var(--ipw-color-on-primary) !important");
     expect(source).toContain(":where([data-ipw-slide], section.slide, .slide-frame) { background: var(--ipw-color-bg) !important");
     expect(source).not.toContain(".cover > *");
-    expect(source).not.toContain("border-radius: var(--ipw-card-radius) !important");
+    expect(source).toContain("border-radius: var(--ipw-card-radius) !important");
     expect(source).not.toContain("box-shadow: var(--ipw-card-shadow) !important");
     expect(source).not.toContain(":where(button, [role=\"button\"], [class*=\"button\"], [class*=\"btn\"])");
     expect(source).toContain("html:root [data-ipw-brand-slot]");
     expect(source).toContain("width: 18px !important; height: 18px !important");
     expect(source).toContain("object-fit: contain !important");
+    expect(source).toContain('import.meta.glob("./design-systems/design-systems/*/design-tokens.json"');
+    expect(source).toContain("buildDesignSystemPresetValues");
+    expect(source).toContain('"--ipw-type-scale": themeTypeScale(tokens)');
   });
 
   test("moves the shared token link after generated page styles and removes stale root token overrides", () => {
@@ -107,8 +110,9 @@ describe("Design system theme contract", () => {
     expect(drawer).not.toContain("Reset all</Button>");
     expect(drawer).not.toContain(">当前主题<");
     expect(drawer).not.toContain(">应用主题<");
-    expect(drawer).not.toContain("Gradient");
-    expect(drawer).not.toContain("Background image");
+    expect(drawer).toContain('PanelSection title="Background"');
+    expect(drawer).toContain("DesignImageFitSelect");
+    expect(drawer).toContain("buildDesignSystemPresetValues(theme)");
     expect(drawer).not.toContain("Image overlay");
     expect(drawer).not.toContain("Glass effect");
     expect(drawer).toContain("absolute inset-y-0 right-0");

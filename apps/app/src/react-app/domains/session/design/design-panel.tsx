@@ -49,9 +49,10 @@ import {
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
 import { DesignSystemDrawer } from "./design-system-drawer";
-import { linkedDesignTokenPath, mergeTemplateTokenCss, parseDesignTokenValues, replaceDesignTokenValue, type DesignTokenValues } from "./design-system-files";
+import { linkedDesignTokenPath, mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "./design-system-files";
 import {
   buildTemplateTokenCss,
+  getDesignSystemTheme,
   type DesignSystemTheme,
 } from "./design-system-registry";
 import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "./design-system-theme-contract";
@@ -126,9 +127,9 @@ const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent te
 
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
-  return Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
-    && typeof Reflect.get(value, "frameRevision") === "string"
-    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "view" || Reflect.get(value, "type") === "view-restored" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
+  return typeof Reflect.get(value, "frameRevision") === "string"
+    && Reflect.get(value, "channel") === DESIGN_MESSAGE_CHANNEL
+    && (Reflect.get(value, "type") === "selected" || Reflect.get(value, "type") === "editing" || Reflect.get(value, "type") === "deselected" || Reflect.get(value, "type") === "draft" || Reflect.get(value, "type") === "document-draft" || Reflect.get(value, "type") === "snapshot" || Reflect.get(value, "type") === "navigate" || Reflect.get(value, "type") === "deck" || Reflect.get(value, "type") === "view" || Reflect.get(value, "type") === "view-restored" || Reflect.get(value, "type") === "zoom" || Reflect.get(value, "type") === "pan");
 }
 
 function fileName(path: string) {
@@ -590,6 +591,8 @@ export function DesignPanel({
   const [previewSource, setPreviewSource] = React.useState("");
   const [hydratedPreviewSource, setHydratedPreviewSource] = React.useState("");
   const [previewRevision, setPreviewRevision] = React.useState(0);
+  const previewRevisionRef = React.useRef(previewRevision);
+  previewRevisionRef.current = previewRevision;
   const activeFrameRevision = `${activePagePath}:${previewRevision}`;
   const activeFrameRevisionRef = React.useRef(activeFrameRevision);
   activeFrameRevisionRef.current = activeFrameRevision;
@@ -597,7 +600,7 @@ export function DesignPanel({
   const [sourceHydrated, setSourceHydrated] = React.useState(false);
   const [quickEdit, setQuickEdit] = React.useState<"text" | "href" | "src" | "color" | "fontSize" | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
-  const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
+  const [propertiesTab, setPropertiesTab] = React.useState<"element" | "design-system">("element");
   const [designTokenDraft, setDesignTokenDraft] = React.useState("");
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [exportingPptx, setExportingPptx] = React.useState(false);
@@ -760,11 +763,13 @@ export function DesignPanel({
     if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
   }, []);
   const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
-    const next = replaceDesignTokenValue(designTokenDraftRef.current || templateTokenQuery.data || "", name, value);
+    const current = designTokenDraftRef.current || templateTokenQuery.data || "";
+    const appliedTheme = appliedDesignSystemId ? getDesignSystemTheme(appliedDesignSystemId) : undefined;
+    const next = replaceDesignTokenValue(appliedTheme ? refreshTemplateTokenCss(current, buildTemplateTokenCss(appliedTheme)) : current, name, value);
     designTokenDraftRef.current = next;
     setDesignTokenDraft(next);
     scheduleDesignTokenSave(next);
-  }, [scheduleDesignTokenSave, templateTokenQuery.data]);
+  }, [appliedDesignSystemId, scheduleDesignTokenSave, templateTokenQuery.data]);
   const handleApplyDesignSystem = React.useCallback((theme: DesignSystemTheme) => {
     const next = mergeTemplateTokenCss(
       designTokenDraftRef.current || templateTokenQuery.data || "",
@@ -842,7 +847,6 @@ export function DesignPanel({
     }
     setQuickEdit(null);
     setAdvancedOpen(false);
-    setDesignSystemOpen(false);
     setPreviewSource(fileQuery.data.content);
     setHydratedPreviewSource("");
     setPreviewLoaded(false);
@@ -978,7 +982,7 @@ export function DesignPanel({
     // an IME composition is finishing. Flush that exact DOM value to the
     // canvas before requesting the snapshot so Chinese/Japanese/Korean text is
     // never visually changed but omitted from the saved HTML.
-    if (selection && quickEdit && !isMultiSelection) {
+    if (selection && quickEdit) {
       const inputSelector = quickEdit === "text"
           ? '[aria-label="Quick edit text"]'
           : quickEdit === "href"
@@ -995,7 +999,7 @@ export function DesignPanel({
         frameWindow.postMessage({
           channel: DESIGN_MESSAGE_CHANNEL,
           type: "set",
-          ids: [selection.id],
+          id: selection.id,
           field,
           value,
           scope: "element",
@@ -1003,7 +1007,6 @@ export function DesignPanel({
       }
     }
     const requestId = crypto.randomUUID();
-    const frameRevision = activeFrameRevisionRef.current;
     return new Promise<string>((resolve) => {
       let settled = false;
       const finish = (html: string) => {
@@ -1016,14 +1019,14 @@ export function DesignPanel({
       const receiveSnapshot = (event: MessageEvent) => {
         const data = event.data;
         if (event.source !== frameWindow || !data || typeof data !== "object") return;
-        if (data.channel !== DESIGN_MESSAGE_CHANNEL || data.frameRevision !== frameRevision || data.type !== "snapshot" || data.requestId !== requestId || typeof data.html !== "string") return;
+        if (data.channel !== DESIGN_MESSAGE_CHANNEL || data.frameRevision !== activeFrameRevisionRef.current || data.type !== "snapshot" || data.requestId !== requestId || typeof data.html !== "string") return;
         finish(data.html);
       };
       const timeout = window.setTimeout(() => finish(draftRef.current), 1_000);
       window.addEventListener("message", receiveSnapshot);
       frameWindow.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "snapshot", requestId }, "*");
     });
-  }, [editing, isMultiSelection, quickEdit, selection]);
+  }, [editing, quickEdit, selection]);
 
   const exportDeckToPdf = React.useCallback(async () => {
     if (!deck || exportingPdf) return;
@@ -1476,6 +1479,20 @@ export function DesignPanel({
     }, "*");
   };
 
+  const applyStyleFields = (fields: Partial<Record<DesignStyleField, string>>) => {
+    if (!selection || !selectionSummary || !editing) return;
+    setPendingCanvasChange(true);
+    rememberHistory();
+    setSelectionState((current) => current ? {
+      ...current,
+      selection: { ...current.selection, styles: { ...current.selection.styles, ...fields } },
+      selections: current.selections.map((member) => ({ ...member, styles: { ...member.styles, ...fields } })),
+    } : null);
+    for (const [field, value] of Object.entries(fields)) {
+      iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set", ids: selectionSummary.selectionIds, field, value, scope: "element" }, "*");
+    }
+  };
+
   const deleteSelection = () => {
     if (!selectionSummary || !selectionSummary.selections.some((member) => member.canDelete) || !editing) return;
     setPendingCanvasChange(true);
@@ -1585,7 +1602,8 @@ export function DesignPanel({
     const restoreView = (targetSource: string): DesignViewRestore => ({
       id: crypto.randomUUID(),
       targetSource,
-      previewRevision: previewRevision + 1,
+      previewRevision: previewRevisionRef.current + 1,
+      frameRevision: `${activePagePath}:${previewRevisionRef.current + 1}`,
       frameLoaded: false,
       frameRestored: false,
       deckRestored: false,
@@ -1595,11 +1613,13 @@ export function DesignPanel({
       panLeft: pan?.scrollLeft ?? 0,
       panTop: pan?.scrollTop ?? 0,
     });
+    if (pendingViewRestoreRef.current) return;
     const popped = popDesignUndoHistory(historyRef.current, draftRef.current);
     setHistory(popped.history);
     const previous = popped.previous;
     if (previous !== undefined) {
-      pendingViewRestoreRef.current = restoreView(previous);
+      const restore = restoreView(previous);
+      pendingViewRestoreRef.current = restore;
       draftRef.current = previous;
       setPendingCanvasChange(false);
       setDraft(previous);
@@ -1608,14 +1628,13 @@ export function DesignPanel({
       setPreviewSource(previous);
       setHydratedPreviewSource("");
       setPreviewLoaded(false);
-      setPreviewRevision((current) => current + 1);
+      setPreviewRevision(restore.previewRevision);
       return;
     }
     const checkpoint = useDesignAiSelectionStore.getState().latestUndoCheckpoint(sessionId, activePagePath);
-    if (!checkpoint || !client || !workspaceId) {
-      return;
-    }
-    pendingViewRestoreRef.current = restoreView(checkpoint.beforeHtml);
+    if (!checkpoint || !client || !workspaceId) return;
+    const restore = restoreView(checkpoint.beforeHtml);
+    pendingViewRestoreRef.current = restore;
     try {
       const current = await client.readWorkspaceFile(workspaceId, activePagePath);
       if (current.content !== checkpoint.afterHtml) {
@@ -1643,7 +1662,7 @@ export function DesignPanel({
       setPreviewSource(restored.content);
       setHydratedPreviewSource("");
       setPreviewLoaded(false);
-      setPreviewRevision((current) => current + 1);
+      setPreviewRevision(restore.previewRevision);
     } catch (error) {
       pendingViewRestoreRef.current = null;
       const message = error instanceof Error ? error.message : "";
@@ -1651,6 +1670,37 @@ export function DesignPanel({
         ? "Could not undo the AI Design change because the file changed. Reload before trying again."
         : message || "Could not undo the AI Design change.");
     }
+  };
+
+  const chooseBackgroundImage = async () => {
+    if (!selection || selection.tag === "img") return;
+    const pickedPath = await pickLocalImageFile("选择填充图片");
+    if (!pickedPath) return;
+    const dataUrl = await readLocalImageAsDataUrl(pickedPath);
+    if (!dataUrl) {
+      toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
+      return;
+    }
+    applyStyleFields({ backgroundColor: "transparent", backgroundImage: `url(\"${dataUrl}\")` });
+    toast.success("Image added as the fill.");
+  };
+
+  const chooseDesignSystemBackgroundImage = async () => {
+    const pickedPath = await pickLocalImageFile("选择全局背景图片");
+    if (!pickedPath) return;
+    const dataUrl = await readLocalImageAsDataUrl(pickedPath);
+    if (!dataUrl) {
+      toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
+      return;
+    }
+    handleDesignTokenChange("--ipw-bg-image", `url("${dataUrl}")`);
+    handleDesignTokenChange("--ipw-bg-gradient", "none");
+    handleDesignTokenChange("--ipw-bg-overlay", "linear-gradient(rgba(28,27,26,.45), rgba(28,27,26,.45))");
+    handleDesignTokenChange("--ipw-bg-overlay-opacity", "0.45");
+    handleDesignTokenChange("--ipw-bg-mode", "image");
+    handleDesignTokenChange("--ipw-bg-size", "cover");
+    handleDesignTokenChange("--ipw-bg-position", "50% 50%");
+    toast.success("Background image applied.");
   };
 
   const dirty = pendingCanvasChange || draft !== savedSource;
@@ -1719,10 +1769,10 @@ export function DesignPanel({
   const selectionTop = isPresentationTemplate
     ? presentationCanvasTop + (selectionRect?.top ?? 0) * presentationScale - presentationScroll.top
     : (iframeRef.current?.offsetTop ?? 0) + (selectionRect?.top ?? 0);
-  const floatingStyle = selectionRect ? {
+  const floatingStyle = selection ? {
     left: `clamp(112px, ${selectionLeft + 8}px, calc(100% - 112px))`,
     top: `${Math.max(8, selectionTop + 8)}px`,
-    transform: selectionRect.top > 58 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
+    transform: (selectionRect?.top ?? 0) > 58 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
   } satisfies React.CSSProperties : undefined;
   const compactToolbar = panelWidth < 480;
   const veryCompactToolbar = panelWidth < 360;
@@ -1790,7 +1840,6 @@ export function DesignPanel({
                   setSelectionState(null);
                   setQuickEdit(null);
                   setAdvancedOpen(false);
-                  setDesignSystemOpen(false);
                 }}
                 aria-label="Edit"
               />
@@ -1840,32 +1889,16 @@ export function DesignPanel({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && "bg-[#F3F4F6]")}
+                  className={cn(DESIGN_ACTION_BUTTON_CLASS, advancedOpen && propertiesTab === "element" && "bg-[#F3F4F6]")}
                   onClick={() => {
-                    setDesignSystemOpen(false);
-                    setAdvancedOpen((current) => !current);
+                    setPropertiesTab("element");
+                    setAdvancedOpen((current) => current && propertiesTab === "element" ? false : true);
                   }}
                   aria-label="Toggle design properties"
                   title="Design properties"
-                  aria-pressed={advancedOpen}
+                  aria-pressed={advancedOpen && propertiesTab === "element"}
                 >
                   <SlidersHorizontal />
-                </Button>
-              ) : null}
-              {editing ? (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={cn(DESIGN_ACTION_BUTTON_CLASS, designSystemOpen && "bg-[#F3F4F6]")}
-                  onClick={() => {
-                    setAdvancedOpen(false);
-                    setDesignSystemOpen((current) => !current);
-                  }}
-                  aria-label="Open design system"
-                  title="Design system"
-                  aria-pressed={designSystemOpen}
-                >
-                  <Palette />
                 </Button>
               ) : null}
               <Button
@@ -1933,7 +1966,6 @@ export function DesignPanel({
                     setSelectionState(null);
                     setQuickEdit(null);
                     setAdvancedOpen(false);
-                    setDesignSystemOpen(false);
                   } : undefined}
                   onPublish={() => publishMutation.mutate()}
                   onExportPdf={() => void exportDeckToPdf()}
@@ -1990,7 +2022,7 @@ export function DesignPanel({
                         setPreviewLoaded(true);
                         const frameWindow = iframeRef.current?.contentWindow;
                         const pending = pendingViewRestoreRef.current;
-                        if (pending && !expectsDesignRestoreFrame(pending, previewSource, previewRevision)) return;
+                        if (pending && !expectsDesignRestoreFrame(pending, previewSource, previewRevision, activeFrameRevision)) return;
                         if (pending) pending.frameLoaded = true;
                         if (activePageHash && !pending) frameWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
                         frameWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
@@ -2161,59 +2193,53 @@ export function DesignPanel({
                           variant={advancedOpen ? "secondary" : "ghost"}
                           size="icon-xs"
                           onClick={() => {
-                            setDesignSystemOpen(false);
-                            setAdvancedOpen((current) => !current);
+                            setPropertiesTab("element");
+                            setAdvancedOpen((current) => current && propertiesTab === "element" ? false : true);
                           }}
                           aria-label="Toggle advanced design settings"
                           aria-pressed={advancedOpen}
                         >
                           <SlidersHorizontal />
                         </Button>
-                        {!isMultiSelection ? (
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => void askAiAboutSelection()}
-                            disabled={isMultiSelection || !selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
-                            aria-label="Ask AI about selected element"
-                          >
-                            <Sparkles />
-                          </Button>
-                        ) : null}
+                        {!isMultiSelection ? <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => void askAiAboutSelection()}
+                          disabled={isMultiSelection || !selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
+                          aria-label="Ask AI about selected element"
+                        >
+                          <Sparkles />
+                        </Button> : null}
                       </>
                     )}
                   </div>
                 ) : null}
               </div>
-              {editing && advancedOpen ? (
-                selection && selectionSummary ? (
-                  <DesignPropertiesInspector
-                    selection={selection}
-                    isMultiSelection={isMultiSelection}
-                    selectionCount={selectionSummary.selectionCount}
-                    mixedStyleFields={selectionSummary.mixedStyleFields}
-                    onClose={() => setAdvancedOpen(false)}
-                    onApplyField={applyField}
-                    onChooseReplacementImage={() => void chooseReplacementImage()}
-                  />
-                ) : (
-                  <aside className="w-[310px] shrink-0 border-l border-[#e8e9ec] bg-white px-6 pt-12 text-center text-xs leading-5 text-muted-foreground" aria-label="Design inspector">
-                    <MousePointer2 className="mx-auto mb-2 size-5" />
-                    Click an element in the page to edit it.
-                  </aside>
-                )
-              ) : null}
-              {editing ? (
+              {editing && advancedOpen && selectionSummary ? <DesignPropertiesInspector
+                selection={selection}
+                isMultiSelection={isMultiSelection}
+                selectionCount={selectionSummary.selectionCount}
+                mixedStyleFields={selectionSummary.mixedStyleFields}
+                activeTab={propertiesTab}
+                onClose={() => setAdvancedOpen(false)}
+                onActiveTabChange={setPropertiesTab}
+                onApplyField={applyField}
+                onApplyFields={applyStyleFields}
+                onChooseReplacementImage={() => void chooseReplacementImage()}
+                onChooseBackgroundImage={() => void chooseBackgroundImage()}
+              >
                 <DesignSystemDrawer
-                  open={designSystemOpen}
+                  embedded
+                  open={propertiesTab === "design-system"}
                   templateName={designTemplate?.title ?? fileName(activePagePath)}
                   currentThemeId={appliedDesignSystemId}
                   initialValues={designTokenValues}
-                  onClose={() => setDesignSystemOpen(false)}
+                  onClose={() => setAdvancedOpen(false)}
                   onTokenChange={handleDesignTokenChange}
                   onApplyDesignSystem={handleApplyDesignSystem}
+                  onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}
                 />
-              ) : null}
+              </DesignPropertiesInspector> : null}
             </div>
           )}
         </>

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "gsap-morphsvg-shape",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "MorphSVG Shape",
+  "description": "A luminous identity mark that morphs between geometric silhouettes with GSAP MorphSVG.",
+  "kind": "effect",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 7,
+  "tags": ["svg", "morph-svg", "effect", "brand"],
+  "engine": {
+    "name": "gsap",
+    "version": "3.15.0",
+    "seekable": true,
+    "plugins": ["MorphSVGPlugin"]
+  },
+  "source": {
+    "provider": "gsap-docs",
+    "label": "GSAP 3.15 Docs",
+    "url": "https://gsap.com/docs/v3/Plugins/MorphSVGPlugin/"
+  },
+  "files": [
+    {
+      "path": "gsap-morphsvg-shape.html",
+      "target": "compositions/gsap-morphsvg-shape.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "backgroundColor",
+      "label": "Background color",
+      "type": "color",
+      "default": "#050816",
+      "update": "live"
+    },
+    {
+      "id": "shapeColor",
+      "label": "Shape color",
+      "type": "color",
+      "default": "#6C7CFF",
+      "update": "live"
+    },
+    {
+      "id": "glowIntensity",
+      "label": "Glow intensity",
+      "type": "number",
+      "default": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "update": "live"
+    },
+    {
+      "id": "duration",
+      "label": "Duration",
+      "type": "number",
+      "default": 7,
+      "min": 2,
+      "max": 20,
+      "step": 0.5,
+      "unit": "s",
+      "update": "rebuild"
+    }
+  ],
+  "agentPrompt": "Use the MorphSVG Shape composition for a polished identity transformation. Preserve the continuous silhouette morph and luminous brand treatment."
+}

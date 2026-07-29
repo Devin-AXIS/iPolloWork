@@ -131,11 +131,11 @@ describe("Design deck navigation", () => {
     expect(source).toContain('type: "deck-navigate", direction: "index", index: deckIndex, viewRevision: pending?.id ?? ""');
   });
 
-  test("ignores draft messages until the replacement iframe for an undo has loaded", async () => {
+  test("ignores draft messages until the replacement iframe has restored the undo view", async () => {
     const source = await Bun.file(panelUrl).text();
 
     expect(source).toContain('if ((event.data.type === "draft" || event.data.type === "document-draft") && shouldIgnoreDesignDraftMessage(pendingViewRestoreRef.current)) return;');
-    expect(source).toContain("expectsDesignRestoreFrame(pending, previewSource, previewRevision)");
+    expect(source).toContain("expectsDesignRestoreFrame(pending, previewSource, previewRevision, activeFrameRevision)");
     expect(source).toContain("event.data.frameRevision !== activeFrameRevisionRef.current");
   });
 
@@ -166,7 +166,7 @@ describe("Design deck navigation", () => {
     // of relying on previewSource changing to trigger a reload.
     expect(undo).toContain('setHydratedPreviewSource("");');
     expect(undo).toContain('setPreviewLoaded(false);');
-    expect(undo).toContain('setPreviewRevision((current) => current + 1);');
+    expect(undo).toContain('setPreviewRevision(restore.previewRevision);');
   });
 
   test("explains why Undo is disabled before the first change", async () => {

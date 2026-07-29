@@ -2,6 +2,7 @@ export type DesignViewRestore = {
   id: string;
   targetSource: string;
   previewRevision: number;
+  frameRevision: string;
   frameLoaded: boolean;
   frameRestored: boolean;
   deckRestored: boolean;
@@ -16,8 +17,14 @@ export function expectsDesignRestoreFrame(
   pending: DesignViewRestore | null,
   source: string,
   previewRevision: number,
+  frameRevision?: string,
 ) {
-  return Boolean(pending && pending.targetSource === source && previewRevision >= pending.previewRevision);
+  return Boolean(
+    pending
+      && pending.targetSource === source
+      && previewRevision >= pending.previewRevision
+      && (frameRevision === undefined || pending.frameRevision === frameRevision),
+  );
 }
 
 export function acceptsDesignDeckMessage(
@@ -30,5 +37,5 @@ export function acceptsDesignDeckMessage(
 }
 
 export function shouldIgnoreDesignDraftMessage(pending: DesignViewRestore | null) {
-  return Boolean(pending && !pending.frameLoaded);
+  return Boolean(pending);
 }

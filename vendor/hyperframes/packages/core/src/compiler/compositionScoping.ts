@@ -446,7 +446,8 @@ export function wrapScopedCompositionScript(
           // (__hfScopedHyperframes is a hoisted var assigned below, before any
           // sub-comp script -- the only code that reads this -- runs.)
           if (prop === "__hyperframes") return __hfScopedHyperframes;
-          return Reflect.get(target, prop, target);
+          var value = Reflect.get(target, prop, target);
+          return typeof value === "function" ? value.bind(target) : value;
         },
         set: function(target, prop, value, receiver) {
           if (prop === "__timelines") {

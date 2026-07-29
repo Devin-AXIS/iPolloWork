@@ -4,6 +4,7 @@ import {
   useCallback,
   use,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -398,7 +399,7 @@ export function useControlAction(action: iPolloWorkControlAction | null | false 
   latestActionRef.current = action || null;
   const actionId = action ? action.id : null;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!registerAction || !actionId) return undefined;
     return registerAction(actionId, latestActionRef);
   }, [actionId, registerAction]);

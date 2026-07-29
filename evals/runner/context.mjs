@@ -405,7 +405,7 @@ export class EvalContext {
    * client plus the screenshot buffer captured during the responsiveness
    * check (reuse it instead of shooting twice).
    */
-  async _connectVerifiedTarget(targetId, targetUrlIncludes) {
+  async _connectVerifiedTarget(targetId, targetUrlIncludes, { verifyScreenshot = true } = {}) {
     if (!this.cdpBaseUrl) {
       throw new EvalError("Targeting a specific CDP target requires cdpBaseUrl on the context.");
     }
@@ -415,7 +415,7 @@ export class EvalContext {
       try {
         const targets = await listTargets(this.cdpBaseUrl);
         const target = targets.find((entry) => (
-          entry.type === "page" &&
+          (entry.type === "page" || (!verifyScreenshot && entry.type === "iframe")) &&
           entry.webSocketDebuggerUrl &&
           (!targetId || entry.id === targetId) &&
           (!targetUrlIncludes || String(entry.url ?? "").includes(targetUrlIncludes))
@@ -424,8 +424,9 @@ export class EvalContext {
           throw new EvalError(`No CDP target found matching ${JSON.stringify({ targetId, targetUrlIncludes })}.`);
         }
         const client = await connect(debuggerUrlFor(this.cdpBaseUrl, target));
-        await client.send("Page.enable").catch(() => undefined);
-        const buffer = await captureScreenshot(client);
+        const buffer = verifyScreenshot
+          ? await client.send("Page.enable").then(() => captureScreenshot(client))
+          : null;
         return { client, buffer };
       } catch (error) {
         lastError = error;
@@ -509,7 +510,11 @@ export class EvalContext {
     // embedded, separately-targeted view (e.g. the built-in browser panel).
     let textClient = screenshotClient;
     if (textTargetSelector) {
-      const { client } = await this._connectVerifiedTarget(options.textTargetId, options.textTargetUrlIncludes);
+      const { client } = await this._connectVerifiedTarget(
+        options.textTargetId,
+        options.textTargetUrlIncludes,
+        { verifyScreenshot: false },
+      );
       textClient = client;
       closeClients.push(client);
     }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const appRoot = readFileSync(resolve(import.meta.dir, "../src/react-app/shell/app-root.tsx"), "utf8");
@@ -15,6 +15,10 @@ const sessionRoute = readFileSync(
   resolve(import.meta.dir, "../src/react-app/shell/session-route.tsx"),
   "utf8",
 );
+const sessionPage = readFileSync(
+  resolve(import.meta.dir, "../src/react-app/domains/session/chat/session-page.tsx"),
+  "utf8",
+);
 const routeState = readFileSync(
   resolve(import.meta.dir, "../src/react-app/shell/use-workspace-route-state.ts"),
   "utf8",
@@ -27,6 +31,7 @@ const cloudAccount = readFileSync(
   resolve(import.meta.dir, "../src/react-app/domains/settings/cloud/cloud-account-section.tsx"),
   "utf8",
 );
+const legacyOrganizationWorkspaces = resolve(import.meta.dir, "../src/app/cloud/organization-workspaces.ts");
 
 describe("personal and Enterprise chat entry wiring", () => {
   test("routes a completed account sign-in directly to chat", () => {
@@ -49,12 +54,30 @@ describe("personal and Enterprise chat entry wiring", () => {
   });
 
   test("scopes workspaces and therefore all sessions to the active work context", () => {
-    expect(routeState).toContain("filterWorkspacesForWorkContext(");
+    expect(routeState).toContain("canonicalWorkspacesForWorkContext(");
+    expect(routeState).toContain("pruneServerWorkspacesForWorkContext(");
     expect(routeState).toContain("workContextRef.current !== requestedContextId");
     expect(sessionRoute).toContain("workContextId: activeWorkContextId");
     expect(sessionRoute).toContain("sessionsByWorkspaceId,");
     expect(sessionRoute).not.toContain("ChatSpace");
     expect(workContext).toContain('joinDesktopPath(homeDir, ".ipollowork", "work-contexts", connection.id)');
-    expect(workContext).toContain("rememberWorkspaceForWorkContext(contextId, workspaceId)");
+    expect(workContext).not.toContain("rememberWorkspaceForWorkContext");
+  });
+
+  test("keeps the selected template library scope when an Enterprise launches a template", () => {
+    expect(sessionPage).toContain("template.manifest.id,\n            templateResourceScope,");
+    expect(sessionPage).toContain("props.selectedSessionId,\n                            undefined,\n                            templateResourceScope,");
+    expect(sessionRoute).toContain("templateScope ?? readActiveWorkContextId()");
+    expect(sessionRoute).toContain("Template unavailable");
+    expect(sessionRoute).toContain("deleteSession(endpoint.workspaceId, createdSessionId)");
+  });
+
+  test("removes the legacy workstation switch and cloud organization mapping", () => {
+    expect(sidebar).not.toContain("WorkspaceHeader");
+    expect(sidebar).not.toContain("WorkspaceActionsMenu");
+    expect(sidebar).not.toContain("onReorderWorkspaces");
+    expect(sessionRoute).not.toContain('case "workspace.create"');
+    expect(existsSync(legacyOrganizationWorkspaces)).toBe(false);
+    expect(appRoot).not.toContain("CloudWorkspaceRouteSync");
   });
 });

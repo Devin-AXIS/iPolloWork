@@ -1,3 +1,5 @@
+import type { CompositionVariable } from "../core.types";
+
 // The `enum` arrays in `packages/core/schemas/registry*.json` must match
 // `ITEM_TYPES` / `FILE_TYPES` below — `types.test.ts` is the drift guard.
 
@@ -34,6 +36,24 @@ export interface RegistryItemPreview {
   poster?: string;
 }
 
+export type RegistryVariableUpdate = "live" | "rebuild" | "reload";
+export type RegistryVariable = CompositionVariable & { update?: RegistryVariableUpdate };
+
+export interface RegistryItemEngine {
+  name: string;
+  version?: string;
+  seekable?: boolean;
+  plugins?: string[];
+}
+
+export type RegistryItemKind = "animation" | "effect";
+
+export interface RegistryItemSource {
+  provider: string;
+  label: string;
+  url?: string;
+}
+
 /** Fields common to every registry item, regardless of type. */
 interface RegistryItemBase {
   /** JSON Schema URL — `https://hyperframes.heygen.com/schema/registry-item.json`. */
@@ -46,6 +66,8 @@ interface RegistryItemBase {
   description: string;
   /** Filter tags (e.g. `["social", "portrait", "card"]`). */
   tags?: string[];
+  /** Product-facing library placement. Inferred from type/tags when omitted. */
+  kind?: RegistryItemKind;
   /** Item author / maintainer. */
   author?: string;
   /** URL for the author / creator credit. */
@@ -56,6 +78,8 @@ interface RegistryItemBase {
   license?: string;
   /** Minimum `hyperframes` CLI version required to install this item (semver). */
   minCliVersion?: string;
+  /** Version of this registry item contract/content. */
+  version?: string;
   /** If set, the item is deprecated; the value is the reason or migration note. */
   deprecated?: string;
   /** Names of other registry items this item depends on. */
@@ -64,6 +88,12 @@ interface RegistryItemBase {
   files: FileTarget[];
   /** Optional preview media. */
   preview?: RegistryItemPreview;
+  /** Animation/runtime engine used by the item. */
+  engine?: RegistryItemEngine;
+  /** Upstream catalog or original demo used as the adaptation source. */
+  source?: RegistryItemSource;
+  /** User-facing variables, aligned with the composition variable contract. */
+  variables?: RegistryVariable[];
   /** Related skill slug (e.g. `hyperframes-captions`) — shown in docs. */
   relatedSkill?: string;
 }
@@ -86,6 +116,8 @@ export interface BlockParam {
   min?: number;
   max?: number;
   step?: number;
+  /** @deprecated Prefer RegistryItemBase.variables for new items. */
+  update?: RegistryVariableUpdate;
 }
 
 /** Sub-composition block — installed by `hyperframes add <name>`. */
@@ -216,6 +248,22 @@ export function resolveBlockCategory(tags: string[] | undefined): BlockCategory 
   if (set.has("text-effect")) return "text-effects";
   if (set.has("effect") || set.has("grain") || set.has("vignette")) return "effects";
   return "scenes";
+}
+
+const EFFECT_CATEGORIES = new Set<BlockCategory>([
+  "captions",
+  "effects",
+  "text-effects",
+  "transitions",
+  "vfx",
+]);
+
+export function resolveRegistryItemKind(
+  item: Pick<RegistryItem, "kind" | "tags" | "type">,
+): RegistryItemKind {
+  if (item.kind) return item.kind;
+  if (item.type === "hyperframes:component") return "effect";
+  return EFFECT_CATEGORIES.has(resolveBlockCategory(item.tags)) ? "effect" : "animation";
 }
 
 // ── Type guards ─────────────────────────────────────────────────────────────

@@ -26,6 +26,6 @@ describe("Video Studio animation reference handoff", () => {
     expect(videoPanelSource).toContain('"ipollowork:add-animation-reference"');
     expect(surfaceSource).toContain('window.addEventListener("ipollowork:add-animation-reference"');
     expect(surfaceSource).toContain("item.agentPrompt");
-    expect(surfaceSource).toContain("animation.title");
+    expect(surfaceSource).toContain("animation.item.title");
   });
 });

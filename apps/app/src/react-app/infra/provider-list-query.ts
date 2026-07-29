@@ -4,6 +4,7 @@ import type { Client, ModelRef, ProviderListItem } from "../../app/types";
 import { unwrap } from "../../app/lib/opencode";
 import { dispatchNewProviders } from "../../app/lib/provider-events";
 import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client";
+import type { SelectableChatModelSnapshot } from "./preferred-chat-model";
 
 export const PROVIDER_LIST_CACHE_MS = 5 * 60 * 1000;
 const PROVIDER_LIST_QUERY_ROOT = ["opencode-provider-list"] as const;
@@ -59,7 +60,9 @@ export function getConnectedProviderItems(value: ProviderListResponse | null | u
   return (value?.all ?? []).filter(
     (provider) =>
       connected.has(provider.id) &&
-      (provider.source !== "custom" || provider.id === "opencode" || Object.keys(provider.models ?? {}).length > 0),
+      (provider.source !== "custom" ||
+        provider.id === "opencode" ||
+        Object.keys(provider.models ?? {}).length > 0),
   );
 }
 
@@ -73,7 +76,18 @@ export function getSelectableChatProviderItems(value: ProviderListResponse | nul
   });
 }
 
-export function getConnectedProviderSnapshot(value: ProviderListResponse | null | undefined): ConnectedProviderSnapshot {
+export function getSelectableChatModelSnapshot(
+  value: ProviderListResponse | null | undefined,
+): SelectableChatModelSnapshot {
+  return getSelectableChatProviderItems(value).map((provider) => ({
+    providerID: provider.id,
+    modelIDs: Object.keys(provider.models ?? {}),
+  }));
+}
+
+export function getConnectedProviderSnapshot(
+  value: ProviderListResponse | null | undefined,
+): ConnectedProviderSnapshot {
   return getConnectedProviderItems(value)
     .map((provider) => ({
       id: provider.id,
@@ -173,7 +187,9 @@ function dispatchConnectedProviderChanges(
         name: provider.name,
         providerId: provider.id,
         firstModelId,
-        firstModelName: firstModelId ? provider.models[firstModelId]?.name ?? firstModelId : undefined,
+        firstModelName: firstModelId
+          ? (provider.models[firstModelId]?.name ?? firstModelId)
+          : undefined,
       };
     }),
     newProviderCount: newProviders.length,

@@ -30,8 +30,12 @@
         z-index: 2147483647;
         display: grid;
         place-items: center;
-        background: #000000;
+        background: #fcfcfd;
         transition: opacity 160ms ease;
+      }
+
+      html[data-theme="dark"] #ipollowork-startup-splash {
+        background: #111113;
       }
 
       #ipollowork-startup-splash[data-hiding="true"] {
@@ -40,35 +44,25 @@
       }
 
       #ipollowork-startup-splash img {
-        width: 80px;
+        width: min(288px, 33.6vw);
         height: auto;
         display: block;
+      }
+
+      html[data-theme="dark"] #ipollowork-startup-splash img {
         filter: brightness(0) invert(1);
-        animation: ipollowork-startup-breathe 1.5s ease-in-out infinite;
       }
 
-      #ipollowork-startup-splash-inner {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 20px;
-        color: rgba(255, 255, 255, 0.65);
-        font: 300 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        letter-spacing: 0.2em;
-      }
-
-      @keyframes ipollowork-startup-breathe {
-        0%, 100% { opacity: 0.42; transform: scale(0.94); }
-        50% { opacity: 1; transform: scale(1); }
+      @media (max-width: 640px) {
+        #ipollowork-startup-splash img {
+          width: min(224px, 46.4vw);
+        }
       }
     </style>
   </head>
   <body class="bg-dls-surface text-dls-text mac:bg-transparent">
     <div id="ipollowork-startup-splash" aria-label="Loading" role="status">
-      <div id="ipollowork-startup-splash-inner">
-        <img src="/ipollowork-mark.svg" alt="" aria-hidden="true" />
-        <span>Loading...</span>
-      </div>
+      <img src="/ipollowork-app-loading-v3.gif" alt="" aria-hidden="true" />
     </div>
     <div id="root"></div>
     <script type="module" src="/src/index.react.tsx"></script>

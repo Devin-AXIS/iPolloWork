@@ -15,6 +15,17 @@ type DesignSystemManifest = {
   };
 };
 
+type DesignSystemToken = {
+  name: string;
+  value: string;
+  type: "color" | "fontFamily" | "dimension" | "number" | "shadow" | "duration" | "cubicBezier";
+};
+
+type DesignSystemTokenDocument = {
+  format: "od-design-tokens/v1";
+  tokens: DesignSystemToken[];
+};
+
 export type DesignSystemTheme = {
   id: string;
   name: string;
@@ -22,6 +33,7 @@ export type DesignSystemTheme = {
   description: string;
   previewHtml: string;
   tokensCss: string;
+  tokens: DesignSystemToken[];
 };
 
 export type DesignThemeTokenHints = {
@@ -96,6 +108,11 @@ const tokenModules = import.meta.glob("./design-systems/design-systems/*/tokens.
   as: "raw",
 }) as Record<string, string>;
 
+const designTokenModules = import.meta.glob("./design-systems/design-systems/*/design-tokens.json", {
+  eager: true,
+  import: "default",
+}) as Record<string, DesignSystemTokenDocument>;
+
 function sortThemeItems(left: DesignSystemTheme, right: DesignSystemTheme) {
   const category = left.category.localeCompare(right.category);
   if (category !== 0) return category;
@@ -109,10 +126,12 @@ export const DESIGN_SYSTEM_THEMES: DesignSystemTheme[] = Object.entries(manifest
     const previewFallbackPath = `${root}/system/index.html`;
     const legacyPreviewPath = `${root}/preview/colors.html`;
     const tokensPath = `${root}/tokens.css`;
+    const designTokensPath = `${root}/design-tokens.json`;
     const previewHtml = kitPreviewModules[previewPath]
       ?? systemIndexModules[previewFallbackPath]
       ?? previewModules[legacyPreviewPath];
     const tokensCss = tokenModules[tokensPath];
+    const tokenDocument = designTokenModules[designTokensPath];
     if (!previewHtml || !tokensCss) return [];
     return [{
       id: manifest.id,
@@ -121,6 +140,7 @@ export const DESIGN_SYSTEM_THEMES: DesignSystemTheme[] = Object.entries(manifest
       description: manifest.description ?? "",
       previewHtml,
       tokensCss,
+      tokens: tokenDocument?.format === "od-design-tokens/v1" ? tokenDocument.tokens : [],
     }];
   })
   .sort(sortThemeItems);
@@ -137,6 +157,11 @@ export function parseCssVariables(source: string) {
     values[match[1]] = match[2]?.trim() ?? "";
   }
   return values;
+}
+
+function themeTokenValues(theme: DesignSystemTheme) {
+  if (!theme.tokens.length) return parseCssVariables(theme.tokensCss);
+  return Object.fromEntries(theme.tokens.map((token) => [token.name, token.value]));
 }
 
 export function designSystemTokenStorageName(name: string) {
@@ -160,7 +185,11 @@ function tokenGroup(name: string) {
   return "其他";
 }
 
-function tokenKind(name: string, value: string): DesignSystemTokenControl["kind"] {
+function tokenKind(name: string, value: string, type?: DesignSystemToken["type"]): DesignSystemTokenControl["kind"] {
+  if (type === "color") return "color";
+  if (type === "fontFamily") return "font";
+  if (type === "dimension") return "length";
+  if (type === "shadow") return "shadow";
   if (isColorTokenValue(value) || /(?:bg|surface|fg|muted|meta|border|accent|primary|secondary|success|warn|danger|good|bad)/.test(name)) return "color";
   if (/^--font/.test(name)) return "font";
   if (/^--(?:elev|shadow|focus)/.test(name)) return "shadow";
@@ -169,14 +198,15 @@ function tokenKind(name: string, value: string): DesignSystemTokenControl["kind"
 }
 
 export function buildDesignSystemTokenControls(theme: DesignSystemTheme): DesignSystemTokenControl[] {
-  const tokens = parseCssVariables(theme.tokensCss);
+  const tokens = themeTokenValues(theme);
+  const structuredTypes = new Map(theme.tokens.map((token) => [token.name, token.type]));
   return Object.entries(tokens)
     .map(([name, value]) => ({
       name,
       storageName: designSystemTokenStorageName(name),
       value: rewriteThemeTokenReferences(value),
       group: tokenGroup(name),
-      kind: tokenKind(name, value),
+      kind: tokenKind(name, value, structuredTypes.get(name)),
     }))
     .sort((left, right) => {
       const group = TOKEN_GROUP_ORDER.indexOf(left.group as typeof TOKEN_GROUP_ORDER[number])
@@ -192,6 +222,67 @@ function rewriteThemeTokenReferences(value: string) {
 function themeTokenReference(tokens: Record<string, string>, names: string[], fallback: string) {
   const name = names.find((candidate) => tokens[candidate] !== undefined);
   return name ? `var(${designSystemTokenStorageName(name)})` : fallback;
+}
+
+function numericPixelValue(value: string | undefined) {
+  const match = value?.trim().match(/^(-?\d+(?:\.\d+)?)px$/);
+  return match ? Number(match[1]) : undefined;
+}
+
+function themeTypeScale(tokens: Record<string, string>) {
+  const base = numericPixelValue(tokens["--text-base"]);
+  if (base === undefined) return "1";
+  return String(Math.max(0.8, Math.min(1.25, base / 16)));
+}
+
+export function buildTemplateTokenValues(theme: DesignSystemTheme): Record<string, string> {
+  const tokens = themeTokenValues(theme);
+  return {
+    "--ipw-color-bg": themeTokenReference(tokens, ["--bg", "--page-bg", "--canvas"], "#fafaf9"),
+    "--ipw-color-surface": themeTokenReference(tokens, ["--surface", "--surface-1", "--panel"], "#ffffff"),
+    "--ipw-color-text": themeTokenReference(tokens, ["--fg", "--text", "--on-surface"], "#1c1b1a"),
+    "--ipw-color-muted": themeTokenReference(tokens, ["--muted", "--fg-2", "--text-muted"], "#6b6964"),
+    "--ipw-color-border": themeTokenReference(tokens, ["--border", "--border-soft"], "#e6e4e0"),
+    "--ipw-color-primary": themeTokenReference(tokens, ["--accent", "--primary", "--brand"], "#c96442"),
+    "--ipw-color-secondary": themeTokenReference(tokens, ["--secondary", "--accent-hover", "--accent"], "#2563eb"),
+    "--ipw-color-accent": themeTokenReference(tokens, ["--meta", "--accent", "--highlight"], "#7c3aed"),
+    "--ipw-color-success": themeTokenReference(tokens, ["--success", "--good"], "#059669"),
+    "--ipw-color-warning": themeTokenReference(tokens, ["--warn", "--warning"], "#d97706"),
+    "--ipw-color-danger": themeTokenReference(tokens, ["--danger", "--bad"], "#dc2626"),
+    "--ipw-color-on-primary": themeTokenReference(tokens, ["--accent-on", "--on-accent", "--on-primary"], "#ffffff"),
+    "--ipw-font-display": themeTokenReference(tokens, ["--font-display"], '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'),
+    "--ipw-font-body": themeTokenReference(tokens, ["--font-body"], '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'),
+    "--ipw-type-scale": themeTypeScale(tokens),
+    "--ipw-body-line-height": themeTokenReference(tokens, ["--leading-body"], "1.55"),
+    "--ipw-content-width": themeTokenReference(tokens, ["--container-max"], "1080px"),
+    "--ipw-page-padding": themeTokenReference(tokens, ["--container-gutter-desktop", "--container-gutter-tablet"], "32px"),
+    "--ipw-section-space": themeTokenReference(tokens, ["--section-y-desktop", "--section-y-tablet"], "80px"),
+    "--ipw-button-radius": themeTokenReference(tokens, ["--radius-md", "--radius-sm", "--radius-pill"], "8px"),
+    "--ipw-card-bg": themeTokenReference(tokens, ["--surface", "--bg"], "#ffffff"),
+    "--ipw-card-border": themeTokenReference(tokens, ["--border", "--border-soft"], "#e6e4e0"),
+    "--ipw-card-radius": themeTokenReference(tokens, ["--radius-lg", "--radius-md"], "14px"),
+    "--ipw-card-shadow": themeTokenReference(tokens, ["--elev-raised", "--elev-ring"], "0 12px 32px rgba(28,27,26,.10)"),
+  };
+}
+
+function resolveThemeTokenValue(value: string, tokens: Record<string, string>, seen = new Set<string>()): string {
+  const reference = value.match(/^var\(\s*(--[a-zA-Z0-9_-]+)/)?.[1];
+  if (!reference || seen.has(reference)) return value;
+  seen.add(reference);
+  return tokens[reference] ? resolveThemeTokenValue(tokens[reference], tokens, seen) : value;
+}
+
+export function buildDesignSystemPresetValues(theme: DesignSystemTheme): Record<string, string> {
+  const tokens = themeTokenValues(theme);
+  const sourceValues = Object.fromEntries(Object.entries(tokens).map(([name, value]) => [
+    designSystemTokenStorageName(name),
+    rewriteThemeTokenReferences(value),
+  ]));
+  const templateValues = Object.fromEntries(Object.entries(buildTemplateTokenValues(theme)).map(([name, value]) => [
+    name,
+    resolveThemeTokenValue(value.replace(/^var\(--ipw-od-/, "var(--"), tokens),
+  ]));
+  return { ...sourceValues, ...templateValues };
 }
 
 function isColorTokenValue(value: string) {
@@ -235,7 +326,7 @@ export function buildDesignSystemPreviewDoc(theme: DesignSystemTheme) {
 }
 
 export function buildThemeTokenHints(theme: DesignSystemTheme): DesignThemeTokenHints {
-  const tokens = parseCssVariables(theme.tokensCss);
+  const tokens = themeTokenValues(theme);
   const colors = new Set<string>();
   const fonts = new Set<string>();
   const lengths = new Set<string>();
@@ -267,7 +358,7 @@ export function buildThemeTokenHints(theme: DesignSystemTheme): DesignThemeToken
 }
 
 export function buildDesignSystemCardPreviewDoc(theme: DesignSystemTheme) {
-  const tokens = parseCssVariables(theme.tokensCss);
+  const tokens = themeTokenValues(theme);
   const bg = pickThemeToken(tokens, ["--bg", "--page-bg", "--canvas"], "#ffffff");
   const surface = pickThemeToken(tokens, ["--surface", "--surface-1", "--panel"], "#f7f7f5");
   const text = pickThemeToken(tokens, ["--fg", "--text", "--on-surface"], "#151515");
@@ -450,9 +541,13 @@ function pickThemeToken(values: Record<string, string>, names: string[], fallbac
 }
 
 export function buildTemplateTokenCss(theme: DesignSystemTheme) {
-  const tokens = parseCssVariables(theme.tokensCss);
+  const tokens = themeTokenValues(theme);
+  const values = buildTemplateTokenValues(theme);
   const sourceTokenLines = Object.entries(tokens).map(([name, value]) =>
     `  ${designSystemTokenStorageName(name)}: ${rewriteThemeTokenReferences(value)};`,
+  );
+  const sourceAliasLines = Object.keys(tokens).map((name) =>
+    `  ${name}: var(${designSystemTokenStorageName(name)}) !important;`,
   );
   const lines = [
     `/* ipw-theme:start */`,
@@ -460,42 +555,45 @@ export function buildTemplateTokenCss(theme: DesignSystemTheme) {
     `:root {`,
     ...sourceTokenLines,
     ``,
-    `  --ipw-color-bg: ${themeTokenReference(tokens, ["--bg", "--page-bg", "--canvas"], "#fafaf9")};`,
-    `  --ipw-color-surface: ${themeTokenReference(tokens, ["--surface", "--surface-1", "--panel"], "#ffffff")};`,
-    `  --ipw-color-text: ${themeTokenReference(tokens, ["--fg", "--text", "--on-surface"], "#1c1b1a")};`,
-    `  --ipw-color-muted: ${themeTokenReference(tokens, ["--muted", "--fg-2", "--text-muted"], "#6b6964")};`,
-    `  --ipw-color-border: ${themeTokenReference(tokens, ["--border", "--border-soft"], "#e6e4e0")};`,
-    `  --ipw-color-primary: ${themeTokenReference(tokens, ["--accent", "--primary", "--brand"], "#c96442")};`,
-    `  --ipw-color-secondary: ${themeTokenReference(tokens, ["--secondary", "--accent-hover", "--accent"], "#2563eb")};`,
-    `  --ipw-color-accent: ${themeTokenReference(tokens, ["--meta", "--accent", "--highlight"], "#7c3aed")};`,
-    `  --ipw-color-success: ${themeTokenReference(tokens, ["--success", "--good"], "#059669")};`,
-    `  --ipw-color-warning: ${themeTokenReference(tokens, ["--warn", "--warning"], "#d97706")};`,
-    `  --ipw-color-danger: ${themeTokenReference(tokens, ["--danger", "--bad"], "#dc2626")};`,
-    `  --ipw-color-on-primary: ${themeTokenReference(tokens, ["--accent-on", "--on-accent", "--on-primary"], "#ffffff")};`,
+    `  --ipw-color-bg: ${values["--ipw-color-bg"]};`,
+    `  --ipw-color-surface: ${values["--ipw-color-surface"]};`,
+    `  --ipw-color-text: ${values["--ipw-color-text"]};`,
+    `  --ipw-color-muted: ${values["--ipw-color-muted"]};`,
+    `  --ipw-color-border: ${values["--ipw-color-border"]};`,
+    `  --ipw-color-primary: ${values["--ipw-color-primary"]};`,
+    `  --ipw-color-secondary: ${values["--ipw-color-secondary"]};`,
+    `  --ipw-color-accent: ${values["--ipw-color-accent"]};`,
+    `  --ipw-color-success: ${values["--ipw-color-success"]};`,
+    `  --ipw-color-warning: ${values["--ipw-color-warning"]};`,
+    `  --ipw-color-danger: ${values["--ipw-color-danger"]};`,
+    `  --ipw-color-on-primary: ${values["--ipw-color-on-primary"]};`,
     `  --ipw-color-primary-soft: color-mix(in srgb, var(--ipw-color-primary) 12%, var(--ipw-color-bg));`,
     `  --ipw-bg-gradient: none;`,
     `  --ipw-bg-image: none;`,
+    `  --ipw-bg-size: cover;`,
+    `  --ipw-bg-position: 50% 50%;`,
     `  --ipw-bg-overlay: linear-gradient(rgba(28,27,26,0), rgba(28,27,26,0));`,
     `  --ipw-bg-overlay-color: var(--ipw-color-text);`,
     `  --ipw-bg-overlay-opacity: 0;`,
-    `  --ipw-font-display: ${themeTokenReference(tokens, ["--font-display"], '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif')};`,
-    `  --ipw-font-body: ${themeTokenReference(tokens, ["--font-body"], '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif')};`,
-    `  --ipw-type-scale: 1;`,
-    `  --ipw-body-line-height: ${themeTokenReference(tokens, ["--leading-body"], "1.55")};`,
-    `  --ipw-content-width: ${themeTokenReference(tokens, ["--container-max"], "1080px")};`,
-    `  --ipw-page-padding: ${themeTokenReference(tokens, ["--container-gutter-desktop", "--container-gutter-tablet"], "32px")};`,
-    `  --ipw-section-space: ${themeTokenReference(tokens, ["--section-y-desktop", "--section-y-tablet"], "80px")};`,
-    `  --ipw-button-radius: ${themeTokenReference(tokens, ["--radius-pill", "--radius-md"], "8px")};`,
-    `  --ipw-card-bg: ${themeTokenReference(tokens, ["--surface", "--bg"], "#ffffff")};`,
-    `  --ipw-card-border: ${themeTokenReference(tokens, ["--border", "--border-soft"], "#e6e4e0")};`,
-    `  --ipw-card-radius: ${themeTokenReference(tokens, ["--radius-lg", "--radius-md"], "14px")};`,
-    `  --ipw-card-shadow: ${themeTokenReference(tokens, ["--elev-raised", "--elev-ring"], "0 12px 32px rgba(28,27,26,.10)")};`,
+    `  --ipw-font-display: ${values["--ipw-font-display"]};`,
+    `  --ipw-font-body: ${values["--ipw-font-body"]};`,
+    `  --ipw-type-scale: ${values["--ipw-type-scale"]};`,
+    `  --ipw-body-line-height: ${values["--ipw-body-line-height"]};`,
+    `  --ipw-content-width: ${values["--ipw-content-width"]};`,
+    `  --ipw-page-padding: ${values["--ipw-page-padding"]};`,
+    `  --ipw-section-space: ${values["--ipw-section-space"]};`,
+    `  --ipw-button-radius: ${values["--ipw-button-radius"]};`,
+    `  --ipw-card-bg: ${values["--ipw-card-bg"]};`,
+    `  --ipw-card-border: ${values["--ipw-card-border"]};`,
+    `  --ipw-card-radius: ${values["--ipw-card-radius"]};`,
+    `  --ipw-card-shadow: ${values["--ipw-card-shadow"]};`,
     `  --ipw-card-blur: 0px;`,
     `}`,
     ``,
     `/* Bridge common AI-generated token names back to the stable iPolloWork contract.`,
     `   Important aliases win over later inline theme declarations without changing layout. */`,
     `html:root, html:root body, html:root [class] {`,
+    ...sourceAliasLines,
     `  --bg: var(--ipw-color-bg) !important;`,
     `  --page-bg: var(--ipw-color-bg) !important;`,
     `  --canvas: var(--ipw-color-bg) !important;`,
@@ -547,9 +645,16 @@ export function buildTemplateTokenCss(theme: DesignSystemTheme) {
     `}`,
     `html:root body {`,
     `  background-image: var(--ipw-bg-overlay), var(--ipw-bg-image), var(--ipw-bg-gradient) !important;`,
+    `  background-position: center, var(--ipw-bg-position), center !important;`,
+    `  background-repeat: no-repeat, no-repeat, no-repeat !important;`,
+    `  background-size: cover, var(--ipw-bg-size), cover !important;`,
     `}`,
     `html:root :where(h1, h2, h3, h4, h5, h6, [data-ipw-theme-role="heading"]) { font-family: var(--ipw-font-display) !important; }`,
-    `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell) { background-color: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
+    `html:root :where(h1, h2, h3, h4, h5, h6, p, li, blockquote, [data-ipw-theme-role="heading"], [data-ipw-theme-role="body"]) { font-size: calc(1em * var(--ipw-type-scale)) !important; }`,
+    `html:root :where(button, input, select, textarea, [role="button"]) { border-radius: var(--ipw-button-radius) !important; }`,
+    `html:root :where(article, [data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], [class~="card"], [class*="-card"], [class~="panel"], [class*="-panel"], [class~="tile"], [class~="task"]) { border-radius: var(--ipw-card-radius) !important; }`,
+    `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell, main) { padding-inline: var(--ipw-page-padding) !important; background-color: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
+    `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell, main) > :where(section, [data-ipw-theme-role="section"]) { padding-block: var(--ipw-section-space) !important; }`,
     `html:root :where([data-ipw-slide], section.slide, .slide-frame) { background: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
     `html:root :where([data-composition-id], .composition, .scene.clip) { background-color: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
     `html:root :where([data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], article, [class~="card"], [class*="-card"], [class~="panel"], [class*="-panel"], [class~="tile"], [class~="task"]) {`,

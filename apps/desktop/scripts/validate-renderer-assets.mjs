@@ -14,7 +14,6 @@ const requiredAssets = [
   "sidebar-entry-code.svg",
   "sidebar-entry-file.svg",
   "sidebar-entry-video.svg",
-  "sidebar-icon/ipollo-work.svg",
   "sidebar-icon/search.svg",
   "sidebar-icon/edit.svg",
   "sidebar-icon/doc-plus.svg",

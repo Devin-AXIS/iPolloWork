@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 const panelUrl = new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url);
 const inspectorUrl = new URL("../src/react-app/domains/session/design/design-properties-inspector.tsx", import.meta.url);
+const colorFieldUrl = new URL("../src/react-app/domains/session/design/design-color-field.tsx", import.meta.url);
 
 describe("Design preview height", () => {
   test("fills the panel for ordinary previews without changing the presentation canvas", async () => {
@@ -90,11 +91,12 @@ describe("Design property number fields", () => {
 
   test("renders independent batch text and background fill controls", async () => {
     const source = await Bun.file(inspectorUrl).text();
+    const colorFieldSource = await Bun.file(colorFieldUrl).text();
 
     expect(source).toContain('<ColorField label="Text color" mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value, remember) => onApplyField("color", value, remember)} />');
     expect(source).toContain('<ColorField label="Background color" mixed={isMixed("backgroundColor")} value={selection.styles.backgroundColor || "#000000"} onChange={(value, remember) => onApplyField("backgroundColor", value, remember)} />');
-    expect(source).toContain('aria-label={`Design ${label.toLowerCase()} value`}');
-    expect(source).toContain("Choose {label.toLowerCase()}");
+    expect(colorFieldSource).toContain('aria-label={`Design ${label.toLowerCase()} value`}');
+    expect(colorFieldSource).toContain("Choose {label.toLowerCase()}");
   });
 
   test("applies mixed batch typography buttons instead of toggling from the primary style", async () => {
@@ -126,14 +128,16 @@ describe("Design property number fields", () => {
 
   test("groups typed property changes into one undo interaction", async () => {
     const source = await Bun.file(inspectorUrl).text();
+    const colorFieldSource = await Bun.file(colorFieldUrl).text();
 
     expect(source).toContain('onFocus={() => onApplyField("text", selection.text, true)}');
     expect(source).toContain('onChange={(event) => onApplyField("text", event.currentTarget.value, false)}');
     expect(source).toContain("onFocus={() => onChange(value, true)}");
     expect(source).toContain("onChange={(event) => onChange(event.currentTarget.value, false)}");
     expect(source).toContain("onChange={(value, remember) => onApplyField(\"borderStyle\", value.toLowerCase(), remember)}");
-    expect(source).toContain("onFocus={() => onChange(hex, true)}");
-    expect(source).toContain("onPointerDown={() => onChange(hex, true)}");
+    expect(source).toContain('<DesignColorField label={label} mixed={mixed} value={value} onChange={onChange}');
+    expect(colorFieldSource).toContain("onFocus={() => onChange(hex, true)}");
+    expect(colorFieldSource).toContain("onPointerDown={() => onChange(hex, true)}");
     expect(source).toContain("onChange={(next, remember) => onChange(clampPercentage(numericValue(next, value)), remember ?? true)}");
   });
 

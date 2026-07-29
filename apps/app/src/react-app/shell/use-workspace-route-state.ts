@@ -19,8 +19,9 @@ import { createClient } from "@/app/lib/opencode";
 import { createiPolloWorkServerClient, type iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { isDesktopRuntime } from "@/app/lib/runtime-env";
 import {
-  filterWorkspacesForWorkContext,
+  canonicalWorkspacesForWorkContext,
   finishWorkContextSwitch,
+  pruneServerWorkspacesForWorkContext,
   type WorkContextId,
 } from "@/app/lib/work-context";
 import {
@@ -45,7 +46,6 @@ import {
   isTransientStartupError,
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
-  orderRouteWorkspaces,
   resolveKnownWorkspaceId,
   type RouteSession,
   type RouteWorkspace,
@@ -53,7 +53,6 @@ import {
 import {
   readActiveWorkspaceId,
   readLastSessionFor,
-  readWorkspaceOrderIds,
   writeActiveWorkspaceId,
 } from "./session-memory";
 import { legacySessionRoute, workspaceSessionRoute } from "./workspace-routes";
@@ -65,6 +64,20 @@ export type UseWorkspaceRouteStateInput = {
   /** Receives the local ipollowork-server host info discovered during refresh. */
   onHostInfo: (info: iPolloWorkServerInfo | null) => void;
 };
+
+function waitForCommittedRouteState(): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(fallbackTimer);
+      resolve();
+    };
+    const fallbackTimer = window.setTimeout(finish, 100);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(finish));
+  });
+}
 
 export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const { workContextId, onServerSettingsChanged, onHostInfo } = input;
@@ -88,7 +101,6 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
   const [workspaces, setWorkspaces] = useState<RouteWorkspace[]>([]);
-  const [workspaceOrderIds, setWorkspaceOrderIds] = useState<string[]>(() => readWorkspaceOrderIds());
   const [sessionsByWorkspaceId, setSessionsByWorkspaceId] = useState<Record<string, RouteSession[]>>({});
   const [errorsByWorkspaceId, setErrorsByWorkspaceId] = useState<Record<string, string | null>>({});
   const [workspaceConnectionOverrides, setWorkspaceConnectionOverrides] = useState<Record<string, WorkspaceConnectionState>>({});
@@ -120,7 +132,6 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const refreshInFlightRef = useRef(false);
   const workContextRef = useRef(workContextId);
   const workspacesRef = useRef<RouteWorkspace[]>([]);
-  const workspaceOrderIdsRef = useRef(workspaceOrderIds);
   const remoteWorkspaceCheckRunRef = useRef<Record<string, string>>({});
   const remoteWorkspaceCheckRunCounterRef = useRef(0);
   const sessionsByWorkspaceIdRef = useRef<Record<string, RouteSession[]>>({});
@@ -338,9 +349,10 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       if (isDesktopRuntime()) {
         try {
           desktopList = await workspaceBootstrap() as WorkspaceList;
-          desktopWorkspaces = filterWorkspacesForWorkContext(
+          desktopWorkspaces = canonicalWorkspacesForWorkContext(
             (desktopList.workspaces ?? []).map(mapDesktopWorkspace),
             requestedContextId,
+            [resolveWorkspaceListSelectedId(desktopList)],
           );
         } catch (error) {
           const message = describeRouteError(error);
@@ -364,12 +376,11 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         setClient(null);
         setBaseUrl("");
         setToken("");
-        const orderedDesktopWorkspaces = orderRouteWorkspaces(desktopWorkspaces, workspaceOrderIdsRef.current);
-        setWorkspaces(orderedDesktopWorkspaces);
+        setWorkspaces(desktopWorkspaces);
         sessionsByWorkspaceIdRef.current = {};
         setSessionsByWorkspaceId({});
         setErrorsByWorkspaceId({});
-        setLegacySelectedWorkspaceId(resolveWorkspaceListSelectedId(desktopList) || orderedDesktopWorkspaces[0]?.id || "");
+        setLegacySelectedWorkspaceId(resolveWorkspaceListSelectedId(desktopList) || desktopWorkspaces[0]?.id || "");
         return;
       }
 
@@ -389,27 +400,38 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         hostToken: resolvedHostToken || undefined,
       });
       const list = await ipolloworkClient.listWorkspaces();
-      const nextWorkspaces = orderRouteWorkspaces(
-        filterWorkspacesForWorkContext(
-          mergeRouteWorkspaces(list.items, desktopWorkspaces),
-          requestedContextId,
-        ),
-        workspaceOrderIdsRef.current,
+      const persistedActiveId = readActiveWorkspaceId();
+      const nextWorkspaces = canonicalWorkspacesForWorkContext(
+        mergeRouteWorkspaces(list.items, desktopWorkspaces),
+        requestedContextId,
+        [
+          routeWorkspaceId,
+          persistedActiveId,
+          resolveWorkspaceListSelectedId(desktopList),
+          list.activeId,
+        ],
       );
 
       if (workContextRef.current !== requestedContextId) return;
 
       // Preserve any sessions we already have cached so switching routes
-      // doesn't erase the sidebar while we refetch.
+      // doesn't erase the sidebar while we refetch. Never carry a local
+      // session across workspace roots, even if a fast context switch races
+      // with a late React state commit from the previous route.
       const alreadyLoadedWorkspaceIds = new Set(Object.keys(sessionsByWorkspaceIdRef.current));
-      const cachedEntries = nextWorkspaces.map((workspace) => ({
-        workspaceId: workspace.id,
-        sessions: sessionsByWorkspaceIdRef.current[workspace.id] ?? [],
-      }));
+      const cachedEntries = nextWorkspaces.map((workspace) => {
+        const cachedSessions = sessionsByWorkspaceIdRef.current[workspace.id] ?? [];
+        const workspaceRoot = normalizeDirectoryPath(workspace.path ?? "");
+        const sessions = workspaceRoot && workspace.workspaceType !== "remote"
+          ? cachedSessions.filter((session) =>
+              normalizeDirectoryPath(session?.directory ?? "") === workspaceRoot,
+            )
+          : cachedSessions;
+        return { workspaceId: workspace.id, sessions };
+      });
       // Prefer, in order: the URL-selected workspace (if it owns the session),
       // the user's last-active workspace from localStorage, the desktop's
       // activeId, the server's activeId, then the first known workspace.
-      const persistedActiveId = readActiveWorkspaceId();
       let nextWorkspaceId = resolveKnownWorkspaceId(nextWorkspaces, [
         routeWorkspaceId,
         persistedActiveId,
@@ -448,6 +470,19 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       );
       setLegacySelectedWorkspaceId(nextWorkspaceId);
       writeActiveWorkspaceId(nextWorkspaceId || null);
+      const canonicalServerWorkspaceId = nextWorkspaces.find((workspace) =>
+        list.items.some((serverWorkspace) => serverWorkspace.id === workspace.id)
+      )?.id ?? "";
+      if (canonicalServerWorkspaceId) {
+        void pruneServerWorkspacesForWorkContext(
+          ipolloworkClient,
+          list.items,
+          requestedContextId,
+          canonicalServerWorkspaceId,
+        ).catch((error) => {
+          console.warn("[session-route] failed to prune legacy workspace identities", error);
+        });
+      }
       // Session surface is canonical server metadata. Populate the small
       // in-memory icon cache from that one source; no browser persistence or
       // legacy path probing is involved.
@@ -478,10 +513,12 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         errors: {},
       });
 
-      // Session list comes from OpenCode's index and can be slow on cold
-      // boot. Kick it off in the background instead of blocking the route
-      // so the UI is interactive immediately; the sidebar shows a
-      // loading state per-workspace until the list arrives.
+      // A context switch is not complete until the new context's chat list is
+      // ready. Finishing the branded transition before this request resolved
+      // briefly exposed the previous context's cached chats during fast,
+      // repeated Personal/Enterprise switches. There is exactly one
+      // canonical workspace per context now, so wait for that workspace's
+      // sessions before dismissing the transition.
       const selectedWorkspace = nextWorkspaces.find((workspace) => workspace.id === nextWorkspaceId);
       const backgroundWorkspaces = nextWorkspaces.filter(
         (workspace) => workspace.id === nextWorkspaceId || !alreadyLoadedWorkspaceIds.has(workspace.id),
@@ -490,7 +527,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         const orderedWorkspaces = selectedWorkspace
           ? [selectedWorkspace, ...backgroundWorkspaces.filter((workspace) => workspace.id !== selectedWorkspace.id)]
           : backgroundWorkspaces;
-        void loadWorkspaceSessionsInBackground(orderedWorkspaces);
+        await loadWorkspaceSessionsInBackground(orderedWorkspaces);
       }
     } catch (error) {
       if (workContextRef.current !== requestedContextId) return;
@@ -503,16 +540,18 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       });
       setRouteError(message);
       if (desktopWorkspaces.length > 0) {
-        const orderedDesktopWorkspaces = orderRouteWorkspaces(desktopWorkspaces, workspaceOrderIdsRef.current);
-        setWorkspaces(orderedDesktopWorkspaces);
+        setWorkspaces(desktopWorkspaces);
         setLegacySelectedWorkspaceId((current) =>
-          current || resolveWorkspaceListSelectedId(desktopList) || orderedDesktopWorkspaces[0]?.id || "",
+          current || resolveWorkspaceListSelectedId(desktopList) || desktopWorkspaces[0]?.id || "",
         );
       }
     } finally {
       if (workContextRef.current === requestedContextId) {
         setLoading(false);
-        finishWorkContextSwitch(requestedContextId);
+        await waitForCommittedRouteState();
+        if (workContextRef.current === requestedContextId) {
+          finishWorkContextSwitch(requestedContextId);
+        }
       }
       refreshInFlightRef.current = false;
       // Tell the boot overlay the first route data load has completed so
@@ -542,10 +581,6 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   useEffect(() => {
     workspacesRef.current = workspaces;
   }, [workspaces]);
-
-  useEffect(() => {
-    workspaceOrderIdsRef.current = workspaceOrderIds;
-  }, [workspaceOrderIds]);
 
   useEffect(() => {
     const activeWorkspaceIds = new Set(workspaces.map((workspace) => workspace.id));
@@ -688,7 +723,11 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         ? legacySelectedWorkspaceId
         : workspaces[0]?.id || "";
       if (fallbackWorkspaceId) {
-        navigateToWorkspaceSession(fallbackWorkspaceId, selectedSessionId, { replace: true });
+        // A route from the previous work context can never own a session in
+        // the new one. Drop both stale identifiers atomically so a context
+        // switch cannot flash a false "not found" state or carry the old
+        // conversation id into the canonical workspace.
+        navigateToWorkspaceSession(fallbackWorkspaceId, null, { replace: true });
       }
       return;
     }
@@ -713,19 +752,6 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     sessionsByWorkspaceId,
     workspaces,
   ]);
-
-  // Redirect to /welcome when no workspaces exist and the user hasn't
-  // completed onboarding. This fires after the initial route refresh so
-  // `loading` is false and we know for sure there are zero workspaces.
-  // Desktop skips it: first-run there lands on the chat with a default
-  // workspace and the welcome content as a modal (see session-route).
-  useEffect(() => {
-    if (loading) return;
-    if (isDesktopRuntime()) return;
-    if (workspaces.length > 0) return;
-    if (local.prefs.hasCompletedOnboarding) return;
-    navigate("/welcome", { replace: true });
-  }, [loading, local.prefs.hasCompletedOnboarding, navigate, workspaces.length]);
 
   // NOTE: Blueprint seeding was removed from the route.
   // It was firing `materializeBlueprintSessions` + a session re-fetch on every
@@ -775,6 +801,10 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const routeNotFoundMessage = (() => {
     if (loading) return null;
     if (routeWorkspaceId && !selectedWorkspace) {
+      // A canonical workspace is already available, so the redirect effect
+      // above will repair this stale cross-context URL. This is transition
+      // state, not a user-facing missing-workspace error.
+      if (workspaces.length > 0) return null;
       return "Workspace was not found. Select a new workspace from the sidebar.";
     }
     if (selectedSessionId && !selectedWorkspaceIsLoading && !selectedSessionKnown) {
@@ -867,9 +897,6 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     workspaces,
     setWorkspaces,
     workspacesRef,
-    workspaceOrderIds,
-    setWorkspaceOrderIds,
-    workspaceOrderIdsRef,
     sessionsByWorkspaceId,
     setSessionsByWorkspaceId,
     sessionsByWorkspaceIdRef,

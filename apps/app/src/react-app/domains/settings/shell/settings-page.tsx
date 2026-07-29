@@ -5,7 +5,6 @@ import {
   BrainCircuit,
   Bug,
   Cable,
-  ChevronDown,
   CloudCog,
   Cog,
   FolderLock,
@@ -35,12 +34,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { t } from "../../../../i18n";
 import type { SettingsTab } from "../../../../app/types";
 import { cn } from "@/lib/utils";
@@ -57,7 +50,6 @@ import {
   SettingsPanelToolbarMessage,
   SettingsPanelToolbarStatus,
 } from "./panel";
-import { WorkspaceIcon } from "../../../design-system/workspace-icon";
 import { useFeatureFlagsPreferences } from "../state/feature-flags-preferences";
 
 export function getSettingsTabIcon(tab: SettingsTab) {
@@ -262,11 +254,6 @@ type SettingsPageProps = {
 
 type SettingsSidebarProps = Pick<SettingsPageProps, "activeTab" | "onSelectTab" | "developerMode"> & {
   onClose: () => void;
-  selectedWorkspaceId: string;
-  selectedWorkspaceName: string;
-  selectedWorkspaceColor: string;
-  workspaces: Array<{ id: string; name: string; color: string }>;
-  onSelectWorkspace: (workspaceId: string) => void;
 };
 
 export function SettingsSidebar(props: SettingsSidebarProps) {
@@ -285,31 +272,6 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
               <ArrowLeft size={14} />
               <span>{t("dashboard.back_to_app")}</span>
             </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuButton type="button">
-                    <WorkspaceIcon workspaceId={props.selectedWorkspaceId} sizeClass="size-4" />
-                    <span className="truncate">{props.selectedWorkspaceName}</span>
-                    <ChevronDown className="ml-auto" />
-                  </SidebarMenuButton>
-                }
-              />
-              <DropdownMenuContent className="w-(--anchor-width)">
-                {props.workspaces.map((workspace) => (
-                  <DropdownMenuItem
-                    key={workspace.id}
-                    onClick={() => props.onSelectWorkspace(workspace.id)}
-                    disabled={workspace.id === props.selectedWorkspaceId}
-                  >
-                    <WorkspaceIcon workspaceId={workspace.id} sizeClass="size-4" />
-                    <span className="truncate">{workspace.name}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>

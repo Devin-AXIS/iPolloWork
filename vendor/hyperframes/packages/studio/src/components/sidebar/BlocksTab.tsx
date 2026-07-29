@@ -1,5 +1,10 @@
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useEffect } from "react";
+import type {
+  RegistryItemEngine,
+  RegistryItemKind,
+  RegistryItemSource,
+} from "@hyperframes/core/registry";
 import { useBlockCatalog } from "../../hooks/useBlockCatalog";
 import {
   BLOCK_CATEGORIES,
@@ -19,15 +24,35 @@ export interface BlockPreviewInfo {
 }
 
 interface BlocksTabProps {
+  kind?: RegistryItemKind;
   onAddBlock?: (blockName: string) => void;
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
 }
 
 // fallow-ignore-next-line complexity
-export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }: BlocksTabProps) {
+export const BlocksTab = memo(function BlocksTab({
+  kind = "animation",
+  onAddBlock,
+  onPreviewBlock,
+}: BlocksTabProps) {
   const { locale } = useStudioI18n();
-  const { loading, error, search, setSearch, category, setCategory, filteredBlocks } =
-    useBlockCatalog();
+  const {
+    loading,
+    error,
+    search,
+    setSearch,
+    category,
+    setCategory,
+    capability,
+    setCapability,
+    capabilities,
+    kindBlocks,
+    coverage,
+    filteredBlocks,
+  } = useBlockCatalog(kind);
+  const availableCategories = BLOCK_CATEGORIES.filter((candidate) =>
+    kindBlocks.some((block) => block.category === candidate.id),
+  );
 
   if (loading) {
     return (
@@ -47,10 +72,36 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="mx-3 mt-2 rounded-md border border-neutral-800 bg-neutral-950/70 px-2.5 py-2 text-[10px] leading-relaxed text-neutral-400">
-        {locale === "zh"
-          ? "悬停查看动画预览。将播放头移到目标时间后点击“添加”，或点击“交给 AI”将动画标签添加到对话框。"
-          : "Hover to preview. Move the playhead to the target time and choose Add, or use Ask AI to add an animation tag to the composer."}
+      <div className="mx-3 mt-2 rounded-md border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[10px] leading-relaxed text-neutral-400">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-medium text-neutral-200">
+            {kind === "animation"
+              ? locale === "zh"
+                ? "iPolloWork 动画预设"
+                : "iPolloWork animation presets"
+              : locale === "zh"
+                ? "iPolloWork 特效预设"
+                : "iPolloWork effect presets"}
+          </span>
+          <span className="font-semibold text-neutral-200">{kindBlocks.length}</span>
+        </div>
+        {kind === "effect" ? (
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span>{locale === "zh" ? "GSAP 3.15.0 官网能力" : "GSAP 3.15.0 official"}</span>
+            <span>
+              {locale === "zh" ? "插件" : "Plugins"} {coverage.plugins.covered}/
+              {coverage.plugins.total}
+              {" · "}
+              {locale === "zh" ? "缓动" : "Eases"} {coverage.eases.covered}/{coverage.eases.total}
+            </span>
+          </div>
+        ) : (
+          <div className="mt-1">
+            {locale === "zh"
+              ? "悬停预览，将播放头移到目标时间后直接添加。"
+              : "Hover to preview, then add at the current playhead."}
+          </div>
+        )}
       </div>
       {/* Search */}
       <div className="px-3 pt-2 pb-1 flex-shrink-0">
@@ -73,7 +124,9 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={locale === "zh" ? "搜索名称、分类或标签..." : "Search by name, category, or tag..."}
+            placeholder={
+              locale === "zh" ? "搜索名称、分类或标签..." : "Search by name, category, or tag..."
+            }
             className="w-full bg-neutral-900 border border-neutral-800 rounded-md pl-7 pr-2 py-1.5 text-[11px] text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-700 transition-colors"
           />
         </div>
@@ -82,23 +135,51 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
       {/* Category pills */}
       <div className="px-3 pt-1 pb-2 flex-shrink-0 overflow-x-auto">
         <div className="flex items-center gap-1">
-          <CategoryPill label={locale === "zh" ? "全部" : "All"} active={category === null} onClick={() => setCategory(null)} />
-          <CategoryStageLabel label={locale === "zh" ? "生成时" : "Build"} />
-          {BLOCK_CATEGORIES.map((cat, index) => (
-            <div key={cat.id} className="contents">
-              {index === 6 && (
-                <CategoryStageLabel label={locale === "zh" ? "后期" : "Finish"} divided />
-              )}
-              <CategoryPill
-                label={getCategoryLabel(cat.id, locale)}
-                category={cat.id}
-                active={category === cat.id}
-                onClick={() => setCategory(category === cat.id ? null : cat.id)}
-              />
-            </div>
+          <CategoryPill
+            label={locale === "zh" ? "全部" : "All"}
+            active={category === null}
+            onClick={() => setCategory(null)}
+          />
+          {availableCategories.map((cat) => (
+            <CategoryPill
+              key={cat.id}
+              label={getCategoryLabel(cat.id, locale)}
+              category={cat.id}
+              active={category === cat.id}
+              onClick={() => setCategory(category === cat.id ? null : cat.id)}
+            />
           ))}
         </div>
       </div>
+      {kind === "effect" && capabilities.length > 0 ? (
+        <div className="flex flex-shrink-0 gap-1 overflow-x-auto px-3 pb-2">
+          <button
+            type="button"
+            onClick={() => setCapability(null)}
+            className={`h-6 flex-shrink-0 rounded-full border px-2 text-[9px] ${
+              capability === null
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                : "border-neutral-800 bg-neutral-900 text-neutral-500"
+            }`}
+          >
+            {locale === "zh" ? "全部官网能力" : "All official capabilities"}
+          </button>
+          {capabilities.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setCapability(capability === name ? null : name)}
+              className={`h-6 flex-shrink-0 rounded-full border px-2 text-[9px] ${
+                capability === name
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                  : "border-neutral-800 bg-neutral-900 text-neutral-500"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {/* Block grid */}
       <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2">
@@ -119,7 +200,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
             style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" }}
           >
             {filteredBlocks.map((block) => {
-              const dur = "duration" in block ? (block.duration as number) : undefined;
+              const dur = block.type === "hyperframes:component" ? undefined : block.duration;
               return (
                 <BlockCard
                   key={block.name}
@@ -130,6 +211,8 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
                   duration={dur}
                   category={block.category}
                   tags={block.tags}
+                  engine={block.engine}
+                  source={block.source}
                   posterUrl={block.preview?.poster}
                   videoUrl={block.preview?.video}
                   onPreview={onPreviewBlock}
@@ -171,18 +254,6 @@ function CategoryPill({
     >
       {label}
     </button>
-  );
-}
-
-function CategoryStageLabel({ label, divided = false }: { label: string; divided?: boolean }) {
-  return (
-    <span
-      className={`flex-shrink-0 px-1 text-[9px] font-medium text-neutral-600 ${
-        divided ? "ml-1 border-l border-neutral-800 pl-2" : "ml-1"
-      }`}
-    >
-      {label}
-    </span>
   );
 }
 
@@ -297,6 +368,8 @@ function BlockCard({
   duration,
   category,
   tags,
+  engine,
+  source,
   posterUrl,
   videoUrl,
   onAdd,
@@ -310,6 +383,8 @@ function BlockCard({
   duration?: number;
   category: BlockCategory;
   tags?: string[];
+  engine?: RegistryItemEngine;
+  source?: RegistryItemSource;
   posterUrl?: string;
   videoUrl?: string;
   onAdd?: () => void;
@@ -457,6 +532,17 @@ function BlockCard({
         )}
 
         {/* Badges */}
+        <div className="absolute left-1 top-1 flex items-center gap-0.5 pointer-events-none">
+          {engine?.name.toLowerCase() === "gsap" ? (
+            <span className="rounded bg-emerald-950/80 px-1 py-px text-[7px] font-semibold text-emerald-300">
+              {source?.provider === "gsap-docs"
+                ? "GSAP Official"
+                : source?.provider === "gsap-demo-hub"
+                  ? "Demo Hub"
+                  : "GSAP"}
+            </span>
+          ) : null}
+        </div>
         <div className="absolute top-1 right-1 flex items-center gap-0.5 pointer-events-none">
           {needsWebGL && (
             <span className="px-1 py-px rounded text-[7px] font-semibold text-purple-300 bg-purple-900/70">
@@ -476,6 +562,9 @@ function BlockCard({
         <div className="text-[10px] font-medium text-neutral-200 truncate leading-tight">
           {title}
         </div>
+        {engine?.plugins?.[0] ? (
+          <div className="mt-0.5 truncate text-[8px] text-emerald-400/80">{engine.plugins[0]}</div>
+        ) : null}
         <div className="mt-1.5 grid grid-cols-2 gap-1">
           <button
             type="button"
