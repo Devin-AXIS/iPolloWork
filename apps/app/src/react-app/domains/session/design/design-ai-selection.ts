@@ -54,12 +54,16 @@ export function designHtmlThemeSystemContext(input?: {
   applyChecklist?: readonly string[] | null;
 }) {
   const tokenPath = input?.tokenPath?.trim() || "design-tokens.css";
+  const entryDirectory = input?.entry?.replace(/[\\/][^\\/]+$/, "") ?? "";
   return [
     "Design HTML theme contract:",
     input?.id ? `- Current design template id: ${input.id}.` : null,
     input?.category ? `- Current design category: ${input.category}.` : null,
     input?.title ? `- Current design template: ${input.title}.` : null,
     input?.entry ? `- Primary editable HTML file: ${input.entry}.` : null,
+    input?.category === "slides" && entryDirectory
+      ? `- Presentation output contract: use real file tools and keep every generated presentation source, supporting asset, and exported slide file inside \`${entryDirectory}\`. Do not return code without saving it to this session directory.`
+      : null,
     `- Shared token stylesheet: ${tokenPath}.`,
     ...DESIGN_HTML_THEME_TOKEN_LINES,
     input?.applyChecklist?.length

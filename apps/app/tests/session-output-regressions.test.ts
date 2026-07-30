@@ -91,7 +91,34 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain("showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}");
+    expect(source).toContain("const isLatestAssistantGroup = items.some");
+    expect(source).toContain("artifactFiles={isLatestAssistantGroup ? artifactFiles : undefined}");
     expect(source).toContain('title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}');
+  });
+
+  test("video and presentation sessions show only scoped openable outputs", () => {
+    const artifactSource = readFileSync(
+      new URL("../src/components/chat/artifact.tsx", import.meta.url),
+      "utf8",
+    );
+    const messageListSource = readFileSync(
+      new URL("../src/components/chat/message-list.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(artifactSource).toContain("canOpenArtifactInContext(artifact, artifactContext)");
+    expect(artifactSource).toContain("selectArtifactContextOutputs(artifacts, artifactContext)");
+    expect(messageListSource).toContain("artifactFiles={artifactFiles}");
+    expect(sessionPageSource).toContain(".listWorkspaceFiles(workspaceId, artifactDirectory)");
+    expect(sessionPageSource).toContain('selectedTemplate?.category === "slides"');
+    expect(sessionPageSource).toContain('target.preview === "html"');
+    expect(sessionPageSource).toContain("artifactPathMatchesTarget(target.value, currentVideoEntryPath)");
+    expect(sessionPageSource).toContain('target.preview === "slides"');
+    expect(sessionPageSource).toContain("openCurrentVideoStudio();");
   });
 
   test("template covers expose a retryable failure placeholder", () => {

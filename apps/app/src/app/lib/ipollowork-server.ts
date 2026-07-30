@@ -1981,7 +1981,10 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         { token, hostToken },
       ),
 
-    listWorkspaceFiles: async (workspaceId: string): Promise<iPolloWorkWorkspaceCatalogEntry[]> => {
+    listWorkspaceFiles: async (
+      workspaceId: string,
+      prefix?: string,
+    ): Promise<iPolloWorkWorkspaceCatalogEntry[]> => {
       const created = await requestJson<{ session: { id: string } }>(
         baseUrl,
         `/workspace/${encodeURIComponent(workspaceId)}/files/sessions`,
@@ -1994,6 +1997,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         let after: string | undefined;
         do {
           const query = new URLSearchParams({ includeDirs: "false", limit: "1000" });
+          if (prefix) query.set("prefix", prefix);
           if (after) query.set("after", after);
           const page = await requestJson<{
             items: iPolloWorkWorkspaceCatalogEntry[];

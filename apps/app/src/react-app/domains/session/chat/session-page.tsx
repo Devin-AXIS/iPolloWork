@@ -32,7 +32,13 @@ import type {
 } from "../../../../app/types";
 import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
 import { buildSessionMarkdown, sessionMarkdownFilename } from "@/components/chat/utils";
-import { getArtifactsFromMessages, isVideoHtmlArtifact } from "@/lib/artifacts";
+import {
+  type ArtifactInteractionContext,
+  artifactDirectoryPath,
+  artifactPathIsWithinDirectory,
+  artifactPathMatchesTarget,
+  getArtifactsFromMessages,
+} from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -83,6 +89,7 @@ import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
 import { VideoPanel } from "../video/video-panel";
+import { videoProjectEntryPath } from "../video/video-project";
 import { templateBriefConfigFor, templateBriefPrompt, type TemplateBrief } from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
@@ -466,6 +473,9 @@ export function SessionPage(props: SessionPageProps) {
   ), [props.selectedSessionId, sessionTypeRevision]);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
+  const currentVideoEntryPath = props.selectedSessionId && isVideoSession
+    ? videoProjectEntryPath(props.selectedSessionId)
+    : undefined;
   const currentTemplateSessionData = templateSessionData?.sessionId === props.selectedSessionId
     ? templateSessionData
     : null;
@@ -475,6 +485,29 @@ export function SessionPage(props: SessionPageProps) {
   const designTemplateEntryPath = currentTemplateSessionData?.manifest.surface === "design"
     ? currentTemplateSessionData.state.entry
     : undefined;
+  const isPresentationSession = selectedTemplate?.category === "slides";
+  const artifactContext = useMemo<ArtifactInteractionContext | undefined>(() => {
+    if (currentVideoEntryPath) {
+      return { kind: "video", entryPath: currentVideoEntryPath };
+    }
+    if (isPresentationSession && designTemplateEntryPath) {
+      return { kind: "presentation", entryPath: designTemplateEntryPath };
+    }
+    return undefined;
+  }, [currentVideoEntryPath, designTemplateEntryPath, isPresentationSession]);
+  const artifactDirectory = artifactContext
+    ? artifactDirectoryPath(artifactContext.entryPath)
+    : "";
+  const artifactScopeKey = props.selectedSessionId && artifactDirectory
+    ? `${props.selectedSessionId}:${artifactDirectory}`
+    : "";
+  const templateEntryPathForArtifacts = isPresentationSession
+    ? undefined
+    : designTemplateEntryPath;
+  const [artifactCatalogState, setArtifactCatalogState] = useState<{
+    scopeKey: string
+    files: string[]
+  }>({ scopeKey: "", files: [] });
   const [conversationMessageState, setConversationMessageState] = useState<{ sessionId: string | null; messages: UIMessage[] }>({
     sessionId: null,
     messages: [],
@@ -486,10 +519,55 @@ export function SessionPage(props: SessionPageProps) {
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
     : [];
+  useEffect(() => {
+    if (!artifactScopeKey || !artifactDirectory || !props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
+      return;
+    }
+
+    let active = true;
+    const client = props.ipolloworkServerClient;
+    const workspaceId = props.runtimeWorkspaceId;
+    const scopeKey = artifactScopeKey;
+    const timeout = window.setTimeout(() => {
+      void client
+        .listWorkspaceFiles(workspaceId, artifactDirectory)
+        .then((entries) => {
+          if (!active) return;
+          setArtifactCatalogState({
+            scopeKey,
+            files: entries
+              .filter((entry) => entry.kind === "file")
+              .map((entry) => entry.path),
+          });
+        })
+        .catch(() => {
+          if (active) setArtifactCatalogState({ scopeKey, files: [] });
+        });
+    }, 150);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [
+    artifactDirectory,
+    artifactScopeKey,
+    conversationMessages,
+    props.ipolloworkServerClient,
+    props.runtimeWorkspaceId,
+  ]);
+  const artifactFiles = useMemo(
+    () => artifactContext && artifactCatalogState.scopeKey === artifactScopeKey
+      ? artifactCatalogState.files
+      : undefined,
+    [artifactCatalogState, artifactContext, artifactScopeKey],
+  );
   const videoOutput = useMemo(() => (
-    getArtifactsFromMessages(conversationMessages, accessibleTargets, { includeTargetFallbacks: true })
-      .find(isVideoHtmlArtifact) ?? null
-  ), [accessibleTargets, conversationMessages]);
+    currentVideoEntryPath
+      ? getArtifactsFromMessages(conversationMessages, accessibleTargets, { includeTargetFallbacks: true })
+        .find((artifact) => artifactPathMatchesTarget(artifact.path, currentVideoEntryPath)) ?? null
+      : null
+  ), [accessibleTargets, conversationMessages, currentVideoEntryPath]);
   const autoCollapsedSidebarRef = useRef(false);
   const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
   const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
@@ -1144,6 +1222,21 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
 
+    if (isVideoSession && target.kind === "file" && target.preview === "html") {
+      if (currentVideoEntryPath && artifactPathMatchesTarget(target.value, currentVideoEntryPath)) {
+        openCurrentVideoStudio();
+      }
+      return;
+    }
+
+    if (artifactContext?.kind === "presentation" && target.kind === "file") {
+      const presentationDirectory = artifactDirectoryPath(artifactContext.entryPath);
+      const isPresentationEntry = artifactPathMatchesTarget(target.value, artifactContext.entryPath);
+      const isPresentationFile = target.preview === "slides"
+        && artifactPathIsWithinDirectory(target.value, presentationDirectory);
+      if (!isPresentationEntry && !isPresentationFile) return;
+    }
+
     const sourceId = sourceSessionId ?? props.selectedSessionId;
     const templateSurface = await resolveOpenTargetTemplateSurface(target, sourceId);
     if (templateSurface) {
@@ -1185,7 +1278,7 @@ export function SessionPage(props: SessionPageProps) {
     });
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
-  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, isVideoSession, openDesignTab, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, prioritizeRightPanel, setCurrentSidePanel]);
+  }, [activePanelTab?.id, artifactContext, browserUrlForTarget, currentVideoEntryPath, downloadOpenTarget, isVideoSession, openCurrentVideoStudio, openDesignTab, openTab, prioritizeRightPanel, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, setCurrentSidePanel]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;
@@ -2151,9 +2244,11 @@ export function SessionPage(props: SessionPageProps) {
                         respondQuestion={props.respondQuestion}
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
-                        onOpenVideoStudio={openCurrentVideoStudio}
                         onConversationMessagesChange={handleConversationMessagesChange}
-                        templateEntryPath={designTemplateEntryPath}
+                        templateEntryPath={templateEntryPathForArtifacts}
+                        artifactFiles={artifactFiles}
+                        artifactContext={artifactContext}
+                        onOpenVideoStudio={openCurrentVideoStudio}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
                           props.selectedWorkspaceId,
                           type,
@@ -2367,7 +2462,9 @@ export function SessionPage(props: SessionPageProps) {
                       messages={conversationMessages}
                       sessionId={props.selectedSessionId ?? undefined}
                       openTargets={accessibleTargets}
-                      templateEntryPath={designTemplateEntryPath}
+                      templateEntryPath={templateEntryPathForArtifacts}
+                      supplementalFiles={artifactFiles}
+                      artifactContext={artifactContext}
                       onOpenTarget={openTarget}
                       onOpenVideoStudio={openCurrentVideoStudio}
                     />
