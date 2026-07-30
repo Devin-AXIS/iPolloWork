@@ -87,7 +87,12 @@ export function CloudAccountSection({
     setLeavingId(connection.id);
     setEnterpriseError(null);
     try {
-      if (activeConnection?.id === connection.id) await activatePersonalWorkContext();
+      if (activeConnection?.id === connection.id) {
+        const personalWorkspaceId = await activatePersonalWorkContext();
+        window.location.hash = personalWorkspaceId
+          ? `#/workspace/${encodeURIComponent(personalWorkspaceId)}/session`
+          : "#/session";
+      }
       await leaveEnterpriseConnection(connection);
     } catch (error) {
       setEnterpriseError(
