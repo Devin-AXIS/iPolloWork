@@ -105,7 +105,9 @@ function assertPackagedRuntimeTypes(context) {
 
   const { listPackage, uncache } = require("@electron/asar");
   uncache(asarPath);
-  const entries = new Set(listPackage(asarPath).map((entry) => entry.replaceAll("\\", "/")));
+  const entries = new Set(
+    listPackage(asarPath, { isPack: false }).map((entry) => entry.replaceAll("\\", "/")),
+  );
   const missing = requiredAsarEntries.filter((entry) => !entries.has(entry));
   if (missing.length === 0) return;
 
