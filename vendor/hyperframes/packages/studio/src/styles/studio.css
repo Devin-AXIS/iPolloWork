@@ -203,17 +203,17 @@ button[aria-label="退出全屏"] {
 }
 
 .hf-preview-text-toolbar {
-  background: var(--hf-shortcuts-bg);
-  border-color: var(--hf-shortcuts-border);
-  color: var(--hf-panel-text-1);
-  backdrop-filter: blur(12px);
+  background: #ffffff;
+  border-color: #ebebeb;
+  color: #858a94;
+  box-shadow: 0 4px 4.2px rgba(0, 0, 0, 0.09);
 }
 
 .hf-preview-text-toolbar__button {
-  min-width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 0.375rem;
-  color: var(--hf-panel-text-2);
+  min-width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.25rem;
+  color: #858a94;
   font-size: 0.6875rem;
   line-height: 1;
   transition:
@@ -221,9 +221,15 @@ button[aria-label="退出全屏"] {
     color 120ms ease;
 }
 
+.hf-preview-text-toolbar__text-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .hf-preview-text-toolbar__button:hover {
-  background: var(--hf-panel-hover);
-  color: var(--hf-panel-text-0);
+  background: #f3f4f6;
+  color: #202228;
 }
 
 .hf-preview-text-toolbar__button[aria-pressed="true"] {
@@ -244,27 +250,52 @@ button[aria-label="退出全屏"] {
 
 .hf-preview-text-toolbar__icon-button > svg {
   display: block;
-  width: 0.75rem;
-  height: 0.75rem;
+  width: 1.125rem;
+  height: 1.125rem;
   flex: none;
 }
 
-.hf-preview-text-toolbar__delete-button {
-  color: #e5484d;
+.hf-preview-text-toolbar__divider {
+  width: 1px;
+  height: 22.5px;
+  flex: none;
+  background: #ebebeb;
 }
 
-.hf-preview-text-toolbar__delete-button:hover {
-  background: rgba(229, 72, 77, 0.1);
-  color: #e5484d;
+.hf-preview-text-toolbar__delete-confirmation {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: 220px;
+  padding: 12px;
+  border: 1px solid #ebebeb;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #202228;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
 }
 
-:root:not([data-ipollowork-theme="light"]) .hf-preview-text-toolbar__delete-button {
-  color: #ff6369;
+.hf-preview-text-toolbar__delete-confirmation p {
+  margin: 0 0 10px;
 }
 
-:root:not([data-ipollowork-theme="light"]) .hf-preview-text-toolbar__delete-button:hover {
-  background: rgba(255, 99, 105, 0.1);
-  color: #ff6369;
+.hf-preview-text-toolbar__delete-confirmation > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.hf-preview-text-toolbar__delete-confirmation button {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: #202228;
+}
+
+.hf-preview-text-toolbar__delete-confirmation .hf-preview-text-toolbar__confirm-delete {
+  background: #202228;
+  color: #ffffff;
 }
 
 .hf-preview-text-toolbar__input {

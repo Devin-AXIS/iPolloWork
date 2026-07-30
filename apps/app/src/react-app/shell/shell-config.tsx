@@ -8,6 +8,8 @@ import { createContext, useCallback, use, useMemo, useState, type ReactNode } fr
 export type ShellConfig = {
   /** Display name shown in the title bar, sidebar, and welcome page. */
   appName: string;
+  /** Locally uploaded organization logo, stored as a validated image data URL. */
+  brandLogoDataUrl: string | null;
   /** Show the left sidebar with the current space's session list. */
   sidebar: boolean;
   /** Show the Cloud sign-in button when not signed in. */
@@ -28,6 +30,7 @@ export type ShellConfig = {
 
 export const DEFAULT_SHELL_CONFIG: ShellConfig = {
   appName: "iPolloWork",
+  brandLogoDataUrl: null,
   sidebar: true,
   cloudSignin: true,
   starterCards: true,
@@ -53,6 +56,12 @@ function readShellConfig(): ShellConfig {
       delete parsed.welcomePage;
     }
     const normalized = { ...DEFAULT_SHELL_CONFIG, ...parsed };
+    if (
+      typeof normalized.brandLogoDataUrl !== "string" ||
+      !/^data:image\/(?:png|jpeg|webp);base64,/.test(normalized.brandLogoDataUrl)
+    ) {
+      normalized.brandLogoDataUrl = null;
+    }
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
     return normalized;
   } catch {

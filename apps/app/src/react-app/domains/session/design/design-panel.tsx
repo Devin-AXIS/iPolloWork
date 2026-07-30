@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Trash2, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Undo2 } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
@@ -617,16 +617,9 @@ export function DesignPanel({
   const floatingDragRef = React.useRef<{ pointerId: number; startX: number; startY: number; left: number; top: number } | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [propertiesTab, setPropertiesTab] = React.useState<"element" | "design-system">("element");
-  const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
   const elementPropertiesOpen = advancedOpen;
-  const designSystemPropertiesOpen = designSystemOpen;
   const toggleElementProperties = React.useCallback(() => {
-    setDesignSystemOpen(false);
     setAdvancedOpen((current) => !current);
-  }, []);
-  const toggleDesignSystemProperties = React.useCallback(() => {
-    setAdvancedOpen(false);
-    setDesignSystemOpen((current) => !current);
   }, []);
   const handlePropertiesTabChange = React.useCallback((tab: "element" | "design-system") => {
     setPropertiesTab(tab);
@@ -878,7 +871,6 @@ export function DesignPanel({
     }
     setQuickEdit(null);
     setAdvancedOpen(false);
-    setDesignSystemOpen(false);
     setPreviewSource(fileQuery.data.content);
     setHydratedPreviewSource("");
     setPreviewLoaded(false);
@@ -962,7 +954,6 @@ export function DesignPanel({
         setSelectionState(null);
         setQuickEdit(null);
         setAdvancedOpen(false);
-        setDesignSystemOpen(false);
         return;
       }
       if ((event.data.type === "draft" || event.data.type === "document-draft") && shouldIgnoreDesignDraftMessage(pendingViewRestoreRef.current)) return;
@@ -1015,7 +1006,6 @@ export function DesignPanel({
     setSelectionState(null);
     setQuickEdit(null);
     setAdvancedOpen(false);
-    setDesignSystemOpen(false);
     iframeRef.current?.contentWindow?.postMessage({
       channel: DESIGN_MESSAGE_CHANNEL,
       type: "deck-navigate",
@@ -1498,7 +1488,6 @@ export function DesignPanel({
       setSelectionState(null);
       setQuickEdit(null);
       setAdvancedOpen(false);
-      setDesignSystemOpen(false);
       setPreviewSource(content);
       setHydratedPreviewSource("");
       setPreviewLoaded(false);
@@ -1549,7 +1538,6 @@ export function DesignPanel({
     setSelectionState(null);
     setQuickEdit(null);
     setAdvancedOpen(false);
-    setDesignSystemOpen(false);
     iframeRef.current?.contentWindow?.postMessage({
       channel: DESIGN_MESSAGE_CHANNEL,
       type: "delete",
@@ -1955,7 +1943,6 @@ export function DesignPanel({
                   setSelectionState(null);
                   setQuickEdit(null);
                   setAdvancedOpen(false);
-                  setDesignSystemOpen(false);
                 }}
                 aria-label="Edit"
               />
@@ -1985,7 +1972,6 @@ export function DesignPanel({
                     setSelectionState(null);
                     setQuickEdit(null);
                     setAdvancedOpen(false);
-                    setDesignSystemOpen(false);
                   }}
                   variant="outline"
                   size="sm"
@@ -2002,34 +1988,18 @@ export function DesignPanel({
               )
             ) : null}
             <div className={cn("ml-auto flex shrink-0 items-center", isPresentationTemplate ? "order-3" : "order-2", compactToolbar ? "gap-1" : "gap-2")}>
-              {editing ? (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-[#F3F4F6]")}
-                    onClick={toggleElementProperties}
-                    aria-label="Toggle design properties"
-                    title="Design properties"
-                    aria-pressed={elementPropertiesOpen}
-                    data-testid="design-properties-button"
-                  >
-                    <SlidersHorizontal />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className={cn(DESIGN_ACTION_BUTTON_CLASS, designSystemPropertiesOpen && "bg-[#F3F4F6]")}
-                    onClick={toggleDesignSystemProperties}
-                    aria-label="Toggle design system"
-                    title="Design System"
-                    aria-pressed={designSystemPropertiesOpen}
-                    data-testid="design-system-button"
-                  >
-                    <Palette />
-                  </Button>
-                </>
-              ) : null}
+              {editing ? <Button
+                variant="ghost"
+                size="icon-sm"
+                className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-[#F3F4F6]")}
+                onClick={toggleElementProperties}
+                aria-label="Toggle design properties"
+                title="Design properties"
+                aria-pressed={elementPropertiesOpen}
+                data-testid="design-properties-button"
+              >
+                <SlidersHorizontal />
+              </Button> : null}
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -2095,7 +2065,6 @@ export function DesignPanel({
                     setSelectionState(null);
                     setQuickEdit(null);
                     setAdvancedOpen(false);
-                    setDesignSystemOpen(false);
                   } : undefined}
                   onPublish={() => publishMutation.mutate()}
                   onExportPdf={() => void exportDeckToPdf()}
@@ -2291,17 +2260,6 @@ export function DesignPanel({
                           </>
                         ) : null}
                         <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={deleteSelection}
-                          disabled={!selectionSummary.selections.some((member) => member.canDelete)}
-                          aria-label="Delete selected element"
-                          title="Delete selected element"
-                        >
-                          <Trash2 />
-                        </Button>
-                        <Button
                           variant={elementPropertiesOpen ? "secondary" : "ghost"}
                           size="icon-xs"
                           onClick={toggleElementProperties}
@@ -2374,16 +2332,6 @@ export function DesignPanel({
                   onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}
                 />
               </DesignPropertiesInspector> : null}
-              {editing ? <DesignSystemDrawer
-                open={designSystemOpen}
-                templateName={designTemplate?.title ?? fileName(activePagePath)}
-                currentThemeId={appliedDesignSystemId}
-                initialValues={designTokenValues}
-                onClose={() => setDesignSystemOpen(false)}
-                onTokenChange={handleDesignTokenChange}
-                onApplyDesignSystem={handleApplyDesignSystem}
-                onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}
-              /> : null}
             </div>
           )}
         </>

@@ -11,6 +11,7 @@ import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "../design/design-ai-selection";
+import { DesignSystemInspectorShell } from "../design/design-properties-inspector";
 import { DesignSystemDrawer } from "../design/design-system-drawer";
 import { mergeTemplateTokenCss, parseDesignTokenValues, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
 import { buildTemplateTokenCss, type DesignSystemTheme } from "../design/design-system-registry";
@@ -496,16 +497,18 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             onClose={() => setVoicePanelOpen(false)}
           /> : null}
           </div>
-          <DesignSystemDrawer
-            open={designSystemOpen}
-            templateName="Video Studio"
-            currentThemeId={appliedDesignSystemId}
-            variablesDisabled={!appliedDesignSystemId}
-            initialValues={designTokenValues}
-            onClose={() => setDesignSystemOpen(false)}
-            onTokenChange={handleDesignTokenChange}
-            onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
-          />
+          {designSystemOpen ? <DesignSystemInspectorShell onClose={() => setDesignSystemOpen(false)}>
+            <DesignSystemDrawer
+              embedded
+              open
+              templateName="Video Studio"
+              currentThemeId={appliedDesignSystemId}
+              initialValues={designTokenValues}
+              onClose={() => setDesignSystemOpen(false)}
+              onTokenChange={handleDesignTokenChange}
+              onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
+            />
+          </DesignSystemInspectorShell> : null}
         </div>
       )}
     </div>
