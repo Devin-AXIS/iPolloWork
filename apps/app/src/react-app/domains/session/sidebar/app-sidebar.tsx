@@ -37,7 +37,7 @@ import {
   isMacPlatform,
 } from "../../../../app/utils";
 import { currentLocale, setLocale, t, type Language } from "../../../../i18n";
-import { useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
+import { DEFAULT_BRAND_LOGO_URL, useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
 
 import {
   Sidebar,
@@ -618,13 +618,13 @@ export function AppSidebar(props: AppSidebarProps) {
   const brandLogoUrl = useBrandLogoUrl();
   const brandAppName = useBrandAppName();
   const { config: shellConfig } = useShellConfig();
-  const effectiveBrandLogoUrl = brandLogoUrl ?? shellConfig.brandLogoDataUrl;
+  const effectiveBrandLogoUrl = brandLogoUrl ?? shellConfig.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL;
 
   return (
     <SidebarContext.Provider value={contextValue}>
       <Sidebar
         collapsible="offcanvas"
-        className="bg-sidebar mac:**:data-[sidebar=sidebar]:bg-transparent"
+        className="bg-sidebar mac:bg-sidebar/15 mac:backdrop-blur-2xl mac:backdrop-saturate-150 mac:**:data-[sidebar=sidebar]:bg-transparent"
       >
         <SidebarHeader className="gap-4 px-2 pb-6 pt-1 mac:titlebar-drag">
           <div className="flex w-full justify-end px-3">
@@ -637,22 +637,12 @@ export function AppSidebar(props: AppSidebarProps) {
           </div>
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 px-3">
             <div className="flex min-w-0 items-center gap-2">
-              {effectiveBrandLogoUrl ? (
-                <img
-                  src={effectiveBrandLogoUrl}
-                  alt={`${brandAppName} logo`}
-                  className="size-6 shrink-0 rounded-full object-cover"
-                  data-testid="brand-logo"
-                />
-              ) : (
-                <span
-                  className="flex size-6 shrink-0 items-center justify-center rounded-full bg-black/5 text-[11px] font-medium text-dls-secondary"
-                  aria-hidden="true"
-                  data-testid="brand-logo-placeholder"
-                >
-                  {brandAppName.trim().charAt(0).toUpperCase() || "I"}
-                </span>
-              )}
+              <img
+                src={effectiveBrandLogoUrl}
+                alt={`${brandAppName} logo`}
+                className="size-6 shrink-0 rounded-full object-cover"
+                data-testid="brand-logo"
+              />
               <span className="truncate text-sm font-semibold" data-testid="brand-app-name">
                 {brandAppName}
               </span>

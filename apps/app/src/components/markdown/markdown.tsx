@@ -475,7 +475,7 @@ function MarkdownBlockInner({
 
         if (target && onOpenTarget) {
           event.preventDefault();
-          onOpenTarget(target, { external: true });
+          onOpenTarget(target);
           return;
         }
       }

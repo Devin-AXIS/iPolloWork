@@ -93,6 +93,8 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sessionPageSource).toContain("videoStudioExpanded");
     expect(sessionPageSource).toContain('left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0"');
+    expect(sessionPageSource).toContain('videoStudioExpanded && (!shellConfig.sidebar || !sidebarOpen) && "mac:[&_header]:!pl-20"');
+    expect(sessionPageSource).not.toContain("mac:peer-data-[state=collapsed]:[&_header]:pl-28");
     expect(sessionPageSource).toContain("onExpandedChange={setVideoStudioExpanded}");
   });
 
@@ -245,13 +247,25 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain('sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : ""');
   });
 
+  test("opens the left sidebar in one action when the right panel occupies a narrow window", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("const openLeftSidebar = useCallback(() => {");
+    expect(sessionPageSource).toContain("closeRightPane({ preserveAutoCollapse: true });");
+    expect(sessionPageSource).toContain("onClick={openLeftSidebar}");
+  });
+
   test("lets the latest right-panel action take priority in a narrow window", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     ).replaceAll("\r\n", "\n");
 
-    expect(sessionPageSource).toContain("if (panel) {\n      userOpenedSidebarWhileNarrowRef.current = false;");
+    expect(sessionPageSource).not.toContain("if (panel) {\n      userOpenedSidebarWhileNarrowRef.current = false;");
+    expect(sessionPageSource).toContain("const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {\n    userOpenedSidebarWhileNarrowRef.current = false;");
     expect(sessionPageSource).toContain("userOpenedSidebarWhileNarrowRef.current = false;\n    userOpenedSidePanelWhileNarrowRef.current = true;");
   });
 

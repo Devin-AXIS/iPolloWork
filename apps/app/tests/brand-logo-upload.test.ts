@@ -26,7 +26,7 @@ describe("organization logo upload", () => {
   });
 
   test("gives an organization-managed logo priority over the local upload", () => {
-    expect(shellViewSource).toContain("managedBrandLogoUrl ?? config.brandLogoDataUrl");
+    expect(shellViewSource).toContain("managedBrandLogoUrl ?? config.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL");
     expect(shellViewSource).toContain("disabled={Boolean(managedBrandLogoUrl)}");
   });
 });

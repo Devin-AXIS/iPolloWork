@@ -490,6 +490,16 @@ export function SessionPage(props: SessionPageProps) {
     getArtifactsFromMessages(conversationMessages, accessibleTargets, { includeTargetFallbacks: true })
       .find(isVideoHtmlArtifact) ?? null
   ), [accessibleTargets, conversationMessages]);
+  const autoCollapsedSidebarRef = useRef(false);
+  const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
+  const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
+  const userOpenedSidebarWhileNarrowRef = useRef(false);
+  const userOpenedSidePanelWhileNarrowRef = useRef(false);
+  const prioritizeRightPanel = useCallback(() => {
+    userOpenedSidebarWhileNarrowRef.current = false;
+    userOpenedSidePanelWhileNarrowRef.current = true;
+    autoCollapsedSidePanelRef.current = null;
+  }, []);
   const autoOpenedDesignTemplateRef = useRef<string | null>(null);
   const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
@@ -501,10 +511,11 @@ export function SessionPage(props: SessionPageProps) {
     setSessionType(sessionId, "video");
     setSessionTypeRevision((value) => value + 1);
   }, []);
-  const openCurrentVideoStudio = useCallback(() => {
+  const openCurrentVideoStudio = useCallback((options?: { auto?: boolean }) => {
     if (!props.selectedSessionId) return;
+    if (!options?.auto) prioritizeRightPanel();
     setSidePanelState(props.selectedSessionId, "video");
-  }, [props.selectedSessionId, setSidePanelState]);
+  }, [prioritizeRightPanel, props.selectedSessionId, setSidePanelState]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateCatalogLoading(true);
@@ -713,11 +724,6 @@ export function SessionPage(props: SessionPageProps) {
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
-  const autoCollapsedSidebarRef = useRef(false);
-  const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
-  const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
-  const userOpenedSidebarWhileNarrowRef = useRef(false);
-  const userOpenedSidePanelWhileNarrowRef = useRef(false);
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
   const videoRailActive = activeSidePanel === "video";
@@ -740,7 +746,7 @@ export function SessionPage(props: SessionPageProps) {
     const outputKey = `${props.selectedSessionId}:${videoOutput.messageId}:${videoOutput.path}`;
     if (autoOpenedVideoOutputRef.current === outputKey) return;
     autoOpenedVideoOutputRef.current = outputKey;
-    openCurrentVideoStudio();
+    openCurrentVideoStudio({ auto: true });
   }, [isVideoSession, openCurrentVideoStudio, props.selectedSessionId, props.sidebar.sessionStatusById, videoOutput]);
   useEffect(() => {
     autoOpenedVideoOutputRef.current = null;
@@ -808,7 +814,6 @@ export function SessionPage(props: SessionPageProps) {
       panel = "panel";
     }
     if (panel) {
-      userOpenedSidebarWhileNarrowRef.current = false;
       userOpenedSidePanelWhileNarrowRef.current = true;
       autoCollapsedSidePanelRef.current = null;
     }
@@ -854,6 +859,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [designTemplateEntryPath, openDesignTab, props.selectedSessionId]);
 
   const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {
+    userOpenedSidebarWhileNarrowRef.current = false;
     setMainWorkspaceView(null);
     setSessionPanelView(null);
     if (panel === "voice") {
@@ -1111,6 +1117,7 @@ export function SessionPage(props: SessionPageProps) {
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);
       if (isElectronRuntime()) {
+        if (!options?.auto) prioritizeRightPanel();
         preserveSidePanelOnPanelOpenRef.current = true;
         setCurrentSidePanel("panel");
         void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.(url);
@@ -1140,6 +1147,7 @@ export function SessionPage(props: SessionPageProps) {
     const sourceId = sourceSessionId ?? props.selectedSessionId;
     const templateSurface = await resolveOpenTargetTemplateSurface(target, sourceId);
     if (templateSurface) {
+      if (!options?.auto) prioritizeRightPanel();
       if (templateSurface === "design") {
         openDesignTab(target.value);
       } else {
@@ -1149,6 +1157,7 @@ export function SessionPage(props: SessionPageProps) {
     }
 
     if (target.kind === "file" && target.preview === "html") {
+      if (!options?.auto) prioritizeRightPanel();
       openDesignTab(target.value);
       return;
     }
@@ -1167,6 +1176,7 @@ export function SessionPage(props: SessionPageProps) {
     const sessionId = sourceId;
     if (!sessionId) return;
     if (options?.auto && activePanelTab?.id === target.id) return;
+    if (!options?.auto) prioritizeRightPanel();
     openTab(sessionId, {
       id: target.id,
       type: "artifact",
@@ -1175,7 +1185,7 @@ export function SessionPage(props: SessionPageProps) {
     });
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
-  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, isVideoSession, openDesignTab, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, setCurrentSidePanel]);
+  }, [activePanelTab?.id, browserUrlForTarget, downloadOpenTarget, isVideoSession, openDesignTab, openTab, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, prioritizeRightPanel, setCurrentSidePanel]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;
@@ -1184,6 +1194,16 @@ export function SessionPage(props: SessionPageProps) {
     setSessionPanelView(null);
     setCurrentSidePanel(null);
   }, [setCurrentSidePanel]);
+  const openLeftSidebar = useCallback(() => {
+    userOpenedSidebarWhileNarrowRef.current = true;
+    autoCollapsedSidebarRef.current = false;
+    if (sidePanelOpen) {
+      autoCollapsedSidePanelRef.current = effectiveSidePanelView;
+      userOpenedSidePanelWhileNarrowRef.current = false;
+      closeRightPane({ preserveAutoCollapse: true });
+    }
+    setSidebarOpen(true);
+  }, [closeRightPane, effectiveSidePanelView, setSidebarOpen, sidePanelOpen]);
   useEffect(() => {
     if (
       (
@@ -1240,6 +1260,7 @@ export function SessionPage(props: SessionPageProps) {
     toggleCurrentSidePanel("panel");
   }, [panelRailActive, sessionPanelState.tabs, toggleCurrentSidePanel]);
   const addBrowserPanelTab = useCallback(() => {
+    userOpenedSidebarWhileNarrowRef.current = false;
     if (isElectronRuntime()) {
       preserveSidePanelOnPanelOpenRef.current = true;
       void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.();
@@ -1265,12 +1286,14 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel(restoredPanel);
   }, [closeRightPane, effectiveSidePanelView, setCurrentSidePanel, sidePanelOpen]);
   const openDesignRailPane = useCallback(() => {
+    userOpenedSidebarWhileNarrowRef.current = false;
     openDesignTab();
   }, [openDesignTab]);
   const showDesignRailPane = useCallback(() => {
     openDesignRailPane();
   }, [openDesignRailPane]);
   const openVideoRailPane = useCallback(() => {
+    userOpenedSidebarWhileNarrowRef.current = false;
     if (videoRailActive) {
       closeRightPane();
       return;
@@ -1278,6 +1301,7 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel("video");
   }, [closeRightPane, setCurrentSidePanel, videoRailActive]);
   const showVideoRailPane = useCallback(() => {
+    userOpenedSidebarWhileNarrowRef.current = false;
     setCurrentSidePanel("video");
   }, [setCurrentSidePanel]);
   const seedDesignHtmlControlAction = useMemo<iPolloWorkControlAction | null>(() => {
@@ -1505,6 +1529,7 @@ export function SessionPage(props: SessionPageProps) {
     }
   }, [artifactFileTargets, hasArtifactTargets, openTab, panelRailActive, props.selectedSessionId, selectTab, sessionPanelState, toggleCurrentSidePanel]);
   const showArtifactRailPane = useCallback(() => {
+    userOpenedSidebarWhileNarrowRef.current = false;
     if (!hasArtifactTargets || !props.selectedSessionId) return;
     const artifactTargetIds = new Set(artifactFileTargets.map((target) => target.id));
     const artifactTab = sessionPanelState.tabs.find((tab) => (
@@ -1868,7 +1893,7 @@ export function SessionPage(props: SessionPageProps) {
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch}
           onStartResize={startLeftSidebarResize}
         />
-        <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80 mac:[&_header]:transition-[padding-left] mac:[&_header]:duration-200 mac:[&_header]:ease-linear mac:peer-data-[state=collapsed]:[&_header]:pl-28 mac:max-md:[&_header]:pl-28">
+        <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80">
           <div className="flex min-h-0 flex-1">
           <ResizablePanelGroup
             orientation="horizontal"
@@ -1916,11 +1941,7 @@ export function SessionPage(props: SessionPageProps) {
                 className="absolute left-6 top-1/2 z-20 size-8 -translate-y-1/2 rounded-lg border-none text-muted-foreground hover:bg-muted hover:text-foreground mac:left-20 mac:titlebar-no-drag"
                 aria-label={t("sidebar.expand")}
                 title={t("sidebar.expand")}
-                onClick={() => {
-                  userOpenedSidebarWhileNarrowRef.current = true;
-                  autoCollapsedSidebarRef.current = false;
-                  setSidebarOpen(true);
-                }}
+                onClick={openLeftSidebar}
                 style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
               >
                 <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0" />
@@ -2130,6 +2151,7 @@ export function SessionPage(props: SessionPageProps) {
                         respondQuestion={props.respondQuestion}
                         safeStringify={props.safeStringify}
                         onOpenTarget={openTarget}
+                        onOpenVideoStudio={openCurrentVideoStudio}
                         onConversationMessagesChange={handleConversationMessagesChange}
                         templateEntryPath={designTemplateEntryPath}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
@@ -2320,6 +2342,7 @@ export function SessionPage(props: SessionPageProps) {
                       className={cn(
                         "h-full min-h-0",
                         videoStudioExpanded ? "fixed inset-y-0 right-0 z-[60] bg-background" : "w-full",
+                        videoStudioExpanded && (!shellConfig.sidebar || !sidebarOpen) && "mac:[&_header]:!pl-20",
                       )}
                       style={videoStudioExpanded ? {
                         left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0",
@@ -2367,6 +2390,7 @@ export function SessionPage(props: SessionPageProps) {
                         launcherItems={sidePanelLauncherItems}
                         onAskAi={handleDesignAskAi}
                         expanded={rightPanelExpanded}
+                        titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}
                         onExpandedChange={setRightPanelExpandedState}
                         onClose={closeRightPane}
                       />

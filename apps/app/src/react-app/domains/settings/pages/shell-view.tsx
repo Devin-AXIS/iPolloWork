@@ -24,7 +24,7 @@ import {
 } from "../settings-layout";
 import { useShellConfig, DEFAULT_SHELL_CONFIG, type ShellConfig } from "../../../shell/shell-config";
 import { useUiStateStore } from "../../../shell/ui-state-store";
-import { useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
+import { DEFAULT_BRAND_LOGO_URL, useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
 
 const BRAND_LOGO_MAX_BYTES = 1024 * 1024;
 const BRAND_LOGO_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -210,7 +210,7 @@ export function ShellCustomizationView() {
   const { config, update, reset } = useShellConfig();
   const brandAppName = useBrandAppName();
   const managedBrandLogoUrl = useBrandLogoUrl();
-  const effectiveBrandLogoUrl = managedBrandLogoUrl ?? config.brandLogoDataUrl;
+  const effectiveBrandLogoUrl = managedBrandLogoUrl ?? config.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL;
   const brandLogoInputRef = useRef<HTMLInputElement>(null);
   const [brandLogoError, setBrandLogoError] = useState<string | null>(null);
   const applicationMenuVisible = useUiStateStore((state) => state.applicationMenuVisible);
@@ -274,21 +274,12 @@ export function ShellCustomizationView() {
             </LayoutSectionItemDescription>
             <LayoutSectionItemHeaderActions>
               <div className="flex items-center gap-2">
-                {effectiveBrandLogoUrl ? (
-                  <img
-                    src={effectiveBrandLogoUrl}
-                    alt={t("settings.shell.organization_logo_preview_alt")}
-                    className="size-12 shrink-0 rounded-full border border-dls-border object-cover"
-                    data-testid="brand-logo-upload-preview"
-                  />
-                ) : (
-                  <span
-                    className="flex size-12 shrink-0 items-center justify-center rounded-full border border-dls-border bg-dls-hover text-sm font-medium text-dls-secondary"
-                    aria-hidden="true"
-                  >
-                    {brandAppName.trim().charAt(0).toUpperCase() || "I"}
-                  </span>
-                )}
+                <img
+                  src={effectiveBrandLogoUrl}
+                  alt={t("settings.shell.organization_logo_preview_alt")}
+                  className="size-12 shrink-0 rounded-full border border-dls-border object-cover"
+                  data-testid="brand-logo-upload-preview"
+                />
                 <input
                   ref={brandLogoInputRef}
                   type="file"
