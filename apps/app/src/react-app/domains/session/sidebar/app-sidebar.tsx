@@ -543,6 +543,10 @@ export function AppSidebar(props: AppSidebarProps) {
     () => new Set(),
   );
   const [language, setLanguage] = React.useState<Language>(() => currentLocale());
+  const primarySidebarActionClass = cn(
+    primarySidebarActionClassName,
+    language === "zh" && "font-medium",
+  );
   const switchLanguage = React.useCallback((nextLanguage: Language) => {
     setLanguage(nextLanguage);
     setLocale(nextLanguage);
@@ -593,6 +597,7 @@ export function AppSidebar(props: AppSidebarProps) {
   const contextValue: SidebarContextValue = {
     selectedWorkspaceId: props.selectedWorkspaceId,
     selectedSessionId: props.selectedSessionId,
+    language,
     developerMode: props.developerMode,
     showSessionActions: props.showSessionActions,
     sessionStatusById: props.sessionStatusById,
@@ -626,7 +631,7 @@ export function AppSidebar(props: AppSidebarProps) {
         collapsible="offcanvas"
         className="bg-sidebar mac:bg-sidebar/15 mac:backdrop-blur-2xl mac:backdrop-saturate-150 mac:**:data-[sidebar=sidebar]:bg-transparent"
       >
-        <SidebarHeader className="gap-4 px-2 pb-6 pt-1 mac:titlebar-drag">
+        <SidebarHeader className="gap-4 px-2 pb-8 pt-1 mac:titlebar-drag">
           <div className="flex w-full justify-end px-3">
             <SidebarTrigger
               className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
@@ -662,7 +667,7 @@ export function AppSidebar(props: AppSidebarProps) {
           <SidebarMenu className="gap-1 px-2">
             <SidebarMenuItem>
               <SidebarMenuButton
-                className={primarySidebarActionClassName}
+                className={primarySidebarActionClass}
                 disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
                 aria-label={t("session.new_task")}
                 aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
@@ -678,7 +683,7 @@ export function AppSidebar(props: AppSidebarProps) {
               <SidebarMenuButton
                 onClick={props.onOpenTemplateMarket}
                 isActive={props.activePrimaryItem === "template-market"}
-                className={primarySidebarActionClassName}
+                className={primarySidebarActionClass}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
                   <img src={publicAssetUrl("sidebar-icon/figma-layout-panel-top.svg")} alt="" className="size-[11px]" />
@@ -690,7 +695,7 @@ export function AppSidebar(props: AppSidebarProps) {
               <SidebarMenuButton
                 onClick={props.onOpenExtensions}
                 isActive={props.activePrimaryItem === "extensions"}
-                className={primarySidebarActionClassName}
+                className={primarySidebarActionClass}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
                   <img src={publicAssetUrl("sidebar-icon/figma-plug.svg")} alt="" className="h-[13px] w-2" />
@@ -1479,6 +1484,7 @@ function SessionMenuItem({
   const rowPadding = depth > 0 ? "ps-10" : rootIndent === "group" ? "ps-5" : rootIndent === "recent" ? "ps-1" : "ps-8";
   const trailingActionPosition = rootIndent === "recent" ? "right-1" : "right-2";
   const nestedActionPosition = rootIndent === "recent" ? "right-8" : "right-9";
+  const sessionFontWeight = ctx.language === "zh" ? "font-medium" : "font-normal";
 
   const openSession = () => {
     ctx.onOpenSession(workspaceId, session.id);
@@ -1511,7 +1517,7 @@ function SessionMenuItem({
           <CollapsibleTrigger
             render={
               <SidebarMenuSubButton
-                className={cn("relative h-8 rounded-[8px] pe-8 text-sm font-normal leading-4", rowPadding)}
+                className={cn("relative h-8 rounded-[8px] pe-8 text-sm leading-4", sessionFontWeight, rowPadding)}
                 isActive={isSelected}
                 onClick={openSession}
                 onPointerEnter={prefetchSession}
@@ -1549,7 +1555,7 @@ function SessionMenuItem({
           onClick={openSession}
           onPointerEnter={prefetchSession}
           onFocus={prefetchSession}
-          className={cn("h-8 rounded-[8px] pe-8 text-sm font-normal leading-4 transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", rowPadding)}
+          className={cn("h-8 rounded-[8px] pe-8 text-sm leading-4 transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", sessionFontWeight, rowPadding)}
         >
           <PinnedIndicator isPinned={isPinned} />
           <span
