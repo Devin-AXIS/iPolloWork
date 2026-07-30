@@ -60,7 +60,10 @@ async function connectStudioTarget(ctx) {
       return;
     }
     if (!openedStudioTarget) {
-      await ctx.eval(`location.href = ${JSON.stringify(studioUrl)}`);
+      const opened = await ctx.eval(
+        `Boolean(window.open(${JSON.stringify(studioUrl)}, "_blank", "width=1280,height=900"))`,
+      );
+      if (!opened) throw new Error("Studio project target could not be opened.");
       openedStudioTarget = true;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -96,10 +99,16 @@ async function proveWithScreenshotRetry(ctx, name, options) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const targets = await listTargets(ctx.cdpBaseUrl);
-      const topLevel = targets.find(
-        (target) => target.type === "page" && target.webSocketDebuggerUrl,
-      );
       const studioClient = ctx.client;
+      const studioTarget = targets.find((target) => target.id === studioClient.targetId);
+      const topLevel = studioTarget?.parentId
+        ? targets.find(
+            (target) =>
+              target.id === studioTarget.parentId &&
+              target.type === "page" &&
+              target.webSocketDebuggerUrl,
+          )
+        : studioTarget;
       const screenshotClient =
         topLevel && topLevel.id !== studioClient.targetId
           ? await connect(debuggerUrlFor(ctx.cdpBaseUrl, topLevel))
@@ -123,7 +132,7 @@ async function proveWithScreenshotRetry(ctx, name, options) {
   throw lastError;
 }
 
-async function wheelInside(ctx, selector, deltaY = 480) {
+async function wheelInside(ctx, selector, deltaY = 480, modifiers = 0) {
   const point = await ctx.eval(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!(element instanceof HTMLElement)) return null;
@@ -142,6 +151,13 @@ async function wheelInside(ctx, selector, deltaY = 480) {
     y: point.y,
     deltaX: 0,
     deltaY,
+    modifiers,
+  });
+}
+
+async function waitDensityStep(ctx) {
+  await ctx.eval(`new Promise((resolve) => setTimeout(() => resolve(true), 160))`, {
+    awaitPromise: true,
   });
 }
 
@@ -256,11 +272,11 @@ export default {
       },
     },
     {
-      name: "Independent vertical scrolling",
+      name: "Independent scrolling and card density",
       run: async (ctx) => {
         await proveWithScreenshotRetry(
           ctx,
-          "Each four-column animation section scrolls independently without overflow.",
+          "Each animation section scrolls independently and Ctrl-wheel scales both grids from one to four columns.",
           {
             voiceover: vo[1],
             action: async () => {
@@ -286,6 +302,7 @@ export default {
                 noTextX: text ? text.scrollWidth <= text.clientWidth : false,
                 noInterfaceX: ui ? ui.scrollWidth <= ui.clientWidth : false,
                 columns: columns ? getComputedStyle(columns).gridTemplateColumns.split(" ").length : 0,
+                catalogColumns: page?.getAttribute("data-catalog-columns"),
                 pageContained: page ? page.scrollHeight <= page.clientHeight : false,
               };
             })()`);
@@ -299,8 +316,8 @@ export default {
                 "An animation section has horizontal overflow.",
               );
               ctx.assert(
-                state.columns === 4,
-                `Expected a four-column grid, received ${state.columns}.`,
+                state.columns === 3 && state.catalogColumns === "3",
+                `Expected the default three-column grid, received ${state.columns}.`,
               );
               ctx.assert(
                 state.pageContained,
@@ -322,6 +339,51 @@ export default {
             }))()`);
               ctx.assert(state.textTop === 0, "Interface wheel movement changed text animations.");
               ctx.assert(state.interfaceTop > 0, "Interface animations did not scroll.");
+
+              await wheelInside(ctx, selectors.interface, 480, 2);
+              await ctx.waitFor(
+                `document.querySelector(${JSON.stringify(selectors.animation)})
+                  ?.getAttribute("data-catalog-columns") === "4"`,
+                { timeoutMs: 10_000, label: "four-column Ctrl-wheel density" },
+              );
+              await waitDensityStep(ctx);
+              await wheelInside(ctx, selectors.interface, -480, 2);
+              await waitDensityStep(ctx);
+              await wheelInside(ctx, selectors.interface, -480, 2);
+              await waitDensityStep(ctx);
+              await wheelInside(ctx, selectors.interface, -480, 2);
+              await ctx.waitFor(
+                `document.querySelector(${JSON.stringify(selectors.animation)})
+                  ?.getAttribute("data-catalog-columns") === "1"`,
+                { timeoutMs: 10_000, label: "one-column Ctrl-wheel density" },
+              );
+              state = await ctx.eval(`(() => {
+              const grids = [...document.querySelectorAll('[data-testid^="catalog-grid-"]')];
+              return {
+                columns: grids.map((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length),
+                noX: grids.every((grid) => grid.scrollWidth <= grid.clientWidth),
+              };
+            })()`);
+              ctx.assert(
+                state.columns.every((count) => count === 1),
+                `Ctrl-wheel did not synchronize both grids at one column: ${state.columns}.`,
+              );
+              ctx.assert(state.noX, "One-column density introduced horizontal overflow.");
+              ctx.recordEvidence({
+                type: "assertion",
+                status: "passed",
+                assertion: "Ctrl-wheel changed both independent catalog grids through four and one columns.",
+              });
+
+              await waitDensityStep(ctx);
+              await wheelInside(ctx, selectors.interface, 480, 2);
+              await waitDensityStep(ctx);
+              await wheelInside(ctx, selectors.interface, 480, 2);
+              await ctx.waitFor(
+                `document.querySelector(${JSON.stringify(selectors.animation)})
+                  ?.getAttribute("data-catalog-columns") === "3"`,
+                { timeoutMs: 10_000, label: "restore three-column density" },
+              );
             },
             screenshot: {
               ...STUDIO_SCREENSHOT_TARGETS,
@@ -395,7 +457,7 @@ export default {
       run: async (ctx) => {
         await proveWithScreenshotRetry(
           ctx,
-          "Hover intent lazily starts at most one card preview.",
+          "Hover intent lazily starts at most one card preview at normal 1× speed.",
           {
             voiceover: vo[3],
             action: async () => {
@@ -405,8 +467,8 @@ export default {
                 { timeoutMs: 10_000, label: "animation cards after clearing search" },
               );
               await waitForPaint(ctx);
-              const cards = await visibleCardPoints(ctx, selectors.text);
-              ctx.assert(cards.length >= 2, "Two visible text-animation cards are required.");
+              const cards = await visibleCardPoints(ctx, selectors.interface);
+              ctx.assert(cards.length >= 2, "Two visible interface-animation cards are required.");
 
               await ctx.client.send("Input.dispatchMouseEvent", {
                 type: "mouseMoved",
@@ -455,12 +517,30 @@ export default {
               })()`,
                 { timeoutMs: 15_000, label: "single active card preview" },
               );
+              await ctx.eval(`(() => {
+                const video = document.querySelector(${JSON.stringify(selectors.card)} + " video");
+                if (!(video instanceof HTMLVideoElement)) return false;
+                video.playbackRate = 2;
+                video.dispatchEvent(new Event("ratechange"));
+                return true;
+              })()`);
+              await ctx.waitFor(
+                `(() => {
+                  const video = document.querySelector(${JSON.stringify(selectors.card)} + " video");
+                  return video instanceof HTMLVideoElement
+                    && video.playbackRate === 1
+                    && video.defaultPlaybackRate === 1;
+                })()`,
+                { timeoutMs: 10_000, label: "normal preview playback rate" },
+              );
             },
             assert: async () => {
               const state = await ctx.eval(`(() => ({
               videos: document.querySelectorAll(${JSON.stringify(selectors.card)} + " video").length,
               initialResources: performance.getEntriesByType("resource")
                 .filter((entry) => entry.name.includes("blockPreviewRuntime")).length,
+              playbackRate: document.querySelector(${JSON.stringify(selectors.card)} + " video")?.playbackRate,
+              defaultPlaybackRate: document.querySelector(${JSON.stringify(selectors.card)} + " video")?.defaultPlaybackRate,
             }))()`);
               ctx.assert(
                 state.videos === 1,
@@ -469,6 +549,10 @@ export default {
               ctx.assert(
                 state.initialResources === 1,
                 `Preview runtime should be loaded once, received ${state.initialResources} resources.`,
+              );
+              ctx.assert(
+                state.playbackRate === 1 && state.defaultPlaybackRate === 1,
+                `Expected normal 1× preview playback, received ${state.playbackRate}.`,
               );
             },
             screenshot: {
@@ -519,6 +603,8 @@ export default {
                 videos: document.querySelectorAll(${JSON.stringify(selectors.card)} + " video").length,
                 transitionCount: transition?.querySelectorAll(${JSON.stringify(selectors.card)}).length,
                 backgroundCount: background?.querySelectorAll(${JSON.stringify(selectors.card)}).length,
+                catalogColumns: document.querySelector(${JSON.stringify(selectors.scene)})
+                  ?.getAttribute("data-catalog-columns"),
                 independentRoots: transitionScroll !== backgroundScroll,
                 noX: transitionScroll && backgroundScroll
                   ? transitionScroll.scrollWidth <= transitionScroll.clientWidth
@@ -542,6 +628,10 @@ export default {
               ctx.assert(
                 state.backgroundCount === 24,
                 `Expected 24 background scenes, received ${state.backgroundCount}.`,
+              );
+              ctx.assert(
+                state.catalogColumns === "3",
+                `Expected persisted three-column scenes, received ${state.catalogColumns}.`,
               );
               ctx.assert(state.independentRoots, "Scene sections share a scroll root.");
               ctx.assert(state.noX, "A scene section has horizontal overflow.");

@@ -25,6 +25,11 @@ import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import { useStudioI18n } from "../../i18n";
+import {
+  readStudioUiPreferences,
+  writeStudioUiPreferences,
+  type CatalogColumnCount,
+} from "../../utils/studioUiPreferences";
 import { PreviewController } from "./PreviewController";
 
 export interface BlockPreviewInfo {
@@ -47,6 +52,27 @@ const SECTION_TITLES: Record<RegistryItemLibrarySection, { en: string; zh: strin
 };
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const DEFAULT_CATALOG_COLUMN_COUNT: CatalogColumnCount = 3;
+const CATALOG_GRID_COLUMNS: Record<CatalogColumnCount, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+};
+
+function nextCatalogColumnCount(
+  current: CatalogColumnCount,
+  deltaY: number,
+): CatalogColumnCount {
+  if (deltaY > 0) {
+    if (current === 1) return 2;
+    if (current === 2) return 3;
+    return 4;
+  }
+  if (current === 4) return 3;
+  if (current === 3) return 2;
+  return 1;
+}
 
 function subscribeReducedMotion(callback: () => void): () => void {
   const query = window.matchMedia(REDUCED_MOTION_QUERY);
@@ -70,6 +96,10 @@ export const BlocksTab = memo(function BlocksTab({
   const { locale } = useStudioI18n();
   const { loading, error, search, setSearch, sections } = useBlockCatalog(page);
   const [previewController] = useState(() => new PreviewController());
+  const [columnCount, setColumnCount] = useState<CatalogColumnCount>(
+    () => readStudioUiPreferences().catalogColumnCount ?? DEFAULT_CATALOG_COLUMN_COUNT,
+  );
+  const lastDensityWheelAtRef = useRef(Number.NEGATIVE_INFINITY);
   const reducedMotion = useSyncExternalStore(
     subscribeReducedMotion,
     getReducedMotionSnapshot,
@@ -78,9 +108,19 @@ export const BlocksTab = memo(function BlocksTab({
 
   useEffect(() => () => previewController.dispose(), [previewController]);
   useEffect(() => {
+    writeStudioUiPreferences({ catalogColumnCount: columnCount });
+  }, [columnCount]);
+  useEffect(() => {
     previewController.stop();
     onPreviewBlock?.(null);
   }, [onPreviewBlock, page, previewController, reducedMotion, search]);
+
+  const handleDensityWheel = useCallback((deltaY: number) => {
+    const now = performance.now();
+    if (now - lastDensityWheelAtRef.current < 140) return;
+    lastDensityWheelAtRef.current = now;
+    setColumnCount((current) => nextCatalogColumnCount(current, deltaY));
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -143,6 +183,7 @@ export const BlocksTab = memo(function BlocksTab({
         <div
           className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2 overflow-hidden px-3 pb-3"
           data-testid={`block-catalog-${page}`}
+          data-catalog-columns={columnCount}
         >
           {sections.map((section) => (
             <IndependentCatalogSection
@@ -151,6 +192,8 @@ export const BlocksTab = memo(function BlocksTab({
               search={search}
               locale={locale}
               reducedMotion={reducedMotion}
+              columnCount={columnCount}
+              onDensityWheel={handleDensityWheel}
               previewController={previewController}
               onAddBlock={onAddBlock}
               onPreviewBlock={onPreviewBlock}
@@ -167,6 +210,8 @@ function IndependentCatalogSection({
   search,
   locale,
   reducedMotion,
+  columnCount,
+  onDensityWheel,
   previewController,
   onAddBlock,
   onPreviewBlock,
@@ -175,6 +220,8 @@ function IndependentCatalogSection({
   search: string;
   locale: "en" | "zh";
   reducedMotion: boolean;
+  columnCount: CatalogColumnCount;
+  onDensityWheel: (deltaY: number) => void;
   previewController: PreviewController;
   onAddBlock?: (blockName: string) => void;
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
@@ -240,6 +287,18 @@ function IndependentCatalogSection({
     if (scrollRoot) scrollRoot.scrollTop = 0;
   }, [scrollRoot, search]);
 
+  useEffect(() => {
+    if (!scrollRoot) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey || event.deltaY === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onDensityWheel(event.deltaY);
+    };
+    scrollRoot.addEventListener("wheel", handleWheel, { passive: false });
+    return () => scrollRoot.removeEventListener("wheel", handleWheel);
+  }, [onDensityWheel, scrollRoot]);
+
   const title = SECTION_TITLES[section.id][locale];
   return (
     <section
@@ -263,7 +322,10 @@ function IndependentCatalogSection({
             {locale === "zh" ? "没有匹配的预设" : "No matching presets"}
           </div>
         ) : (
-          <div className="grid min-w-0 grid-cols-4 gap-1.5 overflow-x-hidden">
+          <div
+            className={`grid min-w-0 gap-1.5 overflow-x-hidden ${CATALOG_GRID_COLUMNS[columnCount]}`}
+            data-testid={`catalog-grid-${section.id}`}
+          >
             {section.items.map((block) => (
               <BlockCard
                 key={block.name}

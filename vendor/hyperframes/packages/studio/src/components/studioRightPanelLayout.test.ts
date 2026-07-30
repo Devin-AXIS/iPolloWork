@@ -33,7 +33,7 @@ describe("Studio right panel layout", () => {
     expect(header).not.toContain('<circle cx="12" cy="12" r="10" />');
   });
 
-  it("keeps search fixed above two independent four-column scroll regions", () => {
+  it("keeps search fixed above two independent density-controlled scroll regions", () => {
     const catalog = readFileSync(new URL("./sidebar/BlocksTab.tsx", import.meta.url), "utf8");
     const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
 
@@ -41,7 +41,11 @@ describe("Studio right panel layout", () => {
     expect(catalog).toContain("grid-rows-[minmax(0,1fr)_minmax(0,1fr)]");
     expect(catalog).toContain('data-testid="block-catalog-search"');
     expect(catalog).toContain("hf-block-catalog-scroll min-h-0 min-w-0 flex-1 overscroll-contain");
-    expect(catalog).toContain("grid-cols-4");
+    expect(catalog).toContain("DEFAULT_CATALOG_COLUMN_COUNT: CatalogColumnCount = 3");
+    expect(catalog).toContain('1: "grid-cols-1"');
+    expect(catalog).toContain('4: "grid-cols-4"');
+    expect(catalog).toContain("data-catalog-columns={columnCount}");
+    expect(catalog).toContain('scrollRoot.addEventListener("wheel", handleWheel, { passive: false })');
     expect(catalog).toContain("new IntersectionObserver");
     expect(catalog).toContain("{ root: scrollRoot, threshold: 0.05 }");
     expect(catalog).toContain('import("./blockPreviewRuntime")');
