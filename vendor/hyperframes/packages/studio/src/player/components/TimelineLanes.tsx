@@ -1,6 +1,7 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
+import { TimelineClipAnimationSegments } from "./TimelineClipAnimationSegments";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import { TimelineLayerHeader } from "./TimelineLayerHeader";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
@@ -367,6 +368,7 @@ export function TimelineLanes({
                       (draggedElement?.key ?? draggedElement?.id) === elementKey;
                     if (isDraggingClip) return null;
                     const previewElement = getPreviewElement(el);
+                    const cacheEntry = keyframeCache?.get(elementKey);
                     // Passenger of a live multi-drag: slide by the SAME formation
                     // delta (the grabbed clip's group-clamped delta) via a
                     // compositor transform on a same-geometry wrapper (absolute
@@ -582,9 +584,16 @@ export function TimelineLanes({
                           renderClipContent,
                           renderClipOverlay,
                         )}
-                        {STUDIO_KEYFRAMES_ENABLED && keyframeCache?.get(elementKey) && (
+                        {cacheEntry?.animationSegments && (
+                          <TimelineClipAnimationSegments
+                            segments={cacheEntry.animationSegments}
+                          />
+                        )}
+                        {STUDIO_KEYFRAMES_ENABLED &&
+                          cacheEntry &&
+                          cacheEntry.keyframes.length > 0 && (
                           <TimelineClipDiamonds
-                            keyframesData={keyframeCache.get(elementKey)!}
+                            keyframesData={cacheEntry}
                             clipWidthPx={Math.max(previewElement.duration * pps, 4)}
                             clipHeightPx={TRACK_H - 2 * CLIP_Y}
                             beatsActive={beatStripOnTrack}
@@ -604,7 +613,7 @@ export function TimelineLanes({
                             onMoveKeyframe={onMoveKeyframe}
                             suppressClickRef={suppressClickRef}
                           />
-                        )}
+                          )}
                       </TimelineClip>
                     );
                     if (!isPassenger) return clip;

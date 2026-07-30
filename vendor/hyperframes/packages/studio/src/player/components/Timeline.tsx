@@ -28,6 +28,7 @@ import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallb
 import type { TimelineProps } from "./TimelineTypes";
 import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
+import { shouldDisplayTimelineElement } from "./timelineLayerPresentation";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -87,6 +88,21 @@ export const Timeline = memo(function Timeline({
   useMusicBeatAnalysis();
   const rawElements = usePlayerStore((s) => s.elements);
   const expandedElements = useExpandedTimelineElements();
+  const keyframeCache = usePlayerStore((s) => s.keyframeCache);
+  const displayElements = useMemo(
+    () =>
+      expandedElements.filter((element) => {
+        const elementKey = element.key ?? element.id;
+        const cacheEntry =
+          keyframeCache.get(elementKey) ??
+          (element.domId ? keyframeCache.get(element.domId) : undefined);
+        const hasAnimation =
+          (cacheEntry?.animationSegments?.length ?? 0) > 0 ||
+          (cacheEntry?.keyframes.length ?? 0) > 0;
+        return shouldDisplayTimelineElement(element, hasAnimation);
+      }),
+    [expandedElements, keyframeCache],
+  );
   const beatAnalysis = usePlayerStore((s) => s.beatAnalysis);
   const musicElement = usePlayerStore((s) => s.elements.find(isMusicTrack) ?? null);
   const beatEdits = usePlayerStore((s) => s.beatEdits);
@@ -148,11 +164,11 @@ export const Timeline = memo(function Timeline({
   }, [rawElements, duration]);
 
   const { tracks, trackStyles, elementStyles, trackOrder } =
-    useTimelineTrackDerivations(expandedElements);
+    useTimelineTrackDerivations(displayElements);
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
-  const expandedElementsRef = useRef(expandedElements);
-  expandedElementsRef.current = expandedElements;
+  const expandedElementsRef = useRef(displayElements);
+  expandedElementsRef.current = displayElements;
 
   const ppsRef = useRef(100);
   const durationRef = useRef(effectiveDuration);
@@ -245,17 +261,16 @@ export const Timeline = memo(function Timeline({
   const totalH = getTimelineCanvasHeight(displayTrackOrder.length);
   const { viewportWidth, showShortcutHint, setScrollRef } = useTimelineScrollViewport(scrollRef, [
     timelineReady,
-    expandedElements.length,
+    displayElements.length,
     totalH,
   ]);
-  const keyframeCache = usePlayerStore((s) => s.keyframeCache);
   const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
 
   const selectedElement = useMemo(
     () =>
-      expandedElements.find((element) => (element.key ?? element.id) === selectedElementId) ?? null,
-    [expandedElements, selectedElementId],
+      displayElements.find((element) => (element.key ?? element.id) === selectedElementId) ?? null,
+    [displayElements, selectedElementId],
   );
   const selectedElementRef = useRef<TimelineElement | null>(selectedElement);
   selectedElementRef.current = selectedElement;
@@ -277,7 +292,7 @@ export const Timeline = memo(function Timeline({
     fitPpsRef,
     draggedClip,
     resizingClip,
-    expandedElements,
+    expandedElements: displayElements,
     isDragging,
     scrollRef,
     lastScrollLeftRef,
@@ -288,7 +303,7 @@ export const Timeline = memo(function Timeline({
     tracks,
     selectedElementId,
     selectedElementIds,
-    expandedElements,
+    expandedElements: displayElements,
     dragActive: draggedClip?.started === true || resizingClip != null,
     displayDuration,
   });
@@ -309,7 +324,7 @@ export const Timeline = memo(function Timeline({
     effectiveDuration,
     pps,
     timelineReady,
-    elementsLength: expandedElements.length,
+    elementsLength: displayElements.length,
     setZoomMode,
     setManualZoomPercent,
     onSeek,
@@ -384,7 +399,7 @@ export const Timeline = memo(function Timeline({
     [resizingClip],
   );
 
-  if (!timelineReady || expandedElements.length === 0) {
+  if (!timelineReady || displayElements.length === 0) {
     return (
       <TimelineEmptyState
         isDragOver={isDragOver}
@@ -502,7 +517,7 @@ export const Timeline = memo(function Timeline({
           }}
           onMoveKeyframe={onMoveKeyframe}
           onContextMenuKeyframe={(e, elId, pct) => {
-            const el = expandedElements.find((x) => (x.key ?? x.id) === elId);
+            const el = displayElements.find((x) => (x.key ?? x.id) === elId);
             if (el) {
               setSelectedElementId(elId);
               onSelectElement?.(el);

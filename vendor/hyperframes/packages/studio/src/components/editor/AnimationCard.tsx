@@ -17,18 +17,35 @@ import {
   parseNumericOrString,
   BOOLEAN_PROPS,
 } from "./AnimationCardParts";
+import {
+  clampAnimationMetaToOwner,
+  isAnimationSharedForOwner,
+  resolveTimelineAnimationPhase,
+  type TimelineAnimationOwnerRange,
+  type TimelineAnimationPhase,
+} from "../../utils/timelineAnimationSegments";
 
 interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
   defaultExpanded: boolean;
   flat?: boolean;
+  ownerId?: string | null;
+  ownerRange?: TimelineAnimationOwnerRange;
 }
+
+const PHASE_LABELS: Record<TimelineAnimationPhase, string> = {
+  entrance: "Entrance",
+  loop: "Loop",
+  exit: "Exit",
+};
 
 // fallow-ignore-next-line complexity
 export const AnimationCard = memo(function AnimationCard({
   animation,
   defaultExpanded,
   flat,
+  ownerId,
+  ownerRange,
   onUpdateProperty,
   onUpdateMeta,
   onDeleteAnimation,
@@ -100,18 +117,32 @@ export const AnimationCard = memo(function AnimationCard({
     (raw: string) => {
       const num = Number(raw);
       if (Number.isFinite(num) && num >= 0)
-        onUpdateMeta(animation.id, { duration: Math.max(0, num) });
+        onUpdateMeta(
+          animation.id,
+          clampAnimationMetaToOwner(
+            animation,
+            { duration: Math.max(0, num) },
+            ownerRange,
+          ),
+        );
     },
-    [animation.id, onUpdateMeta],
+    [animation, onUpdateMeta, ownerRange],
   );
 
   const commitPosition = useCallback(
     (raw: string) => {
       const num = Number(raw);
       if (Number.isFinite(num) && num >= 0)
-        onUpdateMeta(animation.id, { position: Math.max(0, num) });
+        onUpdateMeta(
+          animation.id,
+          clampAnimationMetaToOwner(
+            animation,
+            { position: Math.max(0, num) },
+            ownerRange,
+          ),
+        );
     },
-    [animation.id, onUpdateMeta],
+    [animation, onUpdateMeta, ownerRange],
   );
 
   const [copied, setCopied] = useState(false);
@@ -128,6 +159,11 @@ export const AnimationCard = memo(function AnimationCard({
       : animation.position;
 
   const summary = useMemo(() => buildTweenSummary(animation), [animation]);
+  const phase =
+    animation.method === "set" || !ownerRange
+      ? null
+      : resolveTimelineAnimationPhase(animation, ownerRange);
+  const isShared = isAnimationSharedForOwner(animation, ownerId);
   const setKeys = Object.keys(animation.properties);
   if (
     animation.method === "set" &&
@@ -171,6 +207,19 @@ export const AnimationCard = memo(function AnimationCard({
         >
           {methodLabel}
         </span>
+        {phase && (
+          <span
+            className="rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold text-panel-text-3"
+            title="Derived from this animation's position inside its owner clip"
+          >
+            {PHASE_LABELS[phase]}
+          </span>
+        )}
+        {isShared && (
+          <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400">
+            Shared
+          </span>
+        )}
         <span
           className={`text-[11px] font-medium ${flat ? "text-panel-text-3" : "text-neutral-400"}`}
           title="When this effect plays"
@@ -197,8 +246,14 @@ export const AnimationCard = memo(function AnimationCard({
         </svg>
       </button>
 
+      {expanded && isShared && (
+        <p className="mt-1 rounded-lg bg-amber-500/10 px-2.5 py-2 text-[10px] leading-relaxed text-amber-300">
+          This animation uses a shared selector. It is read-only here so editing one element cannot
+          change another. Add a new effect to create an independent animation for this element.
+        </p>
+      )}
       {expanded && (
-        <div className="pt-2">
+        <fieldset disabled={isShared} className={`pt-2 ${isShared ? "opacity-45" : ""}`}>
           <div className="space-y-3">
             <ComputedTweenNotice
               provenance={animation.provenance}
@@ -413,7 +468,7 @@ export const AnimationCard = memo(function AnimationCard({
               </button>
             </div>
           </div>
-        </div>
+        </fieldset>
       )}
     </div>
   );

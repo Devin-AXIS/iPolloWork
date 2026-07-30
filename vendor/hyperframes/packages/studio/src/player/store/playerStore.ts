@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { BeatEditState } from "../../utils/beatEditing";
+import type { TimelineAnimationSegment } from "../../utils/timelineAnimationSegments";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { computePinnedZoomPercent } from "../components/timelineZoom";
@@ -19,6 +20,13 @@ export interface KeyframeCacheEntry {
   }>;
   ease?: string;
   easeEach?: string;
+  /** Clip-local GSAP timing bars. Derived from existing tweens; never persisted separately. */
+  animationSegments?: TimelineAnimationSegment[];
+}
+
+export interface KeyframeCacheUpdate {
+  elementId: string;
+  data: KeyframeCacheEntry | undefined;
 }
 
 export interface TimelineElement {
@@ -223,6 +231,7 @@ interface PlayerState {
   /** Keyframe data per element id, populated from parsed GSAP animations. */
   keyframeCache: Map<string, KeyframeCacheEntry>;
   setKeyframeCache: (elementId: string, data: KeyframeCacheEntry | undefined) => void;
+  setKeyframeCacheEntries: (updates: readonly KeyframeCacheUpdate[]) => void;
 
   setIsPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
@@ -401,6 +410,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const next = new Map(s.keyframeCache);
       if (data) next.set(elementId, data);
       else next.delete(elementId);
+      return { keyframeCache: next };
+    }),
+  setKeyframeCacheEntries: (updates) =>
+    set((s) => {
+      if (updates.length === 0) return s;
+      const next = new Map(s.keyframeCache);
+      for (const { elementId, data } of updates) {
+        if (data) next.set(elementId, data);
+        else next.delete(elementId);
+      }
       return { keyframeCache: next };
     }),
 

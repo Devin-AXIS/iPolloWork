@@ -38,6 +38,7 @@ import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
+import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 
 // Re-export helpers that external consumers import from this module
 export {
@@ -215,8 +216,9 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
 
   const manualRotation = readStudioRotation(element.element);
 
-  const elStart = Number.parseFloat(element?.dataAttributes?.start ?? "0") || 0;
-  const elDuration = Number.parseFloat(element?.dataAttributes?.duration ?? "1") || 0;
+  const elementTiming = deriveElementTiming(element, gsapAnimations);
+  const elStart = elementTiming.start;
+  const elDuration = elementTiming.duration;
   const currentPct = elDuration > 0 ? ((currentTime - elStart) / elDuration) * 100 : 0;
 
   const gsapKfAnim = gsapAnimations?.find((a) => a.keyframes) ?? null;
@@ -551,6 +553,10 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
           onAddGsapAnimation && (
             <GsapAnimationSection
               animations={gsapAnimations}
+              ownerId={element.id}
+              ownerRange={
+                elDuration > 0 ? { start: elStart, duration: elDuration } : undefined
+              }
               multipleTimelines={gsapMultipleTimelines}
               unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
               onUpdateProperty={onUpdateGsapProperty}

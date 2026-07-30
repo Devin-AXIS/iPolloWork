@@ -5,6 +5,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { toAbsoluteTime } from "./gsapShared";
+import { buildTimelineAnimationSegments } from "../utils/timelineAnimationSegments";
 
 export function updateKeyframeCacheFromParsed(
   animations: GsapAnimation[],
@@ -12,23 +13,36 @@ export function updateKeyframeCacheFromParsed(
   selectionId: string | undefined,
   mutation: Record<string, unknown>,
 ): void {
-  const { setKeyframeCache, elements } = usePlayerStore.getState();
-  const idsWithKeyframes = new Set<string>();
+  const { setKeyframeCacheEntries, elements } = usePlayerStore.getState();
+  const idsWithTimelineData = new Set<string>();
   const merged = new Map<string, KeyframeCacheEntry>();
+  const segmentsByElement = new Map<
+    string,
+    NonNullable<KeyframeCacheEntry["animationSegments"]>
+  >();
   for (const anim of animations) {
     const id = anim.targetSelector.match(/^#([\w-]+)/)?.[1];
-    if (!id || !anim.keyframes) continue;
-    idsWithKeyframes.add(id);
+    if (!id) continue;
 
     // Convert tween-relative percentages to clip-relative so diamonds
     // render at the correct position within the timeline clip.
-    const tweenPos = anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
-    const tweenDur = anim.duration ?? 1;
     const timelineEl = elements.find(
       (el) => el.domId === id || (el.key ?? el.id) === `${targetPath}#${id}`,
     );
     const elStart = timelineEl?.start ?? 0;
     const elDuration = timelineEl?.duration ?? 1;
+    const segments = buildTimelineAnimationSegments([anim], {
+      start: elStart,
+      duration: elDuration,
+    });
+    if (segments.length > 0) {
+      idsWithTimelineData.add(id);
+      segmentsByElement.set(id, [...(segmentsByElement.get(id) ?? []), ...segments]);
+    }
+    if (!anim.keyframes) continue;
+    idsWithTimelineData.add(id);
+    const tweenPos = anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
+    const tweenDur = anim.duration ?? 1;
     const clipKeyframes = anim.keyframes.keyframes.map((kf) => {
       const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
       const clipPct =
@@ -58,15 +72,28 @@ export function updateKeyframeCacheFromParsed(
       merged.set(id, { ...anim.keyframes, keyframes: clipKeyframes });
     }
   }
-  for (const [id, entry] of merged) {
-    setKeyframeCache(`${targetPath}#${id}`, entry);
-    setKeyframeCache(id, entry);
-    if (targetPath !== "index.html") setKeyframeCache(`index.html#${id}`, entry);
+  const elementIds = new Set([...merged.keys(), ...segmentsByElement.keys()]);
+  const cacheUpdates: Array<{
+    elementId: string;
+    data: KeyframeCacheEntry | undefined;
+  }> = [];
+  for (const id of elementIds) {
+    const entry = merged.get(id) ?? { format: "percentage", keyframes: [] };
+    const animationSegments = segmentsByElement.get(id);
+    if (animationSegments) entry.animationSegments = animationSegments;
+    cacheUpdates.push(
+      { elementId: `${targetPath}#${id}`, data: entry },
+      { elementId: id, data: entry },
+      ...(targetPath !== "index.html"
+        ? [{ elementId: `index.html#${id}`, data: entry }]
+        : []),
+    );
   }
+  if (cacheUpdates.length > 0) setKeyframeCacheEntries(cacheUpdates);
   const targetId =
     (mutation as { targetSelector?: string }).targetSelector?.match(/^#([\w-]+)/)?.[1] ??
     selectionId;
-  if (targetId && !idsWithKeyframes.has(targetId)) {
+  if (targetId && !idsWithTimelineData.has(targetId)) {
     clearKeyframeCacheForElement(targetPath, targetId);
   }
 }
@@ -84,14 +111,16 @@ export function updateKeyframeCacheFromParsed(
  * a new cache map and re-render every subscriber.
  */
 export function clearKeyframeCacheForElement(sourceFile: string, elementId: string): void {
-  const { keyframeCache, setKeyframeCache } = usePlayerStore.getState();
+  const { keyframeCache, setKeyframeCacheEntries } = usePlayerStore.getState();
   const keys =
     sourceFile === "index.html"
       ? [`index.html#${elementId}`, elementId]
       : [`${sourceFile}#${elementId}`, `index.html#${elementId}`, elementId];
-  for (const key of keys) {
-    if (keyframeCache.has(key)) setKeyframeCache(key, undefined);
-  }
+  setKeyframeCacheEntries(
+    keys
+      .filter((key) => keyframeCache.has(key))
+      .map((key) => ({ elementId: key, data: undefined })),
+  );
 }
 
 /**
@@ -102,7 +131,7 @@ export function clearKeyframeCacheForElement(sourceFile: string, elementId: stri
  * absent from the re-scan) leaves no stale bare entry behind.
  */
 export function clearKeyframeCacheForFile(sourceFile: string): void {
-  const { keyframeCache } = usePlayerStore.getState();
+  const { keyframeCache, setKeyframeCacheEntries } = usePlayerStore.getState();
   const sfPrefix = `${sourceFile}#`;
   const fallbackPrefix = "index.html#";
   const ids = new Set<string>();
@@ -113,9 +142,17 @@ export function clearKeyframeCacheForFile(sourceFile: string): void {
     const hashIdx = key.indexOf("#");
     if (hashIdx !== -1) ids.add(key.slice(hashIdx + 1));
   }
+  const keys = new Set<string>();
   for (const id of ids) {
-    clearKeyframeCacheForElement(sourceFile, id);
+    keys.add(`${sourceFile}#${id}`);
+    keys.add(id);
+    if (sourceFile !== "index.html") keys.add(`index.html#${id}`);
   }
+  setKeyframeCacheEntries(
+    Array.from(keys)
+      .filter((key) => keyframeCache.has(key))
+      .map((key) => ({ elementId: key, data: undefined })),
+  );
 }
 
 function buildCacheKey(sourceFile: string, elementId: string): string {

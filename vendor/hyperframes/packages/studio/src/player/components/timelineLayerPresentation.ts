@@ -51,6 +51,20 @@ export function resolveTimelineKind(element: TimelineElement): TimelineKind {
   return "element";
 }
 
+/**
+ * Implicit generic DOM wrappers are implementation structure, not editable
+ * media. Keep authored clips and meaningful media kinds, and surface an
+ * implicit generic element only when it owns real animation data.
+ */
+export function shouldDisplayTimelineElement(
+  element: TimelineElement,
+  hasAnimation: boolean,
+): boolean {
+  if (element.timingSource !== "implicit") return true;
+  if (element.timelineKind || element.timelineRole?.trim()) return true;
+  return resolveTimelineKind(element) !== "element" || hasAnimation;
+}
+
 export function resolveTimelineLayerLabel(elements: readonly TimelineElement[], track: number) {
   const first = elements[0];
   return first?.label?.trim() || first?.domId?.trim() || first?.id?.trim() || `Layer ${track + 1}`;

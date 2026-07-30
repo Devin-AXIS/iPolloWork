@@ -7,6 +7,7 @@ import {
   resolveTimelineColorGroupKey,
   resolveTimelineLayerDepth,
   resolveTimelineLayerLabel,
+  shouldDisplayTimelineElement,
 } from "./timelineLayerPresentation";
 
 function element(overrides: Partial<TimelineElement> = {}): TimelineElement {
@@ -77,5 +78,38 @@ describe("timeline layer presentation", () => {
       ]),
     ).toBe("brand-lockup");
     expect(resolveTimelineBindingId([element()])).toBeNull();
+  });
+
+  test("hides only implicit structural wrappers", () => {
+    expect(
+      shouldDisplayTimelineElement(
+        element({ id: "chrome", timingSource: "implicit" }),
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      shouldDisplayTimelineElement(
+        element({ id: "animated-shape", timingSource: "implicit" }),
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      shouldDisplayTimelineElement(
+        element({ id: "title", tag: "h1", timingSource: "implicit" }),
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      shouldDisplayTimelineElement(
+        element({ id: "declared-overlay", timelineRole: "overlay", timingSource: "implicit" }),
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      shouldDisplayTimelineElement(
+        element({ id: "authored-wrapper", timingSource: "authored" }),
+        false,
+      ),
+    ).toBe(true);
   });
 });

@@ -65,16 +65,17 @@ describe("timeline drag commit intent", () => {
     const onStackingPatches = vi.fn();
 
     commitDraggedClipMove(drag("time"), {
-      elements: [CLIP, EXPANDED_CHILD],
+      elements: [CLIP, SECOND_CLIP, EXPANDED_CHILD],
       trackOrder: [0, 1],
       updateElement,
       onMoveElement,
       onMoveElements,
-      selectedKeys: new Set(["rw-thread", "late-selection"]),
+      selectedKeys: new Set(["rw-thread", "scene-title", "late-selection"]),
       readZIndex: () => 0,
       onStackingPatches,
     });
 
+    expect(updateElement).toHaveBeenCalledTimes(1);
     expect(updateElement).toHaveBeenCalledWith("rw-thread", { start: 3, track: 0 });
     expect(onMoveElement).toHaveBeenCalledWith(CLIP, { start: 3, track: 0 });
     expect(onMoveElements).not.toHaveBeenCalled();
