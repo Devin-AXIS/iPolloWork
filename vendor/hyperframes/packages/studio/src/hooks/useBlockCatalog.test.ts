@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CatalogItem } from "./useBlockCatalog";
 import {
+  isCatalogLibrarySection,
   isGsapCatalogItem,
   resolveGsapCatalogCoverage,
 } from "./useBlockCatalog";
@@ -12,6 +13,7 @@ function item(name: string, plugins: string[]): CatalogItem {
     version: "1.0.0",
     type: "hyperframes:block",
     kind: "effect",
+    librarySection: "background-scene",
     category: "effects",
     title: name,
     description: name,
@@ -50,5 +52,14 @@ describe("isGsapCatalogItem", () => {
         engine: { name: "three", version: "0.180.0" },
       }),
     ).toBe(false);
+  });
+});
+
+describe("isCatalogLibrarySection", () => {
+  it("accepts only explicit library section values", () => {
+    expect(isCatalogLibrarySection("interface-animation")).toBe(true);
+    expect(isCatalogLibrarySection("background-scene")).toBe(true);
+    expect(isCatalogLibrarySection(undefined)).toBe(false);
+    expect(isCatalogLibrarySection("effects")).toBe(false);
   });
 });

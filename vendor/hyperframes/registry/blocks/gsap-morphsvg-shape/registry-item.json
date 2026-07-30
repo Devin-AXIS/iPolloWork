@@ -6,6 +6,7 @@
   "title": "MorphSVG Shape",
   "description": "A luminous identity mark that morphs between geometric silhouettes with GSAP MorphSVG.",
   "kind": "effect",
+  "librarySection": "background-scene",
   "dimensions": {
     "width": 1920,
     "height": 1080

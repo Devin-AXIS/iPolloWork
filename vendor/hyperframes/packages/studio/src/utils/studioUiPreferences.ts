@@ -4,6 +4,8 @@ export interface StoredPreviewZoomState {
   panY: number;
 }
 
+export type CatalogColumnCount = 1 | 2 | 3 | 4;
+
 export interface StudioUiPreferences {
   leftCollapsed?: boolean;
   timelineVisible?: boolean;
@@ -28,6 +30,8 @@ export interface StudioUiPreferences {
   timelineZoomMode?: "fit" | "manual";
   /** Manual timeline zoom percent, paired with `timelineZoomMode: "manual"`. */
   timelineManualZoomPercent?: number;
+  /** Shared card density for the animation and scene catalogs. */
+  catalogColumnCount?: CatalogColumnCount;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -114,6 +118,14 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
       Number.isFinite(parsed.timelineManualZoomPercent)
     ) {
       preferences.timelineManualZoomPercent = parsed.timelineManualZoomPercent;
+    }
+    if (
+      parsed.catalogColumnCount === 1 ||
+      parsed.catalogColumnCount === 2 ||
+      parsed.catalogColumnCount === 3 ||
+      parsed.catalogColumnCount === 4
+    ) {
+      preferences.catalogColumnCount = parsed.catalogColumnCount;
     }
     return preferences;
   } catch {

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "ui-3d-reveal",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "3D UI Reveal",
   "description": "Perspective 3D reveal animation for UI elements",
   "tags": ["showcase", "3d", "reveal"],

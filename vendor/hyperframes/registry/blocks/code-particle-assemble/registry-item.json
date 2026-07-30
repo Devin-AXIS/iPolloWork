@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "code-particle-assemble",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "Code Particle Assemble",
   "description": "Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text — a particle system, not a token tween.",
   "dimensions": {

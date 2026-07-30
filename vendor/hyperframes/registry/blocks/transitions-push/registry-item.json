@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "transitions-push",
   "type": "hyperframes:block",
+  "librarySection": "transition-scene",
   "title": "Push Transitions",
   "description": "Showcase of push and slide transitions",
   "tags": ["transition", "showcase"],

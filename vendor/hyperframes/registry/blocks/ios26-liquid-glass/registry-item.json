@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "ios26-liquid-glass",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "iOS 26 Liquid Glass Home Screen",
   "description": "3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model.",
   "stability": "experimental",

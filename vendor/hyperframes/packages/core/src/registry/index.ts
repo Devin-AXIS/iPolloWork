@@ -6,6 +6,7 @@ export type {
   RegistryItemPreview,
   RegistryItemEngine,
   RegistryItemKind,
+  RegistryItemLibrarySection,
   RegistryItemSource,
   RegistryVariable,
   RegistryVariableUpdate,

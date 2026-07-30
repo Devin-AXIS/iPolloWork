@@ -6,6 +6,7 @@
   "title": "ScrollTrigger Story",
   "description": "A pinned product story that reveals layered cards with GSAP ScrollTrigger.",
   "kind": "effect",
+  "librarySection": "interface-animation",
   "dimensions": {
     "width": 1920,
     "height": 1080

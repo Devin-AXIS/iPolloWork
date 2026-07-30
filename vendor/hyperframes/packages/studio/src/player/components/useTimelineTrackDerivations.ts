@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { getTrackStyle, type TrackVisualStyle } from "./timelineIcons";
+import { getTimelinePaletteStyle } from "./timelineTheme";
+import {
+  buildTimelineColorIndexes,
+  resolveTimelineColorGroupKey,
+  resolveTimelineKind,
+} from "./timelineLayerPresentation";
 
 /**
  * Per-render track derivations Timeline.tsx feeds the canvas/lanes: the lane →
@@ -12,6 +18,7 @@ import { getTrackStyle, type TrackVisualStyle } from "./timelineIcons";
 export function useTimelineTrackDerivations(expandedElements: TimelineElement[]): {
   tracks: [number, TimelineElement[]][];
   trackStyles: Map<number, TrackVisualStyle>;
+  elementStyles: Map<string, TrackVisualStyle>;
   trackOrder: number[];
 } {
   const tracks = useMemo(() => {
@@ -24,15 +31,28 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
     return Array.from(map.entries()).sort(([a], [b]) => a - b);
   }, [expandedElements]);
 
-  const trackStyles = useMemo(() => {
-    const map = new Map<number, TrackVisualStyle>();
-    for (const [trackNum, els] of tracks) {
-      map.set(trackNum, getTrackStyle(els[0]?.tag ?? ""));
+  const { trackStyles, elementStyles } = useMemo(() => {
+    const colorIndexes = buildTimelineColorIndexes(expandedElements);
+    const byElement = new Map<string, TrackVisualStyle>();
+    for (const element of expandedElements) {
+      const colorIndex = colorIndexes.get(resolveTimelineColorGroupKey(element)) ?? 0;
+      byElement.set(element.key ?? element.id, getTimelinePaletteStyle(colorIndex));
     }
-    return map;
-  }, [tracks]);
+
+    const byTrack = new Map<number, TrackVisualStyle>();
+    for (const [trackNum, els] of tracks) {
+      const first = els[0];
+      byTrack.set(
+        trackNum,
+        first
+          ? (byElement.get(first.key ?? first.id) ?? getTrackStyle(resolveTimelineKind(first)))
+          : getTrackStyle("element"),
+      );
+    }
+    return { trackStyles: byTrack, elementStyles: byElement };
+  }, [expandedElements, tracks]);
 
   const trackOrder = useMemo(() => tracks.map(([trackNum]) => trackNum), [tracks]);
 
-  return { tracks, trackStyles, trackOrder };
+  return { tracks, trackStyles, elementStyles, trackOrder };
 }

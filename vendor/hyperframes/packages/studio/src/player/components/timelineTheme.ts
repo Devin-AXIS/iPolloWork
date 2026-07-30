@@ -5,6 +5,9 @@ export interface TimelineTrackStyle {
   accent: string;
   label: string;
   clipActive?: string;
+  border?: string;
+  hover?: string;
+  dragging?: string;
 }
 
 export interface TimelineTheme {
@@ -35,12 +38,45 @@ export interface TimelineTheme {
   clipRadius: string;
 }
 
-const TRACK_STYLE: TimelineTrackStyle = {
-  clip: "rgba(255,255,255,0.055)",
-  clipActive: "rgba(60,230,172,0.16)",
-  accent: "#3CE6AC",
-  label: "rgba(255,255,255,0.5)",
-};
+const visualTrackStyle = (clip: string, accent: string): TimelineTrackStyle => ({
+  clip,
+  clipActive: clip,
+  accent,
+  label: "rgba(255,255,255,0.72)",
+  border: "rgba(255,255,255,0.18)",
+  hover: clip,
+  dragging: clip,
+});
+
+const TIMELINE_PALETTE: { accent: string; rgb: string }[] = [
+  { accent: "#FF5C8A", rgb: "255,92,138" },
+  { accent: "#FF7A59", rgb: "255,122,89" },
+  { accent: "#FF9F43", rgb: "255,159,67" },
+  { accent: "#F6C945", rgb: "246,201,69" },
+  { accent: "#49D17D", rgb: "73,209,125" },
+  { accent: "#20C9B5", rgb: "32,201,181" },
+  { accent: "#20B8E6", rgb: "32,184,230" },
+  { accent: "#4D8DFF", rgb: "77,141,255" },
+  { accent: "#6C63FF", rgb: "108,99,255" },
+  { accent: "#A66CFF", rgb: "166,108,255" },
+  { accent: "#D85CFF", rgb: "216,92,255" },
+  { accent: "#F044B3", rgb: "240,68,179" },
+];
+
+export function getTimelinePaletteStyle(index: number): TimelineTrackStyle {
+  const normalized = ((Math.trunc(index) % TIMELINE_PALETTE.length) + TIMELINE_PALETTE.length) %
+    TIMELINE_PALETTE.length;
+  const color = TIMELINE_PALETTE[normalized] ?? TIMELINE_PALETTE[0]!;
+  return {
+    accent: color.accent,
+    clip: `rgba(${color.rgb},0.22)`,
+    clipActive: `rgba(${color.rgb},0.32)`,
+    border: `rgba(${color.rgb},0.62)`,
+    hover: `rgba(${color.rgb},0.30)`,
+    dragging: `rgba(${color.rgb},0.82)`,
+    label: "rgba(255,255,255,0.92)",
+  };
+}
 
 export const defaultTimelineTheme: TimelineTheme = {
   // Near-black card surfaces: the panels sit dark while the shell canvas
@@ -75,8 +111,20 @@ export const defaultTimelineTheme: TimelineTheme = {
   clipRadius: "8px",
 };
 
-export function getTimelineTrackStyle(_tag: string): TimelineTrackStyle {
-  return TRACK_STYLE;
+export function getTimelineTrackStyle(kind: string): TimelineTrackStyle {
+  if (kind === "text" || kind === "composition") {
+    return visualTrackStyle("rgba(139,92,246,0.28)", "#A78BFA");
+  }
+  if (kind === "effect") {
+    return visualTrackStyle("rgba(245,158,11,0.26)", "#FBBF24");
+  }
+  if (kind === "music" || kind === "voiceover" || kind === "audio") {
+    return visualTrackStyle("rgba(34,197,94,0.22)", "#4ADE80");
+  }
+  if (kind === "logo" || kind === "image" || kind === "video") {
+    return visualTrackStyle("rgba(59,130,246,0.24)", "#60A5FA");
+  }
+  return visualTrackStyle("rgba(255,255,255,0.055)", "#3CE6AC");
 }
 
 export function getClipHandleOpacity({

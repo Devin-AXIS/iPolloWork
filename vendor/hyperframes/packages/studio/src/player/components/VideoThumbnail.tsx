@@ -30,6 +30,8 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   const [aspect, setAspect] = useState(16 / 9);
   const ioRef = useRef<IntersectionObserver | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
+  const resizeRafRef = useRef(0);
+  const pendingWidthRef = useRef(0);
   const extractingRef = useRef(false);
 
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
@@ -37,8 +39,18 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     roRef.current?.disconnect();
     if (!el) return;
 
-    const measured = el.parentElement?.clientWidth || el.clientWidth;
-    setContainerWidth(measured);
+    const scheduleWidth = (width: number) => {
+      pendingWidthRef.current = Math.max(0, Math.round(width));
+      if (resizeRafRef.current !== 0) return;
+      resizeRafRef.current = requestAnimationFrame(() => {
+        resizeRafRef.current = 0;
+        setContainerWidth((current) =>
+          current === pendingWidthRef.current ? current : pendingWidthRef.current,
+        );
+      });
+    };
+
+    scheduleWidth(el.parentElement?.clientWidth || el.clientWidth);
 
     ioRef.current = new IntersectionObserver(
       ([entry]) => {
@@ -54,7 +66,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
 
     const target = el.parentElement || el;
     roRef.current = new ResizeObserver(([entry]) => {
-      setContainerWidth(entry.contentRect.width);
+      if (entry) scheduleWidth(entry.contentRect.width);
     });
     roRef.current.observe(target);
   }, []);
@@ -62,6 +74,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   useMountEffect(() => () => {
     ioRef.current?.disconnect();
     roRef.current?.disconnect();
+    if (resizeRafRef.current !== 0) cancelAnimationFrame(resizeRafRef.current);
   });
 
   // Extract frames progressively — each frame appears as soon as it's ready.
@@ -94,10 +107,12 @@ export const VideoThumbnail = memo(function VideoThumbnail({
 
     let idx = 0;
     let cancelled = false;
+    const extractedFrames: string[] = [];
 
     const extractNext = () => {
       if (cancelled || idx >= timestamps.length) {
         if (!cancelled) {
+          setFrames(extractedFrames);
           video.src = "";
           video.load();
         }
@@ -135,8 +150,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
         video.load();
         return;
       }
-      // Stream each frame immediately
-      setFrames((prev) => [...prev, dataUrl]);
+      extractedFrames.push(dataUrl);
       idx++;
       extractNext();
     });
@@ -147,6 +161,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       // "seeked" — so 0 frames are ever extracted. Keep whatever frames we have,
       // but mark failed so the shimmer placeholder stops spinning forever and we
       // fall back to the plain clip background (#2214).
+      if (extractedFrames.length > 0) setFrames(extractedFrames);
       setFailed(true);
     });
 

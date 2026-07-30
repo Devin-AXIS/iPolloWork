@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "hyperframes:block",
   "kind": "effect",
+  "librarySection": "background-scene",
   "title": "CustomBounce Official Demo",
   "description": "Official GSAP CustomBounce capability adapted as a seekable iPolloWork effect.",
   "dimensions": {

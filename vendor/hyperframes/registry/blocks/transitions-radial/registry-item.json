@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "transitions-radial",
   "type": "hyperframes:block",
+  "librarySection": "transition-scene",
   "title": "Radial Transitions",
   "description": "Showcase of radial wipe and reveal transitions",
   "tags": ["transition", "showcase"],

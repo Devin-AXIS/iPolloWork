@@ -308,6 +308,11 @@ export function readTagSnippetByTarget(html: string, target: PatchTarget): strin
   return match?.tag;
 }
 
+function appendAttributeToTag(tag: string, attribute: string): string {
+  if (!tag.endsWith("/")) return `${tag} ${attribute}`;
+  return `${tag.slice(0, -1).trimEnd()} ${attribute} /`;
+}
+
 function patchAttributeByTarget(
   html: string,
   target: PatchTarget,
@@ -336,7 +341,7 @@ function patchAttributeByTarget(
     return replaceTagAtMatch(html, match, newTag);
   }
 
-  const newTag = tag + ` ${fullAttr}="${escaped}"`;
+  const newTag = appendAttributeToTag(tag, `${fullAttr}="${escaped}"`);
   return replaceTagAtMatch(html, match, newTag);
 }
 
@@ -372,7 +377,7 @@ function patchAttribute(
     return html.replace(tag, newTag);
   } else {
     // Add new attribute
-    const newTag = tag + ` ${fullAttr}="${escaped}"`;
+    const newTag = appendAttributeToTag(tag, `${fullAttr}="${escaped}"`);
     return html.replace(tag, newTag);
   }
 }

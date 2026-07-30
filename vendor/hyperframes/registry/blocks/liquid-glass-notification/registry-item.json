@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "liquid-glass-notification",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "Liquid Glass Notification",
   "description": "Frosted glass notification cards floating over an aurora shader background",
   "stability": "experimental",

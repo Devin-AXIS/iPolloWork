@@ -3,6 +3,7 @@
   "name": "vfx-liquid-background",
   "version": "1.0.0",
   "type": "hyperframes:block",
+  "librarySection": "background-scene",
   "title": "Liquid Background",
   "description": "Organic liquid simulation with vertex displacement on a subdivided plane. HTML content floats above rippling fluid surface with real-time wave dynamics.",
   "stability": "experimental",

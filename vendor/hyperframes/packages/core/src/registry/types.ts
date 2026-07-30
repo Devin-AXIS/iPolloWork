@@ -48,6 +48,12 @@ export interface RegistryItemEngine {
 
 export type RegistryItemKind = "animation" | "effect";
 
+export type RegistryItemLibrarySection =
+  | "text-animation"
+  | "interface-animation"
+  | "transition-scene"
+  | "background-scene";
+
 export interface RegistryItemSource {
   provider: string;
   label: string;
@@ -68,6 +74,8 @@ interface RegistryItemBase {
   tags?: string[];
   /** Product-facing library placement. Inferred from type/tags when omitted. */
   kind?: RegistryItemKind;
+  /** Explicit placement within the Studio animation and scene libraries. */
+  librarySection?: RegistryItemLibrarySection;
   /** Item author / maintainer. */
   author?: string;
   /** URL for the author / creator credit. */

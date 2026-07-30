@@ -39,7 +39,12 @@ import {
   type DesignStyleField,
 } from "./design-html-runtime";
 import { isDesignSelectionMember, summarizeDesignSelection } from "./design-selection-summary";
-import { popDesignUndoHistory, pushDesignUndoHistory, shouldHydrateDesignSource } from "./design-undo-history";
+import {
+  popDesignUndoHistory,
+  pushDesignUndoHistory,
+  shouldHydrateDesignSource,
+  type DesignUndoSnapshot,
+} from "./design-undo-history";
 import {
   acceptsDesignDeckMessage,
   expectsDesignRestoreFrame,
@@ -590,15 +595,18 @@ export function DesignPanel({
   const draftRef = React.useRef("");
   const [pendingCanvasChange, setPendingCanvasChange] = React.useState(false);
   const [savedSource, setSavedSource] = React.useState("");
-  const [history, setHistoryState] = React.useState<string[]>([]);
-  const historyRef = React.useRef<string[]>([]);
-  const setHistory = React.useCallback((update: React.SetStateAction<string[]>) => {
+  const [history, setHistoryState] = React.useState<DesignUndoSnapshot[]>([]);
+  const historyRef = React.useRef<DesignUndoSnapshot[]>([]);
+  const setHistory = React.useCallback((update: React.SetStateAction<DesignUndoSnapshot[]>) => {
     const current = historyRef.current;
     const next = typeof update === "function" ? update(current) : update;
     historyRef.current = next;
     setHistoryState(next);
   }, []);
-  const rememberHistory = React.useCallback((snapshot = draftRef.current) => {
+  const rememberHistory = React.useCallback((snapshot: DesignUndoSnapshot = {
+    html: draftRef.current,
+    tokenCss: designTokenDraftRef.current,
+  }) => {
     setHistory((current) => pushDesignUndoHistory(current, snapshot));
   }, [setHistory]);
   const [previewSource, setPreviewSource] = React.useState("");
@@ -802,8 +810,9 @@ export function DesignPanel({
     scheduleDesignTokenSave(next);
   }, [appliedDesignSystemId, scheduleDesignTokenSave, templateTokenQuery.data]);
   const handleApplyDesignSystem = React.useCallback((theme: DesignSystemTheme) => {
+    const currentTokenCss = designTokenDraftRef.current || templateTokenQuery.data || "";
     const next = mergeTemplateTokenCss(
-      designTokenDraftRef.current || templateTokenQuery.data || "",
+      currentTokenCss,
       buildTemplateTokenCss(theme),
     );
     const currentHtml = draftRef.current || fileQuery.data?.content || "";
@@ -812,8 +821,12 @@ export function DesignPanel({
       theme.id,
       linkedDesignTokenPath(currentHtml) || "design-tokens.css",
     );
+    if (themedHtml === currentHtml && next === currentTokenCss) {
+      toast.info(`${theme.name} is already applied.`);
+      return;
+    }
+    rememberHistory({ html: currentHtml, tokenCss: currentTokenCss, restoreTokenCss: true });
     if (themedHtml !== currentHtml) {
-      rememberHistory(currentHtml);
       draftRef.current = themedHtml;
       setDraft(themedHtml);
       setPendingCanvasChange(true);
@@ -1687,21 +1700,29 @@ export function DesignPanel({
       selectionLocator,
     });
     if (pendingViewRestoreRef.current) return;
-    const popped = popDesignUndoHistory(historyRef.current, draftRef.current);
+    const popped = popDesignUndoHistory(historyRef.current, {
+      html: draftRef.current,
+      tokenCss: designTokenDraftRef.current,
+    });
     setHistory(popped.history);
     const previous = popped.previous;
     if (previous !== undefined) {
-      const restore = restoreView(previous);
+      const restore = restoreView(previous.html);
       pendingViewRestoreRef.current = restore;
-      draftRef.current = previous;
+      draftRef.current = previous.html;
       setPendingCanvasChange(false);
-      setDraft(previous);
+      setDraft(previous.html);
       setSelectionState(null);
       setQuickEdit(null);
-      setPreviewSource(previous);
+      setPreviewSource(previous.html);
       setHydratedPreviewSource("");
       setPreviewLoaded(false);
       setPreviewRevision(restore.previewRevision);
+      if (previous.restoreTokenCss) {
+        designTokenDraftRef.current = previous.tokenCss;
+        setDesignTokenDraft(previous.tokenCss);
+        scheduleDesignTokenSave(previous.tokenCss);
+      }
       return;
     }
     const checkpoint = useDesignAiSelectionStore.getState().latestUndoCheckpoint(sessionId, activePagePath);
