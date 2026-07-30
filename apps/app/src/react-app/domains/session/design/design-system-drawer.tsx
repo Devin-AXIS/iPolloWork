@@ -84,6 +84,12 @@ const DEFAULTS = {
   "--ipw-card-blur": "0px",
 } as const;
 
+const THEME_COLOR_TOKEN_NAMES = [
+  "--ipw-color-primary",
+  "--ipw-color-secondary",
+  "--ipw-color-bg",
+] satisfies readonly (keyof typeof DEFAULTS)[];
+
 type DesignSystemDrawerProps = {
   open: boolean;
   embedded?: boolean;
@@ -227,6 +233,10 @@ export function DesignSystemDrawer({
   const resetAll = React.useCallback(() => {
     updateMany(Object.fromEntries(selectedThemeControls.map((control) => [control.storageName, control.value])));
   }, [selectedThemeControls, updateMany]);
+  const resetThemeColors = React.useCallback(() => {
+    const presetValues = selectedTheme ? buildDesignSystemPresetValues(selectedTheme) : DEFAULTS;
+    updateMany(Object.fromEntries(THEME_COLOR_TOKEN_NAMES.map((name) => [name, presetValues[name] ?? DEFAULTS[name]])));
+  }, [selectedTheme, updateMany]);
 
   const filteredThemes = React.useMemo(() => {
     const query = themeSearch.trim().toLowerCase();
@@ -311,6 +321,7 @@ export function DesignSystemDrawer({
             onApplyDesignSystem?.(theme);
           }}
           onReset={resetAll}
+          onResetColors={resetThemeColors}
           onChooseBackgroundImage={onChooseBackgroundImage}
         /> : <>
         <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-border/70 p-2">
@@ -495,6 +506,7 @@ type EmbeddedDesignSystemControlsProps = {
   onTokenChangeMany: (values: DesignTokenValues) => void;
   onApplyTheme: (theme: DesignSystemTheme) => void;
   onReset: () => void;
+  onResetColors: () => void;
   onChooseBackgroundImage?: () => void;
 };
 
@@ -506,6 +518,7 @@ function EmbeddedDesignSystemControls({
   onTokenChangeMany,
   onApplyTheme,
   onReset,
+  onResetColors,
   onChooseBackgroundImage,
 }: EmbeddedDesignSystemControlsProps) {
   const [presetOpen, setPresetOpen] = React.useState(false);
@@ -567,7 +580,7 @@ function EmbeddedDesignSystemControls({
         </PanelSection>
 
         <PanelSection title="Theme Colors">
-          <div className="flex items-center gap-[11px]">{(["--ipw-color-primary", "--ipw-color-secondary", "--ipw-color-bg"] as const).map((name, index) => <ColorSwatch key={name} label={["Primary", "Secondary", "Background"][index] ?? name} value={colorValues[index] ?? DEFAULTS[name]} onChange={(value) => onTokenChange(name, value)} />)}<button type="button" onClick={onReset} className="grid size-[25px] place-items-center rounded-[7px] border border-[#dee0e5] bg-[#f0f2f5]" aria-label="Reset theme colors"><img src={designSystemRefreshIcon} alt="" className="size-4" /></button></div>
+          <div className="flex items-center gap-[11px]">{THEME_COLOR_TOKEN_NAMES.map((name, index) => <ColorSwatch key={name} label={["Primary", "Secondary", "Background"][index] ?? name} value={colorValues[index] ?? DEFAULTS[name]} onChange={(value) => onTokenChange(name, value)} />)}<button type="button" onClick={onResetColors} className="grid size-[25px] place-items-center rounded-[7px] border border-[#dee0e5] bg-[#f0f2f5]" aria-label="Reset theme colors"><img src={designSystemRefreshIcon} alt="" className="size-4" /></button></div>
         </PanelSection>
 
         <BackgroundSection mode={backgroundMode} values={values} colors={colorValues} onSelectMode={applyBackgroundMode} onTokenChange={onTokenChange} onChooseMedia={onChooseBackgroundImage} />

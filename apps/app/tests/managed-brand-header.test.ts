@@ -7,11 +7,13 @@ const sidebarPath = fileURLToPath(
 );
 
 describe("managed brand header", () => {
-  test("shows the application name only when no wordmark is supplied", () => {
+  test("shows a round 24-pixel organization logo next to the application name", () => {
     const source = readFileSync(sidebarPath, "utf8");
 
-    expect(source).toMatch(/brandLogoUrl \? \([\s\S]*?<img[\s\S]*?\) : \([\s\S]*?data-testid="brand-app-name"/);
+    expect(source).toContain("brandLogoUrl ?? shellConfig.brandLogoDataUrl");
+    expect(source).toContain('className="size-6 shrink-0 rounded-full object-cover"');
+    expect(source).toContain('data-testid="brand-logo-placeholder"');
+    expect(source).toContain('data-testid="brand-app-name"');
     expect(source).toMatch(/className="flex h-14 shrink-0 items-center/);
-    expect(source).toMatch(/className="max-h-9 w-auto max-w-\[140px\] object-contain object-left"/);
   });
 });

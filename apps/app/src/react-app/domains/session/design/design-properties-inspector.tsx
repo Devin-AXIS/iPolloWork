@@ -358,12 +358,16 @@ export function DesignPropertiesInspector({ selection, activeTab, onClose, onAct
   );
 }
 
-function InspectorShell({ activeTab, onActiveTabChange, onClose, children }: Pick<DesignPropertiesInspectorProps, "activeTab" | "onActiveTabChange" | "onClose" | "children">) {
+export function DesignSystemInspectorShell({ onClose, children }: Pick<DesignPropertiesInspectorProps, "onClose" | "children">) {
+  return <InspectorShell activeTab="design-system" onActiveTabChange={() => undefined} onClose={onClose} designSystemOnly>{children}</InspectorShell>;
+}
+
+function InspectorShell({ activeTab, onActiveTabChange, onClose, children, designSystemOnly = false }: Pick<DesignPropertiesInspectorProps, "activeTab" | "onActiveTabChange" | "onClose" | "children"> & { designSystemOnly?: boolean }) {
   return (
     <aside className="flex h-full w-[310px] shrink-0 flex-col overflow-hidden border-l border-[#ebebeb] bg-white text-[#202228]" aria-label="Design inspector">
       <header className="sticky left-0 top-0 z-20 flex h-[58px] w-full shrink-0 items-center border-b border-[#ebebeb] bg-white !px-4">
         <div className="flex w-[240px] shrink-0 gap-1">
-          <button type="button" onClick={() => onActiveTabChange("element")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-2 text-[12px] font-semibold leading-none text-[#24262b] transition-colors", activeTab === "element" ? "bg-[#f5f6f9]" : "hover:bg-[#f5f6f9]")} aria-pressed={activeTab === "element"}>Element</button>
+          {!designSystemOnly ? <button type="button" onClick={() => onActiveTabChange("element")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-2 text-[12px] font-semibold leading-none text-[#24262b] transition-colors", activeTab === "element" ? "bg-[#f5f6f9]" : "hover:bg-[#f5f6f9]")} aria-pressed={activeTab === "element"}>Element</button> : null}
           <button type="button" onClick={() => onActiveTabChange("design-system")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-1 text-[12px] font-semibold leading-none text-[#24262b] transition-colors", activeTab === "design-system" ? "bg-[#f5f6f9]" : "hover:bg-[#f5f6f9]")} aria-pressed={activeTab === "design-system"}>Design System</button>
         </div>
         <button type="button" className="absolute right-4 grid size-8 place-items-center rounded-lg text-[#5f636b] transition-colors hover:bg-[#f3f4f6] hover:text-[#202228]" onClick={onClose} aria-label="Close design properties">

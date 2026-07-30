@@ -23,11 +23,13 @@ export type SidebarContextValue = {
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
-  ) => void;
+  ) => Promise<string | null> | string | null | void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
   onArchiveSession?: (sessionId: string, archived: boolean) => void;
   onOpenCreateGroupModal?: (workspaceId: string) => void;
+  onOpenRenameGroupModal?: (workspaceId: string, groupId: string, label: string) => void;
+  onOpenRemoveGroupModal?: (workspaceId: string, groupId: string, label: string) => void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
   onEditWorkspaceConnection: (workspaceId: string) => void;

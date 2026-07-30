@@ -31,6 +31,7 @@ type SessionGroupSyncHandler = {
   createGroup: (workspaceId: string, group: SessionGroupDefinition) => Promise<SessionGroupServerState | null>;
   assignGroup: (workspaceId: string, sessionId: string, groupId: string | null) => Promise<SessionGroupServerState | null>;
   reorderGroups: (workspaceId: string, groupIds: string[]) => Promise<SessionGroupServerState | null>;
+  renameGroup: (workspaceId: string, groupId: string, label: string) => Promise<SessionGroupServerState | null>;
   removeGroup: (workspaceId: string, groupId: string) => Promise<SessionGroupServerState | null>;
 };
 
@@ -65,6 +66,7 @@ type SessionManagementActions = {
   assignGroup: (workspaceId: string, sessionId: string, groupId: string | null) => void;
   createGroup: (workspaceId: string, label: string) => void;
   reorderGroups: (workspaceId: string, groupIds: string[]) => void;
+  renameGroup: (workspaceId: string, groupId: string, label: string) => void;
   toggleGroupExpanded: (workspaceId: string, groupId: string) => void;
   replaceWorkspaceGroups: (workspaceId: string, state: SessionGroupServerState) => void;
   /** Remove a group definition. Sessions assigned to it become ungrouped. */
@@ -245,6 +247,24 @@ export const useSessionManagementStore = create<SessionManagementStore>()(
           };
         });
         syncServerState(sessionGroupSyncHandler?.reorderGroups(workspaceId, groupIds), workspaceId);
+      },
+
+      renameGroup: (workspaceId, groupId, label) => {
+        const nextLabel = label.trim();
+        if (!nextLabel) return;
+        set((state) => {
+          const ws = state.groupsByWorkspace[workspaceId] ?? EMPTY_GROUP_STATE;
+          return {
+            groupsByWorkspace: {
+              ...state.groupsByWorkspace,
+              [workspaceId]: {
+                ...ws,
+                groups: ws.groups.map((group) => group.id === groupId ? { ...group, label: nextLabel } : group),
+              },
+            },
+          };
+        });
+        syncServerState(sessionGroupSyncHandler?.renameGroup(workspaceId, groupId, nextLabel), workspaceId);
       },
 
       toggleGroupExpanded: (workspaceId, groupId) =>

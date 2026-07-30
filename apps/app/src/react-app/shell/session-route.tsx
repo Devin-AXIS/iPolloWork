@@ -1901,9 +1901,8 @@ export function SessionRoute() {
           navigateToWorkspaceSession(workspaceId, sessionId);
         },
         onPrefetchSession: () => {},
-        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) => {
-          void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope);
-        },
+        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) =>
+          handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
           void (async () => {
             const workspace = workspaces.find((item) => item.id === workspaceId);

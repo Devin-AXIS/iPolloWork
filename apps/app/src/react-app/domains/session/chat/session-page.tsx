@@ -142,7 +142,7 @@ export type SessionPageSidebarProps = {
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
-  ) => void;
+  ) => Promise<string | null> | string | null | void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
@@ -483,18 +483,6 @@ export function SessionPage(props: SessionPageProps) {
   const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
     setConversationMessageState({ sessionId, messages });
   }, []);
-  const handleDesignAskAi = useCallback((context: DesignAiSelectionContext) => {
-    useDesignAiSelectionStore.getState().createContext(context);
-    const composerStore = useComposerStateStore.getState();
-    composerStore.setDraft(
-      context.sessionId,
-      replaceDesignSelectionToken(
-        getComposerDraft(composerStore, context.sessionId),
-        designAiSelectionToken(context.id),
-      ),
-    );
-    window.dispatchEvent(new Event("ipollowork:focusPrompt"));
-  }, []);
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
     : [];
@@ -789,6 +777,12 @@ export function SessionPage(props: SessionPageProps) {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createGroupLabel, setCreateGroupLabel] = useState("");
   const [createGroupWorkspaceId, setCreateGroupWorkspaceId] = useState<string | null>(null);
+  const [renameGroupOpen, setRenameGroupOpen] = useState(false);
+  const [renameGroupLabel, setRenameGroupLabel] = useState("");
+  const [renameGroupOriginalLabel, setRenameGroupOriginalLabel] = useState("");
+  const [renameGroupTarget, setRenameGroupTarget] = useState<{ workspaceId: string; groupId: string } | null>(null);
+  const [removeGroupOpen, setRemoveGroupOpen] = useState(false);
+  const [removeGroupTarget, setRemoveGroupTarget] = useState<{ workspaceId: string; groupId: string; label: string } | null>(null);
   const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | null>(null);
   const browserPanelRef = usePanelRef();
   const preserveSidePanelOnPanelOpenRef = useRef(false);
@@ -1047,16 +1041,28 @@ export function SessionPage(props: SessionPageProps) {
     }
     setRightPanelExpanded(false);
   }, [browserPanelRef]);
+  const handleDesignAskAi = useCallback((context: DesignAiSelectionContext) => {
+    useDesignAiSelectionStore.getState().createContext(context);
+    const composerStore = useComposerStateStore.getState();
+    composerStore.setDraft(
+      context.sessionId,
+      replaceDesignSelectionToken(
+        getComposerDraft(composerStore, context.sessionId),
+        designAiSelectionToken(context.id),
+      ),
+    );
+    if (rightPanelExpanded) setRightPanelExpanded(false);
+    if (videoStudioExpanded) setVideoStudioExpanded(false);
+    window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    });
+  }, [rightPanelExpanded, videoStudioExpanded]);
   useEffect(() => {
     const panel = browserPanelRef.current;
     if (!panel) return;
 
     window.requestAnimationFrame(() => {
-      if (rightPanelExpanded) {
-        panel.resize("100%");
-      } else {
-        panel.resize(`${rightPanelRestoreWidthRef.current}px`);
-      }
+      panel.resize(`${rightPanelRestoreWidthRef.current}px`);
     });
   }, [browserPanelRef, effectiveSidePanelView, rightPanelExpanded]);
   const browserUrlForTarget = useCallback((target: OpenTarget) => {
@@ -1833,6 +1839,16 @@ export function SessionPage(props: SessionPageProps) {
             setCreateGroupLabel("");
             setCreateGroupOpen(true);
           }}
+          onOpenRenameGroupModal={(workspaceId, groupId, label) => {
+            setRenameGroupTarget({ workspaceId, groupId });
+            setRenameGroupLabel(label);
+            setRenameGroupOriginalLabel(label);
+            setRenameGroupOpen(true);
+          }}
+          onOpenRemoveGroupModal={(workspaceId, groupId, label) => {
+            setRemoveGroupTarget({ workspaceId, groupId, label });
+            setRemoveGroupOpen(true);
+          }}
           onRecoverWorkspace={props.sidebar.onRecoverWorkspace}
           onTestWorkspaceConnection={props.sidebar.onTestWorkspaceConnection}
           onEditWorkspaceConnection={props.sidebar.onEditWorkspaceConnection}
@@ -2463,6 +2479,57 @@ export function SessionPage(props: SessionPageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={renameGroupOpen} onOpenChange={(open) => { if (!open) setRenameGroupOpen(false); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("session_management.rename_group")}</DialogTitle>
+          </DialogHeader>
+          <Input
+            type="text"
+            value={renameGroupLabel}
+            onChange={(event) => setRenameGroupLabel(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              const label = renameGroupLabel.trim();
+              if (event.key !== "Enter" || !label || label === renameGroupOriginalLabel.trim() || !renameGroupTarget) return;
+              useSessionManagementStore.getState().renameGroup(renameGroupTarget.workspaceId, renameGroupTarget.groupId, label);
+              setRenameGroupOpen(false);
+            }}
+            placeholder={t("session_management.new_group_prompt")}
+          />
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" type="button" />}>{t("common.cancel")}</DialogClose>
+            <Button
+              type="button"
+              disabled={!renameGroupLabel.trim() || renameGroupLabel.trim() === renameGroupOriginalLabel.trim() || !renameGroupTarget}
+              onClick={() => {
+                const label = renameGroupLabel.trim();
+                if (!renameGroupTarget || !label) return;
+                useSessionManagementStore.getState().renameGroup(renameGroupTarget.workspaceId, renameGroupTarget.groupId, label);
+                setRenameGroupOpen(false);
+              }}
+            >
+              {t("common.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmModal
+        open={removeGroupOpen}
+        title={t("session_management.remove_group_title")}
+        message={t("session_management.remove_group_message", { group: removeGroupTarget?.label ?? "" })}
+        confirmLabel={t("session_management.remove_group")}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        onConfirm={() => {
+          if (removeGroupTarget) {
+            useSessionManagementStore.getState().removeGroup(removeGroupTarget.workspaceId, removeGroupTarget.groupId);
+          }
+          setRemoveGroupOpen(false);
+        }}
+        onCancel={() => setRemoveGroupOpen(false)}
+      />
 
       <CloudSignInComingSoonDialog
         open={cloudSignInComingSoonOpen}
