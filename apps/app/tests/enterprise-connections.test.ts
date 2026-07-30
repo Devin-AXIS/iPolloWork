@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
   discoverEnterpriseConnection,
@@ -6,8 +6,24 @@ import {
   joinEnterpriseWithCode,
   listEnterpriseResources,
   normalizeEnterpriseOrigin,
+  readEnterpriseConnections,
+  saveEnterpriseConnection,
   type EnterpriseConnection,
 } from "../src/app/lib/enterprise-connections";
+
+const originalWindow = globalThis.window;
+
+function memoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() { return values.size; },
+    clear() { values.clear(); },
+    getItem(key) { return values.get(key) ?? null; },
+    key(index) { return Array.from(values.keys())[index] ?? null; },
+    removeItem(key) { values.delete(key); },
+    setItem(key, value) { values.set(key, value); },
+  };
+}
 
 const connectedEnterprise: EnterpriseConnection = {
   id: "ent_medical",
@@ -22,6 +38,20 @@ const connectedEnterprise: EnterpriseConnection = {
 };
 
 describe("enterprise connections", () => {
+  beforeEach(() => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { localStorage: memoryStorage(), dispatchEvent: () => true },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
+    });
+  });
+
   test("normalizes only http and https server addresses", () => {
     expect(normalizeEnterpriseOrigin("https://enterprise.example.com/")).toBe(
       "https://enterprise.example.com",
@@ -99,23 +129,11 @@ describe("enterprise connections", () => {
     ).rejects.toThrow("enterprise_manifest_mismatch");
   });
 
-  test("resolves a join code through Cloud and exchanges it for an Enterprise session", async () => {
+  test("joins the configured Enterprise with a Cloud-issued identity token", async () => {
     const requested: string[] = [];
     const fetcher: typeof fetch = async (input, init) => {
       const url = String(input);
       requested.push(`${init?.method ?? "GET"} ${url}`);
-      if (url.endsWith("/api/v1/enterprise-directory/resolve")) {
-        return Response.json({
-          enterprise: {
-            serverId: "ent_medical",
-            name: "Medical Studio",
-            shortName: "Medical",
-            origin: "https://enterprise.example.com",
-            logoUrl: null,
-            accent: "blue",
-          },
-        });
-      }
       if (url.endsWith("/.well-known/ipollo-enterprise")) {
         return Response.json({
           serverId: "ent_medical",
@@ -153,17 +171,51 @@ describe("enterprise connections", () => {
       joinCode: "ABCDE-23456",
       cloudBaseUrl: "https://account.ipollo.ai",
       cloudToken: "cloud-session",
+      enterpriseBaseUrl: "https://enterprise.example.com",
     }, fetcher)).resolves.toMatchObject({
       id: "ent_medical",
       membership: { id: "member-1", role: "member" },
       session: { token: "enterprise-session" },
     });
     expect(requested).toEqual([
-      "POST https://account.ipollo.ai/api/v1/enterprise-directory/resolve",
       "GET https://enterprise.example.com/.well-known/ipollo-enterprise",
       "GET https://enterprise.example.com/api/v1/client-manifest",
       "GET https://account.ipollo.ai/api/auth/token",
       "POST https://enterprise.example.com/api/v1/join",
+    ]);
+  });
+
+  test("rejects an invalid Enterprise address before making a request", async () => {
+    let requestCount = 0;
+    const fetcher: typeof fetch = async () => {
+      requestCount += 1;
+      return Response.json({});
+    };
+
+    await expect(joinEnterpriseWithCode({
+      joinCode: "ABCDE-23456",
+      cloudBaseUrl: "http://i.ipollo.ai",
+      cloudToken: "cloud-session",
+      enterpriseBaseUrl: "ftp://enterprise.example.com",
+    }, fetcher)).rejects.toThrow("invalid_enterprise_url");
+    expect(requestCount).toBe(0);
+  });
+
+  test("keeps connections to multiple Enterprise servers", () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    saveEnterpriseConnection({
+      ...connectedEnterprise,
+      id: "ent_retail",
+      name: "Retail Studio",
+      shortName: "Retail",
+      origin: "https://retail.example.com",
+      membership: { id: "member-2", role: "member" },
+      session: { token: "retail-session", expiresAt: "2026-08-27T00:00:00.000Z" },
+    });
+
+    expect(readEnterpriseConnections().map((connection) => connection.id)).toEqual([
+      "ent_retail",
+      "ent_medical",
     ]);
   });
 

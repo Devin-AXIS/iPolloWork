@@ -10,6 +10,11 @@ test("keeps HTTPS identity redirects inside the isolated auth window", () => {
   );
 });
 
+test("allows the isolated auth window load-error page", () => {
+  const url = "data:text/html;charset=utf-8,%3C!doctype%20html%3E";
+  assert.deepEqual(classifyDesktopAuthNavigation(url), { kind: "allow", url });
+});
+
 test("captures only Den desktop callbacks for the app handoff", () => {
   assert.deepEqual(
     classifyDesktopAuthNavigation("ipollowork://den-auth?grant=one-time"),

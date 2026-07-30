@@ -7,6 +7,7 @@ export default defineConfig({
     "den/desktop-policies": "src/den/desktop-policies.ts",
     "den/inference": "src/den/inference.ts",
     hyperframes: "src/hyperframes.ts",
+    templates: "src/templates.ts",
   },
   tsconfig: "./tsconfig.json",
   format: ["esm"],

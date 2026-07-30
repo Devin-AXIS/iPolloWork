@@ -47,6 +47,7 @@ export type DesignSelection = {
   id: string;
   tag: string;
   locator: string;
+  html: string;
   text: string;
   href: string;
   src: string;
@@ -54,6 +55,7 @@ export type DesignSelection = {
   alt: string;
   canEditText: boolean;
   canDelete: boolean;
+  locked: boolean;
   colorField: "color" | "backgroundColor";
   rangeText: string;
   rect: DesignRect;
@@ -431,6 +433,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   const textNodeAttribute = "data-ipollowork-design-text-node";
   const modeAttribute = "data-ipollowork-design-mode";
   const panningAttribute = "data-ipollowork-design-panning";
+  const lockedAttribute = "data-ipw-locked";
   const editableSelector = "h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote,img,div,section,article,header,footer,nav,main";
   const textEditableSelector = "h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote";
   const textColorSelector = "h1,h2,h3,h4,h5,h6,p,span,label,li,blockquote";
@@ -443,7 +446,9 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     && Boolean(element.textContent?.trim());
   const isTextEditableElement = (element: HTMLElement) => !(element instanceof HTMLImageElement)
     && (element.matches(textEditableSelector) || element.hasAttribute(textNodeAttribute) || isTextOnlyDiv(element));
-  const canDeleteElement = (element: HTMLElement) => element !== document.body
+  const isLockedElement = (element: HTMLElement) => Boolean(element.closest(`[${lockedAttribute}]`));
+  const canDeleteElement = (element: HTMLElement) => !isLockedElement(element)
+    && element !== document.body
     && element !== document.documentElement
     && !element.matches("[data-ipw-slide],section.slide,.slide,.slide-frame,[data-ipw-template-kind='slides'],.deck,[data-ipw-deck-control],[data-ipw-prev],[data-ipw-next],[data-action='prev'],[data-action='previous'],[data-action='next'],.deck-chrome,.deck-controls,.controls,.dots,.counter,.slide-counter");
   let selectedElements: HTMLElement[] = [];
@@ -487,6 +492,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     #${overlayId} { position: fixed; z-index: 2147483646; display: none; pointer-events: none; cursor: move; border: 1px solid #7c3aed; box-sizing: border-box; background: transparent; }
     #${overlayId} [data-handle] { position: absolute; width: 9px; height: 9px; padding: 0; border: 1.5px solid #7c3aed; border-radius: 3px; background: white; box-shadow: 0 1px 4px rgba(15,23,42,.18); pointer-events: auto; }
     #${overlayId}.ipollowork-design-multi-selection [data-handle] { display: none; }
+    #${overlayId}.ipollowork-design-locked [data-handle] { display: none; }
     #${overlayId} [data-handle="nw"] { left: -5px; top: -5px; cursor: nwse-resize; }
     #${overlayId} [data-handle="n"] { left: 50%; top: -5px; transform: translateX(-50%); cursor: ns-resize; }
     #${overlayId} [data-handle="ne"] { right: -5px; top: -5px; cursor: nesw-resize; }
@@ -579,6 +585,27 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     return `${doctype}${clone.outerHTML}`;
   };
 
+  const elementHtml = (element: HTMLElement) => {
+    const clone = element.cloneNode(true);
+    if (!(clone instanceof HTMLElement)) return "";
+    const clean = (target: HTMLElement) => {
+      target.removeAttribute(idAttribute);
+      target.removeAttribute(selectedAttribute);
+      target.removeAttribute(primaryAttribute);
+      target.removeAttribute(editingAttribute);
+      target.removeAttribute("contenteditable");
+      if (target instanceof HTMLImageElement && target.hasAttribute("data-ipw-preview-src")) {
+        const original = target.getAttribute("data-ipw-preview-src") || "";
+        if (original) target.setAttribute("src", original);
+        target.removeAttribute("data-ipw-preview-src");
+      }
+    };
+    clean(clone);
+    clone.querySelectorAll<HTMLElement>("*").forEach(clean);
+    clone.querySelectorAll(`[${textNodeAttribute}]`).forEach((target) => target.replaceWith(...Array.from(target.childNodes)));
+    return clone.outerHTML;
+  };
+
   const describe = (element: HTMLElement) => {
     const computed = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
@@ -594,6 +621,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       id: element.getAttribute(idAttribute) || "",
       tag: element.tagName.toLowerCase(),
       locator: elementLocator(element),
+      html: elementHtml(element),
       text: element instanceof HTMLImageElement ? "" : element.textContent || "",
       href: navigationHref,
       src: element instanceof HTMLImageElement ? element.getAttribute("src") || "" : "",
@@ -603,6 +631,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       alt: element instanceof HTMLImageElement ? element.getAttribute("alt") || "" : "",
       canEditText: isTextEditableElement(element),
       canDelete: canDeleteElement(element),
+      locked: isLockedElement(element),
       colorField: element.matches(textColorSelector) || element.hasAttribute(textNodeAttribute) || isTextOnlyDiv(element) ? "color" : "backgroundColor",
       rangeText: textRange && element.contains(textRange.commonAncestorContainer) ? textRange.toString() : "",
       rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
@@ -665,6 +694,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     overlay.style.width = `${Math.max(1, rect.width)}px`;
     overlay.style.height = `${Math.max(1, rect.height)}px`;
     overlay.classList.toggle("ipollowork-design-multi-selection", selectedElements.length > 1);
+    overlay.classList.toggle("ipollowork-design-locked", selectedElements.some(isLockedElement));
   };
 
   const numericStyle = (element: HTMLElement, property: "left" | "top" | "width" | "height", fallback: number) => {
@@ -674,6 +704,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
 
   const prepareTransform = (mode: "move" | "resize", handle: string, event: PointerEvent) => {
     normalizeSelection();
+    if (selectedElements.some(isLockedElement)) return;
     const effectiveMode = selectedElements.length > 1 ? "move" : mode;
     transform = {
       mode: effectiveMode,
@@ -759,6 +790,8 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   ) => {
     const element = target.closest<HTMLElement>(`[${idAttribute}]`);
     if (!element) return null;
+    const lockedElement = element.closest<HTMLElement>(`[${lockedAttribute}]`);
+    if (lockedElement?.hasAttribute(idAttribute)) return lockedElement;
     const slideRoot = presentationCanvas ? target.closest<HTMLElement>(slideRootSelector) : null;
     if (slideRoot && !slideRoot.contains(element)) return null;
     if (isPresentationSlideRoot(element)) return null;
@@ -812,7 +845,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   overlay.addEventListener("pointerdown", (event) => {
     if (!editingEnabled) return;
     const target = event.target;
-    if (!primaryElement || !(target instanceof HTMLElement)) return;
+    if (!primaryElement || isLockedElement(primaryElement) || !(target instanceof HTMLElement)) return;
     const handle = target.getAttribute("data-handle") || "move";
     event.preventDefault();
     event.stopPropagation();
@@ -829,7 +862,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
 
   overlay.addEventListener("dblclick", (event) => {
     if (!editingEnabled) return;
-    if (selectedElements.length !== 1 || !primaryElement || !isTextEditableElement(primaryElement)) return;
+    if (selectedElements.length !== 1 || !primaryElement || isLockedElement(primaryElement) || !isTextEditableElement(primaryElement)) return;
     event.preventDefault();
     event.stopPropagation();
     primaryElement.setAttribute(editingAttribute, "true");
@@ -850,7 +883,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       target.setPointerCapture?.(event.pointerId);
       return;
     }
-    if (!element || !selectedElements.includes(element) || event.ctrlKey || event.metaKey) return;
+    if (!element || isLockedElement(element) || !selectedElements.includes(element) || event.ctrlKey || event.metaKey) return;
     prepareTransform("move", "move", event);
   }, true);
 
@@ -1003,7 +1036,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       return;
     }
     cancelPendingSelection();
-    if (selectedElements.length !== 1 || !element || !isTextEditableElement(element)) return;
+    if (selectedElements.length !== 1 || !element || isLockedElement(element) || !isTextEditableElement(element)) return;
     event.preventDefault();
     event.stopPropagation();
     selectedElements = [element];
@@ -1092,6 +1125,15 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       });
       return;
     }
+    if (data.type === "select-locator" && typeof data.locator === "string") {
+      try {
+        const element = document.querySelector<HTMLElement>(data.locator);
+        if (element) replaceSelection(element);
+      } catch {
+        // The selected element may no longer exist after Undo.
+      }
+      return;
+    }
     if (data.type === "snapshot" && typeof data.requestId === "string") {
       window.parent.postMessage({ channel, frameRevision, type: "snapshot", requestId: data.requestId, html: serialize() }, "*");
       return;
@@ -1109,8 +1151,16 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       window.parent.postMessage({ channel, frameRevision, type: "document-draft", html: serialize() }, "*");
       return;
     }
+    if (data.type === "lock" && typeof data.locked === "boolean") {
+      const targets = selectedTargets(data.ids);
+      if (!targets.length) return;
+      targets.forEach((target) => target.toggleAttribute(lockedAttribute, data.locked));
+      syncOverlay();
+      post("draft");
+      return;
+    }
     if (data.type !== "set" || typeof data.field !== "string" || typeof data.value !== "string") return;
-    const targets = selectedTargets(data.ids);
+    const targets = selectedTargets(data.ids).filter((target) => !isLockedElement(target));
     if (!targets.length) return;
     if (targets.length > 1 && !multiSelectionStyleFields.includes(data.field)) return;
     const target = targets[0];
@@ -1120,9 +1170,25 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     } else if (data.field === "href") {
       if (targets.length !== 1) return;
       const navigationControl = target.closest<HTMLElement>("a,button,[role='button']");
-      if (navigationControl instanceof HTMLAnchorElement) navigationControl.setAttribute("href", data.value);
+      if (navigationControl instanceof HTMLAnchorElement) {
+        if (data.value) {
+          const currentStyle = getComputedStyle(navigationControl);
+          navigationControl.style.color = currentStyle.color;
+          navigationControl.style.textDecoration = currentStyle.textDecoration;
+          navigationControl.setAttribute("href", data.value);
+        }
+        else if (navigationControl.children.length === 1 && navigationControl.firstElementChild === target) navigationControl.replaceWith(target);
+        else navigationControl.removeAttribute("href");
+      }
       else if (navigationControl) navigationControl.setAttribute("data-href", data.value);
-      else return;
+      else if (data.value) {
+        const link = document.createElement("a");
+        link.setAttribute("href", data.value);
+        link.style.color = "inherit";
+        link.style.textDecoration = "none";
+        target.replaceWith(link);
+        link.appendChild(target);
+      } else return;
     } else if (data.field === "src" && targets.length === 1 && target instanceof HTMLImageElement) {
       target.setAttribute("src", data.value);
       target.removeAttribute("data-ipw-preview-src");

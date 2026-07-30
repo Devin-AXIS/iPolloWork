@@ -257,6 +257,10 @@ export function getLatestArtifactAssistantMessageId(messages: UIMessage[]) {
   )?.id
 }
 
+export function getAssistantGroupArtifactMessages(items: UIMessageWithIndex[]) {
+  return items.map((item) => item.message)
+}
+
 function retryDelaySeconds(status: RetryStatus) {
   return Math.max(0, Math.round((status.next - Date.now()) / 1000))
 }
@@ -397,6 +401,7 @@ function QuoteFollowUpButton({ messages }: CopyMessageButtonProps) {
 
 type AssistantMessageProps = {
   message: UIMessage
+  artifactMessages?: UIMessage[]
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
@@ -495,7 +500,7 @@ function AssistantProcessSection(props: {
 }
 
 const AssistantMessage = React.memo(
-  ({ message, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, templateEntryPath }: AssistantMessageProps) => {
+  ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, templateEntryPath }: AssistantMessageProps) => {
     const { showThinking, highlightQuery, sessionId } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
@@ -523,7 +528,7 @@ const AssistantMessage = React.memo(
             renderAssistantGroup(group, index, { highlightQuery })
           )}
           <ArtifactList
-            messages={[message]}
+            messages={artifactMessages ?? [message]}
             sessionId={sessionId}
             title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}
             supplementalFiles={templateEntryPath ? [templateEntryPath] : undefined}
@@ -727,6 +732,7 @@ UserMessage.displayName = "UserMessage"
 
 type MessageComponentProps = {
   message: UIMessage
+  artifactMessages?: UIMessage[]
   isLastMessage: boolean
   isStreaming: boolean
   isLastStep: boolean
@@ -736,7 +742,7 @@ type MessageComponentProps = {
 }
 
 const MessageComponent = React.memo(
-  ({ message, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, templateEntryPath }: MessageComponentProps) => {
+  ({ message, artifactMessages, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, templateEntryPath }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
     }
@@ -754,6 +760,7 @@ const MessageComponent = React.memo(
       return (
         <AssistantMessage
           message={message}
+          artifactMessages={artifactMessages}
           isLastMessage={isLastMessage}
           isStreaming={isStreaming}
           isLastStep={isLastStep}
@@ -909,6 +916,10 @@ function MessageGroup({
   const lastRealItem = items.findLast((item) => !isSessionErrorMessage(item.message))
   const isLiveGroup = isStreaming && lastItem !== undefined && lastItem.index === messages.length - 1
   const stepsRef = React.useRef<HTMLDivElement>(null)
+  const artifactMessages = React.useMemo(
+    () => getAssistantGroupArtifactMessages(items),
+    [items],
+  )
 
   // Keep the capped step run pinned to the latest step while streaming.
   React.useEffect(() => {
@@ -986,6 +997,7 @@ function MessageGroup({
       {resultData ? (
         <MessageComponent
           message={resultData.item.message}
+          artifactMessages={artifactMessages}
           isLastMessage={resultData.item.index === messages.length - 1}
           isStreaming={resultData.item.index === messages.length - 1 && isStreaming}
           isLastStep

@@ -1,0 +1,29 @@
+/* ipw-theme:start */
+/* ipw-design-system: site-atelier-architecture */
+:root {
+  --ipw-color-bg: #ebe8e0;
+  --ipw-color-surface: #f8f6f0;
+  --ipw-color-text: #252825;
+  --ipw-color-muted: #71736d;
+  --ipw-color-border: #cfcdc5;
+  --ipw-color-primary: #2c302e;
+  --ipw-color-secondary: #d9d5c9;
+  --ipw-color-accent: #c4623d;
+  --ipw-color-success: #39765b;
+  --ipw-color-warning: #a66b18;
+  --ipw-color-danger: #b83d35;
+  --ipw-color-on-primary: #ffffff;
+  --ipw-font-display: Georgia, serif;
+  --ipw-font-body: Arial, sans-serif;
+  --ipw-type-scale: 1;
+  --ipw-body-line-height: 1.55;
+  --ipw-content-width: 1180px;
+  --ipw-page-padding: 32px;
+  --ipw-section-space: 96px;
+  --ipw-button-radius: 0px;
+  --ipw-card-bg: #f8f6f0;
+  --ipw-card-border: #cfcdc5;
+  --ipw-card-radius: 0px;
+  --ipw-card-shadow: 0 18px 46px rgb(15 23 42 / 10%);
+}
+/* ipw-theme:end */

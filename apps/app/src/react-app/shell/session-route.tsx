@@ -1097,6 +1097,8 @@ export function SessionRoute() {
         const designPath = designSessionTemplate?.state.entry ?? null;
         const designSystemContext = isDesignTask
           ? designHtmlThemeSystemContext({
+              id: designSessionTemplate?.manifest.id ?? null,
+              category: designSessionTemplate?.manifest.category ?? null,
               title: designSessionTemplate?.manifest.title ?? null,
               entry: designPath,
               tokenPath: designSessionTemplate?.manifest.designSystem.tokens ?? "design-tokens.css",

@@ -6,7 +6,7 @@ const serverRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(serverRoot, "bundled-templates");
 const target = join(serverRoot, "dist", "bundled-templates");
 
-await rm(target, { recursive: true, force: true });
+await rm(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
 await mkdir(dirname(target), { recursive: true });
 await cp(source, target, { recursive: true });
 

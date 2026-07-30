@@ -38,14 +38,34 @@ describe("session output issue regressions", () => {
   });
 
   test("template covers expose a retryable failure placeholder", () => {
+    const marketSource = readFileSync(
+      new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
+      "utf8",
+    );
+    const starterSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    for (const source of [marketSource, starterSource]) {
+      expect(source).toContain("TEMPLATE_COVER_TIMEOUT_MS");
+      expect(source).toContain("setFailed(true)");
+      expect(source).toContain("setRetry((value) => value + 1)");
+      expect(source).toContain('t("template_market.cover_failed")');
+      expect(source).toContain('t("template_market.retry_cover")');
+      expect(source).toContain("window.clearTimeout(timeout)");
+    }
+  });
+
+  test("template market exposes category counts and clean import separators", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain("setFailed(true)");
-    expect(source).toContain("setRetry((value) => value + 1)");
-    expect(source).toContain('t("template_market.cover_failed")');
-    expect(source).toContain('t("template_market.retry_cover")');
+    expect(source).toContain("const categoryCounts = React.useMemo");
+    expect(source).toContain("const allCount = React.useMemo");
+    expect(source).toContain("categoryCounts.get(id) ?? 0");
+    expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
   });
 });

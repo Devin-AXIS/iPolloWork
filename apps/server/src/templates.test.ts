@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -78,6 +79,32 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
 }
 
 const bundledTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "bundled-templates");
+const pptxCompatibleTemplateIds = [
+  "ipollowork.pptx-clinical-handoff",
+  "ipollowork.pptx-exhibition-curation",
+  "ipollowork.pptx-film-treatment",
+  "ipollowork.pptx-impact-report",
+  "ipollowork.pptx-learning-journey",
+  "ipollowork.pptx-match-analysis",
+  "ipollowork.pptx-merger-integration",
+  "ipollowork.pptx-restaurant-opening",
+  "ipollowork.pptx-supply-continuity",
+  "ipollowork.pptx-urban-mobility",
+  "ipollowork.pptx-annual-review",
+  "ipollowork.pptx-brand-narrative",
+  "ipollowork.pptx-product-launch",
+  "ipollowork.pptx-research-signals",
+  "ipollowork.pptx-venture-blueprint",
+  "ipollowork.pptx-northstar-strategy",
+  "ipollowork.pptx-compatible-brief",
+  "ipollowork.pptx-compatible-pitch",
+  "ipollowork.pptx-compatible-report",
+];
+const hiddenPptxCompatibleTemplateIds = [
+  "ipollowork.pptx-compatible-brief",
+  "ipollowork.pptx-compatible-pitch",
+  "ipollowork.pptx-compatible-report",
+];
 const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.app-device-launch",
   "ipollowork.hyperframes.automation-day-planner",
@@ -261,8 +288,8 @@ function videoPackage(id = "local.product-video", entry = "<!doctype html><html 
 describe("template installations", () => {
   test("ships every built-in design, presentation, and video with the shared theme contract", async () => {
     const currentLogo = await readFile(join(bundledTemplatesRoot, "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg"), "utf8");
-    expect(currentLogo).toContain('viewBox="-150 -150 776 800"');
-    expect(currentLogo).not.toContain('viewBox="0 0 476 500"');
+    expect(currentLogo).toContain('viewBox="0 0 281 298"');
+    expect(currentLogo).not.toContain('viewBox="-150 -150 776 800"');
     for (const directory of await readdir(bundledTemplatesRoot)) {
       const root = join(bundledTemplatesRoot, directory);
       const manifestPath = join(root, "manifest.json");
@@ -283,9 +310,13 @@ describe("template installations", () => {
       }
       if (manifest.surface === "video") {
         expect(tokens).toContain("--accent: var(--ipw-color-primary) !important");
-        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
+        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260729");
       } else {
         expect(entry).not.toContain('src="assets/ipollowork-logo.svg"');
+      }
+      if (manifest.id === "ipollowork.html-anything.web-proto-soft") {
+        expect(entry).toContain("data-ipw-brand-critical");
+        expect(entry).toContain(".ipw-brand-slot img{display:block;width:18px;height:18px");
       }
     }
   });
@@ -368,7 +399,7 @@ describe("template installations", () => {
           "assets",
           "ipollowork-logo.svg",
         ), "utf8");
-        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
+        expect(entry).toContain("assets/ipollowork-logo.svg?v=20260729");
         expect(entry).not.toContain("assets/ipollowork-logo.svg?v=20260721");
         const bundledLogo = await readFile(join(root, "assets", "ipollowork-logo.svg"), "utf8");
         expect(bundledLogo).toBe(currentLogo);
@@ -428,7 +459,7 @@ describe("template installations", () => {
           ? "window.__timelines.main"
           : `window.__timelines["${compositionId}"]`,
       );
-      expect(entry).toContain("assets/ipollowork-logo.svg?v=20260724");
+      expect(entry).toContain("assets/ipollowork-logo.svg?v=20260729");
       expect(entry).not.toContain("assets/ipollowork-logo.svg?v=20260721");
       expect(entry).not.toMatch(/(?:src|href)\s*=\s*["']https?:\/\//i);
       for (const variable of manifest.designSystem.variables) expect(entry).toContain(`"id":"${variable.id}"`);
@@ -505,19 +536,19 @@ describe("template installations", () => {
     const entryPath = join(ws.path, "video", "session_logo", "index.html");
     const entry = await readFile(entryPath, "utf8");
     await writeFile(entryPath, entry.replaceAll(
-      "assets/ipollowork-logo.svg?v=20260724",
+      "assets/ipollowork-logo.svg?v=20260729",
       "assets/missing-custom-logo.svg",
     ));
 
     await readTemplateSession(serverConfig, ws, "session_logo");
 
     const refreshedLogo = await readFile(logoPath, "utf8");
-    expect(refreshedLogo).toContain('viewBox="-150 -150 776 800"');
+    expect(refreshedLogo).toContain('viewBox="0 0 281 298"');
     expect(refreshedLogo).not.toContain('fill="white"');
     const repairedEntry = await readFile(entryPath, "utf8");
     expect(repairedEntry).toContain('src="assets/missing-custom-logo.svg"');
     expect(repairedEntry).toContain('data-ipw-logo-fallback="current"');
-    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260724'");
+    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260729'");
   });
 
   test("refreshes the current iPolloWork logo when an existing design session opens", async () => {
@@ -532,20 +563,20 @@ describe("template installations", () => {
     const entryPath = join(ws.path, "design", "session_logo", "entry.html");
     const entry = await readFile(entryPath, "utf8");
     await writeFile(entryPath, entry.replaceAll(
-      "assets/ipollowork-logo.svg?v=20260724",
+      "assets/ipollowork-logo.svg?v=20260729",
       "assets/ipollowork-logo.svg",
     ));
 
     await readTemplateSession(serverConfig, ws, "session_logo");
 
     const refreshedLogo = await readFile(logoPath, "utf8");
-    expect(refreshedLogo).toContain('viewBox="-150 -150 776 800"');
+    expect(refreshedLogo).toContain('viewBox="0 0 281 298"');
     expect(refreshedLogo).not.toContain('viewBox="0 0 476 500"');
     expect(refreshedLogo).not.toContain('fill="white"');
     const repairedEntry = await readFile(entryPath, "utf8");
-    expect(repairedEntry).toContain('src="assets/ipollowork-logo.svg?v=20260724"');
+    expect(repairedEntry).toContain('src="assets/ipollowork-logo.svg?v=20260729"');
     expect(repairedEntry).toContain('data-ipw-logo-fallback="current"');
-    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260724'");
+    expect(repairedEntry).toContain("this.src='assets/ipollowork-logo.svg?v=20260729'");
   });
 
   test("ships every website template with accessible navigation and observable actions", async () => {
@@ -557,7 +588,7 @@ describe("template installations", () => {
       if (manifest.category !== "site") continue;
       websites.push({ manifest, entry: await readFile(join(root, manifest.entry), "utf8") });
     }
-    expect(websites).toHaveLength(9);
+    expect(websites).toHaveLength(25);
     for (const { manifest, entry } of websites) {
       expect(entry).toContain('name="viewport"');
       expect(entry).toContain('data-ipw-mobile-ready="true"');
@@ -581,6 +612,60 @@ describe("template installations", () => {
         expect(entry).toContain("Demo only — no information was sent. Connect this form to your signup service before publishing.");
       }
     }
+  });
+
+  test("keeps the scenario template batch structurally distinct", async () => {
+    const signatures = new Map([
+      ["ipollowork.pptx-clinical-handoff", 'class="handoff-ledger"'],
+      ["ipollowork.pptx-exhibition-curation", 'class="curator-wall"'],
+      ["ipollowork.pptx-film-treatment", 'class="film-strip"'],
+      ["ipollowork.pptx-impact-report", 'class="impact-river"'],
+      ["ipollowork.pptx-learning-journey", 'class="lesson-path"'],
+      ["ipollowork.pptx-match-analysis", 'class="tactics-pitch"'],
+      ["ipollowork.pptx-merger-integration", 'class="integration-rail"'],
+      ["ipollowork.pptx-restaurant-opening", 'class="service-book"'],
+      ["ipollowork.pptx-supply-continuity", 'class="continuity-board"'],
+      ["ipollowork.pptx-urban-mobility", 'class="civic-grid"'],
+      ["ipollowork.pptx-product-launch", 'class="launch-deck"'],
+      ["ipollowork.pptx-annual-review", 'class="review-deck"'],
+      ["ipollowork.pptx-research-signals", 'class="research-deck"'],
+      ["ipollowork.pptx-brand-narrative", 'class="brand-book"'],
+      ["ipollowork.pptx-venture-blueprint", 'class="venture-deck"'],
+      ["ipollowork.site-atelier-architecture", 'class="project-index"'],
+      ["ipollowork.site-orbit-data", 'class="query-window"'],
+      ["ipollowork.site-casa-lume", 'class="booking-form"'],
+      ["ipollowork.site-forma-portfolio", 'class="project-grid"'],
+      ["ipollowork.site-kindred-care", 'class="pathways"'],
+      ["ipollowork.site-afterglow-festival", 'class="lineup-marquee"'],
+      ["ipollowork.site-archive-museum", 'class="exhibit-index"'],
+      ["ipollowork.site-commonform-careers", 'class="role-board"'],
+      ["ipollowork.site-ember-table", 'class="menu-counter"'],
+      ["ipollowork.site-fieldstone-realty", 'class="property-ledger"'],
+      ["ipollowork.site-northstar-clinic", 'class="care-router"'],
+      ["ipollowork.site-openhands-foundation", 'class="giving-story"'],
+      ["ipollowork.site-relay-developer", 'class="api-console"'],
+      ["ipollowork.site-tidehouse-hotel", 'class="stay-journal"'],
+      ["ipollowork.site-vector-freight", 'class="shipment-map"'],
+    ]);
+    const entries: string[] = [];
+    for (const [templateId, signature] of signatures) {
+      const entry = await readFile(join(bundledTemplatesRoot, templateId, "entry.html"), "utf8");
+      expect(entry).toContain(signature);
+      const slideCount = (entry.match(/<section\b[^>]*\bdata-ipw-slide\b/g) ?? []).length;
+      const pptxMarkerCount = (entry.match(/\bdata-pptx-(?:text|shape|image)\b/g) ?? []).length;
+      const sectionOrder = Array.from(entry.matchAll(/<section\b[^>]*(?:id|class)="([^"]+)"/g), (match) => match[1]);
+      if (templateId.startsWith("ipollowork.pptx-")) {
+        expect(slideCount).toBe(6);
+        expect(pptxMarkerCount).toBeGreaterThanOrEqual(60);
+      } else {
+        expect(sectionOrder.length).toBeGreaterThanOrEqual(3);
+        expect(entry).toMatch(/<header\b/);
+        expect(entry).toMatch(/<main\b/);
+      }
+      entries.push(entry);
+    }
+    expect(new Set(signatures.values()).size).toBe(signatures.size);
+    expect(entries.every((entry) => !entry.includes('class="visual-grid"'))).toBe(true);
   });
 
   test("runs website toggle and fallback interactions without leaking globals", async () => {
@@ -653,7 +738,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(85);
+    expect(directories).toHaveLength(105);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -666,7 +751,27 @@ describe("template installations", () => {
       expect(cover.byteLength).toBeGreaterThan(15_000);
       hashes.add(Bun.hash(cover).toString());
     }
-    expect(hashes.size).toBe(85);
+    expect(hashes.size).toBe(105);
+  });
+
+  test("ships strict PPTX-compatible slide templates with explicit editable object markers", async () => {
+    for (const templateId of pptxCompatibleTemplateIds) {
+      const root = join(bundledTemplatesRoot, templateId);
+      const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
+      const entry = await readFile(join(root, manifest.entry), "utf8");
+      expect(manifest.category).toBe("slides");
+      expect(manifest.pptxCompatibility).toBe("native-editable");
+      expect(entry).toContain("data-pptx-text");
+      expect(entry).toContain("data-pptx-shape");
+      expect(entry).not.toMatch(/(?:linear|radial)-gradient|\bfilter\s*:/i);
+    }
+  });
+
+  test("build copies strict PPTX-compatible templates into the embedded server catalog", async () => {
+    const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
+    for (const templateId of pptxCompatibleTemplateIds) {
+      expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+    }
   });
 
   test("seeds the full personal template market and keeps its install state global", async () => {
@@ -674,56 +779,47 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(85);
+    expect(first.filter((item) => item.installed)).toHaveLength(102);
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(true);
+    for (const templateId of hiddenPptxCompatibleTemplateIds) {
+      expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
+      expect(existsSync(join(bundledTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+    }
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
     expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
   });
 
-  test("seeds only the remaining bundled templates into personal and Enterprise libraries", async () => {
-    const root = await mkdtemp(join(tmpdir(), "ipw-enterprise-bundled-templates-"));
-    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  test("upgrades an installed bundled template before materializing it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-template-upgrade-"));
+    const runtimeDb = join(root, "runtime.sqlite");
+    process.env.IPOLLOWORK_RUNTIME_DB = runtimeDb;
     const serverConfig = config(root);
-    const scope = parseTemplateLibraryScope("enterprise:ent_medical");
-    const personal = await listTemplates(serverConfig, "alpha");
-    const enterprise = await listTemplates(serverConfig, "alpha", scope);
+    const ws = workspace(root, "alpha");
+    const templateId = "ipollowork.site-atelier-architecture";
 
-    expect(personal).toHaveLength(85);
-    expect(enterprise).toHaveLength(85);
-    expect(personal.every((item) => item.manifest.pptxCompatibility !== "native-editable")).toBe(true);
-    expect(enterprise.every((item) => item.manifest.pptxCompatibility !== "native-editable")).toBe(true);
-  }, 15_000);
+    await listTemplates(serverConfig, ws.id);
+    const sqlite = new Database(runtimeDb);
+    const current = sqlite.query<{ packagePath: string }, [string, string]>(
+      "SELECT package_path AS packagePath FROM template_installations WHERE workspace_id = ? AND template_id = ?",
+    ).get("__ipollowork_personal__", templateId);
+    if (!current) throw new Error("Expected the bundled template to be installed");
+    const legacyPackagePath = join(dirname(current.packagePath), "1.0.0");
+    await mkdir(legacyPackagePath, { recursive: true });
+    await writeFile(join(legacyPackagePath, "entry.html"), '<main class="legacy-template"></main>');
+    sqlite.run(
+      "UPDATE template_installations SET version = ?, package_path = ?, package_hash = ? WHERE workspace_id = ? AND template_id = ?",
+      ["1.0.0", legacyPackagePath, "legacy-package-hash", "__ipollowork_personal__", templateId],
+    );
+    sqlite.close();
 
-  test("purges persisted bundled packages that are no longer shipped", async () => {
-    const root = await mkdtemp(join(tmpdir(), "ipw-withdrawn-bundled-template-"));
-    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
-    const serverConfig = config(root);
-    await listTemplates(serverConfig, "alpha");
-    const templateId = "test.withdrawn-bundled-template";
-    const packagePath = join(root, "templates", "__ipollowork_personal__", templateId, "1.0.0");
-    await mkdir(packagePath, { recursive: true });
-    await writeFile(join(packagePath, "manifest.json"), JSON.stringify({ id: templateId }), "utf8");
-    const { Database } = await import("bun:sqlite");
-    const sqlite = new Database(join(root, "runtime.sqlite"));
-    try {
-      sqlite.query("INSERT INTO template_installations (workspace_id, template_id, version, source_type, package_path, package_hash, status, manifest_json, installed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
-        "__ipollowork_personal__", templateId, "1.0.0", "bundled", packagePath, "stale", "installed", JSON.stringify({ id: templateId }), Date.now(), Date.now(),
-      );
-    } finally {
-      sqlite.close();
-    }
-
-    await listTemplates(serverConfig, "alpha");
-
-    expect(existsSync(packagePath)).toBe(false);
-    const verification = new Database(join(root, "runtime.sqlite"));
-    try {
-      expect(verification.query("SELECT COUNT(*) AS count FROM template_installations WHERE template_id = ?").get(templateId)).toEqual({ count: 0 });
-    } finally {
-      verification.close();
-    }
+    const refreshed = await listTemplates(serverConfig, ws.id);
+    expect(refreshed.find((item) => item.manifest.id === templateId)?.installedVersion).toBe("1.1.0");
+    expect(existsSync(legacyPackagePath)).toBe(false);
+    const created = await materializeTemplate(serverConfig, ws, templateId, "session_upgraded");
+    expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain('class="project-index"');
   });
 
   test("does not ship removed templates into the personal template market", async () => {

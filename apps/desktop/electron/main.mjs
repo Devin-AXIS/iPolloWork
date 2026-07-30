@@ -74,7 +74,7 @@ const RELEASE_PAGE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/late
 const DOCS_PAGE_URL = "https://ipolloworklabs.com/docs";
 const MAIN_WINDOW_DEFAULT_WIDTH = 1440;
 const MAIN_WINDOW_DEFAULT_HEIGHT = 900;
-const MAIN_WINDOW_MIN_WIDTH = 880;
+const MAIN_WINDOW_MIN_WIDTH = 1024;
 const MAIN_WINDOW_MIN_HEIGHT = 768;
 const MAIN_WINDOW_STATE_FILE = "main-window-state.json";
 const applicationMenu = createApplicationMenu({
@@ -1324,7 +1324,7 @@ if (extraLaunchArgs) {
   }
 }
 configureFakeMediaForTests(app, envFlagEnabled("IPOLLOWORK_ELECTRON_FAKE_MEDIA"));
-const DEFAULT_DEN_BASE_URL = "https://app.ipolloworklabs.com";
+const DEFAULT_DEN_BASE_URL = process.env.VITE_DEN_BASE_URL?.trim() || "http://i.ipollo.ai";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:4096";
 const FORCE_DESKTOP_REQUIRE_SIGNIN = envFlagEnabled("IPOLLOWORK_FORCE_SIGNIN");
 const DEFAULT_DESKTOP_REQUIRE_SIGNIN = FORCE_DESKTOP_REQUIRE_SIGNIN;

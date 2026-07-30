@@ -4,6 +4,7 @@ import {
   designAiSelectionDisplayMetadata,
   designAiSelectionInstruction,
   designAiSelectionToken,
+  designHtmlThemeSystemContext,
   parseDesignAiSelectionDisplayMetadata,
   parseDesignAiSelectionToken,
   type DesignAiSelectionContext,
@@ -60,6 +61,21 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("body > h1:nth-of-type(1)");
     expect(instruction).toContain("Do not modify any other element");
     expect(instruction).toContain("If the locator no longer resolves");
+  });
+
+  test("keeps the active template structure in every Design AI turn", () => {
+    const instruction = designHtmlThemeSystemContext({
+      id: "ipollowork.site-atelier-architecture",
+      category: "site",
+      title: "Atelier Architecture",
+      entry: "design/ses_1/entry.html",
+    });
+
+    expect(instruction).toContain("Current design template id: ipollowork.site-atelier-architecture");
+    expect(instruction).toContain("Current design category: site");
+    expect(instruction).toContain("current editable HTML file is the structural source of truth");
+    expect(instruction).toContain("Preserve the existing root classes, section hierarchy and order");
+    expect(instruction).toContain("never replace it with a generic hero");
   });
 
   test("stores an immutable Design selection context", () => {

@@ -621,6 +621,7 @@ export function AppSidebar(props: AppSidebarProps) {
 
   const brandLogoUrl = useBrandLogoUrl();
   const brandAppName = useBrandAppName();
+  const brandSidebarIcon = publicAssetUrl("sidebar-icon/ipollo-work.svg");
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -628,8 +629,7 @@ export function AppSidebar(props: AppSidebarProps) {
         collapsible="offcanvas"
         className="bg-sidebar mac:**:data-[sidebar=sidebar]:bg-transparent"
       >
-        <div className="hidden h-0 mac:block mac:titlebar-drag"/>
-        <SidebarHeader className="gap-4 px-2 pb-6 pt-1">
+        <SidebarHeader className="gap-4 px-2 pb-6 pt-1 mac:titlebar-drag">
           <div className="flex w-full justify-end px-3">
             <SidebarTrigger
               className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
@@ -639,18 +639,25 @@ export function AppSidebar(props: AppSidebarProps) {
             />
           </div>
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 px-3">
-            {brandLogoUrl ? (
+            <div className="flex min-w-0 items-center gap-2">
               <img
-                src={brandLogoUrl}
-                alt={`${brandAppName} logo`}
-                className="max-h-9 w-auto max-w-[140px] object-contain object-left"
-                data-testid="brand-logo"
+                src={brandSidebarIcon}
+                alt=""
+                className="size-5 shrink-0"
               />
-            ) : (
-              <span className="truncate text-sm font-semibold" data-testid="brand-app-name">
-                {brandAppName}
-              </span>
-            )}
+              {brandLogoUrl ? (
+                <img
+                  src={brandLogoUrl}
+                  alt={`${brandAppName} logo`}
+                  className="max-h-9 w-auto max-w-[120px] object-contain object-left"
+                  data-testid="brand-logo"
+                />
+              ) : (
+                <span className="truncate text-sm font-semibold" data-testid="brand-app-name">
+                  {brandAppName}
+                </span>
+              )}
+            </div>
             {props.onOpenSessionSearch ? (
               <button
                 type="button"

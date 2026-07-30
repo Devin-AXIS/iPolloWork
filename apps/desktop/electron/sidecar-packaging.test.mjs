@@ -3,9 +3,10 @@ import { it } from "node:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createPackage } from "@electron/asar";
 
 import afterPackModule from "../scripts/electron-after-pack.cjs";
-import { stageServerConstants } from "../scripts/server-packaging.mjs";
+import { stageServerConstants, stageServerRuntimeTypes } from "../scripts/server-packaging.mjs";
 
 const afterPack = afterPackModule.default ?? afterPackModule;
 
@@ -32,12 +33,65 @@ it("stages constants beside every compiled server module that imports them", asy
     await rm(root, { recursive: true, force: true });
   }
 });
-const { assertPackagedNodePty } = afterPackModule;
+
+it("stages shared runtime types beside compiled server modules", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-types-stage-"));
+  const serverDistDir = path.join(root, "server-dist");
+  const runtimeTypesDistDir = path.join(root, "types-dist");
+  await mkdir(serverDistDir, { recursive: true });
+  await mkdir(runtimeTypesDistDir, { recursive: true });
+  await writeFile(path.join(serverDistDir, "hyperframes-catalog.js"), 'import { schema } from "@ipollowork/types/hyperframes";\n');
+  await writeFile(path.join(runtimeTypesDistDir, "hyperframes.js"), "export const schema = {};\n");
+  await writeFile(path.join(runtimeTypesDistDir, "templates.js"), "export const templates = {};\n");
+
+  try {
+    assert.deepEqual(stageServerRuntimeTypes({ serverDistDir, runtimeTypesDistDir }), ["hyperframes-catalog.js"]);
+    assert.match(await readFile(path.join(serverDistDir, "hyperframes-catalog.js"), "utf8"), /\.\/ipollowork-types\/hyperframes\.js/);
+    assert.equal(await readFile(path.join(serverDistDir, "ipollowork-types", "templates.js"), "utf8"), "export const templates = {};\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+const { assertPackagedNodePty, assertPackagedRuntimeTypes } = afterPackModule;
+
+it("requires the shared runtime types in packaged Electron archives", async () => {
+  const appOutDir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-types-"));
+  const sourceDir = path.join(appOutDir, "source");
+  const resourcesDir = path.join(appOutDir, "resources");
+  const packageDir = path.join(sourceDir, "server", "dist", "ipollowork-types");
+  await mkdir(packageDir, { recursive: true });
+  await mkdir(resourcesDir, { recursive: true });
+  await writeFile(path.join(packageDir, "hyperframes.js"), "export {};\n");
+  await writeFile(path.join(packageDir, "templates.js"), "export {};\n");
+
+  try {
+    await createPackage(sourceDir, path.join(resourcesDir, "app.asar"));
+    assert.doesNotThrow(() => assertPackagedRuntimeTypes({
+      electronPlatformName: "win32",
+      appOutDir,
+    }));
+
+    await rm(path.join(packageDir, "templates.js"));
+    await createPackage(sourceDir, path.join(resourcesDir, "app.asar"));
+    assert.throws(() => assertPackagedRuntimeTypes({
+      electronPlatformName: "win32",
+      appOutDir,
+    }), /ipollowork-types\/templates\.js/);
+  } finally {
+    await rm(appOutDir, { recursive: true, force: true });
+  }
+});
 
 async function createWindowsFixture(triple) {
   const appOutDir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-after-pack-"));
   const sidecarsDir = path.join(appOutDir, "resources", "sidecars");
   await mkdir(sidecarsDir, { recursive: true });
+  const asarSource = path.join(appOutDir, "asar-source");
+  const runtimeTypes = path.join(asarSource, "server", "dist", "ipollowork-types");
+  await mkdir(runtimeTypes, { recursive: true });
+  await writeFile(path.join(runtimeTypes, "hyperframes.js"), "export {};\n");
+  await writeFile(path.join(runtimeTypes, "templates.js"), "export {};\n");
+  await createPackage(asarSource, path.join(appOutDir, "resources", "app.asar"));
 
   for (const name of [
     `opencode-${triple}.exe`,

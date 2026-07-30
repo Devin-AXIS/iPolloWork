@@ -86,6 +86,42 @@ type SidePanelTabProps = {
   onClose: (tab: PanelTabEntry) => void;
 };
 
+class DesignPanelErrorBoundary extends React.Component<
+  { children: React.ReactNode; resetKey: string },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("[design-panel] render failed", error);
+  }
+
+  componentDidUpdate(previous: Readonly<{ children: React.ReactNode; resetKey: string }>) {
+    if (this.state.failed && previous.resetKey !== this.props.resetKey) this.setState({ failed: false });
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="flex h-full items-center justify-center p-6 text-center">
+          <div>
+            <p className="text-sm font-medium text-foreground">Design preview could not be displayed.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Reload the preview to restore this file.</p>
+            <Button className="mt-4" size="sm" onClick={() => this.setState({ failed: false })}>
+              Reload Design
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
   const dragControls = useDragControls();
   const tabRef = React.useRef<HTMLDivElement>(null);
@@ -312,7 +348,7 @@ function BrowserPanelContent({
 
   return (
     <>
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#EAEAEA] bg-background px-2 [border-bottom-width:0.5px] mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#EAEAEA] bg-background px-2 [border-bottom-width:0.5px] mac:titlebar-drag mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
         {isAvailable ? (
           <>
             <Tooltip>
@@ -568,7 +604,7 @@ export function SidePanel({
     <TooltipProvider delay={1000}>
       <div className="flex h-full flex-col">
         <div className="shrink-0 bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
-          <div className="flex h-10 items-center gap-1 px-2">
+          <div className="flex h-10 items-center gap-1 px-2 mac:titlebar-drag">
             <div className="no-scrollbar min-w-0 flex-1 overflow-x-auto">
               <PanelTabList
                 values={tabs.map((tab) => tab.id)}
@@ -665,14 +701,16 @@ export function SidePanel({
           <PanelEmpty />
         ) : null}
         {activeTab?.type === "design" ? (
-          <DesignPanel
-            sessionId={activeTab.sessionId}
-            client={client}
-            workspaceId={workspaceId}
-            isRemoteWorkspace={isRemoteWorkspace}
-            initialPath={activeTab.path}
-            onAskAi={onAskAi ?? (() => undefined)}
-          />
+          <DesignPanelErrorBoundary resetKey={`${activeTab.id}:${activeTab.path}`}>
+            <DesignPanel
+              sessionId={activeTab.sessionId}
+              client={client}
+              workspaceId={workspaceId}
+              isRemoteWorkspace={isRemoteWorkspace}
+              initialPath={activeTab.path}
+              onAskAi={onAskAi ?? (() => undefined)}
+            />
+          </DesignPanelErrorBoundary>
         ) : activeTab?.type === "browser" ? (
           <BrowserPanelContent tab={activeTab} onClose={() => closeTab(activeTab)} />
         ) : activeTab?.type === "artifact" ? (

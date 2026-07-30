@@ -11,7 +11,7 @@ describe("PPTX-compatible template entry labels", () => {
     for (const url of entryUrls) {
       const source = await Bun.file(url).text();
       expect(source).toContain("isPptxCompatibleTemplate");
-      expect(source).toContain("PPTX-compatible");
+      expect(source).toContain('t("template_market.pptx_compatible")');
     }
   });
 });

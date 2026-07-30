@@ -32,6 +32,9 @@ const DESIGN_AI_SELECTION_DISPLAY_PREFIX = "Design selection display:";
 
 const DESIGN_HTML_THEME_TOKEN_LINES = [
   "- All generated or edited Design HTML must keep the shared theme stylesheet linked as `<link rel=\"stylesheet\" href=\"design-tokens.css\" data-ipw-design-tokens>` when the file lives beside that stylesheet. Keep it as the final stylesheet/style entry before `</head>` so the theme contract can override generated component CSS.",
+  "- The current editable HTML file is the structural source of truth. Read it before editing and update its existing DOM and CSS in place.",
+  "- Preserve the existing root classes, section hierarchy and order, template-specific class names, component geometry, artwork, responsive behavior, animation, and timing unless the user explicitly requests a structural redesign.",
+  "- Replace content inside the selected template; never replace it with a generic hero, statistics row, feature cards, project grid, dashboard, or another standard scaffold.",
   "- Preserve the existing HTML skeleton and component structure when applying or adapting a design system; theme changes must flow through CSS custom properties, not a rewritten layout.",
   "- Use the iPolloWork HTML theme token contract for colors, typography, spacing, sizing, radii, shadows, cards, buttons, and backgrounds:",
   "  `--ipw-color-bg`, `--ipw-color-surface`, `--ipw-color-text`, `--ipw-color-muted`, `--ipw-color-border`, `--ipw-color-primary`, `--ipw-color-secondary`, `--ipw-color-accent`, `--ipw-color-success`, `--ipw-color-warning`, `--ipw-color-danger`, `--ipw-color-on-primary`, `--ipw-color-primary-soft`, `--ipw-bg-gradient`, `--ipw-bg-image`, `--ipw-bg-overlay`, `--ipw-font-display`, `--ipw-font-body`, `--ipw-type-scale`, `--ipw-body-line-height`, `--ipw-content-width`, `--ipw-page-padding`, `--ipw-section-space`, `--ipw-button-radius`, `--ipw-card-bg`, `--ipw-card-border`, `--ipw-card-radius`, `--ipw-card-shadow`, `--ipw-card-blur`.",
@@ -43,6 +46,8 @@ const DESIGN_HTML_THEME_TOKEN_LINES = [
 ];
 
 export function designHtmlThemeSystemContext(input?: {
+  id?: string | null;
+  category?: string | null;
   title?: string | null;
   entry?: string | null;
   tokenPath?: string | null;
@@ -51,6 +56,8 @@ export function designHtmlThemeSystemContext(input?: {
   const tokenPath = input?.tokenPath?.trim() || "design-tokens.css";
   return [
     "Design HTML theme contract:",
+    input?.id ? `- Current design template id: ${input.id}.` : null,
+    input?.category ? `- Current design category: ${input.category}.` : null,
     input?.title ? `- Current design template: ${input.title}.` : null,
     input?.entry ? `- Primary editable HTML file: ${input.entry}.` : null,
     `- Shared token stylesheet: ${tokenPath}.`,

@@ -33,7 +33,6 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { listSystemFontFamilies } from "@/app/lib/desktop";
@@ -56,7 +55,9 @@ type DesignPropertiesInspectorProps = {
   onClose: () => void;
   onActiveTabChange: (tab: "element" | "design-system") => void;
   onApplyField: (field: DesignField, value: string, remember?: boolean) => void;
-  onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void;
+  onApplyFields: (fields: Partial<Record<DesignStyleField, string>>, remember?: boolean) => void;
+  onToggleLock: () => void;
+  onDelete: () => void;
   onChooseReplacementImage: () => void;
   onChooseBackgroundImage: () => void;
   children?: React.ReactNode;
@@ -81,6 +82,8 @@ function ElementPropertiesContent({
   onClose,
   onApplyField,
   onApplyFields,
+  onToggleLock,
+  onDelete,
   onChooseReplacementImage,
   onChooseBackgroundImage,
 }: Omit<DesignPropertiesInspectorProps, "selection" | "activeTab" | "onActiveTabChange" | "children"> & { selection: DesignSelection }) {
@@ -93,8 +96,31 @@ function ElementPropertiesContent({
   const fillField = selection.colorField;
   const backgroundValue = selection.styles[fillField];
   const [imageFillOpen, setImageFillOpen] = React.useState(false);
+  const [linkOpen, setLinkOpen] = React.useState(Boolean(selection.href));
+  const [linkDraft, setLinkDraft] = React.useState(selection.href);
+  const [aspectRatioLocked, setAspectRatioLocked] = React.useState(false);
   const fillType = imageFillOpen && selection.tag !== "img" ? "image" : fillTypeFor(selection);
   const isMixed = (field: DesignStyleField) => mixedStyleFields.includes(field);
+
+  React.useEffect(() => {
+    setLinkOpen(Boolean(selection.href));
+    setLinkDraft(selection.href);
+  }, [selection.id, selection.href]);
+
+  React.useEffect(() => setAspectRatioLocked(false), [selection.id]);
+
+  const width = numericValue(selection.styles.width, selection.rect.width);
+  const height = numericValue(selection.styles.height, selection.rect.height);
+  const aspectRatio = width > 0 && height > 0 ? width / height : 1;
+  const applySize = (field: "width" | "height", value: number, remember?: boolean) => {
+    if (!aspectRatioLocked) {
+      onApplyField(field, `${value}px`, remember);
+      return;
+    }
+    onApplyFields(field === "width"
+      ? { width: `${value}px`, height: `${value / aspectRatio}px` }
+      : { width: `${value * aspectRatio}px`, height: `${value}px` }, remember);
+  };
 
   const applyFillType = (type: FillType) => {
     if (type === "none") {
@@ -118,15 +144,53 @@ function ElementPropertiesContent({
 
   return <>
 
-      <div className="flex h-[52px] items-center border-b border-[#e8e9ec] px-4">
+      <div className={cn("flex h-[52px] items-center px-4", !linkOpen && "border-b border-[#e8e9ec]")}>
         <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{isMultiSelection ? `${selectionCount} elements · Batch selection` : selection.canEditText ? "Text layer" : `${selection.tag.charAt(0).toUpperCase()}${selection.tag.slice(1).toLowerCase()} layer`}</span>
         {!isMultiSelection ? <>
-          <InspectorIconButton label="Edit link" disabled={!selection.href}><Link2 /></InspectorIconButton>
-          <InspectorIconButton label="Lock layer" disabled><Lock /></InspectorIconButton>
-          <InspectorIconButton label="Delete layer" disabled><Trash2 /></InspectorIconButton>
+          <InspectorIconButton
+            label={selection.href ? "Edit link" : "Add link"}
+            active={linkOpen}
+            disabled={selection.locked}
+            onClick={() => {
+              setLinkDraft(selection.href);
+              setLinkOpen((open) => !open);
+            }}
+          ><Link2 /></InspectorIconButton>
+          <InspectorIconButton label={selection.locked ? "Unlock layer" : "Lock layer"} active={selection.locked} onClick={onToggleLock}><Lock /></InspectorIconButton>
+          <InspectorIconButton label="Delete layer" disabled={!selection.canDelete || selection.locked} onClick={onDelete}><Trash2 /></InspectorIconButton>
         </> : null}
       </div>
 
+      {linkOpen && !isMultiSelection ? (
+        <form
+          className="flex gap-2 border-b border-[#e8e9ec] px-4 pb-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const href = linkDraft.trim();
+            onApplyField("href", href, true);
+            setLinkOpen(Boolean(href));
+          }}
+        >
+          <Input
+            id="design-layer-link"
+            autoFocus
+            value={linkDraft}
+            placeholder="https://example.com or /page"
+            aria-label="Layer link"
+            className="h-9 min-w-0 flex-1 rounded-lg border-[#dedfe3] px-2.5 text-[12px] shadow-none"
+            onChange={(event) => setLinkDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setLinkDraft(selection.href);
+                setLinkOpen(false);
+              }
+            }}
+          />
+          <Button type="submit" size="sm" className="h-9 shrink-0 rounded-lg bg-black px-3 text-white hover:bg-black/85 active:bg-black">保存</Button>
+        </form>
+      ) : null}
+
+      <fieldset disabled={selection.locked} className={cn("contents", selection.locked && "pointer-events-none opacity-50")} aria-disabled={selection.locked}>
       {!isMultiSelection && selection.canEditText ? (
         <InspectorSection title="Text">
           <Input
@@ -195,7 +259,7 @@ function ElementPropertiesContent({
       {!isMultiSelection ? <InspectorSection title="Position">
         <FieldCaption>Alignment</FieldCaption>
         <div className="grid grid-cols-6 gap-1">
-          <PropertyButton active aria-label="Align left"><AlignLeft /></PropertyButton>
+          <PropertyButton aria-label="Align left"><AlignLeft /></PropertyButton>
           <PropertyButton aria-label="Align horizontal center"><AlignHorizontalJustifyCenter /></PropertyButton>
           <PropertyButton aria-label="Align right"><AlignRight /></PropertyButton>
           <PropertyButton aria-label="Align top"><AlignVerticalJustifyStart /></PropertyButton>
@@ -217,11 +281,11 @@ function ElementPropertiesContent({
 
       {!isMultiSelection ? <InspectorSection title="Size">
         <div className="grid grid-cols-[1fr_1fr_34px] gap-2">
-          <DragNumberField label="Width" value={selection.styles.width || `${Math.round(selection.rect.width)}px`} suffix="px" onChange={(value, remember) => onApplyField("width", `${value}px`, remember)} />
-          <DragNumberField label="Height" value={selection.styles.height || `${Math.round(selection.rect.height)}px`} suffix="px" onChange={(value, remember) => onApplyField("height", `${value}px`, remember)} />
-          <button type="button" className="grid h-9 w-[34px] place-items-center rounded-lg text-[#858a94] disabled:opacity-55" disabled aria-label="Lock aspect ratio">
-            <Lock className="size-4" />
-          </button>
+          <DragNumberField label="Width" value={selection.styles.width || `${Math.round(selection.rect.width)}px`} suffix="px" onChange={(value, remember) => applySize("width", value, remember)} />
+          <DragNumberField label="Height" value={selection.styles.height || `${Math.round(selection.rect.height)}px`} suffix="px" onChange={(value, remember) => applySize("height", value, remember)} />
+          <PropertyButton active={aspectRatioLocked} aria-label={aspectRatioLocked ? "Unlock aspect ratio" : "Lock aspect ratio"} onClick={() => setAspectRatioLocked((locked) => !locked)}>
+            <Lock />
+          </PropertyButton>
         </div>
       </InspectorSection> : null}
 
@@ -250,7 +314,7 @@ function ElementPropertiesContent({
         <ColorField mixed={isMultiSelection && isMixed("borderColor")} value={selection.styles.borderColor || "#000000"} onChange={(value, remember) => onApplyField("borderColor", value, remember)} />
       </InspectorSection>
 
-      <InspectorSection title="Appearance" last>
+      <InspectorSection title="Appearance">
         <div className="grid grid-cols-2 gap-2">
           <PropertyField mixed={isMultiSelection && isMixed("borderRadius")} label="Radius" value={selection.styles.borderRadius || "0px"} onChange={(value, remember) => onApplyField("borderRadius", value, remember)} />
           <PropertyField mixed={isMultiSelection && isMixed("opacity")} label="Opacity" value={String(opacity)} suffix="%" onChange={(value, remember) => onApplyField("opacity", String(Math.max(0, Math.min(100, numericValue(value, 100))) / 100), remember)} />
@@ -265,6 +329,18 @@ function ElementPropertiesContent({
           shadow={selection.styles.boxShadow}
           onChange={(value, remember) => onApplyField("boxShadow", shadowWithIntensity(selection.styles.boxShadow, value), remember)}
         />}
+      </InspectorSection>
+      </fieldset>
+
+      <InspectorSection title="HTML" last>
+        <textarea
+          readOnly
+          value={selection.html}
+          aria-label="Selected element HTML code"
+          spellCheck={false}
+          className="h-[220px] w-full resize-none overflow-auto rounded-[9px] border border-[#99b8f2] bg-white px-4 py-2 text-[14px] leading-5 text-[#24262b] outline-none selection:bg-[#dce8ff]"
+          placeholder="HTML Code..."
+        />
       </InspectorSection>
   </>;
 }
@@ -648,8 +724,15 @@ function BatchPropertyButton({ mixed, label, children }: { mixed: boolean; label
   );
 }
 
-function InspectorIconButton({ label, disabled = false, children }: { label: string; disabled?: boolean; children: React.ReactNode }) {
-  return <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={label} className="h-9 w-[34px] shrink-0 rounded-lg p-0 text-[#858a94] disabled:opacity-55 [&_svg]:!size-4">{children}</Button>;
+function inspectorIconButtonClass(active = false) {
+  return cn(
+    "grid h-9 w-[34px] shrink-0 place-items-center rounded-lg p-0 text-[#858a94] transition-colors hover:bg-[#f4f5f8] hover:text-[#202228] active:bg-black active:text-white disabled:pointer-events-none disabled:opacity-55 [&_svg]:!size-4",
+    active && "bg-black text-white hover:bg-black hover:text-white",
+  );
+}
+
+function InspectorIconButton({ label, active, disabled = false, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean }) {
+  return <button type="button" disabled={disabled} aria-label={label} aria-pressed={active} className={inspectorIconButtonClass(active)} {...props}>{children}</button>;
 }
 
 function numericValue(value: string, fallback: number) {

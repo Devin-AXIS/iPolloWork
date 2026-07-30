@@ -47,7 +47,7 @@ export function DesignExportMenu({
   const downloadLabel = t("design.export.download");
   const triggerDisabled = compact
     ? publishDisabled && !onPreviewDeviceChange && (!showExports || (exportingPdf && exportingPptx) || !exportReady)
-    : (exportingPdf && exportingPptx) || !exportReady;
+    : exportingPdf && exportingPptx;
   const disabledReason = exportDisabledReason || "Preview is still preparing.";
 
   return (

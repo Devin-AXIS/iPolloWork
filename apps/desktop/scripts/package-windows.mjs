@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +15,7 @@ const executablePath = path.join(unpackedDir, "iPollo.exe");
 const iconPath = path.join(desktopRoot, "resources/icons/windows/icon.ico");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const shouldBuildInstaller = process.env.IPOLLOWORK_WINDOWS_INSTALLER !== "0";
+const deleteRetryDelaysMs = [500, 1000, 2000, 4000];
 
 if (process.platform !== "win32") throw new Error("Windows packaging must run on Windows.");
 
@@ -27,7 +29,22 @@ function readJson(filePath) {
 }
 
 function writeJson(filePath, value) {
-  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+  return writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function snapshotPackageFiles() {
+  return Promise.all([
+    readFile(appPackagePath, "utf8"),
+    readFile(desktopPackagePath, "utf8"),
+  ]);
+}
+
+async function restorePackageFiles(snapshot) {
+  const [appPackage, desktopPackage] = snapshot;
+  await Promise.all([
+    writeFile(appPackagePath, appPackage, "utf8"),
+    writeFile(desktopPackagePath, desktopPackage, "utf8"),
+  ]);
 }
 
 function nextPatchVersion(version) {
@@ -63,29 +80,57 @@ function findRcedit() {
   return null;
 }
 
-const packageVersion = writeWindowsPackageVersion();
-console.log(`Windows package version: ${packageVersion}`);
-
-rmSync(outputDir, { recursive: true, force: true });
-run(process.execPath, [path.join(desktopRoot, "scripts/electron-build.mjs")]);
-
-const env = { ...process.env, ELECTRON_MIRROR: process.env.ELECTRON_MIRROR ?? "https://npmmirror.com/mirrors/electron/" };
-run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.windows.yml", "--win", "--x64", "--dir", "--publish", "never"], desktopRoot, env);
-
-const rcedit = findRcedit();
-if (!rcedit) throw new Error("rcedit-x64.exe is missing from the electron-builder cache.");
-execFileSync(rcedit, [executablePath, "--set-icon", iconPath], { stdio: "inherit" });
-
-if (!shouldBuildInstaller) {
-  console.log(`Windows unpacked app ready: ${executablePath}`);
-  console.log("Set IPOLLOWORK_WINDOWS_INSTALLER=0 to skip the NSIS installer.");
-  process.exit(0);
+async function removeDirectoryWithRetry(target) {
+  for (let attempt = 0; attempt <= deleteRetryDelaysMs.length; attempt += 1) {
+    try {
+      await rm(target, { recursive: true, force: true });
+      if (!existsSync(target)) return;
+    } catch (error) {
+      const code = error?.code;
+      const retriable = code === "EBUSY" || code === "EPERM" || code === "ENOTEMPTY" || code === "EACCES";
+      if (!retriable || attempt === deleteRetryDelaysMs.length) throw error;
+    }
+    const delay = deleteRetryDelaysMs[attempt] ?? deleteRetryDelaysMs[deleteRetryDelaysMs.length - 1];
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
 }
 
-run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.windows.yml", "--win", "--x64", "--prepackaged", unpackedDir, "--publish", "never"], desktopRoot, env);
+async function main() {
+  const snapshot = await snapshotPackageFiles();
+  const packageVersion = writeWindowsPackageVersion();
+  console.log(`Windows package version: ${packageVersion}`);
 
-const expectedInstaller = path.join(outputDir, `ipollowork-win-x64-${packageVersion}.exe`);
-if (!existsSync(expectedInstaller)) {
-  throw new Error(`Versioned Windows installer was not created: ${expectedInstaller}`);
+  try {
+    await removeDirectoryWithRetry(outputDir);
+    run(process.execPath, [path.join(desktopRoot, "scripts/electron-build.mjs")]);
+
+    const env = { ...process.env, ELECTRON_MIRROR: process.env.ELECTRON_MIRROR ?? "https://npmmirror.com/mirrors/electron/" };
+    run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.windows.yml", "--win", "--x64", "--dir", "--publish", "never"], desktopRoot, env);
+
+    const rcedit = findRcedit();
+    if (!rcedit) throw new Error("rcedit-x64.exe is missing from the electron-builder cache.");
+    execFileSync(rcedit, [executablePath, "--set-icon", iconPath], { stdio: "inherit" });
+
+    if (!shouldBuildInstaller) {
+      console.log(`Windows unpacked app ready: ${executablePath}`);
+      console.log("Set IPOLLOWORK_WINDOWS_INSTALLER=0 to skip the NSIS installer.");
+      return;
+    }
+
+    run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.windows.yml", "--win", "--x64", "--prepackaged", unpackedDir, "--publish", "never"], desktopRoot, env);
+
+    const expectedInstaller = path.join(outputDir, `ipollowork-win-x64-${packageVersion}.exe`);
+    if (!existsSync(expectedInstaller)) {
+      throw new Error(`Versioned Windows installer was not created: ${expectedInstaller}`);
+    }
+    console.log(`Windows package ready: ${expectedInstaller}`);
+  } catch (error) {
+    await restorePackageFiles(snapshot);
+    throw error;
+  }
 }
-console.log(`Windows package ready: ${expectedInstaller}`);
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

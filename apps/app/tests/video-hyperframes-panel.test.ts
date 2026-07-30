@@ -36,6 +36,37 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain("document.exitFullscreen()");
   });
 
+  test("keeps desktop panel titlebars draggable without swallowing control input", () => {
+    const videoPanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const artifactPanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/artifacts/artifact-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidebarSource = readFileSync(
+      new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
+      "utf8",
+    );
+    const appStyles = readFileSync(
+      new URL("../src/app/index.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(videoPanelSource).toContain("mac:titlebar-drag");
+    expect(sidePanelSource).toContain("px-2 mac:titlebar-drag");
+    expect(artifactPanelSource).toContain("ps-4 mac:titlebar-drag");
+    expect(sidebarSource).toContain('SidebarHeader className="gap-4 px-2 pb-6 pt-1 mac:titlebar-drag"');
+    expect(appStyles).toContain('[data-titlebar-no-drag]');
+    expect(appStyles).toContain("[role=\"tab\"]");
+    expect(appStyles).toContain("-webkit-app-region: no-drag;");
+  });
+
   test("keeps Video Studio shell copy localized", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
@@ -60,6 +91,30 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain("videoStudioExpanded");
     expect(sessionPageSource).toContain('left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0"');
     expect(sessionPageSource).toContain("onExpandedChange={setVideoStudioExpanded}");
+  });
+
+  test("restores expanded work surfaces before focusing an AI annotation", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    const restoreIndex = sessionPageSource.indexOf("if (rightPanelExpanded) setRightPanelExpanded(false)");
+    const focusIndex = sessionPageSource.indexOf('window.dispatchEvent(new Event("ipollowork:focusPrompt"))', restoreIndex);
+    expect(restoreIndex).toBeGreaterThan(-1);
+    expect(focusIndex).toBeGreaterThan(restoreIndex);
+    expect(sessionPageSource.slice(restoreIndex, focusIndex)).toContain("window.requestAnimationFrame");
+    expect(sessionPageSource).not.toContain('panel.resize("100%")');
+  });
+
+  test("renders confirmation dialogs above expanded work surfaces", () => {
+    const alertDialogSource = readFileSync(
+      new URL("../src/components/ui/alert-dialog.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(alertDialogSource).toContain("fixed inset-0 isolate z-[80]");
+    expect(alertDialogSource).toContain("top-1/2 left-1/2 z-[80]");
   });
 
   test("wires Video Studio selected-element toolbar actions in Design order", () => {
@@ -140,6 +195,16 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain('sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : ""');
   });
 
+  test("lets the latest right-panel action take priority in a narrow window", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("if (panel) {\n      userOpenedSidebarWhileNarrowRef.current = false;");
+    expect(sessionPageSource).toContain("userOpenedSidebarWhileNarrowRef.current = false;\n    userOpenedSidePanelWhileNarrowRef.current = true;");
+  });
+
   test("opens the native Studio on a hydrated first frame", () => {
     expect(hyperframesStudioUrl()).toBe("http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1");
   });
@@ -201,7 +266,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("seconds-based `data-start`");
     expect(contract).toContain('Do not use legacy `class="frame"` sections');
     expect(contract).toContain("root composition `data-duration` must be the real HyperFrames timeline duration");
-    expect(contract).toContain("assets/ipollowork-logo.svg?v=20260724");
+    expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
     expect(contract).toContain("current transparent-background SVG");
     expect(contract).toContain("top-left or bottom-right placement");
     expect(contract).toContain("local error fallback");
