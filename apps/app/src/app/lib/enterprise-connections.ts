@@ -347,6 +347,13 @@ export function saveEnterpriseConnection(connection: EnterpriseConnection) {
   dispatchConnectionsChanged();
 }
 
+export function removeEnterpriseConnection(connectionId: string) {
+  if (typeof window === "undefined") return;
+  const remaining = readEnterpriseConnections().filter((item) => item.id !== connectionId);
+  window.localStorage.setItem(ENTERPRISE_CONNECTIONS_KEY, JSON.stringify(remaining));
+  dispatchConnectionsChanged();
+}
+
 export async function leaveEnterpriseConnection(
   connection: EnterpriseConnection,
   fetcher: typeof fetch = fetch,
@@ -355,8 +362,5 @@ export async function leaveEnterpriseConnection(
     method: "DELETE",
     headers: { Authorization: `Bearer ${connection.session.token}` },
   }, enterpriseFetcher(fetcher));
-  if (typeof window === "undefined") return;
-  const remaining = readEnterpriseConnections().filter((item) => item.id !== connection.id);
-  window.localStorage.setItem(ENTERPRISE_CONNECTIONS_KEY, JSON.stringify(remaining));
-  dispatchConnectionsChanged();
+  removeEnterpriseConnection(connection.id);
 }

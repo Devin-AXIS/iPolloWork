@@ -7,6 +7,7 @@ import {
   listEnterpriseResources,
   normalizeEnterpriseOrigin,
   readEnterpriseConnections,
+  removeEnterpriseConnection,
   saveEnterpriseConnection,
   type EnterpriseConnection,
 } from "../src/app/lib/enterprise-connections";
@@ -217,6 +218,9 @@ describe("enterprise connections", () => {
       "ent_retail",
       "ent_medical",
     ]);
+
+    removeEnterpriseConnection("ent_retail");
+    expect(readEnterpriseConnections().map((connection) => connection.id)).toEqual(["ent_medical"]);
   });
 
   test("loads only valid resources from the active Enterprise catalog", async () => {
