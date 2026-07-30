@@ -72,13 +72,6 @@ function ThemePicker(props: ThemePickerProps) {
         <ThemePreview value="light" className="bg-white" />
         <ThemePickerLabel>{t("settings.theme_light")}</ThemePickerLabel>
       </ThemePickerItem>
-      <ThemePickerItem
-        value="dark"
-        label={t("settings.theme_dark")}
-      >
-        <ThemePreview value="dark" className="bg-zinc-950" />
-        <ThemePickerLabel>{t("settings.theme_dark")}</ThemePickerLabel>
-      </ThemePickerItem>
     </ToggleGroup>
   );
 }

@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
-import { AlertTriangle, Info, Lock, RotateCcw } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertTriangle, Info, Lock, RotateCcw, Trash2, Upload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -23,7 +24,22 @@ import {
 } from "../settings-layout";
 import { useShellConfig, DEFAULT_SHELL_CONFIG, type ShellConfig } from "../../../shell/shell-config";
 import { useUiStateStore } from "../../../shell/ui-state-store";
-import { useBrandAppName } from "../../cloud/brand-theme";
+import { useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
+
+const BRAND_LOGO_MAX_BYTES = 1024 * 1024;
+const BRAND_LOGO_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+function readBrandLogo(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("brand-logo-read-failed"));
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("brand-logo-read-failed"));
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 /* ------------------------------------------------------------------ */
 /*  Interactive wireframe preview                                      */
@@ -193,6 +209,10 @@ function ToggleRow(props: ToggleRowProps) {
 export function ShellCustomizationView() {
   const { config, update, reset } = useShellConfig();
   const brandAppName = useBrandAppName();
+  const managedBrandLogoUrl = useBrandLogoUrl();
+  const effectiveBrandLogoUrl = managedBrandLogoUrl ?? config.brandLogoDataUrl;
+  const brandLogoInputRef = useRef<HTMLInputElement>(null);
+  const [brandLogoError, setBrandLogoError] = useState<string | null>(null);
   const applicationMenuVisible = useUiStateStore((state) => state.applicationMenuVisible);
   const setApplicationMenuVisible = useUiStateStore((state) => state.setApplicationMenuVisible);
 
@@ -244,6 +264,97 @@ export function ShellCustomizationView() {
               {brandAppName === "iPolloWork" ? t("settings.shell.application_name_unset") : t("settings.shell.application_name_managed")}
             </AlertDescription>
           </Alert>
+        </LayoutSectionItem>
+
+        <LayoutSectionItem>
+          <LayoutSectionItemHeader>
+            <LayoutSectionItemTitle>{t("settings.shell.organization_logo_title")}</LayoutSectionItemTitle>
+            <LayoutSectionItemDescription>
+              {t("settings.shell.organization_logo_description")}
+            </LayoutSectionItemDescription>
+            <LayoutSectionItemHeaderActions>
+              <div className="flex items-center gap-2">
+                {effectiveBrandLogoUrl ? (
+                  <img
+                    src={effectiveBrandLogoUrl}
+                    alt={t("settings.shell.organization_logo_preview_alt")}
+                    className="size-12 shrink-0 rounded-full border border-dls-border object-cover"
+                    data-testid="brand-logo-upload-preview"
+                  />
+                ) : (
+                  <span
+                    className="flex size-12 shrink-0 items-center justify-center rounded-full border border-dls-border bg-dls-hover text-sm font-medium text-dls-secondary"
+                    aria-hidden="true"
+                  >
+                    {brandAppName.trim().charAt(0).toUpperCase() || "I"}
+                  </span>
+                )}
+                <input
+                  ref={brandLogoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  aria-label={t("settings.shell.organization_logo_upload")}
+                  onChange={(event) => {
+                    const input = event.currentTarget;
+                    const file = input.files?.[0];
+                    input.value = "";
+                    if (!file) return;
+                    if (!BRAND_LOGO_MIME_TYPES.has(file.type)) {
+                      setBrandLogoError(t("settings.shell.organization_logo_type_error"));
+                      return;
+                    }
+                    if (file.size > BRAND_LOGO_MAX_BYTES) {
+                      setBrandLogoError(t("settings.shell.organization_logo_size_error"));
+                      return;
+                    }
+                    setBrandLogoError(null);
+                    void readBrandLogo(file)
+                      .then((brandLogoDataUrl) => update({ brandLogoDataUrl }))
+                      .catch(() => setBrandLogoError(t("settings.shell.organization_logo_read_error")));
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={Boolean(managedBrandLogoUrl)}
+                  onClick={() => brandLogoInputRef.current?.click()}
+                >
+                  <Upload className="size-3.5" />
+                  {config.brandLogoDataUrl
+                    ? t("settings.shell.organization_logo_replace")
+                    : t("settings.shell.organization_logo_upload")}
+                </Button>
+                {config.brandLogoDataUrl && !managedBrandLogoUrl ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setBrandLogoError(null);
+                      update({ brandLogoDataUrl: null });
+                    }}
+                  >
+                    <Trash2 className="size-3.5" />
+                    {t("settings.shell.organization_logo_remove")}
+                  </Button>
+                ) : null}
+              </div>
+            </LayoutSectionItemHeaderActions>
+          </LayoutSectionItemHeader>
+          {managedBrandLogoUrl ? (
+            <Alert>
+              <Info />
+              <AlertDescription>{t("settings.shell.organization_logo_managed")}</AlertDescription>
+            </Alert>
+          ) : null}
+          {brandLogoError ? (
+            <Alert variant="destructive">
+              <AlertTriangle />
+              <AlertDescription>{brandLogoError}</AlertDescription>
+            </Alert>
+          ) : null}
         </LayoutSectionItem>
       </LayoutSection>
 

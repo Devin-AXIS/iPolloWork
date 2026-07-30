@@ -643,6 +643,7 @@ export function SidePanel({
                 </Tooltip>
                 <DropdownMenuContent
                   align="end"
+                  positionerClassName={expanded ? "z-[70]" : undefined}
                   className="w-[296px] rounded-[18px] border border-[#E5E5E5] bg-white p-3 text-[#242424] shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
                 >
                   {launcherItems.map((item) => {
@@ -708,6 +709,7 @@ export function SidePanel({
               workspaceId={workspaceId}
               isRemoteWorkspace={isRemoteWorkspace}
               initialPath={activeTab.path}
+              expanded={expanded}
               onAskAi={onAskAi ?? (() => undefined)}
             />
           </DesignPanelErrorBoundary>
