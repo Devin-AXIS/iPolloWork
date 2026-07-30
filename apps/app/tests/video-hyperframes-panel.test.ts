@@ -174,6 +174,18 @@ describe("HyperFrames Video Studio", () => {
     expect(electronDevSource).toContain('runSync(bunCmd, ["run", "build:local-studio"]');
   });
 
+  test("opens the session project even when Electron inherits another working directory", () => {
+    const electronSource = readFileSync(
+      new URL("../../../apps/desktop/electron/main.mjs", import.meta.url),
+      "utf8",
+    );
+
+    expect(electronSource).toContain(
+      'spawnLocalHyperframes(["preview", projectPath, "--port", String(port), "--no-open"], projectPath)',
+    );
+    expect(electronSource).toContain("runningProjectName === expectedProjectName");
+  });
+
   test("prevents automatic browser activity from replacing Video Studio", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
