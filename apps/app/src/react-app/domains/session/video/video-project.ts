@@ -43,6 +43,10 @@ export function videoProjectDirectory(sessionId: string) {
   return `video/${videoProjectId(sessionId)}`;
 }
 
+export function videoProjectEntryPath(sessionId: string) {
+  return `${videoProjectDirectory(sessionId)}/index.html`;
+}
+
 /**
  * Template metadata is authoritative when it exists. Older sessions created
  * before template-session persistence still have their surface in the

@@ -78,6 +78,17 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("never replace it with a generic hero");
   });
 
+  test("keeps generated presentation files inside the current slide session", () => {
+    const instruction = designHtmlThemeSystemContext({
+      category: "slides",
+      entry: "design/ses_slides/index.html",
+    });
+
+    expect(instruction).toContain("Presentation output contract:");
+    expect(instruction).toContain("inside `design/ses_slides`");
+    expect(instruction).toContain("Do not return code without saving it");
+  });
+
   test("stores an immutable Design selection context", () => {
     const store = useDesignAiSelectionStore.getState();
     const mutableContext = {

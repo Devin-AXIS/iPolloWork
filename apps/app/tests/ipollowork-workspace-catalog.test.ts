@@ -41,11 +41,13 @@ describe("iPolloWork workspace file catalog", () => {
     Object.defineProperty(globalThis, "fetch", { configurable: true, value: fetchMock });
 
     const client = createiPolloWorkServerClient({ baseUrl: "https://ipollowork.test", token: "token" });
-    const items = await client.listWorkspaceFiles("ws_1");
+    const items = await client.listWorkspaceFiles("ws_1", "video/ses_1");
 
     expect(items.map((item) => item.path)).toEqual(["pages/index.html", "readme.md"]);
     expect(calls[0]).toMatchObject({ method: "POST", body: JSON.stringify({ write: false }) });
-    expect(calls.filter((call) => call.url.includes("catalog/snapshot"))).toHaveLength(2);
+    const catalogCalls = calls.filter((call) => call.url.includes("catalog/snapshot"));
+    expect(catalogCalls).toHaveLength(2);
+    expect(catalogCalls.every((call) => call.url.includes("prefix=video%2Fses_1"))).toBe(true);
     expect(calls.at(-1)?.method).toBe("DELETE");
   });
 });

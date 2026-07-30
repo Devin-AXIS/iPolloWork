@@ -20,12 +20,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
+  type ArtifactInteractionContext,
   type ArtifactItem,
-  canOpenArtifact,
+  artifactPathMatchesTarget,
+  canOpenArtifactInContext,
   canPreviewArtifact,
   groupConversationOutputArtifacts,
   isConversationOutputArtifact,
-  isVideoHtmlArtifact,
   selectTemplateEntryArtifacts,
   useArtifacts,
   usePreviewArtifact,
@@ -34,6 +35,7 @@ import {
 interface ArtifactButtonProps {
   artifact: ArtifactItem
   sessionId?: string
+  artifactContext?: ArtifactInteractionContext
   onOpenVideoStudio?: () => void
   compact?: boolean
 }
@@ -46,14 +48,15 @@ function compactArtifactTitle(name: string) {
     : name;
 }
 
-function ArtifactButton({ artifact, sessionId, onOpenVideoStudio, compact = false }: ArtifactButtonProps) {
+function ArtifactButton({ artifact, sessionId, artifactContext, onOpenVideoStudio, compact = false }: ArtifactButtonProps) {
   const previewArtifact = usePreviewArtifact();
   const setDraft = useComposerStateStore((state) => state.setDraft);
-  const isVideoHtml = isVideoHtmlArtifact(artifact);
-  const canOpen = canOpenArtifact(artifact);
+  const canOpen = canOpenArtifactInContext(artifact, artifactContext);
   const canPreview = canPreviewArtifact(artifact);
-  const canOpenVideoStudio = isVideoHtml && Boolean(onOpenVideoStudio);
-  const canActivate = canOpen || canOpenVideoStudio;
+  const isVideoEntry = artifactContext?.kind === "video"
+    && artifactPathMatchesTarget(artifact.path, artifactContext.entryPath);
+  const canOpenVideoStudio = isVideoEntry && Boolean(onOpenVideoStudio);
+  const canActivate = artifactContext?.kind === "video" ? canOpenVideoStudio : canOpen;
   const title = compactArtifactTitle(artifact.name);
 
   const content = (
@@ -123,22 +126,23 @@ function ArtifactButton({ artifact, sessionId, onOpenVideoStudio, compact = fals
 interface OutputGroupRowProps {
   group: ReturnType<typeof groupConversationOutputArtifacts>[number]
   sessionId?: string
+  artifactContext?: ArtifactInteractionContext
   onOpenVideoStudio?: () => void
 }
 
-function OutputGroupRow({ group, sessionId, onOpenVideoStudio }: OutputGroupRowProps) {
+function OutputGroupRow({ group, sessionId, artifactContext, onOpenVideoStudio }: OutputGroupRowProps) {
   const [expanded, setExpanded] = useState(false);
   const childArtifacts = group.artifacts.filter((artifact) => artifact.id !== group.primary.id);
 
   if (!group.bundled || childArtifacts.length === 0) {
-    return <ArtifactButton artifact={group.primary} sessionId={sessionId} onOpenVideoStudio={onOpenVideoStudio} compact />;
+    return <ArtifactButton artifact={group.primary} sessionId={sessionId} artifactContext={artifactContext} onOpenVideoStudio={onOpenVideoStudio} compact />;
   }
 
   return (
     <div className="rounded-2xl border border-transparent transition-colors hover:border-border/60">
       <div className="flex min-w-0 items-center gap-1">
         <div className="min-w-0 flex-1">
-          <ArtifactButton artifact={group.primary} sessionId={sessionId} onOpenVideoStudio={onOpenVideoStudio} compact />
+          <ArtifactButton artifact={group.primary} sessionId={sessionId} artifactContext={artifactContext} onOpenVideoStudio={onOpenVideoStudio} compact />
         </div>
         <Button
           variant="ghost"
@@ -157,7 +161,7 @@ function OutputGroupRow({ group, sessionId, onOpenVideoStudio }: OutputGroupRowP
       {expanded ? (
         <div className="mb-2 ml-6 mr-2 border-l border-border/60 pl-2">
           {childArtifacts.map((artifact) => (
-            <ArtifactButton key={artifact.id} artifact={artifact} sessionId={sessionId} onOpenVideoStudio={onOpenVideoStudio} compact />
+            <ArtifactButton key={artifact.id} artifact={artifact} sessionId={sessionId} artifactContext={artifactContext} onOpenVideoStudio={onOpenVideoStudio} compact />
           ))}
         </div>
       ) : null}
@@ -170,15 +174,20 @@ interface ArtifactListProps {
   sessionId?: string
   title?: string
   includeTargetFallbacks?: boolean
+  entryPath?: string
   supplementalFiles?: readonly string[]
+  artifactContext?: ArtifactInteractionContext
   onOpenVideoStudio?: () => void
 }
 
-export function ArtifactList({ messages, sessionId, title, includeTargetFallbacks = false, supplementalFiles, onOpenVideoStudio }: ArtifactListProps) {
+export function ArtifactList({ messages, sessionId, title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks, supplementalFiles });
-  const displayedArtifacts = supplementalFiles?.[0]
-    ? selectTemplateEntryArtifacts(artifacts, supplementalFiles[0])
+  const visibleArtifacts = artifactContext
+    ? artifacts.filter(isConversationOutputArtifact)
     : artifacts;
+  const displayedArtifacts = entryPath
+    ? selectTemplateEntryArtifacts(visibleArtifacts, entryPath)
+    : visibleArtifacts;
 
   if (displayedArtifacts.length === 0) {
     return null;
@@ -189,7 +198,7 @@ export function ArtifactList({ messages, sessionId, title, includeTargetFallback
       {title ? <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</div> : null}
       <div className="no-scrollbar flex min-w-0 flex-nowrap gap-2 overflow-x-auto pb-1">
         {displayedArtifacts.map((artifact) => (
-          <ArtifactButton key={artifact.id} artifact={artifact} sessionId={sessionId} onOpenVideoStudio={onOpenVideoStudio} />
+          <ArtifactButton key={artifact.id} artifact={artifact} sessionId={sessionId} artifactContext={artifactContext} onOpenVideoStudio={onOpenVideoStudio} />
         ))}
       </div>
     </div>
@@ -201,14 +210,16 @@ interface ConversationOutputPanelProps {
   sessionId?: string
   openTargets?: OpenTarget[]
   templateEntryPath?: string
+  supplementalFiles?: readonly string[]
+  artifactContext?: ArtifactInteractionContext
   onOpenTarget?: (target: OpenTarget, options?: OpenTargetOptions) => void
   onOpenVideoStudio?: () => void
 }
 
-function ConversationOutputPanelContent({ messages, sessionId, templateEntryPath, onOpenVideoStudio }: Omit<ConversationOutputPanelProps, "openTargets" | "onOpenTarget">) {
+function ConversationOutputPanelContent({ messages, sessionId, templateEntryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: Omit<ConversationOutputPanelProps, "openTargets" | "onOpenTarget">) {
   const discoveredArtifacts = useArtifacts(messages, {
     includeTargetFallbacks: false,
-    supplementalFiles: templateEntryPath ? [templateEntryPath] : undefined,
+    supplementalFiles: supplementalFiles ?? (templateEntryPath ? [templateEntryPath] : undefined),
   });
   const artifacts = templateEntryPath
     ? selectTemplateEntryArtifacts(discoveredArtifacts, templateEntryPath)
@@ -227,7 +238,7 @@ function ConversationOutputPanelContent({ messages, sessionId, templateEntryPath
       {outputs.length ? (
         <div className="mt-2 flex flex-col gap-0.5">
           {outputGroups.map((group) => (
-            <OutputGroupRow key={group.id} group={group} sessionId={sessionId} onOpenVideoStudio={onOpenVideoStudio} />
+            <OutputGroupRow key={group.id} group={group} sessionId={sessionId} artifactContext={artifactContext} onOpenVideoStudio={onOpenVideoStudio} />
           ))}
         </div>
       ) : (
@@ -256,12 +267,12 @@ export function ConversationOutputTrigger({ active, disabled, onClick }: { activ
 }
 
 /** Right-side conversation output surface. It looks like a floating card but never covers chat content. */
-export function ConversationOutputPanel({ messages, sessionId, openTargets = [], templateEntryPath, onOpenTarget, onOpenVideoStudio }: ConversationOutputPanelProps) {
+export function ConversationOutputPanel({ messages, sessionId, openTargets = [], templateEntryPath, supplementalFiles, artifactContext, onOpenTarget, onOpenVideoStudio }: ConversationOutputPanelProps) {
   return (
     <OpenTargetProvider openTargets={openTargets} onOpenTarget={onOpenTarget}>
       <div className="h-full min-h-0 bg-background p-3">
         <div className="h-full min-h-0 overflow-hidden rounded-3xl border border-border/80 bg-card shadow-sm">
-          <ConversationOutputPanelContent messages={messages} sessionId={sessionId} templateEntryPath={templateEntryPath} onOpenVideoStudio={onOpenVideoStudio} />
+          <ConversationOutputPanelContent messages={messages} sessionId={sessionId} templateEntryPath={templateEntryPath} supplementalFiles={supplementalFiles} artifactContext={artifactContext} onOpenVideoStudio={onOpenVideoStudio} />
         </div>
       </div>
     </OpenTargetProvider>

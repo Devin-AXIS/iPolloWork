@@ -29,6 +29,10 @@ export type ConversationOutputGroup = {
   bundled: boolean
 }
 
+export type ArtifactInteractionContext =
+  | { kind: "video"; entryPath: string }
+  | { kind: "presentation"; entryPath: string }
+
 type ArtifactEntry = ArtifactItem & {
   sequence: number
 }
@@ -150,8 +154,25 @@ export function canOpenArtifact(artifact: ArtifactItem) {
   return canPreviewArtifact(artifact) || isOpenableFileTarget(artifact.legacy_target);
 }
 
+export function canOpenArtifactInContext(
+  artifact: ArtifactItem,
+  context?: ArtifactInteractionContext,
+) {
+  if (!context) return canOpenArtifact(artifact);
+  if (artifactPathMatchesTarget(artifact.path, context.entryPath)) return true;
+  if (context.kind !== "presentation" || artifact.type !== "slides") return false;
+
+  const directory = artifactDirectoryPath(context.entryPath);
+  return artifactPathIsWithinDirectory(artifact.path, directory);
+}
+
 /** A template-backed chat turn exposes one Design entry, never its implementation assets. */
 export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
+  const exactEntry = artifacts.find((artifact) => (
+    artifact.type === "html" && artifactPathMatchesTarget(artifact.path, templateEntryPath)
+  ));
+  if (exactEntry) return [exactEntry];
+
   const entryName = getArtifactName(normalizeArtifactPath(templateEntryPath)).toLowerCase();
   const candidates = artifacts.filter((artifact) => (
     artifact.type === "html" && artifact.name.toLowerCase() === entryName
@@ -291,6 +312,19 @@ function normalizeArtifactPath(path: string) {
     .replace(WORKSPACE_ID_PREFIX_PATTERN, "");
 }
 
+export function artifactDirectoryPath(path: string) {
+  const normalized = normalizeArtifactPath(path);
+  const separatorIndex = normalized.lastIndexOf("/");
+  return separatorIndex > 0 ? normalized.slice(0, separatorIndex) : "";
+}
+
+export function artifactPathIsWithinDirectory(path: string, directory: string) {
+  if (!directory) return false;
+  const normalizedPath = normalizeArtifactPath(path).toLowerCase();
+  const normalizedDirectory = normalizeArtifactPath(directory).toLowerCase();
+  return normalizedPath.startsWith(`${normalizedDirectory}/`);
+}
+
 function artifactTypeToPreview(type: ArtifactType): OpenTargetPreview {
   if (type === "markdown") return "markdown";
   if (type === "sheet") return "sheet";
@@ -303,7 +337,7 @@ function artifactTypeToPreview(type: ArtifactType): OpenTargetPreview {
   return "external";
 }
 
-function artifactPathMatchesTarget(path: string, targetValue: string) {
+export function artifactPathMatchesTarget(path: string, targetValue: string) {
   const normalized = normalizeArtifactPath(path).toLowerCase();
   const target = normalizeArtifactPath(targetValue).toLowerCase();
   return normalized === target || normalized.endsWith(`/${target}`);

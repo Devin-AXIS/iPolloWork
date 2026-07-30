@@ -79,6 +79,7 @@ import {
   useComposerStateStore,
 } from "./composer-state-store";
 import { MessageList } from "@/components/chat/message-list";
+import type { ArtifactInteractionContext } from "@/lib/artifacts";
 import { NewConversationStarter, newConversationPlaceholder, type NewConversationMode, type StarterCapability } from "@/components/chat/new-conversation-starter";
 import { MessageListProvider, type DispatchAction } from "@/components/chat/message-list-provider";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
@@ -232,6 +233,9 @@ export type SessionSurfaceProps = {
   onOpenTarget?: (target: OpenTarget, options?: OpenTargetOptions, sessionId?: string) => void;
   onConversationMessagesChange?: (sessionId: string, messages: UIMessage[]) => void;
   templateEntryPath?: string;
+  artifactFiles?: readonly string[];
+  artifactContext?: ArtifactInteractionContext;
+  onOpenVideoStudio?: () => void;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
 };
@@ -755,8 +759,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
     props.onConversationMessagesChange?.(props.sessionId, renderedMessages);
   }, [props.onConversationMessagesChange, props.sessionId, renderedMessages]);
   const openTargets = useMemo(
-    () => deriveOpenTargets(renderedMessages, { supplementalFiles: props.templateEntryPath ? [props.templateEntryPath] : undefined }),
-    [props.templateEntryPath, renderedMessages],
+    () => deriveOpenTargets(renderedMessages, {
+      supplementalFiles: props.artifactFiles ?? (props.templateEntryPath ? [props.templateEntryPath] : undefined),
+    }),
+    [props.artifactFiles, props.templateEntryPath, renderedMessages],
   );
   const openTargetsFingerprint = useMemo(
     () => openTargets.map((target) => `${target.kind}:${target.value}:${target.confidence}`).join("|"),
@@ -1743,6 +1749,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         status={status}
                         retryStatus={liveStatus.type === "retry" ? liveStatus : null}
                         templateEntryPath={props.templateEntryPath}
+                        artifactFiles={props.artifactFiles}
+                        artifactContext={props.artifactContext}
+                        onOpenVideoStudio={props.onOpenVideoStudio}
                       />
                     </MessageListProvider>
                   </EnvironmentVariableProvider>
