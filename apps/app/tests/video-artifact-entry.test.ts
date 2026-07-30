@@ -6,6 +6,7 @@ import {
   artifactDirectoryPath,
   artifactPathMatchesTarget,
   canOpenArtifactInContext,
+  selectArtifactContextOutputs,
   selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
 import {
@@ -83,7 +84,7 @@ describe("video artifact entry routing", () => {
     )).toEqual([currentEntry]);
   });
 
-  test("keeps non-entry outputs visible but non-activatable in a video context", () => {
+  test("shows only the current entry in a video context", () => {
     const entryPath = videoProjectEntryPath("ses_video");
     const context: ArtifactInteractionContext = { kind: "video", entryPath };
     const currentEntry = htmlArtifact(entryPath);
@@ -101,16 +102,30 @@ describe("video artifact entry routing", () => {
     expect(canOpenArtifactInContext(unrelatedHtml, context)).toBe(false);
     expect(canOpenArtifactInContext(stylesheet, context)).toBe(false);
     expect(canOpenArtifactInContext(stylesheet)).toBe(true);
+    expect(selectArtifactContextOutputs(
+      [currentEntry, unrelatedHtml, stylesheet],
+      context,
+    )).toEqual([currentEntry]);
+    expect(selectArtifactContextOutputs(
+      [currentEntry, unrelatedHtml, stylesheet],
+    )).toEqual([currentEntry, unrelatedHtml, stylesheet]);
   });
 
-  test("opens only the presentation entry and slide files from its session directory", () => {
+  test("shows only the presentation entry and slide files from its session directory", () => {
     const entryPath = "design/ses_slides/index.html";
     const context: ArtifactInteractionContext = { kind: "presentation", entryPath };
+    const entry = htmlArtifact(entryPath);
+    const slides = slidesArtifact("design/ses_slides/final.pptx");
+    const supportFile = htmlArtifact("design/ses_slides/preview.html");
 
     expect(artifactDirectoryPath(entryPath)).toBe("design/ses_slides");
-    expect(canOpenArtifactInContext(htmlArtifact(entryPath), context)).toBe(true);
-    expect(canOpenArtifactInContext(slidesArtifact("design/ses_slides/final.pptx"), context)).toBe(true);
+    expect(canOpenArtifactInContext(entry, context)).toBe(true);
+    expect(canOpenArtifactInContext(slides, context)).toBe(true);
     expect(canOpenArtifactInContext(slidesArtifact("design/another/final.pptx"), context)).toBe(false);
-    expect(canOpenArtifactInContext(htmlArtifact("design/ses_slides/preview.html"), context)).toBe(false);
+    expect(canOpenArtifactInContext(supportFile, context)).toBe(false);
+    expect(selectArtifactContextOutputs(
+      [entry, slides, supportFile],
+      context,
+    )).toEqual([entry, slides]);
   });
 });

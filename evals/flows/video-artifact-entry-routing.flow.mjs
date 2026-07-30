@@ -8,16 +8,12 @@ const ARTIFACT_STATE = `(() => {
   const activeEntries = fileTitles.filter((node) => (
     node.getAttribute("title") === "index.html" && Boolean(node.closest("button"))
   ));
-  const inactiveStylesheets = fileTitles.filter((node) => (
-    node.getAttribute("title")?.endsWith(".css") && !node.closest("button")
-  ));
-  const inactiveHtml = fileTitles.filter((node) => (
-    node.getAttribute("title")?.endsWith(".html") && !node.closest("button")
+  const supportingFiles = fileTitles.filter((node) => (
+    node.getAttribute("title") !== "index.html"
   ));
   return {
     activeEntries: activeEntries.length,
-    inactiveStylesheets: inactiveStylesheets.length,
-    inactiveHtml: inactiveHtml.length,
+    supportingFiles: supportingFiles.length,
     videoFrames: document.querySelectorAll('iframe[title="HyperFrames Video Studio"]').length,
     panelTabs: document.querySelectorAll('button[aria-label^="Select tab"]').length,
   };
@@ -45,11 +41,10 @@ export default {
             await ctx.waitFor(`(() => {
               const state = ${ARTIFACT_STATE};
               return state.activeEntries > 0 &&
-                state.inactiveStylesheets > 0 &&
-                state.inactiveHtml > 0;
+                state.supportingFiles === 0;
             })()`, {
               timeoutMs: 60_000,
-              label: "video entry and inactive companion outputs",
+              label: "one visible video entry without supporting-file cards",
             });
             await ctx.eval(`(() => {
               const entry = [...document.querySelectorAll('[title="index.html"]')]
@@ -60,41 +55,32 @@ export default {
           assert: async () => {
             const state = await ctx.eval(ARTIFACT_STATE);
             ctx.assert(state.activeEntries > 0, "Expected the current video index.html to be activatable.");
-            ctx.assert(state.inactiveStylesheets > 0, "Expected generated CSS output to remain non-activatable.");
-            ctx.assert(state.inactiveHtml > 0, "Expected unrelated HTML output to remain non-activatable.");
+            ctx.assert(state.supportingFiles === 0, "Expected supporting files to be omitted from generated-file cards.");
           },
-          screenshot: { name: "video-entry-only-active", requireText: ["index.html", "design-tokens.css"] },
+          screenshot: { name: "video-entry-only-active", requireText: ["index.html"] },
         });
       },
     },
     {
-      name: "Non-entry files cannot change the right-side editor",
+      name: "Supporting files stay hidden from the conversation",
       run: async (ctx) => {
-        await ctx.prove("CSS and unrelated HTML clicks leave the editor unchanged", {
+        await ctx.prove("Implementation assets do not create misleading output cards", {
           voiceover: vo[1],
           action: async () => {
             const before = await ctx.eval(ARTIFACT_STATE);
-            await ctx.eval(`(() => {
-              const css = [...document.querySelectorAll("[title]")]
-                .find((node) => node.getAttribute("title")?.endsWith(".css") && !node.closest("button"));
-              const html = [...document.querySelectorAll('[title="index.html"]')]
-                .find((node) => !node.closest("button"));
-              css?.scrollIntoView({ block: "center", inline: "nearest" });
-              css?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-              html?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            })()`);
             await new Promise((resolve) => setTimeout(resolve, 350));
             const after = await ctx.eval(ARTIFACT_STATE);
             ctx.assert(
               after.videoFrames === before.videoFrames && after.panelTabs === before.panelTabs,
-              `Inactive output changed the right panel: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+              `Hidden support files changed the right panel: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
             );
           },
           assert: async () => {
             const state = await ctx.eval(ARTIFACT_STATE);
-            ctx.assert(state.inactiveStylesheets > 0 && state.inactiveHtml > 0, "Inactive output cards disappeared unexpectedly.");
+            ctx.assert(state.activeEntries > 0, "Expected the current video index.html output.");
+            ctx.assert(state.supportingFiles === 0, "Supporting output cards are still visible.");
           },
-          screenshot: { name: "inactive-files-do-not-open", requireText: ["design-tokens.css"] },
+          screenshot: { name: "supporting-files-hidden", requireText: ["index.html"] },
         });
       },
     },

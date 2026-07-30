@@ -166,6 +166,18 @@ export function canOpenArtifactInContext(
   return artifactPathIsWithinDirectory(artifact.path, directory);
 }
 
+/** Focused video and presentation turns show only their user-openable deliverables. */
+export function selectArtifactContextOutputs(
+  artifacts: ArtifactItem[],
+  context?: ArtifactInteractionContext,
+) {
+  if (!context) return artifacts;
+  return artifacts.filter((artifact) => (
+    isConversationOutputArtifact(artifact)
+    && canOpenArtifactInContext(artifact, context)
+  ));
+}
+
 /** A template-backed chat turn exposes one Design entry, never its implementation assets. */
 export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
   const exactEntry = artifacts.find((artifact) => (

@@ -27,6 +27,7 @@ import {
   canPreviewArtifact,
   groupConversationOutputArtifacts,
   isConversationOutputArtifact,
+  selectArtifactContextOutputs,
   selectTemplateEntryArtifacts,
   useArtifacts,
   usePreviewArtifact,
@@ -182,9 +183,7 @@ interface ArtifactListProps {
 
 export function ArtifactList({ messages, sessionId, title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks, supplementalFiles });
-  const visibleArtifacts = artifactContext
-    ? artifacts.filter(isConversationOutputArtifact)
-    : artifacts;
+  const visibleArtifacts = selectArtifactContextOutputs(artifacts, artifactContext);
   const displayedArtifacts = entryPath
     ? selectTemplateEntryArtifacts(visibleArtifacts, entryPath)
     : visibleArtifacts;
@@ -224,7 +223,10 @@ function ConversationOutputPanelContent({ messages, sessionId, templateEntryPath
   const artifacts = templateEntryPath
     ? selectTemplateEntryArtifacts(discoveredArtifacts, templateEntryPath)
     : discoveredArtifacts;
-  const outputs = artifacts.filter(isConversationOutputArtifact);
+  const outputs = selectArtifactContextOutputs(
+    artifacts.filter(isConversationOutputArtifact),
+    artifactContext,
+  );
   const outputGroups = groupConversationOutputArtifacts(outputs);
 
   return (

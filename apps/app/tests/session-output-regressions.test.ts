@@ -39,7 +39,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain('title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}');
   });
 
-  test("video and presentation sessions recover scoped files with guarded activation", () => {
+  test("video and presentation sessions show only scoped openable outputs", () => {
     const artifactSource = readFileSync(
       new URL("../src/components/chat/artifact.tsx", import.meta.url),
       "utf8",
@@ -54,8 +54,9 @@ describe("session output issue regressions", () => {
     );
 
     expect(artifactSource).toContain("canOpenArtifactInContext(artifact, artifactContext)");
+    expect(artifactSource).toContain("selectArtifactContextOutputs(artifacts, artifactContext)");
     expect(messageListSource).toContain("artifactFiles={artifactFiles}");
-    expect(sessionPageSource).toContain(".listWorkspaceFiles(props.runtimeWorkspaceId, artifactDirectory)");
+    expect(sessionPageSource).toContain(".listWorkspaceFiles(workspaceId, artifactDirectory)");
     expect(sessionPageSource).toContain('selectedTemplate?.category === "slides"');
     expect(sessionPageSource).toContain('target.preview === "html"');
     expect(sessionPageSource).toContain("artifactPathMatchesTarget(target.value, currentVideoEntryPath)");
