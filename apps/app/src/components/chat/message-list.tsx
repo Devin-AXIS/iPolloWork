@@ -411,7 +411,6 @@ type AssistantMessageProps = {
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
-  onOpenVideoStudio?: () => void
 }
 
 function assistantProcessSummary(groups: AssistantProcessRenderGroup[]) {
@@ -504,8 +503,8 @@ function AssistantProcessSection(props: {
 }
 
 const AssistantMessage = React.memo(
-  ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, templateEntryPath, artifactFiles, artifactContext, onOpenVideoStudio }: AssistantMessageProps) => {
-    const { showThinking, highlightQuery, sessionId } = useMessageList()
+  ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, templateEntryPath, artifactFiles, artifactContext }: AssistantMessageProps) => {
+    const { showThinking, highlightQuery, sessionId, onOpenVideoStudio } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
       [message.parts, showThinking]
@@ -748,11 +747,10 @@ type MessageComponentProps = {
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
-  onOpenVideoStudio?: () => void
 }
 
 const MessageComponent = React.memo(
-  ({ message, artifactMessages, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, templateEntryPath, artifactFiles, artifactContext, onOpenVideoStudio }: MessageComponentProps) => {
+  ({ message, artifactMessages, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, templateEntryPath, artifactFiles, artifactContext }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
     }
@@ -779,7 +777,6 @@ const MessageComponent = React.memo(
           templateEntryPath={templateEntryPath}
           artifactFiles={artifactFiles}
           artifactContext={artifactContext}
-          onOpenVideoStudio={onOpenVideoStudio}
         />
       )
     }
@@ -913,7 +910,6 @@ interface AssistantMessageGroupProps {
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
-  onOpenVideoStudio?: () => void
   latestAssistantMessageId?: string
 }
 
@@ -924,7 +920,6 @@ function MessageGroup({
   templateEntryPath,
   artifactFiles,
   artifactContext,
-  onOpenVideoStudio,
   latestAssistantMessageId,
 }: AssistantMessageGroupProps) {
   const { onRevertToUserMessage, onForkAtMessage, showThinking } = useMessageList()
@@ -1033,7 +1028,6 @@ function MessageGroup({
           templateEntryPath={isLatestAssistantGroup ? templateEntryPath : undefined}
           artifactFiles={isLatestAssistantGroup ? artifactFiles : undefined}
           artifactContext={artifactContext}
-          onOpenVideoStudio={onOpenVideoStudio}
         />
       ) : null}
       {lastTextMessage && !isStreaming && (
@@ -1083,10 +1077,9 @@ interface MessageListProps {
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
-  onOpenVideoStudio?: () => void
 }
 
-export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext, onOpenVideoStudio }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext }: MessageListProps) {
   const isStreaming = status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages, status), [messages, status]);
   const latestAssistantMessageId = React.useMemo(
@@ -1112,7 +1105,6 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               templateEntryPath={templateEntryPath}
               artifactFiles={artifactFiles}
               artifactContext={artifactContext}
-              onOpenVideoStudio={onOpenVideoStudio}
               latestAssistantMessageId={latestAssistantMessageId}
             />
           )
@@ -1133,7 +1125,6 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
               artifactFiles={item.message.id === latestAssistantMessageId ? artifactFiles : undefined}
               artifactContext={artifactContext}
-              onOpenVideoStudio={onOpenVideoStudio}
             />
           </div>
         )

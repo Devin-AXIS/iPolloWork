@@ -8,7 +8,6 @@ import {
   FolderPlus,
   Loader2,
   Languages,
-  MoreHorizontal,
   Pencil,
   Pin,
   PinOff,
@@ -38,7 +37,7 @@ import {
   isMacPlatform,
 } from "../../../../app/utils";
 import { currentLocale, setLocale, t, type Language } from "../../../../i18n";
-import { useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
+import { DEFAULT_BRAND_LOGO_URL, useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
 
 import {
   Sidebar,
@@ -90,7 +89,6 @@ import {
   MAX_SESSIONS_PREVIEW,
   buildSessionTreeState,
   flattenSessionRows,
-  getRootSessions,
   isSessionArchived,
   isStreamingSessionStatus,
   partitionArchivedSessions,
@@ -107,6 +105,7 @@ import { cn } from "@/lib/utils";
 import { MarbleAvatar } from "../../../design-system/marble-avatar";
 import { getSessionActivityStatusLabel, type SessionActivityStatus } from "../status/session-activity-store";
 import { NotificationBell } from "../../../shell/notification-center";
+import { useShellConfig } from "../../../shell/shell-config";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 
 interface SessionStatusIndicatorProps {
@@ -341,7 +340,9 @@ function SessionActions({ className, sessionId, workspaceId, isPinned, isArchive
       <DropdownMenuTrigger className="size-6 text-muted-foreground"
         render={
           <Button variant="ghost" size="icon-sm" className={cn("size-6", className)}>
-            <MoreHorizontal className="size-4" />
+            <span className="flex size-4 items-center justify-center" aria-hidden="true">
+              <img src={publicAssetUrl("sidebar-icon/figma-section-ellipsis.svg")} alt="" className="h-[2.33333px] w-[11.6667px]" />
+            </span>
           </Button>
         }
       />
@@ -492,11 +493,13 @@ export type AppSidebarProps = {
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
-  ) => void;
+  ) => Promise<string | null> | string | null | void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
   onArchiveSession?: (sessionId: string, archived: boolean) => void;
   onOpenCreateGroupModal?: (workspaceId: string) => void;
+  onOpenRenameGroupModal?: (workspaceId: string, groupId: string, label: string) => void;
+  onOpenRemoveGroupModal?: (workspaceId: string, groupId: string, label: string) => void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
   onEditWorkspaceConnection: (workspaceId: string) => void;
@@ -518,6 +521,8 @@ export type AppSidebarProps = {
   onStartResize?: React.PointerEventHandler<HTMLButtonElement>;
 };
 
+const primarySidebarActionClassName = "h-8 gap-1 rounded-[8px] px-1 py-0 text-sm font-normal leading-4 text-black transition-colors hover:bg-black/5 hover:text-black active:bg-black/10 active:text-black data-active:bg-black/5 data-active:text-black focus-visible:ring-1 dark:text-black dark:hover:bg-black/5 dark:hover:text-black dark:active:bg-black/10 dark:data-active:bg-black/5 dark:data-active:text-black";
+
 function useSessionTree(
   sessions: WorkspaceSessionGroup["sessions"],
   sessionStatusById: Record<string, string> | undefined,
@@ -534,11 +539,14 @@ function isSessionActivityStatus(status: string | undefined): status is SessionA
 
 export function AppSidebar(props: AppSidebarProps) {
   const activeEnterprise = useActiveEnterpriseConnection();
-  const [previewCountByWorkspaceId, setPreviewCountByWorkspaceId] = React.useState<Record<string, number>>({});
   const [expandedSessionIds, setExpandedSessionIds] = React.useState<Set<string>>(
     () => new Set(),
   );
   const [language, setLanguage] = React.useState<Language>(() => currentLocale());
+  const primarySidebarActionClass = cn(
+    primarySidebarActionClassName,
+    language === "zh" && "font-medium",
+  );
   const switchLanguage = React.useCallback((nextLanguage: Language) => {
     setLanguage(nextLanguage);
     setLocale(nextLanguage);
@@ -557,16 +565,6 @@ export function AppSidebar(props: AppSidebarProps) {
       return next;
     });
   }, []);
-
-  const previewCount = (workspaceId: string) =>
-    previewCountByWorkspaceId[workspaceId] ?? MAX_SESSIONS_PREVIEW;
-
-  const showMoreSessions = (workspaceId: string, totalRoots: number) => {
-    setPreviewCountByWorkspaceId((current) => ({
-      ...current,
-      [workspaceId]: Math.min((current[workspaceId] ?? MAX_SESSIONS_PREVIEW) + MAX_SESSIONS_PREVIEW, totalRoots),
-    }));
-  };
 
   React.useEffect(() => {
     const workspaceId = props.selectedWorkspaceId.trim();
@@ -599,6 +597,7 @@ export function AppSidebar(props: AppSidebarProps) {
   const contextValue: SidebarContextValue = {
     selectedWorkspaceId: props.selectedWorkspaceId,
     selectedSessionId: props.selectedSessionId,
+    language,
     developerMode: props.developerMode,
     showSessionActions: props.showSessionActions,
     sessionStatusById: props.sessionStatusById,
@@ -612,6 +611,8 @@ export function AppSidebar(props: AppSidebarProps) {
     onOpenDeleteSession: props.onOpenDeleteSession,
     onArchiveSession: props.onArchiveSession,
     onOpenCreateGroupModal: props.onOpenCreateGroupModal,
+    onOpenRenameGroupModal: props.onOpenRenameGroupModal,
+    onOpenRemoveGroupModal: props.onOpenRemoveGroupModal,
     onRecoverWorkspace: props.onRecoverWorkspace,
     onTestWorkspaceConnection: props.onTestWorkspaceConnection,
     onEditWorkspaceConnection: props.onEditWorkspaceConnection,
@@ -621,15 +622,16 @@ export function AppSidebar(props: AppSidebarProps) {
 
   const brandLogoUrl = useBrandLogoUrl();
   const brandAppName = useBrandAppName();
-  const brandSidebarIcon = publicAssetUrl("sidebar-icon/ipollo-work.svg");
+  const { config: shellConfig } = useShellConfig();
+  const effectiveBrandLogoUrl = brandLogoUrl ?? shellConfig.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL;
 
   return (
     <SidebarContext.Provider value={contextValue}>
       <Sidebar
         collapsible="offcanvas"
-        className="bg-sidebar mac:**:data-[sidebar=sidebar]:bg-transparent"
+        className="bg-sidebar mac:bg-sidebar/15 mac:backdrop-blur-2xl mac:backdrop-saturate-150 mac:**:data-[sidebar=sidebar]:bg-transparent"
       >
-        <SidebarHeader className="gap-4 px-2 pb-6 pt-1 mac:titlebar-drag">
+        <SidebarHeader className="gap-4 px-2 pb-8 pt-1 mac:titlebar-drag">
           <div className="flex w-full justify-end px-3">
             <SidebarTrigger
               className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
@@ -641,22 +643,14 @@ export function AppSidebar(props: AppSidebarProps) {
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 px-3">
             <div className="flex min-w-0 items-center gap-2">
               <img
-                src={brandSidebarIcon}
-                alt=""
-                className="size-5 shrink-0"
+                src={effectiveBrandLogoUrl}
+                alt={`${brandAppName} logo`}
+                className="size-6 shrink-0 rounded-full object-cover"
+                data-testid="brand-logo"
               />
-              {brandLogoUrl ? (
-                <img
-                  src={brandLogoUrl}
-                  alt={`${brandAppName} logo`}
-                  className="max-h-9 w-auto max-w-[120px] object-contain object-left"
-                  data-testid="brand-logo"
-                />
-              ) : (
-                <span className="truncate text-sm font-semibold" data-testid="brand-app-name">
-                  {brandAppName}
-                </span>
-              )}
+              <span className="truncate text-sm font-semibold" data-testid="brand-app-name">
+                {brandAppName}
+              </span>
             </div>
             {props.onOpenSessionSearch ? (
               <button
@@ -670,37 +664,43 @@ export function AppSidebar(props: AppSidebarProps) {
               </button>
             ) : null}
           </div>
-          <SidebarMenu className="gap-[6px]">
+          <SidebarMenu className="gap-1 px-2">
             <SidebarMenuItem>
               <SidebarMenuButton
-                className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className={primarySidebarActionClass}
                 disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
                 aria-label={t("session.new_task")}
                 aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
                 onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")}
               >
-                <img src={publicAssetUrl("sidebar-icon/edit.svg")} alt="" className="size-[22px] shrink-0 -me-1.5" />
-                <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("session.new_task")}</span>
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <img src={publicAssetUrl("sidebar-icon/figma-square-pen.svg")} alt="" className="size-[11px]" />
+                </span>
+                <span className="flex-1 truncate">{t("session.new_task")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={props.onOpenTemplateMarket}
                 isActive={props.activePrimaryItem === "template-market"}
-                className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className={primarySidebarActionClass}
               >
-                <img src={publicAssetUrl("sidebar-icon/doc-plus.svg")} alt="" className="size-[22px] shrink-0 -translate-x-0.5 -me-1.5" />
-                <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("template_market.title")}</span>
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <img src={publicAssetUrl("sidebar-icon/figma-layout-panel-top.svg")} alt="" className="size-[11px]" />
+                </span>
+                <span className="flex-1 truncate">{t("template_market.title")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={props.onOpenExtensions}
                 isActive={props.activePrimaryItem === "extensions"}
-                className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className={primarySidebarActionClass}
               >
-                <img src={publicAssetUrl("sidebar-icon/plugin.svg")} alt="" className="size-[22px] shrink-0 -translate-x-0.5 -me-1.5" />
-                <span className="flex-1 truncate text-sm font-medium leading-none tracking-normal">{t("settings.tab_extensions")}</span>
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <img src={publicAssetUrl("sidebar-icon/figma-plug.svg")} alt="" className="h-[13px] w-2" />
+                </span>
+                <span className="flex-1 truncate">{t("settings.tab_extensions")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -718,8 +718,6 @@ export function AppSidebar(props: AppSidebarProps) {
                 group={group}
                 className="mac:pt-0"
                 showInitialLoading={props.showInitialLoading}
-                previewCount={previewCount(group.workspace.id)}
-                showMoreSessions={showMoreSessions}
               />
             ))}
           </m.div>
@@ -816,16 +814,12 @@ type WorkspaceSidebarGroupProps = {
   className: string;
   group: WorkspaceSessionGroup;
   showInitialLoading?: boolean;
-  previewCount: number;
-  showMoreSessions: (workspaceId: string, totalRoots: number) => void;
 };
 
 function WorkspaceSidebarGroup({
   className,
   group,
   showInitialLoading,
-  previewCount,
-  showMoreSessions,
 }: WorkspaceSidebarGroupProps) {
   const ctx = useSidebarContext();
   const workspace = group.workspace;
@@ -861,37 +855,23 @@ function WorkspaceSidebarGroup({
   const { groups: wsGroups, assignments: wsAssignments } = useWorkspaceGroups(workspace.id);
   const store = useSessionManagementStore;
 
-  const { active: activeSessions, archived: archivedSessions } = React.useMemo(
+  const { archived: archivedSessions } = React.useMemo(
     () => partitionArchivedSessions(group.sessions),
     [group.sessions],
   );
   const sessionRows = flattenSessionRows(
     group.sessions,
-    wsGroups.length > 0 ? Number.MAX_SAFE_INTEGER : previewCount,
+    Number.MAX_SAFE_INTEGER,
     tree,
     ctx.expandedSessionIds,
     forcedExpandedSessionIds,
     pinnedIds,
     orderIds,
   );
-  const visibleRootIds = React.useMemo(
-    () => sessionRows.flatMap((row) => (row.depth === 0 ? [row.session.id] : [])),
-    [sessionRows],
-  );
-  const activeRootCount = React.useMemo(
-    () => getRootSessions(activeSessions).length,
-    [activeSessions],
-  );
   const [archivedExpanded, setArchivedExpanded] = React.useState(false);
-  const remainingRootSessions = Math.max(0, activeRootCount - previewCount);
-  const showMoreLabel = remainingRootSessions > 0
-    ? t("workspace_list.show_more", {
-      count: Math.min(MAX_SESSIONS_PREVIEW, remainingRootSessions),
-    })
-    : t("workspace_list.show_more_fallback");
 
   return (
-    <SidebarGroup className={className}>
+    <SidebarGroup className={cn(className, "px-4")}>
       <SidebarGroupContent>
         <SidebarMenu>
           <Collapsible render={<SidebarMenuItem />} open className="group/collapsible">
@@ -919,76 +899,18 @@ function WorkspaceSidebarGroup({
                       <span className="truncate">{t("workspace.loading_tasks")}</span>
                     </SidebarMenuSubButton>
                   </SidebarMenuSubItem>
-                ) : activeSessions.length > 0 || archivedSessions.length > 0 ? (
+                ) : group.status !== "error" ? (
                   <>
-                    {wsGroups.length > 0 ? (
-                      <GroupedSessionList
-                        sessionRows={sessionRows}
-                        groups={wsGroups}
-                        assignments={wsAssignments}
-                        pinnedIds={pinnedIds}
-                        tree={tree}
-                        workspaceId={workspace.id}
-                        forcedExpandedSessionIds={forcedExpandedSessionIds}
-                        store={store}
-                      />
-                    ) : (
-                      <Reorder.Group
-                        as="div"
-                        axis="y"
-                        values={visibleRootIds}
-                        onReorder={(ids) => {
-                          const visible = new Set(ids);
-                          const allRootIds = getRootSessions(activeSessions).map((s) => s.id);
-                          const full = [...ids, ...allRootIds.filter((id) => !visible.has(id))];
-                          store.getState().reorderSessions(workspace.id, full);
-                        }}
-                        className="flex flex-col gap-[6px]"
-                      >
-                        {sessionRows.map((row) => (
-                          <SessionMenuItem
-                            key={row.session.id}
-                            session={row.session}
-                            depth={row.depth}
-                            tree={tree}
-                            workspaceId={workspace.id}
-                            forcedExpandedSessionIds={forcedExpandedSessionIds}
-                            isPinned={pinnedIds.has(row.session.id)}
-                            draggable={row.depth === 0}
-                          />
-                        ))}
-                      </Reorder.Group>
-                    )}
-                    {wsGroups.length === 0 && activeRootCount > previewCount ? (
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton
-                          className="text-muted-foreground text-xs"
-                          onClick={() => showMoreSessions(workspace.id, activeRootCount)}
-                        >
-                          <span className="flex min-w-0 items-center gap-1">
-                            <span className="truncate">{showMoreLabel}</span>
-                            <span aria-hidden className="shrink-0">⋅</span>
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              className="shrink-0 hover:text-foreground"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                ctx.onOpenCreateGroupModal?.(workspace.id);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key !== "Enter" && event.key !== " ") return;
-                                event.preventDefault();
-                                event.stopPropagation();
-                                ctx.onOpenCreateGroupModal?.(workspace.id);
-                              }}
-                            >
-                              {t("session_management.create_group")}
-                            </span>
-                          </span>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    ) : null}
+                    <GroupedSessionList
+                      sessionRows={sessionRows}
+                      groups={wsGroups}
+                      assignments={wsAssignments}
+                      pinnedIds={pinnedIds}
+                      tree={tree}
+                      workspaceId={workspace.id}
+                      forcedExpandedSessionIds={forcedExpandedSessionIds}
+                      store={store}
+                    />
                     {archivedSessions.length > 0 ? (
                       <ArchivedSessionsSection
                         sessions={archivedSessions}
@@ -1000,27 +922,13 @@ function WorkspaceSidebarGroup({
                       />
                     ) : null}
                   </>
-                ) : group.status === "error" ? (
+                ) : (
                   <SidebarMenuSubItem>
                     <SidebarMenuSubButton
                       aria-disabled
                       className={cn("text-xs", taskLoadError.tone === "offline" ? "text-amber-600" : "text-destructive")}
                     >
                       <span className="truncate">{taskLoadError.message}</span>
-                    </SidebarMenuSubButton>
-                  </SidebarMenuSubItem>
-                ) : (
-                  <SidebarMenuSubItem>
-                    <SidebarMenuSubButton
-                      className="text-muted-foreground text-xs"
-                      onClick={() => ctx.onCreateTaskInWorkspace(workspace.id)}
-                      aria-disabled={ctx.newTaskDisabled}
-                    >
-                      <span className="truncate">
-                        {isRemoteWorkspace && connectionState.status === "connected"
-                          ? connectionState.message?.trim() || t("workspace.connected_no_tasks")
-                          : t("workspace.no_tasks")}
-                      </span>
                     </SidebarMenuSubButton>
                   </SidebarMenuSubItem>
                 )}
@@ -1036,50 +944,155 @@ function WorkspaceSidebarGroup({
 const SESSION_DRAG_TYPE = "application/x-ipollowork-session-id";
 const UNGROUPED_GROUP_ID = "__ipollowork_ungrouped";
 
-function SessionGroupSeparator({ label, count, expanded, onToggle, onRemove, onTitlePointerDown }: {
+function SidebarSectionIcon({ name }: { name: "plus" | "ellipsis" }) {
+  return (
+    <span className="flex size-4 items-center justify-center" aria-hidden="true">
+      <img
+        src={publicAssetUrl(`sidebar-icon/figma-section-${name}.svg`)}
+        alt=""
+        className={name === "plus" ? "size-[10.3333px]" : "h-[2.33333px] w-[11.6667px]"}
+      />
+    </span>
+  );
+}
+
+function SidebarSectionHeader({ label, expanded, onToggle, onAdd, addDisabled, addLabel, menuLabel, menu }: {
   label: string;
-  count: number;
   expanded: boolean;
   onToggle: () => void;
-  onRemove?: () => void;
-  onTitlePointerDown?: React.PointerEventHandler<HTMLSpanElement>;
+  onAdd?: () => void;
+  addDisabled?: boolean;
+  addLabel?: string;
+  menuLabel: string;
+  menu: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="group/separator flex w-full items-center gap-1.5 rounded px-2 pb-1 pt-2.5 text-left transition-colors first:pt-1 hover:bg-sidebar-accent/50"
-      aria-expanded={expanded}
-    >
-      <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform duration-200", expanded && "rotate-90")} />
-      <span
-        className="min-w-0 flex-1 cursor-grab touch-none truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground active:cursor-grabbing"
-        onPointerDown={onTitlePointerDown}
+    <div className="group/section-header flex h-4 w-full items-center justify-between">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex min-w-0 items-center gap-2 text-sm font-medium leading-4 text-[#858a94] outline-hidden focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+        aria-expanded={expanded}
       >
-        {label}
-      </span>
-      <span className="text-[10px] tabular-nums text-muted-foreground/70">{count}</span>
-      {onRemove ? (
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={(event) => {
-            event.stopPropagation();
-            onRemove();
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            event.stopPropagation();
-            onRemove();
-          }}
-          className="ml-auto size-4 shrink-0 text-muted-foreground/50 opacity-0 transition-opacity hover:text-destructive group-hover/separator:opacity-100"
-          aria-label={t("session_management.remove_group")}
-        >
-          <Trash2 className="size-3" />
+        <span className="truncate">{label}</span>
+        <img
+          src={publicAssetUrl("sidebar-icon/figma-section-chevron-down.svg")}
+          alt=""
+          className={cn(
+            "size-4 shrink-0 opacity-0 transition-[transform,opacity] group-hover/section-header:opacity-100 group-focus-within/section-header:opacity-100 group-has-data-popup-open/section-header:opacity-100",
+            !expanded && "-rotate-90",
+          )}
+        />
+      </button>
+      <div className="relative h-4 w-10 shrink-0 opacity-0 transition-opacity group-hover/section-header:opacity-100 group-focus-within/section-header:opacity-100 group-has-data-popup-open/section-header:opacity-100">
+        {onAdd ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="absolute -left-1 -top-1 size-6 rounded-md"
+            onClick={onAdd}
+            disabled={addDisabled}
+            aria-label={addLabel}
+            title={addLabel}
+          >
+            <SidebarSectionIcon name="plus" />
+          </Button>
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="absolute -top-1 left-5 size-6 rounded-md"
+                aria-label={menuLabel}
+                title={menuLabel}
+              >
+                <SidebarSectionIcon name="ellipsis" />
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="w-48">
+            {menu}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
+function SessionGroupSeparator({ label, expanded, onToggle, onAdd, addDisabled, onRename, onRemove, onTitlePointerDown }: {
+  label: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onAdd: () => void;
+  addDisabled?: boolean;
+  onRename: () => void;
+  onRemove?: () => void;
+  onTitlePointerDown?: React.PointerEventHandler<HTMLButtonElement>;
+}) {
+  return (
+    <div className="group/session-group-row flex h-8 w-full items-center justify-between rounded-[8px] px-1 transition-colors hover:bg-black/5 active:bg-black/10 focus-within:ring-1 focus-within:ring-sidebar-ring">
+      <button
+        type="button"
+        onClick={onToggle}
+        onPointerDown={onTitlePointerDown}
+        className="flex h-8 min-w-0 flex-1 cursor-grab touch-none items-center gap-1 rounded-[8px] text-left text-sm font-medium leading-4 text-black outline-hidden active:cursor-grabbing"
+        aria-expanded={expanded}
+      >
+        <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+          <img src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")} alt="" className="h-[10px] w-3" />
         </span>
-      ) : null}
-    </button>
+        <span className="truncate">{label}</span>
+      </button>
+      <div className="flex h-8 shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/session-group-row:opacity-100 group-focus-within/session-group-row:opacity-100 group-has-data-popup-open/session-group-row:opacity-100">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-6 rounded-md"
+          onClick={onAdd}
+          disabled={addDisabled}
+          aria-label={t("session_management.new_conversation_in_group", { group: label })}
+          title={t("session_management.new_conversation_in_group", { group: label })}
+        >
+          <SidebarSectionIcon name="plus" />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-6 rounded-md"
+                aria-label={t("session_management.group_actions", { group: label })}
+                title={t("session_management.group_actions", { group: label })}
+              >
+                <SidebarSectionIcon name="ellipsis" />
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="w-48">
+            <DropdownMenuItem onClick={onRename}>
+              <Pencil className="size-4" />
+              {t("session_management.rename_group")}
+            </DropdownMenuItem>
+            {onRemove ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={onRemove}>
+                  <Trash2 className="size-4" />
+                  {t("session_management.remove_group")}
+                </DropdownMenuItem>
+              </>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 }
 
@@ -1134,6 +1147,8 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
   forcedExpandedSessionIds: Set<string>;
   store: typeof useSessionManagementStore;
 }) {
+  const ctx = useSidebarContext();
+  const [programExpanded, setProgramExpanded] = React.useState(true);
   const [previewCountByGroup, setPreviewCountByGroup] = React.useState<Record<string, number>>({});
 
   const groupPreviewCount = (groupId: string) =>
@@ -1190,6 +1205,7 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
         workspaceId={workspaceId}
         forcedExpandedSessionIds={forcedExpandedSessionIds}
         isPinned={pinnedIds.has(row.session.id)}
+        rootIndent="group"
       />
       {(childrenByParent.get(row.session.id) ?? []).map(renderRow)}
     </React.Fragment>
@@ -1220,45 +1236,95 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
   const visibleUngroupedRows = ungroupedRows.slice(0, ungroupedLimit);
   const ungroupedRemaining = Math.max(0, ungroupedRows.length - ungroupedLimit);
   const visibleUngroupedRootIds = visibleUngroupedRows.map((r) => r.session.id);
+  const reorderUngrouped = React.useCallback((orderedIds: string[]) => {
+    const allRootIds = sessionRows.filter((row) => row.depth === 0).map((row) => row.session.id);
+    const ungroupedSet = new Set(ungroupedRows.map((row) => row.session.id));
+    let nextIndex = 0;
+    const fullOrder = allRootIds.map((id) => ungroupedSet.has(id) ? orderedIds[nextIndex++] : id);
+    store.getState().reorderSessions(workspaceId, fullOrder);
+  }, [sessionRows, store, ungroupedRows, workspaceId]);
+
+  const sortUngrouped = React.useCallback((mode: "recent" | "name") => {
+    const orderedIds = [...ungroupedRows]
+      .sort((left, right) => mode === "recent"
+        ? (right.session.time?.updated ?? right.session.time?.created ?? 0) - (left.session.time?.updated ?? left.session.time?.created ?? 0)
+        : getDisplaySessionTitle(left.session.title).localeCompare(getDisplaySessionTitle(right.session.title)))
+      .map((row) => row.session.id);
+    reorderUngrouped(orderedIds);
+  }, [reorderUngrouped, ungroupedRows]);
+
+  const sortGroupsByName = React.useCallback(() => {
+    const groupIds = [...groups]
+      .sort((left, right) => left.label.localeCompare(right.label))
+      .map((group) => group.id);
+    store.getState().reorderGroups(workspaceId, groupIds);
+  }, [groups, store, workspaceId]);
 
   return (
-    <>
-      <Reorder.Group
-        as="div"
-        axis="y"
-        values={groups.map((group) => group.id)}
-        onReorder={(ids) => store.getState().reorderGroups(workspaceId, ids)}
-        className="flex flex-col"
-      >
-        {groups.map(renderGroup)}
-      </Reorder.Group>
-      {ungroupedRows.length > 0 ? (
-        <GroupDropZone groupId={null} workspaceId={workspaceId}>
-          <Collapsible
-            open={ungroupedExpanded}
-            onOpenChange={() => store.getState().toggleGroupExpanded(workspaceId, UNGROUPED_GROUP_ID)}
+    <div className="flex flex-col gap-6 pb-6">
+      <div className="flex flex-col gap-2">
+        <SidebarSectionHeader
+          label={t("session_management.program")}
+          expanded={programExpanded}
+          onToggle={() => setProgramExpanded((value) => !value)}
+          onAdd={() => ctx.onOpenCreateGroupModal?.(workspaceId)}
+          addDisabled={!ctx.onOpenCreateGroupModal}
+          addLabel={t("session_management.new_group")}
+          menuLabel={t("session_management.program_actions")}
+          menu={(
+            <>
+              <DropdownMenuItem onClick={() => ctx.onOpenCreateGroupModal?.(workspaceId)} disabled={!ctx.onOpenCreateGroupModal}>
+                <FolderPlus className="size-4" />
+                {t("session_management.new_group")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={sortGroupsByName} disabled={groups.length < 2}>
+                {t("session_management.sort_by_name")}
+              </DropdownMenuItem>
+            </>
+          )}
+        />
+        {programExpanded ? (
+          <Reorder.Group
+            as="div"
+            axis="y"
+            values={groups.map((group) => group.id)}
+            onReorder={(ids) => store.getState().reorderGroups(workspaceId, ids)}
+            className="flex flex-col gap-1"
           >
-            <SessionGroupSeparator
-              label={t("session_management.ungrouped")}
-              count={ungroupedRows.length}
-              expanded={ungroupedExpanded}
-              onToggle={() => store.getState().toggleGroupExpanded(workspaceId, UNGROUPED_GROUP_ID)}
-            />
-            <CollapsibleContent>
+            {groups.map(renderGroup)}
+          </Reorder.Group>
+        ) : null}
+      </div>
+      {ungroupedRows.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <SidebarSectionHeader
+            label={t("session_management.ungrouped")}
+            expanded={ungroupedExpanded}
+            onToggle={() => store.getState().toggleGroupExpanded(workspaceId, UNGROUPED_GROUP_ID)}
+            menuLabel={t("session_management.ungrouped_actions")}
+            menu={(
+              <>
+                <DropdownMenuItem onClick={() => sortUngrouped("recent")} disabled={ungroupedRows.length < 2}>
+                  {t("session_management.sort_by_recent")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => sortUngrouped("name")} disabled={ungroupedRows.length < 2}>
+                  {t("session_management.sort_by_name")}
+                </DropdownMenuItem>
+              </>
+            )}
+          />
+          {ungroupedExpanded ? (
+            <GroupDropZone groupId={null} workspaceId={workspaceId}>
               <Reorder.Group
                 as="div"
                 axis="y"
                 values={visibleUngroupedRootIds}
                 onReorder={(ids) => {
-                  const allRootIds = sessionRows.filter((r) => r.depth === 0).map((r) => r.session.id);
-                  const ungroupedSet = new Set(ungroupedRows.map((r) => r.session.id));
                   const visibleSet = new Set(ids);
                   const fullUngrouped = [...ids, ...ungroupedRows.map((r) => r.session.id).filter((id) => !visibleSet.has(id))];
-                  let ui = 0;
-                  const full = allRootIds.map((id) => ungroupedSet.has(id) ? fullUngrouped[ui++] : id);
-                  store.getState().reorderSessions(workspaceId, full);
+                  reorderUngrouped(fullUngrouped);
                 }}
-                className="flex flex-col gap-[6px]"
+                className="flex flex-col gap-1"
               >
                 {visibleUngroupedRows.map((row) => (
                   <React.Fragment key={row.session.id}>
@@ -1270,6 +1336,7 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
                       forcedExpandedSessionIds={forcedExpandedSessionIds}
                       isPinned={pinnedIds.has(row.session.id)}
                       draggable={row.depth === 0}
+                      rootIndent="recent"
                     />
                     {(childrenByParent.get(row.session.id) ?? []).map(renderRow)}
                   </React.Fragment>
@@ -1287,11 +1354,11 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>
               ) : null}
-            </CollapsibleContent>
-          </Collapsible>
-        </GroupDropZone>
+            </GroupDropZone>
+          ) : null}
+        </div>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -1305,6 +1372,7 @@ function SessionGroupSection({ group, rows, expanded, workspaceId, store, render
   previewCount: number;
   onShowMore: () => void;
 }) {
+  const ctx = useSidebarContext();
   const dragControls = useDragControls();
   const visibleRows = rows.slice(0, previewCount);
   const remaining = Math.max(0, rows.length - previewCount);
@@ -1324,17 +1392,23 @@ function SessionGroupSection({ group, rows, expanded, workspaceId, store, render
         <Collapsible
           open={expanded}
           onOpenChange={() => store.getState().toggleGroupExpanded(workspaceId, group.id)}
-          className="group/session-group"
+          className="group/session-group flex flex-col gap-1"
         >
           <SessionGroupSeparator
             label={group.label}
-            count={rows.length}
             expanded={expanded}
             onToggle={() => store.getState().toggleGroupExpanded(workspaceId, group.id)}
-            onRemove={() => store.getState().removeGroup(workspaceId, group.id)}
+            onAdd={() => {
+              void Promise.resolve(ctx.onCreateTaskInWorkspace(workspaceId, "work")).then((sessionId) => {
+                if (sessionId) store.getState().assignGroup(workspaceId, sessionId, group.id);
+              });
+            }}
+            addDisabled={ctx.newTaskDisabled}
+            onRename={() => ctx.onOpenRenameGroupModal?.(workspaceId, group.id, group.label)}
+            onRemove={() => ctx.onOpenRemoveGroupModal?.(workspaceId, group.id, group.label)}
             onTitlePointerDown={(event) => dragControls.start(event)}
           />
-          <CollapsibleContent>
+          <CollapsibleContent className="flex flex-col gap-1">
             {visibleRows.length > 0
               ? (
                 <>
@@ -1385,6 +1459,7 @@ type SessionMenuItemProps = {
   forcedExpandedSessionIds: Set<string>;
   isPinned?: boolean;
   draggable?: boolean;
+  rootIndent?: "group" | "recent";
 };
 
 function SessionMenuItem({
@@ -1395,6 +1470,7 @@ function SessionMenuItem({
   depth,
   isPinned = false,
   draggable = false,
+  rootIndent,
 }: SessionMenuItemProps) {
   const ctx = useSidebarContext();
   const isSelected = ctx.selectedSessionId === session.id;
@@ -1405,6 +1481,10 @@ function SessionMenuItem({
   const isSessionActive = tree.activeIds.has(session.id);
   const isSessionStreaming = tree.streamingIds.has(session.id) || isStreamingSessionStatus(sessionActivityStatus);
   const isArchived = isSessionArchived(session);
+  const rowPadding = depth > 0 ? "ps-10" : rootIndent === "group" ? "ps-5" : rootIndent === "recent" ? "ps-1" : "ps-8";
+  const trailingActionPosition = rootIndent === "recent" ? "right-1" : "right-2";
+  const nestedActionPosition = rootIndent === "recent" ? "right-8" : "right-9";
+  const sessionFontWeight = ctx.language === "zh" ? "font-medium" : "font-normal";
 
   const openSession = () => {
     ctx.onOpenSession(workspaceId, session.id);
@@ -1437,7 +1517,7 @@ function SessionMenuItem({
           <CollapsibleTrigger
             render={
               <SidebarMenuSubButton
-                className={cn("relative ps-8", depth > 0 && "ps-12")}
+                className={cn("relative h-8 rounded-[8px] pe-8 text-sm leading-4", sessionFontWeight, rowPadding)}
                 isActive={isSelected}
                 onClick={openSession}
                 onPointerEnter={prefetchSession}
@@ -1450,7 +1530,7 @@ function SessionMenuItem({
                 >
                   {displayTitle}
                 </span>
-                <span className="flex items-center justify-center size-6 absolute right-2 top-1/2 -translate-y-1/2">
+                <span className={cn("absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center", trailingActionPosition)}>
                   <ChevronRight className="size-4 text-muted-foreground transition-transform duration-200 group-data-open/session-collapsible:rotate-90 hover:text-foreground" />
                 </span>
               </SidebarMenuSubButton>
@@ -1462,7 +1542,7 @@ function SessionMenuItem({
           workspaceId={workspaceId}
           isPinned={isPinned}
           isArchived={isArchived}
-          className="absolute right-9 top-1/2 -translate-y-1/2 opacity-0 group-hover/menu-sub-item:opacity-100 data-popup-open:opacity-100"
+          className={cn("absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/menu-sub-item:opacity-100 data-popup-open:opacity-100", nestedActionPosition)}
         />
         <SessionStatusIndicator className="absolute right-9 top-1/2 -translate-y-1/2 opacity-0 group-hover/menu-sub-item:opacity-0 group-has-data-popup-open/menu-sub-item:opacity-0 pointer-events-none select-none" status={sessionActivityStatus} isStreaming={isSessionStreaming} isActive={isSessionActive} />
       </SidebarMenuSubItem>
@@ -1475,7 +1555,7 @@ function SessionMenuItem({
           onClick={openSession}
           onPointerEnter={prefetchSession}
           onFocus={prefetchSession}
-          className={cn("ps-8 transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", depth > 0 && "ps-12")}
+          className={cn("h-8 rounded-[8px] pe-8 text-sm leading-4 transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", sessionFontWeight, rowPadding)}
         >
           <PinnedIndicator isPinned={isPinned} />
           <span
@@ -1491,9 +1571,14 @@ function SessionMenuItem({
         workspaceId={workspaceId}
         isPinned={isPinned}
         isArchived={isArchived}
-        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/menu-sub-item:opacity-100 data-popup-open:opacity-100"
+        className={cn("absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/menu-sub-item:opacity-100 data-popup-open:opacity-100", trailingActionPosition)}
       />
-      <SessionStatusIndicator className="absolute right-3 top-1/2 -translate-y-1/2 opacity-100 group-hover/menu-sub-item:opacity-0 group-has-data-popup-open/menu-sub-item:opacity-0 pointer-events-none select-none" status={sessionActivityStatus} isStreaming={isSessionStreaming} isActive={isSessionActive} />
+      <SessionStatusIndicator
+        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-100 group-hover/menu-sub-item:opacity-0 group-has-data-popup-open/menu-sub-item:opacity-0 pointer-events-none select-none"
+        status={sessionActivityStatus}
+        isStreaming={isSessionStreaming}
+        isActive={isSessionActive}
+      />
     </SidebarMenuSubItem>
   );
 

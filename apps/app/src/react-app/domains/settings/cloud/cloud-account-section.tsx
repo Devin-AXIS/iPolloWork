@@ -8,6 +8,7 @@ import {
   enterpriseConnectionsChangedEvent,
   leaveEnterpriseConnection,
   readEnterpriseConnections,
+  removeEnterpriseConnection,
   type EnterpriseConnection,
 } from "@/app/lib/enterprise-connections";
 import {
@@ -87,7 +88,15 @@ export function CloudAccountSection({
     setLeavingId(connection.id);
     setEnterpriseError(null);
     try {
-      if (activeConnection?.id === connection.id) await activatePersonalWorkContext();
+      if (activeConnection?.id !== connection.id) {
+        removeEnterpriseConnection(connection.id);
+        return;
+      }
+
+      const personalWorkspaceId = await activatePersonalWorkContext();
+      window.location.hash = personalWorkspaceId
+        ? `#/workspace/${encodeURIComponent(personalWorkspaceId)}/session`
+        : "#/session";
       await leaveEnterpriseConnection(connection);
     } catch (error) {
       setEnterpriseError(

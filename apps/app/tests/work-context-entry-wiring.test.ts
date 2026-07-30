@@ -51,6 +51,8 @@ describe("personal and Enterprise chat entry wiring", () => {
     expect(enterpriseDialog).toContain("props.onOpenChange(false)");
     expect(cloudAccount).toContain("const workspaceId = connection");
     expect(cloudAccount).toContain('`#/workspace/${encodeURIComponent(workspaceId)}/session`');
+    expect(cloudAccount).toContain("const personalWorkspaceId = await activatePersonalWorkContext()");
+    expect(cloudAccount).toContain('`#/workspace/${encodeURIComponent(personalWorkspaceId)}/session`');
   });
 
   test("scopes workspaces and therefore all sessions to the active work context", () => {

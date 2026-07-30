@@ -87,6 +87,8 @@ describe("Design deck navigation", () => {
     expect(source).toContain("disabled={!selectionSummary.selections.some((member) => member.canDelete)}");
     expect(source).toContain("onClick={() => setDeleteConfirmationOpen(true)}");
     expect(source).toContain("deleteSelection();");
+    expect(source).not.toContain("onClick={deleteSelection}");
+    expect(source).not.toContain("text-destructive hover:bg-destructive/10");
   });
 
   test("places AI after every floating toolbar action", async () => {

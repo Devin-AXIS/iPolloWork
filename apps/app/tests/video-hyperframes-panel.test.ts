@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { hyperframesStudioPort, hyperframesStudioUrl, shouldInjectVideoTaskContext, videoProjectDirectory, videoProjectId, videoProjectPath, videoTaskSystemContext } from "../src/react-app/domains/session/video/video-project";
 
 describe("HyperFrames Video Studio", () => {
-  test("reuses the Design system drawer for the active video composition", () => {
+  test("reuses the embedded Design system inspector for the active video composition", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
       "utf8",
@@ -15,12 +15,15 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(panelSource).toContain("<DesignSystemDrawer");
+    expect(panelSource).toContain("<DesignSystemInspectorShell");
+    expect(panelSource).toContain("embedded");
     expect(panelSource).toContain('aria-label={t("video.design_system")}');
     expect(panelSource).toContain('`${projectDirectory}/design-tokens.css`');
     expect(panelSource).toContain("ensureHtmlDesignSystemContract(current.content, theme.id)");
     expect(panelSource).toContain("buildTemplateTokenCss(theme)");
     expect(panelSource).toContain("replaceDesignTokenValue(designTokenSourceRef.current, name, value)");
-    expect(panelSource).toContain("variablesDisabled={!appliedDesignSystemId}");
+    expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
+    expect(panelSource).not.toContain("onChooseBackgroundImage=");
     expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
   });
 
@@ -90,6 +93,8 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sessionPageSource).toContain("videoStudioExpanded");
     expect(sessionPageSource).toContain('left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0"');
+    expect(sessionPageSource).toContain('videoStudioExpanded && (!shellConfig.sidebar || !sidebarOpen) && "mac:[&_header]:!pl-20"');
+    expect(sessionPageSource).not.toContain("mac:peer-data-[state=collapsed]:[&_header]:pl-28");
     expect(sessionPageSource).toContain("onExpandedChange={setVideoStudioExpanded}");
   });
 
@@ -143,8 +148,8 @@ describe("HyperFrames Video Studio", () => {
     const nativeAiIndex = nativeToolbarSource.indexOf('aria-label="Ask AI about selected element"');
 
     expect(deleteIndex).toBeGreaterThan(-1);
-    expect(advancedIndex).toBeGreaterThan(deleteIndex);
     expect(aiIndex).toBeGreaterThan(advancedIndex);
+    expect(deleteIndex).toBeGreaterThan(aiIndex);
     expect(electronSource).toContain("/file-mutations/remove-element/");
     expect(electronSource).toContain("deleteSelectedElement");
     expect(electronSource).toContain("ipollowork:hyperframes:ask-ai-selection");
@@ -162,10 +167,11 @@ describe("HyperFrames Video Studio", () => {
     expect(nativeToolbarSource).toContain("ipollowork:hyperframes:ask-ai-selection");
     expect(nativeToolbarSource).toContain("hfId: activeSelection.hfId");
     expect(nativeDeleteIndex).toBeGreaterThan(-1);
-    expect(nativeAdvancedIndex).toBeGreaterThan(nativeDeleteIndex);
     expect(nativeAiIndex).toBeGreaterThan(nativeAdvancedIndex);
+    expect(nativeDeleteIndex).toBeGreaterThan(nativeAiIndex);
     expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__icon-button");
-    expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__delete-button");
+    expect(nativeToolbarSource).toContain("deleteConfirmationOpen");
+    expect(electronSource).toContain("window.confirm('Delete selected element?')");
   });
 
   test("records host-applied video themes in Studio undo history", () => {
@@ -241,13 +247,25 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain('sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : ""');
   });
 
-  test("lets the latest right-panel action take priority in a narrow window", () => {
+  test("opens the left sidebar in one action when the right panel occupies a narrow window", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(sessionPageSource).toContain("if (panel) {\n      userOpenedSidebarWhileNarrowRef.current = false;");
+    expect(sessionPageSource).toContain("const openLeftSidebar = useCallback(() => {");
+    expect(sessionPageSource).toContain("closeRightPane({ preserveAutoCollapse: true });");
+    expect(sessionPageSource).toContain("onClick={openLeftSidebar}");
+  });
+
+  test("lets the latest right-panel action take priority in a narrow window", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    ).replaceAll("\r\n", "\n");
+
+    expect(sessionPageSource).not.toContain("if (panel) {\n      userOpenedSidebarWhileNarrowRef.current = false;");
+    expect(sessionPageSource).toContain("const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {\n    userOpenedSidebarWhileNarrowRef.current = false;");
     expect(sessionPageSource).toContain("userOpenedSidebarWhileNarrowRef.current = false;\n    userOpenedSidePanelWhileNarrowRef.current = true;");
   });
 

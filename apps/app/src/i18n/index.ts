@@ -77,6 +77,41 @@ export const isLanguage = (value: unknown): value is Language => {
   return typeof value === "string" && LANGUAGES.includes(value as Language);
 };
 
+const REGION_LANGUAGE_ALIASES = new Map<string, Language>([
+  ["zh-cn", "zh"],
+  ["zh-sg", "zh"],
+  ["zh-hans", "zh"],
+  ["pt", "pt-BR"],
+]);
+
+/**
+ * Match browser BCP 47 language tags to the locales bundled with iPolloWork.
+ * Region-sensitive Chinese and Portuguese variants only match explicit aliases
+ * so users are not silently moved to a different writing system or dialect.
+ */
+export const languageFromLocale = (localeTag: string): Language | null => {
+  const normalized = localeTag.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const exact = LANGUAGES.find((language) => language.toLowerCase() === normalized);
+  if (exact) return exact;
+
+  const alias = REGION_LANGUAGE_ALIASES.get(normalized);
+  if (alias) return alias;
+
+  const baseLanguage = normalized.split("-")[0];
+  if (baseLanguage === "zh" || baseLanguage === "pt") return null;
+  return LANGUAGES.find((language) => language === baseLanguage) ?? null;
+};
+
+export const preferredLanguage = (localeTags: readonly string[]): Language => {
+  for (const localeTag of localeTags) {
+    const language = languageFromLocale(localeTag);
+    if (language) return language;
+  }
+  return "en";
+};
+
 let localeValue: Language = "en";
 
 /**
@@ -215,9 +250,12 @@ export const initLocale = (): Language => {
     console.warn("Failed to read language preference:", e);
   }
 
+  const detected = preferredLanguage(window.navigator.languages);
+  localeValue = detected;
+
   if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("lang", "en");
+    document.documentElement.setAttribute("lang", detected);
   }
 
-  return "en";
+  return detected;
 };

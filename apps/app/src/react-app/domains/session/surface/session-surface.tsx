@@ -222,6 +222,8 @@ export type SessionSurfaceProps = {
   onMaterializeTemplate?: (templateId: string, surface: "design" | "video") => void | Promise<void>;
   /** Marks the first prompt as a video task before it reaches the agent. */
   onActivateVideoStudio?: (sessionId: string) => void;
+  /** Opens the session-owned Video Studio for a generated video artifact. */
+  onOpenVideoStudio?: () => void;
   designTemplates?: TemplateCatalogItem[];
   designTemplatesLoading?: boolean;
   designTemplateBusyId?: string | null;
@@ -235,7 +237,6 @@ export type SessionSurfaceProps = {
   templateEntryPath?: string;
   artifactFiles?: readonly string[];
   artifactContext?: ArtifactInteractionContext;
-  onOpenVideoStudio?: () => void;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
 };
@@ -1738,6 +1739,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                       developerMode={props.developerMode}
                       displaySuggestions={shellConfig.starterCards}
                       providerConnectedCount={props.providerConnectedCount ?? 0}
+                      onOpenVideoStudio={props.onOpenVideoStudio}
                       dispatchAction={handleMessageListDispatchAction}
                       setPrompt={handleMessageListSetPrompt}
                       onRevertToUserMessage={handleRevertToUserMessage}
@@ -1751,7 +1753,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         templateEntryPath={props.templateEntryPath}
                         artifactFiles={props.artifactFiles}
                         artifactContext={props.artifactContext}
-                        onOpenVideoStudio={props.onOpenVideoStudio}
                       />
                     </MessageListProvider>
                   </EnvironmentVariableProvider>

@@ -295,6 +295,7 @@ export function PreviewTextSelectionToolbar({
     useDomEditActionsContext();
   const [state, setState] = useState<TextSelectionState | null>(null);
   const [replacementText, setReplacementText] = useState("");
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const stateRef = useRef<TextSelectionState | null>(null);
   const committingRef = useRef(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -342,6 +343,7 @@ export function PreviewTextSelectionToolbar({
     const next = buildToolbarState();
     setState(next);
     setReplacementText(next?.text ?? "");
+    setDeleteConfirmationOpen(false);
   }, [buildToolbarState]);
 
   useEffect(() => {
@@ -454,6 +456,7 @@ export function PreviewTextSelectionToolbar({
   const deleteSelectedElement = useCallback(() => {
     if (!activeSelection) return;
     void handleDomEditElementDelete(activeSelection);
+    setDeleteConfirmationOpen(false);
     stateRef.current = null;
     setState(null);
   }, [activeSelection, handleDomEditElementDelete]);
@@ -492,7 +495,7 @@ export function PreviewTextSelectionToolbar({
   return (
     <div
       ref={toolbarRef}
-      className="hf-preview-text-toolbar absolute z-[80] flex items-center gap-1 overflow-auto rounded-md border px-1.5 py-1 shadow-lg"
+      className="hf-preview-text-toolbar absolute z-[80] flex w-max items-center gap-[17px] overflow-visible rounded-lg border px-4 py-2"
       style={toolbarStyle(state.rect, containerRef.current, toolbarSize)}
       onMouseDown={(event) => {
         const target = event.target as HTMLElement | null;
@@ -503,7 +506,7 @@ export function PreviewTextSelectionToolbar({
       aria-label="Element editing"
     >
       {state.showTextControls && (
-        <>
+        <div className="hf-preview-text-toolbar__text-controls">
           <span className="px-2 text-[11px] font-medium">Text</span>
           <input
             className="hf-preview-text-toolbar__input"
@@ -534,17 +537,8 @@ export function PreviewTextSelectionToolbar({
           <button type="button" className="hf-preview-text-toolbar__button line-through" aria-pressed={state.activeFormats.strike} onClick={() => applyFormat("strike")}>S</button>
           <button type="button" className="hf-preview-text-toolbar__button font-mono" aria-pressed={state.activeFormats.code} onClick={() => applyFormat("code")}>&lt;/&gt;</button>
           <button type="button" className="hf-preview-text-toolbar__button" aria-pressed={state.activeFormats.link} onClick={() => applyFormat("link")}>Link</button>
-        </>
+        </div>
       )}
-      <button
-        type="button"
-        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button hf-preview-text-toolbar__delete-button"
-        aria-label="Delete selected element"
-        title="Delete"
-        onClick={deleteSelectedElement}
-      >
-        <Trash size={12} weight="bold" />
-      </button>
       <button
         type="button"
         className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
@@ -552,7 +546,7 @@ export function PreviewTextSelectionToolbar({
         title="Design"
         onClick={openDesignProperties}
       >
-        <SlidersHorizontal size={12} weight="bold" />
+        <SlidersHorizontal size={18} />
       </button>
       <button
         type="button"
@@ -561,8 +555,28 @@ export function PreviewTextSelectionToolbar({
         title="Ask AI"
         onClick={askAiAboutSelection}
       >
-        <Sparkle size={12} weight="bold" />
+        <Sparkle size={18} />
       </button>
+      <span className="hf-preview-text-toolbar__divider" aria-hidden="true" />
+      <button
+        type="button"
+        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
+        aria-label="Delete selected element"
+        title="Delete"
+        aria-expanded={deleteConfirmationOpen}
+        onClick={() => setDeleteConfirmationOpen(true)}
+      >
+        <Trash size={18} />
+      </button>
+      {deleteConfirmationOpen ? (
+        <div className="hf-preview-text-toolbar__delete-confirmation" role="alertdialog" aria-label="Confirm deletion">
+          <p>Delete selected element?</p>
+          <div>
+            <button type="button" onClick={() => setDeleteConfirmationOpen(false)}>Cancel</button>
+            <button type="button" className="hf-preview-text-toolbar__confirm-delete" onClick={deleteSelectedElement}>Delete</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

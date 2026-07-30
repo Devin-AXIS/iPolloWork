@@ -2,6 +2,7 @@
 import * as React from "react";
 import type { WorkspaceConnectionState } from "../../../../app/types";
 import type { WorkContextId } from "../../../../app/lib/work-context";
+import type { Language } from "../../../../i18n";
 import type { iPolloWorkSessionType } from "./session-type";
 
 export type { iPolloWorkSessionType } from "./session-type";
@@ -10,6 +11,7 @@ export type iPolloWorkTemplateId = string;
 export type SidebarContextValue = {
   selectedWorkspaceId: string;
   selectedSessionId: string | null;
+  language: Language;
   developerMode: boolean;
   showSessionActions?: boolean;
   sessionStatusById?: Record<string, string>;
@@ -23,11 +25,13 @@ export type SidebarContextValue = {
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
-  ) => void;
+  ) => Promise<string | null> | string | null | void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
   onArchiveSession?: (sessionId: string, archived: boolean) => void;
   onOpenCreateGroupModal?: (workspaceId: string) => void;
+  onOpenRenameGroupModal?: (workspaceId: string, groupId: string, label: string) => void;
+  onOpenRemoveGroupModal?: (workspaceId: string, groupId: string, label: string) => void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
   onEditWorkspaceConnection: (workspaceId: string) => void;

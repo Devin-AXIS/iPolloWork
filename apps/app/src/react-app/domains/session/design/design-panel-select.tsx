@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
+import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 import panelSelectChevron from "./assets/panel-select-chevron.svg";
@@ -33,7 +34,9 @@ export function DesignPanelSelect<T extends string>({
 }: DesignPanelSelectProps<T>) {
   const [open, setOpen] = React.useState(false);
   const [openAbove, setOpenAbove] = React.useState(false);
+  const [menuRect, setMenuRect] = React.useState<DOMRect | null>(null);
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
   const selected = options.find((option) => option.value === value) ?? options[0];
 
   const toggleOpen = () => {
@@ -41,6 +44,7 @@ export function DesignPanelSelect<T extends string>({
       const rect = rootRef.current.getBoundingClientRect();
       const menuHeight = options.length * 34 + 24;
       setOpenAbove(window.innerHeight - rect.bottom < menuHeight + 12 && rect.top > menuHeight + 12);
+      setMenuRect(rect);
     }
     setOpen((current) => !current);
   };
@@ -48,7 +52,8 @@ export function DesignPanelSelect<T extends string>({
   React.useEffect(() => {
     if (!open) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target instanceof Node ? event.target : null)) setOpen(false);
+      const target = event.target instanceof Node ? event.target : null;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -77,9 +82,16 @@ export function DesignPanelSelect<T extends string>({
         {showValue ? <span className={cn("min-w-0 flex-1 truncate text-[13px] text-[#24262b]", textClassName)}>{selected?.label ?? value}</span> : null}
         <img src={panelSelectChevron} alt="" width="16" height="16" className={cn("block size-4 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
-      {open ? (
+      {open && menuRect ? createPortal(
         <div
-          className={cn("absolute left-0 z-50 w-full min-w-[120px] overflow-hidden rounded-xl border border-[#dedfe3] bg-white p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)]", openAbove ? "bottom-[calc(100%+12px)]" : "top-[calc(100%+12px)]", menuClassName)}
+          ref={menuRef}
+          className={cn("fixed z-[70] min-w-[120px] overflow-hidden rounded-xl border border-[#dedfe3] bg-white p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)]", menuClassName)}
+          style={{
+            left: menuRect.left,
+            top: openAbove ? undefined : menuRect.bottom + 12,
+            bottom: openAbove ? window.innerHeight - menuRect.top + 12 : undefined,
+            width: menuRect.width,
+          }}
           role="listbox"
           aria-label={ariaLabel}
         >
@@ -99,7 +111,8 @@ export function DesignPanelSelect<T extends string>({
               {option.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );

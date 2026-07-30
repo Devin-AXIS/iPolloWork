@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/input-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { t } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 import { ArtifactIcon } from "../artifacts/artifact-icon";
 import { ArtifactPanel } from "../artifacts/artifact-panel";
@@ -58,6 +59,7 @@ type SidePanelProps = {
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
   expanded?: boolean;
+  titlebarInset?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
 };
 
@@ -453,6 +455,7 @@ export function SidePanel({
   launcherItems = [],
   onAskAi,
   expanded = false,
+  titlebarInset = false,
   onExpandedChange,
   onClose,
 }: SidePanelProps) {
@@ -604,7 +607,7 @@ export function SidePanel({
     <TooltipProvider delay={1000}>
       <div className="flex h-full flex-col">
         <div className="shrink-0 bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
-          <div className="flex h-10 items-center gap-1 px-2 mac:titlebar-drag">
+          <div className={cn("flex h-10 items-center gap-1 px-2 mac:titlebar-drag", titlebarInset && "mac:pl-20")}>
             <div className="no-scrollbar min-w-0 flex-1 overflow-x-auto">
               <PanelTabList
                 values={tabs.map((tab) => tab.id)}

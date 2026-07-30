@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import {
   constants as fsConstants,
+  copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -38,6 +39,8 @@ const macDevElectronRoot = resolve(repoRoot, ".ipollowork-dev", "electron-runtim
 const macDevElectronApp = resolve(macDevElectronRoot, "iPollo Dev.app");
 const macDevElectronExecutable = resolve(macDevElectronApp, "Contents", "MacOS", "Electron");
 const macDevElectronInfoPlist = resolve(macDevElectronApp, "Contents", "Info.plist");
+const macDevElectronIcon = resolve(macDevElectronApp, "Contents", "Resources", "ipollowork.icns");
+const macAppIcon = resolve(desktopRoot, "resources", "icons", "mac", "icon.icns");
 const macLaunchServicesRegister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
 const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -109,6 +112,14 @@ function prepareMacDevelopmentElectron() {
     "CFBundleName",
     "-string",
     "iPollo - Dev",
+    macDevElectronInfoPlist,
+  ]);
+  copyFileSync(macAppIcon, macDevElectronIcon);
+  runSync("plutil", [
+    "-replace",
+    "CFBundleIconFile",
+    "-string",
+    "ipollowork.icns",
     macDevElectronInfoPlist,
   ]);
   spawnSync("plutil", ["-remove", "CFBundleURLTypes", macDevElectronInfoPlist], {
