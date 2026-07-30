@@ -10,6 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, "..");
 const iconRoot = resolve(desktopRoot, "resources", "icons");
 const sourceSvg = readFileSync(resolve(iconRoot, "logo-source.svg"), "utf8");
+const macSourceSvg = readFileSync(resolve(iconRoot, "mac", "icon-source.svg"));
 
 const WINDOWS_ICON_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256, 512, 1024];
 const WINDOWS_ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
@@ -22,14 +23,9 @@ const ICNS_ENTRIES = [
   ["ic09", 512],
   ["ic10", 1024],
 ];
+const MAC_ICON_CANVAS_RATIO = 0.92;
 
 const variants = {
-  mac: {
-    background: "#FFFFFF",
-    foreground: "#050505",
-    insetRatio: 0.225,
-    radiusRatio: 0.2237,
-  },
   windows: {
     background: "#FFFFFF",
     foreground: "#050505",
@@ -117,15 +113,30 @@ async function writePng(filePath, size, variant) {
   writeFileSync(filePath, await renderIconPng(size, variant));
 }
 
+async function renderMacIconPng(size) {
+  const iconSize = Math.round(size * MAC_ICON_CANVAS_RATIO);
+  const inset = Math.round((size - iconSize) / 2);
+  const icon = await sharp(macSourceSvg).resize(iconSize, iconSize).png().toBuffer();
+
+  return sharp({
+    create: {
+      width: size,
+      height: size,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  }).composite([{ input: icon, left: inset, top: inset }]).png().toBuffer();
+}
+
 async function main() {
   const macDir = resolve(iconRoot, "mac");
   const windowsDir = resolve(iconRoot, "windows");
   mkdirSync(macDir, { recursive: true });
   mkdirSync(windowsDir, { recursive: true });
 
-  const macPngs = await Promise.all(ICNS_ENTRIES.map(async ([type, size]) => [type, await renderIconPng(size, variants.mac)]));
+  const macPngs = await Promise.all(ICNS_ENTRIES.map(async ([type, size]) => [type, await renderMacIconPng(size)]));
   writeFileSync(resolve(macDir, "icon.icns"), encodeIcns(macPngs));
-  await writePng(resolve(macDir, "icon.png"), 1024, variants.mac);
+  writeFileSync(resolve(macDir, "icon.png"), await renderMacIconPng(1024));
 
   for (const size of WINDOWS_ICON_SIZES) {
     await writePng(resolve(windowsDir, `icon-${size}.png`), size, variants.windows);

@@ -2,6 +2,7 @@
 import * as React from "react";
 import type { WorkspaceConnectionState } from "../../../../app/types";
 import type { WorkContextId } from "../../../../app/lib/work-context";
+import type { Language } from "../../../../i18n";
 import type { iPolloWorkSessionType } from "./session-type";
 
 export type { iPolloWorkSessionType } from "./session-type";
@@ -10,6 +11,7 @@ export type iPolloWorkTemplateId = string;
 export type SidebarContextValue = {
   selectedWorkspaceId: string;
   selectedSessionId: string | null;
+  language: Language;
   developerMode: boolean;
   showSessionActions?: boolean;
   sessionStatusById?: Record<string, string>;

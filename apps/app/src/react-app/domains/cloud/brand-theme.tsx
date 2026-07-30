@@ -2,8 +2,11 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { desktopPolicyKeys, type BrandAccentColor } from "@ipollowork/types/den/desktop-policies";
 
+import { publicAssetUrl } from "../../../app/lib/public-asset";
 import { useNotificationStore } from "../../kernel/notification-store";
 import { useOrgRestrictions } from "./desktop-config-provider";
+
+export const DEFAULT_BRAND_LOGO_URL = publicAssetUrl("default-brand-avatar.jpg");
 
 // ---------------------------------------------------------------------------
 // Radix accent-color mapping
