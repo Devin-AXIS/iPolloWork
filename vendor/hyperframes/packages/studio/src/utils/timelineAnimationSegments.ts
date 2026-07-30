@@ -1,4 +1,5 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { editabilityForProvenance } from "@hyperframes/core/gsap-parser-acorn";
 import { resolveTweenDuration, resolveTweenStart } from "./globalTimeCompiler";
 
 export type TimelineAnimationPhase = "entrance" | "loop" | "exit";
@@ -21,6 +22,10 @@ export interface GsapAnimationMetaUpdate {
   position?: number;
 }
 
+export interface TimelineAnimationElementRange extends TimelineAnimationOwnerRange {
+  expandedParentStart?: number;
+}
+
 const EDGE_EPSILON_SECONDS = 0.001;
 
 export function isAnimationSharedForOwner(
@@ -33,6 +38,31 @@ export function isAnimationSharedForOwner(
     .map((part) => part.trim())
     .filter(Boolean);
   return selectorParts.length !== 1 || selectorParts[0] !== `#${ownerId}`;
+}
+
+export function isTimelineAnimationDirectlyMovable(
+  animation: GsapAnimation,
+  ownerId: string | null | undefined,
+): boolean {
+  return (
+    animation.method !== "set" &&
+    !isAnimationSharedForOwner(animation, ownerId) &&
+    editabilityForProvenance(animation.provenance) === "direct" &&
+    resolveTweenStart(animation) !== null
+  );
+}
+
+/**
+ * Expanded children are drawn in master time but their GSAP source belongs to
+ * the nested composition. Rebase the owner range before writing animation time.
+ */
+export function resolveLocalTimelineAnimationOwnerRange(
+  element: TimelineAnimationElementRange,
+): TimelineAnimationOwnerRange {
+  return {
+    start: Math.max(0, element.start - (element.expandedParentStart ?? 0)),
+    duration: element.duration,
+  };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -199,4 +229,30 @@ export function clampAnimationMetaToOwner(
     ...(positionChanged ? { position } : {}),
     ...(durationChanged ? { duration: boundedDuration } : {}),
   };
+}
+
+/**
+ * Convert a clip-relative strip drag into one source-local GSAP meta update.
+ * The animation id is handled by the caller, so moving one strip cannot change
+ * sibling animations or the owner clip.
+ */
+export function resolveTimelineAnimationMoveUpdate(
+  animation: GsapAnimation,
+  deltaPercentage: number,
+  ownerRange: TimelineAnimationOwnerRange,
+): GsapAnimationMetaUpdate | null {
+  const currentStart = resolveTweenStart(animation);
+  if (currentStart === null || ownerRange.duration <= 0 || !Number.isFinite(deltaPercentage)) {
+    return null;
+  }
+  const normalizedStart =
+    clampAnimationMetaToOwner(animation, { position: currentStart }, ownerRange).position ??
+    currentStart;
+  return clampAnimationMetaToOwner(
+    animation,
+    {
+      position: normalizedStart + (deltaPercentage / 100) * ownerRange.duration,
+    },
+    ownerRange,
+  );
 }

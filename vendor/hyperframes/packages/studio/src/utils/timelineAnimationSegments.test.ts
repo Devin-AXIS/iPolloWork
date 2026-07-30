@@ -5,6 +5,9 @@ import {
   buildTimelineAnimationSegments,
   clampAnimationMetaToOwner,
   isAnimationSharedForOwner,
+  isTimelineAnimationDirectlyMovable,
+  resolveLocalTimelineAnimationOwnerRange,
+  resolveTimelineAnimationMoveUpdate,
   resolveTimelineAnimationPhase,
 } from "./timelineAnimationSegments";
 
@@ -147,5 +150,84 @@ describe("timeline animation segments", () => {
       ),
     ).toBe(true);
     expect(isAnimationSharedForOwner(animation(), null)).toBe(true);
+  });
+
+  test("keeps shared and generated animations read-only", () => {
+    expect(isTimelineAnimationDirectlyMovable(animation(), "title")).toBe(true);
+    expect(
+      isTimelineAnimationDirectlyMovable(animation({ provenance: { kind: "literal" } }), "title"),
+    ).toBe(true);
+    expect(
+      isTimelineAnimationDirectlyMovable(
+        animation({ targetSelector: "#title, #subtitle" }),
+        "title",
+      ),
+    ).toBe(false);
+    expect(
+      isTimelineAnimationDirectlyMovable(
+        animation({ provenance: { kind: "helper", fn: "reveal" } }),
+        "title",
+      ),
+    ).toBe(false);
+    expect(
+      isTimelineAnimationDirectlyMovable(animation({ provenance: { kind: "loop" } }), "title"),
+    ).toBe(false);
+    expect(
+      isTimelineAnimationDirectlyMovable(
+        animation({ provenance: { kind: "runtime-dynamic" } }),
+        "title",
+      ),
+    ).toBe(false);
+    expect(
+      isTimelineAnimationDirectlyMovable(animation({ method: "set" }), "title"),
+    ).toBe(false);
+    expect(
+      isTimelineAnimationDirectlyMovable(
+        animation({ position: "not-a-time" }),
+        "title",
+      ),
+    ).toBe(false);
+  });
+
+  test("rebases expanded owners and moves only by the dragged percentage", () => {
+    const ownerRange = resolveLocalTimelineAnimationOwnerRange({
+      start: 12,
+      duration: 8,
+      expandedParentStart: 10,
+    });
+    expect(ownerRange).toEqual(OWNER);
+    expect(
+      resolveTimelineAnimationMoveUpdate(animation({ position: 3, duration: 2 }), 25, ownerRange),
+    ).toEqual({ position: 5 });
+    expect(
+      resolveLocalTimelineAnimationOwnerRange({ start: 2, duration: 8 }),
+    ).toEqual(OWNER);
+    expect(
+      resolveLocalTimelineAnimationOwnerRange({
+        start: 1,
+        duration: 4,
+        expandedParentStart: 3,
+      }),
+    ).toEqual({ start: 0, duration: 4 });
+  });
+
+  test("keeps moved and repeated animations inside the owner", () => {
+    expect(
+      resolveTimelineAnimationMoveUpdate(animation(), -100, OWNER),
+    ).toEqual({ position: 2 });
+    expect(
+      resolveTimelineAnimationMoveUpdate(animation(), 100, OWNER),
+    ).toEqual({ position: 8 });
+    expect(
+      resolveTimelineAnimationMoveUpdate(
+        animation({
+          position: 3,
+          duration: 1,
+          extras: { repeat: "__raw:1", repeatDelay: "__raw:0.5" },
+        }),
+        100,
+        OWNER,
+      ),
+    ).toEqual({ position: 7.5 });
   });
 });

@@ -84,6 +84,8 @@ export interface TimelineLaneBaseProps {
     fromClipPercentage: number,
     toClipPercentage: number,
   ) => void;
+  canMoveAnimationSegment?: TimelineEditCallbacks["canMoveAnimationSegment"];
+  onMoveAnimationSegment?: TimelineEditCallbacks["onMoveAnimationSegment"];
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
   /**
    * Right-click on EMPTY lane space (not on a clip — those preventDefault
@@ -144,6 +146,8 @@ export function TimelineLanes({
   onShiftClickKeyframe,
   onContextMenuKeyframe,
   onMoveKeyframe,
+  canMoveAnimationSegment,
+  onMoveAnimationSegment,
   onContextMenuClip,
   onContextMenuLane,
   beatAnalysis,
@@ -369,6 +373,7 @@ export function TimelineLanes({
                     if (isDraggingClip) return null;
                     const previewElement = getPreviewElement(el);
                     const cacheEntry = keyframeCache?.get(elementKey);
+                    const isPrimarySelection = selectedElementId === elementKey;
                     // Passenger of a live multi-drag: slide by the SAME formation
                     // delta (the grabbed clip's group-clamped delta) via a
                     // compositor transform on a same-geometry wrapper (absolute
@@ -587,6 +592,14 @@ export function TimelineLanes({
                         {cacheEntry?.animationSegments && (
                           <TimelineClipAnimationSegments
                             segments={cacheEntry.animationSegments}
+                            ownerElement={el}
+                            canMoveAnimationSegment={
+                              isPrimarySelection ? canMoveAnimationSegment : undefined
+                            }
+                            onMoveAnimationSegment={
+                              isPrimarySelection ? onMoveAnimationSegment : undefined
+                            }
+                            suppressClickRef={suppressClickRef}
                           />
                         )}
                         {STUDIO_KEYFRAMES_ENABLED &&
