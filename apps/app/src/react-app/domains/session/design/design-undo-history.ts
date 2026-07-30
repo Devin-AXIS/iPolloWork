@@ -1,15 +1,39 @@
-export type DesignUndoResult = {
-  previous: string | undefined;
-  history: string[];
+export type DesignUndoSnapshot = {
+  html: string;
+  tokenCss: string;
+  restoreTokenCss?: boolean;
 };
 
-export function pushDesignUndoHistory(history: readonly string[], snapshot: string) {
-  return history.at(-1) === snapshot ? [...history] : [...history, snapshot];
+export type DesignUndoResult = {
+  previous: DesignUndoSnapshot | undefined;
+  history: DesignUndoSnapshot[];
+};
+
+function isSameDesignUndoSnapshot(left: DesignUndoSnapshot | undefined, right: DesignUndoSnapshot) {
+  return left?.html === right.html && left.tokenCss === right.tokenCss;
 }
 
-export function popDesignUndoHistory(history: readonly string[], current: string): DesignUndoResult {
+function wouldRestoreDesignUndoSnapshot(snapshot: DesignUndoSnapshot, current: DesignUndoSnapshot) {
+  return snapshot.html !== current.html
+    || Boolean(snapshot.restoreTokenCss && snapshot.tokenCss !== current.tokenCss);
+}
+
+export function pushDesignUndoHistory(history: readonly DesignUndoSnapshot[], snapshot: DesignUndoSnapshot) {
+  return isSameDesignUndoSnapshot(history.at(-1), snapshot)
+    ? [...history.slice(0, -1), snapshot]
+    : [...history, snapshot];
+}
+
+export function popDesignUndoHistory(
+  history: readonly DesignUndoSnapshot[],
+  current: DesignUndoSnapshot,
+): DesignUndoResult {
   const remaining = [...history];
-  while (remaining.at(-1) === current) remaining.pop();
+  let candidate = remaining.at(-1);
+  while (candidate && !wouldRestoreDesignUndoSnapshot(candidate, current)) {
+    remaining.pop();
+    candidate = remaining.at(-1);
+  }
   return { previous: remaining.pop(), history: remaining };
 }
 

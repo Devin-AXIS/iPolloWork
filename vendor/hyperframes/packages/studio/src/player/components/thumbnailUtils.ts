@@ -1,5 +1,6 @@
 /** Rendered height of a timeline-clip thumbnail strip, in CSS px. */
-export const THUMBNAIL_CLIP_HEIGHT = 66;
+export const THUMBNAIL_CLIP_HEIGHT = 24;
+export const MAX_THUMBNAIL_TILES = 24;
 
 export interface ThumbnailStripLayout {
   /** Width of a single tile, in CSS px. */
@@ -19,8 +20,14 @@ export function computeThumbnailStrip(
   clipHeight: number = THUMBNAIL_CLIP_HEIGHT,
 ): ThumbnailStripLayout {
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
-  const frameW = Math.max(1, Math.round(clipHeight * safeAspect));
-  const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
+  const naturalFrameWidth = Math.max(1, Math.round(clipHeight * safeAspect));
+  const naturalFrameCount =
+    containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / naturalFrameWidth)) : 1;
+  const frameCount = Math.min(naturalFrameCount, MAX_THUMBNAIL_TILES);
+  const frameW =
+    naturalFrameCount > MAX_THUMBNAIL_TILES
+      ? Math.max(1, Math.ceil(containerWidth / MAX_THUMBNAIL_TILES))
+      : naturalFrameWidth;
   return { frameW, frameCount };
 }
 

@@ -67,5 +67,11 @@ export interface TimelineEditCallbacks {
     fromClipPercentage: number,
     toClipPercentage: number,
   ) => void;
+  canMoveAnimationSegment?: (element: TimelineElement, animationId: string) => boolean;
+  onMoveAnimationSegment?: (
+    element: TimelineElement,
+    animationId: string,
+    deltaPercentage: number,
+  ) => void;
   onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
 }

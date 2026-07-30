@@ -43,6 +43,8 @@ export function TimelineEditProvider({
       value.onChangeKeyframeEase,
       value.onMoveKeyframeToPlayhead,
       value.onMoveKeyframe,
+      value.canMoveAnimationSegment,
+      value.onMoveAnimationSegment,
       value.onToggleKeyframeAtPlayhead,
     ],
   );

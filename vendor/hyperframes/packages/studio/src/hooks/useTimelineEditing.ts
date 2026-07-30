@@ -35,6 +35,7 @@ import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
 import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
+import { getTimelineEditCapabilities } from "../player/components/timelineEditing";
 
 type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & {
   stackingReorder?: TimelineStackingReorderIntent | null;
@@ -134,6 +135,7 @@ export function useTimelineEditing({
       const commitMove = () => {
         const targetPath = element.sourceFile || activeCompPath || "index.html";
         const startChanged = updates.start !== element.start;
+        const materializesTiming = element.timingSource === "implicit";
         // A vertical-only lane move arrives with start unchanged but track changed
         // (on this single-element path the drag commit has already folded the
         // AUTHORED persist track into updates.track). It must persist like any
@@ -141,13 +143,20 @@ export function useTimelineEditing({
         // the file write, so the lane snapped back on reload.
         const trackChanged = updates.track !== element.track;
 
-        if (startChanged || trackChanged) {
+        if (startChanged || trackChanged || materializesTiming) {
           const liveAttrs: Array<[string, string]> = [];
-          if (startChanged) {
+          if (startChanged || materializesTiming) {
             liveAttrs.push(["data-start", formatTimelineAttributeNumber(updates.start)]);
           }
-          if (trackChanged) {
-            liveAttrs.push(["data-track-index", formatTimelineAttributeNumber(updates.track)]);
+          if (materializesTiming) {
+            liveAttrs.push(["data-duration", formatTimelineAttributeNumber(element.duration)]);
+            liveAttrs.push(["data-hf-preserve-flow", "1"]);
+          }
+          if (trackChanged || materializesTiming) {
+            const track = materializesTiming
+              ? (element.authoredTrack ?? updates.track)
+              : updates.track;
+            liveAttrs.push(["data-track-index", formatTimelineAttributeNumber(track)]);
           }
           patchIframeDomTiming(previewIframeRef.current, element, liveAttrs, activeCompPath);
         }
@@ -173,13 +182,18 @@ export function useTimelineEditing({
 
         const buildMovePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
           // Persist lane changes too — data-start-only writes let reload snap the lane back.
-          const track = trackChanged ? updates.track : undefined;
+          const track = materializesTiming
+            ? (element.authoredTrack ?? updates.track)
+            : trackChanged
+              ? updates.track
+              : undefined;
           return buildTimelineMoveTimingPatch(
             original,
             target,
             updates.start,
             element.duration,
             track,
+            materializesTiming,
           );
         };
         const coalesceKey = `timeline-move:${element.hfId ?? element.id}`;
@@ -203,7 +217,13 @@ export function useTimelineEditing({
           .then(() => {
             // The SDK setTiming path writes start only — a lane change must take
             // the fallback, whose patch builder writes data-track-index too.
-            if (sdkSession && element.hfId && !needsExtension && !trackChanged) {
+            if (
+              sdkSession &&
+              element.hfId &&
+              !needsExtension &&
+              !trackChanged &&
+              !materializesTiming
+            ) {
               return sdkTimingPersist(
                 element.hfId,
                 targetPath,
@@ -269,6 +289,13 @@ export function useTimelineEditing({
             : "data-media-start";
         liveAttrs.push([liveAttr, formatTimelineAttributeNumber(updates.playbackStart)]);
       }
+      if (element.timingSource === "implicit") {
+        liveAttrs.push(["data-hf-preserve-flow", "1"]);
+        liveAttrs.push([
+          "data-track-index",
+          formatTimelineAttributeNumber(element.authoredTrack ?? element.track),
+        ]);
+      }
       patchIframeDomTiming(previewIframeRef.current, element, liveAttrs, activeCompPath);
       // Snapshot the duration BEFORE the optimistic updates below so a failed
       // persist can roll the readout + live root back (see captureDurationRollback).
@@ -308,7 +335,11 @@ export function useTimelineEditing({
           }),
         );
       const persistDone =
-        sdkSession && element.hfId && !hasPbsAdjustment && !needsExtension
+        sdkSession &&
+        element.hfId &&
+        element.timingSource !== "implicit" &&
+        !hasPbsAdjustment &&
+        !needsExtension
           ? sdkTimingPersist(
               element.hfId,
               targetPath,
@@ -514,11 +545,22 @@ export function useTimelineEditing({
   });
 
   const handleBlockedTimelineEdit = useCallback(
-    (_element: TimelineElement) => {
+    (element: TimelineElement) => {
       const now = Date.now();
       if (now - lastBlockedTimelineToastAtRef.current < 1500) return;
       lastBlockedTimelineToastAtRef.current = now;
-      showToast("This clip can't be moved or resized from the timeline yet.", "info");
+      const status = getTimelineEditCapabilities(element).status;
+      const message =
+        status === "locked"
+          ? "This layer is locked in the composition source."
+          : status === "nested-context"
+            ? "Open the parent composition to edit this nested layer."
+            : status === "missing-target"
+              ? "This layer has no stable source target to save the edit."
+              : status === "invalid-duration"
+                ? "This layer has no valid duration to resize."
+                : "This layer can't be edited from the timeline.";
+      showToast(message, "info");
     },
     [showToast],
   );

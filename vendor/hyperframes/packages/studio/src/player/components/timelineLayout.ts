@@ -2,7 +2,10 @@ import { formatTime } from "../lib/time";
 import type { ZoomMode } from "../store/playerStore";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
-export const GUTTER = 32;
+/** Fixed layer-control column. Time zero begins immediately after this header. */
+export const LAYER_HEADER_W = 196;
+/** Backward-compatible geometry name used by the existing time conversion helpers. */
+export const GUTTER = LAYER_HEADER_W;
 export const TRACK_H = 48;
 export const RULER_H = 24;
 export const CLIP_Y = 3;
@@ -41,7 +44,7 @@ export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
  * gutter cell and the time-mapped content div, so all content-relative math
  * (clip left = t·pps, beat lines, lane-menu time) is untouched.
  */
-export const TRACKS_LEFT_PAD = 48;
+export const TRACKS_LEFT_PAD = 8;
 
 /**
  * The y (content-space) of the top edge of track ROW index `row` (0 = first

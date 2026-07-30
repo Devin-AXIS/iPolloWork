@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { BeatEditState } from "../../utils/beatEditing";
+import type { TimelineAnimationSegment } from "../../utils/timelineAnimationSegments";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { computePinnedZoomPercent } from "../components/timelineZoom";
@@ -19,6 +20,13 @@ export interface KeyframeCacheEntry {
   }>;
   ease?: string;
   easeEach?: string;
+  /** Clip-local GSAP timing bars. Derived from existing tweens; never persisted separately. */
+  animationSegments?: TimelineAnimationSegment[];
+}
+
+export interface KeyframeCacheUpdate {
+  elementId: string;
+  data: KeyframeCacheEntry | undefined;
 }
 
 export interface TimelineElement {
@@ -76,13 +84,41 @@ export interface TimelineElement {
   /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
   timelineRole?: string;
   /**
+   * Optional editor presentation kind from data-timeline-kind. `tag` remains
+   * the DOM/media primitive; this field describes how the layer reads to users.
+   */
+  timelineKind?: TimelineKind;
+  /**
+   * Optional presentation group from data-timeline-group. Clips in the same
+   * authored group share one timeline color; independent clips remain distinct.
+   */
+  timelineGroupId?: string;
+  /**
    * Set by useExpandedTimelineElements on an inline-expanded sub-composition
    * child: the absolute master-timeline start of the sub-comp host the child
    * lives in. Presence marks the element as expanded; edits subtract it to get
    * the child's local (sourceFile-relative) time. Works at any nesting depth.
    */
   expandedParentStart?: number;
+  /**
+   * Display-only key of the expanded composition row that owns this derived
+   * child row. Parent time-drag previews use it to move the child visually;
+   * it never joins selection or persistence writes.
+   */
+  expandedDisplayHostKey?: string;
 }
+
+export type TimelineKind =
+  | "text"
+  | "logo"
+  | "image"
+  | "video"
+  | "effect"
+  | "music"
+  | "voiceover"
+  | "audio"
+  | "composition"
+  | "element";
 
 export type ZoomMode = "fit" | "manual";
 type TimelineTool = "select" | "razor";
@@ -195,6 +231,7 @@ interface PlayerState {
   /** Keyframe data per element id, populated from parsed GSAP animations. */
   keyframeCache: Map<string, KeyframeCacheEntry>;
   setKeyframeCache: (elementId: string, data: KeyframeCacheEntry | undefined) => void;
+  setKeyframeCacheEntries: (updates: readonly KeyframeCacheUpdate[]) => void;
 
   setIsPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
@@ -373,6 +410,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const next = new Map(s.keyframeCache);
       if (data) next.set(elementId, data);
       else next.delete(elementId);
+      return { keyframeCache: next };
+    }),
+  setKeyframeCacheEntries: (updates) =>
+    set((s) => {
+      if (updates.length === 0) return s;
+      const next = new Map(s.keyframeCache);
+      for (const { elementId, data } of updates) {
+        if (data) next.set(elementId, data);
+        else next.delete(elementId);
+      }
       return { keyframeCache: next };
     }),
 

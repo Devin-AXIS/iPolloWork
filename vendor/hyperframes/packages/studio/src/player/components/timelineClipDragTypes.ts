@@ -5,6 +5,9 @@ import type { BlockedTimelineEditIntent } from "./timelineEditing";
 /* ── Shared clip-drag state types ───────────────────────────────── */
 export interface DraggedClipState {
   element: TimelineElement;
+  mode: "time" | "layer-order";
+  /** Frozen at pointerdown so selection changes cannot enlist extra passengers mid-gesture. */
+  selectionKeys: ReadonlySet<string>;
   originClientX: number;
   originClientY: number;
   originScrollLeft: number;
@@ -41,6 +44,8 @@ export interface DraggedClipState {
 export interface ResizingClipState {
   element: TimelineElement;
   edge: "start" | "end";
+  /** Frozen at pointerdown; modifier-free trims affect only the grabbed clip. */
+  selectionKeys: ReadonlySet<string>;
   originClientX: number;
   /**
    * scrollLeft at gesture start. Edge auto-scroll moves the content under a

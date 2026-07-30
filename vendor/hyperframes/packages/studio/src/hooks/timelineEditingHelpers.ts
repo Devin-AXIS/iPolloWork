@@ -130,6 +130,36 @@ export function buildPatchTarget(element: {
   return null;
 }
 export type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
+
+type TimelinePatchBuilder = (original: string, target: PatchTarget) => string;
+
+export type TimelinePatchResolution =
+  | { status: "missing-target" }
+  | { status: "target-not-found" }
+  | { status: "unchanged" }
+  | { status: "changed"; content: string };
+
+/**
+ * Resolve a source patch without conflating an already-applied edit with a
+ * stale selector. Repeated/coalesced gestures may legitimately request bytes
+ * already present on disk; missing targets must still fail loudly.
+ */
+export function resolveTimelinePatch(
+  original: string,
+  element: Pick<
+    TimelineElement,
+    "id" | "domId" | "hfId" | "selector" | "selectorIndex"
+  >,
+  buildPatches: TimelinePatchBuilder,
+): TimelinePatchResolution {
+  const target = buildPatchTarget(element);
+  if (!target) return { status: "missing-target" };
+  if (!findTagByTarget(original, target)) return { status: "target-not-found" };
+
+  const content = buildPatches(original, target);
+  return content === original ? { status: "unchanged" } : { status: "changed", content };
+}
+
 // The runtime re-reads data-start/data-duration from the DOM on each sync tick
 // (packages/core/src/runtime/init.ts:1324-1368), so attribute mutations here are
 // picked up automatically on the next frame without a rebind call.
@@ -203,6 +233,7 @@ export function buildTimelineMoveTimingPatch(
   start: number,
   duration: number,
   track?: number,
+  materializeTiming = false,
 ): string {
   if (!Number.isFinite(start) || !Number.isFinite(duration)) {
     console.warn(
@@ -215,6 +246,18 @@ export function buildTimelineMoveTimingPatch(
     property: "start",
     value: formatTimelineAttributeNumber(start),
   });
+  if (materializeTiming) {
+    patched = applyPatchByTarget(patched, target, {
+      type: "attribute",
+      property: "duration",
+      value: formatTimelineAttributeNumber(duration),
+    });
+    patched = applyPatchByTarget(patched, target, {
+      type: "attribute",
+      property: "hf-preserve-flow",
+      value: "1",
+    });
+  }
   if (track != null && Number.isFinite(track)) {
     patched = applyPatchByTarget(patched, target, {
       type: "attribute",
@@ -247,6 +290,21 @@ export function buildTimelineResizeTimingPatch(
     property: "duration",
     value: formatTimelineAttributeNumber(updates.duration),
   });
+  if (element.timingSource === "implicit") {
+    patched = applyPatchByTarget(patched, target, {
+      type: "attribute",
+      property: "hf-preserve-flow",
+      value: "1",
+    });
+    const track = element.authoredTrack ?? element.track;
+    if (Number.isFinite(track)) {
+      patched = applyPatchByTarget(patched, target, {
+        type: "attribute",
+        property: "track-index",
+        value: formatTimelineAttributeNumber(track),
+      });
+    }
+  }
   if (pbs) {
     patched = applyPatchByTarget(patched, target, {
       type: "attribute",
@@ -277,15 +335,14 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
   const targetPath = input.element.sourceFile || input.activeCompPath || "index.html";
   const originalContent = await readFileContent(input.projectId, targetPath);
 
-  const patchTarget = buildPatchTarget(input.element);
-  if (!patchTarget) {
+  const resolution = resolveTimelinePatch(originalContent, input.element, input.buildPatches);
+  if (resolution.status === "missing-target") {
     throw new Error(`Timeline element ${input.element.id} is missing a patchable target`);
   }
-
-  const patchedContent = input.buildPatches(originalContent, patchTarget);
-  if (patchedContent === originalContent) {
+  if (resolution.status === "target-not-found") {
     throw new Error(`Unable to patch timeline element ${input.element.id} in ${targetPath}`);
   }
+  if (resolution.status === "unchanged") return;
 
   input.pendingTimelineEditPathRef.current.add(targetPath);
   input.domEditSaveTimestampRef.current = Date.now();
@@ -294,7 +351,7 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
     label: input.label,
     kind: "timeline",
     coalesceKey: input.coalesceKey,
-    files: { [targetPath]: patchedContent },
+    files: { [targetPath]: resolution.content },
     readFile: async () => originalContent,
     writeFile: input.writeProjectFile,
     recordEdit: input.recordEdit,
@@ -333,26 +390,24 @@ export async function persistTimelineBatchEdit(
       originals.get(targetPath) ?? (await readFileContent(input.projectId, targetPath));
     originals.set(targetPath, original);
 
-    const patchTarget = buildPatchTarget(change.element);
-    if (!patchTarget) {
+    const current = patchedByPath.get(targetPath) ?? original;
+    const resolution = resolveTimelinePatch(current, change.element, change.buildPatches);
+    if (resolution.status === "missing-target") {
       throw new Error(`Timeline element ${change.element.id} is missing a patchable target`);
     }
-
-    const current = patchedByPath.get(targetPath) ?? original;
     // Resolve the target FIRST: byte-identical output below is only a legit
     // no-op when the member actually resolved in the source. A mistargeted
     // member (stale id/selector) must fail loudly like the single-edit path,
     // not be silently dropped as "already at target".
-    if (!findTagByTarget(current, patchTarget)) {
+    if (resolution.status === "target-not-found") {
       throw new Error(`Unable to patch timeline element ${change.element.id} in ${targetPath}`);
     }
-    const patched = change.buildPatches(current, patchTarget);
     // The target resolved, so a member whose attributes already hold the target
     // values patches to the identical string — e.g. a track-insert renumber
     // where one clip's lane is already correct. That is a legitimate no-op:
     // skip it instead of aborting (and rolling back) the whole batch.
-    if (patched === current) continue;
-    patchedByPath.set(targetPath, patched);
+    if (resolution.status === "unchanged") continue;
+    patchedByPath.set(targetPath, resolution.content);
   }
 
   if (patchedByPath.size === 0) return;

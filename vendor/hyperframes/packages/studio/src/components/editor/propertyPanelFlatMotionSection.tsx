@@ -135,6 +135,7 @@ export function FlatMotionSection({
 } & GsapAnimationEditCallbacks) {
   const track = useTrackDesignInput();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const ownerRange = deriveElementTiming(element, animations);
   const trackProperty = (property: string) => {
     const control =
       property === "visibility"
@@ -176,6 +177,8 @@ export function FlatMotionSection({
                   animation={anim}
                   defaultExpanded={index === 0}
                   flat
+                  ownerId={element.id}
+                  ownerRange={ownerRange.duration > 0 ? ownerRange : undefined}
                   onUpdateProperty={(animationId, property, value) => {
                     trackProperty(property);
                     callbacks.onUpdateProperty(animationId, property, value);
