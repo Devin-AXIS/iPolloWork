@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "liquid-glass-context-menu",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "Liquid Glass Context Menu",
   "description": "Frosted glass context menu panel drifting over an aurora shader background",
   "stability": "experimental",

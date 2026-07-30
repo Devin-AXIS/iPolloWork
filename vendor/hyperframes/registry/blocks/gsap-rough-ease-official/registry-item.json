@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "hyperframes:block",
   "kind": "effect",
+  "librarySection": "background-scene",
   "title": "RoughEase Official Demo",
   "description": "Official GSAP RoughEase capability adapted as a seekable iPolloWork effect.",
   "dimensions": {

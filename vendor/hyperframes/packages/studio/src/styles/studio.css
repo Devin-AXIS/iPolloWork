@@ -389,11 +389,11 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   overflow-y: scroll;
   scrollbar-color: #52525b #18181b;
   scrollbar-gutter: stable;
-  scrollbar-width: auto;
+  scrollbar-width: thin;
 }
 
 .hf-block-catalog-scroll::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
 }
 
 .hf-block-catalog-scroll::-webkit-scrollbar-track {

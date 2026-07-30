@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "vfx-iphone-device",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "iPhone & MacBook 3D Showcase",
   "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable.",
   "stability": "experimental",

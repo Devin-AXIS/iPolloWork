@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "hyperframes:block",
   "kind": "effect",
+  "librarySection": "text-animation",
   "title": "ScrambleText Official Demo",
   "description": "Official GSAP ScrambleText capability adapted as a seekable iPolloWork effect.",
   "dimensions": {

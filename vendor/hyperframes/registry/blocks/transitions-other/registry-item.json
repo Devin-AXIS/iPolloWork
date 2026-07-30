@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "transitions-other",
   "type": "hyperframes:block",
+  "librarySection": "transition-scene",
   "title": "Other Transitions",
   "description": "Showcase of miscellaneous creative transitions",
   "tags": ["transition", "showcase"],

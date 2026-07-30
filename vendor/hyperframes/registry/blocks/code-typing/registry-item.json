@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "code-typing",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "Code Typing",
   "description": "Token-streamed typing reveal with a caret that tracks the frontier — deterministic, no CSS animation.",
   "dimensions": {

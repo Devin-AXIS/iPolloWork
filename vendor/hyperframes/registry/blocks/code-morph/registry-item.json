@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "code-morph",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "Code Morph",
   "description": "One snippet transforms into another — tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.",
   "dimensions": {
