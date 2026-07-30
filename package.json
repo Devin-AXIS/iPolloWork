@@ -1,7 +1,7 @@
 {
   "name": "@ipollo/ipollowork-workspace",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.17.37",
   "scripts": {
     "setup": "node scripts/ipollowork.mjs setup",
     "dev:cloud": "node scripts/ipollowork.mjs dev:cloud",

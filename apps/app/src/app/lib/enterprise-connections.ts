@@ -126,6 +126,10 @@ function endpoint(origin: string, path: string) {
   return `${origin.replace(/\/+$/u, "")}${path}`;
 }
 
+function enterpriseFetcher(fetcher: typeof fetch) {
+  return isDesktopRuntime() && fetcher === globalThis.fetch ? desktopFetchViaMain : fetcher;
+}
+
 async function readResponseJson(response: Response): Promise<unknown> {
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
@@ -172,21 +176,6 @@ export async function discoverEnterpriseConnection(
     accent: manifest.accent,
     authMode: discovery.authMode,
   };
-}
-
-function parseDirectoryEntry(value: unknown): EnterpriseServer | null {
-  if (!isRecord(value) || !isRecord(value.enterprise)) return null;
-  const enterprise = value.enterprise;
-  const id = readString(enterprise, "serverId");
-  const name = readString(enterprise, "name");
-  const shortName = readString(enterprise, "shortName");
-  const origin = normalizeEnterpriseOrigin(readString(enterprise, "origin"));
-  const logoValue = enterprise.logoUrl;
-  const logoUrl = typeof logoValue === "string" && logoValue.trim() ? logoValue.trim() : null;
-  const accentValue = readString(enterprise, "accent");
-  const accent = accentValue === "blue" || accentValue === "neutral" ? accentValue : null;
-  if (!id.startsWith("ent_") || !name || !shortName || !origin || !accent) return null;
-  return { id, name, shortName, origin, logoUrl, accent, authMode: "ipollo_oidc" };
 }
 
 function parseJoinResult(value: unknown, server: EnterpriseServer): EnterpriseConnection | null {
@@ -248,7 +237,7 @@ export async function listEnterpriseResources(
   const payload = await fetchJson(
     endpoint(connection.origin, `/api/v1/resources?type=${encodeURIComponent(type)}&limit=50`),
     { headers: { Authorization: `Bearer ${connection.session.token}` } },
-    fetcher,
+    enterpriseFetcher(fetcher),
   );
   if (!isRecord(payload) || !Array.isArray(payload.items)) throw new Error("invalid_enterprise_resource_catalog");
   return payload.items.flatMap((item) => {
@@ -264,7 +253,7 @@ export async function downloadEnterpriseResource(
 ): Promise<File> {
   const downloadUrl = enterpriseResourceUrl(connection, resource.latestVersion?.downloadPath ?? null);
   if (!downloadUrl || !resource.latestVersion) throw new Error("enterprise_resource_version_unavailable");
-  const response = await fetcher(downloadUrl, {
+  const response = await enterpriseFetcher(fetcher)(downloadUrl, {
     headers: { Authorization: `Bearer ${connection.session.token}` },
     signal: AbortSignal.timeout(ENTERPRISE_TIMEOUT_MS),
   });
@@ -280,35 +269,24 @@ export async function downloadEnterpriseResource(
 }
 
 export async function joinEnterpriseWithCode(
-  input: { joinCode: string; cloudBaseUrl: string; cloudToken: string },
+  input: { joinCode: string; cloudBaseUrl: string; cloudToken: string; enterpriseBaseUrl: string },
   fetcher: typeof fetch = fetch,
 ): Promise<EnterpriseConnection> {
   const joinCode = normalizeEnterpriseJoinCode(input.joinCode);
   const cloudOrigin = normalizeEnterpriseOrigin(input.cloudBaseUrl);
+  const enterpriseOrigin = normalizeEnterpriseOrigin(input.enterpriseBaseUrl);
   const cloudToken = input.cloudToken.trim();
   if (!cloudOrigin || !cloudToken) throw new Error("cloud_signin_required");
+  if (!enterpriseOrigin) throw new Error("invalid_enterprise_url");
   if (!/^[A-Z2-9]{5}-?[A-Z2-9]{5}$/u.test(joinCode)) throw new Error("invalid_join_code");
 
   const authorization = { Authorization: `Bearer ${cloudToken}` };
-  const cloudFetcher = isDesktopRuntime() && fetcher === globalThis.fetch
-    ? desktopFetchViaMain
-    : fetcher;
-  const directoryPayload = await fetchJson(endpoint(cloudOrigin, "/api/v1/enterprise-directory/resolve"), {
-    method: "POST",
-    headers: { ...authorization, "Content-Type": "application/json" },
-    body: JSON.stringify({ joinCode }),
-  }, cloudFetcher);
-  const directoryServer = parseDirectoryEntry(directoryPayload);
-  if (!directoryServer) throw new Error("invalid_enterprise_directory");
-
-  const discoveredServer = await discoverEnterpriseConnection(directoryServer.origin, fetcher);
-  if (discoveredServer.id !== directoryServer.id || discoveredServer.origin !== directoryServer.origin) {
-    throw new Error("enterprise_directory_mismatch");
-  }
+  const requestFetcher = enterpriseFetcher(fetcher);
+  const discoveredServer = await discoverEnterpriseConnection(enterpriseOrigin, requestFetcher);
 
   const identityPayload = await fetchJson(endpoint(cloudOrigin, "/api/auth/token"), {
     headers: authorization,
-  }, cloudFetcher);
+  }, requestFetcher);
   const identityToken = isRecord(identityPayload) ? readString(identityPayload, "token") : "";
   if (!identityToken) throw new Error("enterprise_identity_token_missing");
 
@@ -316,7 +294,7 @@ export async function joinEnterpriseWithCode(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ joinCode, identityToken }),
-  }, fetcher);
+  }, requestFetcher);
   const connection = parseJoinResult(joinPayload, discoveredServer);
   if (!connection) throw new Error("invalid_enterprise_join_response");
   saveEnterpriseConnection(connection);
@@ -376,7 +354,7 @@ export async function leaveEnterpriseConnection(
   await fetchJson(endpoint(connection.origin, "/api/v1/membership"), {
     method: "DELETE",
     headers: { Authorization: `Bearer ${connection.session.token}` },
-  }, fetcher);
+  }, enterpriseFetcher(fetcher));
   if (typeof window === "undefined") return;
   const remaining = readEnterpriseConnections().filter((item) => item.id !== connection.id);
   window.localStorage.setItem(ENTERPRISE_CONNECTIONS_KEY, JSON.stringify(remaining));
