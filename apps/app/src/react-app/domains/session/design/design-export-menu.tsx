@@ -14,6 +14,7 @@ import { t } from "@/i18n";
 type DesignExportMenuProps = {
   triggerClassName?: string;
   compact?: boolean;
+  expanded?: boolean;
   showExports?: boolean;
   publishing?: boolean;
   publishDisabled?: boolean;
@@ -31,6 +32,7 @@ type DesignExportMenuProps = {
 export function DesignExportMenu({
   triggerClassName,
   compact = false,
+  expanded = false,
   showExports = true,
   publishing = false,
   publishDisabled = false,
@@ -66,7 +68,11 @@ export function DesignExportMenu({
           </Button>
         )}
       />
-      <DropdownMenuContent align="end" className="w-44">
+      <DropdownMenuContent
+        align="end"
+        positionerClassName={expanded ? "z-[70]" : undefined}
+        className="w-44"
+      >
         {compact && onPreviewDeviceChange ? (
           <>
             <DropdownMenuItem onClick={() => onPreviewDeviceChange("desktop")}>

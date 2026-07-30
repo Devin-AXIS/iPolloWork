@@ -116,6 +116,7 @@ type DesignPanelProps = {
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   initialPath?: string;
+  expanded?: boolean;
   onAskAi: (context: DesignAiSelectionContext) => void;
 };
 
@@ -520,6 +521,7 @@ export function DesignPanel({
   workspaceId,
   isRemoteWorkspace = false,
   initialPath,
+  expanded = false,
   onAskAi,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
@@ -742,6 +744,19 @@ export function DesignPanel({
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [isPresentationTemplate, sourceHydrated]);
+
+  React.useEffect(() => {
+    const viewport = previewViewportRef.current;
+    if (!viewport || !isPresentationTemplate) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPresentationZoom((current) => presentationCanvasWheelZoom(current, event.deltaY));
+    };
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", handleWheel);
+  }, [isPresentationTemplate]);
   const templateTokenPath = React.useMemo(() => {
     const tokenPath = designTemplate?.designSystem.tokens || linkedDesignTokenPath(fileQuery.data?.content) || "design-tokens.css";
     const briefPath = templateQuery.data?.state.briefPath;
@@ -2082,6 +2097,7 @@ export function DesignPanel({
                 <DesignExportMenu
                   triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
                   compact={compactToolbar}
+                  expanded={expanded}
                   showExports={Boolean(deck)}
                   publishing={publishMutation.isPending}
                   publishDisabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
