@@ -390,12 +390,19 @@ ${demo.setup.trimEnd()}
 function renderRegistryItem(capability: GsapOfficialCapability, demo: DemoDefinition): string {
   const name = itemName(capability);
   const plugins = [capability.runtimeName, ...(demo.extraPlugins ?? [])];
+  const librarySection =
+    capability.group === "text"
+      ? "text-animation"
+      : capability.group === "ui" || capability.group === "scroll"
+        ? "interface-animation"
+        : "background-scene";
   const item = {
     $schema: "https://hyperframes.heygen.com/schema/registry-item.json",
     name,
     version: "1.0.0",
     type: "hyperframes:block",
     kind: "effect",
+    librarySection,
     title: `${capability.label} Official Demo`,
     description:
       capability.role === "tool"

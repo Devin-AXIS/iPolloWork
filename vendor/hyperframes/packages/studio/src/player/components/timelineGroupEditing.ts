@@ -198,6 +198,7 @@ function canTrimEdge(element: TimelineElement, edge: TimelineGroupResizeEdge): b
     sourceDuration: element.sourceDuration,
     timingSource: element.timingSource,
     timelineLocked: element.timelineLocked,
+    expandedParentStart: element.expandedParentStart,
   });
   return edge === "start" ? caps.canTrimStart : caps.canTrimEnd;
 }
@@ -207,8 +208,8 @@ function canTrimEdge(element: TimelineElement, edge: TimelineGroupResizeEdge): b
  * single-clip resize. Legacy semantics (main 36413da7f): a group forms only when
  * the grabbed clip is part of a multi-selection (> 1) AND EVERY selected member
  * can take THIS edge's trim. It is all-or-nothing — if any member is locked or
- * implicitly-timed the group does not form, so a locked member is never patched
- * (the grabbed clip then resizes on its own). Start-edge media members seed
+ * not editable the group does not form, so a locked or nested member is never
+ * patched (the grabbed clip then resizes on its own). Start-edge media members seed
  * `playbackStart` to 0 so the in-point trim math has a base, mirroring the legacy
  * `resizeMember`.
  */

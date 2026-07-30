@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "hyperframes:block",
   "kind": "effect",
+  "librarySection": "interface-animation",
   "title": "Flip Official Demo",
   "description": "Official GSAP Flip capability adapted as a seekable iPolloWork effect.",
   "dimensions": {

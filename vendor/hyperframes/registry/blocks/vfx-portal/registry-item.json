@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "vfx-portal",
   "type": "hyperframes:block",
+  "librarySection": "background-scene",
   "title": "Portal",
   "description": "VFX composition block",
   "stability": "experimental",

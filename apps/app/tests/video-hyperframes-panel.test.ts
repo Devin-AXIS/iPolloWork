@@ -149,18 +149,52 @@ describe("HyperFrames Video Studio", () => {
     expect(electronSource).toContain("deleteSelectedElement");
     expect(electronSource).toContain("ipollowork:hyperframes:ask-ai-selection");
     expect(electronSource).toContain("selectedAiPayload");
+    expect(electronSource).toContain("hfId: element.getAttribute('data-hf-id')");
     expect(panelSource).toContain("onAskAi?: (context: DesignAiSelectionContext) => void");
+    expect(panelSource).toContain("event.source !== studioFrameRef.current?.contentWindow");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:hyperframes:ask-ai-selection"');
+    expect(panelSource).toContain("resolveVideoAiSelectionTarget(event.data.target)");
+    expect(panelSource).toContain("onExpandedChange?.(false)");
     expect(panelSource).toContain("video-ai-${crypto.randomUUID()}");
     expect(sessionPageSource).toContain("onAskAi={handleDesignAskAi}");
     expect(nativeToolbarSource).toContain("handleDomEditElementDelete");
     expect(nativeToolbarSource).toContain("window.parent?.postMessage");
     expect(nativeToolbarSource).toContain("ipollowork:hyperframes:ask-ai-selection");
+    expect(nativeToolbarSource).toContain("hfId: activeSelection.hfId");
     expect(nativeDeleteIndex).toBeGreaterThan(-1);
     expect(nativeAdvancedIndex).toBeGreaterThan(nativeDeleteIndex);
     expect(nativeAiIndex).toBeGreaterThan(nativeAdvancedIndex);
     expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__icon-button");
     expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__delete-button");
+  });
+
+  test("records host-applied video themes in Studio undo history", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const studioSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
+      "utf8",
+    );
+    const applyTheme = panelSource.match(
+      /const handleApplyDesignSystem = React\.useCallback\([\s\S]*?\n  \}, \[/,
+    )?.[0] ?? "";
+
+    expect(panelSource).toContain("ipollowork:studio-record-host-edit");
+    expect(panelSource).toContain("ipollowork:studio-history-ready");
+    expect(panelSource).toContain("ipollowork:studio-history-recorded");
+    expect(panelSource).toContain('"index.html": {');
+    expect(panelSource).toContain('"design-tokens.css": {');
+    expect(panelSource).toContain("ipollowork:studio-history-action");
+    expect(panelSource).toContain("ipollowork:studio-history-applied");
+    expect(panelSource).toContain("!studioHistoryReady");
+    expect(studioSource).toContain("useIPolloWorkHostHistoryBridge({");
+    expect(studioSource).toContain("loaded: editHistory.loaded");
+    expect(applyTheme).toContain("if (themedHtml === current.content && nextTokens === currentTokenCss)");
+    expect(applyTheme.indexOf("await recordStudioHostEdit")).toBeGreaterThan(
+      applyTheme.indexOf("await client.writeWorkspaceFile"),
+    );
   });
 
   test("rebuilds the embedded Studio when its source is newer than the bundled UI", () => {

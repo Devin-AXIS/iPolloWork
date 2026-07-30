@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "hyperframes:block",
   "kind": "effect",
+  "librarySection": "text-animation",
   "title": "Text Official Demo",
   "description": "Official GSAP Text capability adapted as a seekable iPolloWork effect.",
   "dimensions": {

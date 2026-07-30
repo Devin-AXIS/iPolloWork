@@ -36,6 +36,16 @@
       "enum": ["animation", "effect"],
       "description": "Product-facing animation/effect library placement."
     },
+    "librarySection": {
+      "type": "string",
+      "enum": [
+        "text-animation",
+        "interface-animation",
+        "transition-scene",
+        "background-scene"
+      ],
+      "description": "Explicit placement within the Studio animation and scene libraries."
+    },
     "author": {
       "type": "string",
       "minLength": 1

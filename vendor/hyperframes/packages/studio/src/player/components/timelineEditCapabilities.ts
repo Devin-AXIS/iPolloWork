@@ -2,6 +2,13 @@ export interface TimelineEditCapabilities {
   canMove: boolean;
   canTrimStart: boolean;
   canTrimEnd: boolean;
+  status:
+    | "editable"
+    | "materializes-timing"
+    | "locked"
+    | "nested-context"
+    | "missing-target"
+    | "invalid-duration";
 }
 
 function isDeterministicTimelineWindow(input: {
@@ -36,17 +43,49 @@ export function getTimelineEditCapabilities(input: {
   sourceDuration?: number;
   timingSource?: "authored" | "implicit";
   timelineLocked?: boolean;
+  expandedParentStart?: number;
 }): TimelineEditCapabilities {
-  if (input.timingSource === "implicit" || input.timelineLocked) {
-    return { canMove: false, canTrimStart: false, canTrimEnd: false };
+  if (input.timelineLocked) {
+    return {
+      canMove: false,
+      canTrimStart: false,
+      canTrimEnd: false,
+      status: "locked",
+    };
+  }
+  if (input.expandedParentStart != null) {
+    return {
+      canMove: false,
+      canTrimStart: false,
+      canTrimEnd: false,
+      status: "nested-context",
+    };
   }
 
   const canPatch = hasPatchableTimelineTarget(input);
   const hasFiniteDuration = Number.isFinite(input.duration) && input.duration > 0;
+  if (!canPatch) {
+    return {
+      canMove: false,
+      canTrimStart: false,
+      canTrimEnd: false,
+      status: "missing-target",
+    };
+  }
+  if (input.timingSource === "implicit" && hasFiniteDuration) {
+    return {
+      canMove: true,
+      canTrimStart: true,
+      canTrimEnd: true,
+      status: "materializes-timing",
+    };
+  }
+
   const hasDeterministicWindow = isDeterministicTimelineWindow(input);
   return {
-    canMove: canPatch && (hasDeterministicWindow || hasFiniteDuration),
-    canTrimEnd: canPatch && hasFiniteDuration,
-    canTrimStart: canPatch && hasFiniteDuration,
+    canMove: hasDeterministicWindow || hasFiniteDuration,
+    canTrimEnd: hasFiniteDuration,
+    canTrimStart: hasFiniteDuration,
+    status: hasFiniteDuration ? "editable" : "invalid-duration",
   };
 }

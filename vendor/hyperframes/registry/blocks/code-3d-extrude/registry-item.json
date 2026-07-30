@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "code-3d-extrude",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "Code 3D Extrude",
   "description": "Syntax-highlighted code on a lit, beveled 3D slab that rotates through real space and settles to a readable rest — true WebGL depth and lighting, not a 2D transform.",
   "dimensions": {

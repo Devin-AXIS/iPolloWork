@@ -6,6 +6,7 @@
   "title": "SplitText Reveal",
   "description": "A cinematic character-by-character headline reveal powered by GSAP SplitText.",
   "kind": "effect",
+  "librarySection": "text-animation",
   "dimensions": {
     "width": 1920,
     "height": 1080

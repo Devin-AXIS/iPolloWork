@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "vpn-youtube-spot",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "VPN YouTube Spot",
   "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects.",
   "tags": ["app", "showcase", "youtube", "sfx"],
