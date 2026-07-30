@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "hyperframes:block",
   "kind": "effect",
+  "librarySection": "background-scene",
   "title": "GSDevTools Official Demo",
   "description": "Official GSAP GSDevTools workflow tool adapted for iPolloWork.",
   "dimensions": {

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "liquid-glass-widgets",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "Liquid Glass Widgets",
   "description": "Frosted glass stat cards, showcase panel and pill chips over an aurora shader background",
   "stability": "experimental",

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "vfx-text-cursor",
   "type": "hyperframes:block",
+  "librarySection": "text-animation",
   "title": "VFX Text Cursor",
   "description": "Dramatic text reveal with cursor glow, chromatic shadow rays, and directional lighting on a black stage. Canvas-based shader post-processing with spectral color edges.",
   "stability": "experimental",

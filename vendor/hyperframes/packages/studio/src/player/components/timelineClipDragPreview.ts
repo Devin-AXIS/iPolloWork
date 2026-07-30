@@ -28,7 +28,6 @@ export interface DragPreviewContext {
   duration: number;
   trackOrder: number[];
   elements: TimelineElement[];
-  selectedKeys: ReadonlySet<string>;
   buildSnapTargets: BuildSnapTargets;
   /**
    * The set of tracks that hold audio clips (drives zone-aware drop placement).
@@ -118,7 +117,7 @@ export function computeDragPreview(
   clientY: number,
   ctx: DragPreviewContext,
 ): DraggedClipState {
-  const { scroll, pps, duration, trackOrder, elements, selectedKeys, buildSnapTargets } = ctx;
+  const { scroll, pps, duration, trackOrder, elements, buildSnapTargets } = ctx;
   const dragMaxStart = resolveDragMaxStart(scroll, pps, duration);
   const nextMove = resolveTimelineMove(
     {
@@ -136,9 +135,31 @@ export function computeDragPreview(
       maxStart: dragMaxStart,
       trackOrder,
     },
-    clientX,
-    clientY,
+    drag.mode === "layer-order" ? drag.originClientX : clientX,
+    drag.mode === "time" ? drag.originClientY : clientY,
   );
+  if (drag.mode === "layer-order") {
+    const { track: previewTrack, insertRow } = resolveDropPlacement(
+      drag,
+      clientY,
+      drag.element.start,
+      nextMove.track,
+      ctx,
+    );
+    return {
+      ...drag,
+      started: true,
+      pointerClientX: clientX,
+      pointerClientY: clientY,
+      previewStart: drag.element.start,
+      previewTrack,
+      desiredTrack: nextMove.track,
+      insertRow,
+      snapTime: null,
+      snapType: null,
+    };
+  }
+
   // The music track defines the beats, so it must not snap to them —
   // but it still snaps to the playhead and other clip edges.
   const targets = buildSnapTargets(
@@ -160,14 +181,7 @@ export function computeDragPreview(
     drag.element,
     dragKey,
     elements,
-    selectedKeys,
-  );
-  const { track: previewTrack, insertRow } = resolveDropPlacement(
-    drag,
-    clientY,
-    previewStart,
-    nextMove.track,
-    ctx,
+    drag.selectionKeys,
   );
   return {
     ...drag,
@@ -175,11 +189,9 @@ export function computeDragPreview(
     pointerClientX: clientX,
     pointerClientY: clientY,
     previewStart,
-    previewTrack,
-    // The lane the POINTER aims at (pre-collision): the commit reads it to tell a
-    // deliberate vertical lane change from a horizontal drag merely bumped sideways.
-    desiredTrack: nextMove.track,
-    insertRow,
+    previewTrack: drag.element.track,
+    desiredTrack: drag.element.track,
+    insertRow: null,
     snapTime: snap.snapTime,
     snapType: snap.snapType,
   };

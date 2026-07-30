@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "hyperframes:block",
   "kind": "effect",
+  "librarySection": "interface-animation",
   "title": "Inertia Official Demo",
   "description": "Official GSAP Inertia capability adapted as a seekable iPolloWork effect.",
   "dimensions": {

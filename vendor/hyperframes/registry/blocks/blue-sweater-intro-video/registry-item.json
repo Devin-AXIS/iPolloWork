@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "blue-sweater-intro-video",
   "type": "hyperframes:block",
+  "librarySection": "background-scene",
   "title": "Blue Sweater Intro Video",
   "description": "Warm AI creator intro sequence that resolves into an X follow card for @_blue_sweater_.",
   "tags": ["showcase", "ai", "creator", "sfx"],

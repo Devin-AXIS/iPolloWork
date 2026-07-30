@@ -45,10 +45,9 @@ export interface DragCommitDeps {
     coalesceMs?: number,
   ) => Promise<void> | void;
   /**
-   * The current multi-selection (store.selectedElementIds). When the dragged
-   * clip is part of a multi-selection (size > 1), the WHOLE selection moves by
-   * the dragged clip's time delta — the standard NLE gesture. Track changes
-   * apply to the dragged clip only; the others keep their lanes.
+   * The pointerdown selection snapshot. When the dragged clip is part of an
+   * explicit multi-selection (size > 1), the whole snapshot moves by the
+   * dragged clip's time delta. Later selection sync cannot enlist passengers.
    */
   selectedKeys?: ReadonlySet<string> | null;
   /**
@@ -76,7 +75,7 @@ const round3 = (v: number) => Math.round(v * 1000) / 1000;
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
 
-/** Whether Studio may write timing to this clip (false for locked/implicit rows). */
+/** Whether Studio may write timing to this clip. */
 function canMoveElement(element: TimelineElement): boolean {
   return getTimelineEditCapabilities({
     tag: element.tag,
@@ -89,6 +88,7 @@ function canMoveElement(element: TimelineElement): boolean {
     sourceDuration: element.sourceDuration,
     timingSource: element.timingSource,
     timelineLocked: element.timelineLocked,
+    expandedParentStart: element.expandedParentStart,
   }).canMove;
 }
 
@@ -240,8 +240,8 @@ function insertTrackValue(trackOrder: number[], insertRow: number): number {
 /**
  * Build the time-shift resolver for a multi-selection drag: every member of the
  * selection moves by the dragged clip's delta (clamped ≥ 0); non-members are
- * untouched. Returns null when this is not a multi-selection drag. A locked /
- * implicit member is dropped from the moving set (a marquee can sweep one in).
+ * untouched. Returns null when this is not a multi-selection drag. A
+ * non-editable member is dropped from the moving set.
  */
 function resolveMultiSelection(
   drag: DraggedClipState,
@@ -284,6 +284,21 @@ function resolveMultiSelection(
  */
 // fallow-ignore-next-line complexity
 export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDeps): void {
+  drag =
+    drag.mode === "time"
+      ? {
+          ...drag,
+          previewTrack: drag.element.track,
+          desiredTrack: drag.element.track,
+          insertRow: null,
+        }
+      : {
+          ...drag,
+          previewStart: drag.element.start,
+          snapTime: null,
+          snapType: null,
+        };
+  deps = { ...deps, selectedKeys: drag.selectionKeys };
   const { elements, updateElement, onMoveElement } = deps;
   const dragKey = keyOf(drag.element);
   const isInsert = drag.insertRow != null;

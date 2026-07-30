@@ -238,7 +238,6 @@ export function useTimelineClipDrag({
         duration: durationRef.current,
         trackOrder: trackOrderRef.current,
         elements: elementsRef.current,
-        selectedKeys: usePlayerStore.getState().selectedElementIds,
         buildSnapTargets,
         audioTracks: dragAudioTracksRef.current,
       });
@@ -256,8 +255,13 @@ export function useTimelineClipDrag({
         pps: ppsRef.current,
         buildSnapTargets,
       });
-      const setResizeState = (v: ResizePreviewResult) =>
-        setResizingClip((prev) => (prev ? { ...prev, started: true, ...v } : prev));
+      const setResizeState = (value: ResizePreviewResult) => {
+        const current = resizingClipRef.current;
+        if (!current) return;
+        const updated = { ...current, started: true, ...value };
+        resizingClipRef.current = updated;
+        setResizingClip(updated);
+      };
 
       // Group resize: a capability-clean multi-selection resizes rigidly by one
       // shared, member-clamped delta (legacy main 36413da7f). The grabbed clip
@@ -268,7 +272,7 @@ export function useTimelineClipDrag({
       if (!session || session.grabbedKey !== grabbedKey || session.edge !== resize.edge) {
         const members = buildTimelineGroupResizeMembers(
           elementsRef.current,
-          usePlayerStore.getState().selectedElementIds,
+          resize.selectionKeys,
           grabbedKey,
           resize.edge,
         );
@@ -318,9 +322,9 @@ export function useTimelineClipDrag({
     if (!applyTimelineAutoScrollStep(scroll, pointer.clientX, pointer.clientY)) return;
 
     if (drag) {
-      setDraggedClip((prev) =>
-        prev ? updateDraggedClipPreview(prev, pointer.clientX, pointer.clientY) : prev,
-      );
+      const updated = updateDraggedClipPreview(drag, pointer.clientX, pointer.clientY);
+      draggedClipRef.current = updated;
+      setDraggedClip(updated);
     } else if (resize) {
       // Re-run the trim preview so the edge keeps tracking while the content
       // scrolls under the stationary pointer (scroll-compensated pointer x).
@@ -331,11 +335,20 @@ export function useTimelineClipDrag({
 
   const syncClipDragAutoScroll = useCallback(
     (clientX: number, clientY: number) => {
-      clipDragPointerRef.current = { clientX, clientY };
+      const scroll = scrollRef.current;
+      const drag = draggedClipRef.current;
+      const bounds = scroll?.getBoundingClientRect();
+      const autoScrollPointer =
+        drag?.mode === "time" && bounds
+          ? { clientX, clientY: (bounds.top + bounds.bottom) / 2 }
+          : drag?.mode === "layer-order" && bounds
+            ? { clientX: (bounds.left + bounds.right) / 2, clientY }
+            : { clientX, clientY };
+      clipDragPointerRef.current = autoScrollPointer;
       const action = resolveTimelineAutoScrollLoopAction(
-        scrollRef.current,
-        clientX,
-        clientY,
+        scroll,
+        autoScrollPointer.clientX,
+        autoScrollPointer.clientY,
         clipDragScrollRaf.current !== 0,
       );
       if (action === "stop") {
@@ -363,24 +376,32 @@ export function useTimelineClipDrag({
     };
 
     /* ── pointermove branch handlers (dispatched by drag/resize/blocked) ── */
-    const handleResizePointerMove = (e: PointerEvent, resize: ResizingClipState) => {
-      const distance = Math.abs(e.clientX - resize.originClientX);
+    const handleResizePointerMove = (
+      clientX: number,
+      clientY: number,
+      resize: ResizingClipState,
+    ) => {
+      const distance = Math.abs(clientX - resize.originClientX);
       if (!resize.started && distance < 2) return;
 
       setShowPopover(false);
       setRangeSelectionRef.current?.(null);
 
-      applyResizePointerRef.current(resize, e.clientX);
+      applyResizePointerRef.current(resize, clientX);
       // Edge auto-scroll during a trim, exactly like the move branch — lets a
       // right-edge trim keep extending past the current viewport (the stepper
       // re-runs the scroll-compensated preview each frame).
-      syncClipDragAutoScrollRef.current(e.clientX, e.clientY);
+      syncClipDragAutoScrollRef.current(clientX, clientY);
     };
 
-    const handleBlockedPointerMove = (e: PointerEvent, blocked: BlockedClipState) => {
+    const handleBlockedPointerMove = (
+      clientX: number,
+      clientY: number,
+      blocked: BlockedClipState,
+    ) => {
       const distance = Math.hypot(
-        e.clientX - blocked.originClientX,
-        e.clientY - blocked.originClientY,
+        clientX - blocked.originClientX,
+        clientY - blocked.originClientY,
       );
       const threshold = blocked.intent === "move" ? 4 : 2;
       if (!blocked.started && distance < threshold) return;
@@ -394,26 +415,52 @@ export function useTimelineClipDrag({
       }
     };
 
-    const handleDragPointerMove = (e: PointerEvent, drag: DraggedClipState) => {
-      const distance = Math.hypot(e.clientX - drag.originClientX, e.clientY - drag.originClientY);
+    const handleDragPointerMove = (
+      clientX: number,
+      clientY: number,
+      drag: DraggedClipState,
+    ) => {
+      const distance = Math.hypot(clientX - drag.originClientX, clientY - drag.originClientY);
       if (!drag.started && distance < 4) return;
 
       setShowPopover(false);
       setRangeSelectionRef.current?.(null);
 
-      setDraggedClip((prev) =>
-        prev ? updateDraggedClipPreviewRef.current(prev, e.clientX, e.clientY) : prev,
-      );
-      syncClipDragAutoScrollRef.current(e.clientX, e.clientY);
+      const updated = updateDraggedClipPreviewRef.current(drag, clientX, clientY);
+      draggedClipRef.current = updated;
+      setDraggedClip(updated);
+      syncClipDragAutoScrollRef.current(clientX, clientY);
     };
 
-    const handleWindowPointerMove = (e: PointerEvent) => {
+    const processWindowPointerMove = (clientX: number, clientY: number) => {
       const resize = resizingClipRef.current;
-      if (resize) return handleResizePointerMove(e, resize);
+      if (resize) return handleResizePointerMove(clientX, clientY, resize);
       const blocked = blockedClipRef.current;
-      if (blocked) return handleBlockedPointerMove(e, blocked);
+      if (blocked) return handleBlockedPointerMove(clientX, clientY, blocked);
       const drag = draggedClipRef.current;
-      if (drag) handleDragPointerMove(e, drag);
+      if (drag) handleDragPointerMove(clientX, clientY, drag);
+    };
+
+    let pointerMoveRaf = 0;
+    let pendingPointer: { clientX: number; clientY: number } | null = null;
+    const flushPendingPointerMove = () => {
+      pointerMoveRaf = 0;
+      const pointer = pendingPointer;
+      pendingPointer = null;
+      if (pointer) processWindowPointerMove(pointer.clientX, pointer.clientY);
+    };
+    const cancelPendingPointerMove = () => {
+      if (pointerMoveRaf !== 0) cancelAnimationFrame(pointerMoveRaf);
+      pointerMoveRaf = 0;
+      pendingPointer = null;
+    };
+    const flushPendingPointerMoveNow = () => {
+      if (pointerMoveRaf !== 0) cancelAnimationFrame(pointerMoveRaf);
+      flushPendingPointerMove();
+    };
+    const handleWindowPointerMove = (event: PointerEvent) => {
+      pendingPointer = { clientX: event.clientX, clientY: event.clientY };
+      if (pointerMoveRaf === 0) pointerMoveRaf = requestAnimationFrame(flushPendingPointerMove);
     };
 
     /* ── pointerup commit handlers (dispatched by drag/resize/blocked) ──── */
@@ -494,7 +541,7 @@ export function useTimelineClipDrag({
         updateElement,
         onMoveElement: onMoveElementRef.current,
         onMoveElements: onMoveElementsRef.current,
-        selectedKeys: usePlayerStore.getState().selectedElementIds,
+        selectedKeys: drag.selectionKeys,
         // Lane ↔ stacking: engages only when the timeline layer provisions both
         // deps (Timeline.tsx). Absent → commitDraggedClipMove skips the z-sync.
         readZIndex: readZIndexRef.current,
@@ -503,6 +550,7 @@ export function useTimelineClipDrag({
     };
 
     const handleWindowPointerUp = () => {
+      flushPendingPointerMoveNow();
       stopClipDragAutoScrollRef.current();
 
       const resize = resizingClipRef.current;
@@ -521,6 +569,26 @@ export function useTimelineClipDrag({
       commitDragPointerUp(drag);
     };
 
+    const cancelActiveGesture = (suppressNextClick: boolean) => {
+      cancelPendingPointerMove();
+      stopClipDragAutoScrollRef.current();
+      draggedClipRef.current = null;
+      setDraggedClip(null);
+      resizingClipRef.current = null;
+      setResizingClip(null);
+      const groupSession = groupResizeRef.current;
+      groupResizeRef.current = null;
+      if (groupSession) restoreGroupResizeMembers(groupSession);
+      blockedClipRef.current = null;
+      suppressClickRef.current = suppressNextClick;
+    };
+
+    const handleWindowPointerCancel = () => {
+      // A browser/OS cancellation is not a drop. Discard all preview state and
+      // restore any passenger resize previews without writing source or history.
+      cancelActiveGesture(false);
+    };
+
     // Escape cancels the in-progress gesture: no commit, no undo entry. The
     // previews live only in the drag/resize state (the store is untouched
     // until the pointerup commit), so clearing them restores the pre-drag
@@ -537,31 +605,21 @@ export function useTimelineClipDrag({
       if (!decision.cancel) return;
       e.preventDefault();
       e.stopPropagation();
-      stopClipDragAutoScrollRef.current();
-      draggedClipRef.current = null;
-      setDraggedClip(null);
-      resizingClipRef.current = null;
-      setResizingClip(null);
-      // Undo any group-resize preview store-mutation (non-grabbed members) so the
-      // cancelled gesture restores the pre-drag timeline, like the single-clip path.
-      const groupSession = groupResizeRef.current;
-      groupResizeRef.current = null;
-      if (groupSession) restoreGroupResizeMembers(groupSession);
-      blockedClipRef.current = null;
       // The pointer is usually still down; keep the suppressor armed until the
       // eventual pointerup (which disarms it) so its click can't reselect.
-      if (decision.suppressClick) suppressClickRef.current = true;
+      cancelActiveGesture(decision.suppressClick);
     };
 
     window.addEventListener("pointermove", handleWindowPointerMove);
     window.addEventListener("pointerup", handleWindowPointerUp);
-    window.addEventListener("pointercancel", handleWindowPointerUp);
+    window.addEventListener("pointercancel", handleWindowPointerCancel);
     window.addEventListener("keydown", handleWindowKeyDown, true);
     return () => {
+      cancelPendingPointerMove();
       stopClipDragAutoScrollRef.current();
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerUp);
-      window.removeEventListener("pointercancel", handleWindowPointerUp);
+      window.removeEventListener("pointercancel", handleWindowPointerCancel);
       window.removeEventListener("keydown", handleWindowKeyDown, true);
     };
   });

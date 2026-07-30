@@ -1,8 +1,14 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
-import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "./timelineTheme";
+import {
+  defaultTimelineTheme,
+  getClipHandleOpacity,
+  type TimelineTheme,
+  type TimelineTrackStyle,
+} from "./timelineTheme";
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { resolveTimelineKind } from "./timelineLayerPresentation";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -14,6 +20,7 @@ interface TimelineClipProps {
   hasCustomContent: boolean;
   capabilities: TimelineEditCapabilities;
   theme?: TimelineTheme;
+  visualStyle: TimelineTrackStyle;
   isComposition: boolean;
   onHoverStart: () => void;
   onHoverEnd: () => void;
@@ -36,6 +43,7 @@ export const TimelineClip = memo(function TimelineClip({
   hasCustomContent,
   capabilities,
   theme = defaultTimelineTheme,
+  visualStyle,
   isComposition,
   onHoverStart,
   onHoverEnd,
@@ -51,10 +59,11 @@ export const TimelineClip = memo(function TimelineClip({
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
   const displayLabel = el.label || el.id || el.tag;
   const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
-  const showLabel = widthPx >= 40 || isSelected;
+  const showLabel = !hasCustomContent && (widthPx >= 40 || isSelected);
   const showDefaultText = !hasCustomContent && (widthPx >= 40 || isSelected);
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
+  const timelineKind = resolveTimelineKind(el);
   const clipClassName = [
     "timeline-clip",
     "absolute",
@@ -64,10 +73,20 @@ export const TimelineClip = memo(function TimelineClip({
     isDragging ? "is-dragging" : "",
     showDefaultText ? "" : "is-micro",
     isAudioTimelineElement(el) ? "is-audio" : "",
+    `is-${timelineKind}`,
   ]
     .filter((className) => className.length > 0)
     .join(" ");
-  const style: CSSProperties = {
+  interface TimelineClipCssProperties extends CSSProperties {
+    "--timeline-clip-background": string;
+    "--timeline-clip-background-active": string;
+    "--timeline-clip-background-hover": string;
+    "--timeline-clip-background-dragging": string;
+    "--timeline-clip-border": string;
+    "--timeline-clip-accent": string;
+    "--timeline-clip-label": string;
+  }
+  const style: TimelineClipCssProperties = {
     left: leftPx,
     width: widthPx,
     top: clipY,
@@ -77,6 +96,13 @@ export const TimelineClip = memo(function TimelineClip({
     // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
     cursor: "default",
     transform: isDragging ? "translateY(-1px)" : undefined,
+    "--timeline-clip-background": visualStyle.clip,
+    "--timeline-clip-background-active": visualStyle.clipActive ?? visualStyle.clip,
+    "--timeline-clip-background-hover": visualStyle.hover ?? visualStyle.clip,
+    "--timeline-clip-background-dragging": visualStyle.dragging ?? visualStyle.clip,
+    "--timeline-clip-border": visualStyle.border ?? theme.clipBorder,
+    "--timeline-clip-accent": visualStyle.accent,
+    "--timeline-clip-label": visualStyle.label,
   };
 
   return (
@@ -86,6 +112,7 @@ export const TimelineClip = memo(function TimelineClip({
       data-clip-start={el.start}
       data-clip-end={el.start + el.duration}
       data-clip-hidden={el.hidden ? "true" : undefined}
+      data-timeline-kind={timelineKind}
       className={clipClassName}
       style={style}
       title={

@@ -3,17 +3,34 @@ import {
   GSAP_OFFICIAL_CAPABILITIES,
   type RegistryItem,
   type RegistryItemKind,
+  type RegistryItemLibrarySection,
   resolveRegistryItemKind,
 } from "@hyperframes/core/registry";
-import {
-  BLOCK_CATEGORIES,
-  type BlockCategory,
-  resolveBlockCategory,
-} from "../utils/blockCategories";
+import { type BlockCategory, resolveBlockCategory } from "../utils/blockCategories";
 
 export type CatalogItem = RegistryItem & {
   category: BlockCategory;
   kind: RegistryItemKind;
+  librarySection: RegistryItemLibrarySection;
+};
+
+export type CatalogPage = "animation" | "scene";
+
+export interface CatalogSection {
+  id: RegistryItemLibrarySection;
+  items: CatalogItem[];
+}
+
+export const CATALOG_PAGE_SECTIONS: Record<CatalogPage, readonly RegistryItemLibrarySection[]> = {
+  animation: ["text-animation", "interface-animation"],
+  scene: ["transition-scene", "background-scene"],
+};
+
+const SECTION_SEARCH_TERMS: Record<RegistryItemLibrarySection, string> = {
+  "text-animation": "text animation typography caption 文字动画 字幕",
+  "interface-animation": "interface ui animation 界面动画 交互",
+  "transition-scene": "transition scene 转场场景",
+  "background-scene": "background scene effect 背景场景 特效",
 };
 
 export function resolveGsapCatalogCoverage(items: CatalogItem[]) {
@@ -38,97 +55,91 @@ export function isGsapCatalogItem(item: CatalogItem): boolean {
   return item.engine?.name.trim().toLowerCase() === "gsap";
 }
 
-export function useBlockCatalog(kind: RegistryItemKind) {
+export function isCatalogLibrarySection(
+  value: unknown,
+): value is RegistryItemLibrarySection {
+  return (
+    value === "text-animation" ||
+    value === "interface-animation" ||
+    value === "transition-scene" ||
+    value === "background-scene"
+  );
+}
+
+export function useBlockCatalog(page: CatalogPage) {
   const [blocks, setBlocks] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<BlockCategory | null>(null);
-  const [capability, setCapability] = useState<string | null>(null);
 
-  // fallow-ignore-next-line complexity
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     (async () => {
       try {
-        const res = await fetch("/api/registry/blocks");
+        const res = await fetch("/api/registry/blocks", { signal: controller.signal });
         if (!res.ok) throw new Error("Failed to load catalog");
-        const data = (await res.json()) as RegistryItem[];
-        if (cancelled) return;
+        const data: RegistryItem[] = await res.json();
         const items = data
-          .map((block) => ({
-            ...block,
-            category: resolveBlockCategory(block.tags),
-            kind: resolveRegistryItemKind(block),
-          }))
-          .sort((a, b) => {
-            const ia = BLOCK_CATEGORIES.findIndex((c) => c.id === a.category);
-            const ib = BLOCK_CATEGORIES.findIndex((c) => c.id === b.category);
-            return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-          });
+          .filter(
+            (
+              block,
+            ): block is RegistryItem & {
+              librarySection: RegistryItemLibrarySection;
+            } => isCatalogLibrarySection(block.librarySection),
+          )
+          .map((block) => {
+            const category = resolveBlockCategory(block.tags);
+            return {
+              ...block,
+              category,
+              kind: resolveRegistryItemKind(block),
+              librarySection: block.librarySection,
+            };
+          })
+          .sort((a, b) => a.title.localeCompare(b.title));
+        if (controller.signal.aborted) return;
         setBlocks(items);
       } catch (err) {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : "Failed to load catalog");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, []);
 
+  const pageSections = CATALOG_PAGE_SECTIONS[page];
   const filteredBlocks = useMemo(() => {
-    let result = blocks.filter(
-      (block) => isGsapCatalogItem(block) && block.kind === kind,
-    );
-    if (category) {
-      result = result.filter((b) => b.category === category);
-    }
-    if (capability) {
-      result = result.filter((block) => block.engine?.plugins?.includes(capability));
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (b) =>
-          b.title.toLowerCase().includes(q) ||
-          b.description.toLowerCase().includes(q) ||
-          b.category.toLowerCase().includes(q) ||
-          b.tags?.some((t) => t.toLowerCase().includes(q)) ||
-          b.engine?.plugins?.some((plugin) => plugin.toLowerCase().includes(q)),
+    const query = search.trim().toLowerCase();
+    return blocks.filter((block) => {
+      if (!isGsapCatalogItem(block) || !pageSections.includes(block.librarySection)) return false;
+      if (!query) return true;
+      return (
+        block.title.toLowerCase().includes(query) ||
+        block.description.toLowerCase().includes(query) ||
+        block.category.toLowerCase().includes(query) ||
+        SECTION_SEARCH_TERMS[block.librarySection].includes(query) ||
+        block.tags?.some((tag) => tag.toLowerCase().includes(query)) ||
+        block.engine?.plugins?.some((plugin) => plugin.toLowerCase().includes(query))
       );
-    }
-    return result;
-  }, [blocks, capability, category, kind, search]);
+    });
+  }, [blocks, pageSections, search]);
 
-  const kindBlocks = useMemo(
-    () => blocks.filter((block) => isGsapCatalogItem(block) && block.kind === kind),
-    [blocks, kind],
-  );
-  const capabilities = useMemo(
+  const sections = useMemo(
     () =>
-      GSAP_OFFICIAL_CAPABILITIES.filter((official) =>
-        kindBlocks.some((block) => block.engine?.plugins?.includes(official.runtimeName)),
-      ).map((official) => official.runtimeName),
-    [kindBlocks],
+      pageSections.map((id) => ({
+        id,
+        items: filteredBlocks.filter((block) => block.librarySection === id),
+      })),
+    [filteredBlocks, pageSections],
   );
-  const coverage = useMemo(() => resolveGsapCatalogCoverage(blocks), [blocks]);
 
   return {
-    blocks,
     loading,
     error,
     search,
     setSearch,
-    category,
-    setCategory,
-    capability,
-    setCapability,
-    capabilities,
-    kindBlocks,
-    coverage,
-    filteredBlocks,
+    sections,
   };
 }

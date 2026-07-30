@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "code-scroll",
   "type": "hyperframes:block",
+  "librarySection": "interface-animation",
   "title": "Code Scroll To Line",
   "description": "The camera scrolls a long file to bring a target line to center and spotlights it — for walking through real modules.",
   "dimensions": {

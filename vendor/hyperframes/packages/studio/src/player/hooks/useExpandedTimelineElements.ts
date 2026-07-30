@@ -240,12 +240,27 @@ export function buildExpandedElements(
 
   // Prefer real manifest children; fall back to DOM-only sub-comp children
   // (groups/pills) that have no data-start and thus never enter the manifest.
-  const siblings = (() => {
+  const { siblings, displayDelta } = (() => {
     const fromManifest = manifest.filter(
       (c) => c.id != null && parentMap.get(c.id) === siblingParentId,
     );
-    if (fromManifest.length > 0) return fromManifest;
-    return domSiblingClips(domClipChildren, siblingParentId, topLevelElement);
+    if (fromManifest.length > 0) {
+      const manifestTopLevel = manifest.find((clip) => clip.id === topLevelId);
+      const displayDelta = manifestTopLevel
+        ? topLevelElement.start - manifestTopLevel.start
+        : 0;
+      return {
+        siblings:
+          displayDelta === 0
+            ? fromManifest
+            : fromManifest.map((clip) => ({ ...clip, start: clip.start + displayDelta })),
+        displayDelta,
+      };
+    }
+    return {
+      siblings: domSiblingClips(domClipChildren, siblingParentId, topLevelElement),
+      displayDelta: 0,
+    };
   })();
   if (siblings.length === 0) return filterToTopLevel(elements, parentMap);
 
@@ -253,7 +268,7 @@ export function buildExpandedElements(
   // nesting, a nested host for deeper nesting. Its start/file anchor edits.
   const parentHost = manifest.find((c) => c.id === siblingParentId);
   const editBasis = {
-    start: parentHost?.start ?? topLevelElement.start,
+    start: (parentHost?.start ?? topLevelElement.start) + displayDelta,
     sourceFile: parentHost?.compositionSrc ?? topLevelElement.compositionSrc ?? undefined,
   };
 
@@ -266,12 +281,12 @@ export function buildExpandedElements(
       track: topLevelElement.track,
     },
     editBasis,
-  );
+  ).map((child) => ({ ...child, expandedDisplayHostKey: parentKey }));
   if (expanded.length === 0) return filterToTopLevel(elements, parentMap);
 
   return elements
     .filter((el) => (el.key ?? el.id) === parentKey || !parentMap.has(el.domId ?? el.id))
-    .flatMap((el) => ((el.key ?? el.id) === parentKey ? expanded : [el]));
+    .flatMap((el) => ((el.key ?? el.id) === parentKey ? [el, ...expanded] : [el]));
 }
 
 export function useExpandedTimelineElements(): TimelineElement[] {

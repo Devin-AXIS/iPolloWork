@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/core/gsap-parser";
-import { isStudioHoldSet } from "@hyperframes/core/gsap-parser";
-import { usePlayerStore } from "../player/store/playerStore";
+import { isStudioHoldSet, type GsapAnimation, type GsapKeyframesData, type ParsedGsap } from "@hyperframes/core/gsap-parser";
+import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
 import {
   clearKeyframeCacheForElement,
@@ -9,6 +8,13 @@ import {
 } from "./gsapKeyframeCacheHelpers";
 import { toAbsoluteTime } from "./gsapShared";
 import { deduplicateKeyframes, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
+import { buildTimelineAnimationSegments } from "../utils/timelineAnimationSegments";
+import {
+  appendTimelineAnimationSegments,
+  attachTimelineAnimationSegments,
+  buildTimelineCacheUpdates,
+  type TimelineSegmentsByElement,
+} from "./gsapTimelineSegmentCache";
 
 function extractIdFromSelector(selector: string): string | null {
   const match = selector.match(/^#([\w-]+)/);
@@ -338,6 +344,10 @@ export function useGsapAnimationsForElement(
       elements,
       domClipChildren,
     );
+    const animationSegments = buildTimelineAnimationSegments(animations, {
+      start: elStart,
+      duration: elDuration,
+    });
 
     const allKeyframes: Array<
       GsapKeyframesData["keyframes"][0] & { tweenPercentage?: number; propertyGroup?: string }
@@ -384,7 +394,7 @@ export function useGsapAnimationsForElement(
       if (kf.ease) ease = kf.ease;
       if (kf.easeEach) easeEach = kf.easeEach;
     }
-    if (allKeyframes.length === 0) {
+    if (allKeyframes.length === 0 && animationSegments.length === 0) {
       // The per-element parsed-animation match can transiently miss class /
       // selector tweens (e.g. `.dot`) that the file-wide populate or runtime
       // scan already cached. Only clear when no source cached this element —
@@ -396,17 +406,17 @@ export function useGsapAnimationsForElement(
       return;
     }
     const dedupedKeyframes = deduplicateKeyframes(allKeyframes);
-    const merged: GsapKeyframesData = {
+    const merged: KeyframeCacheEntry = {
       format,
       keyframes: dedupedKeyframes,
       ...(ease ? { ease } : {}),
       ...(easeEach ? { easeEach } : {}),
+      ...(animationSegments.length > 0 ? { animationSegments } : {}),
     };
-    const { setKeyframeCache } = usePlayerStore.getState();
-    setKeyframeCache(`${sourceFile}#${elementId}`, merged);
+    const { setKeyframeCacheEntries } = usePlayerStore.getState();
     // PropertyPanel reads the cache by bare elementId (without sourceFile prefix),
     // so write a duplicate entry under the bare key for cross-component lookups.
-    setKeyframeCache(elementId, merged);
+    setKeyframeCacheEntries(buildTimelineCacheUpdates(sourceFile, new Map([[elementId, merged]])));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elementId, sourceFile, animations, domClipChildrenKey]);
 
@@ -454,12 +464,18 @@ export function usePopulateKeyframeCacheForFile(
     // fallow-ignore-next-line complexity
     fetchParsedAnimations(projectId, sf).then((parsed) => {
       if (!parsed) return;
-      const { setKeyframeCache } = usePlayerStore.getState();
+      const { setKeyframeCacheEntries } = usePlayerStore.getState();
       clearKeyframeCacheForFile(sf);
       const { elements, domClipChildren } = usePlayerStore.getState();
       const doc = iframeRef?.current?.contentDocument;
-      const mergedByElement = new Map<string, GsapKeyframesData>();
+      const mergedByElement = new Map<string, KeyframeCacheEntry>();
+      const animationSegmentsByElement: TimelineSegmentsByElement = new Map();
       for (const anim of parsed.animations) {
+        const targetIds = resolveSelectorElementIds(anim.targetSelector, doc);
+        appendTimelineAnimationSegments(animationSegmentsByElement, anim, targetIds, (id) => {
+          const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
+          return { start: elStart, duration: elDuration };
+        });
         if (anim.hasUnresolvedKeyframes) continue;
         // Position-only static holds are not keyframed animations — skip them so
         // they don't draw a timeline diamond. Covers both a `tl.set(...)` and the
@@ -478,7 +494,7 @@ export function usePopulateKeyframeCacheForFile(
         const tweenDur = anim.duration ?? 1;
         // Attribute the tween to every element it animates (handles class /
         // group / descendant selectors, not just `#id`).
-        for (const id of resolveSelectorElementIds(anim.targetSelector, doc)) {
+        for (const id of targetIds) {
           const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
           const clipKeyframes = kfData.keyframes.map((kf) => {
             const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
@@ -504,11 +520,8 @@ export function usePopulateKeyframeCacheForFile(
           }
         }
       }
-      for (const [id, kfData] of mergedByElement) {
-        setKeyframeCache(`${sf}#${id}`, kfData);
-        setKeyframeCache(id, kfData);
-        if (sf !== "index.html") setKeyframeCache(`index.html#${id}`, kfData);
-      }
+      attachTimelineAnimationSegments(mergedByElement, animationSegmentsByElement);
+      setKeyframeCacheEntries(buildTimelineCacheUpdates(sf, mergedByElement));
       astFetchDoneRef.current = fetchKey;
     });
     // elementCount is in the deps because new timeline elements (e.g. after a
@@ -542,7 +555,11 @@ export function usePopulateKeyframeCacheForFile(
       }
       const scanned = scanAllRuntimeKeyframes(iframe, clipById);
       if (scanned.size === 0) return false;
-      const { setKeyframeCache, keyframeCache } = usePlayerStore.getState();
+      const { setKeyframeCacheEntries, keyframeCache } = usePlayerStore.getState();
+      const cacheUpdates: Array<{
+        elementId: string;
+        data: KeyframeCacheEntry | undefined;
+      }> = [];
       for (const [id, data] of scanned) {
         const cacheKey = `${sf}#${id}`;
         const fallbackKey = `index.html#${id}`;
@@ -561,10 +578,13 @@ export function usePopulateKeyframeCacheForFile(
           keyframes: data.keyframes,
           ...(data.easeEach ? { easeEach: data.easeEach } : {}),
         };
-        setKeyframeCache(cacheKey, entry);
-        if (sf !== "index.html") setKeyframeCache(fallbackKey, entry);
-        setKeyframeCache(id, entry);
+        cacheUpdates.push(
+          { elementId: cacheKey, data: entry },
+          ...(sf !== "index.html" ? [{ elementId: fallbackKey, data: entry }] : []),
+          { elementId: id, data: entry },
+        );
       }
+      if (cacheUpdates.length > 0) setKeyframeCacheEntries(cacheUpdates);
       runtimeScanDoneRef.current = `kf-cache:${projectId}:${sf}:${version}`;
       return true;
     };

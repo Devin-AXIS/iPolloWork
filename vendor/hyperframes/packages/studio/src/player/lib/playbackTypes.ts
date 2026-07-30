@@ -51,6 +51,10 @@ export interface ClipManifestClip {
   parentCompositionId: string | null;
   compositionSrc: string | null;
   assetUrl: string | null;
+  timelineRole?: string | null;
+  timelineLabel?: string | null;
+  timelineGroup?: string | null;
+  timelinePriority?: number | null;
 }
 
 export interface ClipManifest {

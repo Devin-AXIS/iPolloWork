@@ -90,25 +90,53 @@ body {
 
 /* HyperFrames predates host themes and still uses Tailwind's neutral palette
    directly in several panels. Scope the semantic inversion to host light mode. */
-:root[data-ipollowork-theme="light"] .bg-neutral-950 { background-color: #ffffff !important; }
-:root[data-ipollowork-theme="light"] .bg-neutral-900 { background-color: #fafafa !important; }
-:root[data-ipollowork-theme="light"] .bg-neutral-800 { background-color: #f4f4f5 !important; }
-:root[data-ipollowork-theme="light"] .bg-neutral-700 { background-color: #e4e4e7 !important; }
+:root[data-ipollowork-theme="light"] .bg-neutral-950 {
+  background-color: #ffffff !important;
+}
+:root[data-ipollowork-theme="light"] .bg-neutral-900 {
+  background-color: #fafafa !important;
+}
+:root[data-ipollowork-theme="light"] .bg-neutral-800 {
+  background-color: #f4f4f5 !important;
+}
+:root[data-ipollowork-theme="light"] .bg-neutral-700 {
+  background-color: #e4e4e7 !important;
+}
 :root[data-ipollowork-theme="light"] .text-white,
 :root[data-ipollowork-theme="light"] .text-neutral-100,
-:root[data-ipollowork-theme="light"] .text-neutral-200 { color: #18181b !important; }
-:root[data-ipollowork-theme="light"] .text-neutral-300 { color: #3f3f46 !important; }
-:root[data-ipollowork-theme="light"] .text-neutral-400 { color: #52525b !important; }
-:root[data-ipollowork-theme="light"] .text-neutral-500 { color: #71717a !important; }
-:root[data-ipollowork-theme="light"] .text-neutral-600 { color: #a1a1aa !important; }
-:root[data-ipollowork-theme="light"] .border-neutral-800 { border-color: #e5e7eb !important; }
-:root[data-ipollowork-theme="light"] .border-neutral-700 { border-color: #d4d4d8 !important; }
-:root[data-ipollowork-theme="light"] .border-neutral-600 { border-color: #c4c4c8 !important; }
+:root[data-ipollowork-theme="light"] .text-neutral-200 {
+  color: #18181b !important;
+}
+:root[data-ipollowork-theme="light"] .text-neutral-300 {
+  color: #3f3f46 !important;
+}
+:root[data-ipollowork-theme="light"] .text-neutral-400 {
+  color: #52525b !important;
+}
+:root[data-ipollowork-theme="light"] .text-neutral-500 {
+  color: #71717a !important;
+}
+:root[data-ipollowork-theme="light"] .text-neutral-600 {
+  color: #a1a1aa !important;
+}
+:root[data-ipollowork-theme="light"] .border-neutral-800 {
+  border-color: #e5e7eb !important;
+}
+:root[data-ipollowork-theme="light"] .border-neutral-700 {
+  border-color: #d4d4d8 !important;
+}
+:root[data-ipollowork-theme="light"] .border-neutral-600 {
+  border-color: #c4c4c8 !important;
+}
 :root[data-ipollowork-theme="light"] .hover\:bg-neutral-900:hover,
-:root[data-ipollowork-theme="light"] .hover\:bg-neutral-800:hover { background-color: #e9eaec !important; }
+:root[data-ipollowork-theme="light"] .hover\:bg-neutral-800:hover {
+  background-color: #e9eaec !important;
+}
 :root[data-ipollowork-theme="light"] input,
 :root[data-ipollowork-theme="light"] textarea,
-:root[data-ipollowork-theme="light"] select { color: #18181b; }
+:root[data-ipollowork-theme="light"] select {
+  color: #18181b;
+}
 
 /* Keep the primary transport control readable against the pale preview
    surface; the icon inherits this semantic foreground color. */
@@ -420,11 +448,11 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   overflow-y: scroll;
   scrollbar-color: #52525b #18181b;
   scrollbar-gutter: stable;
-  scrollbar-width: auto;
+  scrollbar-width: thin;
 }
 
 .hf-block-catalog-scroll::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
 }
 
 .hf-block-catalog-scroll::-webkit-scrollbar-track {
@@ -612,9 +640,9 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 }
 
 .timeline-clip {
-  background-color: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 8px;
+  background-color: var(--timeline-clip-background, rgba(255, 255, 255, 0.055));
+  border: 1px solid var(--timeline-clip-border, rgba(255, 255, 255, 0.09));
+  border-radius: 5px;
 }
 
 .timeline-clip::before {
@@ -622,13 +650,13 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: rgba(60, 230, 172, 0.2);
+  background: var(--timeline-clip-background-active, rgba(60, 230, 172, 0.2));
   opacity: 0;
   pointer-events: none;
 }
 
 .timeline-clip[data-active] {
-  border-color: rgba(60, 230, 172, 0.55);
+  border-color: var(--timeline-clip-accent, rgba(60, 230, 172, 0.55));
 }
 
 .timeline-clip[data-active]::before {
@@ -639,24 +667,49 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
    accented visual clips — so the audio zone at the bottom is visually separate
    at a glance (the timeline's kinds: visual on top, audio below). */
 .timeline-clip.is-audio {
-  background-color: rgba(167, 139, 250, 0.16);
-  border-color: rgba(167, 139, 250, 0.4);
+  background-color: var(--timeline-clip-background);
+  border-color: var(--timeline-clip-border);
 }
 
 .timeline-clip.is-audio.is-hovered {
-  background-color: rgba(167, 139, 250, 0.24);
+  background-color: var(--timeline-clip-background-hover);
 }
 
 .timeline-clip.is-audio.is-dragging {
-  background-color: rgba(60, 52, 84, 0.96);
+  background-color: var(--timeline-clip-background-dragging);
+}
+
+.timeline-clip[data-timeline-kind="text"],
+.timeline-clip[data-timeline-kind="composition"] {
+  background-color: var(--timeline-clip-background);
+  border-color: var(--timeline-clip-border);
+}
+
+.timeline-clip[data-timeline-kind="effect"] {
+  background-color: var(--timeline-clip-background);
+  border-color: var(--timeline-clip-border);
+}
+
+.timeline-clip[data-timeline-kind="logo"],
+.timeline-clip[data-timeline-kind="image"],
+.timeline-clip[data-timeline-kind="video"] {
+  background-color: var(--timeline-clip-background);
+  border-color: var(--timeline-clip-border);
+}
+
+.timeline-clip[data-timeline-kind="music"],
+.timeline-clip[data-timeline-kind="voiceover"],
+.timeline-clip[data-timeline-kind="audio"] {
+  background-color: var(--timeline-clip-background);
+  border-color: var(--timeline-clip-border);
 }
 
 .timeline-clip.is-hovered {
-  background-color: rgba(255, 255, 255, 0.09);
+  background-color: var(--timeline-clip-background-hover);
 }
 
 .timeline-clip[data-active].is-hovered {
-  border-color: rgba(60, 230, 172, 0.75);
+  border-color: var(--timeline-clip-accent, rgba(60, 230, 172, 0.75));
 }
 
 .timeline-clip.is-selected {
@@ -670,7 +723,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 .timeline-clip.is-dragging {
   /* Solid background so the picked-up clip reads clearly while dragging — audio
      clips (waveform drawn on a separate layer) would otherwise look transparent. */
-  background-color: rgba(38, 42, 52, 0.96);
+  background-color: var(--timeline-clip-background-dragging);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -695,7 +748,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   right: 10px;
   z-index: 6;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--timeline-clip-label, rgba(255, 255, 255, 0.5));
   font-size: 10px;
   font-weight: 500;
   line-height: 1;
@@ -721,6 +774,249 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.hf-timeline-layer-header {
+  isolation: isolate;
+}
+
+.hf-timeline-layer-header__visibility {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  opacity: 0.58;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    opacity 120ms ease;
+}
+
+.hf-timeline-layer-header__visibility:hover {
+  background: rgba(255, 255, 255, 0.07);
+  opacity: 0.9;
+}
+
+.hf-timeline-layer-header__visibility.is-hidden {
+  border-color: currentColor;
+  background: rgba(255, 255, 255, 0.035);
+  opacity: 1;
+}
+
+.hf-timeline-layer-header__visibility:focus-visible,
+.hf-timeline-layer-header__select:focus-visible,
+.hf-timeline-layer-header__reorder:focus-visible {
+  outline: 1px solid #3ce6ac;
+  outline-offset: -1px;
+}
+
+.hf-timeline-layer-header__status {
+  display: flex;
+  width: 20px;
+  height: 24px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.3;
+}
+
+.hf-timeline-layer-header__status.is-locked {
+  opacity: 0.72;
+}
+
+.hf-timeline-layer-header__status.is-materializing {
+  color: #facc15;
+  opacity: 0.9;
+}
+
+.hf-timeline-layer-header__select {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.hf-timeline-layer-header__select:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.hf-timeline-layer-header__kind,
+.hf-timeline-layer-header__binding,
+.hf-timeline-layer-header__caret {
+  display: flex;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.hf-timeline-layer-header__binding {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  opacity: 0.82;
+}
+
+.hf-timeline-layer-header__label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hf-timeline-layer-header__caret {
+  opacity: 0.55;
+}
+
+.hf-timeline-layer-header__reorder {
+  display: flex;
+  width: 22px;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  cursor: row-resize;
+  opacity: 0.42;
+  transition:
+    background-color 120ms ease,
+    opacity 120ms ease;
+}
+
+.hf-timeline-layer-header__reorder:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  opacity: 0.9;
+}
+
+.hf-timeline-layer-header__reorder:disabled {
+  cursor: not-allowed;
+  opacity: 0.15;
+}
+
+.hf-timeline-clip-content {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: var(--timeline-clip-label, rgba(255, 255, 255, 0.92));
+  pointer-events: none;
+}
+
+.hf-timeline-clip-content__header {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+}
+
+.hf-timeline-clip-content.is-media .hf-timeline-clip-content__header,
+.hf-timeline-clip-content.is-audio .hf-timeline-clip-content__header {
+  bottom: auto;
+  height: 18px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.hf-timeline-clip-content__icon {
+  display: flex;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--timeline-clip-accent);
+}
+
+.hf-timeline-clip-content__preview {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hf-timeline-clip-content__label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.hf-timeline-clip-content__timecode {
+  flex: none;
+  color: rgba(255, 255, 255, 0.68);
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.hf-timeline-clip-content__body {
+  position: absolute;
+  inset: 18px 0 0;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.hf-timeline-clip-content.is-audio .hf-timeline-clip-content__body {
+  inset: 0;
+}
+
+.hf-timeline-image-thumbnail,
+.hf-timeline-image-thumbnail img,
+.hf-timeline-thumbnail-shimmer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.hf-timeline-image-thumbnail img {
+  object-fit: contain;
+}
+
+.hf-timeline-thumbnail-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03),
+    rgba(255, 255, 255, 0.14),
+    rgba(255, 255, 255, 0.03)
+  );
+  animation: pulse 1.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: no-preference) {

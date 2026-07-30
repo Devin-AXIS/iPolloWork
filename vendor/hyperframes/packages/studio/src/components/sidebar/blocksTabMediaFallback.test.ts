@@ -1,17 +1,22 @@
-import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./BlocksTab.tsx", import.meta.url), "utf8");
+const runtime = readFileSync(new URL("./blockPreviewRuntime.ts", import.meta.url), "utf8");
 
-describe("BlocksTab preview media fallback", () => {
-  it("falls back from a broken poster to video without exposing alt text", () => {
+describe("BlocksTab lazy preview media", () => {
+  it("keeps a broken poster lightweight until hover intent loads the runtime", () => {
     expect(source).toContain("setPosterFailed(true)");
-    expect(source).toContain("setVideoFailed(true)");
-    expect(source).toContain("hovered || !canShowPoster");
+    expect(source).toContain('import("./blockPreviewRuntime")');
+    expect(source).toContain("setTimeout(startPreview, 150)");
     expect(source).toContain('alt=""');
+    expect(runtime).toContain('document.createElement("video")');
   });
 
-  it("keeps preview media pinned to the card bounds", () => {
-    expect(source).toContain('className="absolute inset-0 size-full object-cover"');
+  it("keeps preview media pinned to the card bounds at normal speed", () => {
+    expect(runtime).toContain('className = "absolute inset-0 size-full object-cover"');
+    expect(runtime).toContain("video.defaultPlaybackRate = 1");
+    expect(runtime).toContain("video.playbackRate = 1");
+    expect(runtime).toContain('video.addEventListener("ratechange", normalizePlayback)');
   });
 });

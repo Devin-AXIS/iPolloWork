@@ -398,11 +398,13 @@ function createServerProbeRequest(port, onConfig) {
 async function waitForHyperframesServer(port, expectedProjectPath, timeoutMs = HYPERFRAMES_START_TIMEOUT_MS) {
   const startedAt = Date.now();
   const expectedProjectDir = path.resolve(expectedProjectPath);
+  const expectedProjectName = path.basename(expectedProjectDir);
   while (Date.now() - startedAt < timeoutMs) {
     const config = await readHyperframesServerConfig(port);
     if (config?.isHyperframes) {
       const runningProject = typeof config.projectDir === "string" ? path.resolve(config.projectDir) : "";
-      if (runningProject === expectedProjectDir) return config;
+      const runningProjectName = typeof config.projectName === "string" ? config.projectName : "";
+      if (runningProject === expectedProjectDir && runningProjectName === expectedProjectName) return config;
     }
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 350));
   }
@@ -412,10 +414,17 @@ async function waitForHyperframesServer(port, expectedProjectPath, timeoutMs = H
 async function stopStaleHyperframesPort(port, expectedProjectPath) {
   const config = await readHyperframesServerConfig(port);
   if (!config?.pid) return;
-  const runningProject = typeof config.projectDir === "string" ? path.resolve(config.projectDir) : "";
+  const expectedProjectDir = path.resolve(expectedProjectPath);
+  const expectedProjectName = path.basename(expectedProjectDir);
+  const runningProjectDir = typeof config.projectDir === "string" ? path.resolve(config.projectDir) : "";
+  const runningProjectName = typeof config.projectName === "string" ? config.projectName : "";
   const runningVersion = typeof config.version === "string" ? config.version : "";
   const expectedVersion = localHyperframesVersion();
-  if (runningProject === path.resolve(expectedProjectPath) && runningVersion === expectedVersion) return;
+  if (
+    runningProjectDir === expectedProjectDir &&
+    runningProjectName === expectedProjectName &&
+    runningVersion === expectedVersion
+  ) return;
   try {
     if (process.platform === "win32") {
       execFileSync("taskkill", ["/pid", String(config.pid), "/T", "/F"], { stdio: "ignore" });
@@ -511,7 +520,7 @@ async function startHyperframesPreview(event, options = {}) {
   await runHyperframesInit(workspaceRoot, projectDirectory, projectPath);
   await stopStaleHyperframesPort(port, projectPath);
 
-  const child = spawnLocalHyperframes(["preview", "--port", String(port), "--no-open"], projectPath);
+  const child = spawnLocalHyperframes(["preview", projectPath, "--port", String(port), "--no-open"], projectPath);
   let output = "";
   return await new Promise((resolve, reject) => {
     let ready = false;
@@ -3436,7 +3445,13 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const scope = composition.querySelector('[data-hf-inner-root]') || composition;
         const matches = [...scope.querySelectorAll(selector)];
         const selectorIndex = Math.max(0, matches.indexOf(element));
-        return { file, selector, selectorIndex };
+        return {
+          file,
+          hfId: element.getAttribute('data-hf-id') || undefined,
+          id: element.id || undefined,
+          selector,
+          selectorIndex,
+        };
       };
 
       const saveTextTarget = (target, value, immediate = false) => {

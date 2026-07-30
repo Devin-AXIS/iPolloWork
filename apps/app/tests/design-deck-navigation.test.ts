@@ -159,8 +159,21 @@ describe("Design deck navigation", () => {
     expect(source).toContain('from "./design-undo-history"');
     expect(source).toContain("historyRef");
     expect(source).toContain("pushDesignUndoHistory(current, snapshot)");
-    expect(source).toContain("popDesignUndoHistory(historyRef.current, draftRef.current)");
+    expect(source).toContain("popDesignUndoHistory(historyRef.current, {");
+    expect(source).toContain("tokenCss: designTokenDraftRef.current");
     expect(source).not.toContain('if (event.data.type === "editing") setHistory((current) => [...current, draft]);');
+  });
+
+  test("restores the theme token file together with HTML on undo", async () => {
+    const source = await Bun.file(panelUrl).text();
+    const undo = source.match(/const undo = async \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+
+    expect(source).toContain("rememberHistory({ html: currentHtml, tokenCss: currentTokenCss, restoreTokenCss: true })");
+    expect(source).toContain("if (themedHtml === currentHtml && next === currentTokenCss)");
+    expect(undo).toContain("draftRef.current = previous.html");
+    expect(undo).toContain("if (previous.restoreTokenCss)");
+    expect(undo).toContain("designTokenDraftRef.current = previous.tokenCss");
+    expect(undo).toContain("scheduleDesignTokenSave(previous.tokenCss)");
   });
 
   test("recreates the preview frame when undoing a live canvas edit", async () => {
