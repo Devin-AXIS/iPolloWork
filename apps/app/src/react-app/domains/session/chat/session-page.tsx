@@ -483,6 +483,18 @@ export function SessionPage(props: SessionPageProps) {
   const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
     setConversationMessageState({ sessionId, messages });
   }, []);
+  const handleDesignAskAi = useCallback((context: DesignAiSelectionContext) => {
+    useDesignAiSelectionStore.getState().createContext(context);
+    const composerStore = useComposerStateStore.getState();
+    composerStore.setDraft(
+      context.sessionId,
+      replaceDesignSelectionToken(
+        getComposerDraft(composerStore, context.sessionId),
+        designAiSelectionToken(context.id),
+      ),
+    );
+    window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+  }, []);
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
     : [];
