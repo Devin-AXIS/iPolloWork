@@ -87,7 +87,9 @@ describe("new conversation animation catalog", () => {
     expect(surface).toContain('dark:bg-[#131313]');
     expect(starter).toContain('new-conversation-bg.png');
     expect(starter).toContain('max-w-none dark:opacity-20');
-    expect(starter).toContain('dark:bg-[#343434]');
+    expect(starter).toContain('dark:bg-[#333]');
+    expect(starter).toContain('dark:bg-black dark:text-[#ccc]');
+    expect(starter).toContain('brightness-0 dark:invert dark:opacity-80');
     expect(starter).toContain('dark:text-[#ccc]');
     expect(starter).toContain('dark:invert dark:opacity-80');
     expect(composer).toContain("new-conversation-composer");

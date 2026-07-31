@@ -1132,7 +1132,7 @@ export function NewConversationStarter({
         </div>
 
         <div
-          className="mt-8 grid h-[46px] w-full max-w-[394px] grid-cols-4 items-center gap-1.5 rounded-[12px] bg-[#F5F5F5] p-1 dark:bg-[#343434]"
+          className="mt-8 grid h-[46px] w-full max-w-[394px] grid-cols-4 items-center gap-1.5 rounded-[12px] bg-[#F5F5F5] p-1 dark:bg-[#333]"
           role="tablist"
           aria-label={t("new_conversation.mode_label")}
         >
@@ -1147,8 +1147,8 @@ export function NewConversationStarter({
               className={cn(
                 "inline-flex h-[38px] min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-1.5 font-sans text-[12px] font-medium leading-normal transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 selected
-                  ? "bg-white text-black"
-                  : "text-[#999] hover:bg-white/70 hover:text-black dark:hover:bg-white/10 dark:hover:text-white",
+                  ? "bg-white text-black dark:bg-black dark:text-[#ccc]"
+                  : "text-[#999] hover:bg-white/70 hover:text-black dark:hover:bg-black/50 dark:hover:text-[#ccc] dark:active:bg-black dark:active:text-[#ccc]",
               )}
               onClick={() => selectMode(id)}
               onMouseEnter={() => setHoveredMode(id)}
@@ -1161,8 +1161,7 @@ export function NewConversationStarter({
                 className={cn(
                   "shrink-0 object-contain",
                   id === "video" ? "h-[14px] w-[18px]" : "size-4",
-                  (selected || hoveredMode === id) && "brightness-0",
-                  !selected && hoveredMode === id && "dark:invert",
+                  (selected || hoveredMode === id) && "brightness-0 dark:invert dark:opacity-80",
                 )}
               />
               <span className="min-w-0 truncate">{t(label)}</span>
