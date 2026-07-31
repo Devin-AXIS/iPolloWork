@@ -79,13 +79,13 @@ export function DesignPanelSelect<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        {showValue ? <span className={cn("min-w-0 flex-1 truncate text-[13px] text-[#24262b]", textClassName)}>{selected?.label ?? value}</span> : null}
+        {showValue ? <span className={cn("min-w-0 flex-1 truncate text-[13px] text-foreground", textClassName)}>{selected?.label ?? value}</span> : null}
         <img src={panelSelectChevron} alt="" width="16" height="16" className={cn("block size-4 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
       {open && menuRect ? createPortal(
         <div
           ref={menuRef}
-          className={cn("fixed z-[70] min-w-[120px] overflow-hidden rounded-xl border border-[#dedfe3] bg-white p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)]", menuClassName)}
+          className={cn("fixed z-[70] min-w-[120px] overflow-hidden rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_18px_rgba(37,41,49,0.11)]", menuClassName)}
           style={{
             left: menuRect.left,
             top: openAbove ? undefined : menuRect.bottom + 12,
@@ -102,7 +102,7 @@ export function DesignPanelSelect<T extends string>({
               role="option"
               aria-selected={option.value === value}
               disabled={option.disabled}
-              className={cn("flex h-[34px] w-full items-center rounded-lg px-2.5 text-left text-[12px] text-black transition-colors hover:bg-[#f4f5f7] focus-visible:bg-[#f4f5f7] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40", option.value === value && "bg-[#f4f5f7]")}
+              className={cn("flex h-[34px] w-full items-center rounded-lg px-2.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40", option.value === value && "bg-muted")}
               onClick={() => {
                 onChange(option.value);
                 setOpen(false);

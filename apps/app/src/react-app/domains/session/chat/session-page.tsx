@@ -2011,7 +2011,7 @@ export function SessionPage(props: SessionPageProps) {
                       <img
                         src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
                         alt=""
-                        className="h-3 w-4 shrink-0"
+                        className="h-3 w-4 shrink-0 dark:invert"
                       />
                     </Button>
                   }
@@ -2020,9 +2020,9 @@ export function SessionPage(props: SessionPageProps) {
               </Tooltip>
             ) : null}
             <ResizablePanel minSize={rightPanelExpanded ? "0px" : `${mainWorkspaceMinWidth}px`} className="min-w-0">
-              <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
+              <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border [border-right-width:0.5px]">
           <header className={cn(
-            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
+            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
             mainHeaderHidden ? "hidden" : "flex",
             sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
           )}>
@@ -2037,7 +2037,7 @@ export function SessionPage(props: SessionPageProps) {
                 onClick={openLeftSidebar}
                 style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
               >
-                <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0" />
+                <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />
               </Button>
             ) : null}
             <div className="flex min-w-0 items-center gap-1">
@@ -2139,7 +2139,7 @@ export function SessionPage(props: SessionPageProps) {
                       <img
                         src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
                         alt=""
-                        className="h-3 w-4 shrink-0"
+                        className="h-3 w-4 shrink-0 dark:invert"
                       />
                     </Button>
                   }
@@ -2404,7 +2404,7 @@ export function SessionPage(props: SessionPageProps) {
                   className="min-h-0 overflow-hidden lg:flex lg:flex-col"
                 >
                   {effectiveSidePanelView === "launcher" ? (
-                    <div className="flex h-full flex-col bg-background px-6 pt-16 text-[#6B7280] min-[960px]:px-10 min-[960px]:pt-[44vh]">
+                    <div className="flex h-full flex-col bg-background px-6 pt-16 text-muted-foreground min-[960px]:px-10 min-[960px]:pt-[44vh]">
                       <div className="w-full max-w-[240px] space-y-5">
                         {sidePanelLauncherItems.map((item) => {
                           return (
@@ -2412,8 +2412,8 @@ export function SessionPage(props: SessionPageProps) {
                               key={item.id}
                               type="button"
                               className={cn(
-                                "flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-[#8A8A8A] transition-colors hover:bg-[#F5F5F5] hover:text-[#242424] disabled:cursor-not-allowed disabled:opacity-40",
-                                item.active && "bg-[#F5F5F5] text-[#242424]",
+                                "flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
+                                item.active && "bg-muted text-foreground",
                               )}
                               onClick={item.onClick}
                               disabled={item.disabled}

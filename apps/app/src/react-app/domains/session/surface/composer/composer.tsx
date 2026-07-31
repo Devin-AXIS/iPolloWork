@@ -1184,9 +1184,9 @@ export function ReactSessionComposer(props: ComposerProps) {
       <div className="max-w-[800px] mx-auto">
         {/* Main composer panel */}
         <div
-          className={`relative overflow-visible rounded-[18px] border border-transparent bg-dls-surface shadow-[0_4px_12.9px_rgba(80,130,222,0.20)] transition-all ${panelRoundedClass}`}
+          className={`relative overflow-visible rounded-[18px] border border-transparent bg-dls-surface shadow-[0_4px_12.9px_rgba(80,130,222,0.20)] transition-all ${props.layout === "inline" ? "new-conversation-composer dark:bg-[#343434] dark:shadow-[0_4px_9.5px_rgba(113,156,234,0.53)]" : ""} ${panelRoundedClass}`}
           style={{
-            backgroundImage: "linear-gradient(var(--dls-surface), var(--dls-surface)), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)",
+            backgroundImage: `linear-gradient(${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}, ${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)`,
             backgroundOrigin: "border-box",
             backgroundClip: "padding-box, border-box",
           }}
@@ -1549,7 +1549,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                                     className="flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
                                     onClick={() => applyExtensionSelection(entry)}
                                   >
-                                    <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-dls-border bg-white shadow-sm">
+                                    <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-dls-border bg-card shadow-sm">
                                       {extensionIcon(entry, 16)}
                                     </div>
                                     <div className="min-w-0 flex-1">
@@ -1742,8 +1742,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                     disabled={props.disabled || !canSend}
                     className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
                       !canSend || props.disabled
-                        ? "bg-gray-4 text-gray-10"
-                        : "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
+                        ? `bg-gray-4 text-gray-10 ${props.layout === "inline" ? "dark:bg-white/15 dark:text-[#999]" : ""}`
+                        : props.layout === "inline"
+                          ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)] dark:bg-white dark:text-black dark:hover:bg-white/90"
+                          : "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
                     }`}
                     title={t("composer.run_task")}
                   >

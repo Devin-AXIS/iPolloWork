@@ -521,7 +521,7 @@ export type AppSidebarProps = {
   onStartResize?: React.PointerEventHandler<HTMLButtonElement>;
 };
 
-const primarySidebarActionClassName = "h-8 gap-1 rounded-[8px] px-1 py-0 text-sm font-normal leading-4 text-black transition-colors hover:bg-black/5 hover:text-black active:bg-black/10 active:text-black data-active:bg-black/5 data-active:text-black focus-visible:ring-1 dark:text-black dark:hover:bg-black/5 dark:hover:text-black dark:active:bg-black/10 dark:data-active:bg-black/5 dark:data-active:text-black";
+const primarySidebarActionClassName = "h-8 gap-1 rounded-[8px] px-1 py-0 text-sm font-normal leading-4 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground focus-visible:ring-1";
 
 function useSessionTree(
   sessions: WorkspaceSessionGroup["sessions"],
@@ -635,7 +635,7 @@ export function AppSidebar(props: AppSidebarProps) {
           <div className="flex w-full justify-end px-3">
             <SidebarTrigger
               className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
-              icon={<img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0" />}
+              icon={<img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />}
               aria-label={t("sidebar.collapse")}
               title={t("sidebar.collapse")}
             />
@@ -660,7 +660,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 aria-keyshortcuts={isMacPlatform() ? "Meta+Shift+F" : "Control+Shift+F"}
                 className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
               >
-                <img src={publicAssetUrl("sidebar-icon/search.svg")} alt="" className="size-6" />
+                <img src={publicAssetUrl("sidebar-icon/search.svg")} alt="" className="size-6 dark:invert" />
               </button>
             ) : null}
           </div>
@@ -674,7 +674,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/figma-square-pen.svg")} alt="" className="size-[11px]" />
+                  <img src={publicAssetUrl("sidebar-icon/figma-square-pen.svg")} alt="" className="size-[11px] dark:invert" />
                 </span>
                 <span className="flex-1 truncate">{t("session.new_task")}</span>
               </SidebarMenuButton>
@@ -686,7 +686,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 className={primarySidebarActionClass}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/figma-layout-panel-top.svg")} alt="" className="size-[11px]" />
+                  <img src={publicAssetUrl("sidebar-icon/figma-layout-panel-top.svg")} alt="" className="size-[11px] dark:invert" />
                 </span>
                 <span className="flex-1 truncate">{t("template_market.title")}</span>
               </SidebarMenuButton>
@@ -698,7 +698,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 className={primarySidebarActionClass}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/figma-plug.svg")} alt="" className="h-[13px] w-2" />
+                  <img src={publicAssetUrl("sidebar-icon/figma-plug.svg")} alt="" className="h-[13px] w-2 dark:invert" />
                 </span>
                 <span className="flex-1 truncate">{t("settings.tab_extensions")}</span>
               </SidebarMenuButton>
@@ -1034,16 +1034,16 @@ function SessionGroupSeparator({ label, expanded, onToggle, onAdd, addDisabled, 
   onTitlePointerDown?: React.PointerEventHandler<HTMLButtonElement>;
 }) {
   return (
-    <div className="group/session-group-row flex h-8 w-full items-center justify-between rounded-[8px] px-1 transition-colors hover:bg-black/5 active:bg-black/10 focus-within:ring-1 focus-within:ring-sidebar-ring">
+    <div className="group/session-group-row flex h-8 w-full items-center justify-between rounded-[8px] px-1 transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent focus-within:ring-1 focus-within:ring-sidebar-ring">
       <button
         type="button"
         onClick={onToggle}
         onPointerDown={onTitlePointerDown}
-        className="flex h-8 min-w-0 flex-1 cursor-grab touch-none items-center gap-1 rounded-[8px] text-left text-sm font-medium leading-4 text-black outline-hidden active:cursor-grabbing"
+        className="flex h-8 min-w-0 flex-1 cursor-grab touch-none items-center gap-1 rounded-[8px] text-left text-sm font-medium leading-4 text-sidebar-foreground outline-hidden active:cursor-grabbing"
         aria-expanded={expanded}
       >
         <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-          <img src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")} alt="" className="h-[10px] w-3" />
+          <img src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")} alt="" className="h-[10px] w-3 dark:invert" />
         </span>
         <span className="truncate">{label}</span>
       </button>
