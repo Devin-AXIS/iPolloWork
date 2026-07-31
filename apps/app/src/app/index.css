@@ -237,6 +237,10 @@
   --dls-card-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
 }
 
+[data-theme="dark"] .new-conversation-composer {
+  --new-conversation-composer-surface: #343434;
+}
+
 html,
 body {
   height: 100%;

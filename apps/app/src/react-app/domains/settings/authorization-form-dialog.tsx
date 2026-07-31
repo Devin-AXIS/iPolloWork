@@ -95,7 +95,7 @@ export function AuthorizationFormDialog(props: AuthorizationFormDialogProps) {
         </FieldGroup>
         {props.error ? <p role="alert" className="rounded-xl border border-red-6 bg-red-2 px-3 py-2 text-xs leading-5 text-red-11">{props.error}</p> : null}
         <DialogFooter>
-          <DialogClose render={<Button size="sm" variant="outline" disabled={props.saving} />}>
+          <DialogClose render={<Button size="sm" variant="outline" />}>
             {props.cancelLabel}
           </DialogClose>
           <Button size="sm" onClick={props.onSubmit} disabled={props.saving}>

@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from "react";
 import { Archive, Bot, FileText, Loader2, Package, ShieldCheck, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/sonner";
 import {
   Dialog,
   DialogClose,
@@ -33,6 +34,7 @@ type PluginPackageImportModalProps = {
 
 export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const operationRef = useRef(0);
   const [upload, setUpload] = useState<iPolloWorkPluginPackageUpload | null>(null);
   const [preview, setPreview] = useState<iPolloWorkPluginPackagePreview | null>(null);
   const [busy, setBusy] = useState<"preview" | "install" | null>(null);
@@ -54,41 +56,49 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
   };
 
   const close = () => {
-    if (busy) return;
+    operationRef.current += 1;
     reset();
     props.onClose();
   };
 
   const previewFile = async (file: File) => {
+    const operation = ++operationRef.current;
     setBusy("preview");
     setError(null);
     setPreview(null);
     try {
       const nextUpload = await readPluginPackageArchive(file);
       const response = await props.client.validatePluginPackageUpload(props.workspaceId, nextUpload);
+      if (operationRef.current !== operation) return;
       setUpload(nextUpload);
       setPreview(response.preview);
     } catch (cause) {
+      if (operationRef.current !== operation) return;
       setUpload(null);
       setError(formatPluginPlatformError(cause, t("plugin_platform.import_error")));
     } finally {
-      setBusy(null);
+      if (operationRef.current === operation) setBusy(null);
     }
   };
 
   const install = async () => {
     if (!upload || !preview) return;
+    const operation = ++operationRef.current;
     setBusy("install");
     setError(null);
     try {
       const response = await props.client.importPluginPackage(props.workspaceId, upload);
       await props.onInstalled(response.result.pluginId);
+      toast.success(t("plugin_platform.status.installed"));
+      if (operationRef.current !== operation) return;
       reset();
       props.onClose();
     } catch (cause) {
-      setError(formatPluginPlatformError(cause, t("plugin_platform.import_error")));
+      const message = formatPluginPlatformError(cause, t("plugin_platform.import_error"));
+      toast.error(message);
+      if (operationRef.current === operation) setError(message);
     } finally {
-      setBusy(null);
+      if (operationRef.current === operation) setBusy(null);
     }
   };
 
@@ -172,7 +182,7 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
         </div>
 
         <DialogFooter className="shrink-0">
-          <DialogClose render={<Button variant="outline" disabled={busy !== null} />} disabled={busy !== null}>
+          <DialogClose render={<Button variant="outline" />}>
             {t("common.cancel")}
           </DialogClose>
           <Button disabled={!preview || busy !== null} onClick={() => void install()}>

@@ -247,7 +247,7 @@ export function ExtensionDetailModal({
                 )}
               >
                 {resolvedIconSrc ? (
-                  <div className="flex size-8 items-center justify-center rounded-md bg-white">
+                  <div className="flex size-8 items-center justify-center rounded-md bg-card">
                     <img src={resolvedIconSrc} alt="" width={20} height={20} loading="lazy" style={{ display: "block" }} />
                   </div>
                 ) : (

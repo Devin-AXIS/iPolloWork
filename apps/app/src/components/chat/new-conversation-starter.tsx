@@ -1116,19 +1116,23 @@ export function NewConversationStarter({
         src={publicAssetUrl("new-conversation-bg.png")}
         alt=""
         aria-hidden
-        className="pointer-events-none absolute left-[calc(50%-280px)] -top-[18px] h-[243px] w-[243px] max-w-none"
+        className="pointer-events-none absolute left-[calc(50%-280px)] -top-[18px] h-[243px] w-[243px] max-w-none dark:opacity-20"
       />
       <div className="relative">
         <div className="max-w-4xl">
-          <img src={publicAssetUrl("ipollo-work-wordmark.svg")} alt="iPollo Work" className="h-[25px] w-[144px]" />
-          <h1 className="mt-3 font-sans text-[48px] font-semibold leading-none tracking-[-1.92px] text-black">
+          <img
+            src={publicAssetUrl("ipollo-work-wordmark.svg")}
+            alt="iPollo Work"
+            className="h-[25px] w-[144px] dark:invert dark:opacity-80"
+          />
+          <h1 className="mt-3 font-sans text-[48px] font-semibold leading-none tracking-[-1.92px] text-black dark:text-white">
             {t("new_conversation.title")}
           </h1>
-          <p className="mt-8 font-sans text-[16px] font-light leading-normal tracking-[-0.8px] text-[#666]">{t("new_conversation.subtitle")}</p>
+          <p className="mt-8 font-sans text-[16px] font-light leading-normal tracking-[-0.64px] text-[#666] dark:text-[#ccc]">{t("new_conversation.subtitle")}</p>
         </div>
 
         <div
-          className="mt-8 grid h-[46px] w-full max-w-[394px] grid-cols-4 items-center gap-1.5 rounded-[12px] bg-[#F5F5F5] p-1"
+          className="mt-8 grid h-[46px] w-full max-w-[394px] grid-cols-4 items-center gap-1.5 rounded-[12px] bg-[#F5F5F5] p-1 dark:bg-[#333]"
           role="tablist"
           aria-label={t("new_conversation.mode_label")}
         >
@@ -1143,8 +1147,8 @@ export function NewConversationStarter({
               className={cn(
                 "inline-flex h-[38px] min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-1.5 font-sans text-[12px] font-medium leading-normal transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 selected
-                  ? "bg-white text-black"
-                  : "text-[#999] hover:bg-white/70 hover:text-black",
+                  ? "bg-white text-black dark:bg-black dark:text-[#ccc]"
+                  : "text-[#999] hover:bg-white/70 hover:text-black dark:hover:bg-black/50 dark:hover:text-[#ccc] dark:active:bg-black dark:active:text-[#ccc]",
               )}
               onClick={() => selectMode(id)}
               onMouseEnter={() => setHoveredMode(id)}
@@ -1154,7 +1158,11 @@ export function NewConversationStarter({
                 src={iconSrc}
                 alt=""
                 aria-hidden
-                className={cn("shrink-0 object-contain", id === "video" ? "h-[14px] w-[18px]" : "size-4", (selected || hoveredMode === id) && "brightness-0")}
+                className={cn(
+                  "shrink-0 object-contain",
+                  id === "video" ? "h-[14px] w-[18px]" : "size-4",
+                  (selected || hoveredMode === id) && "brightness-0 dark:invert dark:opacity-80",
+                )}
               />
               <span className="min-w-0 truncate">{t(label)}</span>
             </button>
@@ -1174,8 +1182,8 @@ export function NewConversationStarter({
               className={cn(
                 "inline-flex h-[24px] min-w-[50px] items-center justify-center rounded-[18px] border px-2 text-[12px] font-medium transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 selectedTemplateAction || selectedCapabilityAction
-                  ? "border-[#CCC] bg-[#F5F5F5] text-[#999]"
-                  : "border-[#CBCBCB] bg-white text-[#999] hover:border-[#CCC] hover:bg-[#F5F5F5]",
+                  ? "border-[#CCC] bg-[#F5F5F5] text-[#999] dark:border-[#666] dark:bg-[#343434] dark:text-[#ccc]"
+                  : "border-[#CBCBCB] bg-white text-[#999] hover:border-[#CCC] hover:bg-[#F5F5F5] dark:border-[#666] dark:bg-transparent dark:hover:border-[#999] dark:hover:bg-[#343434] dark:hover:text-[#ccc]",
               )}
               onClick={() => {
                 if (templateCategory) {
@@ -1203,7 +1211,9 @@ export function NewConversationStarter({
               type="button"
               className={cn(
                 "inline-flex size-[24px] items-center justify-center rounded-full border text-muted-foreground transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                shortcutEditorOpen ? "border-[#CCC] bg-[#F5F5F5] text-foreground" : "border-[#CBCBCB] bg-white hover:border-[#CCC] hover:bg-[#F5F5F5] hover:text-foreground",
+                shortcutEditorOpen
+                  ? "border-[#CCC] bg-[#F5F5F5] text-foreground dark:border-[#666] dark:bg-[#343434]"
+                  : "border-[#CBCBCB] bg-white hover:border-[#CCC] hover:bg-[#F5F5F5] hover:text-foreground dark:border-[#666] dark:bg-transparent dark:hover:border-[#999] dark:hover:bg-[#343434]",
               )}
               aria-label={t("new_conversation.shortcuts.add")}
               aria-expanded={shortcutEditorOpen}

@@ -213,7 +213,7 @@ function ConnectRowIcon(props: { iconSlug?: string; iconSrc?: string; name: stri
   return (
     <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-dls-border bg-dls-hover">
       {src ? (
-        <div className="flex size-6 items-center justify-center rounded-md bg-white">
+        <div className="flex size-6 items-center justify-center rounded-md bg-card">
           <img src={src} alt="" width={16} height={16} loading="lazy" className="block" onError={() => setFailed(true)} />
         </div>
       ) : (
