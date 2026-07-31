@@ -1458,6 +1458,8 @@ export default {
   "providers.auth_failed": "Authentication failed",
   "providers.connect_failed": "Failed to connect provider",
   "providers.disabled_in_config_suffix": "and disabled it in OpenCode config.",
+  "providers.disconnect_confirm_message": "This removes the saved provider authentication from this workspace. You can reconnect at any time.",
+  "providers.disconnect_confirm_title": "Disconnect {provider}?",
   "providers.disconnect_failed": "Failed to disconnect provider",
   "providers.disconnected_prefix": "Disconnected",
   "providers.load_failed": "Failed to load providers",
