@@ -112,6 +112,37 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).not.toContain('panel.resize("100%")');
   });
 
+  test("keeps the outer workspace layout independent from resizable panel registration", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).not.toContain('orientation="horizontal"');
+    expect(sessionPageSource).toContain('aria-label="Resize right panel"');
+    expect(sessionPageSource).toContain("onPointerDown={startRightPanelResize}");
+    expect(sessionPageSource).toContain("setBrowserPanelWidth(nextWidth)");
+    expect(sessionPageSource).toContain("width: sidePanelOpen ? effectiveBrowserPanelWidth : 0");
+  });
+
+  test("freezes resizable panel feedback while Design or Video Studio is expanded", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("const rightWorkspaceExpanded = rightPanelExpanded || videoStudioExpanded");
+    expect(sessionPageSource).toContain(
+      '(!sidePanelOpen || rightWorkspaceExpanded) && "pointer-events-none',
+    );
+    expect(sessionPageSource).not.toContain("disabled={!sidePanelOpen || rightWorkspaceExpanded}");
+    expect(sessionPageSource).toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
+    expect(sessionPageSource).toContain("setVideoStudioExpanded(false)");
+    expect(sessionPageSource).toContain(
+      "if (event.button !== 0 || !sidePanelOpen || rightWorkspaceExpanded) return",
+    );
+  });
+
   test("renders confirmation dialogs above expanded work surfaces", () => {
     const alertDialogSource = readFileSync(
       new URL("../src/components/ui/alert-dialog.tsx", import.meta.url),

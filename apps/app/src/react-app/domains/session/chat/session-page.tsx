@@ -2,7 +2,6 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
-import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
 import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, isPptxCompatibleTemplate, type TemplateCatalogItem, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState } from "@ipollowork/types/templates";
@@ -868,7 +867,6 @@ export function SessionPage(props: SessionPageProps) {
   const [removeGroupOpen, setRemoveGroupOpen] = useState(false);
   const [removeGroupTarget, setRemoveGroupTarget] = useState<{ workspaceId: string; groupId: string; label: string } | null>(null);
   const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | null>(null);
-  const browserPanelRef = usePanelRef();
   const preserveSidePanelOnPanelOpenRef = useRef(false);
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
@@ -1002,7 +1000,7 @@ export function SessionPage(props: SessionPageProps) {
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
   const [videoStudioExpanded, setVideoStudioExpanded] = useState(false);
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
-  const rightPanelRestoreWidthRef = useRef(browserPanelWidth);
+  const rightWorkspaceExpanded = rightPanelExpanded || videoStudioExpanded;
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
   ));
@@ -1109,22 +1107,55 @@ export function SessionPage(props: SessionPageProps) {
   useEffect(() => {
     props.onAccessibleTargetsChange?.(accessibleTargets);
   }, [accessibleTargets, props.onAccessibleTargetsChange]);
-  const commitBrowserPanelWidth = useCallback(() => {
-    if (rightPanelExpanded) return;
-    const size = browserPanelRef.current?.getSize();
-    if (size?.inPixels) setBrowserPanelWidth(Math.round(size.inPixels));
-  }, [browserPanelRef, rightPanelExpanded, setBrowserPanelWidth]);
   const setRightPanelExpandedState = useCallback((expanded: boolean) => {
-    const panel = browserPanelRef.current;
     if (expanded) {
-      if (panel) {
-        rightPanelRestoreWidthRef.current = Math.round(panel.getSize().inPixels);
-      }
       setRightPanelExpanded(true);
       return;
     }
     setRightPanelExpanded(false);
-  }, [browserPanelRef]);
+  }, []);
+  const startRightPanelResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !sidePanelOpen || rightWorkspaceExpanded) return;
+    const workspaceWidth = viewportWidth - visibleLeftSidebarWidth;
+    const maximumWidth = Math.max(
+      effectiveRightPanelMinWidth,
+      Math.min(
+        workspaceWidth - mainWorkspaceMinWidth,
+        workspaceWidth * (effectiveSidePanelView === "video" ? 0.82 : 0.7),
+      ),
+    );
+    let nextWidth = effectiveBrowserPanelWidth;
+    const handleMove = (moveEvent: PointerEvent) => {
+      nextWidth = Math.round(Math.min(maximumWidth, Math.max(
+        effectiveRightPanelMinWidth,
+        window.innerWidth - moveEvent.clientX,
+      )));
+      setBrowserPanelWidth(nextWidth);
+    };
+    const handleStop = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleStop);
+      window.removeEventListener("pointercancel", handleStop);
+      document.body.style.removeProperty("cursor");
+      document.body.style.removeProperty("user-select");
+      setBrowserPanelDefaultWidth(nextWidth);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleStop);
+    window.addEventListener("pointercancel", handleStop);
+    Object.assign(document.body.style, { cursor: "ew-resize", userSelect: "none" });
+    event.preventDefault();
+  }, [
+    effectiveBrowserPanelWidth,
+    effectiveRightPanelMinWidth,
+    effectiveSidePanelView,
+    mainWorkspaceMinWidth,
+    rightWorkspaceExpanded,
+    setBrowserPanelWidth,
+    sidePanelOpen,
+    viewportWidth,
+    visibleLeftSidebarWidth,
+  ]);
   const handleDesignAskAi = useCallback((context: DesignAiSelectionContext) => {
     useDesignAiSelectionStore.getState().createContext(context);
     const composerStore = useComposerStateStore.getState();
@@ -1141,14 +1172,6 @@ export function SessionPage(props: SessionPageProps) {
       window.dispatchEvent(new Event("ipollowork:focusPrompt"));
     });
   }, [rightPanelExpanded, videoStudioExpanded]);
-  useEffect(() => {
-    const panel = browserPanelRef.current;
-    if (!panel) return;
-
-    window.requestAnimationFrame(() => {
-      panel.resize(`${rightPanelRestoreWidthRef.current}px`);
-    });
-  }, [browserPanelRef, effectiveSidePanelView, rightPanelExpanded]);
   const browserUrlForTarget = useCallback((target: OpenTarget) => {
     if (/^wss?:\/\//i.test(target.value)) return target.value.replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
     return target.value;
@@ -1284,6 +1307,8 @@ export function SessionPage(props: SessionPageProps) {
       userOpenedSidePanelWhileNarrowRef.current = false;
       autoCollapsedSidePanelRef.current = null;
     }
+    setRightPanelExpanded(false);
+    setVideoStudioExpanded(false);
     setSessionPanelView(null);
     setCurrentSidePanel(null);
   }, [setCurrentSidePanel]);
@@ -1927,6 +1952,7 @@ export function SessionPage(props: SessionPageProps) {
           leftSidebarResizing &&
             "**:data-[slot=sidebar-container]:transition-none **:data-[slot=sidebar-gap]:transition-none",
           !shellConfig.sidebar && "**:data-[slot=sidebar-container]:hidden **:data-[slot=sidebar-gap]:hidden",
+          rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0",
         )}
         style={sidebarProviderStyle}
       >
@@ -1988,11 +2014,7 @@ export function SessionPage(props: SessionPageProps) {
         />
         <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80">
           <div className="flex min-h-0 flex-1">
-          <ResizablePanelGroup
-            orientation="horizontal"
-            onLayoutChanged={sidePanelOpen ? commitBrowserPanelWidth : undefined}
-            className="relative min-h-0 flex-1"
-          >
+          <div className="relative flex min-h-0 flex-1">
             {mainHeaderHidden ? (
               <Tooltip>
                 <TooltipTrigger
@@ -2019,7 +2041,7 @@ export function SessionPage(props: SessionPageProps) {
                 <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
               </Tooltip>
             ) : null}
-            <ResizablePanel minSize={rightPanelExpanded ? "0px" : `${mainWorkspaceMinWidth}px`} className="min-w-0">
+            <div className="min-w-0 flex-1" style={{ minWidth: rightWorkspaceExpanded ? 0 : mainWorkspaceMinWidth }}>
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
@@ -2392,18 +2414,22 @@ export function SessionPage(props: SessionPageProps) {
           </ResizablePanelGroup>
 
               </main>
-            </ResizablePanel>
-              {sidePanelOpen ? (
-              <>
-                <ResizableHandle withHandle className={cn("hidden lg:flex", rightPanelExpanded && "lg:hidden")} />
-                <ResizablePanel
-                  panelRef={browserPanelRef}
-                  defaultSize={`${effectiveBrowserPanelWidth}px`}
-                  minSize={`${effectiveRightPanelMinWidth}px`}
-                  maxSize={rightPanelExpanded ? "100%" : effectiveSidePanelView === "video" ? "82%" : "70%"}
-                  className="min-h-0 overflow-hidden lg:flex lg:flex-col"
+            </div>
+                <div
+                  role="separator"
+                  aria-label="Resize right panel"
+                  aria-orientation="vertical"
+                  onPointerDown={startRightPanelResize}
+                  className={cn(
+                    "relative z-20 hidden w-2 shrink-0 cursor-ew-resize touch-none lg:block",
+                    (!sidePanelOpen || rightWorkspaceExpanded) && "pointer-events-none w-0",
+                  )}
+                />
+                <aside
+                  className="min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col"
+                  style={{ width: sidePanelOpen ? effectiveBrowserPanelWidth : 0 }}
                 >
-                  {effectiveSidePanelView === "launcher" ? (
+                  {sidePanelOpen && effectiveSidePanelView === "launcher" ? (
                     <div className="flex h-full flex-col bg-background px-6 pt-16 text-[#6B7280] min-[960px]:px-10 min-[960px]:pt-[44vh]">
                       <div className="w-full max-w-[240px] space-y-5">
                         {sidePanelLauncherItems.map((item) => {
@@ -2425,14 +2451,14 @@ export function SessionPage(props: SessionPageProps) {
                         })}
                       </div>
                     </div>
-                  ) : activeSidePanel === "voice" ? (
+                  ) : sidePanelOpen && activeSidePanel === "voice" ? (
                     <VoicePanel
                       client={props.ipolloworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
                       sessionId={props.selectedSessionId}
                       onClose={closeRightPane}
                     />
-                  ) : activeSidePanel === "video" && props.selectedSessionId ? (
+                  ) : sidePanelOpen && activeSidePanel === "video" && props.selectedSessionId ? (
                     <div
                       className={cn(
                         "h-full min-h-0",
@@ -2457,7 +2483,7 @@ export function SessionPage(props: SessionPageProps) {
                         onClose={closeRightPane}
                       />
                     </div>
-                  ) : activeSidePanel === "outputs" ? (
+                  ) : sidePanelOpen && activeSidePanel === "outputs" ? (
                     <ConversationOutputPanel
                       messages={conversationMessages}
                       sessionId={props.selectedSessionId ?? undefined}
@@ -2468,7 +2494,7 @@ export function SessionPage(props: SessionPageProps) {
                       onOpenTarget={openTarget}
                       onOpenVideoStudio={openCurrentVideoStudio}
                     />
-                  ) : activeSidePanel === "panel" && props.selectedSessionId ? (
+                  ) : sidePanelOpen && activeSidePanel === "panel" && props.selectedSessionId ? (
                     <div
                       className={cn(
                         "h-full min-h-0",
@@ -2493,10 +2519,8 @@ export function SessionPage(props: SessionPageProps) {
                       />
                     </div>
                   ) : null}
-                </ResizablePanel>
-              </>
-            ) : null}
-          </ResizablePanelGroup>
+                </aside>
+          </div>
           </div>
         </SidebarInset>
       </SidebarProvider>

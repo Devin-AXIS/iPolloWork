@@ -82,6 +82,8 @@ export default {
   "design.export.download_pdf": "Download PDF",
   "design.export.download_pptx": "Download PPTX",
   "app.compact_command_desc": "Summarize this session to reduce context size.",
+  "app.crash_description": "The app is blocked. Reload it to continue.",
+  "app.crash_title": "iPolloWork stopped responding",
   "app.error_audit_load": "Failed to load audit log.",
   "app.error_auth_failed": "Authentication failed",
   "app.error_command_not_resolved": "Command was not resolved.",
