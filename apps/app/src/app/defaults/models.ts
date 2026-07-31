@@ -18,6 +18,8 @@ export const RECOMMENDED_MODEL_PATTERNS: string[] = [
   "gpt-5.5",
   "kimi-k2.6",
   "glm-5.2",
+  "minimax-m3",
+  "minimax-m2.7",
 ];
 
 /**

@@ -417,6 +417,29 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
   },
   {
     schemaVersion: 1,
+    id: "minimax",
+    name: "MiniMax",
+    description: "Configure MiniMax models through regional OpenAI-compatible or Anthropic endpoints.",
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
+    composer: { prompt: "Use MiniMax to " },
+    setup: {
+      instructions: "Save a MiniMax API key, choose a regional endpoint, and add both current MiniMax models to OpenCode.",
+      primaryCta: "Configure MiniMax",
+    },
+    resources: [
+      { type: "provider", id: "minimax", label: "MiniMax", providerId: "minimax", required: true },
+    ],
+    contributions: [
+      { type: "settings-panel", ref: "ipollowork.minimax.settings", location: "settings-detail" },
+      { type: "composer-prompt", prompt: "Use MiniMax to ", location: "composer" },
+    ],
+    enablement: [
+      { type: "provider-connected", ref: "minimax", label: "MiniMax provider" },
+    ],
+    lifecycle: { reload: ["config"], detection: ["provider:minimax"] },
+  },
+  {
+    schemaVersion: 1,
     id: "ollama",
     name: "Ollama",
     description: "Local model provider at http://localhost:11434.",
