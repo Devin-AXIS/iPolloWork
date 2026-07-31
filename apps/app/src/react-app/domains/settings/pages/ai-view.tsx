@@ -1,10 +1,12 @@
 /** @jsxImportSource react */
 import { Button } from "@/components/ui/button";
-import type { ReactNode } from "react";
+import { toast } from "@/components/ui/sonner";
+import { useState, type ReactNode } from "react";
 import { ArrowRight, CheckCircle2, KeyRound, X } from "lucide-react";
 
 import { t } from "@/i18n";
 import { ProviderIcon } from "../../../design-system/provider-icon";
+import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { SettingsNotice, SettingsStatusBadge } from "../settings-section";
 import {
   LayoutSection,
@@ -37,7 +39,7 @@ export type AiSettingsViewProps = {
   providerDisconnectStatus: string | null;
   providerDisconnectError: string | null;
   onOpenProviderAuth: () => void | Promise<void>;
-  onDisconnectProvider: (providerId: string) => void | Promise<void>;
+  onDisconnectProvider: (providerId: string) => void | Promise<string | void>;
   canDisconnectProvider: (source?: ConnectedProvider["source"]) => boolean;
   /** Set of local provider IDs that were imported from cloud. */
   cloudProviderIds?: Set<string>;
@@ -64,8 +66,29 @@ function providerStatusTone(label: string): "ready" | "warning" | "neutral" {
 }
 
 export function AiSettingsView(props: AiSettingsViewProps) {
+  const [disconnectTarget, setDisconnectTarget] = useState<ConnectedProvider | null>(null);
+  const [localDisconnectingProviderId, setLocalDisconnectingProviderId] = useState<string | null>(null);
+  const disconnectingProviderId = localDisconnectingProviderId ?? props.disconnectingProviderId;
+
+  const confirmDisconnect = async () => {
+    const target = disconnectTarget;
+    if (!target || disconnectingProviderId !== null) return;
+
+    setDisconnectTarget(null);
+    setLocalDisconnectingProviderId(target.id);
+    try {
+      const message = await props.onDisconnectProvider(target.id);
+      toast.success(message?.trim() || `${t("providers.disconnected_prefix")} ${target.name}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("providers.disconnect_failed"));
+    } finally {
+      setLocalDisconnectingProviderId(null);
+    }
+  };
+
   return (
-    <LayoutStack>
+    <>
+      <LayoutStack>
       {/* ---- Providers ---- */}
       <LayoutSection>
         <LayoutSectionHeader>
@@ -169,15 +192,15 @@ export function AiSettingsView(props: AiSettingsViewProps) {
                 {!props.cloudProviderIds?.has(provider.id) ? (
                   <Button
                     variant="destructive"
-                    onClick={() => void props.onDisconnectProvider(provider.id)}
+                    onClick={() => setDisconnectTarget(provider)}
                     disabled={
                       props.busy ||
                       props.providerAuthBusy ||
-                      props.disconnectingProviderId !== null ||
+                      disconnectingProviderId !== null ||
                       !props.canDisconnectProvider(provider.source)
                     }
                   >
-                    {props.disconnectingProviderId === provider.id
+                    {disconnectingProviderId === provider.id
                       ? t("settings.disconnecting")
                       : props.canDisconnectProvider(provider.source)
                         ? t("settings.disconnect")
@@ -231,6 +254,17 @@ export function AiSettingsView(props: AiSettingsViewProps) {
 
       {props.cloudProvidersView}
 
-    </LayoutStack>
+      </LayoutStack>
+      <ConfirmModal
+        open={disconnectTarget !== null}
+        title={t("providers.disconnect_confirm_title", { provider: disconnectTarget?.name ?? "" })}
+        message={t("providers.disconnect_confirm_message")}
+        confirmLabel={t("settings.disconnect")}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        onConfirm={() => void confirmDisconnect()}
+        onCancel={() => setDisconnectTarget(null)}
+      />
+    </>
   );
 }

@@ -1208,6 +1208,8 @@ export default {
   "providers.auth_failed": "认证失败",
   "providers.connect_failed": "连接提供商失败",
   "providers.disabled_in_config_suffix": "并已在OpenCode配置中禁用。",
+  "providers.disconnect_confirm_message": "将移除此工作区中保存的供应商认证信息。你之后仍可重新连接。",
+  "providers.disconnect_confirm_title": "断开{provider}？",
   "providers.disconnect_failed": "断开提供商失败",
   "providers.disconnected_prefix": "已断开",
   "providers.load_failed": "加载提供商失败",
