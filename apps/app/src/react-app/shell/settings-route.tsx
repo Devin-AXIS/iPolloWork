@@ -55,6 +55,7 @@ import { AiSettingsView } from "@/react-app/domains/settings/pages/ai-view";
 // Side-effect imports: register extension config components into the registry.
 import "@/react-app/domains/settings/openai-image-gen-config";
 import "@/react-app/domains/settings/ollama-config";
+import "@/react-app/domains/settings/minimax-config";
 import "@/react-app/domains/settings/computer-use-config";
 import "@/react-app/domains/settings/browser-extension-config";
 import "@/react-app/domains/settings/ipollowork-voice-config";
@@ -944,12 +945,21 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     const client = selectedWorkspaceEndpoint?.client ?? ipolloworkClient;
     const workspaceId = runtimeWorkspaceId?.trim() ?? "";
     const modelId = input.modelId.trim();
+    const api = input.api?.trim() ?? "";
+    const baseURL = input.baseURL?.trim() ?? "";
+    const models = input.models ?? {
+      [modelId]: { name: input.modelName.trim() || modelId },
+    };
     if (!client || !workspaceId) {
       setLocalProviderError("iPolloWork server is not connected for this workspace.");
       return;
     }
-    if (!modelId) {
+    if (!modelId || Object.keys(models).length === 0) {
       setLocalProviderError("Model ID is required.");
+      return;
+    }
+    if (!api && !baseURL) {
+      setLocalProviderError("A provider API URL is required.");
       return;
     }
 
@@ -961,14 +971,23 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         opencode: {
           provider: {
             [input.providerId]: {
-              npm: "@ai-sdk/openai-compatible",
+              npm: input.npm ?? "@ai-sdk/openai-compatible",
               name: input.name,
-              options: { baseURL: input.baseURL },
-              models: { [modelId]: { name: input.modelName.trim() || modelId } },
+              ...(api ? { api } : { options: { baseURL } }),
+              models,
             },
           },
         },
       });
+      if (input.apiKey?.trim()) {
+        if (!opencodeClient) {
+          throw new Error("OpenCode is not connected for this workspace.");
+        }
+        await opencodeClient.auth.set({
+          providerID: input.providerId,
+          auth: { type: "api", key: input.apiKey.trim() },
+        });
+      }
       if (input.setDefault) {
         local.setPrefs((previous) => ({
           ...previous,
@@ -988,13 +1007,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       } catch {
         // ignore browser event dispatch failures
       }
-      setLocalProviderStatus(`Added ${input.name} with ${modelId}.`);
+      setLocalProviderStatus(`Added ${input.name} with ${Object.keys(models).length} model${Object.keys(models).length === 1 ? "" : "s"}.`);
     } catch (error) {
       setLocalProviderError(describeRouteError(error));
     } finally {
       setLocalProviderBusy(false);
     }
-  }, [local, ipolloworkClient, reloadCoordinator, runtimeWorkspaceId, selectedWorkspaceEndpoint]);
+  }, [local, ipolloworkClient, opencodeClient, reloadCoordinator, runtimeWorkspaceId, selectedWorkspaceEndpoint]);
 
   useEffect(() => {
     local.setUi((previous) => ({ ...previous, view: "settings", tab: route.tab }));

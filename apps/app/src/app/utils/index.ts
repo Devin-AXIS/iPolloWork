@@ -42,6 +42,7 @@ export const FRIENDLY_PROVIDER_LABELS: Record<string, string> = {
   mistral: "Mistral",
   groq: "Groq",
   openrouter: "OpenRouter",
+  minimax: "MiniMax",
   tokenstar: "TokenStar",
   together: "Together AI",
   fireworks: "Fireworks",
@@ -111,6 +112,10 @@ export const FRIENDLY_MODEL_LABELS: [pattern: string, label: string][] = [
   // OpenCode
   ["big-pickle", "Big Pickle"],
   ["kimi-k3", "Kimi K3"],
+
+  // MiniMax
+  ["minimax-m3", "MiniMax-M3"],
+  ["minimax-m2.7", "MiniMax-M2.7"],
 ];
 
 /**
