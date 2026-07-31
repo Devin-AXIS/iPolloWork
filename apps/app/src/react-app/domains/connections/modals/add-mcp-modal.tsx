@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/sonner";
 import { TextInput } from "../../../design-system/text-input";
 import type { McpDirectoryInfo } from "@/app/constants";
 import { t } from "@/i18n";
@@ -19,7 +20,7 @@ import { t } from "@/i18n";
 export type AddMcpModalProps = {
   open: boolean;
   onClose: () => void;
-  onAdd: (entry: McpDirectoryInfo) => void;
+  onAdd: (entry: McpDirectoryInfo) => void | Promise<unknown>;
   busy: boolean;
   isRemoteWorkspace: boolean;
 };
@@ -63,7 +64,6 @@ export function AddMcpModal(props: AddMcpModalProps) {
   };
 
   const handleClose = () => {
-    if (state.submitting) return;
     reset();
     props.onClose();
   };
@@ -113,6 +113,9 @@ export function AddMcpModal(props: AddMcpModalProps) {
             ...(oauthConfig ? { oauthConfig } : {}),
           }),
         );
+        toast.success(t("mcp.connected"));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : t("mcp.connect_failed"));
       } finally {
         dispatch({ submitting: false });
       }
@@ -133,6 +136,9 @@ export function AddMcpModal(props: AddMcpModalProps) {
             oauth: false,
           }),
         );
+        toast.success(t("mcp.connected"));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : t("mcp.connect_failed"));
       } finally {
         dispatch({ submitting: false });
       }

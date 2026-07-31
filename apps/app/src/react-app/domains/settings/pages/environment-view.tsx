@@ -443,13 +443,13 @@ function EnvironmentEditorModal(props: EnvironmentEditorModalProps) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isModifying) {
+      if (event.key === "Escape") {
         props.onClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isModifying, props.onClose]);
+  }, [props.onClose]);
 
   const submitEditor = () => {
     if (isModifying) {
@@ -463,7 +463,7 @@ function EnvironmentEditorModal(props: EnvironmentEditorModalProps) {
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !isModifying) {
+        if (!open) {
           props.onClose();
         }
       }}
@@ -488,10 +488,7 @@ function EnvironmentEditorModal(props: EnvironmentEditorModalProps) {
         />
 
         <DialogFooter>
-          <DialogClose
-            disabled={isModifying}
-            render={<Button variant="outline" size="sm" disabled={isModifying} />}
-          >
+          <DialogClose render={<Button variant="outline" size="sm" />}>
             {t("settings.environment.cancel")}
           </DialogClose>
           <Button size="sm" onClick={submitEditor} disabled={isModifying}>

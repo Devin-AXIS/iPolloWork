@@ -4,6 +4,56 @@
 // workspace renderer.
 
 export const DESKTOP_AUTH_SESSION_PARTITION = "persist:ipollowork-auth";
+const DESKTOP_AUTH_CLOSE_URL = "ipollowork-auth-window://close";
+const DESKTOP_AUTH_CLOSE_CONTROL_ID = "ipollowork-desktop-auth-close";
+
+function desktopAuthCloseControlScript() {
+  return `(() => {
+    const id = ${JSON.stringify(DESKTOP_AUTH_CLOSE_CONTROL_ID)};
+    if (document.getElementById(id)) return;
+
+    const button = document.createElement("button");
+    button.id = id;
+    button.type = "button";
+    button.setAttribute("aria-label", "Close sign-in window");
+    button.title = "Close";
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    button.style.cssText = [
+      "all: initial !important",
+      "position: fixed !important",
+      "top: 16px !important",
+      "right: 16px !important",
+      "z-index: 2147483647 !important",
+      "display: grid !important",
+      "width: 36px !important",
+      "height: 36px !important",
+      "place-items: center !important",
+      "box-sizing: border-box !important",
+      "border: 1px solid rgba(143, 151, 166, 0.35) !important",
+      "border-radius: 9999px !important",
+      "background: rgba(24, 31, 46, 0.72) !important",
+      "color: rgba(255, 255, 255, 0.88) !important",
+      "box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18) !important",
+      "backdrop-filter: blur(12px) !important",
+      "cursor: pointer !important",
+      "font-family: -apple-system, BlinkMacSystemFont, sans-serif !important",
+    ].join(";");
+    const icon = button.querySelector("svg");
+    icon.style.cssText = "width: 18px !important; height: 18px !important; fill: none !important; stroke: currentColor !important; stroke-width: 1.8 !important; stroke-linecap: round !important";
+    button.addEventListener("mouseenter", () => {
+      button.style.setProperty("background", "rgba(45, 54, 72, 0.92)", "important");
+      button.style.setProperty("color", "#ffffff", "important");
+    });
+    button.addEventListener("mouseleave", () => {
+      button.style.setProperty("background", "rgba(24, 31, 46, 0.72)", "important");
+      button.style.setProperty("color", "rgba(255, 255, 255, 0.88)", "important");
+    });
+    button.addEventListener("click", () => {
+      window.location.href = ${JSON.stringify(DESKTOP_AUTH_CLOSE_URL)};
+    });
+    document.documentElement.append(button);
+  })()`;
+}
 
 function isDenAuthCallbackUrl(value) {
   try {
@@ -32,6 +82,9 @@ export function classifyDesktopAuthNavigation(value) {
   if (!url) return { kind: "block" };
   if (url === "about:blank") return { kind: "allow", url };
   if (url.startsWith("data:text/html;charset=utf-8,")) return { kind: "allow", url };
+  if (url === DESKTOP_AUTH_CLOSE_URL || url === `${DESKTOP_AUTH_CLOSE_URL}/`) {
+    return { kind: "cancel" };
+  }
   if (isDenAuthCallbackUrl(url)) return { kind: "complete", url };
 
   try {
@@ -45,28 +98,30 @@ export function classifyDesktopAuthNavigation(value) {
   }
 }
 
-function runNavigationAction(event, targetUrl, { onComplete, openExternal }) {
+function runNavigationAction(event, targetUrl, { onComplete, onCancel, openExternal }) {
   const decision = classifyDesktopAuthNavigation(targetUrl);
   if (decision.kind === "allow") return decision;
 
   event?.preventDefault?.();
   if (decision.kind === "complete") {
     onComplete?.(decision.url);
+  } else if (decision.kind === "cancel") {
+    onCancel?.();
   } else if (decision.kind === "external") {
     void openExternal?.(decision.url);
   }
   return decision;
 }
 
-function installDesktopAuthNavigation(window, { onComplete, openExternal }) {
+function installDesktopAuthNavigation(window, { onComplete, onCancel, openExternal }) {
   const inspectNavigation = (event, targetUrl) => {
-    runNavigationAction(event, targetUrl, { onComplete, openExternal });
+    runNavigationAction(event, targetUrl, { onComplete, onCancel, openExternal });
   };
 
   window.webContents.on("will-navigate", inspectNavigation);
   window.webContents.on("will-redirect", inspectNavigation);
   window.webContents.setWindowOpenHandler(({ url }) => {
-    const decision = runNavigationAction(null, url, { onComplete, openExternal });
+    const decision = runNavigationAction(null, url, { onComplete, onCancel, openExternal });
     if (decision.kind === "allow") {
       // Providers that use window.open stay in this isolated client window.
       // This avoids an application switch while keeping the page top-level
@@ -74,6 +129,13 @@ function installDesktopAuthNavigation(window, { onComplete, openExternal }) {
       void window.loadURL(decision.url).catch(() => undefined);
     }
     return { action: "deny" };
+  });
+}
+
+function installDesktopAuthCloseControl(window) {
+  window.webContents.on("dom-ready", () => {
+    if (window.isDestroyed()) return;
+    void window.webContents.executeJavaScript(desktopAuthCloseControlScript(), true).catch(() => undefined);
   });
 }
 
@@ -156,7 +218,14 @@ export function createDesktopAuthWindow({
   });
 
   window.setMenuBarVisibility?.(false);
-  installDesktopAuthNavigation(window, { onComplete, openExternal });
+  installDesktopAuthNavigation(window, {
+    onComplete,
+    onCancel: () => {
+      if (!window.isDestroyed()) window.close();
+    },
+    openExternal,
+  });
+  installDesktopAuthCloseControl(window);
   window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
     if (!isMainFrame || window.isDestroyed()) return;
     if (errorCode === -3) return;
