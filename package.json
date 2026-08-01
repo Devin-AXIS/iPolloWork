@@ -57,8 +57,8 @@
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
-    "opencc-js": "^1.4.0",
-    "turbo": "^2.5.5"
+    "knip": "6.29.0",
+    "opencc-js": "^1.4.0"
   },
   "packageManager": "pnpm@11.4.0"
 }

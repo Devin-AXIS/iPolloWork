@@ -89,21 +89,6 @@ The runner probes `http://127.0.0.1:9825` (Daytona) then `:9823` (local
 (gitignored). Open `evals/results/<run-id>/index.html` for the frame proof.
 A non-zero exit code means at least one flow failed.
 
-### One-command cloud stack
-
-```bash
-pnpm evals --all --stack den     # MySQL + schema + den-api + demo seed +
-                                 # desktop bootstrap + dev app, then runs flows
-pnpm evals --stack-down          # stop what --stack den started
-```
-
-`--stack den` is idempotent: each layer (MySQL, schema, den-api, seed, app)
-is skipped when already up. It signs in as the seeded demo owner
-(`alex@acme.test`) and exports `IPOLLOWORK_EVAL_DEN_API_URL` /
-`IPOLLOWORK_EVAL_DEN_TOKEN`, so the env-gated cloud flows run with zero manual
-setup. Requires Docker. The MySQL volume survives `--stack-down`, so
-subsequent runs skip schema push and seeding.
-
 The markdown specs below remain the source narrative; when codifying a flow,
 link the spec via the flow's `spec` field.
 
@@ -259,8 +244,6 @@ Before reporting a flow as passed:
   marketplace plugin import/update/removal sync between Den and the desktop.
 - [`cloud-org-membership-flows.md`](./cloud-org-membership-flows.md) — org
   invitations, role updates, member removal, and domain restrictions.
-- [`daytona-server-failure-recovery-flows.md`](./daytona-server-failure-recovery-flows.md)
-  — Den API/Web/proxy/MySQL outage and recovery behavior.
 - [`default-ipollowork-marketplace-onboarding-flow.md`](./default-ipollowork-marketplace-onboarding-flow.md)
   — default Marketplace provisioning funnel from sign-in to chat handoff.
 - [`den-marketplace-guided-onboarding-flow.md`](./den-marketplace-guided-onboarding-flow.md)

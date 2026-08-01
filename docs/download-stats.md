@@ -1,6 +1,7 @@
 # Download Stats
 
-Legacy cumulative release-asset totals. For classified v2 buckets, see `STATS_V2.md`.
+Legacy cumulative release-asset totals. For classified v2 buckets, see
+[`download-stats-v2.md`](./download-stats-v2.md).
 
 | Date | GitHub Downloads | Total |
 |------|------------------|-------|

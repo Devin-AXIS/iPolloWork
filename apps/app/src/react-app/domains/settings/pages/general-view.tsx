@@ -2,7 +2,6 @@
 import {
   ArrowRight,
   ArrowUpRight,
-  Cable,
   Cloud,
   Cog,
   FolderLock,
@@ -47,7 +46,6 @@ const globalCards: SettingsCardDefinition[] = [
   { tab: "ai", icon: Sparkles, titleKey: "settings.tab_ai", descKey: "settings.tab_description_ai" },
   { tab: "authorizations", icon: KeyRound, titleKey: "settings.tab_authorizations", descKey: "settings.tab_description_authorizations" },
   { tab: "cloud-account", icon: Cloud, titleKey: "settings.group_cloud", descKey: "settings.tab_description_cloud_account" },
-  { tab: "connect", icon: Cable, titleKey: "settings.tab_connect", descKey: "settings.tab_description_connect" },
   { tab: "appearance", icon: Paintbrush, titleKey: "settings.tab_appearance", descKey: "settings.tab_description_appearance" },
   { tab: "environment", icon: Terminal, titleKey: "settings.tab_environment", descKey: "settings.tab_description_environment" },
   { tab: "updates", icon: RefreshCcw, titleKey: "settings.tab_updates", descKey: "settings.tab_description_updates" },

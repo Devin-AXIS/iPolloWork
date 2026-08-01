@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { getCloudSettingsTabs } from "../src/react-app/domains/settings/shell/settings-page";
 import { parseSettingsPath } from "../src/react-app/shell/settings-route";
 
 describe("settings route parsing", () => {
@@ -14,6 +15,11 @@ describe("settings route parsing", () => {
       tab: "connect",
       redirectPath: null,
     });
+  });
+
+  test("hides Connect from persistent settings navigation", () => {
+    expect(getCloudSettingsTabs(false)).toEqual(["cloud-account"]);
+    expect(getCloudSettingsTabs(true)).toEqual(["cloud-account", "memory"]);
   });
 
   test("recognizes the Authorization Center settings tab", () => {

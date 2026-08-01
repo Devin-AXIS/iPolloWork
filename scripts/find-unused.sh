@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# macOS ships Bash 3.2, where `set -u` treats an intentionally empty array as
+# unbound. Keep strict failure and pipeline handling without breaking empty
+# routing or sibling-repository lists.
+set -eo pipefail
 
 # ── Config ──────────────────────────────────────────────────────────────────
 IPOLLOWORK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,32 +31,10 @@ fi
 INFRA_GLOBS=(
   # CI/CD
   ".github/workflows/*.yml"
-  # Docker
-  "packaging/docker/Dockerfile*"
-  "packaging/docker/docker-compose*.yml"
-  "ee/apps/den-worker-runtime/Dockerfile*"
-  # Deployment
-  "apps/app/vercel.json"
-  "ee/apps/den-web/vercel.json"
-  # Tauri
-  "apps/desktop/src-tauri/tauri.conf.json"
-  # Monorepo orchestration
-  "turbo.json"
   # Build configs
   "apps/app/vite.config.ts"
-  "apps/app/tailwind.config.ts"
-  "apps/story-book/vite.config.ts"
   "apps/ui-demo/vite.config.ts"
-  "ee/apps/den-web/next.config.js"
-  "ee/apps/den-web/postcss.config.js"
-  "ee/apps/den-web/tailwind.config.js"
-  "ee/apps/landing/next.config.js"
-  "ee/apps/landing/postcss.config.js"
-  "ee/apps/landing/tailwind.config.js"
-  "ee/packages/den-db/drizzle.config.ts"
-  "ee/packages/den-db/tsup.config.ts"
-  "ee/packages/utils/tsup.config.ts"
-  "packages/ui/tsup.config.ts"
+  "packages/ui/tsup.config.react.ts"
   # Build scripts (all)
   "scripts/*.mjs"
   "scripts/*.ts"
@@ -64,8 +45,6 @@ INFRA_GLOBS=(
   "apps/*/scripts/*.mjs"
   "apps/*/scripts/*.ts"
   "apps/*/scripts/*.sh"
-  "ee/apps/*/scripts/*.mjs"
-  "ee/apps/*/scripts/*.sh"
   # .opencode skills/commands that may invoke source
   ".opencode/skills/*/scripts/*.sh"
   ".opencode/skills/*/*.sh"
@@ -75,14 +54,19 @@ INFRA_GLOBS=(
 CONVENTION_PATTERNS=(
   "postinstall"
   "drizzle.config"
-  "tauri-before-build"
-  "tauri-before-dev"
 )
 
-# File-based routing directories — files here are entry points by convention
+# Runtime-discovered or tool-owned directories. Knip cannot see these entry
+# points reliably, so their files must always remain in the review bucket.
 ROUTING_DIRS=(
-  "ee/apps/den-web/app/"
-  "ee/apps/landing/app/"
+  ".codex/skills/"
+  ".opencode/skills/"
+  "apps/app/public/design-systems/"
+  "apps/app/src/overlay/"
+  "apps/app/src/react-app/domains/session/design/design-systems/"
+  "apps/desktop/electron/"
+  "evals/flows/"
+  "vendor/hyperframes/"
 )
 
 # Paths to ignore entirely
@@ -201,7 +185,7 @@ format_refs() {
 # ── Step 1: Run knip ───────────────────────────────────────────────────────
 cd "$IPOLLOWORK_ROOT"
 echo -e "${BOLD}Running knip to detect unused files...${RESET}"
-KNIP_OUTPUT=$(DATABASE_URL=mysql://fake:fake@localhost/fake npx knip --include files --no-progress --no-config-hints 2>&1 || true)
+KNIP_OUTPUT=$(DATABASE_URL=mysql://fake:fake@localhost/fake pnpm exec knip --include files --no-progress --no-config-hints 2>&1 || true)
 
 UNUSED_FILES=()
 while IFS= read -r line; do
@@ -239,9 +223,9 @@ else
 fi
 
 # ── Step 3: Cross-reference each file ──────────────────────────────────────
-declare -A FILE_STATUS  # "safe" | "infra" | "convention" | "routing" | "sibling_ci"
-declare -A FILE_REFS
-declare -A FILE_DATES
+FILE_STATUS=()  # "safe" | "infra" | "convention" | "routing" | "sibling_ci"
+FILE_REFS=()
+FILE_DATES=()
 
 total=${#UNUSED_FILES[@]}
 i=0
@@ -317,9 +301,9 @@ for filepath in "${UNUSED_FILES[@]}"; do
   # Get last commit date
   last_date=$(git log -1 --format="%aI" -- "$filepath" 2>/dev/null || echo "unknown")
 
-  FILE_STATUS["$filepath"]="$status"
-  FILE_REFS["$filepath"]="$refs"
-  FILE_DATES["$filepath"]="$last_date"
+  FILE_STATUS+=("$status")
+  FILE_REFS+=("$refs")
+  FILE_DATES+=("$last_date")
 done
 
 printf "\r%*s\r" 120 "" >&2
@@ -328,9 +312,10 @@ printf "\r%*s\r" 120 "" >&2
 safe_entries=()
 flagged_entries=()
 
-for filepath in "${UNUSED_FILES[@]}"; do
-  entry="${FILE_DATES[$filepath]}|$filepath"
-  if [ "${FILE_STATUS[$filepath]}" = "safe" ]; then
+for index in "${!UNUSED_FILES[@]}"; do
+  filepath="${UNUSED_FILES[$index]}"
+  entry="${FILE_DATES[$index]}|$index|$filepath"
+  if [ "${FILE_STATUS[$index]}" = "safe" ]; then
     safe_entries+=("$entry")
   else
     flagged_entries+=("$entry")
@@ -346,10 +331,11 @@ flagged_count=${#flagged_sorted[@]}
 # ── Step 5: Display ───────────────────────────────────────────────────────
 
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${RED}${BOLD} UNUSED — safe to remove (${safe_count})${RESET}"
+echo -e "${RED}${BOLD} UNREFERENCED CANDIDATES — manual review required (${safe_count})${RESET}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "${DIM}  No imports in ipollowork source, no references in CI/CD, build${RESET}"
 echo -e "${DIM}  scripts, configs, conventions, routing, or sibling repo pipelines.${RESET}"
+echo -e "${DIM}  Verify runtime discovery and product intent before deleting anything.${RESET}"
 echo ""
 
 if [ "$safe_count" -eq 0 ]; then
@@ -357,7 +343,8 @@ if [ "$safe_count" -eq 0 ]; then
 else
   for entry in "${safe_sorted[@]}"; do
     date="${entry%%|*}"
-    filepath="${entry#*|}"
+    remainder="${entry#*|}"
+    filepath="${remainder#*|}"
     short_date="${date%%T*}"
     echo -e "  ${RED}✗${RESET} ${DIM}${short_date}${RESET}  ./$filepath:1"
   done
@@ -376,9 +363,11 @@ if [ "$flagged_count" -eq 0 ]; then
 else
   for entry in "${flagged_sorted[@]}"; do
     date="${entry%%|*}"
-    filepath="${entry#*|}"
-    status="${FILE_STATUS[$filepath]}"
-    refs="${FILE_REFS[$filepath]}"
+    remainder="${entry#*|}"
+    source_index="${remainder%%|*}"
+    filepath="${remainder#*|}"
+    status="${FILE_STATUS[$source_index]}"
+    refs="${FILE_REFS[$source_index]}"
     short_date="${date%%T*}"
     formatted_refs=$(format_refs "$refs")
 
@@ -405,5 +394,5 @@ fi
 
 echo ""
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${BOLD}Summary:${RESET}  ${RED}${safe_count} removable${RESET}  │  ${YELLOW}${flagged_count} need review${RESET}  │  ${#UNUSED_FILES[@]} total"
+echo -e "${BOLD}Summary:${RESET}  ${RED}${safe_count} candidates${RESET}  │  ${YELLOW}${flagged_count} convention/infra refs${RESET}  │  ${#UNUSED_FILES[@]} total"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"

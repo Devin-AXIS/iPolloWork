@@ -10,15 +10,12 @@
  *   node evals/runner/run.mjs --flow app-smoke [--flow another]
  *   node evals/runner/run.mjs --all
  *   node evals/runner/run.mjs --all --cdp-url http://127.0.0.1:9825
- *   node evals/runner/run.mjs --all --stack den   # bring up MySQL + den-api +
- *                                                 # seed + app, mint demo creds
- *   node evals/runner/run.mjs --stack-down        # stop what --stack started
  *
  * The CDP endpoint defaults to probing http://127.0.0.1:9825 (Daytona) then
  * http://127.0.0.1:9823 (local pnpm dev). Override with --cdp-url or
  * IPOLLOWORK_EVAL_CDP_URL.
  */
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { connect, debuggerUrlFor, pickAppTarget, resolveCdpBaseUrl } from "./cdp.mjs";
@@ -32,7 +29,7 @@ const DEFAULT_RESULTS_DIR = join(RUNNER_DIR, "..", "results");
 const DEFAULT_CDP_CANDIDATES = ["http://127.0.0.1:9825", "http://127.0.0.1:9823"];
 
 function parseArgs(argv) {
-  const args = { flows: [], all: false, list: false, cdpUrl: null, out: null, stack: null, stackDown: false, scaffold: null, force: false, pr: null };
+  const args = { flows: [], all: false, list: false, cdpUrl: null, out: null, scaffold: null, force: false, pr: null };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--flow") args.flows.push(argv[++index]);
@@ -40,8 +37,6 @@ function parseArgs(argv) {
     else if (value === "--list") args.list = true;
     else if (value === "--cdp-url") args.cdpUrl = argv[++index];
     else if (value === "--out") args.out = argv[++index];
-    else if (value === "--stack") args.stack = argv[++index];
-    else if (value === "--stack-down") args.stackDown = true;
     else if (value === "scaffold") args.scaffold = argv[++index];
     else if (value === "--force") args.force = true;
     else if (value === "--pr") {
@@ -74,20 +69,6 @@ async function loadFlows() {
     flows.push({ ...flow, file: entry });
   }
   return flows;
-}
-
-async function selectedStackNeedsApp(args) {
-  if (args.list) return false;
-  if (args.all || args.flows.length === 0) return true;
-  for (const flowId of args.flows) {
-    try {
-      const source = await readFile(join(FLOWS_DIR, `${flowId}.flow.mjs`), "utf8");
-      if (!/requiresApp\s*:\s*false/.test(source)) return true;
-    } catch {
-      return true;
-    }
-  }
-  return false;
 }
 
 function missingEnv(flow, env) {
@@ -424,13 +405,7 @@ function renderEvidence(evidence) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("Usage: node evals/runner/run.mjs [--list | --all | --flow <id> ... | scaffold <id> [--force]] [--cdp-url <url>] [--out <dir>] [--pr [number]] [--stack den | --stack-down]");
-    return;
-  }
-
-  if (args.stackDown) {
-    const { denStackDown } = await import("./den-stack.mjs");
-    await denStackDown({ log: (msg) => console.log(`▸ ${msg}`) });
+    console.log("Usage: node evals/runner/run.mjs [--list | --all | --flow <id> ... | scaffold <id> [--force]] [--cdp-url <url>] [--out <dir>] [--pr [number]]");
     return;
   }
 
@@ -439,17 +414,6 @@ async function main() {
     console.log(`Scaffolded ${flowPath} — ${frames} frames from evals/voiceovers/${args.scaffold}.md.`);
     console.log("Fill in each frame's action/assert, then run: pnpm fraimz --flow " + args.scaffold);
     return;
-  }
-
-  if (args.stack === "den") {
-    const { ensureDenStack } = await import("./den-stack.mjs");
-    await ensureDenStack({
-      log: (msg) => console.log(`▸ ${msg}`),
-      cdpCandidates: args.cdpUrl ? [args.cdpUrl] : DEFAULT_CDP_CANDIDATES,
-      skipApp: !(await selectedStackNeedsApp(args)),
-    });
-  } else if (args.stack) {
-    throw new Error(`Unknown stack: ${args.stack}. Supported: den`);
   }
 
   const flows = await loadFlows();

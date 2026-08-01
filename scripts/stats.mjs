@@ -10,13 +10,13 @@ const POSTHOG_LEGACY_EVENT = process.env.POSTHOG_LEGACY_EVENT || process.env.POS
 const POSTHOG_V2_EVENT = process.env.POSTHOG_V2_EVENT || "release_asset_snapshot"
 const POSTHOG_DISTINCT_ID = process.env.POSTHOG_DISTINCT_ID || "ipollowork-download"
 const GITHUB_REPO = process.env.GITHUB_REPO || "Devin-AXIS/iPolloWork"
-const STATS_FILE = process.env.STATS_FILE || "STATS.md"
-const STATS_V2_FILE = process.env.STATS_V2_FILE || "STATS_V2.md"
+const STATS_FILE = process.env.STATS_FILE || "docs/download-stats.md"
+const STATS_V2_FILE = process.env.STATS_V2_FILE || "docs/download-stats-v2.md"
 
 const LEGACY_HEADER = [
   "# Download Stats",
   "",
-  "Legacy cumulative release-asset totals. For classified v2 buckets, see `STATS_V2.md`.",
+  "Legacy cumulative release-asset totals. For classified v2 buckets, see [`download-stats-v2.md`](./download-stats-v2.md).",
   "",
   "| Date | GitHub Downloads | Total |",
   "|------|------------------|-------|",

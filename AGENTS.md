@@ -65,7 +65,7 @@ Feature work starts with the demo, not a PRD:
 1. `/voiceover <feature>` — align on the demo script; **no code until it is approved** (`voiceover` skill).
 2. Build on a fresh worktree/branch (`git worktree add ...`), never on the user's checkout.
 3. Prove it with fraimz until every frame holds (`fraimz` skill).
-4. Open a PR against `dev` and post the proof on it: `pnpm fraimz --flow <id> --pr`.
+4. Open a PR against `main` and post the proof on it: `pnpm fraimz --flow <id> --pr`.
 
 ## Coding Guidelines
 
@@ -98,3 +98,13 @@ When uncertain, prefer: Tailwind, TypeScript, React, shadcn/ui (Base UI), TanSta
 ### Workflow
 
 - If asked to do too much work at once, stop and state that clearly.
+
+### Repository Hygiene
+
+- Keep the repository root limited to public launchers, workspace configuration,
+  and legal, community, or primary project documents.
+- Put engineering documents and generated reports in `docs/`, product and
+  architecture plans in `specs/`, automation in `scripts/`, and executable
+  experience checks in `evals/`.
+- Extend an existing directory before creating a new top-level directory. Do
+  not add a root file merely to hold a small note, handoff, or one-off result.
