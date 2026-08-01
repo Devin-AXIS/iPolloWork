@@ -69,6 +69,19 @@ Feature work starts with the demo, not a PRD:
 
 ## Coding Guidelines
 
+### Mandatory AI Code Gate
+
+- For every code addition, edit, deletion, or refactor, load
+  `$ipollowork-maintainable-code` and treat it as the repository's single
+  implementation-quality Skill.
+- Search and reuse before creating. Default new files, directories,
+  dependencies, routes, tables, state stores, and abstractions to zero.
+- Before completion, run
+  `node .codex/skills/ipollowork-maintainable-code/scripts/audit-changes.mjs`
+  together with the owning package checks.
+- Do not create a parallel code-standards Skill. Improve the canonical Skill
+  when repository-wide implementation rules change.
+
 ### TypeScript
 
 - Never use `any`, typecasts, or `as`, unless 100% necessary or specifically instructed.
@@ -108,3 +121,8 @@ When uncertain, prefer: Tailwind, TypeScript, React, shadcn/ui (Base UI), TanSta
   experience checks in `evals/`.
 - Extend an existing directory before creating a new top-level directory. Do
   not add a root file merely to hold a small note, handoff, or one-off result.
+- Do not create `new`, `old`, `v2`, `copy`, `backup`, `temp`, `tmp`, `misc`,
+  `notes`, `drafts`, `handoff`, or `tdd-summary` paths as substitutes for a
+  clear existing owner.
+- Do not create per-feature design, plan, QA, summary, or TODO Markdown files
+  when code, tests, types, comments, or an existing durable document suffice.
