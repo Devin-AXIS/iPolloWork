@@ -623,6 +623,22 @@ describe("plugin package lifecycle", () => {
         expect(await readFile(item.skillPath, "utf8")).toContain(item.heading);
       }
 
+      const disabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/design-agent/resources/ipollowork-design-studio`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: false }),
+      });
+      expect(disabled.status).toBe(200);
+      await expectMissing(packages[0].skillPath);
+
+      const enabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/design-agent/resources/ipollowork-design-studio`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: true }),
+      });
+      expect(enabled.status).toBe(200);
+      expect(await readFile(packages[0].skillPath, "utf8")).toContain(packages[0].heading);
+
       for (const item of packages) {
         const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/${item.pluginId}`, {
           method: "DELETE",
