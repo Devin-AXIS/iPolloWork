@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { IPOLLOWORK_PACKAGE_MEDIA_TYPE, LEGACY_TEMPLATE_PACKAGE_MEDIA_TYPE } from "@ipollowork/types/templates";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
@@ -38,11 +39,18 @@ describe("template API", () => {
 
     const invalidPackage = await fetch(`${base}/workspace/ws/templates/import`, {
       method: "POST",
-      headers: { Authorization: "Bearer token", "Content-Type": "application/vnd.ipollowork-template+zip" },
+      headers: { Authorization: "Bearer token", "Content-Type": LEGACY_TEMPLATE_PACKAGE_MEDIA_TYPE },
       body: new Uint8Array([1]),
     });
     expect(invalidPackage.status).toBe(400);
     expect((await invalidPackage.json()).code).toBe("invalid_template_package");
+    const invalidCanonicalPackage = await fetch(`${base}/workspace/ws/templates/import`, {
+      method: "POST",
+      headers: { Authorization: "Bearer token", "Content-Type": IPOLLOWORK_PACKAGE_MEDIA_TYPE },
+      body: new Uint8Array([1]),
+    });
+    expect(invalidCanonicalPackage.status).toBe(400);
+    expect((await invalidCanonicalPackage.json()).code).toBe("invalid_template_package");
 
     const materializedResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.saas-landing/materialize`, { method: "POST", headers, body: JSON.stringify({ sessionId: "session_api" }) });
     expect(materializedResponse.status).toBe(200);

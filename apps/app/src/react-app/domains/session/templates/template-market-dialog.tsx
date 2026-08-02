@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import {
   TEMPLATE_STYLE_LABELS,
+  TEMPLATE_PACKAGE_FILE_ACCEPT,
   isPptxCompatibleTemplate,
   type TemplateCatalogItem,
   type TemplateCategory,
@@ -257,8 +258,8 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
           <div className="relative min-w-48 flex-1 sm:max-w-xs"><Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t("template_market.search_placeholder")} className="h-9 rounded-xl pl-8 text-xs" /></div>
           {!enterpriseMode ? <Button variant={source === "mine" ? "default" : "outline"} size="sm" className="min-w-0 rounded-xl" onClick={() => setSource((value) => value === "mine" ? "all" : "mine")}><span className="truncate">{t("template_market.my_templates")}</span></Button> : null}
           {!enterpriseMode && props.canCreate ? <Button size="sm" className="min-w-0 rounded-xl" disabled={props.busyId !== null} onClick={() => setCreateOpen(true)}><Plus className="size-3.5" /><span className="truncate">{t("template_authoring.create")}</span></Button> : null}
-          <input ref={importRef} type="file" accept=".ipwt" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
-          {!enterpriseMode ? <Button variant="outline" size="sm" className="min-w-0 rounded-xl" disabled={props.busyId !== null} onClick={() => importRef.current?.click()}><Upload className="size-3.5" /><span className="truncate">{t("template_market.import_ipwt")}</span></Button> : null}
+          <input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
+          {!enterpriseMode ? <Button variant="outline" size="sm" className="min-w-0 rounded-xl" disabled={props.busyId !== null} onClick={() => importRef.current?.click()}><Upload className="size-3.5" /><span className="truncate">{t("template_market.import_package")}</span></Button> : null}
         </div>
 
         {pendingImport ? <div className="mx-6 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2"><Upload className="size-4 text-primary" /><span className="min-w-40 flex-1 truncate text-xs">{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB</span><Button variant="ghost" size="sm" disabled={props.busyId !== null} onClick={() => setPendingImport(null)}>{t("common.cancel")}</Button><Button size="sm" className="rounded-lg" disabled={props.busyId !== null} onClick={async () => { if (await props.onImport(pendingImport)) setPendingImport(null); }}>{props.busyId === "import" ? <Loader2 className="size-3.5 animate-spin" /> : null}{t("template_market.install")}</Button></div> : null}

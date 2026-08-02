@@ -53,7 +53,7 @@ export default {
             const state = await ctx.eval(`(() => ({ cover: Boolean([...document.querySelectorAll('img')].find((image) => image.closest('article'))), source: document.body.innerText.includes('Open Design'), action: [...document.querySelectorAll('button')].some((button) => button.textContent?.includes('使用模板')) }))()`);
             ctx.assert(state.cover && state.source && state.action, `Template card is incomplete: ${JSON.stringify(state)}`);
           },
-          screenshot: { name: "server-template-card", requireText: ["SaaS Landing", "使用模板", "Open Design", "导入 .ipwt"] },
+          screenshot: { name: "server-template-card", requireText: ["SaaS Landing", "使用模板", "Open Design", "导入 .ipwp 或 .ipwt"] },
         });
       },
     },

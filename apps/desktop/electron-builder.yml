@@ -85,7 +85,7 @@ mac:
   # the App Store Connect API-key flow consistently for local releases and CI.
   notarize: false
   signIgnore:
-    - "\\.(?:png|jpe?g|webp|gif|svg|ico|icns|pak|html?|css|mjs|js|cjs|json|map|txt|mdx?|woff2?|ttf|otf|pdf|ipwt)$"
+    - "\\.(?:png|jpe?g|webp|gif|svg|ico|icns|pak|html?|css|mjs|js|cjs|json|map|txt|mdx?|woff2?|ttf|otf|pdf|ipwp|ipwt)$"
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

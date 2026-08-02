@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
-import { TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
+import { IPOLLOWORK_PACKAGE_EXTENSION, TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { adoptLegacyVideoSession, createTemplateAuthoringSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
 
@@ -763,6 +763,7 @@ describe("template installations", () => {
     const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
     for (const templateId of pptxCompatibleTemplateIds) {
       expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+      expect(existsSync(join(builtTemplatesRoot, `${templateId}${IPOLLOWORK_PACKAGE_EXTENSION}`))).toBe(true);
     }
   });
 
@@ -876,6 +877,7 @@ describe("template installations", () => {
     await expect(importTemplate(serverConfig, "alpha", storedZip({ "../escape.html": "bad" }), "site")).rejects.toMatchObject({ code: "invalid_template_package" });
     await expect(importTemplate(serverConfig, "alpha", localPackage(), "slides")).rejects.toMatchObject({ code: "template_category_mismatch" });
     await expect(importTemplate(serverConfig, "alpha", localPackage("local.invalid-video", { category: "video", surface: "video" }), "video")).rejects.toMatchObject({ code: "invalid_template_manifest" });
+    await expect(importTemplate(serverConfig, "alpha", localPackage("local.future-package", { schemaVersion: 2 }), "site")).rejects.toMatchObject({ code: "unsupported_template_schema" });
   });
 
   test("auto-detects imported categories while preserving scoped import checks", async () => {
