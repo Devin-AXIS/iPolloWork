@@ -251,11 +251,29 @@ describe("HyperFrames Video Studio", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
-    );
+    ).replaceAll("\r\n", "\n");
 
     expect(sessionPageSource).toContain("const openLeftSidebar = useCallback(() => {");
     expect(sessionPageSource).toContain("closeRightPane({ preserveAutoCollapse: true });");
+    expect(sessionPageSource).toContain("restoredPanel &&\n      !userOpenedSidebarWhileNarrowRef.current &&\n      !sidePanelOpen");
     expect(sessionPageSource).toContain("onClick={openLeftSidebar}");
+  });
+
+  test("cancels a deferred right-panel resize before the panel unmounts", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    const effectStart = sessionPageSource.indexOf("if (!effectiveSidePanelView) return;");
+    const effectEnd = sessionPageSource.indexOf("const browserUrlForTarget", effectStart);
+    const resizeEffect = sessionPageSource.slice(effectStart, effectEnd);
+
+    expect(effectStart).toBeGreaterThan(-1);
+    expect(effectEnd).toBeGreaterThan(effectStart);
+    expect(resizeEffect).toContain("const frame = window.requestAnimationFrame");
+    expect(resizeEffect).toContain("const panel = browserPanelRef.current;");
+    expect(resizeEffect).toContain("return () => window.cancelAnimationFrame(frame);");
   });
 
   test("lets the latest right-panel action take priority in a narrow window", () => {
