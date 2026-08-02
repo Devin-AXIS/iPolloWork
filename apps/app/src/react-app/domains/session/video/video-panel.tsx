@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Film, Loader2, Maximize2, Minimize2, Palette, Plus, RefreshCw, X } from "lucide-react";
+import { AudioLines, Ellipsis, Film, LayoutTemplate, Loader2, Maximize2, Minimize2, Palette, Plus, RefreshCw, X } from "lucide-react";
 
 import type { HyperframesCatalogItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
@@ -44,6 +44,7 @@ type VideoPanelProps = {
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
+  onSaveAsTemplate?: () => void;
   onClose: () => void;
 };
 
@@ -66,7 +67,7 @@ const studioStartupDetailKey: Record<StudioStartupStage, string> = {
   "loading-frame": "video.startup.loading_frame_detail",
 };
 
-export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onClose }: VideoPanelProps) {
+export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const localeSyncTimersRef = React.useRef<number[]>([]);
@@ -597,6 +598,14 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
           />
           <TooltipContent>{expanded ? t("video.exit_fullscreen") : t("video.fullscreen")}</TooltipContent>
         </Tooltip>
+        {onSaveAsTemplate ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t("template_authoring.more_actions")}><Ellipsis /></Button>} />
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onSaveAsTemplate}><LayoutTemplate />{t("template_authoring.save_as_template")}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         {launcherItems.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
+export const TEMPLATE_AUTHORING_ID_PREFIX = "ipollowork.authoring.";
 
 export const templateCategorySchema = z.enum([
   "site",
@@ -119,6 +120,27 @@ export type TemplateStyle = z.infer<typeof templateStyleSchema>;
 export type TemplateVariable = z.infer<typeof templateVariableSchema>;
 export type PptxCompatibility = z.infer<typeof pptxCompatibilitySchema>;
 
+export type TemplateAuthoringInput = {
+  sessionId: string;
+  category: TemplateCategory;
+  pptxCompatibility?: PptxCompatibility;
+};
+
+export type TemplateValidationIssue = {
+  code: string;
+  severity: "error" | "warning";
+  message: string;
+  path?: string;
+};
+
+export type TemplateValidationReport = {
+  ready: boolean;
+  surface: TemplateSurface;
+  entry: string;
+  manifest: TemplateManifestV1 | null;
+  issues: TemplateValidationIssue[];
+};
+
 type PptxCompatibilityTemplate = Pick<TemplateManifestV1, "category" | "pptxCompatibility">;
 type CatalogSortTemplate = Pick<TemplateManifestV1, "category" | "title" | "pptxCompatibility">;
 
@@ -164,6 +186,11 @@ export type TemplateSessionState = {
 export type TemplateSessionSnapshot = {
   sessionId: string;
   surface: TemplateSurface;
+  authoring: boolean;
   state: TemplateSessionState;
   manifest: TemplateManifestV1;
 };
+
+export function isTemplateAuthoringManifest(manifest: Pick<TemplateManifestV1, "id">): boolean {
+  return manifest.id.startsWith(TEMPLATE_AUTHORING_ID_PREFIX);
+}
