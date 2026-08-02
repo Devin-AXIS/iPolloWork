@@ -1235,12 +1235,15 @@ export function SessionPage(props: SessionPageProps) {
     });
   }, [rightPanelExpanded, videoStudioExpanded]);
   useEffect(() => {
-    const panel = browserPanelRef.current;
-    if (!panel) return;
+    if (!effectiveSidePanelView) return;
 
-    window.requestAnimationFrame(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const panel = browserPanelRef.current;
+      if (!panel) return;
       panel.resize(`${rightPanelRestoreWidthRef.current}px`);
     });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [browserPanelRef, effectiveSidePanelView, rightPanelExpanded]);
   const browserUrlForTarget = useCallback((target: OpenTarget) => {
     if (/^wss?:\/\//i.test(target.value)) return target.value.replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
@@ -1410,6 +1413,7 @@ export function SessionPage(props: SessionPageProps) {
     const restoredPanel = autoCollapsedSidePanelRef.current;
     if (
       restoredPanel &&
+      !userOpenedSidebarWhileNarrowRef.current &&
       !sidePanelOpen &&
       expandedRightPanelWorkspaceWidth >= AUTO_RESTORE_WORKSPACE_WIDTH
     ) {
