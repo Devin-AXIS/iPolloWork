@@ -43,6 +43,7 @@
     "./templates": {
       "types": "./src/templates.ts",
       "development": "./src/templates.ts",
+      "bun": "./src/templates.ts",
       "default": "./dist/templates.js"
     }
   },
