@@ -138,6 +138,8 @@ describe("plugin package manifest", () => {
     expect(video.manifest.relatedSkills).toContain("hyperframes-cli");
     expect(video.manifest.relatedSkills).toContain("media-use");
     expect(video.manifest.resources.map((resource) => resource.id)).not.toContain("hyperframes-cli");
+    expect(design.manifest.contributions).toBeUndefined();
+    expect(video.manifest.contributions).toBeUndefined();
     expect(design.manifest.source).toMatchObject({ origin: "builtin", trusted: true });
     expect(video.manifest.source).toMatchObject({ origin: "builtin", trusted: true });
   });
