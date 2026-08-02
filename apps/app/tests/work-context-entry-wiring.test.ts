@@ -18,7 +18,7 @@ const sessionRoute = readFileSync(
 const sessionPage = readFileSync(
   resolve(import.meta.dir, "../src/react-app/domains/session/chat/session-page.tsx"),
   "utf8",
-);
+).replaceAll("\r\n", "\n");
 const routeState = readFileSync(
   resolve(import.meta.dir, "../src/react-app/shell/use-workspace-route-state.ts"),
   "utf8",

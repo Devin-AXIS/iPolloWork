@@ -101,6 +101,7 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
+import { enterpriseTemplateDestination, publishTemplatePackage } from "@/app/lib/template-publishing";
 
 const STARTUP_SKELETON_ROWS = [
   { id: "intro", titleWidth: "42%", bodyWidth: "88%" },
@@ -735,6 +736,32 @@ export function SessionPage(props: SessionPageProps) {
       setTemplateBusyId(null);
     }
   }, [activeEnterprise, importDesignTemplate, templateResourceScope]);
+  const publishDesignTemplate = useCallback(async (template: TemplateCatalogItem) => {
+    if (!activeEnterprise || !props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
+      toast.error(t("template_market.publish_no_enterprise"));
+      return;
+    }
+    const busyId = `publish:${template.manifest.id}`;
+    setTemplateBusyId(busyId);
+    try {
+      const exported = await props.ipolloworkServerClient.exportTemplatePackage(
+        props.runtimeWorkspaceId,
+        template.manifest.id,
+        templateResourceScope,
+      );
+      const file = new File(
+        [exported.data],
+        `${template.manifest.id}-${template.manifest.version}.ipwt`,
+        { type: exported.contentType ?? "application/vnd.ipollowork-template+zip" },
+      );
+      const submission = await publishTemplatePackage(enterpriseTemplateDestination(activeEnterprise), file);
+      toast.success(submission.created ? t("template_market.publish_pending") : `${t("template_market.publish_pending")} · v${submission.version}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("templates.error_invalid_package"));
+    } finally {
+      setTemplateBusyId(null);
+    }
+  }, [activeEnterprise, props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
   const submitTemplateBrief = useCallback(async (brief: TemplateBrief) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     const templateSession = currentTemplateSessionData;
@@ -2517,6 +2544,7 @@ export function SessionPage(props: SessionPageProps) {
         onRefresh={refreshTemplateCatalog}
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
+        onPublish={(template) => void publishDesignTemplate(template)}
         onImport={importDesignTemplate}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {

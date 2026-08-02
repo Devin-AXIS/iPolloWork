@@ -7,8 +7,11 @@ const marketDialog = readFileSync(
 );
 
 describe("template market actions", () => {
-  test("keeps package import but hides save-current controls", () => {
-    expect(marketDialog).toContain('t("template_market.import_ipwt")');
+  test("separates local package import from publishing a template", () => {
+    expect(marketDialog).toContain('t("template_market.import_local")');
+    expect(marketDialog).toContain('t("template_market.publish_enterprise")');
+    expect(marketDialog).toContain('showPublish={source === "mine"}');
+    expect(marketDialog).toContain("props.onPublish(publishTemplate)");
     expect(marketDialog).not.toContain('t("template_market.save_current")');
     expect(marketDialog).not.toContain("onSaveCurrent");
     expect(marketDialog).not.toContain("canSaveCurrent");

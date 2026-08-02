@@ -292,7 +292,7 @@ export type CacheResetResult = {
 export type DesktopFetchInit = {
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array;
   timeoutMs?: number;
 };
 
@@ -300,7 +300,7 @@ export type DesktopFetchResult = {
   status: number;
   statusText: string;
   headers: [string, string][];
-  body: string;
+  body: Uint8Array;
 };
 
 export type WorkspaceCreateInput = {

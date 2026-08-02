@@ -278,7 +278,7 @@ export const desktopFetch: typeof globalThis.fetch = async (input, init) => {
   let url: string;
   let method: string | undefined;
   let headers: Record<string, string> | undefined;
-  let body: string | undefined;
+  let body: string | Uint8Array | undefined;
 
   if (typeof Request !== "undefined" && input instanceof Request) {
     url = input.url;
@@ -287,16 +287,19 @@ export const desktopFetch: typeof globalThis.fetch = async (input, init) => {
     headers = Object.fromEntries(headersSource.entries());
     if (typeof init?.body === "string") {
       body = init.body;
+    } else if (init?.body) {
+      body = new Uint8Array(await new Response(init.body).arrayBuffer());
     } else if (input.body) {
-      // Request body is a stream — buffer to text so it survives the IPC hop
-      // to the Electron main process.
-      body = await input.clone().text();
+      // Request bodies are streams. Preserve their bytes across the IPC hop.
+      body = new Uint8Array(await input.clone().arrayBuffer());
     }
   } else {
     url = typeof input === "string" ? input : input.toString();
     method = init?.method;
     headers = init?.headers ? Object.fromEntries(new Headers(init.headers).entries()) : undefined;
-    body = typeof init?.body === "string" ? init.body : undefined;
+    body = typeof init?.body === "string"
+      ? init.body
+      : init?.body ? new Uint8Array(await new Response(init.body).arrayBuffer()) : undefined;
   }
 
   const result = await invokeElectronHelper("__fetch", url, { method, headers, body });
@@ -304,7 +307,7 @@ export const desktopFetch: typeof globalThis.fetch = async (input, init) => {
   // Response constructor rejects bodies for null-body status codes, so we
   // must pass null instead of an empty string for those.
   const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
-  const responseBody = NULL_BODY_STATUSES.has(result.status) ? null : result.body;
+  const responseBody = NULL_BODY_STATUSES.has(result.status) ? null : Uint8Array.from(result.body).buffer;
 
   return new Response(responseBody, {
     status: result.status,
@@ -317,7 +320,7 @@ export async function desktopFetchViaMain(input: RequestInfo | URL, init?: Reque
   let url: string;
   let method: string | undefined;
   let headers: Record<string, string> | undefined;
-  let body: string | undefined;
+  let body: string | Uint8Array | undefined;
 
   if (typeof Request !== "undefined" && input instanceof Request) {
     url = input.url;
@@ -326,20 +329,24 @@ export async function desktopFetchViaMain(input: RequestInfo | URL, init?: Reque
     headers = Object.fromEntries(headersSource.entries());
     if (typeof init?.body === "string") {
       body = init.body;
+    } else if (init?.body) {
+      body = new Uint8Array(await new Response(init.body).arrayBuffer());
     } else if (input.body) {
-      body = await input.clone().text();
+      body = new Uint8Array(await input.clone().arrayBuffer());
     }
   } else {
     url = typeof input === "string" ? input : input.toString();
     method = init?.method;
     headers = init?.headers ? Object.fromEntries(new Headers(init.headers).entries()) : undefined;
-    body = typeof init?.body === "string" ? init.body : undefined;
+    body = typeof init?.body === "string"
+      ? init.body
+      : init?.body ? new Uint8Array(await new Response(init.body).arrayBuffer()) : undefined;
   }
 
   const result = await invokeElectronHelper("__fetch", url, { method, headers, body, timeoutMs });
 
   const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
-  const responseBody = NULL_BODY_STATUSES.has(result.status) ? null : result.body;
+  const responseBody = NULL_BODY_STATUSES.has(result.status) ? null : Uint8Array.from(result.body).buffer;
 
   return new Response(responseBody, {
     status: result.status,

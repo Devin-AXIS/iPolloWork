@@ -4,6 +4,7 @@ import { isDesktopRuntime } from "./runtime-env";
 const ENTERPRISE_CONNECTIONS_KEY = "ipollowork.enterprise-connections.v1";
 const ENTERPRISE_CONNECTION_LIMIT = 12;
 const ENTERPRISE_TIMEOUT_MS = 12_000;
+const ENTERPRISE_SESSION_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 
 export const enterpriseConnectionsChangedEvent = "ipollowork:enterprise-connections-changed";
 
@@ -191,6 +192,31 @@ function parseJoinResult(value: unknown, server: EnterpriseServer): EnterpriseCo
   return { ...server, membership: { id: memberId, role }, session: { token, expiresAt } };
 }
 
+function parseMembershipRefresh(value: unknown, connection: EnterpriseConnection): EnterpriseConnection | null {
+  if (!isRecord(value) || !isRecord(value.membership) || !isRecord(value.session)) return null;
+  const memberId = readString(value.membership, "id");
+  const role = parseRole(value.membership.role);
+  const token = readString(value.session, "token");
+  const expiresAt = readString(value.session, "expiresAt");
+  if (memberId !== connection.membership.id || !role || !token || !expiresAt) return null;
+  return { ...connection, membership: { id: memberId, role }, session: { token, expiresAt } };
+}
+
+async function ensureFreshEnterpriseConnection(
+  connection: EnterpriseConnection,
+  fetcher: typeof fetch,
+): Promise<EnterpriseConnection> {
+  const expiresAt = Date.parse(connection.session.expiresAt);
+  if (Number.isFinite(expiresAt) && expiresAt - Date.now() > ENTERPRISE_SESSION_REFRESH_WINDOW_MS) return connection;
+  const payload = await fetchJson(endpoint(connection.origin, "/api/v1/membership"), {
+    headers: { Authorization: `Bearer ${connection.session.token}` },
+  }, enterpriseFetcher(fetcher));
+  const refreshed = parseMembershipRefresh(payload, connection);
+  if (!refreshed) throw new Error("invalid_enterprise_membership_response");
+  saveEnterpriseConnection(refreshed);
+  return refreshed;
+}
+
 function parseEnterpriseResource(value: unknown, expectedType: EnterpriseResourceType): EnterpriseResource | null {
   if (!isRecord(value) || readString(value, "type") !== expectedType) return null;
   const id = readString(value, "id");
@@ -234,9 +260,10 @@ export async function listEnterpriseResources(
   type: EnterpriseResourceType,
   fetcher: typeof fetch = fetch,
 ): Promise<EnterpriseResource[]> {
+  const activeConnection = await ensureFreshEnterpriseConnection(connection, fetcher);
   const payload = await fetchJson(
-    endpoint(connection.origin, `/api/v1/resources?type=${encodeURIComponent(type)}&limit=50`),
-    { headers: { Authorization: `Bearer ${connection.session.token}` } },
+    endpoint(activeConnection.origin, `/api/v1/resources?type=${encodeURIComponent(type)}&limit=50`),
+    { headers: { Authorization: `Bearer ${activeConnection.session.token}` } },
     enterpriseFetcher(fetcher),
   );
   if (!isRecord(payload) || !Array.isArray(payload.items)) throw new Error("invalid_enterprise_resource_catalog");
@@ -251,10 +278,11 @@ export async function downloadEnterpriseResource(
   resource: EnterpriseResource,
   fetcher: typeof fetch = fetch,
 ): Promise<File> {
-  const downloadUrl = enterpriseResourceUrl(connection, resource.latestVersion?.downloadPath ?? null);
+  const activeConnection = await ensureFreshEnterpriseConnection(connection, fetcher);
+  const downloadUrl = enterpriseResourceUrl(activeConnection, resource.latestVersion?.downloadPath ?? null);
   if (!downloadUrl || !resource.latestVersion) throw new Error("enterprise_resource_version_unavailable");
   const response = await enterpriseFetcher(fetcher)(downloadUrl, {
-    headers: { Authorization: `Bearer ${connection.session.token}` },
+    headers: { Authorization: `Bearer ${activeConnection.session.token}` },
     signal: AbortSignal.timeout(ENTERPRISE_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -266,6 +294,44 @@ export async function downloadEnterpriseResource(
   return new File([await response.arrayBuffer()], `${resource.slug}-${resource.latestVersion.version}.${extension}`, {
     type: response.headers.get("content-type") || "application/octet-stream",
   });
+}
+
+export type EnterpriseTemplateSubmission = {
+  resourceId: string;
+  versionId: string;
+  version: string;
+  reviewStatus: "pending" | "approved" | "rejected";
+  created: boolean;
+};
+
+function parseTemplateSubmission(value: unknown): EnterpriseTemplateSubmission | null {
+  if (!isRecord(value)) return null;
+  const resourceId = readString(value, "resourceId");
+  const versionId = readString(value, "versionId");
+  const version = readString(value, "version");
+  const reviewStatus = readString(value, "reviewStatus");
+  if (!resourceId || !versionId || !version || !["pending", "approved", "rejected"].includes(reviewStatus)) return null;
+  return { resourceId, versionId, version, reviewStatus: reviewStatus as EnterpriseTemplateSubmission["reviewStatus"], created: value.created === true };
+}
+
+export async function publishEnterpriseTemplate(
+  connection: EnterpriseConnection,
+  file: File,
+  fetcher: typeof fetch = fetch,
+) {
+  const activeConnection = await ensureFreshEnterpriseConnection(connection, fetcher);
+  const payload = await fetchJson(endpoint(activeConnection.origin, "/api/v1/template-submissions"), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${activeConnection.session.token}`,
+      "Content-Type": "application/vnd.ipollowork-template+zip",
+      "X-iPolloWork-Filename": encodeURIComponent(file.name),
+    },
+    body: file,
+  }, enterpriseFetcher(fetcher));
+  const submission = parseTemplateSubmission(payload);
+  if (!submission) throw new Error("invalid_template_submission_response");
+  return submission;
 }
 
 export async function joinEnterpriseWithCode(
@@ -358,9 +424,10 @@ export async function leaveEnterpriseConnection(
   connection: EnterpriseConnection,
   fetcher: typeof fetch = fetch,
 ) {
-  await fetchJson(endpoint(connection.origin, "/api/v1/membership"), {
+  const activeConnection = await ensureFreshEnterpriseConnection(connection, fetcher);
+  await fetchJson(endpoint(activeConnection.origin, "/api/v1/membership"), {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${connection.session.token}` },
+    headers: { Authorization: `Bearer ${activeConnection.session.token}` },
   }, enterpriseFetcher(fetcher));
   removeEnterpriseConnection(connection.id);
 }

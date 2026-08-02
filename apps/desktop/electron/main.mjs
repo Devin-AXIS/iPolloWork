@@ -2547,7 +2547,7 @@ const desktopCommandHandlers = {
       const response = await electronNet.fetch(url, {
         method: typeof init.method === "string" ? init.method : undefined,
         headers: init.headers && typeof init.headers === "object" ? init.headers : undefined,
-        body: typeof init.body === "string" ? init.body : undefined,
+        body: typeof init.body === "string" || init.body instanceof Uint8Array ? init.body : undefined,
         signal: Number.isFinite(timeoutMs) && timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined,
         credentials: "omit",
         cache: "no-store",
@@ -2556,7 +2556,7 @@ const desktopCommandHandlers = {
         status: response.status,
         statusText: response.statusText,
         headers: Array.from(response.headers.entries()),
-        body: await response.text(),
+        body: new Uint8Array(await response.arrayBuffer()),
       };
   },
   "__homeDir": async (event, ...args) => {

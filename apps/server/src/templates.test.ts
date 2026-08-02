@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import { TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
+import { adoptLegacyVideoSession, exportLocalTemplatePackage, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
@@ -946,6 +946,26 @@ describe("template installations", () => {
     const saved = await saveTemplateFromSession(serverConfig, ws, { sessionId: "session_1", category: "site", title: "Personal landing" });
     expect(saved.manifest.id).toStartWith("personal.personal-landing.");
     expect((await listTemplates(serverConfig, "beta")).some((item) => item.manifest.id === saved.manifest.id)).toBe(true);
+
+    await writeFile(join(ws.path, "design", "session_1", "entry.html"), "<h1>Updated personal work</h1>");
+    const updated = await saveTemplateFromSession(serverConfig, ws, {
+      sessionId: "session_1",
+      templateId: saved.manifest.id,
+      version: "1.1.0",
+      category: "site",
+      title: "Personal landing",
+    });
+    expect(updated.manifest).toMatchObject({ id: saved.manifest.id, version: "1.1.0" });
+    await expect(saveTemplateFromSession(serverConfig, ws, {
+      sessionId: "session_1",
+      templateId: saved.manifest.id,
+      version: "1.0.0",
+      category: "site",
+      title: "Personal landing",
+    })).rejects.toMatchObject({ code: "template_version_not_newer" });
+    const exported = await exportLocalTemplatePackage(serverConfig, ws.id, saved.manifest.id);
+    expect(exported.archive.subarray(0, 2).toString("ascii")).toBe("PK");
+    expect(exported.manifest.version).toBe("1.1.0");
   });
 
   test("migrates legacy metadata once and removes the obsolete file", async () => {

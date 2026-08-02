@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, extname, join, posix, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { inflateRaw } from "node:zlib";
@@ -604,6 +604,8 @@ async function sessionEntryPath(db: TemplateDb, workspaceId: string, sessionId: 
 
 export async function saveTemplateFromSession(config: ServerConfig, workspace: WorkspaceInfo, input: {
   sessionId: string;
+  templateId?: string;
+  version?: string;
   category: TemplateCategory;
   title: string;
   description?: string;
@@ -623,10 +625,29 @@ export async function saveTemplateFromSession(config: ServerConfig, workspace: W
   const style = templateStyleSchema.safeParse(input.style?.trim() || "custom");
   if (!style.success) throw new ApiError(400, "invalid_template_style", "Unsupported template style");
   const tags = (input.tags ?? []).map((tag) => tag.trim().slice(0, 32)).filter(Boolean).slice(0, 12);
+  const libraryId = templateLibraryId(scope);
+  const current = input.templateId ? (await templateDb(config)).get(libraryId, input.templateId) : undefined;
+  if (input.templateId && (!current || current.status !== "installed" || current.sourceType !== "local")) {
+    throw new ApiError(404, "local_template_not_found", "Choose an installed local template to update");
+  }
+  if (current) {
+    const currentManifest = templateManifestV1Schema.parse(JSON.parse(current.manifestJson));
+    if (currentManifest.category !== category.data || currentManifest.surface !== surface) {
+      throw new ApiError(409, "template_category_change_not_supported", "A template update must keep its existing category and surface");
+    }
+  }
+  const templateId = current?.templateId ?? localTemplateId(title, scope);
+  const version = input.version?.trim() || (current ? "" : "1.0.0");
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version)) {
+    throw new ApiError(400, "invalid_template_version", "A semantic version is required when updating a template");
+  }
+  if (current && compareVersions(version, current.version) <= 0) {
+    throw new ApiError(409, "template_version_not_newer", `The new version must be newer than ${current.version}`);
+  }
   const template: TemplateManifestV1 = templateManifestV1Schema.parse({
     schemaVersion: 1,
-    id: localTemplateId(title, scope),
-    version: "1.0.0",
+    id: templateId,
+    version,
     kind: "design",
     category: category.data,
     subcategory: input.subcategory?.trim().slice(0, 64) || "custom",
@@ -685,6 +706,62 @@ export async function readTemplateCover(config: ServerConfig, workspaceId: strin
   const extension = extname(cover).toLowerCase();
   const contentType = extension === ".svg" ? "image/svg+xml" : extension === ".png" ? "image/png" : extension === ".webp" ? "image/webp" : "image/jpeg";
   return { data, contentType };
+}
+
+async function packageDirectoryFiles(directory: string) {
+  const files: Array<{ name: string; data: Buffer }> = [];
+  let totalBytes = 0;
+  async function visit(current: string) {
+    for (const entry of await readdir(current, { withFileTypes: true })) {
+      const absolute = join(current, entry.name);
+      if (entry.isDirectory()) await visit(absolute);
+      else if (entry.isFile()) {
+        if (files.length >= MAX_FILES) throw new ApiError(413, "template_package_too_large", "Template package contains more than 1,000 files");
+        const data = await readFile(absolute);
+        totalBytes += data.byteLength;
+        if (data.byteLength > MAX_FILE_BYTES || totalBytes > MAX_TEMPLATE_PACKAGE_BYTES) {
+          throw new ApiError(413, "template_package_too_large", "Template package exceeds the local export limit");
+        }
+        files.push({ name: relative(directory, absolute).split(sep).join("/"), data });
+      }
+    }
+  }
+  await visit(directory);
+  return files.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function createStoredZip(files: Array<{ name: string; data: Buffer }>) {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+  for (const file of files) {
+    const name = Buffer.from(file.name);
+    const checksum = crc32(file.data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(0x0800, 6);
+    local.writeUInt32LE(checksum, 14); local.writeUInt32LE(file.data.length, 18); local.writeUInt32LE(file.data.length, 22); local.writeUInt16LE(name.length, 26);
+    localParts.push(local, name, file.data);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt16LE(0x0800, 8);
+    central.writeUInt32LE(checksum, 16); central.writeUInt32LE(file.data.length, 20); central.writeUInt32LE(file.data.length, 24); central.writeUInt16LE(name.length, 28); central.writeUInt32LE(offset, 42);
+    centralParts.push(central, name);
+    offset += local.length + name.length + file.data.length;
+  }
+  const centralSize = centralParts.reduce((size, part) => size + part.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10); end.writeUInt32LE(centralSize, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+export async function exportLocalTemplatePackage(config: ServerConfig, workspaceId: string, templateId: string, scope: TemplateLibraryScope = "personal") {
+  const row = (await templateDb(config)).get(templateLibraryId(scope), templateId);
+  if (!row || row.status !== "installed" || row.sourceType !== "local" || !existsSync(row.packagePath)) {
+    throw new ApiError(404, "local_template_not_found", "Only installed local templates can be published");
+  }
+  const manifest = templateManifestV1Schema.parse(JSON.parse(row.manifestJson));
+  const archive = createStoredZip(await packageDirectoryFiles(row.packagePath));
+  if (archive.byteLength > MAX_TEMPLATE_PACKAGE_BYTES) throw new ApiError(413, "template_package_too_large", "Template package exceeds 50 MB");
+  return { archive, manifest, digest: createHash("sha256").update(archive).digest("hex") };
 }
 
 function sessionRoot(workspace: WorkspaceInfo, sessionId: string, surface: TemplateSurface = "design"): string {

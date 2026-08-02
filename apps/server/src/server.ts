@@ -107,6 +107,7 @@ import { buildiPolloWorkRuntimeConfigObject } from "./ipollowork-runtime-config.
 import {
   MAX_TEMPLATE_PACKAGE_BYTES,
   adoptLegacyVideoSession,
+  exportLocalTemplatePackage,
   importTemplate,
   installBundledTemplate,
   listTemplateSessions,
@@ -1464,6 +1465,20 @@ function createRoutes(
     return new Response(cover.data, { headers: { "Content-Type": cover.contentType, "Cache-Control": "no-store" } });
   });
 
+  addRoute(routes, "GET", "/workspace/:id/templates/:templateId/package", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const scope = parseTemplateLibraryScope(ctx.request.headers.get("x-ipollowork-resource-scope"));
+    const template = await exportLocalTemplatePackage(config, workspace.id, ctx.params.templateId, scope);
+    return new Response(template.archive, {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(template.manifest.id)}-${template.manifest.version}.ipwt"`,
+        "Content-Type": "application/vnd.ipollowork-template+zip",
+        "X-iPollo-Artifact-SHA256": template.digest,
+      },
+    });
+  });
+
   addRoute(routes, "POST", "/workspace/:id/templates/import", "client", async (ctx) => {
     ensureWritable(config);
     requireClientScope(ctx, "collaborator");
@@ -1489,6 +1504,8 @@ function createRoutes(
     if (!sessionId || !category || !title) throw new ApiError(400, "invalid_payload", "sessionId, category and title are required");
     return jsonResponse({ item: await saveTemplateFromSession(config, workspace, {
       sessionId,
+      templateId: typeof body.templateId === "string" ? body.templateId : undefined,
+      version: typeof body.version === "string" ? body.version : undefined,
       category: category as import("@ipollowork/types/templates").TemplateCategory,
       title,
       description: typeof body.description === "string" ? body.description : undefined,
