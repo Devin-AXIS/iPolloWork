@@ -693,8 +693,8 @@ export function createConnectionsStore(options: {
         if (!resolvedHeaders) {
           if (entry.oauthConfig) {
             mcpEntryConfig["oauth"] = entry.oauthConfig;
-          } else if (entry.oauth) {
-            mcpEntryConfig["oauth"] = {};
+          } else {
+            mcpEntryConfig["oauth"] = entry.oauth ? {} : false;
           }
         }
       }
@@ -775,7 +775,7 @@ export function createConnectionsStore(options: {
                 enabled: true,
                 ...(resolvedHeaders ? { headers: resolvedHeaders, oauth: false as const } : {}),
                 ...(!resolvedHeaders && entry.oauthConfig ? { oauth: entry.oauthConfig } : {}),
-                ...(!resolvedHeaders && !entry.oauthConfig && entry.oauth ? { oauth: {} } : {}),
+                ...(!resolvedHeaders && !entry.oauthConfig ? { oauth: entry.oauth ? {} : false as const } : {}),
               }
             : {
                 type: "local" as const,

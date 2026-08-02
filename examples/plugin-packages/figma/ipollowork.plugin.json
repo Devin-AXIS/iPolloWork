@@ -16,8 +16,20 @@
   "composer": {
     "prompt": "使用 Figma 插件读取设计上下文，并按当前项目规范完成实现。"
   },
+  "setup": {
+    "instructions": "Figma 授权由 Figma Desktop 独立管理。在桌面应用中登录账号、打开 Design 文件、切换到 Dev Mode，然后在 Inspect 面板启用 Desktop MCP server。",
+    "primaryCta": "连接 Figma Desktop",
+    "secondaryCta": "查看官方设置指南"
+  },
+  "contributions": [
+    {
+      "type": "setup-instructions",
+      "ref": "https://developers.figma.com/docs/figma-mcp-server/local-server-installation/",
+      "location": "settings-detail"
+    }
+  ],
   "package": {
-    "version": "2.0.13",
+    "version": "2.0.16",
     "publisher": {
       "id": "figma",
       "name": "Figma"
@@ -32,7 +44,7 @@
   "permissions": [
     {
       "id": "network",
-      "reason": "连接 Figma 官方远程 MCP，并读取或更新用户授权的 Figma 文件。"
+      "reason": "连接 Figma 桌面应用在本机运行的官方 MCP 服务，并读取或更新当前 Figma 账号可访问的文件。"
     },
     {
       "id": "workspace-read",
@@ -47,10 +59,11 @@
     {
       "type": "mcp",
       "id": "figma-mcp",
-      "label": "Figma 官方远程 MCP",
-      "description": "通过持久化 OAuth 提供 Figma 读取和写入工具。",
+      "label": "Figma 官方 Desktop MCP",
+      "description": "使用 Figma 桌面应用中已登录的账号，通过本机官方 MCP 服务提供读取和写入工具。",
       "path": ".opencode/mcps/figma.json",
       "mcpServerName": "figma",
+      "oauth": false,
       "required": true
     },
     {

@@ -1,4 +1,36 @@
+import type { iPolloWorkExtensionManifest } from "../../../app/extensions";
+
 export type PluginPrimaryActionKind = "install" | "connect" | "open" | "update" | "repair";
+
+type PluginPackageRelationshipSource = { manifest: iPolloWorkExtensionManifest };
+
+export type PluginPackageRelationships = {
+  skillNames: string[];
+  installedMcpServerNames: string[];
+};
+
+export function collectPluginPackageRelationships(
+  installed: PluginPackageRelationshipSource[],
+  catalog: PluginPackageRelationshipSource[],
+): PluginPackageRelationships {
+  const skillNames = new Set<string>();
+  const installedMcpServerNames = new Set<string>();
+  for (const item of [...installed, ...catalog]) {
+    item.manifest.resources.forEach((resource) => {
+      if (resource.type === "skill") skillNames.add(resource.id);
+    });
+  }
+  installed.forEach((item) => {
+    item.manifest.relatedSkills?.forEach((skillName) => skillNames.add(skillName));
+    item.manifest.resources.forEach((resource) => {
+      if (resource.type === "mcp" && resource.mcpServerName) installedMcpServerNames.add(resource.mcpServerName);
+    });
+  });
+  return {
+    skillNames: [...skillNames].sort(),
+    installedMcpServerNames: [...installedMcpServerNames].sort(),
+  };
+}
 
 export function enqueuePluginFieldValue(
   setter: (update: (current: Record<string, string>) => Record<string, string>) => void,
@@ -8,7 +40,17 @@ export function enqueuePluginFieldValue(
   setter((current) => ({ ...current, [key]: value }));
 }
 
-export function formatPluginPlatformError(cause: unknown, localizedSummary: string): string {
+function pluginConflictPaths(cause: unknown): string[] {
+  if (!(cause instanceof Error) || Reflect.get(cause, "code") !== "plugin_package_conflict") return [];
+  const details = Reflect.get(cause, "details");
+  if (!details || typeof details !== "object") return [];
+  const paths = Reflect.get(details, "paths");
+  return Array.isArray(paths) ? paths.filter((path): path is string => typeof path === "string") : [];
+}
+
+export function formatPluginPlatformError(cause: unknown, localizedSummary: string, localizedConflict?: string): string {
+  const conflictPaths = pluginConflictPaths(cause);
+  if (localizedConflict && conflictPaths.length > 0) return `${localizedConflict} ${conflictPaths.join(", ")}`;
   const detail = cause instanceof Error ? cause.message.trim() : "";
   return detail && detail !== localizedSummary ? `${localizedSummary} ${detail}` : localizedSummary;
 }
