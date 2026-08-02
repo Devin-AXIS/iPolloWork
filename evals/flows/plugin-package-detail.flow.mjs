@@ -105,10 +105,35 @@ async function clickExactButton(ctx, label) {
   ctx.assert(clicked, `Could not find button: ${label}`);
 }
 
+async function dismissOpenDialogs(ctx) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const count = await ctx.eval("document.querySelectorAll('[role=\"dialog\"]').length");
+    if (count === 0) return;
+    const dismissed = await ctx.eval(`(() => {
+      const dialogs = [...document.querySelectorAll('[role="dialog"]')];
+      const dialog = dialogs.at(-1);
+      const button = [...(dialog?.querySelectorAll('button') ?? [])].find((entry) =>
+        ['取消', 'Cancel', '完成', 'Done'].includes(entry.textContent?.trim() ?? '')
+      );
+      button?.click();
+      return Boolean(button);
+    })()`);
+    ctx.assert(dismissed, "Could not dismiss an open dialog before the plugin flow");
+    await ctx.waitFor(`document.querySelectorAll('[role="dialog"]').length < ${count}`, {
+      timeoutMs: 5_000,
+      label: "open plugin dialog dismissed",
+    });
+  }
+}
+
 async function selectPersonalResourceScope(ctx) {
-  await ctx.waitFor(`[...document.querySelectorAll('button')].some((entry) => ['个人', 'Personal'].includes(entry.textContent?.trim() ?? ''))`, {
+  await ctx.waitFor(`
+    [...document.querySelectorAll('button')].some((entry) => ['个人', 'Personal'].includes(entry.textContent?.trim() ?? ''))
+      || document.body.innerText.includes('独立插件包')
+      || document.body.innerText.includes('Independent plugin packages')
+  `, {
     timeoutMs: 30_000,
-    label: "personal resource scope",
+    label: "personal resource scope or local plugin catalog",
   });
   await ctx.eval(`(() => {
     const button = [...document.querySelectorAll('button')].find((entry) => ['个人', 'Personal'].includes(entry.textContent?.trim() ?? ''));
@@ -126,6 +151,44 @@ async function choosePluginPackage(ctx, file) {
   await ctx.client.send("DOM.setFileInputFiles", { nodeId, files: [file] });
 }
 
+function pluginCardActionExpression(name, labels, click = false) {
+  return `(() => {
+    const title = [...document.querySelectorAll('h1, h2, h3, h4, p, span, div')].find((entry) =>
+      entry.children.length === 0 && entry.textContent?.trim() === ${JSON.stringify(name)}
+    );
+    let container = title?.parentElement;
+    while (container && container !== document.body) {
+      const buttons = [...container.querySelectorAll('button')];
+      if (buttons.length === 0) {
+        container = container.parentElement;
+        continue;
+      }
+      const button = buttons.find((entry) =>
+        ${JSON.stringify(labels)}.includes(entry.textContent?.trim() ?? '')
+      );
+      if (button) {
+        ${click ? "button.click();" : ""}
+        return true;
+      }
+      return false;
+    }
+    return false;
+  })()`;
+}
+
+async function installCatalogPlugin(ctx, name) {
+  const installedLabels = ["授权连接", "打开", "Connect", "Open"];
+  const alreadyInstalled = await ctx.eval(pluginCardActionExpression(name, installedLabels));
+  if (!alreadyInstalled) {
+    const clicked = await ctx.eval(pluginCardActionExpression(name, ["安装", "Install"], true));
+    ctx.assert(clicked, `Could not find the ${name} install button`);
+  }
+  await ctx.waitFor(pluginCardActionExpression(name, installedLabels), {
+    timeoutMs: 45_000,
+    label: `${name} installed in plugin catalog`,
+  });
+}
+
 export default {
   id: "plugin-package-detail",
   title: "Independent plugin detail and per-skill controls",
@@ -137,38 +200,14 @@ export default {
         await ctx.prove("Opening an installed plugin shows a dedicated Codex-style detail view", {
           voiceover: vo[0],
           action: async () => {
+            await dismissOpenDialogs(ctx);
             await ctx.navigateHash("/settings/preferences");
             await ctx.waitForText("偏好设置", { timeoutMs: 30_000 });
             await ctx.navigateHash("/settings/extensions");
             await selectPersonalResourceScope(ctx);
             await ctx.waitForText("独立插件包", { timeoutMs: 30_000 });
-            const installed = await ctx.eval(`(() => {
-              const buttons = [...document.querySelectorAll('button')];
-              const alreadyInstalled = buttons.some((entry) => {
-                if (!['授权连接', '打开'].includes(entry.textContent?.trim() ?? '')) return false;
-                let parent = entry.parentElement;
-                while (parent && parent !== document.body) {
-                  const value = parent.innerText ?? '';
-                  if (value.includes('Figma') && !value.includes('GitHub')) return true;
-                  parent = parent.parentElement;
-                }
-                return false;
-              });
-              if (alreadyInstalled) return true;
-              const install = buttons.find((entry) => {
-                if (entry.textContent?.trim() !== '安装') return false;
-                let parent = entry.parentElement;
-                while (parent && parent !== document.body) {
-                  const value = parent.innerText ?? '';
-                  if (value.includes('Figma') && !value.includes('GitHub')) return true;
-                  parent = parent.parentElement;
-                }
-                return false;
-              });
-              install?.click();
-              return Boolean(install);
-            })()`);
-            ctx.assert(installed, "Could not find the Figma install button");
+            const updateStarted = await ctx.eval(pluginCardActionExpression("Figma", ["更新", "Update"], true));
+            if (!updateStarted) await installCatalogPlugin(ctx, "Figma");
             await ctx.waitFor("document.body.innerText.includes('Figma') && /已安装(?:[1-9]\\d*)个/.test(document.body.innerText)", {
               timeoutMs: 45_000,
               label: "Figma installed in plugin catalog",
@@ -181,7 +220,7 @@ export default {
           },
           assert: async () => {
             await ctx.expectText("插件");
-            await ctx.expectText("Figma 官方远程 MCP");
+            await ctx.expectText("Figma 官方 Desktop MCP");
             await ctx.expectText("技能 12");
             await ctx.expectNoText("独立插件包");
             await ctx.expectNoText("Something went wrong");
@@ -255,10 +294,44 @@ export default {
       },
     },
     {
+      name: "Upgrade legacy MCP services to complete plugin packages",
+      run: async (ctx) => {
+        await ctx.prove("Notion, Linear, Sentry, Stripe, and Context7 install as complete skill-bearing packages", {
+          voiceover: vo[3],
+          action: async () => {
+            await ctx.navigateHash("/settings/extensions");
+            await selectPersonalResourceScope(ctx);
+            await ctx.waitForText("独立插件包", { timeoutMs: 30_000 });
+            for (const service of ["Notion", "Linear", "Sentry", "Stripe", "Context7"]) {
+              await installCatalogPlugin(ctx, service);
+            }
+            await ctx.navigateHash("/settings/extensions/plugin/notion");
+            await ctx.waitFor("document.body.innerText.includes('技能 4') && document.body.innerText.includes('连接 Notion')", {
+              timeoutMs: 30_000,
+              label: "Notion complete plugin detail and MCP authorization",
+            });
+          },
+          assert: async () => {
+            await ctx.expectText("Notion 官方远程 MCP");
+            await ctx.expectText("技能 4");
+            await ctx.expectText("连接 Notion");
+            await ctx.expectText("知识检索");
+            await ctx.expectNoText("Something went wrong");
+          },
+          screenshot: {
+            name: "plugin-migrated-notion-detail",
+            requireText: ["Notion", "应用 1", "技能 4", "连接 Notion", "知识检索"],
+            rejectText: ["独立插件包", "Something went wrong"],
+            hashIncludes: "/settings/extensions/plugin/notion",
+          },
+        });
+      },
+    },
+    {
       name: "Install GitHub from the official plugin catalog",
       run: async (ctx) => {
         await ctx.prove("The development client exposes GitHub next to Figma and installs it as an official package", {
-          voiceover: vo[3],
+          voiceover: vo[4],
           action: async () => {
             await ctx.navigateHash("/settings/extensions");
             await selectPersonalResourceScope(ctx);
@@ -290,7 +363,7 @@ export default {
               return Boolean(button);
             })()`);
             ctx.assert(installed, "Could not find the GitHub install button");
-            await ctx.waitFor("document.body.innerText.includes('GitHub') && /已安装(?:[2-9]|[1-9]\\d+)个/.test(document.body.innerText)", {
+            await ctx.waitFor("document.body.innerText.includes('GitHub') && /已安装(?:[7-9]|[1-9]\\d+)个/.test(document.body.innerText)", {
               timeoutMs: 45_000,
               label: "GitHub installed in plugin catalog",
             });
@@ -313,7 +386,7 @@ export default {
       name: "Open GitHub as a dedicated plugin detail",
       run: async (ctx) => {
         await ctx.prove("GitHub has a complete detail page with one app, four skills, authorization, metadata, and uninstall", {
-          voiceover: vo[4],
+          voiceover: vo[5],
           action: async () => {
             const opened = await ctx.eval(`(() => {
               const buttons = [...document.querySelectorAll('button')];
@@ -360,10 +433,23 @@ export default {
       name: "Open the complete plugin import flow",
       run: async (ctx) => {
         await ctx.prove("The plugin list exposes a visible complete-package import action instead of a hidden path field", {
-          voiceover: vo[5],
+          voiceover: vo[6],
           action: async () => {
             await ctx.navigateHash("/settings/extensions");
             await ctx.waitForText("独立插件包", { timeoutMs: 30_000 });
+            const openedExistingFixture = await ctx.eval(pluginCardActionExpression("Community Notes", ["打开", "Open"], true));
+            if (openedExistingFixture) {
+              await ctx.waitFor("location.hash.includes('/settings/extensions/plugin/fraimz-community-notes')", {
+                timeoutMs: 15_000,
+                label: "existing import fixture detail",
+              });
+              await ctx.waitForText("卸载插件", { timeoutMs: 15_000 });
+              await clickExactButton(ctx, "卸载插件");
+              await ctx.waitFor("location.hash.endsWith('/settings/extensions') && !document.body.innerText.includes('Community Notes')", {
+                timeoutMs: 30_000,
+                label: "existing import fixture removed",
+              });
+            }
             await clickExactButton(ctx, "导入插件");
             await ctx.waitForText("导入完整插件包", { timeoutMs: 30_000 });
           },
@@ -385,10 +471,13 @@ export default {
       name: "Preview a declarative developer plugin",
       run: async (ctx) => {
         await ctx.prove("A developer archive is inspected and identified as declarative before installation", {
-          voiceover: vo[6],
+          voiceover: vo[7],
           action: async () => {
             await choosePluginPackage(ctx, IMPORT_FIXTURE);
-            await ctx.waitFor("document.body.innerText.includes('Community Notes') && document.body.innerText.includes('声明式安全检查')", {
+            await ctx.waitFor(`document.body.innerText.includes('Community Notes')
+              && document.body.innerText.includes('声明式安全检查')
+              && [...([...document.querySelectorAll('[role="dialog"]')].at(-1)?.querySelectorAll('button') ?? [])]
+                .some((entry) => ['安装插件', '更新'].includes(entry.textContent?.trim() ?? ''))`, {
               timeoutMs: 45_000,
               label: "declarative plugin preview",
             });
@@ -412,10 +501,10 @@ export default {
       name: "Install the imported developer plugin",
       run: async (ctx) => {
         await ctx.prove("The inspected package installs and opens as a dedicated plugin detail", {
-          voiceover: vo[7],
+          voiceover: vo[8],
           action: async () => {
             const installed = await ctx.eval(`(() => {
-              const dialog = document.querySelector('[role="dialog"]');
+              const dialog = [...document.querySelectorAll('[role="dialog"]')].at(-1);
               const button = [...(dialog?.querySelectorAll('button') ?? [])].find((entry) => ['安装插件', '更新'].includes(entry.textContent?.trim() ?? ''));
               button?.click();
               return Boolean(button);
@@ -446,7 +535,7 @@ export default {
       name: "Uninstall the imported developer plugin",
       run: async (ctx) => {
         await ctx.prove("Uninstall removes the imported package and returns to the plugin list", {
-          voiceover: vo[8],
+          voiceover: vo[9],
           action: async () => {
             await clickExactButton(ctx, "卸载插件");
             await ctx.waitFor("location.hash.endsWith('/settings/extensions') && !document.body.innerText.includes('Community Notes')", {
@@ -464,6 +553,108 @@ export default {
             requireText: ["独立插件包", "导入插件"],
             rejectText: ["Community Notes", "Something went wrong"],
             hashIncludes: "/settings/extensions",
+          },
+        });
+      },
+    },
+    {
+      name: "Group independent Video skills without taking ownership",
+      run: async (ctx) => {
+        await ctx.prove("Video shows detected HyperFrames capabilities as related skills without managing their lifecycle", {
+          voiceover: vo[10],
+          action: async () => {
+            await ctx.navigateHash("/settings/extensions");
+            await selectPersonalResourceScope(ctx);
+            await ctx.waitForText("独立插件包", { timeoutMs: 30_000 });
+
+            const updateStarted = await ctx.eval(pluginCardActionExpression("iPolloWork Video Agent", ["更新", "Update"], true));
+            if (updateStarted) {
+              await ctx.waitFor(pluginCardActionExpression("iPolloWork Video Agent", ["打开", "Open"]), {
+                timeoutMs: 45_000,
+                label: "Video Agent updated",
+              });
+            }
+
+            const opened = await ctx.eval(pluginCardActionExpression("iPolloWork Video Agent", ["打开", "Open"], true));
+            ctx.assert(opened, "Could not find the Video Agent detail action");
+            await ctx.waitFor("document.body.innerText.includes('相关技能 9') && document.body.innerText.includes('hyperframes-cli')", {
+              timeoutMs: 30_000,
+              label: "Video related skills",
+            });
+            await ctx.eval(`(() => {
+              const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((node) => node.textContent?.includes('相关技能'));
+              heading?.scrollIntoView({ block: 'center' });
+            })()`);
+          },
+          assert: async () => {
+            await ctx.expectText("技能 2");
+            await ctx.expectText("相关技能 9");
+            await ctx.expectText("此插件不会安装、停用、更新或删除它们");
+            await ctx.expectText("hyperframes-cli");
+            await ctx.expectText("media-use");
+            await ctx.expectText("product-launch-video");
+            const relatedSwitchCount = await ctx.eval(`(() => {
+              const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((node) => node.textContent?.includes('相关技能'));
+              return heading?.parentElement?.querySelectorAll('[role="switch"]').length ?? -1;
+            })()`);
+            ctx.assert(relatedSwitchCount === 0, `Expected related skills to have no lifecycle switches, received ${relatedSwitchCount}`);
+            await ctx.expectNoText("Something went wrong");
+          },
+          screenshot: {
+            name: "plugin-video-related-skills",
+            requireText: ["技能 2", "相关技能 9", "hyperframes-cli", "media-use", "product-launch-video"],
+            rejectText: ["Something went wrong"],
+            hashIncludes: "/settings/extensions/plugin/video-agent",
+          },
+        });
+      },
+    },
+    {
+      name: "Use the official Figma Desktop MCP",
+      run: async (ctx) => {
+        await ctx.prove("Figma uses its official Desktop MCP endpoint without remote OAuth client registration", {
+          voiceover: vo[11],
+          action: async () => {
+            await ctx.navigateHash("/settings/extensions");
+            const updateStarted = await ctx.eval(pluginCardActionExpression("Figma", ["更新", "Update"], true));
+            if (updateStarted) {
+              await ctx.waitFor(pluginCardActionExpression("Figma", ["授权连接", "打开", "Connect", "Open"]), {
+                timeoutMs: 45_000,
+                label: "Figma Desktop MCP package updated",
+              });
+            }
+            const opened = await ctx.eval(pluginCardActionExpression("Figma", ["授权连接", "打开", "Connect", "Open"], true));
+            ctx.assert(opened, "Could not find the Figma detail action");
+            await ctx.waitForText("Figma 官方 Desktop MCP", { timeoutMs: 30_000 });
+            await ctx.waitForText("连接 Figma Desktop", { timeoutMs: 30_000 });
+            await clickExactButton(ctx, "连接 Figma Desktop");
+            await ctx.waitFor(`
+              document.body.innerText.includes('未检测到 Figma Desktop MCP')
+                || document.body.innerText.includes('已连接 Figma Desktop MCP')
+            `, {
+              timeoutMs: 30_000,
+              label: "Figma Desktop MCP connection result is visible",
+            });
+          },
+          assert: async () => {
+            await ctx.expectText("Figma 官方 Desktop MCP");
+            await ctx.expectText("Figma 桌面应用中已登录的账号");
+            await ctx.expectText("连接 Figma Desktop");
+            await ctx.expectText("查看官方设置指南");
+            await ctx.expectText("切换到 Dev Mode");
+            const visibleResult = await ctx.eval(`
+              document.body.innerText.includes('未检测到 Figma Desktop MCP')
+                || document.body.innerText.includes('已连接 Figma Desktop MCP')
+            `);
+            ctx.assert(visibleResult, "Expected a visible Figma Desktop MCP connection result");
+            await ctx.expectNoText("Unexpected server error");
+            await ctx.expectNoText("Something went wrong");
+          },
+          screenshot: {
+            name: "plugin-figma-desktop-mcp",
+            requireText: ["Figma", "Figma 官方 Desktop MCP", "连接 Figma Desktop", "查看官方设置指南"],
+            rejectText: ["Unexpected server error", "Something went wrong"],
+            hashIncludes: "/settings/extensions/plugin/figma",
           },
         });
       },

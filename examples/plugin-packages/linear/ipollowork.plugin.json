@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "linear",
+  "name": "Linear",
+  "description": "把问题分流、Sprint 规划、交付跟进和项目更新组合成一致的 Linear 工作流。",
+  "category": "项目与工程",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://linear.app/docs/mcp"
+  },
+  "icon": { "simpleIconSlug": "linear" },
+  "composer": { "prompt": "使用 Linear 插件核对团队、项目和 Issue 状态，再按明确范围进行分流、规划或更新。" },
+  "package": {
+    "version": "1.0.0",
+    "publisher": { "id": "ipollowork", "name": "iPolloWork" },
+    "compatibility": { "ipollowork": ">=0.18.0", "opencode": ">=1.18.0" },
+    "updateId": "ipollowork/linear",
+    "entrypoints": {}
+  },
+  "permissions": [
+    { "id": "network", "reason": "连接 Linear 官方远程 MCP，并访问用户通过 OAuth 授权的团队、项目和 Issue。" },
+    { "id": "workspace-read", "reason": "读取当前工作区的代码与变更证据，以便核对 Issue 和交付状态。", "optional": true }
+  ],
+  "resources": [
+    {
+      "type": "mcp",
+      "id": "linear-mcp",
+      "label": "Linear 官方远程 MCP",
+      "description": "通过持久化 OAuth 读取和更新用户授权的 Linear 工作区。",
+      "path": ".opencode/mcps/linear.json",
+      "mcpServerName": "linear",
+      "oauth": true,
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "linear-triage",
+      "label": "Issue 分流",
+      "description": "核对重复项、优先级、团队和负责人后整理待办。",
+      "path": ".opencode/skills/linear-triage/SKILL.md",
+      "requires": ["resource:linear-mcp"],
+      "provides": ["workflow:linear-triage"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "linear-sprint-planning",
+      "label": "Sprint 规划",
+      "description": "基于真实容量、依赖和优先级组织周期计划。",
+      "path": ".opencode/skills/linear-sprint-planning/SKILL.md",
+      "requires": ["resource:linear-mcp"],
+      "provides": ["workflow:linear-sprint-planning"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "linear-issue-delivery",
+      "label": "Issue 交付",
+      "description": "把代码证据、验收条件和 Issue 状态保持一致。",
+      "path": ".opencode/skills/linear-issue-delivery/SKILL.md",
+      "requires": ["resource:linear-mcp"],
+      "provides": ["workflow:linear-issue-delivery"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "linear-project-updates",
+      "label": "项目更新",
+      "description": "从真实 Issue 和里程碑证据生成项目状态更新。",
+      "path": ".opencode/skills/linear-project-updates/SKILL.md",
+      "requires": ["resource:linear-mcp"],
+      "provides": ["workflow:linear-project-updates"],
+      "required": true
+    }
+  ]
+}

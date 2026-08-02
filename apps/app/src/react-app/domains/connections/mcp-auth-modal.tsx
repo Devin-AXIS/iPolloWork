@@ -415,6 +415,7 @@ export function McpAuthModal(props: McpAuthModalProps) {
         if (cancelled) return;
 
         if (!status) {
+          setReloadStarting(false);
           setAwaitingReload(false);
           setNeedsReload(true);
           setReloadNotice(
@@ -426,11 +427,13 @@ export function McpAuthModal(props: McpAuthModalProps) {
         }
 
         setReloadSatisfied(true);
+        setReloadStarting(false);
         setAwaitingReload(false);
         await startAuth(false, false);
       } catch (err) {
         const message = err instanceof Error ? err.message : t("mcp.auth.reload_failed");
         if (cancelled) return;
+        setReloadStarting(false);
         setAwaitingReload(false);
         setNeedsReload(true);
         setError(message);

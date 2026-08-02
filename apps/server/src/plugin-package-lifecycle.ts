@@ -122,6 +122,17 @@ async function sha256(path: string): Promise<string> {
   return createHash("sha256").update(await readFile(path)).digest("hex");
 }
 
+async function activationTargetStatus(path: string, expectedSha256: string): Promise<"missing" | "matching" | "conflict"> {
+  try {
+    const metadata = await lstat(path);
+    if (!metadata.isFile()) return "conflict";
+    return await sha256(path) === expectedSha256 ? "matching" : "conflict";
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") return "missing";
+    throw error;
+  }
+}
+
 async function packageResourceFiles(packageRoot: string, resourcePath: string): Promise<string[]> {
   const source = resolveWithin(packageRoot, resourcePath);
   let metadata: Awaited<ReturnType<typeof lstat>>;
@@ -430,11 +441,17 @@ async function applyVersion(
   const nextActivationFiles = workspaceActivationFiles(next);
   const currentPaths = new Set(currentActivationFiles.map((file) => file.path));
   const nextPaths = new Set(nextActivationFiles.map((file) => file.path));
+  const adoptedPaths = new Set<string>();
+  const conflicts: string[] = [];
   for (const file of nextActivationFiles) {
+    if (currentPaths.has(file.path)) continue;
     const target = resolveWithin(workspaceRoot, file.path);
-    if (!currentPaths.has(file.path) && await fileExists(target)) {
-      throw new ApiError(409, "plugin_package_conflict", `Install target already exists: ${file.path}`, { paths: [file.path] });
-    }
+    const status = await activationTargetStatus(target, file.sha256);
+    if (status === "matching") adoptedPaths.add(file.path);
+    else if (status === "conflict") conflicts.push(file.path);
+  }
+  if (conflicts.length > 0) {
+    throw new ApiError(409, "plugin_package_conflict", "Install targets already exist with different content", { paths: conflicts });
   }
 
   const nextArtifactRoot = artifactRoot(config, workspaceId, pluginId, next.version);
@@ -445,6 +462,12 @@ async function applyVersion(
     for (const file of nextActivationFiles) {
       const source = resolveWithin(nextArtifactRoot, file.path);
       const target = resolveWithin(workspaceRoot, file.path);
+      if (adoptedPaths.has(file.path)) {
+        if (await activationTargetStatus(target, file.sha256) !== "matching") {
+          throw new ApiError(409, "plugin_package_conflict", `Install target changed during installation: ${file.path}`, { paths: [file.path] });
+        }
+        continue;
+      }
       await mkdir(dirname(target), { recursive: true });
       await copyFile(source, target);
     }
@@ -474,7 +497,9 @@ async function applyVersion(
       }
       for (const path of currentInactivePaths) await rm(resolveWithin(workspaceRoot, path), { force: true });
       for (const file of nextActivationFiles) {
-        if (!currentPaths.has(file.path)) await rm(resolveWithin(workspaceRoot, file.path), { force: true });
+        if (!currentPaths.has(file.path) && !adoptedPaths.has(file.path)) {
+          await rm(resolveWithin(workspaceRoot, file.path), { force: true });
+        }
       }
       for (const entry of nextMcpEntries) {
         if (!currentMcpEntries.some((currentEntry) => currentEntry.name === entry.name)) await removeMcp(config, workspaceId, entry.name);

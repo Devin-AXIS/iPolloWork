@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "id": "video-agent",
+  "name": "iPolloWork Video Agent",
+  "description": "管理 iPolloWork Video Studio、HyperFrames 与旁白工作流的官方 Agent Skills，不改变内置 Studio、时间线或视频项目。",
+  "category": "创作与设计",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/Devin-AXIS/iPolloWork"
+  },
+  "icon": {
+    "src": "ipollowork-mark.svg"
+  },
+  "composer": {
+    "prompt": "使用 iPolloWork Video Agent 在当前会话的 Video Studio 项目中创建或编辑视频。"
+  },
+  "package": {
+    "version": "0.1.1",
+    "publisher": {
+      "id": "ipollowork",
+      "name": "iPolloWork"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.18.0",
+      "opencode": ">=1.18.0"
+    },
+    "updateId": "ipollowork/video-agent",
+    "entrypoints": {}
+  },
+  "permissions": [
+    {
+      "id": "workspace-read",
+      "reason": "读取当前会话的 HyperFrames 项目、时间线、媒体和旁白设置。"
+    },
+    {
+      "id": "workspace-write",
+      "reason": "按照用户要求更新当前会话的视频项目和媒体引用。"
+    },
+    {
+      "id": "process",
+      "reason": "运行 HyperFrames 对当前会话项目的只读检查和验证命令。"
+    }
+  ],
+  "relatedSkills": [
+    "hyperframes",
+    "hyperframes-animation",
+    "hyperframes-cli",
+    "hyperframes-core",
+    "hyperframes-creative",
+    "hyperframes-keyframes",
+    "hyperframes-registry",
+    "media-use",
+    "product-launch-video"
+  ],
+  "resources": [
+    {
+      "type": "skill",
+      "id": "ipollowork-video-studio",
+      "label": "Video Studio",
+      "description": "在当前 iPolloWork Video Studio 会话中安全创建和编辑 HyperFrames 视频。",
+      "path": ".opencode/skills/ipollowork-video-studio/SKILL.md",
+      "provides": [
+        "workflow:ipollowork-video-studio"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "ipollowork-video-voiceover",
+      "label": "视频旁白",
+      "description": "使用当前 Video Studio 的媒体能力生成并校验逐场景旁白。",
+      "path": ".opencode/skills/ipollowork-video-voiceover/SKILL.md",
+      "provides": [
+        "workflow:ipollowork-video-voiceover"
+      ],
+      "required": true
+    }
+  ]
+}
