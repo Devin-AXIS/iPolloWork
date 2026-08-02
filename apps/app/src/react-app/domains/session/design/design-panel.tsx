@@ -123,6 +123,7 @@ type DesignPanelProps = {
   initialPath?: string;
   expanded?: boolean;
   onAskAi: (context: DesignAiSelectionContext) => void;
+  onSaveAsTemplate?: () => void;
 };
 
 type LoadedHtml = {
@@ -528,6 +529,7 @@ export function DesignPanel({
   initialPath,
   expanded = false,
   onAskAi,
+  onSaveAsTemplate,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -2084,7 +2086,7 @@ export function DesignPanel({
                   {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
                 </Button>
               ) : null}
-              {deck || compactToolbar ? (
+              {deck || compactToolbar || onSaveAsTemplate ? (
                 <DesignExportMenu
                   triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
                   compact={compactToolbar}
@@ -2106,6 +2108,7 @@ export function DesignPanel({
                   onPublish={() => publishMutation.mutate()}
                   onExportPdf={() => void exportDeckToPdf()}
                   onExportPptx={() => setPptxConfirmationOpen(true)}
+                  onSaveAsTemplate={onSaveAsTemplate}
                 />
               ) : null}
             </div>

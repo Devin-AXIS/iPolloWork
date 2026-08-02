@@ -45,6 +45,7 @@ export type iPolloWorkExtensionResource = {
   packageName?: string;
   providerId?: string;
   mcpServerName?: string;
+  oauth?: boolean;
   localCommandRef?: "ipollowork.computerUseMcp" | "ipollowork.uiMcp";
   requires?: string[];
   provides?: string[];
@@ -202,6 +203,8 @@ export type iPolloWorkExtensionManifest = {
   };
   setup?: iPolloWorkExtensionSetup;
   resources: iPolloWorkExtensionResource[];
+  /** Detected external Skills shown with this plugin but never installed, toggled, or removed by it. */
+  relatedSkills?: string[];
   contributions?: iPolloWorkExtensionContribution[];
   lifecycle?: iPolloWorkExtensionLifecycle;
   /** Optional package metadata for independently distributed extensions. */

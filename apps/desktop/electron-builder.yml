@@ -17,10 +17,24 @@ files:
 extraResources:
   - from: ../../examples/plugin-packages/figma
     to: plugin-packages/figma
+  - from: ../../examples/plugin-packages/notion
+    to: plugin-packages/notion
+  - from: ../../examples/plugin-packages/linear
+    to: plugin-packages/linear
+  - from: ../../examples/plugin-packages/sentry
+    to: plugin-packages/sentry
+  - from: ../../examples/plugin-packages/stripe
+    to: plugin-packages/stripe
+  - from: ../../examples/plugin-packages/context7
+    to: plugin-packages/context7
   - from: ../../examples/plugin-packages/github
     to: plugin-packages/github
   - from: ../../examples/plugin-packages/wechat-official
     to: plugin-packages/wechat-official
+  - from: ../../examples/plugin-packages/design-agent
+    to: plugin-packages/design-agent
+  - from: ../../examples/plugin-packages/video-agent
+    to: plugin-packages/video-agent
   # Templates are installed by copying their full directory into the local
   # library. Electron's virtual ASAR filesystem can read them but Node cannot
   # recursively copy an ASAR directory on macOS, so keep these assets real.

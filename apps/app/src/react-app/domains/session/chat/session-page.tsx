@@ -5,7 +5,7 @@ import type { UIMessage } from "ai";
 import { usePanelRef } from "react-resizable-panels";
 import { useNavigate } from "react-router-dom";
 import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
-import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type TemplateCatalogItem, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState } from "@ipollowork/types/templates";
+import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 
 import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
@@ -88,6 +88,7 @@ import { designAiSelectionToken, type DesignAiSelectionContext } from "../design
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
+import { TemplateSaveDialog } from "../templates/template-save-dialog";
 import { VideoPanel } from "../video/video-panel";
 import { videoProjectEntryPath } from "../video/video-project";
 import { templateBriefConfigFor, templateBriefPrompt, type TemplateBrief } from "../templates/template-brief";
@@ -118,6 +119,7 @@ const NARROW_LAYOUT_WIDTH = 960;
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateSessionData = {
   sessionId: string;
+  authoring?: boolean;
   state: TemplateSessionState;
   manifest: TemplateManifestV1;
   hasBrief: boolean;
@@ -151,6 +153,10 @@ export type SessionPageSidebarProps = {
     templateScope?: WorkContextId,
   ) => Promise<string | null> | string | null | void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
+  onCreateTemplateAuthoring: (
+    workspaceId: string,
+    input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
+  ) => Promise<string | null> | string | null | void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
   onEditWorkspaceConnection: (workspaceId: string) => void;
@@ -460,6 +466,10 @@ export function SessionPage(props: SessionPageProps) {
   const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
+  const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
+  const [templateValidationReport, setTemplateValidationReport] = useState<TemplateValidationReport | null>(null);
+  const [templateValidationBusy, setTemplateValidationBusy] = useState(false);
+  const [templateSaveBusy, setTemplateSaveBusy] = useState(false);
   useEffect(() => {
     const nextScope = readActiveWorkContextId();
     setTemplateResourceScope(nextScope);
@@ -579,6 +589,7 @@ export function SessionPage(props: SessionPageProps) {
     autoCollapsedSidePanelRef.current = null;
   }, []);
   const autoOpenedDesignTemplateRef = useRef<string | null>(null);
+  const autoOpenedVideoTemplateRef = useRef<string | null>(null);
   const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
     props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
@@ -616,8 +627,80 @@ export function SessionPage(props: SessionPageProps) {
     }
     return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, templateResourceScope);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
+  const validateCurrentTemplate = useCallback(async () => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return null;
+    setTemplateValidationBusy(true);
+    try {
+      const report = await props.ipolloworkServerClient.validateTemplateFromSession(props.runtimeWorkspaceId, props.selectedSessionId);
+      setTemplateValidationReport(report);
+      return report;
+    } catch (error) {
+      const report: TemplateValidationReport = {
+        ready: false,
+        surface: currentTemplateSessionData?.manifest.surface ?? "design",
+        entry: currentTemplateSessionData?.manifest.entry ?? "",
+        manifest: null,
+        issues: [{ code: "template_validation_failed", severity: "error", message: error instanceof Error ? error.message : t("template_authoring.needs_attention") }],
+      };
+      setTemplateValidationReport(report);
+      return report;
+    } finally {
+      setTemplateValidationBusy(false);
+    }
+  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
+  const openTemplateSave = useCallback(() => {
+    if (!currentTemplateSessionData || props.selectedWorkspaceDisplay.workspaceType !== "local") return;
+    setTemplateSaveOpen(true);
+    setTemplateValidationReport(null);
+    void validateCurrentTemplate();
+  }, [currentTemplateSessionData, props.selectedWorkspaceDisplay.workspaceType, validateCurrentTemplate]);
+  const repairCurrentTemplate = useCallback(() => {
+    if (!props.selectedSessionId || !templateValidationReport) return;
+    const visible = t("template_authoring.fix_message");
+    props.surface?.onSendDraft({
+      mode: "prompt",
+      parts: [
+        { type: "text", text: visible },
+        { type: "text", text: `Fix the current template without changing its category or surface. Resolve every server validation issue below, update manifest.json and the validation checklist, then validate again.\n\n${JSON.stringify(templateValidationReport.issues, null, 2)}`, synthetic: true },
+      ],
+      attachments: [],
+      text: visible,
+      resolvedText: visible,
+    }, props.selectedSessionId);
+    setTemplateSaveOpen(false);
+  }, [props.selectedSessionId, props.surface, templateValidationReport]);
+  const saveCurrentTemplate = useCallback(async (input: { title: string; description: string }) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || !currentTemplateSessionData) return;
+    setTemplateSaveBusy(true);
+    try {
+      await props.ipolloworkServerClient.saveTemplateFromSession(props.runtimeWorkspaceId, {
+        sessionId: props.selectedSessionId,
+        category: currentTemplateSessionData.manifest.category,
+        title: input.title,
+        description: input.description,
+        subcategory: currentTemplateSessionData.manifest.subcategory,
+        style: currentTemplateSessionData.manifest.style,
+        tags: currentTemplateSessionData.manifest.tags,
+      }, "personal");
+      const personalCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, "personal");
+      setTemplateCatalog(personalCatalog.items);
+      setTemplateResourceScope("personal");
+      setTemplateSaveOpen(false);
+      toast.success(t("template_authoring.saved"), {
+        description: t("template_authoring.saved_description"),
+        action: { label: t("template_authoring.view_template"), onClick: () => setTemplateMarketOpen(true) },
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("template_authoring.needs_attention"));
+      await validateCurrentTemplate();
+    } finally {
+      setTemplateSaveBusy(false);
+    }
+  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, validateCurrentTemplate]);
   useEffect(() => {
     setTemplateSessionData(null);
+    setTemplateSaveOpen(false);
+    setTemplateValidationReport(null);
   }, [props.selectedSessionId]);
   useEffect(() => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) {
@@ -827,7 +910,17 @@ export function SessionPage(props: SessionPageProps) {
     openCurrentVideoStudio({ auto: true });
   }, [isVideoSession, openCurrentVideoStudio, props.selectedSessionId, props.sidebar.sessionStatusById, videoOutput]);
   useEffect(() => {
+    const autoOpenTemplateProject = currentTemplateSessionData?.authoring === true
+      || currentTemplateSessionData?.manifest.id.startsWith("personal.") === true;
+    if (!props.selectedSessionId || !isVideoSession || !autoOpenTemplateProject) return;
+    const templateKey = `${props.selectedSessionId}:${currentTemplateSessionData.state.entry}`;
+    if (autoOpenedVideoTemplateRef.current === templateKey) return;
+    autoOpenedVideoTemplateRef.current = templateKey;
+    openCurrentVideoStudio({ auto: true });
+  }, [currentTemplateSessionData, isVideoSession, openCurrentVideoStudio, props.selectedSessionId]);
+  useEffect(() => {
     autoOpenedVideoOutputRef.current = null;
+    autoOpenedVideoTemplateRef.current = null;
   }, [props.selectedSessionId]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
@@ -2454,6 +2547,7 @@ export function SessionPage(props: SessionPageProps) {
                         expanded={videoStudioExpanded}
                         onExpandedChange={setVideoStudioExpanded}
                         onAskAi={handleDesignAskAi}
+                        onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         onClose={closeRightPane}
                       />
                     </div>
@@ -2486,6 +2580,7 @@ export function SessionPage(props: SessionPageProps) {
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
                         onAskAi={handleDesignAskAi}
+                        onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
                         titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}
                         onExpandedChange={setRightPanelExpandedState}
@@ -2500,6 +2595,18 @@ export function SessionPage(props: SessionPageProps) {
           </div>
         </SidebarInset>
       </SidebarProvider>
+
+      <TemplateSaveDialog
+        open={templateSaveOpen}
+        template={currentTemplateSessionData?.manifest ?? null}
+        report={templateValidationReport}
+        validating={templateValidationBusy}
+        saving={templateSaveBusy}
+        onOpenChange={setTemplateSaveOpen}
+        onValidate={() => void validateCurrentTemplate()}
+        onRepair={repairCurrentTemplate}
+        onSave={(input) => void saveCurrentTemplate(input)}
+      />
 
       {props.ipolloworkServerClient && props.runtimeWorkspaceId ? <TemplateMarketDialog
         open={templateMarketOpen}
@@ -2518,6 +2625,8 @@ export function SessionPage(props: SessionPageProps) {
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
         onImport={importDesignTemplate}
+        canCreate={props.selectedWorkspaceDisplay.workspaceType === "local"}
+        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input)}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {
             toast.error(t("templates.video_local_only"));

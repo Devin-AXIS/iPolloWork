@@ -47,6 +47,7 @@ const notionQuickConnect: McpDirectoryInfo = {
   type: "remote",
   oauth: true,
   kind: "mcp",
+  pluginPackageId: "notion",
 };
 
 const directNotionServer: McpServerEntry = {
@@ -138,7 +139,7 @@ describe("extension item projection", () => {
     expect(result.installedMcpEntries.map((entry) => entry.name)).toEqual(["Notion"]);
   });
 
-  test("does not dedupe static Quick Connect for unfinished shared org MCPs", () => {
+  test("keeps migrated package services out of the legacy Quick Connect catalog", () => {
     const result = buildExtensionItems({
       quickConnect: [notionQuickConnect],
       mcpServers: [],
@@ -151,6 +152,56 @@ describe("extension item projection", () => {
     });
 
     expect(result.orgMcpConnectionItems).toEqual([]);
-    expect(result.quickConnectEntries.map((entry) => entry.name)).toEqual(["Notion"]);
+    expect(result.quickConnectEntries.map((entry) => entry.name)).toEqual([]);
+  });
+
+  test("keeps plugin-owned and related skills out of the legacy grid without mutating runtime skills", () => {
+    const installedSkills = [
+      { name: "figma-use", path: "/global/figma-use/SKILL.md" },
+      { name: "hyperframes-cli", path: "/global/hyperframes-cli/SKILL.md" },
+      { name: "next-best-practices", path: "/global/next-best-practices/SKILL.md" },
+    ];
+    const result = buildExtensionItems({
+      quickConnect: [],
+      mcpServers: [],
+      installedSkills,
+      pluginPackageSkillNames: ["figma-use", "hyperframes-cli"],
+      importedCloudPlugins: {},
+      cloudMarketplaces: [],
+      enablementContext: {},
+      isBuiltInConnected: () => false,
+    });
+
+    expect(result.installedSkills.map((skill) => skill.name)).toEqual(["next-best-practices"]);
+    expect(installedSkills.map((skill) => skill.name)).toEqual([
+      "figma-use",
+      "hyperframes-cli",
+      "next-best-practices",
+    ]);
+  });
+
+  test("groups configured MCP services only when their plugin package is installed", () => {
+    const grouped = buildExtensionItems({
+      quickConnect: [notionQuickConnect],
+      mcpServers: [directNotionServer],
+      installedSkills: [],
+      installedPluginPackageMcpServerNames: ["notion"],
+      importedCloudPlugins: {},
+      cloudMarketplaces: [],
+      enablementContext: {},
+      isBuiltInConnected: () => false,
+    });
+    const standalone = buildExtensionItems({
+      quickConnect: [notionQuickConnect],
+      mcpServers: [directNotionServer],
+      installedSkills: [],
+      importedCloudPlugins: {},
+      cloudMarketplaces: [],
+      enablementContext: {},
+      isBuiltInConnected: () => false,
+    });
+
+    expect(grouped.installedMcpEntries).toEqual([]);
+    expect(standalone.installedMcpEntries.map((entry) => entry.name)).toEqual(["Notion"]);
   });
 });

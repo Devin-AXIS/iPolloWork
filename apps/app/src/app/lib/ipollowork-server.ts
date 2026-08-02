@@ -7,11 +7,13 @@ import type { CloudImportedMarketplace, CloudImportedPlugin } from "../cloud/imp
 import type { HyperframesCatalogItem } from "@ipollowork/types/hyperframes";
 import {
   templatePackageMediaTypeForFilename,
+  type PptxCompatibility,
   type TemplateCatalogItem,
   type TemplateCategory,
   type TemplateManifestV1,
   type TemplateSessionSnapshot,
   type TemplateSessionState,
+  type TemplateValidationReport,
 } from "@ipollowork/types/templates";
 import type { iPolloWorkExtensionManifest } from "../extensions";
 
@@ -1336,6 +1338,23 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         method: "POST",
         body: input,
         headers: resourceScopeHeaders(scope),
+        timeoutMs: timeouts.workspaceImport,
+      }),
+    createTemplateAuthoringSession: (workspaceId: string, input: { sessionId: string; category: TemplateCategory; pptxCompatibility?: PptxCompatibility }) =>
+      requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/authoring-sessions`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: input,
+        headers: resourceScopeHeaders("personal"),
+        timeoutMs: timeouts.workspaceImport,
+      }),
+    validateTemplateFromSession: (workspaceId: string, sessionId: string) =>
+      requestJson<TemplateValidationReport>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/from-session/validate`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: { sessionId },
         timeoutMs: timeouts.workspaceImport,
       }),
     uninstallTemplate: (workspaceId: string, templateId: string, scope: iPolloWorkResourceScope = "personal") =>

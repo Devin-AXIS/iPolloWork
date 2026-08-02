@@ -107,6 +107,7 @@ import { buildiPolloWorkRuntimeConfigObject } from "./ipollowork-runtime-config.
 import {
   MAX_TEMPLATE_PACKAGE_BYTES,
   adoptLegacyVideoSession,
+  createTemplateAuthoringSession,
   importTemplate,
   installBundledTemplate,
   listTemplateSessions,
@@ -118,6 +119,7 @@ import {
   readTemplateCover,
   saveTemplateFromSession,
   uninstallTemplate,
+  validateTemplateFromSession,
 } from "./templates.js";
 import pkg from "../package.json" with { type: "json" };
 import constants from "../../../constants.json" with { type: "json" };
@@ -1496,6 +1498,34 @@ function createRoutes(
       style: typeof body.style === "string" ? body.style : undefined,
       tags: Array.isArray(body.tags) ? body.tags.filter((tag): tag is string => typeof tag === "string") : undefined,
     }, scope) }, 201);
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/templates/authoring-sessions", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const scope = parseTemplateLibraryScope(ctx.request.headers.get("x-ipollowork-resource-scope"));
+    if (scope !== "personal") throw new ApiError(400, "enterprise_template_authoring_unsupported", "Template authoring is available in the personal template library only");
+    const body = await readJsonBody(ctx.request);
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+    const category = typeof body.category === "string" ? body.category : "";
+    if (!sessionId || !category) throw new ApiError(400, "invalid_payload", "sessionId and category are required");
+    return jsonResponse(await createTemplateAuthoringSession(config, workspace, {
+      sessionId,
+      category: category as import("@ipollowork/types/templates").TemplateCategory,
+      pptxCompatibility: typeof body.pptxCompatibility === "string"
+        ? body.pptxCompatibility as import("@ipollowork/types/templates").PptxCompatibility
+        : undefined,
+    }), 201);
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/templates/from-session/validate", "client", async (ctx) => {
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+    if (!sessionId) throw new ApiError(400, "invalid_payload", "sessionId is required");
+    return jsonResponse(await validateTemplateFromSession(config, workspace, sessionId));
   });
 
   addRoute(routes, "POST", "/workspace/:id/templates/:templateId/install", "client", async (ctx) => {

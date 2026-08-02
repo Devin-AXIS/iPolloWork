@@ -3,7 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
-import { FIGMA_MCP_QUICK_CONNECT, SUGGESTED_PLUGINS } from "@/app/constants";
+import {
+  getMcpServerName,
+  MCP_QUICK_CONNECT,
+  SUGGESTED_PLUGINS,
+} from "@/app/constants";
 import {
   canonicalWorkspacesForWorkContext,
   PERSONAL_WORK_CONTEXT_ID,
@@ -81,6 +85,7 @@ import { EnvironmentView } from "@/react-app/domains/settings/pages/environment-
 import { AuthorizationCenterView } from "@/react-app/domains/settings/pages/authorization-center-view";
 import { ExtensionsView } from "@/react-app/domains/settings/pages/extensions-view";
 import { PluginPackagesPanel } from "@/react-app/domains/settings/plugin-packages-panel";
+import type { PluginPackageRelationships } from "@/react-app/domains/settings/plugin-platform-state";
 import { McpView } from "@/react-app/domains/settings/pages/mcp-view";
 import { RecoveryView } from "@/react-app/domains/settings/pages/recovery-view";
 import { SkillsView } from "@/react-app/domains/settings/pages/skills-view";
@@ -407,6 +412,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [imageExtensionError, setImageExtensionError] = useState<string | null>(null);
   const [computerUsePermissions, setComputerUsePermissions] = useState<{ accessibility: boolean; screenRecording: boolean } | null>(null);
   const [extensionStateVersion, setExtensionStateVersion] = useState(0);
+  const [pluginPackageRelationships, setPluginPackageRelationships] = useState<PluginPackageRelationships>({
+    skillNames: [],
+    installedMcpServerNames: [],
+  });
   const [imageGenerationBusy, setImageGenerationBusy] = useState(false);
   const [imageGenerationStatus, setImageGenerationStatus] = useState<string | null>(null);
   const [imageGenerationError, setImageGenerationError] = useState<string | null>(null);
@@ -1513,6 +1522,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       quickConnect: connectionsStore.quickConnect,
       mcpServers: connectionsSnapshot.mcpServers,
       installedSkills: extensionsStore.skills(),
+      pluginPackageSkillNames: pluginPackageRelationships.skillNames,
+      installedPluginPackageMcpServerNames: pluginPackageRelationships.installedMcpServerNames,
       importedCloudPlugins: extensionsStore.importedCloudPlugins(),
       pendingCloudPluginChanges: extensionsStore.pendingCloudPluginChanges(),
       cloudMarketplaces: extensionsStore.cloudOrgMarketplaces(),
@@ -1520,7 +1531,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       enablementContext,
       isBuiltInConnected: extensionController.isConnected,
     }),
-    [connectionsSnapshot.mcpServers, connectionsStore.quickConnect, enablementContext, extensionController, extensionsStore, orgMcpConnections.connections],
+    [connectionsSnapshot.mcpServers, connectionsStore.quickConnect, enablementContext, extensionController, extensionsStore, orgMcpConnections.connections, pluginPackageRelationships],
   );
   const extensionItemsForExtensions = useMemo(
     () => extensionItems.items.filter((item) => item.source !== "org-connection"),
@@ -1719,9 +1730,24 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               navigateSettingsPath(pluginId ? `extensions/plugin/${encodeURIComponent(pluginId)}` : "extensions");
             }}
             onOpenUrl={(url) => platform.openLink(url)}
-            onConnectFigma={() => {
-              void connectionsStore.connectMcp(FIGMA_MCP_QUICK_CONNECT);
+            mcpStatuses={connectionsSnapshot.mcpStatuses}
+            onConnectMcp={async (serverName) => {
+              const entry = MCP_QUICK_CONNECT.find((candidate) => getMcpServerName(candidate) === serverName);
+              if (!entry) return null;
+              const configured = await connectionsStore.connectMcp(entry);
+              if (!configured) {
+                return connectionsStore.mcpStatuses[serverName] ?? {
+                  status: "failed" as const,
+                  error: connectionsStore.mcpStatus ?? t("mcp.connect_failed"),
+                };
+              }
+              await connectionsStore.refreshMcpServers();
+              return connectionsStore.mcpStatuses[serverName] ?? null;
             }}
+            onLogoutMcpAuth={(serverName) => {
+              void connectionsStore.logoutMcpAuth(serverName);
+            }}
+            onRelationshipsChange={setPluginPackageRelationships}
           />
         );
         if (route.pluginPackageId) return pluginPackagesView;

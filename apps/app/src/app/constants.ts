@@ -56,6 +56,8 @@ export type McpDirectoryInfo = {
   defaultHidden?: boolean;
   /** Whether this extension is still in preview. */
   preview?: boolean;
+  /** New plugin package that owns this legacy MCP directory entry. */
+  pluginPackageId?: string;
   /** Normalized extension manifest backing this catalog entry. */
   extensionManifest?: iPolloWorkExtensionManifest;
 };
@@ -99,10 +101,11 @@ export const FIGMA_MCP_QUICK_CONNECT: McpDirectoryInfo = {
   get name() { return t("mcp.quick_connect_figma_title"); },
   serverName: "figma",
   get description() { return t("mcp.quick_connect_figma_desc"); },
-  url: "https://mcp.figma.com/mcp",
+  url: "http://127.0.0.1:3845/mcp",
   type: "remote",
-  oauth: true,
+  oauth: false,
   kind: "mcp",
+  pluginPackageId: "figma",
   iconSlug: "figma",
 };
 
@@ -116,6 +119,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     type: "remote",
     oauth: true,
     kind: "mcp",
+    pluginPackageId: "notion",
     iconSlug: "notion",
     iconSrc: publicAssetUrl("ext-notion.svg"),
   },
@@ -127,6 +131,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     type: "remote",
     oauth: true,
     kind: "mcp",
+    pluginPackageId: "linear",
     iconSlug: "linear",
     iconSrc: publicAssetUrl("ext-linear.svg"),
   },
@@ -138,6 +143,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     type: "remote",
     oauth: true,
     kind: "mcp",
+    pluginPackageId: "sentry",
     iconSlug: "sentry",
     iconSrc: publicAssetUrl("ext-sentry.svg"),
   },
@@ -149,6 +155,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     type: "remote",
     oauth: true,
     kind: "mcp",
+    pluginPackageId: "stripe",
     iconSlug: "stripe",
     iconSrc: publicAssetUrl("ext-stripe.svg"),
   },
@@ -160,6 +167,7 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
     type: "remote",
     oauth: false,
     kind: "mcp",
+    pluginPackageId: "context7",
     iconSlug: "semanticscholar",
     iconSrc: publicAssetUrl("ext-context7.svg"),
   },

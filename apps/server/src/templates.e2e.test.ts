@@ -35,7 +35,7 @@ describe("template API", () => {
     const catalog = await fetch(`${base}/workspace/ws/templates`, { headers }).then((response) => response.json());
     expect(catalog.items).toHaveLength(117);
     expect(catalog.items.some((item: { manifest: { id: string } }) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
-    expect(catalog.items.some((item: { manifest: { pptxCompatibility?: string } }) => item.manifest.pptxCompatibility === "native-editable")).toBe(true);
+    expect(catalog.items.some((item: { manifest: { id: string; pptxCompatibility?: string } }) => item.manifest.id === "ipollowork.pptx-urban-mobility" && item.manifest.pptxCompatibility === "native-editable")).toBe(true);
 
     const invalidPackage = await fetch(`${base}/workspace/ws/templates/import`, {
       method: "POST",

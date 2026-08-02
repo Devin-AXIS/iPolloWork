@@ -4,7 +4,18 @@ import { fileURLToPath } from "node:url";
 
 import { ApiError } from "./errors.js";
 
-export const bundledPluginPackageIds = ["figma", "github", "wechat-official"] as const;
+export const bundledPluginPackageIds = [
+  "figma",
+  "notion",
+  "linear",
+  "sentry",
+  "stripe",
+  "context7",
+  "github",
+  "wechat-official",
+  "design-agent",
+  "video-agent",
+] as const;
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 

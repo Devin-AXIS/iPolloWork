@@ -1,0 +1,6 @@
+{
+  "type": "remote",
+  "url": "https://mcp.notion.com/mcp",
+  "enabled": true,
+  "oauth": {}
+}
