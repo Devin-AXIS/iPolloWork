@@ -10,7 +10,9 @@ import {
   removeEnterpriseConnection,
   saveEnterpriseConnection,
   type EnterpriseConnection,
+  type EnterpriseResource,
 } from "../src/app/lib/enterprise-connections";
+import { IPOLLOWORK_PACKAGE_MEDIA_TYPE } from "@ipollowork/types/templates";
 
 const originalWindow = globalThis.window;
 
@@ -277,5 +279,34 @@ describe("enterprise connections", () => {
     const file = await downloadEnterpriseResource(connectedEnterprise, resource, fetcher);
     expect(file.name).toBe("github-tools-2.0.0.zip");
     expect(file.size).toBe(3);
+  });
+
+  test("keeps legacy Enterprise templates importable and names canonical packages .ipwp", async () => {
+    const resource: EnterpriseResource = {
+      id: "resource-template",
+      type: "template",
+      slug: "clinical-report",
+      name: "Clinical report",
+      description: "Approved report format",
+      category: "report",
+      enterpriseCategory: "Clinical",
+      iconPath: null,
+      featured: true,
+      updatedAt: "2026-07-28T00:00:00.000Z",
+      latestVersion: {
+        version: "1.2.0",
+        digest: "sha256:abc",
+        downloadPath: "/api/v1/resources/resource-template/versions/1.2.0/download",
+      },
+    };
+    const legacy = await downloadEnterpriseResource(connectedEnterprise, resource, async () => (
+      new Response(new Uint8Array([1]), { headers: { "content-type": "application/octet-stream" } })
+    ));
+    const canonical = await downloadEnterpriseResource(connectedEnterprise, resource, async () => (
+      new Response(new Uint8Array([1]), { headers: { "content-type": IPOLLOWORK_PACKAGE_MEDIA_TYPE } })
+    ));
+
+    expect(legacy.name).toBe("clinical-report-1.2.0.ipwt");
+    expect(canonical.name).toBe("clinical-report-1.2.0.ipwp");
   });
 });

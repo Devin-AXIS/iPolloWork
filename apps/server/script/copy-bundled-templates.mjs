@@ -1,6 +1,7 @@
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { IPOLLOWORK_PACKAGE_EXTENSION } from "@ipollowork/types/templates";
 
 const serverRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(serverRoot, "bundled-templates");
@@ -61,5 +62,5 @@ function createZip(files) {
 
 for (const entry of await readdir(source, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue;
-  await writeFile(join(target, `${entry.name}.ipwt`), createZip(await packageFiles(join(source, entry.name))));
+  await writeFile(join(target, `${entry.name}${IPOLLOWORK_PACKAGE_EXTENSION}`), createZip(await packageFiles(join(source, entry.name))));
 }

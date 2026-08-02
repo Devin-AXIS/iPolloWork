@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { inflateRaw } from "node:zlib";
 import {
+  MAX_TEMPLATE_PACKAGE_BYTES,
   templateCategorySchema,
   templateManifestV1Schema,
   templateSourceTypeSchema,
@@ -27,7 +28,7 @@ import pkg from "../package.json" with { type: "json" };
 const MAX_EXPANDED_BYTES = 200 * 1024 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES = 1_000;
-export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
+export { MAX_TEMPLATE_PACKAGE_BYTES };
 const WITHDRAWN_BUNDLED_TEMPLATE_IDS = new Set([
   "ipollowork.html-anything.deck-xhs-post",
   "ipollowork.html-anything.social-x-post-card",
@@ -260,7 +261,7 @@ async function readZip(buffer: Buffer): Promise<ZipEntry[]> {
   for (let offset = Math.max(0, buffer.length - 65_557); offset <= buffer.length - 22; offset += 1) {
     if (buffer.readUInt32LE(offset) === 0x06054b50) eocd = offset;
   }
-  if (eocd < 0) throw new ApiError(400, "invalid_template_package", "The .ipwt file is not a valid ZIP archive");
+  if (eocd < 0) throw new ApiError(400, "invalid_template_package", "The template package is not a valid ZIP archive");
   const entryCount = buffer.readUInt16LE(eocd + 10);
   const centralOffset = buffer.readUInt32LE(eocd + 16);
   if (entryCount > MAX_FILES) throw new ApiError(413, "template_package_too_large", "Template package contains more than 1,000 files");
@@ -390,6 +391,9 @@ async function readManifest(directory: string): Promise<TemplateManifestV1> {
   let value: unknown;
   try { value = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8")); }
   catch { throw new ApiError(400, "invalid_template_manifest", "manifest.json is required at the package root"); }
+  if (isPlainObject(value) && typeof value.schemaVersion === "number" && value.schemaVersion !== 1) {
+    throw new ApiError(400, "unsupported_template_schema", `Template manifest schema ${value.schemaVersion} is not supported`);
+  }
   const parsed = templateManifestV1Schema.safeParse(value);
   if (!parsed.success) throw new ApiError(400, "invalid_template_manifest", "Template manifest is invalid", parsed.error.flatten());
   const manifest = parsed.data;

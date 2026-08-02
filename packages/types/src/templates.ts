@@ -2,6 +2,22 @@ import { z } from "zod";
 
 export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
 
+export const IPOLLOWORK_PACKAGE_EXTENSION = ".ipwp";
+export const LEGACY_TEMPLATE_PACKAGE_EXTENSION = ".ipwt";
+export const IPOLLOWORK_PACKAGE_MEDIA_TYPE = "application/vnd.ipollowork.package+zip";
+export const LEGACY_TEMPLATE_PACKAGE_MEDIA_TYPE = "application/vnd.ipollowork-template+zip";
+export const TEMPLATE_PACKAGE_EXTENSIONS = Object.freeze([
+  IPOLLOWORK_PACKAGE_EXTENSION,
+  LEGACY_TEMPLATE_PACKAGE_EXTENSION,
+]);
+export const TEMPLATE_PACKAGE_FILE_ACCEPT = TEMPLATE_PACKAGE_EXTENSIONS.join(",");
+
+export function templatePackageMediaTypeForFilename(filename: string): string {
+  return filename.toLowerCase().endsWith(LEGACY_TEMPLATE_PACKAGE_EXTENSION)
+    ? LEGACY_TEMPLATE_PACKAGE_MEDIA_TYPE
+    : IPOLLOWORK_PACKAGE_MEDIA_TYPE;
+}
+
 export const templateCategorySchema = z.enum([
   "site",
   "video",

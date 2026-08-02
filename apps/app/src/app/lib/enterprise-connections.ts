@@ -1,5 +1,10 @@
 import { desktopFetchViaMain } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
+import {
+  IPOLLOWORK_PACKAGE_EXTENSION,
+  IPOLLOWORK_PACKAGE_MEDIA_TYPE,
+  LEGACY_TEMPLATE_PACKAGE_EXTENSION,
+} from "@ipollowork/types/templates";
 
 const ENTERPRISE_CONNECTIONS_KEY = "ipollowork.enterprise-connections.v1";
 const ENTERPRISE_CONNECTION_LIMIT = 12;
@@ -262,7 +267,12 @@ export async function downloadEnterpriseResource(
     const code = isRecord(payload) ? readString(payload, "error") : "";
     throw new Error(code || `enterprise_server_${response.status}`);
   }
-  const extension = resource.type === "template" ? "ipwt" : "zip";
+  const canonicalPackage = response.headers.get("content-type")?.split(";", 1)[0]?.trim() === IPOLLOWORK_PACKAGE_MEDIA_TYPE
+    || response.headers.get("content-disposition")?.toLowerCase().includes(IPOLLOWORK_PACKAGE_EXTENSION)
+    || new URL(downloadUrl).pathname.toLowerCase().endsWith(IPOLLOWORK_PACKAGE_EXTENSION);
+  const extension = resource.type === "template"
+    ? (canonicalPackage ? IPOLLOWORK_PACKAGE_EXTENSION : LEGACY_TEMPLATE_PACKAGE_EXTENSION).slice(1)
+    : "zip";
   return new File([await response.arrayBuffer()], `${resource.slug}-${resource.latestVersion.version}.${extension}`, {
     type: response.headers.get("content-type") || "application/octet-stream",
   });

@@ -5,7 +5,14 @@ import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } fro
 import type { DenOrgMarketplace, DenOrgPluginResolved, DenResourceSnapshot } from "./den-types";
 import type { CloudImportedMarketplace, CloudImportedPlugin } from "../cloud/import-state";
 import type { HyperframesCatalogItem } from "@ipollowork/types/hyperframes";
-import type { TemplateCatalogItem, TemplateCategory, TemplateManifestV1, TemplateSessionSnapshot, TemplateSessionState } from "@ipollowork/types/templates";
+import {
+  templatePackageMediaTypeForFilename,
+  type TemplateCatalogItem,
+  type TemplateCategory,
+  type TemplateManifestV1,
+  type TemplateSessionSnapshot,
+  type TemplateSessionState,
+} from "@ipollowork/types/templates";
 import type { iPolloWorkExtensionManifest } from "../extensions";
 
 export type iPolloWorkServerCapabilities = {
@@ -1315,7 +1322,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         body: file,
         headers: {
-          "Content-Type": "application/vnd.ipollowork-template+zip",
+          "Content-Type": templatePackageMediaTypeForFilename(file.name),
           "X-iPolloWork-Filename": encodeURIComponent(file.name),
           ...resourceScopeHeaders(scope),
           ...(category ? { "X-iPolloWork-Template-Category": category } : {}),

@@ -6,8 +6,12 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 const vo = await loadVoiceoverParagraphs("slideshow-template-import");
 const runKey = Date.now().toString(36);
 const templateTitle = `Fraimz Native Deck ${runKey}`;
-const validPackage = join(tmpdir(), `fraimz-native-deck-${runKey}.ipwt`);
-const invalidPackage = join(tmpdir(), `fraimz-invalid-deck-${runKey}.ipwt`);
+const validPackageName = `fraimz-native-deck-${runKey}.ipwp`;
+const legacyPackageName = `fraimz-native-deck-${runKey}.ipwt`;
+const invalidPackageName = `fraimz-invalid-deck-${runKey}.ipwp`;
+const validPackage = join(tmpdir(), validPackageName);
+const legacyPackage = join(tmpdir(), legacyPackageName);
+const invalidPackage = join(tmpdir(), invalidPackageName);
 
 const CRC32_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
   let entry = value;
@@ -82,12 +86,14 @@ const manifest = {
   minimumAppVersion: "0.17.0",
 };
 
-await writeFile(validPackage, storedZip({
+const validArchive = storedZip({
   "manifest.json": JSON.stringify(manifest),
   "entry.html": "<!doctype html><section data-ipw-slide><h1 data-pptx-text>Fraimz Native Deck</h1></section>",
   "cover.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"960\" height=\"540\"><rect width=\"960\" height=\"540\" fill=\"#111827\"/><text x=\"72\" y=\"270\" fill=\"white\" font-size=\"48\">Fraimz Native Deck</text></svg>",
   LICENSE: "MIT",
-}));
+});
+await writeFile(validPackage, validArchive);
+await writeFile(legacyPackage, validArchive);
 await writeFile(invalidPackage, "not a zip archive");
 
 async function setEnglish(ctx) {
@@ -128,13 +134,25 @@ async function clickExactButton(ctx, text, containingText = "") {
   ctx.assert(clicked, `Button ${text} was not available.`);
 }
 
+async function clickCategoryButton(ctx, label) {
+  const clicked = await ctx.eval(`(() => {
+    const target = [...document.querySelectorAll("button")].find((button) => {
+      const text = (button.textContent || "").replace(/\\s+/g, " ").trim();
+      return !button.disabled && (text === ${JSON.stringify(label)} || text.startsWith(${JSON.stringify(`${label} `)}));
+    });
+    target?.click();
+    return Boolean(target);
+  })()`);
+  ctx.assert(clicked, `Category ${label} was not available.`);
+}
+
 async function choosePackage(ctx, file) {
   const { root } = await ctx.client.send("DOM.getDocument", { depth: 1, pierce: true });
   const { nodeId } = await ctx.client.send("DOM.querySelector", {
     nodeId: root.nodeId,
-    selector: 'input[type="file"][accept=".ipwt"]',
+    selector: 'input[type="file"][accept=".ipwp,.ipwt"]',
   });
-  ctx.assert(Boolean(nodeId), "The .ipwt file input was not found.");
+  ctx.assert(Boolean(nodeId), "The .ipwp and .ipwt file input was not found.");
   await ctx.client.send("DOM.setFileInputFiles", { nodeId, files: [file] });
 }
 
@@ -168,23 +186,23 @@ export default {
     {
       name: "Choose a slideshow package",
       run: async (ctx) => {
-        await ctx.prove("The template market accepts a standard .ipwt package from the Slides category", {
+        await ctx.prove("The template market accepts the canonical .ipwp package from the Slides category", {
           voiceover: vo[0],
           action: async () => {
             await openTemplateMarket(ctx);
-            await clickExactButton(ctx, "Slides");
+            await clickCategoryButton(ctx, "Slides");
             await choosePackage(ctx, validPackage);
-            await ctx.waitForText(`fraimz-native-deck-${runKey}.ipwt`, { timeoutMs: 10_000 });
+            await ctx.waitForText(validPackageName, { timeoutMs: 10_000 });
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              file: document.body.innerText.includes(${JSON.stringify(`fraimz-native-deck-${runKey}.ipwt`)}),
+              file: document.body.innerText.includes(${JSON.stringify(validPackageName)}),
               install: [...document.querySelectorAll("button")].some((button) => (button.textContent || "").trim() === "Install" && !button.disabled),
-              input: document.querySelector('input[type="file"][accept=".ipwt"]')?.getAttribute("accept"),
+              input: document.querySelector('input[type="file"][accept=".ipwp,.ipwt"]')?.getAttribute("accept"),
             }))()`);
-            ctx.assert(state.file && state.install && state.input === ".ipwt", `The selected package state is incomplete: ${JSON.stringify(state)}`);
+            ctx.assert(state.file && state.install && state.input === ".ipwp,.ipwt", `The selected package state is incomplete: ${JSON.stringify(state)}`);
           },
-          screenshot: { name: "slides-package-selected", requireText: ["Templates", "Slides", `fraimz-native-deck-${runKey}.ipwt`, "Install"] },
+          screenshot: { name: "slides-package-selected", requireText: ["Templates", "Slides", validPackageName, "Install"] },
         });
       },
     },
@@ -207,21 +225,21 @@ export default {
                 return window.__fraimzOriginalFetch(...args);
               };
             })()`);
-            await installSelectedPackage(ctx, `fraimz-native-deck-${runKey}.ipwt`);
+            await installSelectedPackage(ctx, validPackageName);
             await ctx.waitFor(`(() => {
-              const install = [...document.querySelectorAll("button")].find((button) => (button.textContent || "").trim() === "Install" && (button.parentElement?.textContent || "").includes(${JSON.stringify(`fraimz-native-deck-${runKey}.ipwt`)}));
+              const install = [...document.querySelectorAll("button")].find((button) => (button.textContent || "").trim() === "Install" && (button.parentElement?.textContent || "").includes(${JSON.stringify(validPackageName)}));
               return install?.disabled && Boolean(install.querySelector(".animate-spin"));
             })()`, { timeoutMs: 5_000, label: "busy import state" });
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              file: document.body.innerText.includes(${JSON.stringify(`fraimz-native-deck-${runKey}.ipwt`)}),
+              file: document.body.innerText.includes(${JSON.stringify(validPackageName)}),
               requests: window.__fraimzImportCount,
               searchEnabled: !document.querySelector('input[placeholder="Search templates"]')?.disabled,
             }))()`);
             ctx.assert(state.file && state.requests === 1 && state.searchEnabled, `The installation state is wrong: ${JSON.stringify(state)}`);
           },
-          screenshot: { name: "slides-package-installing", requireText: [`fraimz-native-deck-${runKey}.ipwt`, "Install"], rejectText: ["Something went wrong"] },
+          screenshot: { name: "slides-package-installing", requireText: [validPackageName, "Install"], rejectText: ["Something went wrong"] },
         });
       },
     },
@@ -248,6 +266,10 @@ export default {
             })()`, { timeoutMs: 10_000, label: "imported deck cover" });
           },
           assert: async () => {
+            await ctx.waitFor(`(() => {
+              const cards = [...document.querySelectorAll("article")].filter((card) => (card.textContent || "").includes(${JSON.stringify(templateTitle)}));
+              return cards.length === 1 && (cards[0].textContent || "").includes("PPTX-compatible") && (cards[0].textContent || "").includes("Slides");
+            })()`, { timeoutMs: 10_000, label: "stable imported deck card" });
             const state = await ctx.eval(`(() => {
               const cards = [...document.querySelectorAll("article")].filter((card) => (card.textContent || "").includes(${JSON.stringify(templateTitle)}));
               return { count: cards.length, pptx: cards[0]?.textContent?.includes("PPTX-compatible") || false, slides: cards[0]?.textContent?.includes("Slides") || false };
@@ -259,25 +281,52 @@ export default {
       },
     },
     {
-      name: "Reject malformed packages without partial installation",
+      name: "Retain the legacy package alias",
       run: async (ctx) => {
-        await ctx.prove("A malformed .ipwt package is rejected and no template card is created", {
+        await ctx.prove("The same v1 package remains importable through its legacy .ipwt filename", {
           voiceover: vo[3],
           action: async () => {
             await dismissToasts(ctx);
+            await choosePackage(ctx, legacyPackage);
+            await ctx.waitForText(legacyPackageName, { timeoutMs: 10_000 });
+            await installSelectedPackage(ctx, legacyPackageName);
+            await ctx.waitForText(`Installed ${templateTitle}`, { timeoutMs: 30_000 });
+          },
+          assert: async () => {
+            await ctx.waitFor(`(() => [...document.querySelectorAll("article")].filter((card) =>
+              (card.textContent || "").includes(${JSON.stringify(templateTitle)})
+            ).length === 1)()`, { timeoutMs: 10_000, label: "stable legacy-imported deck card" });
+            const state = await ctx.eval(`(() => ({
+              installed: document.body.innerText.includes(${JSON.stringify(`Installed ${templateTitle}`)}),
+              cards: [...document.querySelectorAll("article")].filter((card) => (card.textContent || "").includes(${JSON.stringify(templateTitle)})).length,
+              failed: document.body.innerText.includes("Something went wrong"),
+            }))()`);
+            ctx.assert(state.installed && state.cards === 1 && !state.failed, `Legacy package compatibility failed: ${JSON.stringify(state)}`);
+          },
+          screenshot: { name: "legacy-ipwt-imported", requireText: [`Installed ${templateTitle}`, templateTitle, "PPTX-compatible"], rejectText: ["Something went wrong"] },
+        });
+      },
+    },
+    {
+      name: "Reject malformed packages without partial installation",
+      run: async (ctx) => {
+        await ctx.prove("A malformed .ipwp package is rejected and no template card is created", {
+          voiceover: vo[4],
+          action: async () => {
+            await dismissToasts(ctx);
             await choosePackage(ctx, invalidPackage);
-            await ctx.waitForText(`fraimz-invalid-deck-${runKey}.ipwt`, { timeoutMs: 10_000 });
-            await installSelectedPackage(ctx, `fraimz-invalid-deck-${runKey}.ipwt`);
-            await ctx.waitForText("The .ipwt file is not a valid ZIP archive", { timeoutMs: 20_000 });
+            await ctx.waitForText(invalidPackageName, { timeoutMs: 10_000 });
+            await installSelectedPackage(ctx, invalidPackageName);
+            await ctx.waitForText("The template package is not a valid ZIP archive", { timeoutMs: 20_000 });
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              selected: document.body.innerText.includes(${JSON.stringify(`fraimz-invalid-deck-${runKey}.ipwt`)}),
+              selected: document.body.innerText.includes(${JSON.stringify(invalidPackageName)}),
               partial: [...document.querySelectorAll("article")].some((card) => (card.textContent || "").includes("fraimz-invalid-deck")),
             }))()`);
             ctx.assert(state.selected && !state.partial, `Malformed import recovery is wrong: ${JSON.stringify(state)}`);
           },
-          screenshot: { name: "malformed-package-rejected", requireText: [`fraimz-invalid-deck-${runKey}.ipwt`, "The .ipwt file is not a valid ZIP archive"], rejectText: ["Something went wrong"] },
+          screenshot: { name: "malformed-package-rejected", requireText: [invalidPackageName, "The template package is not a valid ZIP archive"], rejectText: ["Something went wrong"] },
         });
       },
     },
@@ -285,13 +334,13 @@ export default {
       name: "Keep the package available for retry or cancel",
       run: async (ctx) => {
         await ctx.prove("After failure, the same selected package can be retried without reopening the file picker", {
-          voiceover: vo[4],
+          voiceover: vo[5],
           action: async () => {
             await dismissToasts(ctx);
-            await installSelectedPackage(ctx, `fraimz-invalid-deck-${runKey}.ipwt`);
-            await ctx.waitForText("The .ipwt file is not a valid ZIP archive", { timeoutMs: 20_000 });
+            await installSelectedPackage(ctx, invalidPackageName);
+            await ctx.waitForText("The template package is not a valid ZIP archive", { timeoutMs: 20_000 });
             await ctx.waitFor(`(() => {
-              const filename = ${JSON.stringify(`fraimz-invalid-deck-${runKey}.ipwt`)};
+              const filename = ${JSON.stringify(invalidPackageName)};
               const buttons = [...document.querySelectorAll("button")];
               const retry = buttons.find((button) => (button.textContent || "").trim() === "Install" && (button.parentElement?.textContent || "").includes(filename));
               const cancel = buttons.find((button) => (button.textContent || "").trim() === "Cancel");
@@ -300,13 +349,13 @@ export default {
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              file: document.body.innerText.includes(${JSON.stringify(`fraimz-invalid-deck-${runKey}.ipwt`)}),
-              retry: [...document.querySelectorAll("button")].some((button) => (button.textContent || "").trim() === "Install" && !button.disabled && (button.parentElement?.textContent || "").includes(${JSON.stringify(`fraimz-invalid-deck-${runKey}.ipwt`)})),
+              file: document.body.innerText.includes(${JSON.stringify(invalidPackageName)}),
+              retry: [...document.querySelectorAll("button")].some((button) => (button.textContent || "").trim() === "Install" && !button.disabled && (button.parentElement?.textContent || "").includes(${JSON.stringify(invalidPackageName)})),
               cancel: [...document.querySelectorAll("button")].some((button) => (button.textContent || "").trim() === "Cancel" && !button.disabled),
             }))()`);
             ctx.assert(state.file && state.retry && state.cancel, `Retry controls are incomplete: ${JSON.stringify(state)}`);
           },
-          screenshot: { name: "failed-package-retained", requireText: [`fraimz-invalid-deck-${runKey}.ipwt`, "Install", "Cancel"] },
+          screenshot: { name: "failed-package-retained", requireText: [invalidPackageName, "Install", "Cancel"] },
         });
       },
     },
@@ -314,7 +363,7 @@ export default {
       name: "Prevent duplicate submissions without freezing the market",
       run: async (ctx) => {
         await ctx.prove("An in-flight import accepts one request while search remains responsive", {
-          voiceover: vo[5],
+          voiceover: vo[6],
           action: async () => {
             await dismissToasts(ctx);
             await choosePackage(ctx, validPackage);
@@ -330,7 +379,7 @@ export default {
                 }
                 return window.__fraimzOriginalFetch(...args);
               };
-              const filename = ${JSON.stringify(`fraimz-native-deck-${runKey}.ipwt`)};
+              const filename = ${JSON.stringify(validPackageName)};
               const install = [...document.querySelectorAll("button")].find((button) => (button.textContent || "").trim() === "Install" && (button.parentElement?.textContent || "").includes(filename));
               install?.click();
               install?.click();
@@ -350,7 +399,7 @@ export default {
             }))()`);
             ctx.assert(state.requests === 1 && state.query === "Fraimz" && state.spinner, `Duplicate protection or responsiveness failed: ${JSON.stringify(state)}`);
           },
-          screenshot: { name: "duplicate-import-prevented", requireText: ["Fraimz", `fraimz-native-deck-${runKey}.ipwt`, "Install"], rejectText: ["Something went wrong"] },
+          screenshot: { name: "duplicate-import-prevented", requireText: ["Fraimz", validPackageName, "Install"], rejectText: ["Something went wrong"] },
         });
       },
     },

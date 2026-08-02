@@ -5,7 +5,7 @@ description: "Package a reusable design or HyperFrames video template for iPollo
 
 Template Market lets developers and design teams reuse a proven starting point without copying an old project by hand. Importing a template installs it in the desktop profile's personal library, so it can be used from any of that person's workstations. Applying a template creates a session-owned copy; uninstalling it never removes existing work.
 
-This page documents the current local `.ipwt` format. There is no public hosted-market publishing API yet.
+This page documents the canonical iPolloWork Package (`.ipwp`) format. Existing `.ipwt` template packages remain fully supported as a legacy filename alias. There is no public hosted-market publishing API yet.
 
 ## Choose a template surface
 
@@ -18,10 +18,10 @@ The nine supported categories are `site`, `video`, `app`, `slides`, `poster`, `c
 
 ## Package layout
 
-An `.ipwt` file is a ZIP archive. Put `manifest.json` directly at the archive root—do not wrap the files in another parent folder.
+An `.ipwp` file is a ZIP archive. Put `manifest.json` directly at the archive root—do not wrap the files in another parent folder. A legacy `.ipwt` file uses the same bytes and layout, so it can be imported without conversion.
 
 ```text
-acme-growth-brief.ipwt
+acme-growth-brief.ipwp
 ├── manifest.json
 ├── cover.svg
 ├── entry.html                 # design templates
@@ -33,7 +33,7 @@ acme-growth-brief.ipwt
 A video template uses `index.html` in place of `entry.html`:
 
 ```text
-acme-product-reveal.ipwt
+acme-product-reveal.ipwp
 ├── manifest.json
 ├── cover.svg
 ├── index.html
@@ -139,13 +139,15 @@ Keep video assets inside the package and avoid depending on an external browser 
 
 ## Package and import
 
-From the directory that contains `manifest.json`, create a ZIP archive with the files at its root and give it the `.ipwt` extension:
+From the directory that contains `manifest.json`, create a ZIP archive with the files at its root and give it the canonical `.ipwp` extension:
 
 ```bash
-zip -r acme-growth-brief.ipwt manifest.json cover.svg entry.html design-tokens.css assets
+zip -r acme-growth-brief.ipwp manifest.json cover.svg entry.html design-tokens.css assets
 ```
 
-In iPolloWork, open your avatar menu, choose **Template Market**, and select **Import .ipwt**. Choose the template category before installing; it must match the package's `manifest.json`, or the import is rejected. The package is then installed into your personal library. You can test it by choosing **Use**; this creates a new session copy, so it is safe to uninstall or update the library template afterward.
+In iPolloWork, open your avatar menu, choose **Template Market**, and select **Import .ipwp or .ipwt**. Choose the template category before installing; it must match the package's `manifest.json`, or the import is rejected. The package is then installed into your personal library. You can test it by choosing **Use**; this creates a new session copy, so it is safe to uninstall or update the library template afterward.
+
+To migrate an unpublished legacy package, copy or rename `template.ipwt` to `template.ipwp`. Do not rewrite `manifest.json`, change its `id` or `version`, or recompress the archive merely to migrate the filename. Published releases remain immutable; publish changed contents under a new semantic version.
 
 ## Canonical session record
 

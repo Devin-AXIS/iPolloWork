@@ -1472,7 +1472,7 @@ function createRoutes(
     await requireApproval(ctx, { workspaceId: workspace.id, action: "template.import", summary: "Import a personal template", paths: [join(dirname(runtimeDbPathForServer(config)), "templates")] });
     const category = ctx.request.headers.get("x-ipollowork-template-category")?.trim();
     const archive = await readLimitedRequestBody(ctx.request, MAX_TEMPLATE_PACKAGE_BYTES);
-    if (archive.byteLength === 0) throw new ApiError(400, "empty_template_package", "Choose a .ipwt template package");
+    if (archive.byteLength === 0) throw new ApiError(400, "empty_template_package", "Choose an iPolloWork template package");
     return jsonResponse({ item: await importTemplate(config, workspace.id, archive, category, scope) }, 201);
   });
 

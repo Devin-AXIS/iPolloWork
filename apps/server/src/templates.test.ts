@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
-import { TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
+import { IPOLLOWORK_PACKAGE_EXTENSION, TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
+import { adoptLegacyVideoSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
@@ -96,14 +96,6 @@ const pptxCompatibleTemplateIds = [
   "ipollowork.pptx-research-signals",
   "ipollowork.pptx-venture-blueprint",
   "ipollowork.pptx-northstar-strategy",
-  "ipollowork.pptx-compatible-brief",
-  "ipollowork.pptx-compatible-pitch",
-  "ipollowork.pptx-compatible-report",
-];
-const hiddenPptxCompatibleTemplateIds = [
-  "ipollowork.pptx-compatible-brief",
-  "ipollowork.pptx-compatible-pitch",
-  "ipollowork.pptx-compatible-report",
 ];
 const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.app-device-launch",
@@ -738,7 +730,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(105);
+    expect(directories).toHaveLength(117);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -751,7 +743,7 @@ describe("template installations", () => {
       expect(cover.byteLength).toBeGreaterThan(15_000);
       hashes.add(Bun.hash(cover).toString());
     }
-    expect(hashes.size).toBe(105);
+    expect(hashes.size).toBe(117);
   });
 
   test("ships strict PPTX-compatible slide templates with explicit editable object markers", async () => {
@@ -771,6 +763,7 @@ describe("template installations", () => {
     const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
     for (const templateId of pptxCompatibleTemplateIds) {
       expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+      expect(existsSync(join(builtTemplatesRoot, `${templateId}${IPOLLOWORK_PACKAGE_EXTENSION}`))).toBe(true);
     }
   });
 
@@ -779,13 +772,9 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(102);
+    expect(first.filter((item) => item.installed)).toHaveLength(117);
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(true);
-    for (const templateId of hiddenPptxCompatibleTemplateIds) {
-      expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
-      expect(existsSync(join(bundledTemplatesRoot, templateId, "manifest.json"))).toBe(true);
-    }
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
@@ -815,6 +804,9 @@ describe("template installations", () => {
     );
     sqlite.close();
 
+    const available = await listTemplates(serverConfig, ws.id);
+    expect(available.find((item) => item.manifest.id === templateId)?.updateAvailable).toBe(true);
+    await installBundledTemplate(serverConfig, ws.id, templateId);
     const refreshed = await listTemplates(serverConfig, ws.id);
     expect(refreshed.find((item) => item.manifest.id === templateId)?.installedVersion).toBe("1.1.0");
     expect(existsSync(legacyPackagePath)).toBe(false);
@@ -886,6 +878,7 @@ describe("template installations", () => {
     await expect(importTemplate(serverConfig, "alpha", storedZip({ "../escape.html": "bad" }), "site")).rejects.toMatchObject({ code: "invalid_template_package" });
     await expect(importTemplate(serverConfig, "alpha", localPackage(), "slides")).rejects.toMatchObject({ code: "template_category_mismatch" });
     await expect(importTemplate(serverConfig, "alpha", localPackage("local.invalid-video", { category: "video", surface: "video" }), "video")).rejects.toMatchObject({ code: "invalid_template_manifest" });
+    await expect(importTemplate(serverConfig, "alpha", localPackage("local.future-package", { schemaVersion: 2 }), "site")).rejects.toMatchObject({ code: "unsupported_template_schema" });
   });
 
   test("auto-detects imported categories while preserving scoped import checks", async () => {
