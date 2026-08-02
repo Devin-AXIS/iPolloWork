@@ -1,4 +1,4 @@
 interface:
   display_name: "iPolloWork Template Generation"
-  short_description: "Generate templates compatible with iPolloWork design-system themes."
-  default_prompt: "Use $ipollowork-template-generation to generate a theme-compatible iPolloWork HTML template."
+  short_description: "Create reusable Design, Slides/PPT, and Video templates."
+  default_prompt: "Use $ipollowork-template-generation to guide me one question at a time and create a validated, reusable iPolloWork template."

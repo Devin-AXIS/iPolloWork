@@ -58,6 +58,7 @@ type SidePanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
+  onSaveAsTemplate?: () => void;
   expanded?: boolean;
   titlebarInset?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
@@ -454,6 +455,7 @@ export function SidePanel({
   isRemoteWorkspace = false,
   launcherItems = [],
   onAskAi,
+  onSaveAsTemplate,
   expanded = false,
   titlebarInset = false,
   onExpandedChange,
@@ -714,6 +716,7 @@ export function SidePanel({
               initialPath={activeTab.path}
               expanded={expanded}
               onAskAi={onAskAi ?? (() => undefined)}
+              onSaveAsTemplate={onSaveAsTemplate}
             />
           </DesignPanelErrorBoundary>
         ) : activeTab?.type === "browser" ? (

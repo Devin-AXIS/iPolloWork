@@ -15,6 +15,7 @@ import type {
   SessionStatus,
   TextPartInput,
 } from "@opencode-ai/sdk/v2/client";
+import type { PptxCompatibility, TemplateCategory } from "@ipollowork/types/templates";
 
 import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
 import {
@@ -78,6 +79,8 @@ import {
   type DesignAiSelectionContext,
 } from "@/react-app/domains/session/design/design-ai-selection";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
+import { readAppliedDesignSystemId } from "@/react-app/domains/session/design/design-system-theme-contract";
+import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/react-app/domains/session/templates/template-authoring";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
 import { useModelBehavior } from "@/react-app/domains/session/surface/use-model-behavior";
 import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
@@ -1105,7 +1108,21 @@ export function SessionRoute() {
               applyChecklist: designSessionTemplate?.manifest.applyChecklist ?? null,
             })
           : null;
-        const systemContext = [envSystemContext, videoSystemContext, designSystemContext, capabilitySystemContext]
+        let selectedDesignSystemGuide: string | null = null;
+        if (sessionTemplate?.authoring && selectedWorkspaceEndpoint && sessionTemplate.manifest.designSystem.tokens) {
+          const entryDirectory = sessionTemplate.state.entry.split("/").slice(0, -1).join("/");
+          const tokenPath = `${entryDirectory}/${sessionTemplate.manifest.designSystem.tokens}`;
+          const tokenFile = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, tokenPath).catch(() => null);
+          const appliedDesignSystemId = readAppliedDesignSystemId(tokenFile?.content);
+          if (appliedDesignSystemId && appliedDesignSystemId !== "default") {
+            const { loadDesignSystemAuthoringGuide } = await import("@/react-app/domains/session/design/design-system-registry");
+            selectedDesignSystemGuide = await loadDesignSystemAuthoringGuide(appliedDesignSystemId).catch(() => null);
+          }
+        }
+        const authoringSystemContext = sessionTemplate
+          ? templateAuthoringSystemContext(sessionTemplate, selectedDesignSystemGuide)
+          : null;
+        const systemContext = [envSystemContext, videoSystemContext, designSystemContext, authoringSystemContext, capabilitySystemContext]
           .filter((value): value is string => Boolean(value?.trim()))
           .join("\n\n");
         // Version history is a site-only workflow. Slides and every other
@@ -1327,6 +1344,7 @@ export function SessionRoute() {
     type: iPolloWorkSessionType = "work",
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
+    authoring?: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
   ): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     if (
@@ -1346,7 +1364,7 @@ export function SessionRoute() {
       { token: endpoint.token, mode: "ipollowork" },
     );
     let createdSessionId: string | null = null;
-    let templateMaterializationFailed = false;
+    let projectInitializationFailed = false;
     try {
       setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
       setRouteError(null);
@@ -1366,7 +1384,20 @@ export function SessionRoute() {
           );
           sessionType = sessionTypeForTemplate(materialized.manifest);
         } catch (error) {
-          templateMaterializationFailed = true;
+          projectInitializationFailed = true;
+          throw error;
+        }
+      }
+      if (authoring) {
+        try {
+          const created = await endpoint.client.createTemplateAuthoringSession(endpoint.workspaceId, {
+            sessionId: session.id,
+            category: authoring.category,
+            pptxCompatibility: authoring.pptxCompatibility,
+          });
+          sessionType = sessionTypeForTemplate(created.manifest);
+        } catch (error) {
+          projectInitializationFailed = true;
           throw error;
         }
       }
@@ -1392,21 +1423,37 @@ export function SessionRoute() {
       navigateToWorkspaceSession(workspaceId, session.id);
       focusPromptSoon();
       void refreshRouteState();
+      if (authoring) {
+        const kickoff = templateAuthoringKickoff(authoring.category, authoring.pptxCompatibility);
+        const send = surfacePropsRef.current?.onSendDraft;
+        if (send) {
+          void Promise.resolve(send({
+            mode: "prompt",
+            parts: [
+              { type: "text", text: kickoff.text },
+              { type: "text", text: kickoff.instruction, synthetic: true },
+            ],
+            attachments: [],
+            text: kickoff.text,
+            resolvedText: kickoff.text,
+          }, session.id)).catch((error) => toast.error(describeRouteError(error)));
+        }
+      }
       return session.id;
     } catch (error) {
       const message = describeTaskCreateError(error);
-      if (templateId && templateMaterializationFailed) {
+      if ((templateId || authoring) && projectInitializationFailed) {
         if (createdSessionId) {
           await endpoint.client.deleteSession(endpoint.workspaceId, createdSessionId).catch(() => undefined);
         }
         setRouteError(null);
         setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
-        toast.error("Template unavailable", {
-          id: templateCreateUnavailableToastId(workspaceId, templateId),
+        toast.error(authoring ? "Could not create template" : "Template unavailable", {
+          id: templateCreateUnavailableToastId(workspaceId, templateId ?? `authoring-${authoring?.category ?? "template"}`),
           description: message,
           action: {
             label: "Retry",
-            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
+            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, authoring),
           },
           duration: Infinity,
         });
@@ -1903,6 +1950,8 @@ export function SessionRoute() {
         onPrefetchSession: () => {},
         onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) =>
           handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
+        onCreateTemplateAuthoring: (workspaceId, input) =>
+          handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, input),
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
           void (async () => {
             const workspace = workspaces.find((item) => item.id === workspaceId);
