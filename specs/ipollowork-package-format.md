@@ -1,9 +1,9 @@
 # iPolloWork Package Format
 
-Status: Draft specification 1.0  
-Canonical extension: `.ipwp`  
-Legacy template extension: `.ipwt`  
-Canonical media type: `application/vnd.ipollowork.package+zip`
+- Status: Draft specification 1.0
+- Canonical extension: `.ipwp`
+- Legacy template extension: `.ipwt`
+- Canonical media type: `application/vnd.ipollowork.package+zip`
 
 ## 1. Scope
 
