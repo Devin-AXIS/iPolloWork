@@ -60,5 +60,7 @@
     "knip": "6.29.0",
     "opencc-js": "^1.4.0"
   },
-  "packageManager": "pnpm@11.4.0"
+  "engines": {
+    "pnpm": ">=11.4.0 <12"
+  }
 }

@@ -1,5 +1,5 @@
 import { useRef, type MouseEvent } from "react";
-import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
+import { Camera } from "../icons/SystemIcons";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
@@ -23,7 +23,6 @@ export interface StudioHeaderProps {
   capturing?: boolean;
   inspectorButtonActive: boolean;
   inspectorPanelActive: boolean;
-  onExport?: () => void;
 }
 
 function HyperframesLogo() {
@@ -217,9 +216,8 @@ export function StudioHeader({
   capturing,
   inspectorButtonActive,
   inspectorPanelActive,
-  onExport,
 }: StudioHeaderProps) {
-  const { editHistory, handleUndo, handleRedo, renderQueue } = useStudioShellContext();
+  const { editHistory, handleUndo, renderQueue, projectId } = useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const { t } = useStudioI18n();
   const isRendering = renderQueue.isRendering;
@@ -265,32 +263,10 @@ export function StudioHeader({
             }`}
             aria-label={t("header.undo")}
           >
-            <RotateCcw size={14} />
-          </button>
-        </Tooltip>
-        <Tooltip
-          label={
-            editHistory.redoLabel
-              ? `${t("header.redo")} ${editHistory.redoLabel} (${getHistoryShortcutLabel("redo")})`
-              : `${t("header.redo")} (${getHistoryShortcutLabel("redo")})`
-          }
-          side="bottom"
-        >
-          <button
-            type="button"
-            onClick={() => {
-              trackStudioEvent("toolbar_action", { action: "redo" });
-              void handleRedo();
-            }}
-            disabled={!editHistory.canRedo}
-            className={`h-7 w-7 flex items-center justify-center rounded-md transition-colors active:scale-[0.98] ${
-              editHistory.canRedo
-                ? "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
-                : "text-neutral-700 cursor-default"
-            }`}
-            aria-label={t("header.redo")}
-          >
-            <RotateCw size={14} />
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 14 4 9l5-5" />
+              <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+            </svg>
           </button>
         </Tooltip>
         <Tooltip label={capturing ? t("header.capturing") : t("header.captureCurrentFrame")} side="bottom">
@@ -352,6 +328,9 @@ export function StudioHeader({
             type="button"
             onClick={() => {
               if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
+              if (window.parent !== window) {
+                window.parent.postMessage({ type: "ipollowork:video-studio-panel", projectId, panel: null }, "*");
+              }
               if (rightCollapsed || !inspectorPanelActive) {
                 trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: false });
                 setRightPanelTab("design");
@@ -415,14 +394,14 @@ export function StudioHeader({
         >
           <button
             type="button"
-            disabled={isRendering}
             onClick={() => {
-              if (isRendering) return;
+              if (window.parent !== window) {
+                window.parent.postMessage({ type: "ipollowork:video-studio-panel", projectId, panel: null }, "*");
+              }
               setRightPanelTab("renders");
               setRightCollapsed(false);
-              onExport?.();
             }}
-            className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] enabled:hover:brightness-110 transition-[filter,transform] enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] hover:brightness-110 transition-[filter,transform] active:scale-[0.98]"
           >
             {isRendering ? t("header.rendering") : t("header.export")}
           </button>

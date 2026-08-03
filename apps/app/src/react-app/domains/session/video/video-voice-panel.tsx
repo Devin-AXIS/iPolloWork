@@ -28,6 +28,7 @@ type VideoVoicePanelProps = {
   workspaceId: string | null;
   previewRequest: number;
   onClose: () => void;
+  embedded?: boolean;
 };
 
 type CustomVoice = {
@@ -112,7 +113,7 @@ async function readAudioDuration(file: File): Promise<number> {
   }
 }
 
-export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId, previewRequest, onClose }: VideoVoicePanelProps) {
+export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId, previewRequest, onClose, embedded = false }: VideoVoicePanelProps) {
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const handledPreviewRequestRef = React.useRef(0);
@@ -328,8 +329,8 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
   }, [loading, previewRequest, previewVoice]);
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-20 flex w-[22rem] max-w-[calc(100%-2rem)] flex-col border-l border-border bg-popover/95 shadow-2xl backdrop-blur-xl" aria-label="视频配音设置" data-testid="video-voice-panel">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+    <aside className={embedded ? "absolute bottom-0 right-0 top-[82px] z-20 flex w-[400px] max-w-[calc(100%-2rem)] min-h-0 flex-col border-l border-border bg-popover" : "absolute inset-y-0 right-0 z-20 flex w-[22rem] max-w-[calc(100%-2rem)] flex-col border-l border-border bg-popover/95 shadow-2xl backdrop-blur-xl"} aria-label="视频配音设置" data-testid="video-voice-panel" data-embedded={embedded ? "true" : "false"}>
+      {!embedded ? <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
         <AudioLines className="size-4 text-primary" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">配音</p>
@@ -339,7 +340,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
           {previewing ? <Loader2 className="animate-spin" /> : <Play />}
         </Button>
         <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="关闭配音设置"><X /></Button>
-      </div>
+      </div> : null}
 
       <ScrollArea className="min-h-0 flex-1">
         <ScrollAreaViewport className="px-3 py-3">
@@ -357,7 +358,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
               </div>
               <Select value={presetVoiceId} onValueChange={(value) => { if (value) void choosePreset(value); }}>
                 <SelectTrigger className="w-full" aria-label="百炼官方音色"><SelectValue placeholder="选择一个官方音色" /></SelectTrigger>
-                <SelectContent alignItemWithTrigger><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{voice.label} · {voice.description}</SelectItem>)}</SelectGroup></SelectContent>
+                <SelectContent align="start"><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{voice.label} · {voice.description}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
               {activeVoice?.source === "preset" ? <SelectedVoice voiceId={activeVoice.voiceId} label={BAILIAN_PRESET_VOICES.find((voice) => voice.id === activeVoice.voiceId)?.label ?? activeVoice.voiceId} /> : null}
             </TabsContent>
@@ -365,7 +366,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
               <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium">我复刻的声音</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">复刻样本会通过私有临时链接交给百炼，完成后自动清理。</p></div><Button variant="ghost" size="icon-xs" onClick={() => void refreshCustomVoices()} disabled={refreshingVoices} aria-label="刷新我的声音">{refreshingVoices ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button></div>
               <Select value={activeVoice?.source === "cloned" ? activeVoice.voiceId : ""} onValueChange={(value) => { if (value) void chooseCustomVoice(value); }}>
                 <SelectTrigger className="w-full" aria-label="我的百炼声音"><SelectValue placeholder={customVoices.length ? "选择已复刻的声音" : "还没有复刻的声音"} /></SelectTrigger>
-                <SelectContent alignItemWithTrigger><SelectGroup>{customVoices.map((voice) => <SelectItem key={voice.id} value={voice.id} disabled={!canSynthesizeCustomVoice(voice)}>{voice.name}{voice.status === "OK" ? "" : ` · ${voice.status}`}</SelectItem>)}</SelectGroup></SelectContent>
+                <SelectContent align="start"><SelectGroup>{customVoices.map((voice) => <SelectItem key={voice.id} value={voice.id} disabled={!canSynthesizeCustomVoice(voice)}>{voice.name}{voice.status === "OK" ? "" : ` · ${voice.status}`}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
               <input ref={uploadInputRef} type="file" accept="audio/wav,audio/mpeg,audio/mp4,.wav,.mp3,.m4a" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void cloneVoice(file); }} />
               <div className="rounded-xl border border-dashed border-border bg-muted/25 p-3">

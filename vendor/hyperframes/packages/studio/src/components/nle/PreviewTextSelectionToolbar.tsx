@@ -295,7 +295,6 @@ export function PreviewTextSelectionToolbar({
     useDomEditActionsContext();
   const [state, setState] = useState<TextSelectionState | null>(null);
   const [replacementText, setReplacementText] = useState("");
-  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const stateRef = useRef<TextSelectionState | null>(null);
   const committingRef = useRef(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -343,7 +342,6 @@ export function PreviewTextSelectionToolbar({
     const next = buildToolbarState();
     setState(next);
     setReplacementText(next?.text ?? "");
-    setDeleteConfirmationOpen(false);
   }, [buildToolbarState]);
 
   useEffect(() => {
@@ -456,7 +454,6 @@ export function PreviewTextSelectionToolbar({
   const deleteSelectedElement = useCallback(() => {
     if (!activeSelection) return;
     void handleDomEditElementDelete(activeSelection);
-    setDeleteConfirmationOpen(false);
     stateRef.current = null;
     setState(null);
   }, [activeSelection, handleDomEditElementDelete]);
@@ -560,23 +557,13 @@ export function PreviewTextSelectionToolbar({
       <span className="hf-preview-text-toolbar__divider" aria-hidden="true" />
       <button
         type="button"
-        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
+        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button hf-preview-text-toolbar__delete-button"
         aria-label="Delete selected element"
         title="Delete"
-        aria-expanded={deleteConfirmationOpen}
-        onClick={() => setDeleteConfirmationOpen(true)}
+        onClick={deleteSelectedElement}
       >
         <Trash size={18} />
       </button>
-      {deleteConfirmationOpen ? (
-        <div className="hf-preview-text-toolbar__delete-confirmation" role="alertdialog" aria-label="Confirm deletion">
-          <p>Delete selected element?</p>
-          <div>
-            <button type="button" onClick={() => setDeleteConfirmationOpen(false)}>Cancel</button>
-            <button type="button" className="hf-preview-text-toolbar__confirm-delete" onClick={deleteSelectedElement}>Delete</button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

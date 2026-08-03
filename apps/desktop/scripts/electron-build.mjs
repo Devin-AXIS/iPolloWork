@@ -78,7 +78,9 @@ function currentHyperframesBuildKey() {
     resolve(hyperframesRoot, "package.json"),
     resolve(hyperframesRoot, "bun.lock"),
     resolve(hyperframesRoot, "packages", "cli", "package.json"),
+    resolve(hyperframesRoot, "packages", "cli", "scripts", "build-copy.mjs"),
     resolve(hyperframesRoot, "packages", "studio", "package.json"),
+    resolve(hyperframesRoot, "packages", "studio", "vite.config.ts"),
     resolve(hyperframesRoot, "packages", "studio-server", "package.json"),
   ]));
   for (const packageName of ["cli", "core", "engine", "lint", "parsers", "player", "producer", "sdk", "shader-transitions", "studio", "studio-server"]) {

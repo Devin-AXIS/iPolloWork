@@ -31,24 +31,29 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
   const autoLintRanRef = useRef(false);
 
   const runLint = useCallback(
-    async (opts?: { background?: boolean }) => {
-      if (!projectId) return;
+    async (opts?: { background?: boolean; revealOnError?: boolean }) => {
+      if (!projectId) return [];
       if (!opts?.background) setLinting(true);
       try {
         const res = await fetch(`/api/projects/${projectId}/lint`);
+        if (!res.ok) throw new Error(`Server error ${res.status}`);
         const data = await res.json();
         const parsed = ((data.findings ?? []) as RawFinding[]).map(parseFinding);
         if (opts?.background) {
           setBackgroundFindings(parsed);
+          if (opts.revealOnError && parsed.some((finding) => finding.severity === "error")) {
+            setLintModal(parsed);
+          }
         } else {
           setLintModal(parsed);
           setBackgroundFindings(parsed);
         }
+        return parsed;
       } catch (err) {
-        if (!opts?.background) {
-          const msg = err instanceof Error ? err.message : String(err);
-          setLintModal([{ severity: "error", message: `Failed to run lint: ${msg}` }]);
-        }
+        const msg = err instanceof Error ? err.message : String(err);
+        const failed = [{ severity: "error" as const, message: `Failed to run lint: ${msg}` }];
+        if (!opts?.background || opts.revealOnError) setLintModal(failed);
+        return failed;
       } finally {
         if (!opts?.background) setLinting(false);
       }
@@ -106,6 +111,7 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
     lintModal,
     linting,
     handleLint,
+    runLint,
     closeLintModal,
     backgroundFindings,
     findingsByElement,

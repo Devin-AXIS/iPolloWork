@@ -234,6 +234,7 @@ export type SessionSurfaceProps = {
   onForkAtMessage?: (messageId: string | null, sessionId: string) => void;
   onOpenTarget?: (target: OpenTarget, options?: OpenTargetOptions, sessionId?: string) => void;
   onConversationMessagesChange?: (sessionId: string, messages: UIMessage[]) => void;
+  onLoadSettled?: (sessionId: string) => void;
   templateEntryPath?: string;
   artifactFiles?: readonly string[];
   artifactContext?: ArtifactInteractionContext;
@@ -771,6 +772,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
   );
   const autoOpenTarget = selectAutoOpenTarget(verifiedOpenTargets);
   const pendingSessionLoad = !snapshot && snapshotQuery.isLoading && renderedMessages.length === 0;
+  useEffect(() => {
+    if (snapshotQuery.isLoading) return;
+    props.onLoadSettled?.(props.sessionId);
+  }, [props.onLoadSettled, props.sessionId, snapshotQuery.isLoading]);
   const isEmptyConversation = renderedMessages.length === 0
     && !chatStreaming
     && !pendingSessionLoad

@@ -284,6 +284,8 @@ function FormatExportButton({
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
   const [resolution, setResolution] = useState<RenderScale>(persisted.resolution);
   const [fps, setFps] = useState<15 | 24 | 30 | 60>(persisted.fps);
+  const [isStarting, setIsStarting] = useState(false);
+  const exportBusy = isRendering || isStarting;
 
   // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
   const showQuality = format !== "mov";
@@ -306,7 +308,7 @@ function FormatExportButton({
               setFormat(v);
               persistRenderSettings(v, quality, fps, resolution);
             }}
-            disabled={isRendering}
+            disabled={exportBusy}
             className={selectCls}
           >
             <option value="mp4">MP4</option>
@@ -323,7 +325,7 @@ function FormatExportButton({
               setResolution(v);
               persistRenderSettings(format, quality, fps, v);
             }}
-            disabled={isRendering}
+            disabled={exportBusy}
             className={selectCls}
           >
             {SCALE_OPTION_ORDER.map((value) => (
@@ -346,7 +348,7 @@ function FormatExportButton({
               setFps(v);
               persistRenderSettings(format, quality, v, resolution);
             }}
-            disabled={isRendering}
+            disabled={exportBusy}
             className={selectCls}
           >
             <option value={15}>15 fps</option>
@@ -365,7 +367,7 @@ function FormatExportButton({
                 setQuality(v);
                 persistRenderSettings(format, v, fps, resolution);
               }}
-              disabled={isRendering}
+              disabled={exportBusy}
               className={selectCls}
             >
               {QUALITY_OPTIONS.map((q) => (
@@ -380,11 +382,11 @@ function FormatExportButton({
       <Button
         variant="primary"
         size="md"
-        loading={isRendering}
+        loading={exportBusy}
         onClick={() => {
           // loading already disables the button; this guard also stops a
           // double-click in the same frame from enqueueing two renders.
-          if (isRendering) return;
+          if (exportBusy) return;
           const outputSize =
             resolution === "720p" ? quickPreviewSize(compositionDimensions) : undefined;
           const captureSize = resolution === "720p" ? outputSize : undefined;
@@ -397,11 +399,14 @@ function FormatExportButton({
             captureSize: captureSize ? `${captureSize.width}x${captureSize.height}` : undefined,
             fps,
           });
-          void onStartRender(format, quality, outputResolution, fps, outputSize, captureSize);
+          setIsStarting(true);
+          void Promise.resolve(
+            onStartRender(format, quality, outputResolution, fps, outputSize, captureSize),
+          ).finally(() => setIsStarting(false));
         }}
         className="w-full text-[11px] font-semibold"
       >
-        {isRendering ? "Rendering…" : "Export"}
+        {isRendering ? "Rendering…" : isStarting ? "Preparing…" : "Export"}
       </Button>
       {lastRenderDurationMs !== undefined && !isRendering && (
         <p className="text-[9px] text-panel-text-5 text-center -mt-1.5">

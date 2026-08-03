@@ -1,7 +1,8 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { addStudioPendingEditFlushListener } from "../utils/studioPendingEdits";
 
 interface RecordEditInput {
   label: string;
@@ -31,24 +32,30 @@ export function useEditorSave({
   setRefreshKey,
   showToast,
 }: UseEditorSaveOptions) {
+  // Kept as saveRafRef in the returned contract because FileManager exposes the
+  // ref, but it now owns a real debounce timer rather than a next-frame save.
   const saveRafRef = useRef<number | null>(null);
   const refreshRafRef = useRef<number | null>(null);
-  // One error toast per burst of failures — every keystroke retries the save,
-  // and error toasts persist until dismissed, so don't stack duplicates.
+  const pendingSaveRef = useRef<{ projectId: string; path: string; content: string } | null>(null);
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
   const lastFailureToastAtRef = useRef(0);
+  const mountedRef = useRef(true);
 
-  const handleContentChange = useCallback(
-    (content: string) => {
-      const pid = projectIdRef.current;
-      if (!pid) return;
-      const path = editingPathRef.current;
-      if (!path) return;
+  const flushPendingSave = useCallback((): Promise<void> => {
+    if (saveRafRef.current != null) {
+      window.clearTimeout(saveRafRef.current);
+      saveRafRef.current = null;
+    }
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    if (!pending) return saveChainRef.current;
 
-      if (saveRafRef.current != null) cancelAnimationFrame(saveRafRef.current);
-      saveRafRef.current = requestAnimationFrame(() => {
+    const save = saveChainRef.current.catch(() => {}).then(async () => {
+      const { projectId, path, content } = pending;
+      try {
         domEditSaveTimestampRef.current = Date.now();
-        saveProjectFilesWithHistory({
-          projectId: pid,
+        await saveProjectFilesWithHistory({
+          projectId,
           label: "Edit source",
           kind: "source",
           coalesceKey: `source:${path}`,
@@ -56,37 +63,52 @@ export function useEditorSave({
           readFile: readProjectFile,
           writeFile: writeProjectFile,
           recordEdit,
-        })
-          .then(() => {
-            if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
-            refreshRafRef.current = requestAnimationFrame(() => setRefreshKey((k) => k + 1));
-          })
-          .catch((error) => {
-            trackStudioEvent("save_failure", {
-              source: "code_editor",
-              error_message: error instanceof Error ? error.message : "unknown",
-            });
-            const now = Date.now();
-            if (now - lastFailureToastAtRef.current > 5000) {
-              lastFailureToastAtRef.current = now;
-              showToast(
-                `Couldn't save ${path} — your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
-                "error",
-              );
-            }
-          });
-      });
+        });
+        if (mountedRef.current) {
+          if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
+          refreshRafRef.current = requestAnimationFrame(() => setRefreshKey((key) => key + 1));
+        }
+      } catch (error) {
+        trackStudioEvent("save_failure", {
+          source: "code_editor",
+          error_message: error instanceof Error ? error.message : "unknown",
+        });
+        const now = Date.now();
+        if (now - lastFailureToastAtRef.current > 5000) {
+          lastFailureToastAtRef.current = now;
+          showToast(
+            `Couldn't save ${path} — your latest edits are not persisted. Check the preview server; editing again retries the save.`,
+            "error",
+          );
+        }
+      }
+    });
+    saveChainRef.current = save;
+    return save;
+  }, [domEditSaveTimestampRef, readProjectFile, recordEdit, setRefreshKey, showToast, writeProjectFile]);
+
+  useEffect(() => {
+    const removeFlushListener = addStudioPendingEditFlushListener(flushPendingSave);
+    return () => {
+      removeFlushListener();
+      void flushPendingSave();
+      mountedRef.current = false;
+      if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
+    };
+  }, [flushPendingSave]);
+
+  const handleContentChange = useCallback(
+    (content: string) => {
+      const projectId = projectIdRef.current;
+      const path = editingPathRef.current;
+      if (!projectId || !path) return;
+      pendingSaveRef.current = { projectId, path, content };
+      if (saveRafRef.current != null) window.clearTimeout(saveRafRef.current);
+      saveRafRef.current = window.setTimeout(() => {
+        void flushPendingSave();
+      }, 350);
     },
-    [
-      domEditSaveTimestampRef,
-      editingPathRef,
-      projectIdRef,
-      readProjectFile,
-      recordEdit,
-      setRefreshKey,
-      showToast,
-      writeProjectFile,
-    ],
+    [editingPathRef, flushPendingSave, projectIdRef],
   );
 
   return {

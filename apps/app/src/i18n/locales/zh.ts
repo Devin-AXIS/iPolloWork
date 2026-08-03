@@ -109,6 +109,8 @@ export default {
   "app.local_disabled_reason": "本地工作区需在桌面应用中创建。远程和共享工作区仍可正常使用。",
   "app.model_behavior_title": "模型行为",
   "app.plugins_hint_readonly": "iPolloWork服务器对插件为只读模式。",
+  "app.crash_description": "软件堵塞了，请点击按钮重新加载。",
+  "app.crash_title": "iPolloWork 暂时无法响应",
   "app.reload_later": "稍后",
   "app.reload_now": "立即重新加载",
   "app.reload_stop_tasks": "重新加载并停止任务",

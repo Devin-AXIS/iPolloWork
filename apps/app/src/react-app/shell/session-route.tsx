@@ -71,6 +71,7 @@ import { useSessionActivityStore } from "@/react-app/domains/session/status/sess
 import { buildiPolloWorkEnvSystemContext } from "@/react-app/domains/session/sync/env-context";
 import {
   applySessionRevert,
+  destroyWorkspaceSessionResources,
 } from "@/react-app/domains/session/sync/session-sync";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
 import {
@@ -391,6 +392,7 @@ export async function draftToParts(
 // (component state would reset and flash the underlying page). Reset only on
 // app relaunch, matching BOOT_STARTED in desktop-runtime-boot.ts.
 let firstRunLoaderPhase: "unarmed" | "armed" | "done" = "unarmed";
+let startupConversationPhase: "pending" | "creating" | "done" = "pending";
 
 export function SessionRoute() {
   const navigate = useNavigate();
@@ -522,16 +524,6 @@ export function SessionRoute() {
         }),
     [sessionsByWorkspaceId],
   );
-  const activeSelectedWorkspaceSessionIds = useMemo(
-    () =>
-      (sessionsByWorkspaceId[selectedWorkspaceId] ?? []).flatMap((session) => {
-        if (!isActiveSessionStatus(getSessionStatus(session))) return [];
-        const id = String(session?.id ?? "").trim();
-        return id ? [id] : [];
-      }),
-    [selectedWorkspaceId, sessionsByWorkspaceId],
-  );
-
   const { engineReloadVersion, reloadWorkspaceEngineFromUi } = useEngineReload({
     client,
     workspaceId: selectedWorkspaceId,
@@ -580,25 +572,6 @@ export function SessionRoute() {
     () => toSessionGroups(workspaces, visibleSessionsByWorkspaceId, errorsByWorkspaceId, new Set(retryingWorkspaceIds)),
     [errorsByWorkspaceId, retryingWorkspaceIds, visibleSessionsByWorkspaceId, workspaces],
   );
-  useEffect(() => {
-    if (loading || !selectedWorkspaceId) return;
-    if (selectedSessionId && (visibleSessionsByWorkspaceId[selectedWorkspaceId] ?? []).some((session) => session.id === selectedSessionId)) {
-      return;
-    }
-    const sessions = visibleSessionsByWorkspaceId[selectedWorkspaceId] ?? [];
-    const remembered = readLastSessionFor(selectedWorkspaceId);
-    const targetSessionId = remembered && sessions.some((session) => session.id === remembered)
-      ? remembered
-      : sessions[0]?.id ?? null;
-    if (selectedSessionId === targetSessionId) return;
-    navigateToWorkspaceSession(selectedWorkspaceId, targetSessionId, { replace: true });
-  }, [
-    loading,
-    navigateToWorkspaceSession,
-    selectedSessionId,
-    selectedWorkspaceId,
-    visibleSessionsByWorkspaceId,
-  ]);
   useSessionGroupSync({ workspaces, endpointForWorkspace });
   const selectedWorkspaceGroupState = sessionManagementStore((state) => (
     selectedWorkspaceId ? state.groupsByWorkspace[selectedWorkspaceId] : undefined
@@ -1312,6 +1285,41 @@ export function SessionRoute() {
     surfacePropsRef.current = surfaceProps;
   });
 
+  const previousSessionScopeRef = useRef<{
+    workspaceId: string;
+    sessionId: string;
+    baseUrl: string;
+    ipolloworkToken: string;
+  } | null>(null);
+  useEffect(() => {
+    const previous = previousSessionScopeRef.current;
+    const current = selectedWorkspaceEndpoint && selectedSessionId && opencodeBaseUrl && selectedWorkspaceServerToken
+      ? {
+          workspaceId: selectedWorkspaceEndpoint.workspaceId,
+          sessionId: selectedSessionId,
+          baseUrl: opencodeBaseUrl,
+          ipolloworkToken: selectedWorkspaceServerToken,
+        }
+      : null;
+
+    if (
+      previous &&
+      (!current ||
+        previous.workspaceId !== current.workspaceId ||
+        previous.sessionId !== current.sessionId ||
+        previous.baseUrl !== current.baseUrl ||
+        previous.ipolloworkToken !== current.ipolloworkToken)
+    ) {
+      destroyWorkspaceSessionResources(previous, previous.sessionId);
+    }
+    previousSessionScopeRef.current = current;
+  }, [
+    opencodeBaseUrl,
+    selectedSessionId,
+    selectedWorkspaceEndpoint,
+    selectedWorkspaceServerToken,
+  ]);
+
   const completeProviderStep = useCallback((action: "ipollowork-models" | "byok" | "skip") => {
     setProviderStepOpen(false);
     local.setPrefs((prev) => ({ ...prev, providerStepCompleted: true }));
@@ -1535,21 +1543,17 @@ export function SessionRoute() {
     }
   }, [sessionsByWorkspaceId, firstRunLoaderActive, dismissFirstRunLoader, selectedSessionId, routeError, selectedWorkspaceError, errorsByWorkspaceId, loading, selectedWorkspaceId]);
 
-  // A workspace without sessions always lands on a fresh chat. This covers
-  // first launch and deleting the final conversation; there is no separate
-  // setup/empty page in the iPolloWork flow.
+  // Every desktop launch starts in a fresh conversation. Historical session
+  // resources remain idle until the user explicitly opens that session.
   useEffect(() => {
     if (!canCreateSession || !isDesktopRuntime()) return;
-    if (selectedSessionId || (sessionsByWorkspaceId[selectedWorkspaceId] ?? []).length > 0) {
-      firstRunSessionRef.current = false;
-      return;
-    }
-    if (firstRunSessionRef.current) return;
-    firstRunSessionRef.current = true;
+    if (loading || selectedSessionId || !selectedWorkspaceId) return;
+    if (startupConversationPhase !== "pending") return;
+    startupConversationPhase = "creating";
     void handleCreateTaskInWorkspace(selectedWorkspaceId).then((createdSessionId) => {
-      if (!createdSessionId) firstRunSessionRef.current = false;
+      startupConversationPhase = createdSessionId ? "done" : "pending";
     });
-  }, [canCreateSession, sessionsByWorkspaceId, selectedSessionId, selectedWorkspaceId, handleCreateTaskInWorkspace]);
+  }, [canCreateSession, loading, selectedSessionId, selectedWorkspaceId, handleCreateTaskInWorkspace]);
 
   const {
     commandPaletteOpen,
@@ -1841,7 +1845,6 @@ export function SessionRoute() {
         // the UI never sees them and gets stuck on "thinking".
         workspaceId={selectedWorkspaceEndpoint.workspaceId}
         sessionId={selectedSessionId}
-        activeSessionIds={activeSelectedWorkspaceSessionIds}
         opencodeBaseUrl={opencodeBaseUrl}
         ipolloworkToken={selectedWorkspaceServerToken}
         onSessionUpdated={handleRuntimeSessionUpdated}

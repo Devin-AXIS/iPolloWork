@@ -40,6 +40,22 @@ describe("preview editing interactions", () => {
     expect(source).toContain('aria-pressed={state.activeFormats.link}');
   });
 
+  it("deletes the selected element directly from a destructive toolbar action", () => {
+    const toolbarSource = readFileSync(
+      new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),
+      "utf8",
+    );
+    const styleSource = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
+
+    expect(toolbarSource).toContain("onClick={deleteSelectedElement}");
+    expect(toolbarSource).toContain("hf-preview-text-toolbar__delete-button");
+    expect(toolbarSource).not.toContain("deleteConfirmationOpen");
+    expect(toolbarSource).not.toContain('role="alertdialog"');
+    expect(styleSource).toContain(".hf-preview-text-toolbar__delete-button");
+    expect(styleSource).toContain("color: #dc2626");
+    expect(styleSource).not.toContain("hf-preview-text-toolbar__delete-confirmation");
+  });
+
   it("keeps the element toolbar attached while the selected element is dragged", () => {
     const toolbarSource = readFileSync(
       new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),

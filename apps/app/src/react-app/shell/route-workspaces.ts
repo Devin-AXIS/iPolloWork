@@ -191,6 +191,20 @@ export function resolveKnownWorkspaceId(
   return "";
 }
 
+export function partitionInitialWorkspaceLoads<T extends { id: string }>(
+  workspaces: T[],
+  selectedWorkspaceId: string,
+  alreadyLoadedWorkspaceIds: ReadonlySet<string>,
+): { blocking: T[]; background: T[] } {
+  const selected = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
+  return {
+    blocking: selected ? [selected] : [],
+    background: workspaces.filter((workspace) => (
+      workspace.id !== selectedWorkspaceId && !alreadyLoadedWorkspaceIds.has(workspace.id)
+    )),
+  };
+}
+
 export function isInternalSubtaskSession(session: RouteSession) {
   const parentID = session.parentID?.trim() ?? "";
   const agent = session.agent ?? "";

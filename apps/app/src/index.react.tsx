@@ -18,6 +18,7 @@ import {
 } from "./react-app/kernel/platform";
 import { AppProviders } from "./react-app/shell/providers";
 import { AppRoot } from "./react-app/shell/app-root";
+import { AppErrorBoundary } from "./react-app/shell/app-error-boundary";
 import { startDeepLinkBridge } from "./react-app/shell/startup-deep-links";
 import "./app/index.css";
 
@@ -48,17 +49,19 @@ const Router = isDesktopRuntime() ? HashRouter : BrowserRouter;
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <PlatformProvider value={platform}>
-          <AppProviders>
-            <Router>
-              <AppRoot />
-            </Router>
-          </AppProviders>
-        </PlatformProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <PlatformProvider value={platform}>
+            <AppProviders>
+              <Router>
+                <AppRoot />
+              </Router>
+            </AppProviders>
+          </PlatformProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   </React.StrictMode>,
 );
 

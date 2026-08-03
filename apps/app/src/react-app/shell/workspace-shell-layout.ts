@@ -79,13 +79,28 @@ export function useWorkspaceShellLayout(options: WorkspaceShellLayoutOptions) {
       setLeftSidebarResizing(true);
       const initialX = event.clientX;
       const initialWidth = leftSidebarWidth;
+      const resizeHandle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      const sidebarWrapper = resizeHandle?.closest<HTMLElement>('[data-slot="sidebar-wrapper"]') ?? null;
+      let nextWidth = initialWidth;
+      let frameId: number | null = null;
+
+      const applyPendingWidth = () => {
+        frameId = null;
+        sidebarWrapper?.style.setProperty("--sidebar-width", `${nextWidth}px`);
+      };
 
       const handleMove = (moveEvent: PointerEvent) => {
         const delta = moveEvent.clientX - initialX;
-        setLeftSidebarWidth(clampNumber(initialWidth + delta, minLeftWidth, maxLeftWidth));
+        nextWidth = clampNumber(initialWidth + delta, minLeftWidth, maxLeftWidth);
+        if (frameId === null) frameId = window.requestAnimationFrame(applyPendingWidth);
       };
 
       const handleStop = () => {
+        if (frameId !== null) {
+          window.cancelAnimationFrame(frameId);
+          applyPendingWidth();
+        }
+        setLeftSidebarWidth(nextWidth);
         stopLeftSidebarResize();
       };
 
@@ -93,10 +108,15 @@ export function useWorkspaceShellLayout(options: WorkspaceShellLayoutOptions) {
       window.addEventListener("pointerup", handleStop);
       window.addEventListener("pointercancel", handleStop);
       dragCleanupRef.current = () => {
+        if (frameId !== null) window.cancelAnimationFrame(frameId);
         window.removeEventListener("pointermove", handleMove);
         window.removeEventListener("pointerup", handleStop);
         window.removeEventListener("pointercancel", handleStop);
+        if (resizeHandle?.hasPointerCapture(event.pointerId)) {
+          resizeHandle.releasePointerCapture(event.pointerId);
+        }
       };
+      resizeHandle?.setPointerCapture(event.pointerId);
 
       if (typeof document !== "undefined") {
         Object.assign(document.body.style, {

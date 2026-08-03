@@ -110,7 +110,9 @@ async function createWindowsFixture(triple) {
 
 for (const [arch, triple] of [
   ["x64", "x86_64-pc-windows-msvc"],
+  [1, "x86_64-pc-windows-msvc"],
   ["arm64", "aarch64-pc-windows-msvc"],
+  [3, "aarch64-pc-windows-msvc"],
 ]) {
   it(`normalizes the Windows ${arch} executable sidecars`, async () => {
     const { appOutDir, sidecarsDir } = await createWindowsFixture(triple);
@@ -124,11 +126,8 @@ for (const [arch, triple] of [
 
       assert.deepEqual((await readdir(sidecarsDir)).sort(), [
         "ipollowork-orchestrator.exe",
-        `ipollowork-orchestrator-${triple}.exe`,
         "opencode.exe",
-        `opencode-${triple}.exe`,
         "versions.json",
-        `versions.json-${triple}.exe`,
       ].sort());
     } finally {
       await rm(appOutDir, { recursive: true, force: true });

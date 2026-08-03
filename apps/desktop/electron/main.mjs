@@ -93,8 +93,11 @@ const terminalProcesses = new Map();
 const hyperframesProcesses = new Map();
 let nextTerminalId = 1;
 const HYPERFRAMES_START_TIMEOUT_MS = 90_000;
+const HYPERFRAMES_IDLE_STOP_DELAY_MS = 60_000;
 const HYPERFRAMES_PORT_BASE = 3_100;
 const HYPERFRAMES_PORT_RANGE = 800;
+const resolvedFfBinaries = new Map();
+let resolvedSystemChromiumBinary;
 
 function isHyperframesStudioUrl(url) {
   try {
@@ -299,26 +302,33 @@ function resolveSystemFfBinary(name) {
 }
 
 function resolveFfBinary(name) {
-  return resolveInstallerFfBinary(name) ?? resolveBundledFfBinary(name) ?? resolveSystemFfBinary(name);
+  if (resolvedFfBinaries.has(name)) return resolvedFfBinaries.get(name);
+  const resolved = resolveInstallerFfBinary(name) ?? resolveBundledFfBinary(name) ?? resolveSystemFfBinary(name);
+  resolvedFfBinaries.set(name, resolved);
+  return resolved;
 }
 
 function resolveSystemChromiumBinary() {
+  if (resolvedSystemChromiumBinary !== undefined) return resolvedSystemChromiumBinary;
   if (process.platform === "win32") {
-    return findFirstExistingPath([
+    resolvedSystemChromiumBinary = findFirstExistingPath([
       "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
       "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
       "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
       "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     ]);
+    return resolvedSystemChromiumBinary;
   }
   if (process.platform === "darwin") {
-    return findFirstExistingPath([
+    resolvedSystemChromiumBinary = findFirstExistingPath([
       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
       "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
       "/Applications/Chromium.app/Contents/MacOS/Chromium",
     ]);
+    return resolvedSystemChromiumBinary;
   }
-  return findFirstRunnablePath(["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]);
+  resolvedSystemChromiumBinary = findFirstRunnablePath(["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]);
+  return resolvedSystemChromiumBinary;
 }
 
 function inheritedPathEnv() {
@@ -496,7 +506,15 @@ function stopHyperframesForKey(key) {
   if (!running) return;
   hyperframesProcesses.delete(key);
   clearTimeout(running.timeout);
+  clearTimeout(running.idleTimeout);
   killProcessTree(running.process);
+}
+
+function scheduleHyperframesStopForKey(key) {
+  const running = hyperframesProcesses.get(key);
+  if (!running) return;
+  clearTimeout(running.idleTimeout);
+  running.idleTimeout = setTimeout(() => stopHyperframesForKey(key), HYPERFRAMES_IDLE_STOP_DELAY_MS);
 }
 
 function stopHyperframesForWebContents(webContentsId) {
@@ -513,7 +531,14 @@ async function startHyperframesPreview(event, options = {}) {
   const { workspaceRoot, projectPath, projectDirectory } = resolveWorkspaceChild(options.workspaceRoot, options.projectDirectory);
   const key = hyperframesKey(event.sender.id, sessionId);
   const current = hyperframesProcesses.get(key);
-  if (current?.process && current.process.exitCode === null && current.port === port) {
+  if (
+    current?.process &&
+    current.process.exitCode === null &&
+    current.port === port &&
+    current.projectPath === projectPath
+  ) {
+    clearTimeout(current.idleTimeout);
+    current.idleTimeout = null;
     return { ok: true, port, reused: true };
   }
   stopHyperframesForKey(key);
@@ -539,7 +564,7 @@ async function startHyperframesPreview(event, options = {}) {
       child.stdout?.off("data", onData);
       child.stderr?.off("data", onData);
       child.off("error", onError);
-      hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, timeout: null });
+      hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, projectPath, timeout: null, idleTimeout: null });
       event.sender.once("destroyed", () => stopHyperframesForWebContents(event.sender.id));
       resolve({ ok: true, port, reused: false });
     };
@@ -564,7 +589,7 @@ async function startHyperframesPreview(event, options = {}) {
       killProcessTree(child);
       failStart(new Error(output.trim() || "Timed out starting HyperFrames Studio."));
     }, HYPERFRAMES_START_TIMEOUT_MS);
-    hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, timeout });
+    hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, projectPath, timeout, idleTimeout: null });
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.once("error", onError);
@@ -1685,6 +1710,8 @@ function assertiPolloWorkServerReady(info) {
 }
 
 async function bootRuntimeForSelectedWorkspace() {
+  const startedAt = Date.now();
+  console.info("[startup] selected workspace runtime bootstrap started");
   const list = await workspaceStore.readWorkspaceState();
   const selectedId = list.selectedId || list.activeId || list.workspaces[0]?.id || "";
   const workspace = selectedId
@@ -1692,6 +1719,7 @@ async function bootRuntimeForSelectedWorkspace() {
     : list.workspaces[0];
   const workspaceRoot = String(workspace?.path ?? "").trim();
   if (!workspaceRoot || workspace?.workspaceType === "remote") {
+    console.info(`[startup] selected workspace runtime bootstrap skipped in ${Date.now() - startedAt}ms`);
     return { ok: true, skipped: true, reason: "no-local-workspace" };
   }
 
@@ -1744,6 +1772,9 @@ async function bootRuntimeForSelectedWorkspace() {
     name: bootWorkspace.name ?? bootWorkspace.displayName ?? null,
   }).catch(() => undefined);
   const ipolloworkServer = assertiPolloWorkServerReady(await runtimeManager.ipolloworkServerInfo());
+  console.info(`[startup] selected workspace runtime bootstrap completed in ${Date.now() - startedAt}ms`, {
+    workspaceId: bootWorkspace.id ?? null,
+  });
   return { ok: true, skipped: false, engine, ipolloworkServer, workspaceId: bootWorkspace.id ?? null };
 }
 
@@ -2904,8 +2935,10 @@ ipcMain.handle("ipollowork:terminal:kill", (event, terminalId) => {
 });
 
 ipcMain.handle("ipollowork:hyperframes:start", (event, options = {}) => startHyperframesPreview(event, options));
-ipcMain.handle("ipollowork:hyperframes:stop", (event, sessionId) => {
-  stopHyperframesForKey(hyperframesKey(event.sender.id, sessionId));
+ipcMain.handle("ipollowork:hyperframes:stop", (event, sessionId, options = {}) => {
+  const key = hyperframesKey(event.sender.id, sessionId);
+  if (options.keepWarm === true) scheduleHyperframesStopForKey(key);
+  else stopHyperframesForKey(key);
   return { ok: true };
 });
 
@@ -3411,7 +3444,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
 
       const toolbarStyle = document.createElement('style');
       toolbarStyle.dataset.ipolloworkVideoToolbar = 'true';
-      toolbarStyle.textContent = '.ipollowork-video-toolbar{position:fixed;z-index:2147483647;display:none;align-items:center;gap:17px;padding:8px 16px;border:1px solid #ebebeb;border-radius:8px;background:#fff;box-shadow:0 4px 4.2px rgba(0,0,0,.09);font:400 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#858a94;transform-origin:bottom center}.ipollowork-video-toolbar button{appearance:none;border:0;background:transparent;color:inherit;width:24px;height:24px;min-width:24px;padding:0;border-radius:4px;font:inherit;cursor:pointer;display:grid;place-items:center}.ipollowork-video-toolbar button:hover{background:#f3f4f6;color:#202228}.ipollowork-video-toolbar button svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}.ipollowork-video-toolbar .ow-tag{color:#858a94;font-size:10px;text-transform:uppercase}.ipollowork-video-toolbar .ow-size{font-size:16px}.ipollowork-video-toolbar .ow-color{width:18px;height:18px;min-width:18px;padding:0;border:3px solid white;border-radius:999px;box-shadow:0 0 0 1px rgba(15,23,42,.16)}.ipollowork-video-toolbar .ow-sep{width:1px;height:22.5px;background:#ebebeb}.ipollowork-video-colors{position:absolute;left:50%;bottom:48px;display:none;gap:6px;padding:7px;border:1px solid #ebebeb;border-radius:8px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateX(-50%)}.ipollowork-video-colors button{width:22px;height:22px;min-width:22px;padding:0;border-radius:999px;border:2px solid white;box-shadow:0 0 0 1px rgba(15,23,42,.13)}';
+      toolbarStyle.textContent = '.ipollowork-video-toolbar{position:fixed;z-index:2147483647;display:none;align-items:center;gap:17px;padding:8px 16px;border:1px solid #ebebeb;border-radius:8px;background:#fff;box-shadow:0 4px 4.2px rgba(0,0,0,.09);font:400 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#858a94;transform-origin:bottom center}.ipollowork-video-toolbar button{appearance:none;border:0;background:transparent;color:inherit;width:24px;height:24px;min-width:24px;padding:0;border-radius:4px;font:inherit;cursor:pointer;display:grid;place-items:center}.ipollowork-video-toolbar button:hover{background:#f3f4f6;color:#202228}.ipollowork-video-toolbar button[data-action="delete"]{color:#dc2626}.ipollowork-video-toolbar button[data-action="delete"]:hover{background:#fef2f2;color:#b91c1c}.ipollowork-video-toolbar button svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}.ipollowork-video-toolbar .ow-tag{color:#858a94;font-size:10px;text-transform:uppercase}.ipollowork-video-toolbar .ow-size{font-size:16px}.ipollowork-video-toolbar .ow-color{width:18px;height:18px;min-width:18px;padding:0;border:3px solid white;border-radius:999px;box-shadow:0 0 0 1px rgba(15,23,42,.16)}.ipollowork-video-toolbar .ow-sep{width:1px;height:22.5px;background:#ebebeb}.ipollowork-video-colors{position:absolute;left:50%;bottom:48px;display:none;gap:6px;padding:7px;border:1px solid #ebebeb;border-radius:8px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateX(-50%)}.ipollowork-video-colors button{width:22px;height:22px;min-width:22px;padding:0;border-radius:999px;border:2px solid white;box-shadow:0 0 0 1px rgba(15,23,42,.13)}';
       document.head.appendChild(toolbarStyle);
 
       const toolbar = document.createElement('div');
@@ -3574,7 +3607,6 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const element = selected;
         const target = element ? sourceTargetFor(element) || selectedTarget : selectedTarget;
         if (!element || !target) return;
-        if (!window.confirm('Delete selected element?')) return;
         finishEditing();
         try {
           const response = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/file-mutations/remove-element/' + encodeURI(target.file), {
@@ -3939,6 +3971,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    const startupStartedAt = Date.now();
+    console.info("[startup] Electron ready");
     installMediaPermissionHandlers(session, () => mainWindow);
     await workspaceStore.importBundledDesktopBootstrapConfigIfPreferred();
     const bootstrapConfig = await workspaceStore.getDesktopBootstrapConfig();
@@ -3952,7 +3986,9 @@ if (!app.requestSingleInstanceLock()) {
       await applyBrandIconUrl(bootstrapConfig.brandIconUrl);
     }
     applicationMenu.install();
-    await runtimeManager.prepareFreshRuntime().catch(() => undefined);
+    const runtimePreparationPromise = runtimeManager.prepareFreshRuntime().catch((error) => {
+      console.warn("[startup] runtime preparation failed", error);
+    });
 
     // Use Tauri's existing workspace state file as canonical so rollback and
     // Electron see the same workspace list. Import the short-lived
@@ -3961,14 +3997,19 @@ if (!app.requestSingleInstanceLock()) {
     await uiControlServer.start().catch((error) => {
       console.warn("[ui-control] failed to start", error);
     });
-    runtimeBootstrapPromise = bootRuntimeForSelectedWorkspace().catch((error) => ({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    }));
+    runtimeBootstrapPromise = runtimePreparationPromise
+      .then(() => bootRuntimeForSelectedWorkspace())
+      .catch((error) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
 
     queueDeepLinks(forwardedDeepLinks(process.argv));
+    const windowStartedAt = Date.now();
     const win = await createMainWindow();
+    console.info(`[startup] main window loaded in ${Date.now() - windowStartedAt}ms`);
     win.webContents.on("did-finish-load", () => {
+      console.info(`[startup] renderer finished loading after ${Date.now() - startupStartedAt}ms`);
       flushPendingDeepLinks();
     });
 

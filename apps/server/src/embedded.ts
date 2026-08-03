@@ -7,7 +7,12 @@
  */
 import { mkdir } from "node:fs/promises";
 import { resolveServerConfig, type CliArgs } from "./config.js";
-import { createManagedOpencodeServer, type ManagedOpencodeServer, type OpencodeExecutionSnapshot } from "./managed-opencode.js";
+import {
+  createManagedOpencodeServer,
+  forwardedProxyEnv,
+  type ManagedOpencodeServer,
+  type OpencodeExecutionSnapshot,
+} from "./managed-opencode.js";
 import { startServer, syncAllWorkspacesRuntimeMcpToEngine } from "./server.js";
 import { ensureLocalWorkspaceFiles } from "./workspace-init.js";
 import { findManagedEngineWorkspace } from "./workspaces.js";
@@ -69,6 +74,7 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
         cwd,
         excludedPorts: [config.port],
         env: {
+          ...forwardedProxyEnv(),
           ...(process.env.IPOLLOWORK_DEV_MODE ? { IPOLLOWORK_DEV_MODE: process.env.IPOLLOWORK_DEV_MODE } : {}),
           ...(process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY ? { IPOLLOWORK_UI_CONTROL_DISCOVERY: process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY } : {}),
           IPOLLOWORK_SERVER_URL: serverUrl,

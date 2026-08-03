@@ -14,7 +14,25 @@ import {
   resolveiPolloWorkServerConfigPath,
   seedWorkspacePathsForEmbeddedServer,
   selectStickyiPolloWorkPortWorkspace,
+  windowsProxyEnvFromServer,
 } from "./runtime.mjs";
+
+describe("windowsProxyEnvFromServer", () => {
+  it("maps a Windows system proxy to child-process proxy variables", () => {
+    assert.deepEqual(windowsProxyEnvFromServer("127.0.0.1:7890"), {
+      HTTP_PROXY: "http://127.0.0.1:7890",
+      HTTPS_PROXY: "http://127.0.0.1:7890",
+      NO_PROXY: "127.0.0.1,localhost,::1",
+      NODE_USE_ENV_PROXY: "1",
+    });
+  });
+
+  it("does not replace an explicitly configured proxy", () => {
+    assert.deepEqual(windowsProxyEnvFromServer("127.0.0.1:7890", {
+      HTTPS_PROXY: "http://proxy.example:8080",
+    }), {});
+  });
+});
 
 describe("applyEmbeddedServerEnvironment", () => {
   it("keeps the desktop process home and config locations outside the dev child sandbox", () => {

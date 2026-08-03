@@ -24,7 +24,32 @@ export type OpencodeExecutionSnapshot = {
   env: OpencodeExecutionEnvEntry[];
 };
 
-const SECRET_ENV_PATTERN = /(TOKEN|PASSWORD|USERNAME|AUTH|SECRET|KEY|CREDENTIAL)/i;
+const SECRET_ENV_PATTERN = /(TOKEN|PASSWORD|USERNAME|AUTH|SECRET|KEY|CREDENTIAL|PROXY)/i;
+const FORWARDED_PROXY_ENV_KEYS: readonly string[] = [
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "no_proxy",
+  "NODE_USE_ENV_PROXY",
+];
+
+/**
+ * Keep the managed engine's network path explicit. Electron can populate its
+ * own environment from the Windows system proxy after process startup, while
+ * a later child process may otherwise only inherit the original environment.
+ */
+export function forwardedProxyEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const forwarded: Record<string, string> = {};
+  for (const name of FORWARDED_PROXY_ENV_KEYS) {
+    const value = env[name]?.trim();
+    if (value) forwarded[name] = value;
+  }
+  return forwarded;
+}
 
 function randomSecret(): string {
   return randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");

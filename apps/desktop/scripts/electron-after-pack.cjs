@@ -16,7 +16,16 @@ const sidecarBases = [
   "ipollowork-orchestrator",
 ];
 
+function normalizeArch(arch) {
+  // electron-builder passes builder-util's numeric Arch enum to afterPack.
+  // Keep string support for direct script use and test fixtures.
+  if (arch === 1) return "x64";
+  if (arch === 3) return "arm64";
+  return arch;
+}
+
 function targetTriple(platformName, arch) {
+  arch = normalizeArch(arch);
   if (platformName === "darwin") {
     if (arch === "arm64") return "aarch64-apple-darwin";
     if (arch === "x64") return "x86_64-apple-darwin";
@@ -58,7 +67,7 @@ function packagedNodePtyPaths(context) {
   const appPath = resolveMacAppPath(context);
   if (!appPath) return [];
 
-  const packageName = `node-pty-darwin-${context.arch}`;
+  const packageName = `node-pty-darwin-${normalizeArch(context.arch)}`;
   const nodeModulesDir = path.join(
     appPath,
     "Contents",
@@ -80,12 +89,13 @@ function packagedNodePtyPaths(context) {
 function assertPackagedNodePty(context) {
   if (context.electronPlatformName !== "darwin") return;
 
-  const expectedBinary = path.join("prebuilds", `darwin-${context.arch}`, "pty.node");
+  const arch = normalizeArch(context.arch);
+  const expectedBinary = path.join("prebuilds", `darwin-${arch}`, "pty.node");
   const paths = packagedNodePtyPaths(context);
   if (paths.some((packagePath) => fs.existsSync(path.join(packagePath, expectedBinary)))) return;
 
   throw new Error(
-    `Missing @lydell/node-pty-darwin-${context.arch} in the packaged macOS app. `
+    `Missing @lydell/node-pty-darwin-${arch} in the packaged macOS app. `
       + `Expected ${expectedBinary} under app.asar.unpacked/node_modules.`,
   );
 }
@@ -140,7 +150,7 @@ function signComputerUseHelper(context) {
   }
 }
 
-function copyExecutableTargetToAlias(sidecarsDir, targetName, aliasName) {
+function moveExecutableTargetToAlias(sidecarsDir, targetName, aliasName) {
   const targetPath = path.join(sidecarsDir, targetName);
   if (!fs.existsSync(targetPath)) {
     throw new Error(`Missing packaged sidecar for target: ${targetName}`);
@@ -148,6 +158,7 @@ function copyExecutableTargetToAlias(sidecarsDir, targetName, aliasName) {
 
   const aliasPath = path.join(sidecarsDir, aliasName);
   fs.copyFileSync(targetPath, aliasPath);
+  fs.rmSync(targetPath, { force: true });
   try {
     fs.chmodSync(aliasPath, 0o755);
   } catch {
@@ -169,9 +180,8 @@ async function afterPack(context) {
   for (const base of sidecarBases) {
     const aliasName = `${base}${executableSuffix}`;
     const targetName = `${base}-${triple}${executableSuffix}`;
-    copyExecutableTargetToAlias(sidecarsDir, targetName, aliasName);
+    moveExecutableTargetToAlias(sidecarsDir, targetName, aliasName);
     keep.add(aliasName);
-    keep.add(targetName);
   }
 
   const versionsAlias = "versions.json";
@@ -181,8 +191,8 @@ async function afterPack(context) {
     throw new Error(`Missing packaged sidecar metadata for target: ${versionsTarget}`);
   }
   fs.copyFileSync(versionsTargetPath, path.join(sidecarsDir, versionsAlias));
+  fs.rmSync(versionsTargetPath, { force: true });
   keep.add(versionsAlias);
-  keep.add(versionsTarget);
 
   for (const entry of fs.readdirSync(sidecarsDir)) {
     if (!keep.has(entry)) {

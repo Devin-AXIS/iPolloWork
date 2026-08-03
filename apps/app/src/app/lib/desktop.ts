@@ -161,7 +161,7 @@ declare global {
       };
       hyperframes?: {
         start?: (options: { workspaceRoot: string; sessionId: string; projectDirectory: string; port: number }) => Promise<{ ok: boolean; port?: number; reused?: boolean }>;
-        stop?: (sessionId: string) => Promise<{ ok: boolean }>;
+        stop?: (sessionId: string, options?: { keepWarm?: boolean }) => Promise<{ ok: boolean }>;
         setSimpleMode?: (enabled: boolean) => Promise<{ ok: boolean; reason?: string; chromeClean?: boolean; sidebarToggled?: boolean; inspectorEnabled?: boolean }>;
       };
       meta?: {
