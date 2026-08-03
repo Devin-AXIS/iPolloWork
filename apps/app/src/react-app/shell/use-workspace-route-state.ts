@@ -46,13 +46,13 @@ import {
   isTransientStartupError,
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
+  partitionInitialWorkspaceLoads,
   resolveKnownWorkspaceId,
   type RouteSession,
   type RouteWorkspace,
 } from "./route-workspaces";
 import {
   readActiveWorkspaceId,
-  readLastSessionFor,
   writeActiveWorkspaceId,
 } from "./session-memory";
 import { legacySessionRoute, workspaceSessionRoute } from "./workspace-routes";
@@ -78,6 +78,8 @@ function waitForCommittedRouteState(): Promise<void> {
     window.requestAnimationFrame(() => window.requestAnimationFrame(finish));
   });
 }
+
+let STARTUP_ROUTE_TIMING_REPORTED = false;
 
 export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const { workContextId, onServerSettingsChanged, onHostInfo } = input;
@@ -339,6 +341,12 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     // multiplied quickly on the event loop and caused the UI to freeze.
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
+    const reportStartupTiming = !STARTUP_ROUTE_TIMING_REPORTED;
+    const logStartupTiming = (...args: unknown[]) => {
+      if (reportStartupTiming) console.info(...args);
+    };
+    const refreshStartedAt = Date.now();
+    logStartupTiming("[startup] session route refresh started");
     const requestedContextId = workContextId;
     setLoading(true);
     setRouteError(null);
@@ -347,6 +355,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     let routeReadyAfterRefresh = true;
     try {
       if (isDesktopRuntime()) {
+        const workspaceBootstrapStartedAt = Date.now();
         try {
           desktopList = await workspaceBootstrap() as WorkspaceList;
           desktopWorkspaces = canonicalWorkspacesForWorkContext(
@@ -363,10 +372,14 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
             preservedWorkspaceCount: workspacesRef.current.length,
           });
           desktopWorkspaces = workspacesRef.current;
+        } finally {
+          logStartupTiming(`[startup] workspace list loaded in ${Date.now() - workspaceBootstrapStartedAt}ms`);
         }
       }
 
+      const connectionStartedAt = Date.now();
       const { normalizedBaseUrl, resolvedToken, resolvedHostToken, hostInfo } = await resolveiPolloWorkConnection();
+      logStartupTiming(`[startup] local server connection resolved in ${Date.now() - connectionStartedAt}ms`);
       onHostInfo(hostInfo);
       if (!normalizedBaseUrl || !resolvedToken) {
         // Keep `localServerRef` in lockstep with the disconnected state.
@@ -399,7 +412,9 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         token: resolvedToken,
         hostToken: resolvedHostToken || undefined,
       });
+      const serverWorkspacesStartedAt = Date.now();
       const list = await ipolloworkClient.listWorkspaces();
+      logStartupTiming(`[startup] server workspaces loaded in ${Date.now() - serverWorkspacesStartedAt}ms`);
       const persistedActiveId = readActiveWorkspaceId();
       const nextWorkspaces = canonicalWorkspacesForWorkContext(
         mergeRouteWorkspaces(list.items, desktopWorkspaces),
@@ -519,15 +534,17 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       // repeated Personal/Enterprise switches. There is exactly one
       // canonical workspace per context now, so wait for that workspace's
       // sessions before dismissing the transition.
-      const selectedWorkspace = nextWorkspaces.find((workspace) => workspace.id === nextWorkspaceId);
-      const backgroundWorkspaces = nextWorkspaces.filter(
-        (workspace) => workspace.id === nextWorkspaceId || !alreadyLoadedWorkspaceIds.has(workspace.id),
+      const initialLoads = partitionInitialWorkspaceLoads(
+        nextWorkspaces,
+        nextWorkspaceId,
+        alreadyLoadedWorkspaceIds,
       );
-      if (backgroundWorkspaces.length > 0) {
-        const orderedWorkspaces = selectedWorkspace
-          ? [selectedWorkspace, ...backgroundWorkspaces.filter((workspace) => workspace.id !== selectedWorkspace.id)]
-          : backgroundWorkspaces;
-        await loadWorkspaceSessionsInBackground(orderedWorkspaces);
+      if (initialLoads.blocking.length > 0) {
+        const selectedSessionsStartedAt = Date.now();
+        await loadWorkspaceSessionsInBackground(initialLoads.blocking);
+        logStartupTiming(`[startup] selected workspace sessions loaded in ${Date.now() - selectedSessionsStartedAt}ms`, {
+          workspaceId: nextWorkspaceId,
+        });
       }
     } catch (error) {
       if (workContextRef.current !== requestedContextId) return;
@@ -560,6 +577,8 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       if (routeReadyAfterRefresh) {
         markBootRouteReady();
       }
+      logStartupTiming(`[startup] session route refresh completed in ${Date.now() - refreshStartedAt}ms`);
+      STARTUP_ROUTE_TIMING_REPORTED = true;
     }
   }, [loadWorkspaceSessionsInBackground, markBootRouteReady, routeWorkspaceId, selectedSessionId, workContextId]);
   const handleRuntimeSessionUpdated = useCallback((update: { sessionId: string; info: Record<string, unknown> }) => {
@@ -714,8 +733,8 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     workspaces,
   ]);
 
-  // Once workspaces + sessions are loaded and the URL has no sessionId, try to
-  // restore the last session the user opened in the active workspace.
+  // Keep the startup route workspace-scoped. A session is selected only after
+  // the user clicks it or the startup new-conversation flow creates one.
   useEffect(() => {
     if (loading) return;
     if (routeWorkspaceId && workspaces.length > 0 && !workspaces.some((workspace) => workspace.id === routeWorkspaceId)) {
@@ -732,24 +751,14 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       return;
     }
     if (!routeWorkspaceId && selectedWorkspaceId) {
-      navigateToWorkspaceSession(selectedWorkspaceId, selectedSessionId, { replace: true });
-      return;
+      navigateToWorkspaceSession(selectedWorkspaceId, null, { replace: true });
     }
-    if (selectedSessionId) return;
-    if (!selectedWorkspaceId) return;
-    const remembered = readLastSessionFor(selectedWorkspaceId);
-    if (!remembered) return;
-    const sessions = sessionsByWorkspaceId[selectedWorkspaceId] ?? [];
-    if (!sessions.some((session) => session?.id === remembered)) return;
-    navigateToWorkspaceSession(selectedWorkspaceId, remembered, { replace: true });
   }, [
     loading,
     legacySelectedWorkspaceId,
     navigateToWorkspaceSession,
     routeWorkspaceId,
-    selectedSessionId,
     selectedWorkspaceId,
-    sessionsByWorkspaceId,
     workspaces,
   ]);
 

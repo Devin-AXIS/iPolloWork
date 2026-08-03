@@ -31,6 +31,7 @@ import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
 import { useStudioI18n } from "../i18n";
 import { X } from "../icons/SystemIcons";
 import { BlocksTab, type BlockPreviewInfo } from "./sidebar/BlocksTab";
+import { AssetsTab } from "./sidebar/AssetsTab";
 
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
@@ -163,6 +164,8 @@ export function StudioRightPanel({
     projectDir,
     handleImportFiles,
     handleImportFonts,
+    handleDeleteFile,
+    handleRenameFile,
     refreshFileTree,
     readProjectFile,
     writeProjectFile,
@@ -390,6 +393,42 @@ export function StudioRightPanel({
     />
   );
 
+  const openHostPanel = (panel: "voice" | "style") => {
+    setRightPanelTab(panel);
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        type: "ipollowork:video-studio-panel",
+        projectId,
+        panel,
+      }, "*");
+    }
+  };
+
+  const closeHostPanel = useCallback(() => {
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        type: "ipollowork:video-studio-panel",
+        projectId,
+        panel: null,
+      }, "*");
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (rightPanelTab !== "voice" && rightPanelTab !== "style") {
+      closeHostPanel();
+    }
+  }, [closeHostPanel, rightPanelTab]);
+
+  useEffect(() => () => closeHostPanel(), [closeHostPanel]);
+
+  const selectStudioPanel = (panel: "design" | "assets" | "catalog" | "effects") => {
+    closeHostPanel();
+    setRightPanelTab(panel);
+  };
+
+  const exportDrawer = rightPanelTab === "renders";
+
   return (
     <>
       {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via
@@ -427,37 +466,55 @@ export function StudioRightPanel({
         ) : (
           <>
             <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
+              {exportDrawer ? (
+                <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-200">
+                  {t("right.renders")}
+                </span>
+              ) : (<>
               {STUDIO_INSPECTOR_PANELS_ENABLED && (
                 <>
                   <PanelTabButton
                     label={t("right.design")}
                     tooltip={t("right.designTooltip")}
                     active={inspectorTabActive}
-                    onClick={() => setRightPanelTab("design")}
+                    onClick={() => selectStudioPanel("design")}
                   />
                 </>
               )}
               <PanelTabButton
+                label={t("right.voice")}
+                tooltip={t("right.voiceTooltip")}
+                active={rightPanelTab === "voice"}
+                onClick={() => openHostPanel("voice")}
+              />
+              <PanelTabButton
+                label={t("right.style")}
+                tooltip={t("right.styleTooltip")}
+                active={rightPanelTab === "style"}
+                onClick={() => openHostPanel("style")}
+              />
+              <PanelTabButton
+                label={t("right.assets")}
+                tooltip={t("right.assetsTooltip")}
+                active={rightPanelTab === "assets"}
+                onClick={() => selectStudioPanel("assets")}
+              />
+              <PanelTabButton
                 label={t("right.catalog")}
                 tooltip={t("right.catalogTooltip")}
                 active={rightPanelTab === "catalog"}
-                onClick={() => setRightPanelTab("catalog")}
+                onClick={() => selectStudioPanel("catalog")}
               />
               <PanelTabButton
                 label={t("right.effects")}
                 tooltip={t("right.effectsTooltip")}
                 active={rightPanelTab === "effects"}
-                onClick={() => setRightPanelTab("effects")}
+                onClick={() => selectStudioPanel("effects")}
               />
-              <PanelTabButton
-                label={t("right.renders")}
-                tooltip={t("right.rendersTooltip")}
-                active={rightPanelTab === "renders"}
-                onClick={() => setRightPanelTab("renders")}
-              />
+              </>)}
               <button
                 type="button"
-                onClick={() => setRightCollapsed(true)}
+                onClick={() => { closeHostPanel(); setRightCollapsed(true); }}
                 className="ml-auto flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 active:scale-[0.96]"
                 aria-label="Close right panel"
                 title="Close right panel"
@@ -488,6 +545,18 @@ export function StudioRightPanel({
                   onAddBlock={onAddBlock}
                   onPreviewBlock={onPreviewBlock}
                 />
+              ) : rightPanelTab === "assets" ? (
+                <AssetsTab
+                  projectId={projectId}
+                  assets={assets}
+                  onImport={handleImportFiles}
+                  onDelete={handleDeleteFile}
+                  onRename={handleRenameFile}
+                />
+              ) : rightPanelTab === "voice" || rightPanelTab === "style" ? (
+                <div className="grid h-full place-items-center px-6 text-center text-xs text-neutral-500">
+                  {rightPanelTab === "voice" ? t("right.voiceTooltip") : t("right.styleTooltip")}
+                </div>
               ) : inspectorTabActive ? (
                 <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
                   <div

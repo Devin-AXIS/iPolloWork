@@ -5,6 +5,7 @@ import {
   buildTaskPaletteSessionOptions,
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
+  partitionInitialWorkspaceLoads,
   toSessionGroups,
   resolveKnownWorkspaceId,
   userVisibleSessionsByWorkspaceId,
@@ -61,6 +62,23 @@ describe("route workspaces", () => {
     const workspaces = [mapDesktopWorkspace(localWorkspace("ws_live", "/Users/example/current"))];
 
     expect(resolveKnownWorkspaceId(workspaces, ["ws_stale", "ws_live"])).toBe("ws_live");
+  });
+
+  test("blocks startup only on the selected workspace and loads other missing workspaces in the background", () => {
+    const workspaces = [
+      mapDesktopWorkspace(localWorkspace("selected", "/workspace/selected")),
+      mapDesktopWorkspace(localWorkspace("cached", "/workspace/cached")),
+      mapDesktopWorkspace(localWorkspace("missing", "/workspace/missing")),
+    ];
+
+    const result = partitionInitialWorkspaceLoads(
+      workspaces,
+      "selected",
+      new Set(["cached"]),
+    );
+
+    expect(result.blocking.map((workspace) => workspace.id)).toEqual(["selected"]);
+    expect(result.background.map((workspace) => workspace.id)).toEqual(["missing"]);
   });
 
   test("filters delegated child sessions while retaining user-visible sessions", () => {

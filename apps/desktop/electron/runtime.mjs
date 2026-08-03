@@ -206,7 +206,7 @@ function snapshotiPolloWorkServerState(state) {
   };
 }
 
-const SECRET_ENV_PATTERN = /(TOKEN|PASSWORD|USERNAME|AUTH|SECRET|KEY|CREDENTIAL)/i;
+const SECRET_ENV_PATTERN = /(TOKEN|PASSWORD|USERNAME|AUTH|SECRET|KEY|CREDENTIAL|PROXY)/i;
 
 function redactedExecutionSnapshot(command, args, cwd, injectedEnv) {
   return {
@@ -517,6 +517,62 @@ function loadUserEnvFile() {
   }
 }
 
+function normalizeProxyUrl(value) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return "";
+  return /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+}
+
+export function windowsProxyEnvFromServer(proxyServer, baseEnv = {}) {
+  if (
+    baseEnv.HTTP_PROXY || baseEnv.HTTPS_PROXY || baseEnv.ALL_PROXY
+    || baseEnv.http_proxy || baseEnv.https_proxy || baseEnv.all_proxy
+  ) {
+    return {};
+  }
+
+  const raw = String(proxyServer ?? "").trim();
+  if (!raw) return {};
+  const entries = raw.includes("=")
+    ? Object.fromEntries(raw.split(";").flatMap((entry) => {
+        const separator = entry.indexOf("=");
+        if (separator <= 0) return [];
+        return [[entry.slice(0, separator).trim().toLowerCase(), entry.slice(separator + 1).trim()]];
+      }))
+    : { http: raw, https: raw };
+  const httpProxy = normalizeProxyUrl(entries.http || entries.https);
+  const httpsProxy = normalizeProxyUrl(entries.https || entries.http);
+  const allProxy = normalizeProxyUrl(entries.socks || entries.socks5);
+  const noProxy = [String(baseEnv.NO_PROXY ?? baseEnv.no_proxy ?? "").trim(), "127.0.0.1", "localhost", "::1"]
+    .filter(Boolean)
+    .join(",");
+  return {
+    ...(httpProxy ? { HTTP_PROXY: httpProxy } : {}),
+    ...(httpsProxy ? { HTTPS_PROXY: httpsProxy } : {}),
+    ...(allProxy ? { ALL_PROXY: allProxy } : {}),
+    NO_PROXY: noProxy,
+    NODE_USE_ENV_PROXY: "1",
+  };
+}
+
+function resolveWindowsSystemProxyEnv(baseEnv = {}) {
+  if (process.platform !== "win32") return {};
+  try {
+    const result = spawnSync(
+      "reg.exe",
+      ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"],
+      { encoding: "utf8", windowsHide: true, timeout: 3000 },
+    );
+    if (result.status !== 0) return {};
+    const output = String(result.stdout ?? "");
+    if (!/^\s*ProxyEnable\s+REG_DWORD\s+0x1\s*$/im.test(output)) return {};
+    const proxyServer = output.match(/^\s*ProxyServer\s+REG_SZ\s+(.+?)\s*$/im)?.[1] ?? "";
+    return windowsProxyEnvFromServer(proxyServer, baseEnv);
+  } catch {
+    return {};
+  }
+}
+
 /**
  * @typedef {Object} RuntimeSystemCaTlsModule
  * @property {(type?: string) => string[]} [getCACertificates]
@@ -589,6 +645,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   /** @type {Promise<unknown>} */
   let runtimeLifecycleQueue = Promise.resolve();
   let lifecycleState = "idle";
+  let runtimePreparedForNextStart = false;
   /**
    * Serialize engine lifecycle operations; preserves the wrapped function's
    * return type (untyped, this collapsed runtime-manager inference to
@@ -800,6 +857,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       ...process.env,
       BUN_CONFIG_DNS_RESULT_ORDER: "verbatim",
     };
+    Object.assign(baseEnv, resolveWindowsSystemProxyEnv(baseEnv));
     const caEnv = Object.prototype.hasOwnProperty.call(baseEnv, "NODE_EXTRA_CA_CERTS") ? {} : await systemCaEnv();
     // Bun honors Node's NODE_EXTRA_CA_CERTS, so bundled Bun sidecars inherit
     // the exported OS trust store through the same child env variable.
@@ -1173,6 +1231,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   let inProcessServer = null;
 
   async function startiPolloWorkServer(options) {
+    const startedAt = nowMs();
     const currentPort = ipolloworkServerState.port;
     // Stop any previously running in-process server
     if (inProcessServer) {
@@ -1195,7 +1254,9 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     // development child sandbox's home/config paths into Electron itself.
     // Electron relaunches inherit process.env, so copying HOME here would make
     // the next desktop instance create a nested, empty workspace.
+    const environmentStartedAt = nowMs();
     const serverEnv = await buildChildEnv({});
+    console.info(`[startup] child environment ready in ${nowMs() - environmentStartedAt}ms`);
     applyEmbeddedServerEnvironment(process.env, serverEnv);
 
     // Once the embedded server has a persisted registry, it is the source of
@@ -1227,10 +1288,13 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     if (!embeddedPath) {
       throw new Error(`Cannot find iPolloWork embedded server bundle. Checked: ${candidates.join(", ")}`);
     }
+    const importStartedAt = nowMs();
     const { startEmbeddedServer } = await import(embeddedServerImportUrl(embeddedPath));
+    console.info(`[startup] embedded server module loaded in ${nowMs() - importStartedAt}ms`);
     // startEmbeddedServer falls back to an OS-assigned port if `port` races
     // into EADDRINUSE (see apps/server/src/serve-node.ts), so the bound port
     // below is authoritative.
+    const serverStartedAt = nowMs();
     const handle = await startEmbeddedServer({
       host,
       port: portSelection.port,
@@ -1246,6 +1310,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       opencodeBin: managedOpencode?.path ?? undefined,
       opencodeCwd: managedOpencodeWorkdir(),
     });
+    console.info(`[startup] embedded server and OpenCode listening in ${nowMs() - serverStartedAt}ms`);
     inProcessServer = handle;
     ipolloworkServerState.managedOpencodeExecution = handle.managedOpencodeExecution ?? null;
 
@@ -1308,6 +1373,10 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     if (!portSelection.preferredPort || boundPort === portSelection.preferredPort) {
       await persistPreferrediPolloWorkPort(activeWorkspace, boundPort);
     }
+    console.info(`[startup] local runtime ready in ${nowMs() - startedAt}ms`, {
+      workspace: activeWorkspace || null,
+      port: boundPort,
+    });
     return snapshotiPolloWorkServerState(ipolloworkServerState);
   }
 
@@ -1461,10 +1530,18 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   }
 
   async function prepareFreshRuntime() {
+    const startedAt = nowMs();
     lifecycleState = "cleaning";
+    runtimePreparedForNextStart = false;
+    const childrenStartedAt = nowMs();
     await stopAllRuntimeChildren();
+    console.info(`[startup] runtime children stopped in ${nowMs() - childrenStartedAt}ms`);
+    const sidecarsStartedAt = nowMs();
     await cleanupPackagedSidecars();
+    console.info(`[startup] stale packaged sidecars checked in ${nowMs() - sidecarsStartedAt}ms`);
     lifecycleState = "idle";
+    runtimePreparedForNextStart = true;
+    console.info(`[startup] runtime preparation completed in ${nowMs() - startedAt}ms`);
   }
 
   async function ensureiPolloWork(options) {
@@ -1488,6 +1565,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   }
 
   async function engineStart(projectDir, options = {}) {
+    const startedAt = nowMs();
     const safeProjectDir = String(projectDir ?? "").trim();
     if (!safeProjectDir) {
       throw new Error("projectDir is required");
@@ -1516,7 +1594,13 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
 
     await mkdir(safeProjectDir, { recursive: true });
     await ensureOpencodeConfig(safeProjectDir);
-    await prepareFreshRuntime();
+    if (runtimePreparedForNextStart) {
+      runtimePreparedForNextStart = false;
+      console.info("[startup] reusing completed runtime preparation");
+    } else {
+      await prepareFreshRuntime();
+      runtimePreparedForNextStart = false;
+    }
 
     const workspacePaths = [safeProjectDir, ...((options.workspacePaths ?? []).filter(Boolean))].filter(
       (value, index, list) => list.indexOf(value) === index,
@@ -1541,6 +1625,10 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
         });
 
         lifecycleState = "healthy";
+        console.info(`[startup] engine start completed in ${nowMs() - startedAt}ms`, {
+          attempt: attempt + 1,
+          workspace: safeProjectDir,
+        });
         return snapshotEngineState(engineState);
       } catch (error) {
         lastError = error;
@@ -1551,6 +1639,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
           // before exposing a startup failure to the UI.
           await new Promise((resolve) => setTimeout(resolve, 750));
           await prepareFreshRuntime();
+          runtimePreparedForNextStart = false;
         }
       }
     }

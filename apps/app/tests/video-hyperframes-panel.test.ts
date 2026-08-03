@@ -15,9 +15,12 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(panelSource).toContain("<DesignSystemDrawer");
-    expect(panelSource).toContain("<DesignSystemInspectorShell");
     expect(panelSource).toContain("embedded");
-    expect(panelSource).toContain('aria-label={t("video.design_system")}');
+    expect(panelSource).toContain('event.data?.type !== "ipollowork:video-studio-panel"');
+    expect(panelSource).toContain('event.data.panel === "style"');
+    expect(panelSource).not.toContain('aria-label={t("video.design_system")}');
+    expect(panelSource).toContain('data-testid="video-style-tab-content"');
+    expect(panelSource).not.toContain("<DesignSystemInspectorShell");
     expect(panelSource).toContain('`${projectDirectory}/design-tokens.css`');
     expect(panelSource).toContain("ensureHtmlDesignSystemContract(current.content, theme.id)");
     expect(panelSource).toContain("buildTemplateTokenCss(theme)");
@@ -94,6 +97,9 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain("videoStudioExpanded");
     expect(sessionPageSource).toContain('left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0"');
     expect(sessionPageSource).toContain('videoStudioExpanded && (!shellConfig.sidebar || !sidebarOpen) && "mac:[&_header]:!pl-20"');
+    expect(sessionPageSource).toContain(
+      "!rightWorkspaceExpanded &&\n      (showWorkspaceSetupEmptyState",
+    );
     expect(sessionPageSource).not.toContain("mac:peer-data-[state=collapsed]:[&_header]:pl-28");
     expect(sessionPageSource).toContain("onExpandedChange={setVideoStudioExpanded}");
   });

@@ -34,6 +34,19 @@ const sidecarOverride = process.env.IPOLLOWORK_SIDECAR_DIR?.trim() || readArg("-
 const sidecarDir = sidecarOverride ? resolve(sidecarOverride) : join(__dirname, "..", "resources", "sidecars");
 const constantsPath = resolve(__dirname, "..", "..", "..", "constants.json");
 
+const copyFileWithRetry = (source, destination, attempts = 5) => {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      copyFileSync(source, destination);
+      return;
+    } catch (error) {
+      const retriable = ["EBUSY", "EPERM", "EACCES"].includes(error?.code);
+      if (!retriable || attempt === attempts - 1) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250 * (attempt + 1));
+    }
+  }
+};
+
 const opencodeGithubRepo = (() => {
   const raw =
     process.env.OPENCODE_GITHUB_REPO?.trim() ||
@@ -457,14 +470,14 @@ if (shouldBuildOrchestrator) {
 
 if (existsSync(orchestratorBuildPath)) {
   const shouldCopyCanonical =
-    didBuildOrchestrator || !existsSync(orchestratorPath) || isStubBinary(orchestratorPath);
+    (!forceBuild && didBuildOrchestrator) || !existsSync(orchestratorPath) || isStubBinary(orchestratorPath);
   if (shouldCopyCanonical && orchestratorBuildPath !== orchestratorPath) {
     try {
       if (existsSync(orchestratorPath)) unlinkSync(orchestratorPath);
     } catch {
       // ignore
     }
-    copyFileSync(orchestratorBuildPath, orchestratorPath);
+    copyFileWithRetry(orchestratorBuildPath, orchestratorPath);
   }
 
   if (orchestratorTargetPath) {
@@ -478,7 +491,7 @@ if (existsSync(orchestratorBuildPath)) {
       } catch {
         // ignore
       }
-      copyFileSync(orchestratorBuildPath, orchestratorTargetPath);
+      copyFileWithRetry(orchestratorBuildPath, orchestratorTargetPath);
     }
   }
 }
@@ -521,7 +534,9 @@ const versions = {
   },
   "ipollowork-orchestrator": {
     version: orchestratorVersion,
-    sha256: existsSync(orchestratorPath) ? sha256File(orchestratorPath) : null,
+    sha256: existsSync(orchestratorTargetPath)
+      ? sha256File(orchestratorTargetPath)
+      : existsSync(orchestratorPath) ? sha256File(orchestratorPath) : null,
   },
 };
 

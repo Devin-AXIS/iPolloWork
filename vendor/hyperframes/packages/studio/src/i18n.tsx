@@ -45,6 +45,12 @@ type TranslationKey =
   | "right.resizePanes"
   | "right.design"
   | "right.designTooltip"
+  | "right.voice"
+  | "right.voiceTooltip"
+  | "right.style"
+  | "right.styleTooltip"
+  | "right.assets"
+  | "right.assetsTooltip"
   | "right.catalog"
   | "right.catalogTooltip"
   | "right.effects"
@@ -86,7 +92,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.capture": "Capture",
     "header.capturing": "Capturing...",
     "header.captureCurrentFrame": "Capture current frame",
-    "header.inspector": "Design",
+    "header.inspector": "Layers",
     "header.renderInProgress": "A render is already in progress",
     "header.renderExport": "Render and export this composition",
     "header.rendering": "Rendering...",
@@ -108,8 +114,14 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.linting": "Linting...",
     "right.resizeInspector": "Resize inspector panel",
     "right.resizePanes": "Resize Layers and Design panes",
-    "right.design": "Design",
+    "right.design": "Layers",
     "right.designTooltip": "Element styles and properties",
+    "right.voice": "Voice",
+    "right.voiceTooltip": "Voiceover settings",
+    "right.style": "Style",
+    "right.styleTooltip": "Video design system",
+    "right.assets": "Assets",
+    "right.assetsTooltip": "Videos, images, audio, and fonts",
     "right.catalog": "Animation",
     "right.catalogTooltip": "Browse reusable animation presets",
     "right.effects": "Scenes",
@@ -151,7 +163,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.capture": "截图",
     "header.capturing": "截图中...",
     "header.captureCurrentFrame": "截取当前帧",
-    "header.inspector": "设计",
+    "header.inspector": "图层",
     "header.renderInProgress": "已有渲染任务正在进行",
     "header.renderExport": "渲染并导出当前合成",
     "header.rendering": "渲染中...",
@@ -173,8 +185,14 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.linting": "检查中...",
     "right.resizeInspector": "调整检查器面板宽度",
     "right.resizePanes": "调整图层与设计面板高度",
-    "right.design": "设计",
+    "right.design": "图层",
     "right.designTooltip": "元素样式和属性",
+    "right.voice": "配音",
+    "right.voiceTooltip": "视频配音设置",
+    "right.style": "样式",
+    "right.styleTooltip": "视频设计系统",
+    "right.assets": "素材",
+    "right.assetsTooltip": "视频、图片、音频和字体",
     "right.catalog": "动画",
     "right.catalogTooltip": "浏览可复用动画预设",
     "right.effects": "场景",

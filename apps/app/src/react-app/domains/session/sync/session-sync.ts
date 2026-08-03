@@ -197,6 +197,26 @@ function clearTrackedSession(input: SyncOptions, entry: SyncEntry, sessionId: st
   }
 }
 
+export function destroyWorkspaceSessionResources(input: SyncOptions, sessionId: string) {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) return;
+
+  const entry = syncs.get(syncKey(input));
+  if (entry) clearTrackedSession(input, entry, normalizedSessionId);
+
+  const queryClient = getReactQueryClient();
+  for (const queryKey of [
+    snapshotKey(input.workspaceId, normalizedSessionId),
+    transcriptKey(input.workspaceId, normalizedSessionId),
+    statusKey(input.workspaceId, normalizedSessionId),
+    todoKey(input.workspaceId, normalizedSessionId),
+    permissionKey(input.workspaceId, normalizedSessionId),
+    questionKey(input.workspaceId, normalizedSessionId),
+  ]) {
+    queryClient.removeQueries({ queryKey, exact: true });
+  }
+}
+
 function retainSession(input: SyncOptions, entry: SyncEntry, sessionId: string, ttlMs = retainedSessionTtlMs) {
   const existing = entry.retainedSessionTimers.get(sessionId);
   if (existing) clearTimeout(existing);

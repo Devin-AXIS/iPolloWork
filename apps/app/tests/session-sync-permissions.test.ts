@@ -10,12 +10,16 @@ import {
   __disposeWorkspaceSessionSyncForTest,
   __hasWorkspaceSessionSyncForTest,
   coalescePendingDeltas,
+  destroyWorkspaceSessionResources,
   ensureWorkspaceSessionSync,
   permissionKey,
   questionKey,
   seedPermissionState,
   seedQuestionState,
   seedSessionState,
+  snapshotKey,
+  statusKey,
+  todoKey,
   trackWorkspaceSessionSync,
   transcriptKey,
 } from "../src/react-app/domains/session/sync/session-sync";
@@ -328,6 +332,40 @@ describe("session transcript sync", () => {
       expect(transcript?.[0]?.parts[0]).toMatchObject({ text: "still streaming after switch" });
 
       releaseSessionB();
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("destroys an explicitly switched-away session and ignores later events", () => {
+    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+
+    try {
+      const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+      seedSessionState("workspace-a", snapshotWithMessages([
+        { id: "msg-user", role: "user", text: "destroy me" },
+      ]));
+      releaseSession();
+
+      destroyWorkspaceSessionResources(syncInput, "session-a");
+
+      for (const queryKey of [
+        snapshotKey("workspace-a", "session-a"),
+        transcriptKey("workspace-a", "session-a"),
+        statusKey("workspace-a", "session-a"),
+        todoKey("workspace-a", "session-a"),
+        permissionKey("workspace-a", "session-a"),
+        questionKey("workspace-a", "session-a"),
+      ]) {
+        expect(getReactQueryClient().getQueryData(queryKey)).toBeUndefined();
+      }
+
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.updated",
+        properties: { info: { id: "msg-late", role: "assistant", sessionID: "session-a" } },
+      } as any);
+      expect(getReactQueryClient().getQueryData(transcriptKey("workspace-a", "session-a"))).toBeUndefined();
     } finally {
       cleanup();
     }

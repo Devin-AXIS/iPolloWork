@@ -4,6 +4,16 @@ import { publicAssetUrl } from "@/app/lib/public-asset";
 
 const RELEASES_URL = "https://github.com/Devin-AXIS/iPolloWork/releases";
 
+export function IPolloLoadingArtwork() {
+  return (
+    <img
+      src={publicAssetUrl("ipollowork-app-loading-v3.gif")}
+      alt="iPolloWork Loading"
+      className="h-auto w-[min(288px,33.6vw)] max-[640px]:w-[min(224px,46.4vw)] dark:brightness-0 dark:invert"
+    />
+  );
+}
+
 /**
  * Branded boot overlay. It matches the application surface from the first
  * renderer frame and stays mounted until both boot and route data are ready.
@@ -25,11 +35,7 @@ export function LoadingOverlay() {
       data-testid="startup-logo-animation"
     >
       <div className="flex items-center justify-center">
-        <img
-          src={publicAssetUrl("ipollowork-app-loading-v3.gif")}
-          alt="iPolloWork Loading"
-          className="h-auto w-[min(288px,33.6vw)] max-[640px]:w-[min(224px,46.4vw)] dark:brightness-0 dark:invert"
-        />
+        <IPolloLoadingArtwork />
       </div>
       <span className="sr-only">Loading... {message || "Preparing workspace"}</span>
       {error ? (

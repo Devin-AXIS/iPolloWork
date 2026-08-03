@@ -7,7 +7,6 @@ import { ensureWorkspaceSessionSync, trackWorkspaceSessionsSync } from "./sessio
 type ReactSessionRuntimeProps = {
   workspaceId: string;
   sessionId: string | null;
-  activeSessionIds?: string[];
   opencodeBaseUrl: string;
   ipolloworkToken: string;
   onSessionUpdated?: (update: { sessionId: string; info: Record<string, unknown> }) => void;
@@ -24,12 +23,12 @@ export function ReactSessionRuntime(props: ReactSessionRuntimeProps) {
       onSessionStatus: props.onSessionStatus,
     };
     const releaseWorkspace = ensureWorkspaceSessionSync(input);
-    const releaseSessions = trackWorkspaceSessionsSync(input, [props.sessionId, ...(props.activeSessionIds ?? [])]);
+    const releaseSessions = trackWorkspaceSessionsSync(input, props.sessionId ? [props.sessionId] : []);
     return () => {
       releaseSessions();
       releaseWorkspace();
     };
-  }, [props.workspaceId, props.sessionId, props.activeSessionIds, props.opencodeBaseUrl, props.ipolloworkToken, props.onSessionUpdated, props.onSessionStatus]);
+  }, [props.workspaceId, props.sessionId, props.opencodeBaseUrl, props.ipolloworkToken, props.onSessionUpdated, props.onSessionStatus]);
 
   return null;
 }

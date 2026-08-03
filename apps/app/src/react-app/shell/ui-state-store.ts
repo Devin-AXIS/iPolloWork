@@ -372,4 +372,15 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
 
 syncApplicationMenuVisible(useUiStateStore.getState().applicationMenuVisible);
 
-useUiStateStore.subscribe((state) => persistUiState(state));
+useUiStateStore.subscribe((state, previous) => {
+  if (
+    state.sidePanelState === previous.sidePanelState &&
+    state.applicationMenuVisible === previous.applicationMenuVisible &&
+    state.workspaceLeftSidebarWidth === previous.workspaceLeftSidebarWidth &&
+    state.workspaceRightSidebarExpanded === previous.workspaceRightSidebarExpanded &&
+    state.workspaceRightSidebarExpandedWidth === previous.workspaceRightSidebarExpandedWidth
+  ) {
+    return;
+  }
+  persistUiState(state);
+});

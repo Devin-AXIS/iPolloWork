@@ -18,18 +18,28 @@ describe("Studio right panel layout", () => {
     expect(source).not.toContain('label={t("right.variables")}');
   });
 
-  it("labels the remaining queue as export", () => {
+  it("uses property tabs and keeps export in its own drawer", () => {
     const translations = readFileSync(new URL("../i18n.tsx", import.meta.url), "utf8");
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
+    const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
 
-    expect(translations).toContain('"header.inspector": "Design"');
-    expect(translations).toContain('"header.inspector": "设计"');
+    expect(translations).toContain('"header.inspector": "Layers"');
+    expect(translations).toContain('"header.inspector": "图层"');
     expect(translations).toContain('"right.renders": "Export"');
     expect(translations).toContain('"right.renders": "导出"');
     expect(translations).toContain('"right.catalog": "Animation"');
     expect(translations).toContain('"right.catalog": "动画"');
     expect(translations).toContain('"right.effects": "Scenes"');
     expect(translations).toContain('"right.effects": "场景"');
+    expect(panel).toContain('label={t("right.voice")}');
+    expect(panel).toContain('label={t("right.style")}');
+    expect(panel).toContain('label={t("right.assets")}');
+    expect(panel).not.toContain('label={t("right.renders")}');
+    expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');
+    expect(panel).toContain('rightPanelTab !== "voice" && rightPanelTab !== "style"');
+    expect(panel).toContain('useEffect(() => () => closeHostPanel(), [closeHostPanel])');
+    expect(header).toContain('<path d="M9 14 4 9l5-5" />');
+    expect(header).not.toContain('aria-label={t("header.redo")}');
     expect(header).not.toContain('<circle cx="12" cy="12" r="10" />');
   });
 

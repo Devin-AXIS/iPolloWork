@@ -28,6 +28,7 @@ type VideoVoicePanelProps = {
   workspaceId: string | null;
   previewRequest: number;
   onClose: () => void;
+  embedded?: boolean;
 };
 
 type CustomVoice = {
@@ -112,7 +113,7 @@ async function readAudioDuration(file: File): Promise<number> {
   }
 }
 
-export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId, previewRequest, onClose }: VideoVoicePanelProps) {
+export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId, previewRequest, onClose, embedded = false }: VideoVoicePanelProps) {
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const handledPreviewRequestRef = React.useRef(0);
@@ -328,8 +329,8 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
   }, [loading, previewRequest, previewVoice]);
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-20 flex w-[22rem] max-w-[calc(100%-2rem)] flex-col border-l border-border bg-popover/95 shadow-2xl backdrop-blur-xl" aria-label="视频配音设置" data-testid="video-voice-panel">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+    <aside className={embedded ? "absolute bottom-0 right-0 top-[82px] z-20 flex w-[400px] max-w-[calc(100%-2rem)] min-h-0 flex-col border-l border-border bg-popover" : "absolute inset-y-0 right-0 z-20 flex w-[22rem] max-w-[calc(100%-2rem)] flex-col border-l border-border bg-popover/95 shadow-2xl backdrop-blur-xl"} aria-label="视频配音设置" data-testid="video-voice-panel" data-embedded={embedded ? "true" : "false"}>
+      {!embedded ? <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
         <AudioLines className="size-4 text-primary" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">配音</p>
@@ -339,7 +340,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
           {previewing ? <Loader2 className="animate-spin" /> : <Play />}
         </Button>
         <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="关闭配音设置"><X /></Button>
-      </div>
+      </div> : null}
 
       <ScrollArea className="min-h-0 flex-1">
         <ScrollAreaViewport className="px-3 py-3">

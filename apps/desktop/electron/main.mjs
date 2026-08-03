@@ -1685,6 +1685,8 @@ function assertiPolloWorkServerReady(info) {
 }
 
 async function bootRuntimeForSelectedWorkspace() {
+  const startedAt = Date.now();
+  console.info("[startup] selected workspace runtime bootstrap started");
   const list = await workspaceStore.readWorkspaceState();
   const selectedId = list.selectedId || list.activeId || list.workspaces[0]?.id || "";
   const workspace = selectedId
@@ -1692,6 +1694,7 @@ async function bootRuntimeForSelectedWorkspace() {
     : list.workspaces[0];
   const workspaceRoot = String(workspace?.path ?? "").trim();
   if (!workspaceRoot || workspace?.workspaceType === "remote") {
+    console.info(`[startup] selected workspace runtime bootstrap skipped in ${Date.now() - startedAt}ms`);
     return { ok: true, skipped: true, reason: "no-local-workspace" };
   }
 
@@ -1744,6 +1747,9 @@ async function bootRuntimeForSelectedWorkspace() {
     name: bootWorkspace.name ?? bootWorkspace.displayName ?? null,
   }).catch(() => undefined);
   const ipolloworkServer = assertiPolloWorkServerReady(await runtimeManager.ipolloworkServerInfo());
+  console.info(`[startup] selected workspace runtime bootstrap completed in ${Date.now() - startedAt}ms`, {
+    workspaceId: bootWorkspace.id ?? null,
+  });
   return { ok: true, skipped: false, engine, ipolloworkServer, workspaceId: bootWorkspace.id ?? null };
 }
 
@@ -3926,6 +3932,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    const startupStartedAt = Date.now();
+    console.info("[startup] Electron ready");
     installMediaPermissionHandlers(session, () => mainWindow);
     await workspaceStore.importBundledDesktopBootstrapConfigIfPreferred();
     const bootstrapConfig = await workspaceStore.getDesktopBootstrapConfig();
@@ -3939,7 +3947,9 @@ if (!app.requestSingleInstanceLock()) {
       await applyBrandIconUrl(bootstrapConfig.brandIconUrl);
     }
     applicationMenu.install();
-    await runtimeManager.prepareFreshRuntime().catch(() => undefined);
+    const runtimePreparationPromise = runtimeManager.prepareFreshRuntime().catch((error) => {
+      console.warn("[startup] runtime preparation failed", error);
+    });
 
     // Use Tauri's existing workspace state file as canonical so rollback and
     // Electron see the same workspace list. Import the short-lived
@@ -3948,14 +3958,19 @@ if (!app.requestSingleInstanceLock()) {
     await uiControlServer.start().catch((error) => {
       console.warn("[ui-control] failed to start", error);
     });
-    runtimeBootstrapPromise = bootRuntimeForSelectedWorkspace().catch((error) => ({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    }));
+    runtimeBootstrapPromise = runtimePreparationPromise
+      .then(() => bootRuntimeForSelectedWorkspace())
+      .catch((error) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
 
     queueDeepLinks(forwardedDeepLinks(process.argv));
+    const windowStartedAt = Date.now();
     const win = await createMainWindow();
+    console.info(`[startup] main window loaded in ${Date.now() - windowStartedAt}ms`);
     win.webContents.on("did-finish-load", () => {
+      console.info(`[startup] renderer finished loading after ${Date.now() - startupStartedAt}ms`);
       flushPendingDeepLinks();
     });
 
