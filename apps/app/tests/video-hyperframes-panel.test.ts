@@ -154,6 +154,35 @@ describe("HyperFrames Video Studio", () => {
     expect(voicePanelSource).not.toContain("alignItemWithTrigger");
   });
 
+  test("defers remote voice inventory until the user opens My voices", () => {
+    const voicePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
+      "utf8",
+    ).replaceAll("\r\n", "\n");
+    const initialLoadStart = voicePanelSource.indexOf("  React.useEffect(() => {\n    let cancelled = false;");
+    const deferredLoadStart = voicePanelSource.indexOf("  React.useEffect(() => {\n    if (activeTab !== \"mine\"");
+    const initialLoad = voicePanelSource.slice(initialLoadStart, deferredLoadStart);
+
+    expect(initialLoadStart).toBeGreaterThan(-1);
+    expect(deferredLoadStart).toBeGreaterThan(initialLoadStart);
+    expect(initialLoad).not.toContain('callMedia("voice_list"');
+    expect(initialLoad).not.toContain('callStorage("status"');
+    expect(voicePanelSource).toContain('if (activeTab !== "mine"');
+    expect(voicePanelSource).toContain("Promise.allSettled([");
+  });
+
+  test("allows voice cloning without requiring separately configured object storage", () => {
+    const voicePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(voicePanelSource).toContain("将使用百炼免费临时存储");
+    expect(voicePanelSource).toContain("disabled={cloning}");
+    expect(voicePanelSource).not.toContain("disabled={!storageReady || cloning}");
+    expect(voicePanelSource).not.toContain("!mediaReady || !storageReady");
+  });
+
   test("keeps the application sidebar visible while Video Studio is expanded", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),

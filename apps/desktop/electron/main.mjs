@@ -61,6 +61,10 @@ const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
 const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";
 const DEV_APP_IDENTIFIER = "com.differentai.ipollowork.dev";
 const isDevMode = process.env.IPOLLOWORK_DEV_MODE === "1";
+// Media Center runs inside Electron's embedded server. Expose the Chromium
+// network stack for provider traffic so it follows the desktop system proxy,
+// without replacing Node fetch for local OpenCode and workspace requests.
+Reflect.set(globalThis, Symbol.for("ipollowork.mediaProviderFetch"), electronNet.fetch.bind(electronNet));
 const APP_NAME =
   process.env.IPOLLOWORK_ELECTRON_APP_NAME?.trim() ||
   (isDevMode ? "iPollo - Dev" : "iPollo");

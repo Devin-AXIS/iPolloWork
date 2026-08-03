@@ -28,6 +28,13 @@ const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
 
 type JsonRecord = Record<string, unknown>;
 
+function mediaProviderFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const desktopFetch: unknown = Reflect.get(globalThis, Symbol.for("ipollowork.mediaProviderFetch"));
+  return typeof desktopFetch === "function"
+    ? (desktopFetch as typeof fetch)(input, init)
+    : fetch(input, init);
+}
+
 function roundVoiceoverTime(value: number) {
   return Math.round(value * 1_000) / 1_000;
 }
@@ -707,7 +714,7 @@ async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(url, { signal: controller.signal });
+    response = await mediaProviderFetch(url, { signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_audio_download_timeout", "The synthesized audio download timed out.");
@@ -839,6 +846,21 @@ function endpoint(baseUrl: string, path: string): string {
   return `${baseUrl}${path}`;
 }
 
+function safeBailianUploadHost(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ApiError(502, "bailian_upload_policy_invalid", "Alibaba Model Studio returned an invalid temporary upload host.");
+  }
+  const hostname = url.hostname.toLowerCase();
+  const isAliyunOssHost = /^[a-z0-9.-]+\.oss-[a-z0-9-]+\.aliyuncs\.com$/.test(hostname);
+  if (url.protocol !== "https:" || !isAliyunOssHost || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+    throw new ApiError(502, "bailian_upload_policy_invalid", "Alibaba Model Studio returned an untrusted temporary upload host.");
+  }
+  return url.origin;
+}
+
 async function requestProviderJson(input: {
   apiKey: string;
   url: string;
@@ -850,7 +872,7 @@ async function requestProviderJson(input: {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(input.url, {
+    response = await mediaProviderFetch(input.url, {
       method: input.method ?? "POST",
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
@@ -878,6 +900,75 @@ async function requestProviderJson(input: {
     throw new ApiError(response.status, "bailian_request_failed", message || `Alibaba Model Studio request failed (HTTP ${response.status}).`);
   }
   return payload;
+}
+
+async function uploadWorkspaceFileToBailianTemporaryStorage(input: {
+  config: ServerConfig;
+  apiKey: string;
+  baseUrl: string;
+  context: JsonRecord;
+  sourcePath: string;
+  maxBytes: number;
+}): Promise<string> {
+  const workspace = workspaceForContext(input.config, input.context);
+  const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(source.absolutePath);
+  } catch {
+    throw new ApiError(404, "workspace_file_not_found", "Workspace file was not found");
+  }
+  if (bytes.byteLength > input.maxBytes) {
+    throw new ApiError(413, "workspace_file_too_large", `Source file exceeds the ${Math.floor(input.maxBytes / (1024 * 1024))} MB limit.`);
+  }
+
+  const policyPayload = await requestProviderJson({
+    apiKey: input.apiKey,
+    url: `${endpoint(input.baseUrl, "/api/v1/uploads")}?action=getPolicy&model=voice-enrollment`,
+    method: "GET",
+  });
+  const policy = readRecord(policyPayload, "data");
+  const uploadHost = safeBailianUploadHost(readStringField(policy, "upload_host"));
+  const uploadDirectory = readStringField(policy, "upload_dir").replace(/^\/+|\/+$/g, "");
+  const accessKeyId = readStringField(policy, "oss_access_key_id");
+  const signature = readStringField(policy, "signature");
+  const encodedPolicy = readStringField(policy, "policy");
+  const objectAcl = readStringField(policy, "x_oss_object_acl");
+  const forbidOverwrite = readStringField(policy, "x_oss_forbid_overwrite");
+  if (!uploadDirectory || uploadDirectory.split("/").some((segment) => !segment || segment === "." || segment === "..") || !accessKeyId || !signature || !encodedPolicy || !objectAcl || !forbidOverwrite) {
+    throw new ApiError(502, "bailian_upload_policy_invalid", "Alibaba Model Studio returned an incomplete temporary upload policy.");
+  }
+
+  const extension = extname(source.relativePath).toLowerCase();
+  const fileName = `${randomUUID()}${extension}`;
+  const objectKey = `${uploadDirectory}/${fileName}`;
+  const form = new FormData();
+  form.append("OSSAccessKeyId", accessKeyId);
+  form.append("Signature", signature);
+  form.append("policy", encodedPolicy);
+  form.append("x-oss-object-acl", objectAcl);
+  form.append("x-oss-forbid-overwrite", forbidOverwrite);
+  form.append("key", objectKey);
+  form.append("success_action_status", "200");
+  form.append("file", new Blob([Uint8Array.from(bytes)], { type: "application/octet-stream" }), fileName);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await mediaProviderFetch(uploadHost, { method: "POST", body: form, signal: controller.signal });
+    if (!response.ok) {
+      throw new ApiError(response.status, "bailian_temporary_upload_failed", `Alibaba Model Studio temporary storage rejected the audio upload (HTTP ${response.status}).`);
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(504, "bailian_temporary_upload_timeout", "Alibaba Model Studio temporary storage did not finish the upload in time.");
+    }
+    throw new ApiError(502, "bailian_temporary_upload_failed", "Could not upload the audio to Alibaba Model Studio temporary storage.");
+  } finally {
+    clearTimeout(timeout);
+  }
+  return `oss://${objectKey}`;
 }
 
 type TranslationResult = {
@@ -916,7 +1007,7 @@ async function requestTranslation(input: {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(endpoint(input.baseUrl, "/compatible-mode/v1/chat/completions"), {
+    response = await mediaProviderFetch(endpoint(input.baseUrl, "/compatible-mode/v1/chat/completions"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
@@ -1200,16 +1291,10 @@ export async function callMediaExtensionAction(
         throw new ApiError(400, "invalid_voice_sample", "Voice samples must be WAV, MP3, or M4A files.");
       }
       const targetModel = readStringField(args, "targetModel") || "cosyvoice-v3-flash";
-      const providerResponse = await withTemporaryWorkspaceObject({
-        config,
-        env,
-        context,
-        sourcePath,
-        purpose: "voice-clone",
-        maxBytes: 10 * 1024 * 1024,
-        use: (audioUrl) => requestProviderJson({
+      const createVoice = (audioUrl: string, headers?: Record<string, string>) => requestProviderJson({
           apiKey,
           url: endpoint(baseUrl, "/api/v1/services/audio/tts/customization"),
+          ...(headers ? { headers } : {}),
           body: {
             model: "voice-enrollment",
             input: {
@@ -1220,8 +1305,32 @@ export async function callMediaExtensionAction(
               ...(readStringArray(args, "languageHints").length ? { language_hints: readStringArray(args, "languageHints") } : {}),
             },
           },
-        }),
-      });
+        });
+      let providerResponse: unknown;
+      try {
+        providerResponse = await withTemporaryWorkspaceObject({
+          config,
+          env,
+          context,
+          sourcePath,
+          purpose: "voice-clone",
+          maxBytes: 10 * 1024 * 1024,
+          use: (audioUrl) => createVoice(audioUrl),
+        });
+      } catch (error) {
+        const storageIsMissing = error instanceof ApiError
+          && (error.code === "storage_not_configured" || error.code === "storage_provider_not_configured");
+        if (!storageIsMissing) throw error;
+        const audioUrl = await uploadWorkspaceFileToBailianTemporaryStorage({
+          config,
+          apiKey,
+          baseUrl,
+          context,
+          sourcePath,
+          maxBytes: 10 * 1024 * 1024,
+        });
+        providerResponse = await createVoice(audioUrl, { "X-DashScope-OssResourceResolve": "enable" });
+      }
       const voiceId = voiceIdFromPayload(providerResponse);
       if (!voiceId) throw new ApiError(502, "voice_clone_failed", "Alibaba Model Studio did not return a reusable voice ID.");
       result = { voiceId, model: targetModel };

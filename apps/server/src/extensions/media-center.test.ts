@@ -14,6 +14,8 @@ import {
 } from "./media-center.js";
 
 const nativeFetch = globalThis.fetch;
+const mediaProviderFetchKey = Symbol.for("ipollowork.mediaProviderFetch");
+const nativeMediaProviderFetch: unknown = Reflect.get(globalThis, mediaProviderFetchKey);
 const directories: string[] = [];
 
 const config = {
@@ -28,6 +30,8 @@ function env(values: Record<string, string>): EnvService {
 
 afterEach(async () => {
   globalThis.fetch = nativeFetch;
+  if (nativeMediaProviderFetch === undefined) Reflect.deleteProperty(globalThis, mediaProviderFetchKey);
+  else Reflect.set(globalThis, mediaProviderFetchKey, nativeMediaProviderFetch);
   while (directories.length) {
     const directory = directories.pop();
     if (directory) await rm(directory, { recursive: true, force: true });
@@ -526,6 +530,81 @@ describe("Media Center extension", () => {
     expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
     expect(JSON.stringify(result)).not.toContain("oss-secret");
     expect(JSON.stringify(result)).not.toContain("x-oss-signature=");
+  });
+
+  test("uses Electron's injected provider fetch without replacing local server fetch", async () => {
+    let providerFetchCalled = false;
+    Reflect.set(globalThis, mediaProviderFetchKey, (async (input: string | URL | Request) => {
+      providerFetchCalled = true;
+      expect(String(input)).toBe("https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization");
+      return new Response(JSON.stringify({ output: { voice_list: [] } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch);
+    globalThis.fetch = (() => {
+      throw new Error("Node fetch must remain unused for media provider traffic in Electron");
+    }) as unknown as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "voice_list", {}, {});
+
+    expect(providerFetchCalled).toBe(true);
+    expect(result).toMatchObject({ ok: true, result: { output: { items: [] } } });
+  });
+
+  test("clones a workspace sample through Bailian temporary storage when object storage is not configured", async () => {
+    const { root, config: workspace } = await workspaceConfig();
+    const requests: string[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      requests.push(`${init?.method ?? "GET"} ${url}`);
+      if (url.includes("/api/v1/uploads?")) {
+        expect(init?.method).toBe("GET");
+        return new Response(JSON.stringify({
+          data: {
+            policy: "encoded-policy",
+            signature: "upload-signature",
+            upload_dir: "dashscope-instant/account/date/request",
+            upload_host: "https://dashscope-file-test.oss-cn-beijing.aliyuncs.com",
+            oss_access_key_id: "temporary-access-key",
+            x_oss_object_acl: "private",
+            x_oss_forbid_overwrite: "true",
+          },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url === "https://dashscope-file-test.oss-cn-beijing.aliyuncs.com") {
+        expect(init?.body).toBeInstanceOf(FormData);
+        const form = init?.body as FormData;
+        expect(form.get("OSSAccessKeyId")).toBe("temporary-access-key");
+        expect(form.get("key")).toMatch(/^dashscope-instant\/account\/date\/request\/.+\.wav$/);
+        expect(form.get("file")).toBeInstanceOf(Blob);
+        return new Response(null, { status: 200 });
+      }
+      expect(url).toBe("https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization");
+      expect(init?.headers).toMatchObject({
+        Authorization: "Bearer sk-bailian-secret",
+        "X-DashScope-OssResourceResolve": "enable",
+      });
+      const body = JSON.parse(String(init?.body));
+      expect(body.input.url).toMatch(/^oss:\/\/dashscope-instant\/account\/date\/request\/.+\.wav$/);
+      return new Response(JSON.stringify({ output: { voice_id: "ipw-bailian-temp-voice" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(
+      workspace,
+      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      "voice_clone_workspace_file",
+      { sourcePath: "sample.wav" },
+      { directory: root },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { voiceId: "ipw-bailian-temp-voice", model: "cosyvoice-v3-flash" } } });
+    expect(requests).toHaveLength(3);
+    expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+    expect(JSON.stringify(result)).not.toContain("temporary-access-key");
   });
 
   test("collects the documented streaming file-translation response without exposing the key", async () => {

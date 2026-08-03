@@ -80,7 +80,11 @@ function customVoicesFrom(value: unknown): CustomVoice[] {
 }
 
 function readableError(error: unknown) {
-  return error instanceof Error ? error.message : "操作没有完成，请稍后重试。";
+  const message = error instanceof Error ? error.message : "";
+  if (/Could not reach Alibaba Model Studio/i.test(message)) return "无法连接阿里百炼，请检查网络后重试。";
+  if (/Alibaba Model Studio did not respond before the request timed out/i.test(message)) return "阿里百炼响应超时，请稍后重试。";
+  if (/Could not upload the audio to Alibaba Model Studio temporary storage/i.test(message)) return "无法将音频上传到百炼临时存储，请检查网络后重试。";
+  return message || "操作没有完成，请稍后重试。";
 }
 
 function canSynthesizeCustomVoice(voice: CustomVoice | undefined) {
@@ -123,7 +127,9 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
   const [mediaReady, setMediaReady] = React.useState(false);
   const [storageReady, setStorageReady] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
-  const [refreshingVoices, setRefreshingVoices] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<"preset" | "mine">("preset");
+  const [mineDataLoaded, setMineDataLoaded] = React.useState(false);
+  const [loadingMineData, setLoadingMineData] = React.useState(false);
   const [cloning, setCloning] = React.useState(false);
   const [previewing, setPreviewing] = React.useState(false);
   const [message, setMessage] = React.useState("");
@@ -140,16 +146,33 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
     return voices;
   }, [client, context, mediaReady]);
 
-  const refreshCustomVoices = React.useCallback(async () => {
-    setRefreshingVoices(true);
+  const loadMineData = React.useCallback(async () => {
+    if (!client || !mediaReady) return;
+    setLoadingMineData(true);
+    setMessage("");
     try {
-      await loadCustomVoices();
-    } catch (error) {
-      setMessage(readableError(error));
+      const [voicesResult, storageResult] = await Promise.allSettled([
+        loadCustomVoices(),
+        client.callStorage("status", {}, context),
+      ]);
+      const errors: string[] = [];
+      if (voicesResult.status === "rejected") {
+        errors.push(readableError(voicesResult.reason));
+      }
+      if (storageResult.status === "fulfilled") {
+        const storage = storageResult.value;
+        setStorageReady(storage.ok && storageConfigured(storage.result));
+        if (!storage.ok) errors.push(storage.message);
+      } else {
+        setStorageReady(false);
+        errors.push(readableError(storageResult.reason));
+      }
+      setMineDataLoaded(true);
+      if (errors.length) setMessage(errors.join(" "));
     } finally {
-      setRefreshingVoices(false);
+      setLoadingMineData(false);
     }
-  }, [loadCustomVoices]);
+  }, [client, context, loadCustomVoices, mediaReady]);
 
   const saveSettings = React.useCallback(async (next: VideoVoiceoverSettings) => {
     if (!client || !workspaceId) throw new Error("当前工作区尚未准备好。");
@@ -227,7 +250,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
       setMessage(invalid);
       return;
     }
-    if (!client || !workspaceId || !mediaReady || !storageReady) return;
+    if (!client || !workspaceId || !mediaReady) return;
     setCloning(true);
     setMessage("");
     let samplePath: string | null = null;
@@ -258,31 +281,31 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
       setCloning(false);
       if (uploadInputRef.current) uploadInputRef.current.value = "";
     }
-  }, [client, context, loadCustomVoices, mediaReady, saveSettings, sessionId, storageReady, workspaceId]);
+  }, [client, context, loadCustomVoices, mediaReady, saveSettings, sessionId, workspaceId]);
 
   React.useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setMessage("");
+    setCustomVoices([]);
+    setStorageReady(false);
+    setMineDataLoaded(false);
     void (async () => {
       if (!client || !workspaceId) {
         if (!cancelled) {
           setMediaReady(false);
-          setStorageReady(false);
           setLoading(false);
         }
         return;
       }
       try {
-        const [media, storage, saved] = await Promise.all([
+        const [media, saved] = await Promise.all([
           client.callMedia("status", {}, context),
-          client.callStorage("status", {}, context),
           client.readWorkspaceFile(workspaceId, videoVoiceoverSettingsPath(sessionId)).catch(() => null),
         ]);
         if (cancelled) return;
         const configured = media.ok && mediaConfigured(media.result);
         setMediaReady(configured);
-        setStorageReady(storage.ok && storageConfigured(storage.result));
         if (saved) {
           const parsed = parseVideoVoiceoverSettings(saved.content);
           const restored = parsed ? migrateVideoVoiceoverSettings(parsed) : null;
@@ -305,10 +328,6 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
           }
           if (restored?.source === "preset") setPresetVoiceId(restored.voiceId);
         }
-        if (configured) {
-          const voices = await client.callMedia("voice_list", {}, context);
-          if (!cancelled && voices.ok) setCustomVoices(customVoicesFrom(voices.result));
-        }
       } catch (error) {
         if (!cancelled) setMessage(readableError(error));
       } finally {
@@ -321,6 +340,11 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
       audioRef.current = null;
     };
   }, [client, context, sessionId, workspaceId]);
+
+  React.useEffect(() => {
+    if (activeTab !== "mine" || mineDataLoaded || loadingMineData || !mediaReady) return;
+    void loadMineData();
+  }, [activeTab, loadMineData, loadingMineData, mediaReady, mineDataLoaded]);
 
   React.useEffect(() => {
     if (loading || previewRequest <= handledPreviewRequestRef.current) return;
@@ -346,7 +370,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
         <ScrollAreaViewport className="px-3 py-3">
           {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />正在读取百炼配置…</div> : null}
           {!loading && !mediaReady ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">请先配置阿里百炼</p><p className="mt-1">在授权中心保存百炼 API Key 后，即可选择和试听音色。</p></div> : null}
-          {!loading && mediaReady ? <Tabs defaultValue="preset" className="gap-3">
+          {!loading && mediaReady ? <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value === "mine" ? "mine" : "preset")} className="gap-3">
             <TabsList className="w-full bg-muted/60">
               <TabsTrigger value="preset"><AudioLines />百炼音色</TabsTrigger>
               <TabsTrigger value="mine"><FileAudio />我的声音</TabsTrigger>
@@ -363,17 +387,18 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
               {activeVoice?.source === "preset" ? <SelectedVoice voiceId={activeVoice.voiceId} label={BAILIAN_PRESET_VOICES.find((voice) => voice.id === activeVoice.voiceId)?.label ?? activeVoice.voiceId} /> : null}
             </TabsContent>
             <TabsContent value="mine" className="space-y-3">
-              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium">我复刻的声音</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">复刻样本会通过私有临时链接交给百炼，完成后自动清理。</p></div><Button variant="ghost" size="icon-xs" onClick={() => void refreshCustomVoices()} disabled={refreshingVoices} aria-label="刷新我的声音">{refreshingVoices ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button></div>
+              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium">我复刻的声音</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">复刻样本会通过私有临时链接交给百炼，完成后自动清理。</p></div><Button variant="ghost" size="icon-xs" onClick={() => void loadMineData()} disabled={loadingMineData} aria-label="刷新我的声音">{loadingMineData ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button></div>
+              {loadingMineData ? <p className="flex items-center gap-2 text-[11px] text-muted-foreground" role="status"><Loader2 className="size-3.5 animate-spin" />正在读取我的声音…</p> : null}
               <Select value={activeVoice?.source === "cloned" ? activeVoice.voiceId : ""} onValueChange={(value) => { if (value) void chooseCustomVoice(value); }}>
-                <SelectTrigger className="w-full" aria-label="我的百炼声音"><SelectValue placeholder={customVoices.length ? "选择已复刻的声音" : "还没有复刻的声音"} /></SelectTrigger>
+                <SelectTrigger className="w-full" disabled={loadingMineData} aria-label="我的百炼声音"><SelectValue placeholder={loadingMineData ? "正在读取…" : customVoices.length ? "选择已复刻的声音" : "还没有复刻的声音"} /></SelectTrigger>
                 <SelectContent align="start"><SelectGroup>{customVoices.map((voice) => <SelectItem key={voice.id} value={voice.id} disabled={!canSynthesizeCustomVoice(voice)}>{voice.name}{voice.status === "OK" ? "" : ` · ${voice.status}`}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
               <input ref={uploadInputRef} type="file" accept="audio/wav,audio/mpeg,audio/mp4,.wav,.mp3,.m4a" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void cloneVoice(file); }} />
               <div className="rounded-xl border border-dashed border-border bg-muted/25 p-3">
                 <p className="text-xs font-medium">复刻自己的声音</p>
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground">WAV、MP3、M4A；10–60 秒、最大 10 MB。推荐 10–20 秒清晰人声。</p>
-                {!storageReady ? <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">复刻需要先在授权中心配置 OSS 或 Wasabi。</p> : null}
-                <Button className="mt-3 w-full" variant="outline" size="sm" disabled={!storageReady || cloning} onClick={() => uploadInputRef.current?.click()}>{cloning ? <Loader2 className="animate-spin" /> : <Upload />}复刻声音</Button>
+                {!storageReady ? <p className="mt-2 text-[11px] text-muted-foreground">未配置 OSS/Wasabi，将使用百炼免费临时存储，文件会在 48 小时后自动清理。</p> : null}
+                <Button className="mt-3 w-full" variant="outline" size="sm" disabled={cloning} onClick={() => uploadInputRef.current?.click()}>{cloning ? <Loader2 className="animate-spin" /> : <Upload />}复刻声音</Button>
               </div>
               {activeVoice?.source === "cloned" ? <SelectedVoice voiceId={activeVoice.voiceId} label={customVoices.find((voice) => voice.id === activeVoice.voiceId)?.name ?? "当前复刻声音"} /> : null}
             </TabsContent>

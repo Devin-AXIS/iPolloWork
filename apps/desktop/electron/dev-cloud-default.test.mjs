@@ -13,6 +13,11 @@ test("Electron development defaults to the configured iPolloCloud URL", () => {
   assert.match(main, /process\.env\.VITE_DEN_BASE_URL\?\.trim\(\) \|\| "http:\/\/i\.ipollo\.ai"/);
 });
 
+test("embedded server requests use Electron's system-proxy-aware network stack", () => {
+  assert.match(main, /Symbol\.for\("ipollowork\.mediaProviderFetch"\), electronNet\.fetch\.bind\(electronNet\)/);
+  assert.doesNotMatch(main, /globalThis\.fetch\s*=/);
+});
+
 test("macOS development shell embeds the iPollo application icon", () => {
   assert.match(devScript, /copyFileSync\(macAppIcon, macDevElectronIcon\)/);
   assert.match(devScript, /"CFBundleIconFile",\s+"-string",\s+"ipollowork\.icns"/);
