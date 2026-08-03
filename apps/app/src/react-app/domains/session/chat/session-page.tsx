@@ -1776,6 +1776,7 @@ export function SessionPage(props: SessionPageProps) {
         type: "artifact",
         label: firstArtifact.name,
         preview: firstArtifact.preview,
+        target: firstArtifact,
       });
     }
     if (!panelRailActive) {
@@ -1799,6 +1800,7 @@ export function SessionPage(props: SessionPageProps) {
         type: "artifact",
         label: firstArtifact.name,
         preview: firstArtifact.preview,
+        target: firstArtifact,
       });
     }
 

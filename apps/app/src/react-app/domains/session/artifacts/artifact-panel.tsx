@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, ExternalLink, FolderOpen, Loader2, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
-import { getDesktopFileIcon, openDesktopPath, revealDesktopItemInDir } from "@/app/lib/desktop";
+import { getDesktopFileIcon, openDesktopPath, readDesktopTextFile, revealDesktopItemInDir } from "@/app/lib/desktop";
 import { isElectronRuntime } from "@/app/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,6 +61,21 @@ function absoluteWorkspacePath(root: string, path: string) {
   const cleanPath = path.trim().replace(/^\.\//, "");
 
   return cleanRoot ? `${cleanRoot}/${cleanPath}` : cleanPath;
+}
+
+function isAbsoluteLocalPath(value: string) {
+  return /^[/\\]/.test(value) || /^[a-zA-Z]:[\\/]/.test(value) || /^file:\/\//i.test(value);
+}
+
+function normalizeLocalPath(value: string) {
+  const target = value.trim();
+  if (!/^file:\/\//i.test(target)) return target;
+  try {
+    const pathname = new URL(target).pathname;
+    return /^\/[a-zA-Z]:/.test(pathname) ? decodeURIComponent(pathname.slice(1)) : decodeURIComponent(pathname);
+  } catch {
+    return target.replace(/^file:\/\//i, "");
+  }
 }
 
 function isTextContent(target: OpenTarget): boolean {
@@ -327,7 +342,7 @@ async function createMarkdownPdf(source: HTMLElement) {
 export function ArtifactPanel({ sessionId, tab, client, workspaceId, workspaceRoot, isRemoteWorkspace = false, onClose }: ArtifactPanelProps) {
   const transcriptTargets = usePanelTabStore((state) => state.transcriptArtifactTargets[sessionId] ?? EMPTY_TRANSCRIPT_TARGETS);
   const artifactTargets = useMemo(() => transcriptTargets.filter(isCollectibleArtifactTarget), [transcriptTargets]);
-  const target = artifactTargets.find((item) => item.id === tab.id) ?? null;
+  const target = artifactTargets.find((item) => item.id === tab.id) ?? tab.target ?? null;
 
   if (!target || !client || !workspaceId) {
     return null;
@@ -354,7 +369,12 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   const visibleMarkdownRef = useRef<HTMLDivElement | null>(null);
   const pdfContentRef = useRef<HTMLDivElement | null>(null);
   const isDirectTextEdit = isTextContent(target) && (target.preview === "markdown" || isStylesheetArtifactTarget(target));
-  const externalPath = useMemo(() => target.kind === "file" ? absoluteWorkspacePath(workspaceRoot, target.value) : target.value, [target.kind, target.value, workspaceRoot]);
+  const externalPath = useMemo(() => {
+    if (target.kind !== "file") return target.value;
+    return isAbsoluteLocalPath(target.value)
+      ? normalizeLocalPath(target.value)
+      : absoluteWorkspacePath(workspaceRoot, target.value);
+  }, [target.kind, target.value, workspaceRoot]);
 
   const { data: fileIcon } = useQuery<string | null>({
     queryKey: ["desktop-file-icon", externalPath] as const,
@@ -375,7 +395,9 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
       }
 
       if (isTextContent(target)) {
-        const result = await client.readWorkspaceFile(workspaceId, target.value);
+        const result = isElectronRuntime() && target.kind === "file" && isAbsoluteLocalPath(target.value) && !isRemoteWorkspace
+          ? await readDesktopTextFile(externalPath)
+          : await client.readWorkspaceFile(workspaceId, target.value);
 
         return { kind: "text", data: result.content, updatedAt: result.updatedAt ?? null };
       }

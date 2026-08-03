@@ -15,6 +15,7 @@ export type ArtifactPanelTab = {
   type: "artifact";
   label: string;
   preview: OpenTargetPreview;
+  target?: OpenTarget;
 }
 
 export type DesignPanelTab = {
@@ -142,7 +143,9 @@ function isSameTab(left: PanelTab, right: PanelTab) {
   if (left.type === "artifact" && right.type === "artifact") {
     return (
       left.label === right.label &&
-      left.preview === right.preview
+      left.preview === right.preview &&
+      left.target?.id === right.target?.id &&
+      left.target?.value === right.target?.value
     );
   }
 

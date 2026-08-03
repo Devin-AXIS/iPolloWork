@@ -205,6 +205,30 @@ describe("getArtifactsFromMessages", () => {
     expect(artifact ? canOpenArtifact(artifact) : false).toBe(true);
   });
 
+  it("lets markdown artifacts created by write tools open before target resolution finishes", () => {
+    const messages: UIMessage[] = [{
+      id: "msg_tool_created",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolName: "write",
+        state: "output-available",
+        input: { filePath: "reports/generated.md", content: "# Generated" },
+        output: { filepath: "reports/generated.md", exists: true },
+      }],
+    }];
+
+    const artifact = getArtifactsFromMessages(messages, [], { includeTargetFallbacks: false })[0];
+
+    expect(artifact).toMatchObject({
+      path: "reports/generated.md",
+      type: "markdown",
+      legacy_target: { exists: true, preview: "markdown" },
+    });
+    expect(artifact ? canPreviewArtifact(artifact) : false).toBe(true);
+    expect(artifact ? canOpenArtifact(artifact) : false).toBe(true);
+  });
+
   it("keeps internal skill files out of the user-facing output list", () => {
     const messages: UIMessage[] = [{
       id: "msg_outputs",
