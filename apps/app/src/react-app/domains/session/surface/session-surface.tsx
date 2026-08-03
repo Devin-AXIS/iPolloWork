@@ -1627,7 +1627,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       ) : null}
 
       {isEmptyConversation ? (
-        <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-5">
+        <div className="flex min-h-0 flex-1 justify-center overflow-y-auto bg-background px-5 dark:bg-[#131313]">
           <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-12 pt-8">
             <NewConversationStarter
               selectedMode={newConversationMode}

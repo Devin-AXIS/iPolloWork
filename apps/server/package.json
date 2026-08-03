@@ -1,6 +1,6 @@
 {
   "name": "ipollowork-server",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Filesystem-backed API for iPolloWork remote clients",
   "type": "module",
   "bin": {
@@ -10,8 +10,8 @@
     "dev": "cross-env IPOLLOWORK_DEV_MODE=1 bun src/cli.ts",
     "test": "bun test src",
     "test:artifacts": "bun test src/artifact-files.e2e.test.ts src/workspace-init.test.ts src/server.normalizeWorkspaceRelativePath.test.ts",
-    "build": "pnpm --filter @ipollowork/types build && tsc -p tsconfig.json && node script/copy-bundled-templates.mjs && bun build src/templates.ts --outfile dist/templates.js --target node --format esm --external zod && bun build src/opencode-plugins/ipollowork-extensions-preview.ts src/opencode-plugins/ipollowork-capabilities-knowledge.ts src/opencode-plugins/ipollowork-anthropic-adaptive-thinking.ts src/opencode-plugins/ipollowork-anthropic-tool-schema.ts --outdir dist/opencode-plugins --target node --format esm",
-    "build:bin": "node script/copy-bundled-templates.mjs && bun build --compile src/cli.ts --outfile dist/bin/ipollowork-server",
+    "build": "pnpm --filter @ipollowork/types build && tsc -p tsconfig.json && node script/copy-bundled-templates.mjs && bun build src/templates.ts --outfile dist/templates.js --target node --format esm --external zod && bun build src/opencode-plugins/ipollowork-extensions-preview.ts src/opencode-plugins/ipollowork-capabilities-knowledge.ts src/opencode-plugins/ipollowork-anthropic-adaptive-thinking.ts src/opencode-plugins/ipollowork-anthropic-tool-schema.ts src/opencode-plugins/ipollowork-moonshot-temperature.ts --outdir dist/opencode-plugins --target node --format esm",
+    "build:bin": "pnpm --filter @ipollowork/types build && node script/copy-bundled-templates.mjs && bun build --compile src/cli.ts --outfile dist/bin/ipollowork-server",
     "build:bin:all": "bun ./script/build.ts --outdir dist/bin --target bun-darwin-arm64 --target bun-darwin-x64 --target bun-linux-x64 --target bun-linux-arm64 --target bun-windows-x64 --target bun-windows-arm64",
     "start": "bun dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",

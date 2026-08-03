@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useReducer } from "react";
+import { useReducer, useRef } from "react";
 import { Download, Loader2, Search } from "lucide-react";
 
 import {
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/sonner";
 import { t } from "@/i18n";
 import { TextInput } from "../../../design-system/text-input";
 import type { iPolloWorkClaudePluginPreview } from "../../../../app/lib/ipollowork-server";
@@ -68,9 +69,10 @@ const COMPONENT_LABEL_KEYS: Record<string, string> = {
 
 export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const operationRef = useRef(0);
 
   const handleClose = () => {
-    if (state.previewing || state.installing) return;
+    operationRef.current += 1;
     dispatch("reset");
     props.onClose();
   };
@@ -81,11 +83,14 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
       dispatch({ error: t("claude_plugin.invalid_url") });
       return;
     }
+    const operation = ++operationRef.current;
     dispatch({ previewing: true, error: null, preview: null, previewedUrl: null });
     try {
       const preview = await props.onPreview(url);
+      if (operationRef.current !== operation) return;
       dispatch({ kind: "preview-success", url, preview });
     } catch (error) {
+      if (operationRef.current !== operation) return;
       dispatch({
         previewing: false,
         error: error instanceof Error ? error.message : t("claude_plugin.load_preview_failed"),
@@ -97,18 +102,31 @@ export function ClaudePluginImportModal(props: ClaudePluginImportModalProps) {
     // Install exactly what was previewed — never a URL edited after preview.
     const url = state.previewedUrl;
     if (!url || state.installing) return;
+    const operation = ++operationRef.current;
     dispatch({ installing: true, error: null });
     try {
       const result = await props.onInstall(url);
       if (!result.ok) {
+        if (operationRef.current !== operation) {
+          toast.error(result.message);
+          return;
+        }
         dispatch({ installing: false, error: result.message });
         return;
       }
+      toast.success(result.message);
     } catch (error) {
+      const message = error instanceof Error ? error.message : t("claude_plugin.install_failed");
+      toast.error(message);
+      if (operationRef.current !== operation) return;
       dispatch({
         installing: false,
-        error: error instanceof Error ? error.message : t("claude_plugin.install_failed"),
+        error: message,
       });
+      return;
+    }
+    if (operationRef.current !== operation) {
+      props.onInstalled?.();
       return;
     }
     dispatch("reset");

@@ -43,6 +43,8 @@ export type ExtensionItemBuildInput = {
   quickConnect: McpDirectoryInfo[];
   mcpServers: McpServerEntry[];
   installedSkills: Array<{ name: string; description?: string; path: string }>;
+  pluginPackageSkillNames?: string[];
+  installedPluginPackageMcpServerNames?: string[];
   importedCloudPlugins: Record<string, CloudImportedPlugin>;
   pendingCloudPluginChanges?: Record<string, PendingCloudPluginChange>;
   cloudMarketplaces: DenOrgMarketplaceResolved[];
@@ -259,6 +261,8 @@ export function buildExtensionItems(input: ExtensionItemBuildInput) {
   const groupedExternalMcpConnectionIds = new Set<string>();
   const groupedSkillPaths = new Set<string>();
   const groupedSkillNames = new Set<string>();
+  input.pluginPackageSkillNames?.forEach((value) => groupedSkillNames.add(value));
+  const installedPluginPackageMcpServerNames = new Set(input.installedPluginPackageMcpServerNames ?? []);
   for (const plugin of Object.values(input.importedCloudPlugins)) {
     const keys = childKeysForPlugin(plugin);
     keys.externalMcpConnectionIds.forEach((value) => groupedExternalMcpConnectionIds.add(value));
@@ -270,6 +274,7 @@ export function buildExtensionItems(input: ExtensionItemBuildInput) {
   const standaloneMcpEntries = input.quickConnect.filter((entry) => {
     if (isBuiltIniPolloWorkExtension(entry)) return false;
     const serverName = getMcpServerName(entry);
+    if (installedPluginPackageMcpServerNames.has(serverName)) return false;
     if (groupedMcpServerNames.has(serverName)) return false;
     return input.mcpServers.some((server) => server.name === serverName);
   });
@@ -325,6 +330,7 @@ export function buildExtensionItems(input: ExtensionItemBuildInput) {
       ...standaloneMcpEntries,
       ...input.quickConnect.filter((entry) => {
         if (isBuiltIniPolloWorkExtension(entry)) return false;
+        if (entry.pluginPackageId) return false;
         const serverName = getMcpServerName(entry);
         if (groupedMcpServerNames.has(serverName)) return false;
         if (hasRenderableOrgEquivalent(entry)) return false;

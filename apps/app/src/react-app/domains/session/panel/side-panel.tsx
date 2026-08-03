@@ -58,6 +58,7 @@ type SidePanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
+  onSaveAsTemplate?: () => void;
   expanded?: boolean;
   titlebarInset?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
@@ -350,7 +351,7 @@ function BrowserPanelContent({
 
   return (
     <>
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[#EAEAEA] bg-background px-2 [border-bottom-width:0.5px] mac:titlebar-drag mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-background px-2 [border-bottom-width:0.5px] mac:titlebar-drag mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
         {isAvailable ? (
           <>
             <Tooltip>
@@ -454,6 +455,7 @@ export function SidePanel({
   isRemoteWorkspace = false,
   launcherItems = [],
   onAskAi,
+  onSaveAsTemplate,
   expanded = false,
   titlebarInset = false,
   onExpandedChange,
@@ -647,7 +649,7 @@ export function SidePanel({
                 <DropdownMenuContent
                   align="end"
                   positionerClassName={expanded ? "z-[70]" : undefined}
-                  className="w-[296px] rounded-[18px] border border-[#E5E5E5] bg-white p-3 text-[#242424] shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
+                  className="w-[296px] rounded-[18px] border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
                 >
                   {launcherItems.map((item) => {
                     return (
@@ -656,13 +658,13 @@ export function SidePanel({
                         disabled={item.disabled}
                         onClick={item.onClick}
                         className={[
-                          "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-[#8A8A8A] focus:bg-transparent focus:text-[#8A8A8A] hover:bg-[#F5F5F5] hover:text-[#242424] active:bg-[#EBEBEB] active:text-[#242424] data-highlighted:bg-transparent data-highlighted:text-[#8A8A8A] data-disabled:opacity-40",
+                          "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-muted-foreground focus:bg-muted focus:text-foreground hover:bg-muted hover:text-foreground active:bg-accent active:text-foreground data-highlighted:bg-muted data-highlighted:text-foreground data-disabled:opacity-40",
                         ].join(" ")}
                       >
                         <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
                         <span className="flex-1">{item.label}</span>
                         {item.shortcut ? (
-                          <span className="text-[12px] tracking-[-0.24px] text-[#8A8A8A]">{item.shortcut}</span>
+                          <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>
                         ) : null}
                       </DropdownMenuItem>
                     );
@@ -670,7 +672,7 @@ export function SidePanel({
                   {launcherItems.length === 0 && isBrowserAvailable ? (
                     <DropdownMenuItem
                       onClick={() => createTab()}
-                      className="h-11 rounded-xl px-2 text-[20px] font-normal tracking-[-0.8px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424]"
+                      className="h-11 rounded-xl px-2 text-[20px] font-normal tracking-[-0.8px] text-foreground focus:bg-muted focus:text-foreground"
                     >
                       <Globe className="size-6 stroke-[1.8] text-[#666666]" />
                       <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
@@ -714,6 +716,7 @@ export function SidePanel({
               initialPath={activeTab.path}
               expanded={expanded}
               onAskAi={onAskAi ?? (() => undefined)}
+              onSaveAsTemplate={onSaveAsTemplate}
             />
           </DesignPanelErrorBoundary>
         ) : activeTab?.type === "browser" ? (

@@ -30,6 +30,17 @@ test("captures only Den desktop callbacks for the app handoff", () => {
   );
 });
 
+test("captures the isolated auth window close control without opening it externally", () => {
+  assert.deepEqual(
+    classifyDesktopAuthNavigation("ipollowork-auth-window://close"),
+    { kind: "cancel" },
+  );
+  assert.deepEqual(
+    classifyDesktopAuthNavigation("ipollowork-auth-window://close/"),
+    { kind: "cancel" },
+  );
+});
+
 test("does not navigate an auth window to arbitrary local protocols", () => {
   assert.deepEqual(
     classifyDesktopAuthNavigation("file:///tmp/untrusted.html"),

@@ -113,6 +113,16 @@ const designTokenModules = import.meta.glob("./design-systems/design-systems/*/d
   import: "default",
 }) as Record<string, DesignSystemTokenDocument>;
 
+type RawTextLoader = () => Promise<string>;
+const designGuideModules = import.meta.glob("./design-systems/design-systems/*/DESIGN.md", {
+  query: "?raw",
+  import: "default",
+}) as Record<string, RawTextLoader>;
+const usageGuideModules = import.meta.glob("./design-systems/design-systems/*/USAGE.md", {
+  query: "?raw",
+  import: "default",
+}) as Record<string, RawTextLoader>;
+
 function sortThemeItems(left: DesignSystemTheme, right: DesignSystemTheme) {
   const category = left.category.localeCompare(right.category);
   if (category !== 0) return category;
@@ -147,6 +157,23 @@ export const DESIGN_SYSTEM_THEMES: DesignSystemTheme[] = Object.entries(manifest
 
 export function getDesignSystemTheme(themeId: string): DesignSystemTheme | undefined {
   return DESIGN_SYSTEM_THEMES.find((theme) => theme.id === themeId);
+}
+
+export async function loadDesignSystemAuthoringGuide(themeId: string): Promise<string | null> {
+  const manifestEntry = Object.entries(manifestModules).find(([, manifest]) => manifest.id === themeId);
+  if (!manifestEntry) return null;
+  const [manifestPath, manifest] = manifestEntry;
+  const root = manifestPath.replace(/\/manifest\.json$/, "");
+  const [design, usage] = await Promise.all([
+    designGuideModules[`${root}/DESIGN.md`]?.(),
+    usageGuideModules[`${root}/USAGE.md`]?.(),
+  ]);
+  const sections = [
+    `${manifest.name} (${manifest.id})\nCategory: ${manifest.category}\n${manifest.description ?? ""}`,
+    design ? `Design rules:\n${design.slice(0, 12_000)}` : "",
+    usage ? `Usage rules:\n${usage.slice(0, 8_000)}` : "",
+  ].filter(Boolean);
+  return sections.join("\n\n");
 }
 
 export function parseCssVariables(source: string) {

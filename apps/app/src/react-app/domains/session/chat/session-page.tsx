@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
 import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
-import { MAX_TEMPLATE_PACKAGE_BYTES, isPptxCompatibleTemplate, type TemplateCatalogItem, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState } from "@ipollowork/types/templates";
+import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 
 import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
@@ -88,6 +88,7 @@ import { designAiSelectionToken, type DesignAiSelectionContext } from "../design
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
+import { TemplateSaveDialog } from "../templates/template-save-dialog";
 import { VideoPanel } from "../video/video-panel";
 import { videoProjectEntryPath } from "../video/video-project";
 import { templateBriefConfigFor, templateBriefPrompt, type TemplateBrief } from "../templates/template-brief";
@@ -118,6 +119,7 @@ const NARROW_LAYOUT_WIDTH = 960;
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateSessionData = {
   sessionId: string;
+  authoring?: boolean;
   state: TemplateSessionState;
   manifest: TemplateManifestV1;
   hasBrief: boolean;
@@ -151,6 +153,10 @@ export type SessionPageSidebarProps = {
     templateScope?: WorkContextId,
   ) => Promise<string | null> | string | null | void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
+  onCreateTemplateAuthoring: (
+    workspaceId: string,
+    input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
+  ) => Promise<string | null> | string | null | void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
   onEditWorkspaceConnection: (workspaceId: string) => void;
@@ -395,7 +401,7 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
           const visible = templates.filter((item) => item.manifest.category === serverCategory);
           const selectedCategory = categories.find((item) => item.id === category);
           return <div>
-            <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← {t("templates.starter.back_to_categories")}</button><button type="button" disabled={busyId !== null} onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text disabled:opacity-50"><Upload className="size-3" />{t("template_market.import_ipwt")}</button><input ref={importRef} type="file" accept=".ipwt" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
+            <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← {t("templates.starter.back_to_categories")}</button><button type="button" disabled={busyId !== null} onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text disabled:opacity-50"><Upload className="size-3" />{t("template_market.import_package")}</button><input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
             {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB · {t("templates.starter.file_type", { type: selectedCategory ? t(selectedCategory.labelKey) : "" })}</div></div><button type="button" disabled={busyId !== null} onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text disabled:opacity-50">{t("common.cancel")}</button><button type="button" disabled={busyId !== null} onClick={async () => { if (await onImport(pendingImport, serverCategory)) setPendingImport(null); }} className="inline-flex h-7 items-center rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50">{busyId === "import" ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{t("template_market.install")}</button></div> : null}
             {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><button type="button" className="block w-full text-left" onClick={() => setPreviewTemplate(item)} aria-label={t("template_market.preview_aria", { title: item.manifest.title })}><TemplateCover client={client} workspaceId={workspaceId} template={item} alt={t("template_market.cover_alt", { title: item.manifest.title })} /></button><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2 text-sm font-semibold">{item.manifest.title}{isPptxCompatibleTemplate(item.manifest) ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.pptx_compatible")}</span> : null}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">{t("new_conversation.templates.local")}</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.update")}</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.uninstall_template")}</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.update_template")}</button> : null}</div></details></div><div className="mt-4 flex items-center gap-2"><button type="button" onClick={() => setPreviewTemplate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dls-border px-3 text-xs font-medium text-dls-text transition hover:bg-dls-hover"><Eye className="size-3.5" />{t("template_market.preview")}</button><button type="button" disabled={busyId !== null} onClick={() => item.updateAvailable || !item.installed ? onInstall(item.manifest.id) : onChoose(item.manifest.id)} className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.updateAvailable ? t("template_market.update") : item.installed ? t("template_market.use_template") : t("template_market.install")}</button></div></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">{t("templates.starter.empty_title")}</p><p className="mt-1 text-xs text-dls-secondary">{t("templates.starter.empty_description")}</p></div>}
           </div>;
@@ -460,6 +466,10 @@ export function SessionPage(props: SessionPageProps) {
   const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
+  const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
+  const [templateValidationReport, setTemplateValidationReport] = useState<TemplateValidationReport | null>(null);
+  const [templateValidationBusy, setTemplateValidationBusy] = useState(false);
+  const [templateSaveBusy, setTemplateSaveBusy] = useState(false);
   useEffect(() => {
     const nextScope = readActiveWorkContextId();
     setTemplateResourceScope(nextScope);
@@ -579,6 +589,7 @@ export function SessionPage(props: SessionPageProps) {
     autoCollapsedSidePanelRef.current = null;
   }, []);
   const autoOpenedDesignTemplateRef = useRef<string | null>(null);
+  const autoOpenedVideoTemplateRef = useRef<string | null>(null);
   const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
     props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
@@ -616,8 +627,80 @@ export function SessionPage(props: SessionPageProps) {
     }
     return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, templateResourceScope);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
+  const validateCurrentTemplate = useCallback(async () => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return null;
+    setTemplateValidationBusy(true);
+    try {
+      const report = await props.ipolloworkServerClient.validateTemplateFromSession(props.runtimeWorkspaceId, props.selectedSessionId);
+      setTemplateValidationReport(report);
+      return report;
+    } catch (error) {
+      const report: TemplateValidationReport = {
+        ready: false,
+        surface: currentTemplateSessionData?.manifest.surface ?? "design",
+        entry: currentTemplateSessionData?.manifest.entry ?? "",
+        manifest: null,
+        issues: [{ code: "template_validation_failed", severity: "error", message: error instanceof Error ? error.message : t("template_authoring.needs_attention") }],
+      };
+      setTemplateValidationReport(report);
+      return report;
+    } finally {
+      setTemplateValidationBusy(false);
+    }
+  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
+  const openTemplateSave = useCallback(() => {
+    if (!currentTemplateSessionData || props.selectedWorkspaceDisplay.workspaceType !== "local") return;
+    setTemplateSaveOpen(true);
+    setTemplateValidationReport(null);
+    void validateCurrentTemplate();
+  }, [currentTemplateSessionData, props.selectedWorkspaceDisplay.workspaceType, validateCurrentTemplate]);
+  const repairCurrentTemplate = useCallback(() => {
+    if (!props.selectedSessionId || !templateValidationReport) return;
+    const visible = t("template_authoring.fix_message");
+    props.surface?.onSendDraft({
+      mode: "prompt",
+      parts: [
+        { type: "text", text: visible },
+        { type: "text", text: `Fix the current template without changing its category or surface. Resolve every server validation issue below, update manifest.json and the validation checklist, then validate again.\n\n${JSON.stringify(templateValidationReport.issues, null, 2)}`, synthetic: true },
+      ],
+      attachments: [],
+      text: visible,
+      resolvedText: visible,
+    }, props.selectedSessionId);
+    setTemplateSaveOpen(false);
+  }, [props.selectedSessionId, props.surface, templateValidationReport]);
+  const saveCurrentTemplate = useCallback(async (input: { title: string; description: string }) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || !currentTemplateSessionData) return;
+    setTemplateSaveBusy(true);
+    try {
+      await props.ipolloworkServerClient.saveTemplateFromSession(props.runtimeWorkspaceId, {
+        sessionId: props.selectedSessionId,
+        category: currentTemplateSessionData.manifest.category,
+        title: input.title,
+        description: input.description,
+        subcategory: currentTemplateSessionData.manifest.subcategory,
+        style: currentTemplateSessionData.manifest.style,
+        tags: currentTemplateSessionData.manifest.tags,
+      }, "personal");
+      const personalCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, "personal");
+      setTemplateCatalog(personalCatalog.items);
+      setTemplateResourceScope("personal");
+      setTemplateSaveOpen(false);
+      toast.success(t("template_authoring.saved"), {
+        description: t("template_authoring.saved_description"),
+        action: { label: t("template_authoring.view_template"), onClick: () => setTemplateMarketOpen(true) },
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("template_authoring.needs_attention"));
+      await validateCurrentTemplate();
+    } finally {
+      setTemplateSaveBusy(false);
+    }
+  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, validateCurrentTemplate]);
   useEffect(() => {
     setTemplateSessionData(null);
+    setTemplateSaveOpen(false);
+    setTemplateValidationReport(null);
   }, [props.selectedSessionId]);
   useEffect(() => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) {
@@ -827,7 +910,17 @@ export function SessionPage(props: SessionPageProps) {
     openCurrentVideoStudio({ auto: true });
   }, [isVideoSession, openCurrentVideoStudio, props.selectedSessionId, props.sidebar.sessionStatusById, videoOutput]);
   useEffect(() => {
+    const autoOpenTemplateProject = currentTemplateSessionData?.authoring === true
+      || currentTemplateSessionData?.manifest.id.startsWith("personal.") === true;
+    if (!props.selectedSessionId || !isVideoSession || !autoOpenTemplateProject) return;
+    const templateKey = `${props.selectedSessionId}:${currentTemplateSessionData.state.entry}`;
+    if (autoOpenedVideoTemplateRef.current === templateKey) return;
+    autoOpenedVideoTemplateRef.current = templateKey;
+    openCurrentVideoStudio({ auto: true });
+  }, [currentTemplateSessionData, isVideoSession, openCurrentVideoStudio, props.selectedSessionId]);
+  useEffect(() => {
     autoOpenedVideoOutputRef.current = null;
+    autoOpenedVideoTemplateRef.current = null;
   }, [props.selectedSessionId]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
@@ -1372,6 +1465,7 @@ export function SessionPage(props: SessionPageProps) {
     const restoredPanel = autoCollapsedSidePanelRef.current;
     if (
       restoredPanel &&
+      !userOpenedSidebarWhileNarrowRef.current &&
       !sidePanelOpen &&
       expandedRightPanelWorkspaceWidth >= AUTO_RESTORE_WORKSPACE_WIDTH
     ) {
@@ -2080,7 +2174,7 @@ export function SessionPage(props: SessionPageProps) {
                       <img
                         src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
                         alt=""
-                        className="h-3 w-4 shrink-0"
+                        className="h-3 w-4 shrink-0 dark:invert"
                       />
                     </Button>
                   }
@@ -2091,7 +2185,7 @@ export function SessionPage(props: SessionPageProps) {
             <div className="min-w-0 flex-1" style={{ minWidth: rightWorkspaceExpanded ? 0 : mainWorkspaceMinWidth }}>
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
           <header className={cn(
-            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-[#EAEAEA] px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
+            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
             mainHeaderHidden ? "hidden" : "flex",
             sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
           )}>
@@ -2106,7 +2200,7 @@ export function SessionPage(props: SessionPageProps) {
                 onClick={openLeftSidebar}
                 style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
               >
-                <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0" />
+                <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />
               </Button>
             ) : null}
             <div className="flex min-w-0 items-center gap-1">
@@ -2208,7 +2302,7 @@ export function SessionPage(props: SessionPageProps) {
                       <img
                         src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
                         alt=""
-                        className="h-3 w-4 shrink-0"
+                        className="h-3 w-4 shrink-0 dark:invert"
                       />
                     </Button>
                   }
@@ -2501,8 +2595,8 @@ export function SessionPage(props: SessionPageProps) {
                               key={item.id}
                               type="button"
                               className={cn(
-                                "flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-[#8A8A8A] transition-colors hover:bg-[#F5F5F5] hover:text-[#242424] disabled:cursor-not-allowed disabled:opacity-40",
-                                item.active && "bg-[#F5F5F5] text-[#242424]",
+                                "flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
+                                item.active && "bg-muted text-foreground",
                               )}
                               onClick={item.onClick}
                               disabled={item.disabled}
@@ -2543,6 +2637,7 @@ export function SessionPage(props: SessionPageProps) {
                         expanded={videoStudioExpanded}
                         onExpandedChange={setVideoStudioExpanded}
                         onAskAi={handleDesignAskAi}
+                        onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         onClose={closeRightPane}
                       />
                     </div>
@@ -2575,6 +2670,7 @@ export function SessionPage(props: SessionPageProps) {
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
                         onAskAi={handleDesignAskAi}
+                        onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
                         titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}
                         onExpandedChange={setRightPanelExpandedState}
@@ -2605,6 +2701,8 @@ export function SessionPage(props: SessionPageProps) {
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
         onImport={importDesignTemplate}
+        canCreate={props.selectedWorkspaceDisplay.workspaceType === "local"}
+        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input)}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {
             toast.error(t("templates.video_local_only"));

@@ -5,7 +5,16 @@ import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } fro
 import type { DenOrgMarketplace, DenOrgPluginResolved, DenResourceSnapshot } from "./den-types";
 import type { CloudImportedMarketplace, CloudImportedPlugin } from "../cloud/import-state";
 import type { HyperframesCatalogItem } from "@ipollowork/types/hyperframes";
-import type { TemplateCatalogItem, TemplateCategory, TemplateManifestV1, TemplateSessionSnapshot, TemplateSessionState } from "@ipollowork/types/templates";
+import {
+  templatePackageMediaTypeForFilename,
+  type PptxCompatibility,
+  type TemplateCatalogItem,
+  type TemplateCategory,
+  type TemplateManifestV1,
+  type TemplateSessionSnapshot,
+  type TemplateSessionState,
+  type TemplateValidationReport,
+} from "@ipollowork/types/templates";
 import type { iPolloWorkExtensionManifest } from "../extensions";
 
 export type iPolloWorkServerCapabilities = {
@@ -1315,7 +1324,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         body: file,
         headers: {
-          "Content-Type": "application/vnd.ipollowork-template+zip",
+          "Content-Type": templatePackageMediaTypeForFilename(file.name),
           "X-iPolloWork-Filename": encodeURIComponent(file.name),
           ...resourceScopeHeaders(scope),
           ...(category ? { "X-iPolloWork-Template-Category": category } : {}),
@@ -1329,6 +1338,23 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         method: "POST",
         body: input,
         headers: resourceScopeHeaders(scope),
+        timeoutMs: timeouts.workspaceImport,
+      }),
+    createTemplateAuthoringSession: (workspaceId: string, input: { sessionId: string; category: TemplateCategory; pptxCompatibility?: PptxCompatibility }) =>
+      requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/authoring-sessions`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: input,
+        headers: resourceScopeHeaders("personal"),
+        timeoutMs: timeouts.workspaceImport,
+      }),
+    validateTemplateFromSession: (workspaceId: string, sessionId: string) =>
+      requestJson<TemplateValidationReport>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/from-session/validate`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: { sessionId },
         timeoutMs: timeouts.workspaceImport,
       }),
     uninstallTemplate: (workspaceId: string, templateId: string, scope: iPolloWorkResourceScope = "personal") =>

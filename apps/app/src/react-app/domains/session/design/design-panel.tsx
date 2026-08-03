@@ -123,6 +123,7 @@ type DesignPanelProps = {
   initialPath?: string;
   expanded?: boolean;
   onAskAi: (context: DesignAiSelectionContext) => void;
+  onSaveAsTemplate?: () => void;
 };
 
 type LoadedHtml = {
@@ -137,8 +138,8 @@ const PDF_SLIDE_HEIGHT = 900;
 const PDF_PAGE_WIDTH_MM = 297;
 const PDF_PAGE_HEIGHT_MM = 167.0625;
 const LOCAL_IMAGE_ACCEPT = "image/*";
-const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-[#202228] shadow-none hover:bg-[#F3F4F6] hover:text-[#202228] [&_svg]:!size-[18px]";
-const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-6 shrink-0 place-items-center rounded transition-colors hover:bg-[#F3F4F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
+const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none hover:bg-muted hover:text-foreground [&_svg]:!size-[18px]";
+const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-6 shrink-0 place-items-center rounded transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
 
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
@@ -528,6 +529,7 @@ export function DesignPanel({
   initialPath,
   expanded = false,
   onAskAi,
+  onSaveAsTemplate,
 }: DesignPanelProps) {
   const queryClient = useQueryClient();
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -1952,7 +1954,7 @@ export function DesignPanel({
       ) : (
         <>
           <div className={cn(
-            "flex min-w-0 shrink-0 flex-wrap items-center border-b border-[#EAEAEA] px-3 py-2 [border-bottom-width:0.5px]",
+            "flex min-w-0 shrink-0 flex-wrap items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
             compactToolbar ? "gap-1" : "gap-2",
           )}>
             {hasSiteVersioning ? (
@@ -1960,7 +1962,7 @@ export function DesignPanel({
                 <p className="min-w-0 truncate text-sm font-medium">{fileName(activePagePath)}</p>
                 {versionTargets.length > 0 ? (
                   <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}>
-                    <SelectTrigger size="sm" className="w-14 shrink-0 rounded-lg border-0 bg-transparent px-2 shadow-none hover:bg-[#F3F4F6] focus-visible:ring-0" aria-label="Design version"><SelectValue>{viewedVersionLabel}</SelectValue></SelectTrigger>
+                    <SelectTrigger size="sm" className="w-14 shrink-0 rounded-lg border-0 bg-transparent px-2 shadow-none hover:bg-muted focus-visible:ring-0" aria-label="Design version"><SelectValue>{viewedVersionLabel}</SelectValue></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="current">{currentVersionLabel}</SelectItem>
                       {versionTargets.map((version, index) => <SelectItem key={version.path} value={version.path}>V{versionTargets.length - index}</SelectItem>)}
@@ -1985,14 +1987,14 @@ export function DesignPanel({
               Edit
             </Label>
             {deck ? (
-              <div className="order-2 flex h-8 min-w-0 items-center rounded-lg border border-[#D8DADF] bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
-                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-[#202228] hover:bg-[#F3F4F6]" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
+              <div className="order-2 flex h-8 min-w-0 items-center rounded-lg border border-border bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
+                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-foreground hover:bg-muted" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
                   <ChevronLeft className="size-4" />
                 </Button>
-                <span className="min-w-0 max-w-40 truncate px-1.5 text-[11px] font-medium tabular-nums text-[#5F636B]" aria-live="polite">
+                <span className="min-w-0 max-w-40 truncate px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground" aria-live="polite">
                   {deck.index + 1} / {deck.total}
                 </span>
-                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-[#202228] hover:bg-[#F3F4F6]" onClick={() => navigateDeck("next")} disabled={deck.index >= deck.total - 1} aria-label="Next slide" title="Next slide">
+                <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-foreground hover:bg-muted" onClick={() => navigateDeck("next")} disabled={deck.index >= deck.total - 1} aria-label="Next slide" title="Next slide">
                   <ChevronRight className="size-4" />
                 </Button>
               </div>
@@ -2027,7 +2029,7 @@ export function DesignPanel({
               {editing ? <Button
                 variant="ghost"
                 size="icon-sm"
-                className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-[#F3F4F6]")}
+                className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-muted")}
                 onClick={toggleElementProperties}
                 aria-label="Toggle design properties"
                 title="Design properties"
@@ -2084,7 +2086,7 @@ export function DesignPanel({
                   {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
                 </Button>
               ) : null}
-              {deck || compactToolbar ? (
+              {deck || compactToolbar || onSaveAsTemplate ? (
                 <DesignExportMenu
                   triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
                   compact={compactToolbar}
@@ -2106,6 +2108,7 @@ export function DesignPanel({
                   onPublish={() => publishMutation.mutate()}
                   onExportPdf={() => void exportDeckToPdf()}
                   onExportPptx={() => setPptxConfirmationOpen(true)}
+                  onSaveAsTemplate={onSaveAsTemplate}
                 />
               ) : null}
             </div>
@@ -2183,7 +2186,7 @@ export function DesignPanel({
                 {editing && selection && selectionSummary ? (
                   <div
                     ref={floatingToolbarRef}
-                    className="absolute z-20 flex w-max items-center gap-[17px] rounded-lg border border-[#EBEBEB] bg-white px-4 py-2 shadow-[0_4px_4.2px_rgba(0,0,0,0.09)]"
+                    className="absolute z-20 flex w-max items-center gap-[17px] rounded-lg border border-border bg-popover px-4 py-2 text-popover-foreground shadow-[0_4px_4.2px_rgba(0,0,0,0.09)]"
                     style={floatingStyle}
                     role="toolbar"
                     aria-label="Design floating toolbar"
@@ -2194,7 +2197,7 @@ export function DesignPanel({
                   >
                     <button
                       type="button"
-                      className="grid size-6 shrink-0 touch-none cursor-grab place-items-center rounded transition-colors hover:bg-[#F3F4F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+                      className="grid size-6 shrink-0 touch-none cursor-grab place-items-center rounded transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
                       onPointerDown={startFloatingDrag}
                       onPointerMove={moveFloatingToolbar}
                       onPointerUp={stopFloatingDrag}
@@ -2280,7 +2283,7 @@ export function DesignPanel({
                           <>
                             <button
                               type="button"
-                              className="flex h-6 shrink-0 items-center rounded px-1 transition-colors hover:bg-[#F3F4F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="flex h-6 shrink-0 items-center rounded px-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               onClick={() => beginQuickEdit("text")}
                               aria-label="Edit selected text"
                             >
@@ -2288,7 +2291,7 @@ export function DesignPanel({
                             </button>
                             <button
                               type="button"
-                              className="h-6 shrink-0 rounded px-1 text-base font-normal leading-6 text-[#858A94] transition-colors hover:bg-[#F3F4F6] hover:text-[#202228] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="h-6 shrink-0 rounded px-1 text-base font-normal leading-6 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               onClick={() => beginQuickEdit("fontSize")}
                               aria-label="Change selected font size"
                             >

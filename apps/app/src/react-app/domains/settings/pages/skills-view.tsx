@@ -1265,7 +1265,7 @@ export function SkillsView(props: SkillsViewProps) {
           if (!open) closeCustomRepoModal();
         }}
       >
-        <DialogContent showCloseButton={false} className="w-full max-w-lg overflow-hidden sm:max-w-lg">
+        <DialogContent className="w-full max-w-lg overflow-hidden sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>{t("skills.add_custom_repo")}</DialogTitle>
               <DialogDescription>{t("skills.github_repo_hint")}</DialogDescription>
@@ -1312,10 +1312,7 @@ export function SkillsView(props: SkillsViewProps) {
               {customRepoError ? <div className="rounded-xl border border-red-7/20 bg-red-1/40 px-4 py-3 text-xs text-red-12">{customRepoError}</div> : null}
             </div>
             <DialogFooter>
-              <DialogClose
-                disabled={props.busy}
-                render={<Button variant="outline" disabled={props.busy} />}
-              >
+              <DialogClose render={<Button variant="outline" />}>
                 {t("common.cancel")}
               </DialogClose>
               <Button variant="secondary" onClick={saveCustomRepo} disabled={props.busy}>

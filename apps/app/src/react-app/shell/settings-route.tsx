@@ -3,7 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
-import { FIGMA_MCP_QUICK_CONNECT, SUGGESTED_PLUGINS } from "@/app/constants";
+import {
+  getMcpServerName,
+  MCP_QUICK_CONNECT,
+  SUGGESTED_PLUGINS,
+} from "@/app/constants";
 import {
   canonicalWorkspacesForWorkContext,
   PERSONAL_WORK_CONTEXT_ID,
@@ -55,6 +59,7 @@ import { AiSettingsView } from "@/react-app/domains/settings/pages/ai-view";
 // Side-effect imports: register extension config components into the registry.
 import "@/react-app/domains/settings/openai-image-gen-config";
 import "@/react-app/domains/settings/ollama-config";
+import "@/react-app/domains/settings/minimax-config";
 import "@/react-app/domains/settings/computer-use-config";
 import "@/react-app/domains/settings/browser-extension-config";
 import "@/react-app/domains/settings/ipollowork-voice-config";
@@ -80,6 +85,7 @@ import { EnvironmentView } from "@/react-app/domains/settings/pages/environment-
 import { AuthorizationCenterView } from "@/react-app/domains/settings/pages/authorization-center-view";
 import { ExtensionsView } from "@/react-app/domains/settings/pages/extensions-view";
 import { PluginPackagesPanel } from "@/react-app/domains/settings/plugin-packages-panel";
+import type { PluginPackageRelationships } from "@/react-app/domains/settings/plugin-platform-state";
 import { McpView } from "@/react-app/domains/settings/pages/mcp-view";
 import { RecoveryView } from "@/react-app/domains/settings/pages/recovery-view";
 import { SkillsView } from "@/react-app/domains/settings/pages/skills-view";
@@ -406,6 +412,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [imageExtensionError, setImageExtensionError] = useState<string | null>(null);
   const [computerUsePermissions, setComputerUsePermissions] = useState<{ accessibility: boolean; screenRecording: boolean } | null>(null);
   const [extensionStateVersion, setExtensionStateVersion] = useState(0);
+  const [pluginPackageRelationships, setPluginPackageRelationships] = useState<PluginPackageRelationships>({
+    skillNames: [],
+    installedMcpServerNames: [],
+  });
   const [imageGenerationBusy, setImageGenerationBusy] = useState(false);
   const [imageGenerationStatus, setImageGenerationStatus] = useState<string | null>(null);
   const [imageGenerationError, setImageGenerationError] = useState<string | null>(null);
@@ -944,12 +954,21 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     const client = selectedWorkspaceEndpoint?.client ?? ipolloworkClient;
     const workspaceId = runtimeWorkspaceId?.trim() ?? "";
     const modelId = input.modelId.trim();
+    const api = input.api?.trim() ?? "";
+    const baseURL = input.baseURL?.trim() ?? "";
+    const models = input.models ?? {
+      [modelId]: { name: input.modelName.trim() || modelId },
+    };
     if (!client || !workspaceId) {
       setLocalProviderError("iPolloWork server is not connected for this workspace.");
       return;
     }
-    if (!modelId) {
+    if (!modelId || Object.keys(models).length === 0) {
       setLocalProviderError("Model ID is required.");
+      return;
+    }
+    if (!api && !baseURL) {
+      setLocalProviderError("A provider API URL is required.");
       return;
     }
 
@@ -961,14 +980,23 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         opencode: {
           provider: {
             [input.providerId]: {
-              npm: "@ai-sdk/openai-compatible",
+              npm: input.npm ?? "@ai-sdk/openai-compatible",
               name: input.name,
-              options: { baseURL: input.baseURL },
-              models: { [modelId]: { name: input.modelName.trim() || modelId } },
+              ...(api ? { api } : { options: { baseURL } }),
+              models,
             },
           },
         },
       });
+      if (input.apiKey?.trim()) {
+        if (!opencodeClient) {
+          throw new Error("OpenCode is not connected for this workspace.");
+        }
+        await opencodeClient.auth.set({
+          providerID: input.providerId,
+          auth: { type: "api", key: input.apiKey.trim() },
+        });
+      }
       if (input.setDefault) {
         local.setPrefs((previous) => ({
           ...previous,
@@ -988,13 +1016,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       } catch {
         // ignore browser event dispatch failures
       }
-      setLocalProviderStatus(`Added ${input.name} with ${modelId}.`);
+      setLocalProviderStatus(`Added ${input.name} with ${Object.keys(models).length} model${Object.keys(models).length === 1 ? "" : "s"}.`);
     } catch (error) {
       setLocalProviderError(describeRouteError(error));
     } finally {
       setLocalProviderBusy(false);
     }
-  }, [local, ipolloworkClient, reloadCoordinator, runtimeWorkspaceId, selectedWorkspaceEndpoint]);
+  }, [local, ipolloworkClient, opencodeClient, reloadCoordinator, runtimeWorkspaceId, selectedWorkspaceEndpoint]);
 
   useEffect(() => {
     local.setUi((previous) => ({ ...previous, view: "settings", tab: route.tab }));
@@ -1494,6 +1522,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       quickConnect: connectionsStore.quickConnect,
       mcpServers: connectionsSnapshot.mcpServers,
       installedSkills: extensionsStore.skills(),
+      pluginPackageSkillNames: pluginPackageRelationships.skillNames,
+      installedPluginPackageMcpServerNames: pluginPackageRelationships.installedMcpServerNames,
       importedCloudPlugins: extensionsStore.importedCloudPlugins(),
       pendingCloudPluginChanges: extensionsStore.pendingCloudPluginChanges(),
       cloudMarketplaces: extensionsStore.cloudOrgMarketplaces(),
@@ -1501,7 +1531,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       enablementContext,
       isBuiltInConnected: extensionController.isConnected,
     }),
-    [connectionsSnapshot.mcpServers, connectionsStore.quickConnect, enablementContext, extensionController, extensionsStore, orgMcpConnections.connections],
+    [connectionsSnapshot.mcpServers, connectionsStore.quickConnect, enablementContext, extensionController, extensionsStore, orgMcpConnections.connections, pluginPackageRelationships],
   );
   const extensionItemsForExtensions = useMemo(
     () => extensionItems.items.filter((item) => item.source !== "org-connection"),
@@ -1624,9 +1654,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             providerDisconnectStatus={configActionStatus}
             providerDisconnectError={null}
             onOpenProviderAuth={handleOpenProviderAuth}
-            onDisconnectProvider={async (providerId) => {
-              await providerAuthStore.disconnectProvider(providerId);
-            }}
+            onDisconnectProvider={(providerId) => providerAuthStore.disconnectProvider(providerId)}
             canDisconnectProvider={(source) => source !== "env"}
             cloudProviderIds={new Set(
               Object.values(providerAuthSnapshot.importedCloudProviders ?? {}).map((p) => p.providerId)
@@ -1702,9 +1730,24 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               navigateSettingsPath(pluginId ? `extensions/plugin/${encodeURIComponent(pluginId)}` : "extensions");
             }}
             onOpenUrl={(url) => platform.openLink(url)}
-            onConnectFigma={() => {
-              void connectionsStore.connectMcp(FIGMA_MCP_QUICK_CONNECT);
+            mcpStatuses={connectionsSnapshot.mcpStatuses}
+            onConnectMcp={async (serverName) => {
+              const entry = MCP_QUICK_CONNECT.find((candidate) => getMcpServerName(candidate) === serverName);
+              if (!entry) return null;
+              const configured = await connectionsStore.connectMcp(entry);
+              if (!configured) {
+                return connectionsStore.mcpStatuses[serverName] ?? {
+                  status: "failed" as const,
+                  error: connectionsStore.mcpStatus ?? t("mcp.connect_failed"),
+                };
+              }
+              await connectionsStore.refreshMcpServers();
+              return connectionsStore.mcpStatuses[serverName] ?? null;
             }}
+            onLogoutMcpAuth={(serverName) => {
+              void connectionsStore.logoutMcpAuth(serverName);
+            }}
+            onRelationshipsChange={setPluginPackageRelationships}
           />
         );
         if (route.pluginPackageId) return pluginPackagesView;
@@ -1755,7 +1798,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                 enablementContext={enablementContext}
                 builtInExtensionsDisabled={builtInExtensionsDisabled}
                 connectMcp={(entry) => {
-                  void connectionsStore.connectMcp(entry);
+                  return connectionsStore.connectMcp(entry);
                 }}
                 configSlotForEntry={extensionController.configSlotForEntry}
                 isExtensionConnected={extensionController.isConnected}

@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { Film, Loader2, Maximize2, Minimize2, Plus, RefreshCw, X } from "lucide-react";
+import { AudioLines, Ellipsis, Film, LayoutTemplate, Loader2, Maximize2, Minimize2, Palette, Plus, RefreshCw, X } from "lucide-react";
 
 import type { HyperframesCatalogItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
@@ -43,6 +43,7 @@ type VideoPanelProps = {
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
+  onSaveAsTemplate?: () => void;
   onClose: () => void;
 };
 
@@ -65,7 +66,7 @@ const studioStartupDetailKey: Record<StudioStartupStage, string> = {
   "loading-frame": "video.startup.loading_frame_detail",
 };
 
-export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onClose }: VideoPanelProps) {
+export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const localeSyncTimersRef = React.useRef<number[]>([]);
@@ -584,7 +585,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel" data-expanded={expanded ? "true" : "false"}>
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[#EAEAEA] px-3 [border-bottom-width:0.5px] mac:titlebar-drag">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3 [border-bottom-width:0.5px] mac:titlebar-drag">
         <Film className="size-4 text-primary" />
         <div className="flex min-w-0 flex-1 items-center">
           <p className="truncate text-sm font-medium">{t("video.title")}</p>
@@ -602,6 +603,30 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         >
           {expanded ? <Minimize2 /> : <Maximize2 />}
         </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={(
+              <Button
+                variant={expanded ? "secondary" : "ghost"}
+                size="icon-xs"
+                onClick={toggleFullscreen}
+                aria-label={t("video.toggle_fullscreen")}
+                aria-pressed={expanded}
+              >
+                {expanded ? <Minimize2 /> : <Maximize2 />}
+              </Button>
+            )}
+          />
+          <TooltipContent>{expanded ? t("video.exit_fullscreen") : t("video.fullscreen")}</TooltipContent>
+        </Tooltip>
+        {onSaveAsTemplate ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t("template_authoring.more_actions")}><Ellipsis /></Button>} />
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onSaveAsTemplate}><LayoutTemplate />{t("template_authoring.save_as_template")}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         {launcherItems.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -613,7 +638,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             />
             <DropdownMenuContent
               align="end"
-              className="w-[296px] rounded-[18px] border border-[#E5E5E5] bg-white p-3 text-[#242424] shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
+              className="w-[296px] rounded-[18px] border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
             >
               {launcherItems.map((item) => (
                 <DropdownMenuItem
@@ -621,14 +646,14 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
                   disabled={item.disabled}
                   onClick={item.onClick}
                   className={cn(
-                    "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-[#242424] focus:bg-[#F5F5F5] focus:text-[#242424] data-disabled:opacity-40",
-                    item.active && "bg-[#F5F5F5]",
+                    "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-foreground focus:bg-muted focus:text-foreground data-disabled:opacity-40",
+                    item.active && "bg-muted",
                   )}
                 >
                   <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
                   <span className="flex-1">{item.label}</span>
                   {item.shortcut ? (
-                    <span className="text-[12px] tracking-[-0.24px] text-[#8A8A8A]">{item.shortcut}</span>
+                    <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>
                   ) : null}
                 </DropdownMenuItem>
               ))}

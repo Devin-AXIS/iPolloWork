@@ -168,10 +168,20 @@ iPolloWork desktop/UI ── local API ──> iPolloWork server ──> OpenCod
 - `apps/server` — iPolloWork server API
 - `apps/orchestrator` — headless runtime orchestration
 - `packages` — shared types, components, docs, and integrations
+- `docs` — maintained engineering notes, platform guides, and generated reports
+- `evals` — executable product flows and validation tooling
+- `examples` — complete example plugin packages
+- `packaging` — release and installer metadata
+- `scripts` — development, build, audit, and release automation
+- `specs` — product and architecture specifications
+- `translated_readmes` — maintained README translations
+- `vendor` — pinned third-party source that is built as part of iPolloWork
 
 ## Contributing
 
-Read `AGENTS.md`, `VISION.md`, `PRINCIPLES.md`, `PRODUCT.md`, and `ARCHITECTURE.md` before making product changes. Run the narrow relevant test first, followed by:
+Read `AGENTS.md`, `CONTRIBUTING.md`, and
+`apps/app/src/react-app/ARCHITECTURE.md` before making product changes. Run the
+narrow relevant test first, followed by:
 
 ```bash
 ./ipollowork check

@@ -29,3 +29,4 @@ export const ipolloworkExtensionsPreviewPluginPath = () => ipolloworkPluginPath(
 export const ipolloworkCapabilitiesKnowledgePluginPath = () => ipolloworkPluginPath("ipollowork-capabilities-knowledge");
 export const ipolloworkAnthropicAdaptiveThinkingPluginPath = () => ipolloworkPluginPath("ipollowork-anthropic-adaptive-thinking");
 export const ipolloworkAnthropicToolSchemaPluginPath = () => ipolloworkPluginPath("ipollowork-anthropic-tool-schema");
+export const ipolloworkMoonshotTemperaturePluginPath = () => ipolloworkPluginPath("ipollowork-moonshot-temperature");

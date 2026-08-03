@@ -6,6 +6,8 @@ const root = resolve(import.meta.dir, "..");
 const starter = readFileSync(resolve(root, "src/components/chat/new-conversation-starter.tsx"), "utf8");
 const surface = readFileSync(resolve(root, "src/react-app/domains/session/surface/session-surface.tsx"), "utf8");
 const sessionPage = readFileSync(resolve(root, "src/react-app/domains/session/chat/session-page.tsx"), "utf8");
+const composer = readFileSync(resolve(root, "src/react-app/domains/session/surface/composer/composer.tsx"), "utf8");
+const styles = readFileSync(resolve(root, "src/app/index.css"), "utf8");
 
 describe("new conversation animation catalog", () => {
   test("shows the video template picker without the GSAP animation catalog", () => {
@@ -79,5 +81,19 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("setTemplateSessionData({ ...result, hasBrief });");
     expect(sessionPage).toContain("setTemplateSessionData({ sessionId: props.selectedSessionId, ...result, hasBrief: false });");
     expect(sessionPage).toContain("const designTemplateEntryPath = currentTemplateSessionData?.manifest.surface === \"design\"");
+  });
+
+  test("matches the Figma dark palette without changing the light theme", () => {
+    expect(surface).toContain('dark:bg-[#131313]');
+    expect(starter).toContain('new-conversation-bg.png');
+    expect(starter).toContain('max-w-none dark:opacity-20');
+    expect(starter).toContain('dark:bg-[#333]');
+    expect(starter).toContain('dark:bg-black dark:text-[#ccc]');
+    expect(starter).toContain('brightness-0 dark:invert dark:opacity-80');
+    expect(starter).toContain('dark:text-[#ccc]');
+    expect(starter).toContain('dark:invert dark:opacity-80');
+    expect(composer).toContain("new-conversation-composer");
+    expect(styles).toContain("--new-conversation-composer-surface: #343434");
+    expect(composer).toContain("dark:bg-white dark:text-black");
   });
 });

@@ -2,14 +2,14 @@ name: ipollowork-ui-mcp
 
 on:
   push:
-    branches: [dev]
+    branches: [main, dev]
     paths:
       - "packages/ipollowork-ui-mcp/**"
       - ".github/workflows/ci-ipollowork-ui-mcp.yml"
     tags:
       - "ipollowork-ui-mcp-v*"
   pull_request:
-    branches: [dev]
+    branches: [main, dev]
     paths:
       - "packages/ipollowork-ui-mcp/**"
       - ".github/workflows/ci-ipollowork-ui-mcp.yml"

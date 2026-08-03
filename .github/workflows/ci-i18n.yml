@@ -3,9 +3,11 @@ name: i18n Audit
 on:
   pull_request:
     branches:
+      - main
       - dev
   push:
     branches:
+      - main
       - dev
 
 permissions:

@@ -56,6 +56,30 @@ describe("plugin package manifest", () => {
     expect(result.manifest.resources.some((resource) => resource.type === "mcp" && resource.mcpServerName === "figma")).toBe(true);
   });
 
+  test("accepts every migrated MCP service package with its managed skills", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const packages = [
+      { id: "notion", skills: 4, oauth: true },
+      { id: "linear", skills: 4, oauth: true },
+      { id: "sentry", skills: 4, oauth: true },
+      { id: "stripe", skills: 4, oauth: true },
+      { id: "context7", skills: 2, oauth: false },
+    ];
+
+    for (const expected of packages) {
+      const manifest = await Bun.file(new URL(`../../../examples/plugin-packages/${expected.id}/ipollowork.plugin.json`, import.meta.url)).json();
+      const result = validatePluginPackageManifest(manifest);
+      expect(result.success).toBe(true);
+      if (!result.success) throw new Error(`${expected.id}: ${JSON.stringify(result.issues)}`);
+      expect(result.manifest.id).toBe(expected.id);
+      expect(result.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(expected.skills);
+      expect(result.manifest.resources.find((resource) => resource.type === "mcp")).toMatchObject({
+        mcpServerName: expected.id,
+        oauth: expected.oauth,
+      });
+    }
+  });
+
   test("accepts the bundled GitHub service with four independently managed skills", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const manifest = await Bun.file(new URL("../../../examples/plugin-packages/github/ipollowork.plugin.json", import.meta.url)).json();
@@ -95,6 +119,29 @@ describe("plugin package manifest", () => {
       kind: "secret-form",
       fields: [{ id: "appId", secret: false }, { id: "appSecret", secret: true }],
     }]);
+  });
+
+  test("accepts the official Design and Video Agent packages without owning related global skills", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const designManifest = await Bun.file(new URL("../../../examples/plugin-packages/design-agent/ipollowork.plugin.json", import.meta.url)).json();
+    const videoManifest = await Bun.file(new URL("../../../examples/plugin-packages/video-agent/ipollowork.plugin.json", import.meta.url)).json();
+
+    const design = validatePluginPackageManifest(designManifest);
+    const video = validatePluginPackageManifest(videoManifest);
+
+    expect(design.success).toBe(true);
+    if (!design.success) throw new Error(JSON.stringify(design.issues));
+    expect(video.success).toBe(true);
+    if (!video.success) throw new Error(JSON.stringify(video.issues));
+    expect(design.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "skill"]);
+    expect(video.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "skill"]);
+    expect(video.manifest.relatedSkills).toContain("hyperframes-cli");
+    expect(video.manifest.relatedSkills).toContain("media-use");
+    expect(video.manifest.resources.map((resource) => resource.id)).not.toContain("hyperframes-cli");
+    expect(design.manifest.contributions).toBeUndefined();
+    expect(video.manifest.contributions).toBeUndefined();
+    expect(design.manifest.source).toMatchObject({ origin: "builtin", trusted: true });
+    expect(video.manifest.source).toMatchObject({ origin: "builtin", trusted: true });
   });
 
   test("accepts current extension manifests and additive self-contained packages", async () => {
@@ -184,7 +231,7 @@ describe("plugin package manifest", () => {
       id: "figma",
       source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
       package: {
-        version: "2.0.13",
+        version: "2.0.16",
         updateId: "figma/official-workflows",
         entrypoints: {},
       },
@@ -253,6 +300,30 @@ describe("plugin package manifest", () => {
     expect(invalid.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
       "resources.1.requires.0",
       "resources.1.provides.0",
+    ]));
+  });
+
+  test("keeps related skills outside the package-owned lifecycle", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const related = validatePluginPackageManifest({
+      ...packageManifest,
+      relatedSkills: ["hyperframes-cli", "media-use"],
+    });
+
+    expect(related.success).toBe(true);
+    if (!related.success) throw new Error(JSON.stringify(related.issues));
+    expect(related.manifest.relatedSkills).toEqual(["hyperframes-cli", "media-use"]);
+    expect(related.manifest.resources.map((resource) => resource.id)).not.toContain("hyperframes-cli");
+
+    const duplicate = validatePluginPackageManifest({
+      ...packageManifest,
+      relatedSkills: ["acme-search", "acme-search"],
+    });
+    expect(duplicate.success).toBe(false);
+    if (duplicate.success) throw new Error("Expected related skill diagnostics");
+    expect(duplicate.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
+      "relatedSkills.0",
+      "relatedSkills.1",
     ]));
   });
 });

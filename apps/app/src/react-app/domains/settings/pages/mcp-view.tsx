@@ -108,7 +108,7 @@ export type McpViewProps = {
   selectedMcp: string | null;
   setSelectedMcp: (name: string | null) => void;
   quickConnect: McpDirectoryInfo[];
-  connectMcp: (entry: McpDirectoryInfo) => void;
+  connectMcp: (entry: McpDirectoryInfo) => void | Promise<unknown>;
   authorizeMcp: (entry: McpServerEntry) => void;
   logoutMcpAuth: (name: string) => Promise<void> | void;
   removeMcp: (name: string) => void;

@@ -144,7 +144,7 @@ function ElementPropertiesContent({
 
   return <>
 
-      <div className={cn("flex h-[52px] items-center px-4", !linkOpen && "border-b border-[#e8e9ec]")}>
+      <div className={cn("flex h-[52px] items-center px-4", !linkOpen && "border-b border-border")}>
         <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{isMultiSelection ? `${selectionCount} elements · Batch selection` : selection.canEditText ? "Text layer" : `${selection.tag.charAt(0).toUpperCase()}${selection.tag.slice(1).toLowerCase()} layer`}</span>
         {!isMultiSelection ? <>
           <InspectorIconButton
@@ -163,7 +163,7 @@ function ElementPropertiesContent({
 
       {linkOpen && !isMultiSelection ? (
         <form
-          className="flex gap-2 border-b border-[#e8e9ec] px-4 pb-3"
+          className="flex gap-2 border-b border-border px-4 pb-3"
           onSubmit={(event) => {
             event.preventDefault();
             const href = linkDraft.trim();
@@ -177,7 +177,7 @@ function ElementPropertiesContent({
             value={linkDraft}
             placeholder="https://example.com or /page"
             aria-label="Layer link"
-            className="h-9 min-w-0 flex-1 rounded-lg border-[#dedfe3] px-2.5 text-[12px] shadow-none"
+            className="h-9 min-w-0 flex-1 rounded-lg border-border px-2.5 text-[12px] shadow-none"
             onChange={(event) => setLinkDraft(event.currentTarget.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -186,7 +186,7 @@ function ElementPropertiesContent({
               }
             }}
           />
-          <Button type="submit" size="sm" className="h-9 shrink-0 rounded-lg bg-black px-3 text-white hover:bg-black/85 active:bg-black">保存</Button>
+          <Button type="submit" size="sm" className="h-9 shrink-0 rounded-lg px-3">保存</Button>
         </form>
       ) : null}
 
@@ -195,7 +195,7 @@ function ElementPropertiesContent({
         <InspectorSection title="Text">
           <Input
             aria-label="Design text"
-            className="h-11 rounded-lg border-[#77a0ff] bg-white px-3 text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-[#77a0ff]"
+            className="h-11 rounded-lg border-ring bg-background px-3 text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-ring"
             value={selection.text}
             placeholder="预览文本可编辑内容框..."
             onFocus={() => onApplyField("text", selection.text, true)}
@@ -338,7 +338,7 @@ function ElementPropertiesContent({
           value={selection.html}
           aria-label="Selected element HTML code"
           spellCheck={false}
-          className="h-[220px] w-full resize-none overflow-auto rounded-[9px] border border-[#99b8f2] bg-white px-4 py-2 text-[14px] leading-5 text-[#24262b] outline-none selection:bg-[#dce8ff]"
+          className="h-[220px] w-full resize-none overflow-auto rounded-[9px] border border-ring bg-background px-4 py-2 text-[14px] leading-5 text-foreground outline-none selection:bg-accent"
           placeholder="HTML Code..."
         />
       </InspectorSection>
@@ -364,13 +364,13 @@ export function DesignSystemInspectorShell({ onClose, children }: Pick<DesignPro
 
 function InspectorShell({ activeTab, onActiveTabChange, onClose, children, designSystemOnly = false }: Pick<DesignPropertiesInspectorProps, "activeTab" | "onActiveTabChange" | "onClose" | "children"> & { designSystemOnly?: boolean }) {
   return (
-    <aside className="flex h-full w-[310px] shrink-0 flex-col overflow-hidden border-l border-[#ebebeb] bg-white text-[#202228]" aria-label="Design inspector">
-      <header className="sticky left-0 top-0 z-20 flex h-[58px] w-full shrink-0 items-center border-b border-[#ebebeb] bg-white !px-4">
+    <aside className="flex h-full w-[310px] shrink-0 flex-col overflow-hidden border-l border-border bg-background text-foreground" aria-label="Design inspector">
+      <header className="sticky left-0 top-0 z-20 flex h-[58px] w-full shrink-0 items-center border-b border-border bg-background !px-4">
         <div className="flex w-[240px] shrink-0 gap-1">
-          {!designSystemOnly ? <button type="button" onClick={() => onActiveTabChange("element")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-2 text-[12px] font-semibold leading-none text-[#24262b] transition-colors", activeTab === "element" ? "bg-[#f5f6f9]" : "hover:bg-[#f5f6f9]")} aria-pressed={activeTab === "element"}>Element</button> : null}
-          <button type="button" onClick={() => onActiveTabChange("design-system")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-1 text-[12px] font-semibold leading-none text-[#24262b] transition-colors", activeTab === "design-system" ? "bg-[#f5f6f9]" : "hover:bg-[#f5f6f9]")} aria-pressed={activeTab === "design-system"}>Design System</button>
+          {!designSystemOnly ? <button type="button" onClick={() => onActiveTabChange("element")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-2 text-[12px] font-semibold leading-none text-foreground transition-colors", activeTab === "element" ? "bg-muted" : "hover:bg-muted")} aria-pressed={activeTab === "element"}>Element</button> : null}
+          <button type="button" onClick={() => onActiveTabChange("design-system")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-1 text-[12px] font-semibold leading-none text-foreground transition-colors", activeTab === "design-system" ? "bg-muted" : "hover:bg-muted")} aria-pressed={activeTab === "design-system"}>Design System</button>
         </div>
-        <button type="button" className="absolute right-4 grid size-8 place-items-center rounded-lg text-[#5f636b] transition-colors hover:bg-[#f3f4f6] hover:text-[#202228]" onClick={onClose} aria-label="Close design properties">
+        <button type="button" className="absolute right-4 grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" onClick={onClose} aria-label="Close design properties">
           <X className="size-4" strokeWidth={1.7} />
         </button>
       </header>
@@ -394,7 +394,7 @@ function fillTypeFor(selection: DesignSelection): FillType {
 }
 
 function FillSummary({ swatchClassName, label }: { swatchClassName: string; label: string }) {
-  return <div className="mt-3 flex h-[34px] items-center justify-between rounded-lg bg-[#f5f6f9] px-2 pr-4"><span className="flex items-center gap-2 text-[13px] text-[#24262b]"><span className={cn("size-5 rounded-[4px]", swatchClassName)} />{label}</span><ChevronDown className="size-4 text-[#858a94]" /></div>;
+  return <div className="mt-3 flex h-[34px] items-center justify-between rounded-lg bg-muted px-2 pr-4"><span className="flex items-center gap-2 text-[13px] text-foreground"><span className={cn("size-5 rounded-[4px]", swatchClassName)} />{label}</span><ChevronDown className="size-4 text-muted-foreground" /></div>;
 }
 
 function ImageFillPicker({ selection, onApplyFields, onChooseImage }: { selection: DesignSelection; onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void; onChooseImage: () => void }) {
@@ -452,7 +452,7 @@ function ShadowIntensityControl({ value, shadow, onChange }: { value: number; sh
 
   return (
     <div className="grid grid-cols-2 gap-3">
-      <label className="flex h-9 items-center rounded-lg bg-[#f4f5f8] px-2.5">
+      <label className="flex h-9 items-center rounded-lg bg-muted px-2.5">
         <span className="sr-only">Shadow intensity</span>
         <input
           type="range"
@@ -461,8 +461,8 @@ function ShadowIntensityControl({ value, shadow, onChange }: { value: number; sh
           step={1}
           value={value}
           aria-label="Shadow intensity"
-          className="h-3.5 w-full cursor-pointer appearance-none rounded-full bg-transparent [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-[2px] [&::-webkit-slider-thumb]:border-black [&::-webkit-slider-thumb]:bg-white"
-          style={{ background: `linear-gradient(to right, #000 0%, #000 ${value}%, #e3e5ea ${value}%, #e3e5ea 100%)` }}
+          className="h-3.5 w-full cursor-pointer appearance-none rounded-full bg-transparent [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-[2px] [&::-webkit-slider-thumb]:border-foreground [&::-webkit-slider-thumb]:bg-background"
+          style={{ background: `linear-gradient(to right, var(--foreground) 0%, var(--foreground) ${value}%, var(--border) ${value}%, var(--border) 100%)` }}
           onPointerDown={beginInteraction}
           onPointerUp={endInteraction}
           onPointerCancel={endInteraction}
@@ -482,33 +482,33 @@ function ShadowIntensityControl({ value, shadow, onChange }: { value: number; sh
 
 function InspectorSection({ title, children, last = false }: { title: string; children: React.ReactNode; last?: boolean }) {
   return (
-    <section className={cn("px-4 py-3.5", !last && "border-b border-[#e8e9ec]")}>
-      <h3 className="mb-3 text-[14px] font-medium text-black">{title}</h3>
+    <section className={cn("px-4 py-3.5", !last && "border-b border-border")}>
+      <h3 className="mb-3 text-[14px] font-medium text-foreground">{title}</h3>
       {children}
     </section>
   );
 }
 
 function FieldCaption({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <p className={cn("mb-1 text-[10px] text-[#969ba5]", className)}>{children}</p>;
+  return <p className={cn("mb-1 text-[10px] text-muted-foreground", className)}>{children}</p>;
 }
 
 function PropertyField({ label, value, suffix, onChange, disabled = false, mixed = false }: { label: string; value: string; suffix?: string; onChange: (value: string, remember?: boolean) => void; disabled?: boolean; mixed?: boolean }) {
   return (
-    <label className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
-      <span className="shrink-0 text-[10px] text-[#969ba5]">{label}</span>
-      <input className="min-w-0 flex-1 bg-transparent text-right text-[12px] outline-none placeholder:text-[#6b7280] disabled:cursor-default" value={mixed ? "" : value} placeholder={mixed ? "Mixed" : undefined} disabled={disabled} onFocus={() => onChange(value, true)} onChange={(event) => onChange(event.currentTarget.value, false)} aria-label={`Design ${label.toLowerCase()} value`} />
-      {suffix && !mixed ? <span className="text-[10px] text-[#969ba5]">{suffix}</span> : null}
+    <label className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-muted px-2.5">
+      <span className="shrink-0 text-[10px] text-muted-foreground">{label}</span>
+      <input className="min-w-0 flex-1 bg-transparent text-right text-[12px] outline-none placeholder:text-muted-foreground disabled:cursor-default" value={mixed ? "" : value} placeholder={mixed ? "Mixed" : undefined} disabled={disabled} onFocus={() => onChange(value, true)} onChange={(event) => onChange(event.currentTarget.value, false)} aria-label={`Design ${label.toLowerCase()} value`} />
+      {suffix && !mixed ? <span className="text-[10px] text-muted-foreground">{suffix}</span> : null}
     </label>
   );
 }
 
 function DragNumberField({ label, value, suffix = "", onChange, mixed = false }: { label: string; value: string; suffix?: string; onChange: (value: number, remember?: boolean) => void; mixed?: boolean }) {
   return (
-    <label className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
-      <span className="shrink-0 text-[10px] text-[#969ba5]">{label}</span>
+    <label className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-muted px-2.5">
+      <span className="shrink-0 text-[10px] text-muted-foreground">{label}</span>
       <DragNumberInput label={label} value={String(numericValue(value, 0))} mixed={mixed} onChange={onChange} />
-      {suffix && !mixed ? <span className="text-[10px] text-[#969ba5]">{suffix}</span> : null}
+      {suffix && !mixed ? <span className="text-[10px] text-muted-foreground">{suffix}</span> : null}
     </label>
   );
 }
@@ -575,8 +575,8 @@ function FontPresetField({ label, value, presets, onChange, mixed = false }: { l
   const options = presets.map((preset) => typeof preset === "string" ? { value: preset, label: preset } : preset);
 
   return (
-    <div className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-[#f4f5f8] px-2.5">
-      <span className="shrink-0 text-[10px] text-[#969ba5]">{label}</span>
+    <div className="flex h-9 min-w-0 items-center gap-2 rounded-lg bg-muted px-2.5">
+      <span className="shrink-0 text-[10px] text-muted-foreground">{label}</span>
       {label === "Size" ? (
         <DragNumberInput label={label} value={value} mixed={mixed} onChange={(nextValue, remember) => onChange(String(nextValue), remember)} />
       ) : (
@@ -603,7 +603,7 @@ function BorderStyleField({ value, onChange }: { value: string; onChange: (value
       options={BORDER_STYLE_OPTIONS}
       onChange={onChange}
       ariaLabel="Design border style"
-      className="h-9 min-w-0 rounded-lg bg-[#f4f5f8]"
+      className="h-9 min-w-0 rounded-lg bg-muted"
     />
   );
 }
@@ -659,24 +659,24 @@ function FontFamilyPicker({ value, onChange, mixed = false }: { value: string; o
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         type="button"
-        className="flex h-9 w-full min-w-0 items-center rounded-lg bg-[#f4f5f8] px-2.5 text-[#202228] hover:bg-[#e9ebef]"
+        className="flex h-9 w-full min-w-0 items-center rounded-lg bg-muted px-2.5 text-foreground hover:bg-accent"
         aria-label="Design font family"
       >
         <span className="min-w-0 flex-1 truncate text-left text-[12px]" style={mixed ? undefined : { fontFamily: currentFamily }}>{mixed ? "Mixed" : currentFamily}</span>
         <img src={panelSelectChevron} alt="" className={cn("size-4 shrink-0 transition-transform", open && "rotate-180")} />
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={12} initialFocus={false} className="w-[276px] gap-2 rounded-xl border-[#dedfe3] bg-white p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)] before:hidden">
+      <PopoverContent align="start" sideOffset={12} initialFocus={false} className="w-[276px] gap-2 rounded-xl border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_18px_rgba(37,41,49,0.11)] before:hidden">
         <Input
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
           placeholder="Search fonts"
           aria-label="Search fonts"
-          className="h-[34px] rounded-lg border-0 bg-[#f4f5f7] px-2.5 text-[12px] shadow-none"
+          className="h-[34px] rounded-lg border-0 bg-muted px-2.5 text-[12px] shadow-none"
         />
         <div className="max-h-64 overflow-y-auto" role="listbox" aria-label="Font families">
-          {loading ? <p className="px-2.5 py-2 text-[12px] text-[#858a94]">Loading fonts…</p> : null}
-          {!loading && visibleFamilies.length === 0 ? <p className="px-2.5 py-2 text-[12px] text-[#858a94]">No matching fonts</p> : null}
+          {loading ? <p className="px-2.5 py-2 text-[12px] text-muted-foreground">Loading fonts…</p> : null}
+          {!loading && visibleFamilies.length === 0 ? <p className="px-2.5 py-2 text-[12px] text-muted-foreground">No matching fonts</p> : null}
           {visibleFamilies.map((family) => {
             const selected = family.toLocaleLowerCase() === currentFamily.toLocaleLowerCase();
             return (
@@ -689,7 +689,7 @@ function FontFamilyPicker({ value, onChange, mixed = false }: { value: string; o
                   onChange(family);
                   setOpen(false);
                 }}
-                className={cn("flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f4f5f8]", selected && "bg-[#edf2ff]")}
+                className={cn("flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-muted", selected && "bg-accent")}
                 style={{ fontFamily: family }}
               >
                 <span className="min-w-0 flex-1 truncate">{family}</span>
@@ -704,19 +704,19 @@ function FontFamilyPicker({ value, onChange, mixed = false }: { value: string; o
 }
 
 function ColorField({ label = "Color", value, onChange, mixed = false }: { label?: string; value: string; onChange: (value: string, remember?: boolean) => void; mixed?: boolean }) {
-  return <DesignColorField label={label} mixed={mixed} value={value} onChange={onChange} className="mt-2 h-9 bg-[#f4f5f8] px-2.5" />;
+  return <DesignColorField label={label} mixed={mixed} value={value} onChange={onChange} className="mt-2 h-9 bg-muted px-2.5" />;
 }
 
 function PropertyButton({ active = false, disabled = false, onClick, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
   return (
-    <button type="button" className={cn("grid h-9 min-w-0 place-items-center rounded-lg bg-[#f4f5f8] text-[#858a94] transition-colors [&_svg]:size-4", active && "bg-black text-white", !disabled && "hover:bg-[#e9ebef] hover:text-black", active && !disabled && "hover:bg-black hover:text-white")} disabled={disabled} onClick={onClick} {...props}>
+    <button type="button" className={cn("grid h-9 min-w-0 place-items-center rounded-lg bg-muted text-muted-foreground transition-colors [&_svg]:size-4", active && "bg-foreground text-background", !disabled && "hover:bg-accent hover:text-foreground", active && !disabled && "hover:bg-foreground hover:text-background")} disabled={disabled} onClick={onClick} {...props}>
       {children}
     </button>
   );
 }
 
 function MixedValueHint({ mixed }: { mixed?: boolean }) {
-  return mixed ? <span className="text-[10px] font-medium text-[#6b7280]">Mixed</span> : null;
+  return mixed ? <span className="text-[10px] font-medium text-muted-foreground">Mixed</span> : null;
 }
 
 function BatchPropertyButton({ mixed, label, children }: { mixed: boolean; label: string; children: React.ReactNode }) {
@@ -730,8 +730,8 @@ function BatchPropertyButton({ mixed, label, children }: { mixed: boolean; label
 
 function inspectorIconButtonClass(active = false) {
   return cn(
-    "grid h-9 w-[34px] shrink-0 place-items-center rounded-lg p-0 text-[#858a94] transition-colors hover:bg-[#f4f5f8] hover:text-[#202228] active:bg-black active:text-white disabled:pointer-events-none disabled:opacity-55 [&_svg]:!size-4",
-    active && "bg-black text-white hover:bg-black hover:text-white",
+    "grid h-9 w-[34px] shrink-0 place-items-center rounded-lg p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-foreground active:text-background disabled:pointer-events-none disabled:opacity-55 [&_svg]:!size-4",
+    active && "bg-foreground text-background hover:bg-foreground hover:text-background",
   );
 }
 

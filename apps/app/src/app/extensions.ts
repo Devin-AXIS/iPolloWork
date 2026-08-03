@@ -45,6 +45,7 @@ export type iPolloWorkExtensionResource = {
   packageName?: string;
   providerId?: string;
   mcpServerName?: string;
+  oauth?: boolean;
   localCommandRef?: "ipollowork.computerUseMcp" | "ipollowork.uiMcp";
   requires?: string[];
   provides?: string[];
@@ -202,6 +203,8 @@ export type iPolloWorkExtensionManifest = {
   };
   setup?: iPolloWorkExtensionSetup;
   resources: iPolloWorkExtensionResource[];
+  /** Detected external Skills shown with this plugin but never installed, toggled, or removed by it. */
+  relatedSkills?: string[];
   contributions?: iPolloWorkExtensionContribution[];
   lifecycle?: iPolloWorkExtensionLifecycle;
   /** Optional package metadata for independently distributed extensions. */
@@ -414,6 +417,29 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
       { type: "composer-prompt", prompt: "Use Google Workspace to ", location: "composer" },
     ],
     lifecycle: { reload: ["config"], detection: ["provider:google-workspace"] },
+  },
+  {
+    schemaVersion: 1,
+    id: "minimax",
+    name: "MiniMax",
+    description: "Configure MiniMax models through regional OpenAI-compatible or Anthropic endpoints.",
+    source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
+    composer: { prompt: "Use MiniMax to " },
+    setup: {
+      instructions: "Save a MiniMax API key, choose a regional endpoint, and add both current MiniMax models to OpenCode.",
+      primaryCta: "Configure MiniMax",
+    },
+    resources: [
+      { type: "provider", id: "minimax", label: "MiniMax", providerId: "minimax", required: true },
+    ],
+    contributions: [
+      { type: "settings-panel", ref: "ipollowork.minimax.settings", location: "settings-detail" },
+      { type: "composer-prompt", prompt: "Use MiniMax to ", location: "composer" },
+    ],
+    enablement: [
+      { type: "provider-connected", ref: "minimax", label: "MiniMax provider" },
+    ],
+    lifecycle: { reload: ["config"], detection: ["provider:minimax"] },
   },
   {
     schemaVersion: 1,

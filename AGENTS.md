@@ -65,9 +65,22 @@ Feature work starts with the demo, not a PRD:
 1. `/voiceover <feature>` — align on the demo script; **no code until it is approved** (`voiceover` skill).
 2. Build on a fresh worktree/branch (`git worktree add ...`), never on the user's checkout.
 3. Prove it with fraimz until every frame holds (`fraimz` skill).
-4. Open a PR against `dev` and post the proof on it: `pnpm fraimz --flow <id> --pr`.
+4. Open a PR against `main` and post the proof on it: `pnpm fraimz --flow <id> --pr`.
 
 ## Coding Guidelines
+
+### Mandatory AI Code Gate
+
+- For every code addition, edit, deletion, or refactor, load
+  `$ipollowork-maintainable-code` and treat it as the repository's single
+  implementation-quality Skill.
+- Search and reuse before creating. Default new files, directories,
+  dependencies, routes, tables, state stores, and abstractions to zero.
+- Before completion, run
+  `node .codex/skills/ipollowork-maintainable-code/scripts/audit-changes.mjs`
+  together with the owning package checks.
+- Do not create a parallel code-standards Skill. Improve the canonical Skill
+  when repository-wide implementation rules change.
 
 ### TypeScript
 
@@ -98,3 +111,18 @@ When uncertain, prefer: Tailwind, TypeScript, React, shadcn/ui (Base UI), TanSta
 ### Workflow
 
 - If asked to do too much work at once, stop and state that clearly.
+
+### Repository Hygiene
+
+- Keep the repository root limited to public launchers, workspace configuration,
+  and legal, community, or primary project documents.
+- Put engineering documents and generated reports in `docs/`, product and
+  architecture plans in `specs/`, automation in `scripts/`, and executable
+  experience checks in `evals/`.
+- Extend an existing directory before creating a new top-level directory. Do
+  not add a root file merely to hold a small note, handoff, or one-off result.
+- Do not create `new`, `old`, `v2`, `copy`, `backup`, `temp`, `tmp`, `misc`,
+  `notes`, `drafts`, `handoff`, or `tdd-summary` paths as substitutes for a
+  clear existing owner.
+- Do not create per-feature design, plan, QA, summary, or TODO Markdown files
+  when code, tests, types, comments, or an existing durable document suffice.

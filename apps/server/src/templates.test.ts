@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
-import { TEMPLATE_STYLE_LABELS, type TemplateManifestV1 } from "@ipollowork/types/templates";
+import { IPOLLOWORK_PACKAGE_EXTENSION, TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { adoptLegacyVideoSession, importTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate } from "./templates.js";
+import { adoptLegacyVideoSession, createTemplateAuthoringSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
@@ -96,14 +96,6 @@ const pptxCompatibleTemplateIds = [
   "ipollowork.pptx-research-signals",
   "ipollowork.pptx-venture-blueprint",
   "ipollowork.pptx-northstar-strategy",
-  "ipollowork.pptx-compatible-brief",
-  "ipollowork.pptx-compatible-pitch",
-  "ipollowork.pptx-compatible-report",
-];
-const hiddenPptxCompatibleTemplateIds = [
-  "ipollowork.pptx-compatible-brief",
-  "ipollowork.pptx-compatible-pitch",
-  "ipollowork.pptx-compatible-report",
 ];
 const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.app-device-launch",
@@ -738,7 +730,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(105);
+    expect(directories).toHaveLength(117);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -751,7 +743,7 @@ describe("template installations", () => {
       expect(cover.byteLength).toBeGreaterThan(15_000);
       hashes.add(Bun.hash(cover).toString());
     }
-    expect(hashes.size).toBe(105);
+    expect(hashes.size).toBe(directories.length);
   });
 
   test("ships strict PPTX-compatible slide templates with explicit editable object markers", async () => {
@@ -771,6 +763,7 @@ describe("template installations", () => {
     const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
     for (const templateId of pptxCompatibleTemplateIds) {
       expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+      expect(existsSync(join(builtTemplatesRoot, `${templateId}${IPOLLOWORK_PACKAGE_EXTENSION}`))).toBe(true);
     }
   });
 
@@ -779,13 +772,9 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(102);
+    expect(first.filter((item) => item.installed)).toHaveLength(117);
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(true);
-    for (const templateId of hiddenPptxCompatibleTemplateIds) {
-      expect(first.some((item) => item.manifest.id === templateId)).toBe(false);
-      expect(existsSync(join(bundledTemplatesRoot, templateId, "manifest.json"))).toBe(true);
-    }
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
     await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
     expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
@@ -816,7 +805,9 @@ describe("template installations", () => {
     sqlite.close();
 
     const refreshed = await listTemplates(serverConfig, ws.id);
-    expect(refreshed.find((item) => item.manifest.id === templateId)?.installedVersion).toBe("1.1.0");
+    expect(refreshed.find((item) => item.manifest.id === templateId)).toMatchObject({ installedVersion: "1.0.0", updateAvailable: true });
+    await installBundledTemplate(serverConfig, ws.id, templateId);
+    expect((await listTemplates(serverConfig, ws.id)).find((item) => item.manifest.id === templateId)).toMatchObject({ installedVersion: "1.1.0", updateAvailable: false });
     expect(existsSync(legacyPackagePath)).toBe(false);
     const created = await materializeTemplate(serverConfig, ws, templateId, "session_upgraded");
     expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain('class="project-index"');
@@ -886,6 +877,7 @@ describe("template installations", () => {
     await expect(importTemplate(serverConfig, "alpha", storedZip({ "../escape.html": "bad" }), "site")).rejects.toMatchObject({ code: "invalid_template_package" });
     await expect(importTemplate(serverConfig, "alpha", localPackage(), "slides")).rejects.toMatchObject({ code: "template_category_mismatch" });
     await expect(importTemplate(serverConfig, "alpha", localPackage("local.invalid-video", { category: "video", surface: "video" }), "video")).rejects.toMatchObject({ code: "invalid_template_manifest" });
+    await expect(importTemplate(serverConfig, "alpha", localPackage("local.future-package", { schemaVersion: 2 }), "site")).rejects.toMatchObject({ code: "unsupported_template_schema" });
   });
 
   test("auto-detects imported categories while preserving scoped import checks", async () => {
@@ -934,6 +926,117 @@ describe("template installations", () => {
     expect(created.state.entry).toBe("video/session_video/index.html");
     expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain("data-composition-id");
     expect((await readTemplateSession(serverConfig, ws, "session_video")).manifest.surface).toBe("video");
+  });
+
+  test("initializes every authoring category on its canonical Design or Video surface", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-authoring-categories-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const categories: TemplateCategory[] = ["site", "video", "app", "slides", "poster", "cards", "report", "article", "other"];
+    for (const category of categories) {
+      const sessionId = `author_${category}`;
+      const created = await createTemplateAuthoringSession(serverConfig, ws, { sessionId, category });
+      expect(created.authoring).toBe(true);
+      expect(created.manifest.id).toBe(`${TEMPLATE_AUTHORING_ID_PREFIX}${category}`);
+      expect(created.surface).toBe(category === "video" ? "video" : "design");
+      expect(existsSync(join(ws.path, created.state.entry))).toBe(true);
+      expect(await validateTemplateFromSession(serverConfig, ws, sessionId)).toMatchObject({ ready: true, surface: created.surface });
+    }
+  });
+
+  test("initializes native PPT and HyperFrames authoring contracts without changing session paths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-authoring-surfaces-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const ppt = await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "author_ppt", category: "slides", pptxCompatibility: "native-editable" });
+    const pptHtml = await readFile(join(ws.path, ppt.state.entry), "utf8");
+    expect(ppt.state.entry).toBe("design/author_ppt/entry.html");
+    expect(pptHtml).toContain("data-ipw-slide");
+    expect(pptHtml).toContain("data-pptx-text");
+    expect(pptHtml).toContain("data-pptx-shape");
+    expect(pptHtml).toContain("data-pptx-image");
+
+    const video = await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "author_video", category: "video" });
+    const videoHtml = await readFile(join(ws.path, video.state.entry), "utf8");
+    expect(video.state.entry).toBe("video/author_video/index.html");
+    expect(videoHtml).toContain("data-composition-variables");
+    expect(videoHtml).toContain("data-composition-id");
+    expect(videoHtml).toContain("data-track");
+    expect(video.manifest.designSystem.variables.map((variable) => variable.id)).toEqual(["title", "accent"]);
+    const studioSerializedVideo = videoHtml.replace(
+      /data-composition-variables='([^']+)'/,
+      (_attribute, json: string) => `data-composition-variables="${json.replace(/&/g, "&amp;").replace(/\"/g, "&quot;")}"`,
+    );
+    await writeFile(join(ws.path, video.state.entry), studioSerializedVideo);
+    expect(await validateTemplatePackageDirectory(join(ws.path, "video", "author_video"))).toMatchObject({ ready: true, surface: "video" });
+    await expect(createTemplateAuthoringSession(serverConfig, ws, { sessionId: "../escape", category: "site" })).rejects.toMatchObject({ code: "invalid_session_id" });
+  });
+
+  test("returns structured validation issues and never mutates the source project", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-authoring-validation-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const created = await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "author_invalid", category: "site" });
+    const manifestBefore = await readFile(join(ws.path, "design", "author_invalid", "manifest.json"), "utf8");
+    await writeFile(join(ws.path, "design", "author_invalid", "design-tokens.css"), ":root { --ipw-color-bg: #fff; }\n");
+    const report = await validateTemplateFromSession(serverConfig, ws, "author_invalid");
+    expect(report.ready).toBe(false);
+    expect(report.surface).toBe("design");
+    expect(report.issues[0]).toMatchObject({ code: "invalid_template_manifest", severity: "error" });
+    expect(await readFile(join(ws.path, "design", "author_invalid", "manifest.json"), "utf8")).toBe(manifestBefore);
+    expect((await readTemplateSession(serverConfig, ws, created.sessionId)).authoring).toBe(true);
+  });
+
+  test("uses the shared package validator for missing tokens, false PPT markers and invalid Video variables", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-package-validation-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+
+    await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "missing_token", category: "site" });
+    const designRoot = join(ws.path, "design", "missing_token");
+    await writeFile(join(designRoot, "design-tokens.css"), ":root { --ipw-color-bg: #fff; }\n");
+    expect(await validateTemplatePackageDirectory(designRoot)).toMatchObject({
+      ready: false,
+      issues: [{ code: "invalid_template_manifest", severity: "error" }],
+    });
+
+    await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "false_ppt", category: "slides", pptxCompatibility: "native-editable" });
+    const pptRoot = join(ws.path, "design", "false_ppt");
+    await writeFile(join(pptRoot, "entry.html"), "<!doctype html><section data-ipw-slide>Visual only</section>\n");
+    expect(await validateTemplatePackageDirectory(pptRoot)).toMatchObject({
+      ready: false,
+      issues: [{ code: "invalid_pptx_template", severity: "error" }],
+    });
+
+    await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "invalid_video", category: "video" });
+    const videoRoot = join(ws.path, "video", "invalid_video");
+    await writeFile(join(videoRoot, "index.html"), "<!doctype html><html data-composition-variables='[{\"id\":\"title\",\"type\":\"string\",\"label\":\"Title\"}]'><body><div data-composition-id=\"main\" data-duration=\"6\"></div></body></html>\n");
+    expect(await validateTemplatePackageDirectory(videoRoot)).toMatchObject({
+      ready: false,
+      issues: [{ code: "invalid_video_template_variables", severity: "error" }],
+    });
+  });
+
+  test("saves authoring work as new independent templates and preserves the source snapshot", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-authoring-save-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const source = await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "author_save", category: "site" });
+    const sourceEntry = await readFile(join(ws.path, source.state.entry), "utf8");
+    const first = await saveTemplateFromSession(serverConfig, ws, { sessionId: "author_save", category: "site", title: "Reusable site" });
+    const second = await saveTemplateFromSession(serverConfig, ws, { sessionId: "author_save", category: "site", title: "Reusable site" });
+    expect(first.manifest.id).not.toBe(second.manifest.id);
+    expect(first.manifest.id).toStartWith("personal.reusable-site.");
+    expect(first.manifest.designSystem.variables).toEqual(source.manifest.designSystem.variables);
+    expect((await readTemplateSession(serverConfig, ws, "author_save")).manifest.id).toBe(source.manifest.id);
+    expect(await readFile(join(ws.path, source.state.entry), "utf8")).toBe(sourceEntry);
+    const instantiated = await materializeTemplate(serverConfig, ws, first.manifest.id, "saved_copy");
+    expect(await readFile(join(ws.path, instantiated.state.entry), "utf8")).toBe(sourceEntry);
   });
 
   test("saves a current design as a personal reusable template", async () => {

@@ -29,10 +29,16 @@ import type {
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
 import type { iPolloWorkPluginAuthorizationMethod } from "@/app/extensions";
+import type { McpStatus, McpStatusMap } from "@/app/types";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
 import { PluginPackageImportModal } from "./plugin-package-import-modal";
-import { derivePluginPrimaryAction, formatPluginPlatformError } from "./plugin-platform-state";
+import {
+  collectPluginPackageRelationships,
+  derivePluginPrimaryAction,
+  formatPluginPlatformError,
+  type PluginPackageRelationships,
+} from "./plugin-platform-state";
 
 type PluginPackagesPanelProps = {
   client: iPolloWorkServerClient | null;
@@ -40,7 +46,10 @@ type PluginPackagesPanelProps = {
   selectedPluginId: string | null;
   onSelectPlugin: (pluginId: string | null) => void;
   onOpenUrl: (url: string) => void;
-  onConnectFigma: () => void;
+  mcpStatuses: McpStatusMap;
+  onConnectMcp: (serverName: string) => Promise<McpStatus | null>;
+  onLogoutMcpAuth: (serverName: string) => void;
+  onRelationshipsChange: (relationships: PluginPackageRelationships) => void;
 };
 
 type SecretAuthorizationEditor = {
@@ -49,12 +58,37 @@ type SecretAuthorizationEditor = {
   values: Record<string, string>;
 };
 
-function statusText(state: iPolloWorkPluginAuthorizationState | undefined, hasPluginAuthorization: boolean) {
-  if (!hasPluginAuthorization) return t("plugin_platform.status.installed");
-  if (state?.ready) return t("plugin_platform.status.connected");
+type McpConnectionFeedback = {
+  status: "connecting" | "connected" | "unavailable";
+  error?: string;
+};
+
+function packageAuthorization(
+  item: iPolloWorkPluginPackageItem,
+  state: iPolloWorkPluginAuthorizationState | undefined,
+  mcpStatuses: McpStatusMap,
+) {
+  const pluginAuthorizationRequired = (item.manifest.authorization?.methods?.length ?? 0) > 0;
+  const hasGuidedSetup = Boolean(item.manifest.setup?.instructions?.trim());
+  const connectionMcpResources = item.manifest.resources.filter((resource) =>
+    resource.type === "mcp"
+      && Boolean(resource.mcpServerName)
+      && (resource.oauth === true || hasGuidedSetup)
+  );
+  const required = pluginAuthorizationRequired || connectionMcpResources.length > 0;
+  const pluginReady = !pluginAuthorizationRequired || state?.ready === true;
+  const mcpReady = connectionMcpResources.every((resource) =>
+    resource.mcpServerName ? mcpStatuses[resource.mcpServerName]?.status === "connected" : false
+  );
+  return { required, connected: required && pluginReady && mcpReady, connectionMcpResources };
+}
+
+function statusText(state: iPolloWorkPluginAuthorizationState | undefined, required: boolean, connected: boolean) {
+  if (!required) return t("plugin_platform.status.installed");
+  if (connected) return t("plugin_platform.status.connected");
   if (state?.flows.some((flow) => flow.status === "pending")) return t("plugin_platform.status.pending");
   if (state?.flows.some((flow) => flow.status === "expired")) return t("plugin_platform.status.expired");
-  return state?.required ? t("plugin_platform.status.needs_authorization") : t("plugin_platform.status.ready");
+  return t("plugin_platform.status.needs_authorization");
 }
 
 export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
@@ -66,6 +100,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   const [importOpen, setImportOpen] = useState(false);
   const [flows, setFlows] = useState<Record<string, iPolloWorkPluginAuthorizationFlow>>({});
   const [secretEditor, setSecretEditor] = useState<SecretAuthorizationEditor | null>(null);
+  const [mcpConnectionFeedbacks, setMcpConnectionFeedbacks] = useState<Record<string, McpConnectionFeedback>>({});
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -111,11 +146,17 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   const installedCount = items.length;
   const availableCatalogItems = catalogItems.filter((item) => item.installedVersion === null || item.updateAvailable);
   const connectedCount = useMemo(
-    () => items.filter((item) =>
-      (item.manifest.authorization?.methods?.length ?? 0) > 0 && authorizations[item.pluginId]?.ready === true
-    ).length,
-    [authorizations, items],
+    () => items.filter((item) => packageAuthorization(item, authorizations[item.pluginId], props.mcpStatuses).connected).length,
+    [authorizations, items, props.mcpStatuses],
   );
+  const relationships = useMemo(
+    () => collectPluginPackageRelationships(items, catalogItems),
+    [catalogItems, items],
+  );
+
+  useEffect(() => {
+    props.onRelationshipsChange(relationships);
+  }, [props.onRelationshipsChange, relationships]);
 
   const run = useCallback(async (key: string, operation: () => Promise<void>): Promise<boolean> => {
     setBusyKey(key);
@@ -124,12 +165,46 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
       await operation();
       return true;
     } catch (cause) {
-      setError(formatPluginPlatformError(cause, t("plugin_platform.error.operation")));
+      setError(formatPluginPlatformError(
+        cause,
+        t("plugin_platform.error.operation"),
+        t("plugin_platform.error.conflict"),
+      ));
       return false;
     } finally {
       setBusyKey(null);
     }
   }, []);
+
+  const connectGuidedMcp = async (serverName: string, pluginName: string) => {
+    setMcpConnectionFeedbacks((current) => ({
+      ...current,
+      [serverName]: { status: "connecting" },
+    }));
+    const completed = await run(`mcp:${serverName}`, async () => {
+      const status = await props.onConnectMcp(serverName);
+      setMcpConnectionFeedbacks((current) => ({
+        ...current,
+        [serverName]: status?.status === "connected"
+          ? { status: "connected" }
+          : {
+              status: "unavailable",
+              error: status?.status === "failed" || status?.status === "needs_client_registration"
+                ? status.error
+                : undefined,
+            },
+      }));
+    });
+    if (!completed) {
+      setMcpConnectionFeedbacks((current) => ({
+        ...current,
+        [serverName]: {
+          status: "unavailable",
+          error: t("plugin_platform.desktop_mcp_unavailable", { name: pluginName }),
+        },
+      }));
+    }
+  };
 
   const installBundledPackage = (item: iPolloWorkBundledPluginPackageItem) => run(`catalog:${item.pluginId}`, async () => {
     if (!props.client || !props.workspaceId) return;
@@ -193,12 +268,14 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
     const item = selectedItem;
     const auth = authorizations[item.pluginId];
     const methods = item.manifest.authorization?.methods ?? [];
-    const hasPluginAuthorization = methods.length > 0;
-    const connected = hasPluginAuthorization && auth?.ready === true;
-    const hasFigmaMcp = item.manifest.resources.some((resource) =>
-      resource.type === "mcp" && resource.mcpServerName === "figma"
-    );
+    const authorization = packageAuthorization(item, auth, props.mcpStatuses);
+    const connected = authorization.connected;
     const flow = flows[item.pluginId];
+    const setupHelpUrl = item.manifest.contributions?.find((contribution) =>
+      contribution.type === "setup-instructions"
+        && contribution.location === "settings-detail"
+        && contribution.ref?.startsWith("https://")
+    )?.ref;
     const iconUrl = resolveExtensionIconUrl({
       iconSrc: item.manifest.icon?.src,
       iconSlug: item.manifest.icon?.simpleIconSlug,
@@ -207,6 +284,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
       ["mcp", "opencode-plugin", "provider", "local-service", "native-binary"].includes(resource.type)
     );
     const skillResources = item.manifest.resources.filter((resource) => resource.type === "skill");
+    const relatedSkillNames = item.manifest.relatedSkills ?? [];
     const otherResources = item.manifest.resources.filter((resource) =>
       !["mcp", "opencode-plugin", "provider", "local-service", "native-binary", "skill"].includes(resource.type)
     );
@@ -289,13 +367,13 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
             </div>
           ) : null}
 
-          {(hasFigmaMcp || methods.length > 0) ? (
+          {(authorization.connectionMcpResources.length > 0 || methods.length > 0) ? (
             <div className="mt-6 rounded-2xl border border-dls-border bg-dls-hover/25 p-4 sm:p-5">
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-dls-text">
                 <KeyRound size={16} />
                 {t("plugin_platform.authorization")}
               </div>
-              {connected ? (
+              {methods.length > 0 && auth?.ready === true ? (
                 <div className="flex items-center justify-between gap-3 rounded-xl border border-green-6 bg-green-2 px-3 py-2 text-xs text-green-11">
                   <span>{t("plugin_platform.status.connected")}</span>
                   {auth?.connections[0] ? <Button size="sm" variant="ghost" onClick={() => void run(`${item.pluginId}:revoke`, async () => {
@@ -304,16 +382,93 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
                   })}>{t("plugin_platform.revoke")}</Button> : null}
                 </div>
               ) : null}
-              {methods.length === 0 ? (
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs leading-5 text-dls-secondary">{t("plugin_platform.mcp_authorization_hint")}</p>
-                  <Button size="sm" className="shrink-0" disabled={busyKey !== null} onClick={props.onConnectFigma}>
-                    <KeyRound size={14} />
-                    {t("plugin_platform.connect_figma")}
-                  </Button>
+              {authorization.connectionMcpResources.length > 0 ? (
+                <div className={`${methods.length > 0 && auth?.ready === true ? "mt-3 " : ""}space-y-3`}>
+                  <p className="text-xs leading-5 text-dls-secondary">
+                    {item.manifest.setup?.instructions?.trim() || t("plugin_platform.mcp_authorization_hint")}
+                  </p>
+                  {authorization.connectionMcpResources.map((resource) => {
+                    const serverName = resource.mcpServerName;
+                    if (!serverName) return null;
+                    const mcpConnected = props.mcpStatuses[serverName]?.status === "connected";
+                    const guidedSetup = resource.oauth !== true && Boolean(item.manifest.setup?.instructions?.trim());
+                    const connectionFeedback = mcpConnectionFeedbacks[serverName];
+                    const connectionBusy = busyKey === `mcp:${serverName}`;
+                    const desktopMcpUnavailable = guidedSetup
+                      && connectionFeedback?.status !== "connecting"
+                      && (connectionFeedback?.status === "unavailable" || props.mcpStatuses[serverName]?.status === "failed");
+                    return (
+                      <div key={resource.id} className="rounded-xl border border-dls-border bg-dls-surface p-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-dls-text">{resource.label ?? resource.id}</div>
+                            <div className={`mt-1 text-xs ${mcpConnected ? "text-green-11" : "text-dls-secondary"}`}>
+                              {mcpConnected
+                                ? t("plugin_platform.status.connected")
+                                : desktopMcpUnavailable
+                                  ? t("plugin_platform.status.desktop_mcp_unavailable")
+                                  : t("plugin_platform.status.needs_authorization")}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant={mcpConnected ? "outline" : "default"}
+                              disabled={busyKey !== null}
+                              onClick={() => {
+                                if (mcpConnected && !guidedSetup) {
+                                  props.onLogoutMcpAuth(serverName);
+                                  return;
+                                }
+                                if (guidedSetup) {
+                                  void connectGuidedMcp(serverName, item.name);
+                                  return;
+                                }
+                                void props.onConnectMcp(serverName);
+                              }}
+                            >
+                              {connectionBusy ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                              {connectionBusy
+                                ? t("plugin_platform.connecting")
+                                : guidedSetup
+                                  ? mcpConnected
+                                    ? t("plugin_platform.check_status")
+                                    : item.manifest.setup?.primaryCta ?? t("plugin_platform.connect_mcp", { name: item.name })
+                                  : mcpConnected
+                                    ? t("plugin_platform.revoke")
+                                    : t("plugin_platform.connect_mcp", { name: item.name })}
+                            </Button>
+                            {guidedSetup && setupHelpUrl ? (
+                              <Button size="sm" variant="outline" onClick={() => props.onOpenUrl(setupHelpUrl)}>
+                                {item.manifest.setup?.secondaryCta ?? t("plugin_platform.info")}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                        {guidedSetup && (connectionFeedback || desktopMcpUnavailable) ? (
+                          <div
+                            className={`mt-3 rounded-lg border px-3 py-2 text-xs leading-5 ${mcpConnected || connectionFeedback?.status === "connected"
+                              ? "border-green-6 bg-green-2 text-green-11"
+                              : connectionFeedback?.status === "connecting"
+                                ? "border-dls-border bg-dls-hover text-dls-secondary"
+                                : "border-amber-6 bg-amber-2 text-amber-11"}`}
+                            role="status"
+                            title={connectionFeedback?.error}
+                          >
+                            {mcpConnected || connectionFeedback?.status === "connected"
+                              ? t("plugin_platform.mcp_connected_detail", { name: item.name })
+                              : connectionFeedback?.status === "connecting"
+                                ? t("plugin_platform.connecting")
+                                : t("plugin_platform.desktop_mcp_unavailable", { name: item.name })}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
-              ) : (
-                <div className={`${connected ? "mt-3 " : ""}space-y-3`}>
+              ) : null}
+              {methods.length > 0 ? (
+                <div className={`${authorization.connectionMcpResources.length > 0 || auth?.ready === true ? "mt-3 " : ""}space-y-3`}>
                   {methods.map((method) => (
                     <div key={method.id} className="rounded-xl border border-dls-border bg-dls-surface p-3">
                       <div className="text-xs font-semibold text-dls-text">{method.label}</div>
@@ -343,7 +498,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
                     </div>
                   ))}
                 </div>
-              )}
+              ) : null}
             </div>
           ) : null}
 
@@ -379,6 +534,25 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          ) : null}
+
+          {relatedSkillNames.length > 0 ? (
+            <div className="mt-8">
+              <h3 className="text-sm font-semibold text-dls-text">
+                {t("plugin_platform.related_skills")} <span className="ml-1 font-normal text-dls-secondary">{relatedSkillNames.length}</span>
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-dls-secondary">{t("plugin_platform.related_skills_description")}</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {relatedSkillNames.map((skillName) => (
+                  <div key={skillName} className="flex items-center gap-3 rounded-xl border border-dls-border px-3 py-3">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-violet-6/50 bg-violet-3/40 text-violet-11">
+                      <Sparkles size={14} />
+                    </div>
+                    <div className="min-w-0 truncate font-mono text-xs text-dls-text">{skillName}</div>
+                  </div>
+                ))}
               </div>
             </div>
           ) : null}
@@ -564,11 +738,11 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
         })}
         {items.map((item) => {
           const auth = authorizations[item.pluginId];
-          const hasPluginAuthorization = (item.manifest.authorization?.methods?.length ?? 0) > 0;
-          const connected = hasPluginAuthorization && auth?.ready === true;
+          const authorization = packageAuthorization(item, auth, props.mcpStatuses);
+          const connected = authorization.connected;
           const primaryAction = derivePluginPrimaryAction({
             installed: true,
-            authorizationRequired: auth?.required === true,
+            authorizationRequired: authorization.required,
             connected,
             updateAvailable: false,
             broken: !item.enabled,
@@ -591,8 +765,8 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
                   </div>
                   <p className="mt-1 line-clamp-1 text-xs text-dls-secondary">{item.manifest.description}</p>
                   <div className="mt-1 flex items-center gap-1.5 text-[11px] text-dls-secondary">
-                    {connected || !hasPluginAuthorization ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}
-                    <span>{statusText(auth, hasPluginAuthorization)}</span>
+                    {connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}
+                    <span>{statusText(auth, authorization.required, connected)}</span>
                   </div>
                 </div>
               </div>

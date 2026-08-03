@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -7,13 +7,21 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { inflateRaw } from "node:zlib";
 import {
+  MAX_TEMPLATE_PACKAGE_BYTES,
   templateCategorySchema,
   templateManifestV1Schema,
+  pptxCompatibilitySchema,
   templateSourceTypeSchema,
   templateStyleSchema,
   sortTemplatesForCatalog,
+  isTemplateAuthoringManifest,
+  TEMPLATE_AUTHORING_ID_PREFIX,
+  type PptxCompatibility,
+  type TemplateAuthoringInput,
   type TemplateSessionState,
   type TemplateSessionSnapshot,
+  type TemplateValidationIssue,
+  type TemplateValidationReport,
   type TemplateCategory,
   type TemplateCatalogItem,
   type TemplateManifestV1,
@@ -21,13 +29,13 @@ import {
   type TemplateSurface,
 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { ApiError } from "./errors.js";
+import { ApiError, isApiError } from "./errors.js";
 import pkg from "../package.json" with { type: "json" };
 
 const MAX_EXPANDED_BYTES = 200 * 1024 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES = 1_000;
-export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
+export { MAX_TEMPLATE_PACKAGE_BYTES };
 const WITHDRAWN_BUNDLED_TEMPLATE_IDS = new Set([
   "ipollowork.html-anything.deck-xhs-post",
   "ipollowork.html-anything.social-x-post-card",
@@ -260,7 +268,7 @@ async function readZip(buffer: Buffer): Promise<ZipEntry[]> {
   for (let offset = Math.max(0, buffer.length - 65_557); offset <= buffer.length - 22; offset += 1) {
     if (buffer.readUInt32LE(offset) === 0x06054b50) eocd = offset;
   }
-  if (eocd < 0) throw new ApiError(400, "invalid_template_package", "The .ipwt file is not a valid ZIP archive");
+  if (eocd < 0) throw new ApiError(400, "invalid_template_package", "The template package is not a valid ZIP archive");
   const entryCount = buffer.readUInt16LE(eocd + 10);
   const centralOffset = buffer.readUInt32LE(eocd + 16);
   if (entryCount > MAX_FILES) throw new ApiError(413, "template_package_too_large", "Template package contains more than 1,000 files");
@@ -322,6 +330,23 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function decodeHtmlAttribute(value: string) {
+  return value.replace(/&(?:quot|apos|amp|lt|gt|#\d+|#x[0-9a-f]+);/gi, (entity) => {
+    const named = entity.toLowerCase();
+    if (named === "&quot;") return '"';
+    if (named === "&apos;") return "'";
+    if (named === "&amp;") return "&";
+    if (named === "&lt;") return "<";
+    if (named === "&gt;") return ">";
+    const numeric = named.startsWith("&#x")
+      ? Number.parseInt(named.slice(3, -1), 16)
+      : Number.parseInt(named.slice(2, -1), 10);
+    return Number.isFinite(numeric) && numeric >= 0 && numeric <= 0x10ffff
+      ? String.fromCodePoint(numeric)
+      : entity;
+  });
+}
+
 /**
  * Video templates are rendered by HyperFrames, whose variables are declared
  * on the document element rather than in our manifest. Keep that contract at
@@ -339,7 +364,7 @@ function validateVideoTemplateVariables(manifest: TemplateManifestV1, entryHtml:
 
   let declarations: unknown;
   try {
-    declarations = JSON.parse(encodedDeclarations);
+    declarations = JSON.parse(decodeHtmlAttribute(encodedDeclarations));
   } catch {
     invalidVideoTemplateVariables("data-composition-variables must contain valid JSON");
   }
@@ -390,6 +415,9 @@ async function readManifest(directory: string): Promise<TemplateManifestV1> {
   let value: unknown;
   try { value = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8")); }
   catch { throw new ApiError(400, "invalid_template_manifest", "manifest.json is required at the package root"); }
+  if (isPlainObject(value) && typeof value.schemaVersion === "number" && value.schemaVersion !== 1) {
+    throw new ApiError(400, "unsupported_template_schema", `Template manifest schema ${value.schemaVersion} is not supported`);
+  }
   const parsed = templateManifestV1Schema.safeParse(value);
   if (!parsed.success) throw new ApiError(400, "invalid_template_manifest", "Template manifest is invalid", parsed.error.flatten());
   const manifest = parsed.data;
@@ -420,6 +448,27 @@ async function readManifest(directory: string): Promise<TemplateManifestV1> {
     }
   }
   return manifest;
+}
+
+export async function validateTemplatePackageDirectory(directory: string): Promise<TemplateValidationReport> {
+  try {
+    const manifest = await readManifest(resolve(directory));
+    return {
+      ready: true,
+      surface: manifest.surface,
+      entry: manifest.entry,
+      manifest,
+      issues: [],
+    };
+  } catch (error) {
+    return {
+      ready: false,
+      surface: "design",
+      entry: "entry.html",
+      manifest: null,
+      issues: [validationIssue(error)],
+    };
+  }
 }
 
 async function hashDirectory(directory: string): Promise<string> {
@@ -580,7 +629,7 @@ export async function importTemplate(config: ServerConfig, workspaceId: string, 
 
 function localTemplateId(title: string, scope: TemplateLibraryScope) {
   const stem = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "template";
-  return `${scope === "personal" ? "personal" : "enterprise"}.${stem}.${Date.now().toString(36)}`;
+  return `${scope === "personal" ? "personal" : "enterprise"}.${stem}.${randomUUID()}`;
 }
 
 function escapeSvgText(value: string) {
@@ -593,6 +642,247 @@ function personalTemplateCover(title: string, category: TemplateCategory, style:
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="${label}"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#111827"/><stop offset="1" stop-color="#4f46e5"/></linearGradient></defs><rect width="960" height="540" fill="url(#g)"/><circle cx="785" cy="105" r="180" fill="#ffffff" fill-opacity=".1"/><circle cx="145" cy="500" r="230" fill="#a5b4fc" fill-opacity=".16"/><text x="64" y="250" fill="#ffffff" font-family="Inter,Arial,sans-serif" font-size="58" font-weight="700">${label}</text><text x="68" y="304" fill="#c7d2fe" font-family="Inter,Arial,sans-serif" font-size="24">${detail}</text></svg>`;
 }
 
+const AUTHORING_DESIGN_VARIABLES = [
+  { id: "--ipw-color-bg", label: "Background", type: "color", group: "background" },
+  { id: "--ipw-color-surface", label: "Surface", type: "color", group: "background" },
+  { id: "--ipw-color-text", label: "Text", type: "color", group: "theme" },
+  { id: "--ipw-color-primary", label: "Primary", type: "color", group: "theme" },
+  { id: "--ipw-font-display", label: "Display font", type: "font", group: "typography" },
+  { id: "--ipw-font-body", label: "Body font", type: "font", group: "typography" },
+  { id: "--ipw-page-padding", label: "Page padding", type: "number", group: "components" },
+  { id: "--ipw-card-radius", label: "Card radius", type: "number", group: "components" },
+] satisfies TemplateManifestV1["designSystem"]["variables"];
+
+const AUTHORING_DESIGN_TOKENS = `/* ipw-theme:start */
+/* ipw-design-system: default */
+:root {
+  --ipw-color-bg: #f6f7f9;
+  --ipw-color-surface: #ffffff;
+  --ipw-color-text: #16181d;
+  --ipw-color-muted: #667085;
+  --ipw-color-border: #d9dde5;
+  --ipw-color-primary: #2563eb;
+  --ipw-color-secondary: #0f766e;
+  --ipw-color-accent: #d97706;
+  --ipw-color-on-primary: #ffffff;
+  --ipw-font-display: ui-sans-serif, system-ui, sans-serif;
+  --ipw-font-body: ui-sans-serif, system-ui, sans-serif;
+  --ipw-type-scale: 1;
+  --ipw-body-line-height: 1.55;
+  --ipw-content-width: 1080px;
+  --ipw-page-padding: 32px;
+  --ipw-section-space: 80px;
+  --ipw-button-radius: 8px;
+  --ipw-card-bg: var(--ipw-color-surface);
+  --ipw-card-border: var(--ipw-color-border);
+  --ipw-card-radius: 14px;
+  --ipw-card-shadow: 0 12px 32px rgb(15 23 42 / 10%);
+}
+/* ipw-theme:end */
+`;
+
+function authoringLabel(category: TemplateCategory, pptxCompatibility?: PptxCompatibility) {
+  if (pptxCompatibility) return "Native editable PPT";
+  return ({
+    site: "Site",
+    video: "Video",
+    app: "App",
+    slides: "Presentation",
+    poster: "Poster",
+    cards: "Cards",
+    report: "Report",
+    article: "Article",
+    other: "Design",
+  } satisfies Record<TemplateCategory, string>)[category];
+}
+
+function authoringManifest(category: TemplateCategory, pptxCompatibility?: PptxCompatibility): TemplateManifestV1 {
+  const surface: TemplateSurface = category === "video" ? "video" : "design";
+  const label = authoringLabel(category, pptxCompatibility);
+  return templateManifestV1Schema.parse({
+    schemaVersion: 1,
+    id: `${TEMPLATE_AUTHORING_ID_PREFIX}${pptxCompatibility ? "pptx" : category}`,
+    version: "1.0.0",
+    kind: "design",
+    category,
+    subcategory: pptxCompatibility ? "native-pptx" : "authoring",
+    style: category === "video" ? "cinematic" : "minimal",
+    tags: ["authoring", category, ...(pptxCompatibility ? ["pptx-compatible"] : [])],
+    pptxCompatibility,
+    surface,
+    title: `${label} template draft`,
+    description: `A guided ${label.toLowerCase()} template draft created in iPolloWork.`,
+    cover: "cover.svg",
+    entry: surface === "video" ? "index.html" : "entry.html",
+    source: { name: "iPolloWork template authoring", license: "Private" },
+    designSystem: {
+      tokenVersion: 1,
+      tokens: "design-tokens.css",
+      editableGroups: ["theme", "background", "typography", "components"],
+      variables: surface === "video"
+        ? [
+            { id: "title", label: "Title", type: "text", group: "content" },
+            { id: "accent", label: "Accent", type: "color", group: "theme" },
+          ]
+        : AUTHORING_DESIGN_VARIABLES,
+    },
+    applyChecklist: surface === "video"
+      ? ["Confirm composition duration and tracks.", "Keep animation deterministic.", "Validate every declared HyperFrames variable."]
+      : category === "slides"
+        ? ["Keep the 16:9 stage and slide roots stable.", ...(pptxCompatibility ? ["Keep editable PPT text, shape and image markers."] : []), "Verify theme switching without moving slide geometry."]
+        : ["Use semantic responsive HTML.", "Keep reusable content and visual variables current.", "Verify theme switching without changing structure."],
+    minimumAppVersion: pkg.version.replace(/-.+$/, ""),
+  });
+}
+
+function authoringEntry(manifest: TemplateManifestV1) {
+  if (manifest.surface === "video") {
+    return `<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Untitled video template"},{"id":"accent","type":"color","label":"Accent","default":"#2563eb"}]'>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Video template draft</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
+    .scene { position: absolute; inset: 0; display: grid; place-items: center; padding: 96px; background: var(--ipw-color-bg); }
+    h1 { max-width: 14ch; margin: 0; color: var(--accent, var(--ipw-color-primary)); font: 700 96px/1 var(--ipw-font-display); text-align: center; }
+  </style>
+  <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+</head>
+<body>
+  <main data-composition-id="main" data-start="0" data-duration="8" data-width="1920" data-height="1080">
+    <section class="scene" data-track="visual" data-clip="intro" data-start="0" data-duration="8">
+      <h1 data-var-text="title">Untitled video template</h1>
+    </section>
+  </main>
+</body>
+</html>
+`;
+  }
+  if (manifest.category === "slides") {
+    const editable = manifest.pptxCompatibility
+      ? `<p data-pptx-text>Describe the purpose, audience, and reusable story structure.</p><div class="shape" data-pptx-shape="rect" aria-hidden="true"></div><img data-pptx-image src="cover.svg" alt="Template placeholder">`
+      : `<p>Describe the purpose, audience, and reusable story structure.</p>`;
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Presentation template draft</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { display: grid; place-items: center; overflow: hidden; background: #d9dde5; font-family: var(--ipw-font-body); }
+    .stage { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); }
+    .slide { position: absolute; inset: 0; display: grid; align-content: center; gap: 24px; padding: 72px; }
+    h1 { max-width: 13ch; margin: 0; font: 700 64px/1 var(--ipw-font-display); }
+    p { max-width: 48ch; margin: 0; color: var(--ipw-color-muted); font-size: 20px; }
+    .shape { width: 180px; height: 18px; background: var(--ipw-color-primary); border-radius: var(--ipw-button-radius); }
+    img { position: absolute; right: 48px; bottom: 48px; width: 160px; height: 90px; object-fit: cover; }
+  </style>
+  <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+</head>
+<body>
+  <main class="stage" data-ipw-template-kind="slides">
+    <section class="slide" data-ipw-slide="1" data-title="Cover">
+      <h1${manifest.pptxCompatibility ? " data-pptx-text" : ""}>Untitled presentation template</h1>
+      ${editable}
+    </section>
+  </main>
+</body>
+</html>
+`;
+  }
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${manifest.title}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
+    main { width: min(100% - 32px, var(--ipw-content-width)); margin: 0 auto; padding: var(--ipw-section-space) var(--ipw-page-padding); }
+    section { padding: 40px; border: 1px solid var(--ipw-card-border); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); box-shadow: var(--ipw-card-shadow); }
+    h1 { max-width: 14ch; margin: 0 0 20px; font: 700 calc(56px * var(--ipw-type-scale)) / 1 var(--ipw-font-display); }
+    p { max-width: 60ch; margin: 0; color: var(--ipw-color-muted); line-height: var(--ipw-body-line-height); }
+  </style>
+  <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+</head>
+<body>
+  <main data-ipw-template-kind="${manifest.category}">
+    <section>
+      <h1>Untitled ${authoringLabel(manifest.category).toLowerCase()} template</h1>
+      <p>Describe the purpose, audience, reusable content structure, variables, and visual direction with AI.</p>
+    </section>
+  </main>
+</body>
+</html>
+`;
+}
+
+async function writeAuthoringPackage(directory: string, manifest: TemplateManifestV1) {
+  await mkdir(directory, { recursive: true });
+  await Promise.all([
+    writeFile(join(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
+    writeFile(join(directory, manifest.entry), authoringEntry(manifest), "utf8"),
+    writeFile(join(directory, "design-tokens.css"), AUTHORING_DESIGN_TOKENS, "utf8"),
+    writeFile(join(directory, "cover.svg"), personalTemplateCover(manifest.title, manifest.category, manifest.style), "utf8"),
+    writeFile(join(directory, "brief.json"), `${JSON.stringify({ mode: "template-authoring", category: manifest.category, pptxCompatibility: manifest.pptxCompatibility ?? null }, null, 2)}\n`, "utf8"),
+  ]);
+}
+
+export async function createTemplateAuthoringSession(
+  config: ServerConfig,
+  workspace: WorkspaceInfo,
+  input: TemplateAuthoringInput,
+): Promise<TemplateSessionSnapshot> {
+  if (workspace.workspaceType !== "local" || !workspace.path) throw new ApiError(409, "template_authoring_requires_local_workspace", "Template authoring requires a local workspace");
+  const category = templateCategorySchema.safeParse(input.category);
+  if (!category.success) throw new ApiError(400, "invalid_template_category", "Unsupported template category");
+  const compatibility = input.pptxCompatibility === undefined ? undefined : pptxCompatibilitySchema.safeParse(input.pptxCompatibility);
+  if (compatibility && !compatibility.success) throw new ApiError(400, "invalid_pptx_compatibility", "Unsupported PPT compatibility mode");
+  if (compatibility?.data && category.data !== "slides") throw new ApiError(400, "invalid_pptx_compatibility", "PPT compatibility is only available for presentations");
+  const manifest = authoringManifest(category.data, compatibility?.data);
+  const root = sessionRoot(workspace, input.sessionId, manifest.surface);
+  return withTemplateLock(`${runtimeDbPath(config)}:${workspace.id}:authoring:${input.sessionId}`, async () => {
+    const db = await templateDb(config);
+    if (db.getSession(workspace.id, input.sessionId) || existsSync(root)) throw new ApiError(409, "template_session_exists", "This session already has a template project");
+    const staged = `${root}.tmp-${randomUUID()}`;
+    let moved = false;
+    try {
+      await writeAuthoringPackage(staged, manifest);
+      await readManifest(staged);
+      const now = Date.now();
+      const folder = manifest.surface === "video" ? "video" : "design";
+      const row: TemplateSessionRow = {
+        workspaceId: workspace.id,
+        sessionId: input.sessionId,
+        surface: manifest.surface,
+        templateId: manifest.id,
+        version: manifest.version,
+        sourceType: "local",
+        entry: `${folder}/${input.sessionId}/${manifest.entry}`,
+        briefPath: `${folder}/${input.sessionId}/brief.json`,
+        manifestJson: JSON.stringify(manifest),
+        createdAt: now,
+      };
+      await mkdir(dirname(root), { recursive: true });
+      await rename(staged, root);
+      moved = true;
+      db.upsertSession(row);
+      return snapshotFromRow(row);
+    } catch (error) {
+      await rm(staged, { recursive: true, force: true });
+      if (moved) await rm(root, { recursive: true, force: true });
+      throw error;
+    }
+  });
+}
+
 async function sessionEntryPath(db: TemplateDb, workspaceId: string, sessionId: string, surface: TemplateSurface) {
   const folder = surface === "video" ? "video" : "design";
   const fallback = surface === "video" ? "index.html" : "entry.html";
@@ -600,6 +890,181 @@ async function sessionEntryPath(db: TemplateDb, workspaceId: string, sessionId: 
   const prefix = `${folder}/${sessionId}/`;
   if (snapshot?.surface === surface && snapshot.entry.startsWith(prefix)) return safeRelativePath(snapshot.entry.slice(prefix.length));
   return fallback;
+}
+
+type PreparedSessionPackage = {
+  directory: string;
+  dispose: () => Promise<void>;
+  manifest: TemplateManifestV1;
+  snapshot: TemplateSessionSnapshot;
+  issues: TemplateValidationIssue[];
+};
+
+function validationIssue(error: unknown): TemplateValidationIssue {
+  if (isApiError(error)) return { code: error.code, severity: "error", message: error.message };
+  return { code: "template_validation_failed", severity: "error", message: error instanceof Error ? error.message : "Template validation failed" };
+}
+
+async function normalizeStagedCover(directory: string): Promise<TemplateValidationIssue[]> {
+  let raw: unknown;
+  try { raw = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8")); }
+  catch { return []; }
+  if (!isPlainObject(raw)) return [];
+  const category = templateCategorySchema.safeParse(raw.category);
+  const style = templateStyleSchema.safeParse(raw.style);
+  const title = typeof raw.title === "string" ? raw.title.trim().slice(0, 96) : "Template";
+  if (!category.success || !style.success || !title) return [];
+  let usable = false;
+  if (typeof raw.cover === "string") {
+    try {
+      const cover = validateStaticFile(raw.cover);
+      usable = existsSync(join(directory, ...cover.split("/")));
+    } catch { usable = false; }
+  }
+  if (usable) return [];
+  raw.cover = "cover.svg";
+  await writeFile(join(directory, "cover.svg"), personalTemplateCover(title, category.data, style.data), "utf8");
+  await writeFile(join(directory, "manifest.json"), `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+  return [{ code: "template_cover_generated", severity: "warning", path: "cover", message: "A 960 x 540 cover will be generated when the template is saved." }];
+}
+
+async function prepareSessionPackage(config: ServerConfig, workspace: WorkspaceInfo, sessionId: string): Promise<PreparedSessionPackage> {
+  const db = await templateDb(config);
+  const row = db.getSession(workspace.id, sessionId);
+  if (!row) throw new ApiError(404, "template_session_not_found", "This session cannot be saved because it has no template snapshot");
+  const snapshot = snapshotFromRow(row);
+  const sourceRoot = sessionRoot(workspace, sessionId, snapshot.surface);
+  if (!existsSync(sourceRoot)) throw new ApiError(409, "template_source_missing", "The current template project is missing");
+  const tempParent = await mkdtemp(join(tmpdir(), "ipollowork-session-template-"));
+  const directory = join(tempParent, "package");
+  try {
+    await cp(sourceRoot, directory, { recursive: true, errorOnExist: true });
+    await Promise.all([
+      "brief.json",
+      "template.json",
+      "renders",
+      "captures",
+      "exports",
+    ].map((name) => rm(join(directory, name), { recursive: true, force: true })));
+    const issues = await normalizeStagedCover(directory);
+    const manifest = await readManifest(directory);
+    if (manifest.surface !== snapshot.surface) throw new ApiError(409, "template_surface_changed", "Template surface cannot be changed while authoring");
+    if (snapshot.authoring && manifest.category !== snapshot.manifest.category) throw new ApiError(409, "template_category_changed", "Template category cannot be changed while authoring");
+    if (snapshot.authoring && manifest.pptxCompatibility !== snapshot.manifest.pptxCompatibility) throw new ApiError(409, "template_pptx_mode_changed", "PPT editability mode cannot be changed while authoring");
+    return {
+      directory,
+      manifest,
+      snapshot,
+      issues,
+      dispose: () => rm(tempParent, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    await rm(tempParent, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function prepareLegacySessionPackage(
+  config: ServerConfig,
+  workspace: WorkspaceInfo,
+  input: { sessionId: string; category: TemplateCategory; title: string; description?: string },
+): Promise<PreparedSessionPackage> {
+  const surface: TemplateSurface = input.category === "video" ? "video" : "design";
+  const sourceRoot = sessionRoot(workspace, input.sessionId, surface);
+  if (!existsSync(sourceRoot)) throw new ApiError(409, "template_source_missing", "Create a design or video before saving it as a template");
+  const entry = await sessionEntryPath(await templateDb(config), workspace.id, input.sessionId, surface);
+  if (!existsSync(join(sourceRoot, ...entry.split("/")))) throw new ApiError(409, "template_entry_missing", "The current template entry is missing");
+  const tempParent = await mkdtemp(join(tmpdir(), "ipollowork-legacy-session-template-"));
+  const directory = join(tempParent, "package");
+  try {
+    await cp(sourceRoot, directory, { recursive: true, errorOnExist: true });
+    await Promise.all(["brief.json", "template.json", "renders", "captures", "exports"].map((name) => rm(join(directory, name), { recursive: true, force: true })));
+    const manifest = templateManifestV1Schema.parse({
+      schemaVersion: 1,
+      id: `personal.legacy.${randomUUID()}`,
+      version: "1.0.0",
+      kind: "design",
+      category: input.category,
+      subcategory: "custom",
+      style: "custom",
+      tags: [],
+      surface,
+      title: input.title,
+      description: input.description?.trim().slice(0, 240) || `Personal ${input.category} template`,
+      cover: "cover.svg",
+      entry,
+      source: { name: "Personal template", license: "Private" },
+      designSystem: {
+        tokenVersion: 1,
+        tokens: existsSync(join(directory, "design-tokens.css")) ? "design-tokens.css" : undefined,
+        editableGroups: ["theme", "background", "typography", "components"],
+        variables: [],
+      },
+      applyChecklist: ["Update copy, visual tokens, assets and calls to action."],
+      minimumAppVersion: pkg.version.replace(/-.+$/, ""),
+    });
+    await writeFile(join(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeFile(join(directory, "cover.svg"), personalTemplateCover(manifest.title, manifest.category, manifest.style), "utf8");
+    const verified = await readManifest(directory);
+    const now = Date.now();
+    const folder = surface === "video" ? "video" : "design";
+    return {
+      directory,
+      manifest: verified,
+      issues: [],
+      snapshot: {
+        sessionId: input.sessionId,
+        surface,
+        authoring: false,
+        state: {
+          schemaVersion: 1,
+          template: { id: verified.id, version: verified.version, sourceType: "local" },
+          entry: `${folder}/${input.sessionId}/${entry}`,
+          briefPath: `${folder}/${input.sessionId}/brief.json`,
+          createdAt: now,
+        },
+        manifest: verified,
+      },
+      dispose: () => rm(tempParent, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    await rm(tempParent, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export async function validateTemplateFromSession(
+  config: ServerConfig,
+  workspace: WorkspaceInfo,
+  sessionId: string,
+): Promise<TemplateValidationReport> {
+  const db = await templateDb(config);
+  const row = db.getSession(workspace.id, sessionId);
+  if (!row) throw new ApiError(404, "template_session_not_found", "This session cannot be saved because it has no template snapshot");
+  const snapshot = snapshotFromRow(row);
+  const fallbackEntry = await sessionEntryPath(db, workspace.id, sessionId, snapshot.surface);
+  try {
+    const prepared = await prepareSessionPackage(config, workspace, sessionId);
+    try {
+      return {
+        ready: true,
+        surface: prepared.manifest.surface,
+        entry: prepared.manifest.entry,
+        manifest: prepared.manifest,
+        issues: prepared.issues,
+      };
+    } finally {
+      await prepared.dispose();
+    }
+  } catch (error) {
+    return {
+      ready: false,
+      surface: snapshot.surface,
+      entry: fallbackEntry,
+      manifest: null,
+      issues: [validationIssue(error)],
+    };
+  }
 }
 
 export async function saveTemplateFromSession(config: ServerConfig, workspace: WorkspaceInfo, input: {
@@ -615,43 +1080,50 @@ export async function saveTemplateFromSession(config: ServerConfig, workspace: W
   if (!category.success) throw new ApiError(400, "invalid_template_category", "Unsupported template category");
   const title = input.title.trim().slice(0, 96);
   if (!title) throw new ApiError(400, "invalid_template_title", "Template title is required");
-  const surface: TemplateSurface = category.data === "video" ? "video" : "design";
-  const sourceRoot = sessionRoot(workspace, input.sessionId, surface);
-  if (!existsSync(sourceRoot)) throw new ApiError(409, "template_source_missing", "Create a design or video before saving it as a template");
-  const entry = await sessionEntryPath(await templateDb(config), workspace.id, input.sessionId, surface);
-  if (!existsSync(join(sourceRoot, ...entry.split("/")))) throw new ApiError(409, "template_entry_missing", "The current template entry is missing");
   const style = templateStyleSchema.safeParse(input.style?.trim() || "custom");
   if (!style.success) throw new ApiError(400, "invalid_template_style", "Unsupported template style");
-  const tags = (input.tags ?? []).map((tag) => tag.trim().slice(0, 32)).filter(Boolean).slice(0, 12);
-  const template: TemplateManifestV1 = templateManifestV1Schema.parse({
-    schemaVersion: 1,
-    id: localTemplateId(title, scope),
-    version: "1.0.0",
-    kind: "design",
-    category: category.data,
-    subcategory: input.subcategory?.trim().slice(0, 64) || "custom",
-    style: style.data,
-    tags,
-    surface,
-    title,
-    description: input.description?.trim().slice(0, 240) || `${scope === "personal" ? "Personal" : "Enterprise"} ${category.data} template`,
-    cover: "cover.svg",
-    entry,
-    source: { name: scope === "personal" ? "Personal template" : "Enterprise template", license: "Private" },
-    designSystem: { tokenVersion: 1, tokens: existsSync(join(sourceRoot, "design-tokens.css")) ? "design-tokens.css" : undefined, editableGroups: ["theme", "background", "typography", "components"] },
-    applyChecklist: ["Update copy, visual tokens, assets and calls to action."],
-    minimumAppVersion: pkg.version.replace(/-.+$/, ""),
-  });
-  const tempParent = await mkdtemp(join(tmpdir(), "ipollowork-save-template-"));
-  const sourceDirectory = join(tempParent, "package");
+  let prepared: PreparedSessionPackage;
   try {
-    await cp(sourceRoot, sourceDirectory, { recursive: true, errorOnExist: true });
-    await Promise.all(["template.json", "brief.json", "manifest.json", "cover.svg"].map((file) => rm(join(sourceDirectory, file), { force: true })));
-    await writeFile(join(sourceDirectory, "manifest.json"), `${JSON.stringify(template, null, 2)}\n`, "utf8");
-    await writeFile(join(sourceDirectory, "cover.svg"), personalTemplateCover(template.title, template.category, template.style), "utf8");
-    return await installDirectory({ config, workspaceId: templateLibraryId(scope), sourceType: "local", sourceDirectory, manifest: template, hash: await hashDirectory(sourceDirectory) });
+    prepared = await prepareSessionPackage(config, workspace, input.sessionId);
+  } catch (error) {
+    if (isApiError(error) && error.code === "template_session_not_found") {
+      prepared = await prepareLegacySessionPackage(config, workspace, { sessionId: input.sessionId, category: category.data, title, description: input.description });
+    } else {
+      throw new ApiError(409, "template_validation_failed", "Fix template validation issues before saving", { issues: [validationIssue(error)] });
+    }
+  }
+  try {
+    const surface: TemplateSurface = category.data === "video" ? "video" : "design";
+    if (surface !== prepared.snapshot.surface) throw new ApiError(409, "template_category_mismatch", "The selected category does not match the current template surface");
+    if (prepared.snapshot.authoring && category.data !== prepared.manifest.category) throw new ApiError(409, "template_category_changed", "Template category is locked for this authoring session");
+    const tags = (input.tags ?? prepared.manifest.tags).map((tag) => tag.trim().slice(0, 32)).filter(Boolean).slice(0, 12);
+    const template = templateManifestV1Schema.parse({
+      ...prepared.manifest,
+      id: localTemplateId(title, scope),
+      version: "1.0.0",
+      category: category.data,
+      subcategory: input.subcategory?.trim().slice(0, 64) || prepared.manifest.subcategory,
+      style: input.style?.trim() ? style.data : prepared.manifest.style,
+      tags,
+      pptxCompatibility: category.data === "slides" ? prepared.manifest.pptxCompatibility : undefined,
+      surface,
+      title,
+      description: input.description?.trim().slice(0, 240) || prepared.manifest.description,
+      source: { name: scope === "personal" ? "Personal template" : "Enterprise template", license: "Private" },
+      minimumAppVersion: pkg.version.replace(/-.+$/, ""),
+    });
+    await writeFile(join(prepared.directory, "manifest.json"), `${JSON.stringify(template, null, 2)}\n`, "utf8");
+    const verified = await readManifest(prepared.directory);
+    return await installDirectory({
+      config,
+      workspaceId: templateLibraryId(scope),
+      sourceType: "local",
+      sourceDirectory: prepared.directory,
+      manifest: verified,
+      hash: await hashDirectory(prepared.directory),
+    });
   } finally {
-    await rm(tempParent, { recursive: true, force: true });
+    await prepared.dispose();
   }
 }
 
@@ -796,6 +1268,7 @@ function snapshotFromRow(row: TemplateSessionRow): TemplateSessionSnapshot {
   return {
     sessionId: row.sessionId,
     surface: row.surface,
+    authoring: isTemplateAuthoringManifest(manifest),
     state: {
       schemaVersion: 1,
       template: { id: row.templateId, version: row.version, sourceType: row.sourceType },

@@ -71,6 +71,35 @@ describe("plugin developer and user flow", () => {
     expect(JSON.stringify(details)).not.toContain("apiKey\":");
   });
 
+  test("derives package-owned, related, and installed MCP relationships without merging their lifecycles", async () => {
+    const { collectPluginPackageRelationships } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
+    const installed = [{
+      pluginId: "video-agent",
+      manifest: {
+        ...manifest,
+        id: "video-agent",
+        resources: [
+          { type: "skill", id: "ipollowork-video-studio" },
+          { type: "mcp", id: "video-mcp", mcpServerName: "video" },
+        ],
+        relatedSkills: ["hyperframes-cli", "media-use"],
+      },
+    }];
+    const catalog = [{
+      pluginId: "figma",
+      manifest: {
+        ...manifest,
+        id: "figma",
+        resources: [{ type: "skill", id: "figma-use" }],
+      },
+    }];
+
+    expect(collectPluginPackageRelationships(installed, catalog)).toEqual({
+      skillNames: ["figma-use", "hyperframes-cli", "ipollowork-video-studio", "media-use"],
+      installedMcpServerNames: ["video"],
+    });
+  });
+
   test("ships the primary plugin-platform states in English and Chinese", () => {
     const keys = [
       "plugin_platform.action.install",
@@ -84,10 +113,17 @@ describe("plugin developer and user flow", () => {
       "plugin_platform.status.failed",
       "plugin_platform.status.revoked",
       "plugin_platform.status.installed",
+      "plugin_platform.status.desktop_mcp_unavailable",
       "plugin_platform.official_bundle",
       "plugin_platform.bundle_contents",
+      "plugin_platform.related_skills",
+      "plugin_platform.related_skills_description",
       "plugin_platform.mcp_authorization_hint",
       "plugin_platform.connect_figma",
+      "plugin_platform.connect_mcp",
+      "plugin_platform.connecting",
+      "plugin_platform.mcp_connected_detail",
+      "plugin_platform.desktop_mcp_unavailable",
       "plugin_platform.info",
       "plugin_platform.author",
       "plugin_platform.category",
@@ -125,15 +161,24 @@ describe("plugin developer and user flow", () => {
     expect(upload.files.every((file) => !file.path.startsWith("acme-research/"))).toBe(true);
   });
 
-  test("ships a one-click Figma OAuth connection matching the bundled package", async () => {
-    const { FIGMA_MCP_QUICK_CONNECT } = await import("../src/app/constants");
+  test("routes migrated services through the existing MCP directory", async () => {
+    const { FIGMA_MCP_QUICK_CONNECT, MCP_QUICK_CONNECT } = await import("../src/app/constants");
+    const migrated = MCP_QUICK_CONNECT.filter((entry) => entry.pluginPackageId);
 
+    expect(migrated.map((entry) => ({ id: entry.pluginPackageId, serverName: entry.serverName, oauth: entry.oauth }))).toEqual([
+      { id: "figma", serverName: "figma", oauth: false },
+      { id: "notion", serverName: "notion", oauth: true },
+      { id: "linear", serverName: "linear", oauth: true },
+      { id: "sentry", serverName: "sentry", oauth: true },
+      { id: "stripe", serverName: "stripe", oauth: true },
+      { id: "context7", serverName: "context7", oauth: false },
+    ]);
     expect(FIGMA_MCP_QUICK_CONNECT).toMatchObject({
       serverName: "figma",
-      url: "https://mcp.figma.com/mcp",
       type: "remote",
-      oauth: true,
-      iconSlug: "figma",
+      url: "http://127.0.0.1:3845/mcp",
+      oauth: false,
+      pluginPackageId: "figma",
     });
   });
 
@@ -191,6 +236,13 @@ describe("plugin developer and user flow", () => {
 
     expect(formatPluginPlatformError(new Error("authorization.methods.0: unsupported kind"), "插件操作失败。")).toBe(
       "插件操作失败。 authorization.methods.0: unsupported kind",
+    );
+    const conflict = Object.assign(new Error("Install target already exists"), {
+      code: "plugin_package_conflict",
+      details: { paths: [".opencode/agents/design-parity-review-agent.md"] },
+    });
+    expect(formatPluginPlatformError(conflict, "插件操作失败。", "以下文件已存在且内容不同：")).toBe(
+      "以下文件已存在且内容不同： .opencode/agents/design-parity-review-agent.md",
     );
     expect(formatPluginPlatformError("unknown", "The plugin operation failed.")).toBe("The plugin operation failed.");
   });

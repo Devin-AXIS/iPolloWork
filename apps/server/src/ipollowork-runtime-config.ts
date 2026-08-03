@@ -20,6 +20,7 @@ import {
   ipolloworkCapabilitiesKnowledgePluginPath,
   ipolloworkAnthropicAdaptiveThinkingPluginPath,
   ipolloworkAnthropicToolSchemaPluginPath,
+  ipolloworkMoonshotTemperaturePluginPath,
 } from "./ipollowork-extensions-plugin-path.js";
 import type { ServerConfig } from "./types.js";
 import {
@@ -106,6 +107,7 @@ export async function buildiPolloWorkRuntimeConfigObject(
       ipolloworkCapabilitiesKnowledgePluginPath(),
       ipolloworkAnthropicAdaptiveThinkingPluginPath(),
       ipolloworkAnthropicToolSchemaPluginPath(),
+      ipolloworkMoonshotTemperaturePluginPath(),
       ...runtimePluginList(runtimeConfig),
     ],
     ...(disabledProviders.length ? { disabled_providers: disabledProviders } : {}),

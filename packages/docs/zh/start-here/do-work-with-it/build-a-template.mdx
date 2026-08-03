@@ -5,7 +5,7 @@ description: "为 iPolloWork 打包可复用的设计与 HyperFrames 视频模�
 
 模板市场让开发者和设计团队把成熟的作品沉淀为起点，而不是手动复制旧项目。导入后的模板会安装到桌面端个人模板库，可在该用户的任意工作站使用。每次“使用”都会复制出独立会话；之后卸载模板也不会删除已经创建的作品。
 
-本文说明当前本地 `.ipwt` 格式。托管模板市场的公开发布 API 尚未开放。
+本文说明正式的 iPolloWork Package（`.ipwp`）格式。已有 `.ipwt` 模板包继续作为旧版文件名完整兼容。托管模板市场的公开发布 API 尚未开放。
 
 ## 选择模板类型
 
@@ -18,10 +18,10 @@ description: "为 iPolloWork 打包可复用的设计与 HyperFrames 视频模�
 
 ## 包目录
 
-`.ipwt` 是 ZIP 压缩包。`manifest.json` 必须直接位于压缩包根目录，不能再包一层文件夹。
+`.ipwp` 是 ZIP 压缩包。`manifest.json` 必须直接位于压缩包根目录，不能再包一层文件夹。旧版 `.ipwt` 使用完全相同的内容和目录结构，无需转换即可导入。
 
 ```text
-acme-growth-brief.ipwt
+acme-growth-brief.ipwp
 ├── manifest.json
 ├── cover.svg
 ├── entry.html                 # 设计模板
@@ -33,7 +33,7 @@ acme-growth-brief.ipwt
 视频模板以 `index.html` 代替 `entry.html`：
 
 ```text
-acme-product-reveal.ipwt
+acme-product-reveal.ipwp
 ├── manifest.json
 ├── cover.svg
 ├── index.html
@@ -139,13 +139,15 @@ npx hyperframes check . --strict --at-transitions
 
 ## 打包与导入
 
-在包含 `manifest.json` 的目录中创建 ZIP，并保证文件位于压缩包根目录，然后使用 `.ipwt` 扩展名：
+在包含 `manifest.json` 的目录中创建 ZIP，并保证文件位于压缩包根目录，然后使用正式的 `.ipwp` 扩展名：
 
 ```bash
-zip -r acme-growth-brief.ipwt manifest.json cover.svg entry.html design-tokens.css assets
+zip -r acme-growth-brief.ipwp manifest.json cover.svg entry.html design-tokens.css assets
 ```
 
-在 iPolloWork 中点击个人头像，进入 **模板市场**，选择 **导入 .ipwt**。安装前必须选择模板类型，且它必须与包内 `manifest.json` 一致，否则导入会被拒绝。模板会安装到个人库。点击 **使用** 可创建新的会话副本，因此之后卸载或更新库内模板都不会影响已经完成的作品。
+在 iPolloWork 中点击个人头像，进入 **模板市场**，选择 **导入 .ipwp 或 .ipwt**。安装前必须选择模板类型，且它必须与包内 `manifest.json` 一致，否则导入会被拒绝。模板会安装到个人库。点击 **使用** 可创建新的会话副本，因此之后卸载或更新库内模板都不会影响已经完成的作品。
+
+迁移尚未发布的旧包时，只需复制或把 `template.ipwt` 改名为 `template.ipwp`。不要为了更换扩展名而重写 `manifest.json`、修改 `id` 或 `version`，也不需要重新压缩。已经发布的包应保持不可变；内容发生变化时必须使用新的语义化版本。
 
 ## 唯一的会话记录
 

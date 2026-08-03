@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
@@ -179,6 +179,44 @@ describe("plugin package lifecycle", () => {
     await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
     expect(await readFile(join(workspaceRoot, "unrelated.txt"), "utf8")).toBe("keep me");
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin).toEqual([]);
+  });
+
+  test("adopts identical activation files but preserves different user content", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const packageRoot = await createRoot("ipollowork-plugin-adoption-package-");
+    await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n");
+
+    const matchingWorkspace = await createRoot("ipollowork-plugin-adoption-workspace-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(matchingWorkspace, "runtime.sqlite");
+    const matchingTarget = join(matchingWorkspace, ".opencode", "skills", "acme-research", "SKILL.md");
+    await mkdir(join(matchingWorkspace, ".opencode", "skills", "acme-research"), { recursive: true });
+    await writeFile(matchingTarget, "# Acme Research\n", "utf8");
+
+    const installed = await lifecycle.installPluginPackage({
+      serverConfig: serverConfig(matchingWorkspace),
+      workspaceId: WORKSPACE_ID,
+      packageRoot,
+      workspaceRoot: matchingWorkspace,
+    });
+    expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research" });
+    expect(await readFile(matchingTarget, "utf8")).toBe("# Acme Research\n");
+
+    const conflictingWorkspace = await createRoot("ipollowork-plugin-conflict-workspace-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(conflictingWorkspace, "runtime.sqlite");
+    const conflictingTarget = join(conflictingWorkspace, ".opencode", "skills", "acme-research", "SKILL.md");
+    await mkdir(join(conflictingWorkspace, ".opencode", "skills", "acme-research"), { recursive: true });
+    await writeFile(conflictingTarget, "# User customization\n", "utf8");
+
+    await expect(lifecycle.installPluginPackage({
+      serverConfig: serverConfig(conflictingWorkspace),
+      workspaceId: WORKSPACE_ID,
+      packageRoot,
+      workspaceRoot: conflictingWorkspace,
+    })).rejects.toMatchObject({
+      code: "plugin_package_conflict",
+      details: { paths: [".opencode/skills/acme-research/SKILL.md"] },
+    });
+    expect(await readFile(conflictingTarget, "utf8")).toBe("# User customization\n");
   });
 
   test("updates owned files and rolls back to the previous immutable version", async () => {
@@ -381,9 +419,13 @@ describe("plugin package lifecycle", () => {
     }
   });
 
-  test("lists and installs the bundled Figma, GitHub, and WeChat Official Account packages through the user catalog API", async () => {
+  test("lists and installs every bundled service plugin through the user catalog API", async () => {
     const workspaceRoot = await createRoot("ipollowork-figma-catalog-api-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const figmaPackageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/figma", import.meta.url));
+    const existingFigmaAgent = ".opencode/agents/design-parity-review-agent.md";
+    await mkdir(join(workspaceRoot, ".opencode", "agents"), { recursive: true });
+    await copyFile(join(figmaPackageRoot, existingFigmaAgent), join(workspaceRoot, existingFigmaAgent));
     const config = serverConfig(workspaceRoot);
     const server = await startServer(config);
     const base = `http://127.0.0.1:${server.port}`;
@@ -393,9 +435,16 @@ describe("plugin package lifecycle", () => {
       expect(catalog.status).toBe(200);
       expect(await catalog.json()).toMatchObject({
         items: [
-          { pluginId: "figma", version: "2.0.13", installedVersion: null, updateAvailable: false },
+          { pluginId: "figma", version: "2.0.16", installedVersion: null, updateAvailable: false },
+          { pluginId: "notion", version: "1.0.0", installedVersion: null, updateAvailable: false },
+          { pluginId: "linear", version: "1.0.0", installedVersion: null, updateAvailable: false },
+          { pluginId: "sentry", version: "1.0.0", installedVersion: null, updateAvailable: false },
+          { pluginId: "stripe", version: "1.0.0", installedVersion: null, updateAvailable: false },
+          { pluginId: "context7", version: "1.0.0", installedVersion: null, updateAvailable: false },
           { pluginId: "github", version: "0.1.0", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.1.0", installedVersion: null, updateAvailable: false },
+          { pluginId: "design-agent", version: "0.1.0", installedVersion: null, updateAvailable: false },
+          { pluginId: "video-agent", version: "0.1.1", installedVersion: null, updateAvailable: false },
         ],
       });
 
@@ -404,18 +453,46 @@ describe("plugin package lifecycle", () => {
         headers,
       });
       expect(installation.status).toBe(200);
-      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "figma", version: "2.0.13" } });
+      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "figma", version: "2.0.16" } });
       expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.figma).toEqual({
         type: "remote",
-        url: "https://mcp.figma.com/mcp",
+        url: "http://127.0.0.1:3845/mcp",
         enabled: true,
-        oauth: {},
+        oauth: false,
       });
       expect(await readFile(join(workspaceRoot, ".opencode", "skills", "figma-design-to-code", "SKILL.md"), "utf8"))
         .toContain("Implement a Figma Design as Code");
       await expectMissing(join(workspaceRoot, "README.md"));
       await expectMissing(join(workspaceRoot, "assets"));
       await expectMissing(join(workspaceRoot, ".opencode", "mcps", "figma.json"));
+
+      const migratedServices = [
+        { id: "notion", url: "https://mcp.notion.com/mcp", oauth: {}, skill: "notion-knowledge", heading: "# Notion Knowledge" },
+        { id: "linear", url: "https://mcp.linear.app/mcp", oauth: {}, skill: "linear-triage", heading: "# Linear Triage" },
+        { id: "sentry", url: "https://mcp.sentry.dev/mcp", oauth: {}, skill: "sentry-issue-investigation", heading: "# Sentry Issue Investigation" },
+        { id: "stripe", url: "https://mcp.stripe.com", oauth: {}, skill: "stripe-payment-investigation", heading: "# Stripe Payment Investigation" },
+        { id: "context7", url: "https://mcp.context7.com/mcp", oauth: false, skill: "context7-docs-research", heading: "# Context7 Documentation Research" },
+      ];
+      for (const service of migratedServices) {
+        const serviceInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${service.id}/install`, {
+          method: "POST",
+          headers,
+        });
+        expect(serviceInstallation.status).toBe(200);
+        expect(await serviceInstallation.json()).toMatchObject({
+          result: { status: "installed", pluginId: service.id, version: "1.0.0" },
+          item: { pluginId: service.id, manifest: { source: { trusted: true } } },
+        });
+        expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.[service.id]).toEqual({
+          type: "remote",
+          url: service.url,
+          enabled: true,
+          oauth: service.oauth,
+        });
+        expect(await readFile(join(workspaceRoot, ".opencode", "skills", service.skill, "SKILL.md"), "utf8"))
+          .toContain(service.heading);
+        await expectMissing(join(workspaceRoot, ".opencode", "mcps", `${service.id}.json`));
+      }
 
       const githubInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/github/install`, {
         method: "POST",
@@ -494,6 +571,86 @@ describe("plugin package lifecycle", () => {
       expect(enabled.status).toBe(200);
       expect(await readFile(join(workspaceRoot, ".opencode", "skills", "figma-design-to-code", "SKILL.md"), "utf8"))
         .toContain("Implement a Figma Design as Code");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("manages creative Agent skills without touching projects or related global skills", async () => {
+    const workspaceRoot = await createRoot("ipollowork-creative-agent-catalog-api-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const designDirectory = join(workspaceRoot, "design", "existing-session");
+    const videoDirectory = join(workspaceRoot, "video", "existing-session");
+    const designEntry = join(designDirectory, "entry.html");
+    const videoEntry = join(videoDirectory, "index.html");
+    const relatedSkill = join(workspaceRoot, ".opencode", "skills", "hyperframes-cli", "SKILL.md");
+    await mkdir(designDirectory, { recursive: true });
+    await mkdir(videoDirectory, { recursive: true });
+    await mkdir(dirname(relatedSkill), { recursive: true });
+    await writeFile(designEntry, "<main>Existing design</main>\n", "utf8");
+    await writeFile(videoEntry, "<div data-composition>Existing video</div>\n", "utf8");
+    await writeFile(relatedSkill, "# Existing HyperFrames CLI\n", "utf8");
+
+    const config = serverConfig(workspaceRoot);
+    const server = await startServer(config);
+    const base = `http://127.0.0.1:${server.port}`;
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    const packages = [
+      {
+        pluginId: "design-agent",
+        version: "0.1.0",
+        skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
+        heading: "# iPolloWork Design Studio",
+      },
+      {
+        pluginId: "video-agent",
+        version: "0.1.1",
+        skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
+        heading: "# iPolloWork Video Studio",
+      },
+    ];
+
+    try {
+      for (const item of packages) {
+        const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${item.pluginId}/install`, {
+          method: "POST",
+          headers,
+        });
+        expect(installation.status).toBe(200);
+        expect(await installation.json()).toMatchObject({
+          result: { status: "installed", pluginId: item.pluginId, version: item.version },
+        });
+        expect(await readFile(item.skillPath, "utf8")).toContain(item.heading);
+      }
+
+      const disabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/design-agent/resources/ipollowork-design-studio`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: false }),
+      });
+      expect(disabled.status).toBe(200);
+      await expectMissing(packages[0].skillPath);
+
+      const enabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/design-agent/resources/ipollowork-design-studio`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: true }),
+      });
+      expect(enabled.status).toBe(200);
+      expect(await readFile(packages[0].skillPath, "utf8")).toContain(packages[0].heading);
+
+      for (const item of packages) {
+        const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/${item.pluginId}`, {
+          method: "DELETE",
+          headers,
+        });
+        expect(removal.status).toBe(200);
+        await expectMissing(item.skillPath);
+      }
+
+      expect(await readFile(designEntry, "utf8")).toBe("<main>Existing design</main>\n");
+      expect(await readFile(videoEntry, "utf8")).toBe("<div data-composition>Existing video</div>\n");
+      expect(await readFile(relatedSkill, "utf8")).toBe("# Existing HyperFrames CLI\n");
     } finally {
       await server.stop();
     }

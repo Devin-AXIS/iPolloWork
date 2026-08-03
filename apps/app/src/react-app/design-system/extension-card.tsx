@@ -112,7 +112,7 @@ export function ExtensionCard(props: ExtensionCardProps) {
             {connecting ? (
               <Loader2 size={18} className="animate-spin text-dls-secondary" />
             ) : resolvedIconSrc ? (
-              <div className="flex size-6 items-center justify-center rounded-md bg-white">
+              <div className="flex size-6 items-center justify-center rounded-md bg-card">
                 <img src={resolvedIconSrc} alt="" width={16} height={16} loading="lazy" style={{ display: "block" }} />
               </div>
             ) : (

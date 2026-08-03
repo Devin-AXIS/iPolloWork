@@ -1,6 +1,6 @@
 {
   "type": "remote",
-  "url": "https://mcp.figma.com/mcp",
+  "url": "http://127.0.0.1:3845/mcp",
   "enabled": true,
-  "oauth": {}
+  "oauth": false
 }

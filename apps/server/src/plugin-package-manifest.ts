@@ -84,6 +84,7 @@ const resourceSchema = z.object({
   packageName: z.string().optional(),
   providerId: z.string().optional(),
   mcpServerName: z.string().optional(),
+  oauth: z.boolean().optional(),
   localCommandRef: z.enum(["ipollowork.computerUseMcp", "ipollowork.uiMcp"]).optional(),
   actions: z.array(serviceActionSchema).optional(),
   requires: z.array(relationSchema).optional(),
@@ -198,6 +199,7 @@ const manifestSchema = z.object({
   composer: z.object({ prompt: z.string() }).passthrough().optional(),
   setup: z.record(z.string(), z.unknown()).optional(),
   resources: z.array(resourceSchema),
+  relatedSkills: z.array(z.string().regex(SIMPLE_ID_RE)).optional(),
   contributions: z.array(z.record(z.string(), z.unknown())).optional(),
   lifecycle: z.record(z.string(), z.unknown()).optional(),
   enablement: z.array(z.record(z.string(), z.unknown())).optional(),
@@ -225,6 +227,17 @@ const manifestSchema = z.object({
       context.addIssue({ code: "custom", path: ["resources", index, "id"], message: "resource ID must be unique" });
     }
     resourceIds.add(resource.id);
+  });
+
+  const relatedSkillIds = new Set<string>();
+  manifest.relatedSkills?.forEach((skillId, index) => {
+    if (resourceIds.has(skillId)) {
+      context.addIssue({ code: "custom", path: ["relatedSkills", index], message: "must not duplicate a package-owned resource" });
+    }
+    if (relatedSkillIds.has(skillId)) {
+      context.addIssue({ code: "custom", path: ["relatedSkills", index], message: "related Skill ID must be unique" });
+    }
+    relatedSkillIds.add(skillId);
   });
 
   const methodIds = new Set<string>();

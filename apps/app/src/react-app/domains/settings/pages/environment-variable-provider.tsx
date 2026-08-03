@@ -165,6 +165,9 @@ export function EnvironmentVariableProvider({ children, client, runtimeKey, onAp
         queryKey: environmentUserEnvQueryKey(runtimeKey),
       });
     },
+    onError: (error) => {
+      toast.error(error.message);
+    },
   });
 
   const { mutate: removeAsync, isPending: isRemoving, reset: resetRemove, error: removeError } = useMutation({

@@ -17,7 +17,7 @@ export function DesignImageFitSelect({ value, onChange, className, ariaLabel = "
       options={IMAGE_FIT_OPTIONS}
       onChange={onChange}
       ariaLabel={ariaLabel}
-      className={className ?? "h-[34px] w-full rounded-lg bg-[#f5f6f9]"}
+      className={className ?? "h-[34px] w-full rounded-lg bg-muted"}
     />
   );
 }

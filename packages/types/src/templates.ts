@@ -1,6 +1,23 @@
 import { z } from "zod";
 
 export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
+export const TEMPLATE_AUTHORING_ID_PREFIX = "ipollowork.authoring.";
+
+export const IPOLLOWORK_PACKAGE_EXTENSION = ".ipwp";
+export const LEGACY_TEMPLATE_PACKAGE_EXTENSION = ".ipwt";
+export const IPOLLOWORK_PACKAGE_MEDIA_TYPE = "application/vnd.ipollowork.package+zip";
+export const LEGACY_TEMPLATE_PACKAGE_MEDIA_TYPE = "application/vnd.ipollowork-template+zip";
+export const TEMPLATE_PACKAGE_EXTENSIONS = Object.freeze([
+  IPOLLOWORK_PACKAGE_EXTENSION,
+  LEGACY_TEMPLATE_PACKAGE_EXTENSION,
+]);
+export const TEMPLATE_PACKAGE_FILE_ACCEPT = TEMPLATE_PACKAGE_EXTENSIONS.join(",");
+
+export function templatePackageMediaTypeForFilename(filename: string): string {
+  return filename.toLowerCase().endsWith(LEGACY_TEMPLATE_PACKAGE_EXTENSION)
+    ? LEGACY_TEMPLATE_PACKAGE_MEDIA_TYPE
+    : IPOLLOWORK_PACKAGE_MEDIA_TYPE;
+}
 
 export const templateCategorySchema = z.enum([
   "site",
@@ -119,6 +136,27 @@ export type TemplateStyle = z.infer<typeof templateStyleSchema>;
 export type TemplateVariable = z.infer<typeof templateVariableSchema>;
 export type PptxCompatibility = z.infer<typeof pptxCompatibilitySchema>;
 
+export type TemplateAuthoringInput = {
+  sessionId: string;
+  category: TemplateCategory;
+  pptxCompatibility?: PptxCompatibility;
+};
+
+export type TemplateValidationIssue = {
+  code: string;
+  severity: "error" | "warning";
+  message: string;
+  path?: string;
+};
+
+export type TemplateValidationReport = {
+  ready: boolean;
+  surface: TemplateSurface;
+  entry: string;
+  manifest: TemplateManifestV1 | null;
+  issues: TemplateValidationIssue[];
+};
+
 type PptxCompatibilityTemplate = Pick<TemplateManifestV1, "category" | "pptxCompatibility">;
 type CatalogSortTemplate = Pick<TemplateManifestV1, "category" | "title" | "pptxCompatibility">;
 
@@ -164,6 +202,11 @@ export type TemplateSessionState = {
 export type TemplateSessionSnapshot = {
   sessionId: string;
   surface: TemplateSurface;
+  authoring: boolean;
   state: TemplateSessionState;
   manifest: TemplateManifestV1;
 };
+
+export function isTemplateAuthoringManifest(manifest: Pick<TemplateManifestV1, "id">): boolean {
+  return manifest.id.startsWith(TEMPLATE_AUTHORING_ID_PREFIX);
+}

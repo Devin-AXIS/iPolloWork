@@ -1,6 +1,9 @@
 # find-unused.sh
 
-Wrapper around [knip](https://knip.dev) that detects unused files and cross-references them against CI configs, build configs, package.json scripts, tsconfig files, convention-based usage, file-based routing directories, and sibling repo CI/CD pipelines to reduce false positives.
+Wrapper around [knip](https://knip.dev) that detects unused-file candidates
+and cross-references them against CI configs, build configs, package scripts,
+TypeScript configs, runtime-discovered directories, and sibling repo CI/CD
+pipelines to reduce false positives. It never deletes files.
 
 ## Usage
 
@@ -8,30 +11,29 @@ Wrapper around [knip](https://knip.dev) that detects unused files and cross-refe
 bash scripts/find-unused.sh
 ```
 
-Requires `npx` (knip is fetched automatically). A fake `DATABASE_URL` is injected so config resolution doesn't fail.
+Uses the repository-pinned `knip` dev dependency through `pnpm exec`. A fake
+`DATABASE_URL` is injected so config resolution doesn't fail.
 
 The script auto-detects whether it's running inside a factory layout (`../../.._repos/`). When inside a factory, it cross-references sibling repos. When standalone, it skips sibling checks gracefully and still runs all internal checks.
 
 ## What it does
 
 1. **Runs `knip --include files`** to get a list of unused files across the monorepo.
-2. **Indexes infra files** — collects all build/config/CI files into a single searchable set:
+2. **Indexes infra files** — collects current build/config/CI files into a single searchable set:
    - GitHub workflow YAMLs
-   - Dockerfiles and docker-compose files
-   - Deployment configs (Vercel, Tauri)
-   - Build tool configs (vite, tailwind, postcss, next, drizzle, tsup, playwright)
+   - Build tool configs (Vite and tsup)
    - Build scripts (`.mjs`, `.ts`, `.sh` across all workspaces)
    - `.opencode` skill scripts
    - All `package.json` files (for script references)
    - All `tsconfig*.json` files (for path aliases and includes)
 3. **Cross-references** each file against:
    - **Internal infra** — all indexed config/build files, searching by filename and relative path
-   - **Convention patterns** — filenames like `postinstall`, `drizzle.config`, Tauri hooks
-   - **File-based routing dirs** — Next.js server routes, app routes, and API routes that are entry points by convention
+   - **Convention patterns** — filenames like `postinstall` and `drizzle.config`
+   - **Runtime-discovered dirs** — eval flows, Vite overlay entries, design-system assets, Electron entry files, local skills, and vendored HyperFrames
    - **Sibling repo CI/CD** — workflows, Dockerfiles, and build scripts in sibling repos and factory-level CI, with smart filtering to avoid false positives on generic filenames (e.g., `index`, `utils`, `config`)
 4. **Displays results in two buckets** (oldest first within each):
-   - `✗` **Safe to remove** — no references found anywhere (red)
-   - `⚠` **Review before removing** — referenced in infra/CI (yellow) or sibling CI (cyan)
+   - `✗` **Unreferenced candidate** — no static or infra references found; manual runtime and product review is still mandatory
+   - `⚠` **Convention/infra reference** — keep unless the owning runtime or workflow is retired too
 
 A progress indicator shows the current file being checked during cross-referencing.
 
@@ -43,19 +45,19 @@ The script only checks for unused **files**. Knip can detect much more — run i
 
 ```bash
 # Unused exports (functions, types, constants)
-npx knip --include exports
+pnpm exec knip --include exports
 
 # Unused dependencies in package.json
-npx knip --include dependencies
+pnpm exec knip --include dependencies
 
 # Everything at once
-npx knip
+pnpm exec knip
 
 # Scope to a single workspace
-npx knip --workspace apps/app
+pnpm exec knip --workspace @ipollowork/app
 
 # Auto-fix removable issues (careful — modifies files)
-npx knip --fix
+pnpm exec knip --fix
 ```
 
 See the [knip docs](https://knip.dev) for the full set of options.
