@@ -402,6 +402,10 @@ export async function getDesktopFileIcon(target: string, size?: "small" | "norma
   return invokeElectronHelper("__getFileIcon", target, size);
 }
 
+export async function readDesktopTextFile(target: string): Promise<{ content: string; size: number; updatedAt: number | null }> {
+  return invokeElectronHelper("__readLocalTextFile", target);
+}
+
 export async function readLocalImageAsDataUrl(target: string): Promise<string | null> {
   return invokeElectronHelper("__readLocalImageAsDataUrl", target);
 }
