@@ -22,7 +22,7 @@ export interface CatalogSection {
 }
 
 export const CATALOG_PAGE_SECTIONS: Record<CatalogPage, readonly RegistryItemLibrarySection[]> = {
-  animation: ["text-animation", "interface-animation"],
+  animation: ["text-animation", "interface-animation", "transition-scene", "background-scene"],
   scene: ["transition-scene", "background-scene"],
 };
 

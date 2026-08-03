@@ -37,6 +37,7 @@ export class PreviewController {
 
   start(id: string, starter: PreviewStarter): void {
     if (this.disposed) return;
+    if (this.active?.id === id) return;
     this.stop();
 
     const active: ActivePreview = {

@@ -211,7 +211,7 @@ export function PreviewPane({
           iframeRef={iframeRef}
           containerRef={containerRef}
           activeSelection={domEditSelection}
-          hidden={isFullscreen || timelineDisabled}
+          hidden={timelineDisabled}
         />
       </div>
       {/* Transport row: no own background or border — the controls sit flat on
