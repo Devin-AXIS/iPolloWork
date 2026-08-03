@@ -372,21 +372,28 @@ export function StudioRightPanel({
       onDismissActionError={renderQueue.dismissActionError}
       onClearCompleted={renderQueue.clearCompleted}
       onStartRender={async (format, quality, resolution, fps, outputSize, captureSize) => {
-        await waitForPendingDomEditSaves();
-        const composition =
-          activeCompPath && activeCompPath !== "index.html" ? activeCompPath : undefined;
-        await renderQueue.startRender({
-          fps,
-          quality,
-          format,
-          resolution,
-          outputSize,
-          captureSize,
-          composition,
-          // Render what the user is previewing: active variable overrides
-          // from the Variables panel ride along (undefined = defaults).
-          variables: usePreviewVariablesStore.getState().values ?? undefined,
-        });
+        try {
+          await waitForPendingDomEditSaves();
+          const composition =
+            activeCompPath && activeCompPath !== "index.html" ? activeCompPath : undefined;
+          await renderQueue.startRender({
+            fps,
+            quality,
+            format,
+            resolution,
+            outputSize,
+            captureSize,
+            composition,
+            // Render what the user is previewing: active variable overrides
+            // from the Variables panel ride along (undefined = defaults).
+            variables: usePreviewVariablesStore.getState().values ?? undefined,
+          });
+        } catch (error) {
+          showToast(
+            `Couldn't start export: ${error instanceof Error ? error.message : "Unknown error"}`,
+            "error",
+          );
+        }
       }}
       compositionDimensions={compositionDimensions}
       isRendering={renderQueue.isRendering}

@@ -1,7 +1,7 @@
 // Cross-platform replacement for the previous `mkdir -p … && cp -r …` shell
 // chain, which failed on Windows because `cp` doesn't accept `-r` there.
 
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -37,15 +37,6 @@ function copyDir(src, dest) {
   cpSync(src, dest, { recursive: true, force: true });
 }
 
-function copyDirContents(src, dest) {
-  for (const entry of readdirSync(src)) {
-    cpSync(join(src, entry), join(dest, entry), {
-      recursive: true,
-      force: true,
-    });
-  }
-}
-
 function copyMdFiles(srcDir, destDir) {
   if (!existsSync(srcDir)) return;
   for (const name of readdirSync(srcDir)) {
@@ -57,14 +48,24 @@ function copyMdFiles(srcDir, destDir) {
 
 // fallow-ignore-next-line complexity
 async function main() {
+  // tsup intentionally preserves dist because a running Windows preview can
+  // hold fixed CLI files open. Clean copied trees here, immediately before
+  // restaging them, so hashed Studio assets from previous builds never ship.
   for (const sub of ["studio", "docs", "templates", "docker"]) {
+    rmSync(join(DIST, sub), { recursive: true, force: true });
     mkdirSync(join(DIST, sub), { recursive: true });
   }
   mkdirSync(join(DIST, "commands"), { recursive: true });
 
   const studioDist = resolve(CLI_ROOT, "..", "studio", "dist");
   await waitForStudioDist(studioDist);
-  copyDirContents(studioDist, join(DIST, "studio"));
+  // Studio's build directory also contains its library bundle, declarations,
+  // and source maps. The CLI server only serves the Vite browser application,
+  // so keep those development artifacts out of npm and desktop packages.
+  for (const entry of ["index.html", "assets", "icons", "favicon.svg"]) {
+    const source = join(studioDist, entry);
+    if (existsSync(source)) copyDir(source, join(DIST, "studio", entry));
+  }
 
   for (const tmpl of ["blank", "_shared"]) {
     const source = join(CLI_ROOT, "src", "templates", tmpl);

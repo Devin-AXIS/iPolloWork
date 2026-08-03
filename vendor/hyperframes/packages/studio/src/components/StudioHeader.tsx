@@ -23,7 +23,6 @@ export interface StudioHeaderProps {
   capturing?: boolean;
   inspectorButtonActive: boolean;
   inspectorPanelActive: boolean;
-  onExport?: () => void;
 }
 
 function HyperframesLogo() {
@@ -217,7 +216,6 @@ export function StudioHeader({
   capturing,
   inspectorButtonActive,
   inspectorPanelActive,
-  onExport,
 }: StudioHeaderProps) {
   const { editHistory, handleUndo, renderQueue, projectId } = useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
@@ -396,17 +394,14 @@ export function StudioHeader({
         >
           <button
             type="button"
-            disabled={isRendering}
             onClick={() => {
-              if (isRendering) return;
               if (window.parent !== window) {
                 window.parent.postMessage({ type: "ipollowork:video-studio-panel", projectId, panel: null }, "*");
               }
               setRightPanelTab("renders");
               setRightCollapsed(false);
-              onExport?.();
             }}
-            className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] enabled:hover:brightness-110 transition-[filter,transform] enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] hover:brightness-110 transition-[filter,transform] active:scale-[0.98]"
           >
             {isRendering ? t("header.rendering") : t("header.export")}
           </button>

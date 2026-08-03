@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, useEffect, useLayoutEffect } from "react";
+import { lazy, Suspense, useState, useCallback, useRef, useMemo, useEffect, useLayoutEffect } from "react";
 import type { LeftSidebarHandle, SidebarTab } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { usePlayerStore, type TimelineElement } from "./player";
@@ -47,14 +47,11 @@ import { StudioHeader } from "./components/StudioHeader";
 import { useGestureCommit } from "./hooks/useGestureCommit";
 import { STUDIO_KEYFRAMES_ENABLED } from "./components/editor/manualEditingAvailability";
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
-import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
 import { EditorShell } from "./components/EditorShell";
-import { StudioRightPanel } from "./components/StudioRightPanel";
 import { TimelineToolbar } from "./components/TimelineToolbar";
 import { StudioPlaybackProvider, StudioShellProvider } from "./contexts/StudioContext";
 import { PanelLayoutProvider } from "./contexts/PanelLayoutContext";
 import { ViewModeProvider, useViewModeState } from "./contexts/ViewModeContext";
-import { StoryboardView } from "./components/storyboard/StoryboardView";
 import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
@@ -71,6 +68,15 @@ type CanvasRect = { left: number; top: number; width: number; height: number };
 
 const HIDE_LEFT_SIDEBAR = true;
 const HIDE_STORYBOARD_VIEW = true;
+const StudioLeftSidebar = lazy(() =>
+  import("./components/StudioLeftSidebar").then((module) => ({ default: module.StudioLeftSidebar })),
+);
+const StudioRightPanel = lazy(() =>
+  import("./components/StudioRightPanel").then((module) => ({ default: module.StudioRightPanel })),
+);
+const StoryboardView = lazy(() =>
+  import("./components/storyboard/StoryboardView").then((module) => ({ default: module.StoryboardView })),
+);
 
 // fallow-ignore-next-line complexity
 export function StudioApp() {
@@ -127,6 +133,12 @@ export function StudioApp() {
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
   const reloadPreview = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  useEffect(() => {
+    if (!projectId || !activeCompPathHydrated) return;
+    if (window.parent === window) return;
+    window.parent.postMessage({ type: "ipollowork:studio-ready", projectId }, "*");
+  }, [activeCompPathHydrated, projectId]);
   const fileManager = useFileManager({
     projectId,
     showToast,
@@ -499,12 +511,6 @@ export function StudioApp() {
                     capturing={frameCapture.capturing}
                     inspectorButtonActive={inspectorButtonActive}
                     inspectorPanelActive={inspectorPanelActive}
-                    onExport={() => {
-                      void (async () => {
-                        await previewPersistence.waitForPendingDomEditSaves();
-                        await renderQueue.startRender(undefined);
-                      })();
-                    }}
                   />
                   {previewPersistence.domEditSaveQueuePaused && (
                     <SaveQueuePausedBanner
@@ -513,10 +519,12 @@ export function StudioApp() {
                     />
                   )}
                   {activeViewMode === "storyboard" && (
-                    <StoryboardView
-                      projectId={projectId}
-                      onSelectComposition={handleSelectComposition}
-                    />
+                    <Suspense fallback={<StudioSplash />}>
+                      <StoryboardView
+                        projectId={projectId}
+                        onSelectComposition={handleSelectComposition}
+                      />
+                    </Suspense>
                   )}
                   <EditorShell
                     hidden={activeViewMode === "storyboard"}
@@ -525,41 +533,45 @@ export function StudioApp() {
                         // Temporarily hidden per local customization. Set HIDE_LEFT_SIDEBAR=false to restore.
                         null
                       ) : (
-                        <StudioLeftSidebar
-                          leftSidebarRef={leftSidebarRef}
-                          onSelectComposition={handleSelectComposition}
-                          onAddBlock={handleAddBlock}
-                          onPreviewBlock={setBlockPreview}
-                          onLint={handleLint}
-                          linting={linting}
-                          lintFindingCount={lintModal?.length ?? findingsByFile.size}
-                          lintFindingsByFile={findingsByFile}
-                          onAddAssetToTimeline={handleAddAssetAtPlayhead}
-                        />
+                        <Suspense fallback={null}>
+                          <StudioLeftSidebar
+                            leftSidebarRef={leftSidebarRef}
+                            onSelectComposition={handleSelectComposition}
+                            onAddBlock={handleAddBlock}
+                            onPreviewBlock={setBlockPreview}
+                            onLint={handleLint}
+                            linting={linting}
+                            lintFindingCount={lintModal?.length ?? findingsByFile.size}
+                            lintFindingsByFile={findingsByFile}
+                            onAddAssetToTimeline={handleAddAssetAtPlayhead}
+                          />
+                        </Suspense>
                       )
                     }
                     right={
                       panelLayout.rightCollapsed ? null : (
-                        <StudioRightPanel
-                          designPanelActive={designPanelActive}
-                          activeBlockParams={activeBlockParams}
-                          onCloseBlockParams={() => {
-                            setActiveBlockParams(null);
-                            panelLayout.setRightPanelTab("design");
-                          }}
-                          recordingState={gestureState}
-                          recordingDuration={gestureRecording.recordingDuration}
-                          onToggleRecording={recordingToggle}
-                          sdkSession={sdkHandle.session}
-                          publishSdkSession={sdkHandle.publish}
-                          forceReloadSdkSession={sdkHandle.forceReload}
-                          reloadPreview={reloadPreview}
-                          domEditSaveTimestampRef={domEditSaveTimestampRef}
-                          recordEdit={editHistory.recordEdit}
-                          onToggleElementHidden={timelineEditing.handleToggleElementHidden}
-                          onAddBlock={handleAddBlock}
-                          onPreviewBlock={setBlockPreview}
-                        />
+                        <Suspense fallback={<div className="h-full w-full animate-pulse bg-neutral-900 motion-reduce:animate-none" />}>
+                          <StudioRightPanel
+                            designPanelActive={designPanelActive}
+                            activeBlockParams={activeBlockParams}
+                            onCloseBlockParams={() => {
+                              setActiveBlockParams(null);
+                              panelLayout.setRightPanelTab("design");
+                            }}
+                            recordingState={gestureState}
+                            recordingDuration={gestureRecording.recordingDuration}
+                            onToggleRecording={recordingToggle}
+                            sdkSession={sdkHandle.session}
+                            publishSdkSession={sdkHandle.publish}
+                            forceReloadSdkSession={sdkHandle.forceReload}
+                            reloadPreview={reloadPreview}
+                            domEditSaveTimestampRef={domEditSaveTimestampRef}
+                            recordEdit={editHistory.recordEdit}
+                            onToggleElementHidden={timelineEditing.handleToggleElementHidden}
+                            onAddBlock={handleAddBlock}
+                            onPreviewBlock={setBlockPreview}
+                          />
+                        </Suspense>
                       )
                     }
                     timelineToolbar={timelineToolbar}

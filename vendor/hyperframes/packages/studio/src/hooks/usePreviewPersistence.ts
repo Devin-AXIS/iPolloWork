@@ -54,7 +54,10 @@ function readIframeDocument(iframe: HTMLIFrameElement): Document | null {
   }
 }
 
+const manualEditReadinessCleanup = new WeakMap<HTMLIFrameElement, () => void>();
+
 function installManualEditReapply(iframe: HTMLIFrameElement): void {
+  manualEditReadinessCleanup.get(iframe)?.();
   const reapply = () => {
     const doc = readIframeDocument(iframe);
     if (doc) reapplyPositionEditsAfterSeek(doc);
@@ -63,12 +66,30 @@ function installManualEditReapply(iframe: HTMLIFrameElement): void {
     reapply();
     if (iframe.contentWindow) installStudioManualEditSeekReapply(iframe.contentWindow, reapply);
   };
-  const win = iframe.contentWindow;
   install();
-  win?.requestAnimationFrame?.(install);
-  for (const delayMs of [80, 250, 500, 1000, 2000]) {
-    win?.setTimeout?.(install, delayMs);
-  }
+  let settled = false;
+  const cleanup = () => {
+    window.removeEventListener("message", handleRuntimeReady);
+    window.clearTimeout(fallbackTimer);
+    iframe.removeEventListener("load", cleanup);
+    manualEditReadinessCleanup.delete(iframe);
+  };
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    install();
+    cleanup();
+  };
+  const handleRuntimeReady = (event: MessageEvent) => {
+    if (event.source !== iframe.contentWindow) return;
+    if (event.data?.source !== "hf-preview") return;
+    if (event.data.type !== "state" && event.data.type !== "timeline") return;
+    settle();
+  };
+  window.addEventListener("message", handleRuntimeReady);
+  const fallbackTimer = window.setTimeout(settle, 2_000);
+  iframe.addEventListener("load", cleanup, { once: true });
+  manualEditReadinessCleanup.set(iframe, cleanup);
 }
 
 function shouldReloadForStudioFileChange(

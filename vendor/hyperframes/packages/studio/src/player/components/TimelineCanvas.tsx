@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { TimelineRuler } from "./TimelineRuler";
 import { PlayheadIndicator } from "./PlayheadIndicator";
 import { getTimelineEditCapabilities, type TimelineRangeSelection } from "./timelineEditing";
@@ -26,6 +26,7 @@ import { renderClipChildren } from "./timelineClipChildren";
 import { resolveTimelineKind } from "./timelineLayerPresentation";
 import { useTimelineRevealClip } from "./useTimelineRevealClip";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
+import { BeatBackgroundLines } from "./BeatStrip";
 
 interface TimelineCanvasProps extends TimelineLaneBaseProps {
   major: number[];
@@ -82,6 +83,23 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           selectedKeys: draggedClip.selectionKeys,
         }
       : null;
+  const laneDragCacheRef = useRef<{ signature: string; value: typeof draggedClip } | null>(null);
+  let laneDraggedClip = draggedClip;
+  if (!draggedClip) {
+    laneDragCacheRef.current = null;
+  } else if (draggedClip.selectionKeys.size <= 1) {
+    const signature = [
+      draggedClip.started,
+      draggedClip.mode,
+      draggedClip.element.key ?? draggedClip.element.id,
+      draggedClip.previewTrack,
+      draggedClip.insertRow,
+    ].join(":");
+    if (laneDragCacheRef.current?.signature !== signature) {
+      laneDragCacheRef.current = { signature, value: draggedClip };
+    }
+    laneDraggedClip = laneDragCacheRef.current.value;
+  }
   const activeDraggedPosition = (() => {
     if (draggedClip?.started !== true || !activeDraggedElement || !scrollRef.current) return null;
     const scrollBounds = scrollRef.current.getBoundingClientRect();
@@ -134,6 +152,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
 
       <TimelineLanes
         {...props}
+        draggedClip={laneDraggedClip}
         draggedElement={draggedElement}
         multiDragPreview={multiDragPreview}
         onToggleTrackHidden={onToggleTrackHidden}
@@ -147,6 +166,26 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           scrollable surface, so a clip can be dragged into the void to create a
           new bottom track comfortably (see TRACKS_BOTTOM_PAD / getTimelineCanvasHeight). */}
       <div aria-hidden="true" style={{ height: TRACKS_BOTTOM_PAD }} />
+
+      <div
+        className="pointer-events-none absolute"
+        style={{
+          left: GUTTER + TRACKS_LEFT_PAD,
+          top: RULER_H + TRACKS_TOP_PAD,
+          width: props.trackContentWidth,
+          height: displayTrackOrder.length * TRACK_H,
+          zIndex: 0,
+        }}
+      >
+        <BeatBackgroundLines
+          beatTimes={props.beatAnalysis?.beatTimes}
+          beatStrengths={props.beatAnalysis?.beatStrengths}
+          pps={props.pps}
+          highlightTime={
+            draggedClip?.started && draggedClip.snapType === "beat" ? draggedClip.snapTime : null
+          }
+        />
+      </div>
 
       {/* Gap strips — loud dashed fill for the gap(s) a hovered "Close gap(s)"
           menu row would collapse; a quiet tint for every gap on the selected

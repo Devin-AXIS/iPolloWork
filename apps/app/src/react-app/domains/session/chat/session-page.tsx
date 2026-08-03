@@ -1213,6 +1213,18 @@ export function SessionPage(props: SessionPageProps) {
     }
     setRightPanelExpanded(false);
   }, []);
+  const closeExpandedWorkSurface = useCallback(() => {
+    if (rightPanelExpanded) setRightPanelExpanded(false);
+    if (videoStudioExpanded) setVideoStudioExpanded(false);
+  }, [rightPanelExpanded, videoStudioExpanded]);
+  const handleSidebarOpenSession = useCallback((workspaceId: string, sessionId: string) => {
+    closeExpandedWorkSurface();
+    props.sidebar.onOpenSession(workspaceId, sessionId);
+  }, [closeExpandedWorkSurface, props.sidebar.onOpenSession]);
+  const handleSidebarOpenSessionSearch = useCallback(() => {
+    closeExpandedWorkSurface();
+    props.sidebar.onOpenSessionSearch?.();
+  }, [closeExpandedWorkSurface, props.sidebar.onOpenSessionSearch]);
   const startRightPanelResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !sidePanelOpen || rightWorkspaceExpanded) return;
     const workspaceWidth = viewportWidth - visibleLeftSidebarWidth;
@@ -2108,7 +2120,7 @@ export function SessionPage(props: SessionPageProps) {
           connectingWorkspaceId={props.sidebar.connectingWorkspaceId}
           workspaceConnectionStateById={props.sidebar.workspaceConnectionStateById}
           newTaskDisabled={props.sidebar.newTaskDisabled}
-          onOpenSession={props.sidebar.onOpenSession}
+          onOpenSession={handleSidebarOpenSession}
           onPrefetchSession={props.sidebar.onPrefetchSession}
           onCreateTaskInWorkspace={props.sidebar.onCreateTaskInWorkspace}
           onOpenRenameSession={props.onRenameSession ? openRenameModal : undefined}
@@ -2150,7 +2162,7 @@ export function SessionPage(props: SessionPageProps) {
           onOpenTemplateMarket={() => setTemplateMarketOpen(true)}
           onOpenExtensions={openExtensionsRailPane}
           onSignIn={openCloudSignIn}
-          onOpenSessionSearch={props.sidebar.onOpenSessionSearch}
+          onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}
           onStartResize={startLeftSidebarResize}
         />
         <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80">
@@ -2182,7 +2194,7 @@ export function SessionPage(props: SessionPageProps) {
                 <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
               </Tooltip>
             ) : null}
-            <div className="min-w-0 flex-1" style={{ minWidth: rightWorkspaceExpanded ? 0 : mainWorkspaceMinWidth }}>
+            <div className={cn("min-w-0 flex-1", rightWorkspaceExpanded && "invisible pointer-events-none")} style={{ minWidth: rightWorkspaceExpanded ? 0 : mainWorkspaceMinWidth }}>
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",

@@ -358,7 +358,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
               </div>
               <Select value={presetVoiceId} onValueChange={(value) => { if (value) void choosePreset(value); }}>
                 <SelectTrigger className="w-full" aria-label="百炼官方音色"><SelectValue placeholder="选择一个官方音色" /></SelectTrigger>
-                <SelectContent alignItemWithTrigger><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{voice.label} · {voice.description}</SelectItem>)}</SelectGroup></SelectContent>
+                <SelectContent align="start"><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{voice.label} · {voice.description}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
               {activeVoice?.source === "preset" ? <SelectedVoice voiceId={activeVoice.voiceId} label={BAILIAN_PRESET_VOICES.find((voice) => voice.id === activeVoice.voiceId)?.label ?? activeVoice.voiceId} /> : null}
             </TabsContent>
@@ -366,7 +366,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
               <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium">我复刻的声音</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">复刻样本会通过私有临时链接交给百炼，完成后自动清理。</p></div><Button variant="ghost" size="icon-xs" onClick={() => void refreshCustomVoices()} disabled={refreshingVoices} aria-label="刷新我的声音">{refreshingVoices ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button></div>
               <Select value={activeVoice?.source === "cloned" ? activeVoice.voiceId : ""} onValueChange={(value) => { if (value) void chooseCustomVoice(value); }}>
                 <SelectTrigger className="w-full" aria-label="我的百炼声音"><SelectValue placeholder={customVoices.length ? "选择已复刻的声音" : "还没有复刻的声音"} /></SelectTrigger>
-                <SelectContent alignItemWithTrigger><SelectGroup>{customVoices.map((voice) => <SelectItem key={voice.id} value={voice.id} disabled={!canSynthesizeCustomVoice(voice)}>{voice.name}{voice.status === "OK" ? "" : ` · ${voice.status}`}</SelectItem>)}</SelectGroup></SelectContent>
+                <SelectContent align="start"><SelectGroup>{customVoices.map((voice) => <SelectItem key={voice.id} value={voice.id} disabled={!canSynthesizeCustomVoice(voice)}>{voice.name}{voice.status === "OK" ? "" : ` · ${voice.status}`}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
               <input ref={uploadInputRef} type="file" accept="audio/wav,audio/mpeg,audio/mp4,.wav,.mp3,.m4a" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void cloneVoice(file); }} />
               <div className="rounded-xl border border-dashed border-border bg-muted/25 p-3">

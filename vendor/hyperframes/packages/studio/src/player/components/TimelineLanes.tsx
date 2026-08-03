@@ -1,5 +1,5 @@
-import { type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
+import { memo, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { BeatStrip } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineClipAnimationSegments } from "./TimelineClipAnimationSegments";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
@@ -107,7 +107,7 @@ interface TimelineLanesProps extends TimelineLaneBaseProps {
   onRazorSplitAll: TimelineEditCallbacks["onRazorSplitAll"];
 }
 
-export function TimelineLanes({
+export const TimelineLanes = memo(function TimelineLanes({
   pps,
   trackContentWidth,
   theme,
@@ -157,6 +157,8 @@ export function TimelineLanes({
   onRazorSplit,
   onRazorSplitAll,
 }: TimelineLanesProps) {
+  const tracksByNumber = new Map(tracks);
+  const deferOffscreenLanes = displayTrackOrder.length >= 40;
   const collectGestureEligibleKeys = (
     canEdit: (element: TimelineElement) => boolean,
   ): ReadonlySet<string> => {
@@ -215,7 +217,7 @@ export function TimelineLanes({
         // in a virtualizer if editorial workflows ever push very high clip counts.
         // fallow-ignore-next-line complexity
         displayTrackOrder.map((trackNum, rowIndex) => {
-          const els = tracks.find(([t]) => t === trackNum)?.[1] ?? [];
+          const els = tracksByNumber.get(trackNum) ?? [];
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
@@ -241,7 +243,11 @@ export function TimelineLanes({
             <div
               key={trackNum}
               className="hf-timeline-lane relative flex"
-              style={{ height: TRACK_H }}
+              style={{
+                height: TRACK_H,
+                contentVisibility: deferOffscreenLanes ? "auto" : "visible",
+                containIntrinsicSize: deferOffscreenLanes ? `auto ${TRACK_H}px` : undefined,
+              }}
             >
               <TimelineLayerHeader
                 track={trackNum}
@@ -317,18 +323,6 @@ export function TimelineLanes({
                   onContextMenuLane(e, trackNum, time);
                 }}
               >
-                {/* Faint beat lines in every track's background (behind the clips);
-                    the active move-snap target is highlighted. */}
-                <BeatBackgroundLines
-                  beatTimes={beatAnalysis?.beatTimes}
-                  beatStrengths={beatAnalysis?.beatStrengths}
-                  pps={pps}
-                  highlightTime={
-                    draggedClip?.started && draggedClip.snapType === "beat"
-                      ? draggedClip.snapTime
-                      : null
-                  }
-                />
                 {/* Beat dots on the active track (the one holding the selection),
                     falling back to the music track when nothing is selected. */}
                 {beatStripOnTrack && (
@@ -653,4 +647,4 @@ export function TimelineLanes({
       }
     </>
   );
-}
+});

@@ -37,9 +37,65 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(panelSource).toContain('aria-label={t("video.toggle_fullscreen")}');
+    expect(panelSource.match(/aria-label=\{t\("video\.toggle_fullscreen"\)\}/g)).toHaveLength(1);
     expect(panelSource).toContain("onExpandedChange?.(!expanded)");
     expect(panelSource).not.toContain("requestFullscreen()");
     expect(panelSource).not.toContain("document.exitFullscreen()");
+  });
+
+  test("reloads the embedded Studio reliably and waits for its readiness signal", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const studioSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("const reloadStudio = React.useCallback");
+    expect(panelSource).toContain("setRevision((value) => value + 1)");
+    expect(panelSource).toContain('onClick={reloadStudio} aria-label={t("video.reload")}');
+    expect(panelSource).toContain('event.data?.type !== "ipollowork:studio-ready"');
+    expect(panelSource).not.toContain('<TooltipContent>{t("video.reload")}</TooltipContent>');
+    expect(panelSource).not.toContain('type: "ipollowork:studio-refresh-preview"');
+    expect(studioSource).not.toContain('event.data?.type !== "ipollowork:studio-refresh-preview"');
+    expect(studioSource).toContain('type: "ipollowork:studio-ready"');
+  });
+
+  test("debounces source saves and lazy-loads optional Studio panels", () => {
+    const saveSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useEditorSave.ts", import.meta.url),
+      "utf8",
+    );
+    const studioSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(saveSource).toContain("}, 350)");
+    expect(saveSource).toContain("saveChainRef.current.catch");
+    expect(saveSource).toContain("addStudioPendingEditFlushListener");
+    expect(studioSource).toContain("const StudioRightPanel = lazy");
+    expect(studioSource).not.toContain("await renderQueue.startRender(undefined)");
+    expect(studioSource).not.toContain("revealOnError: true");
+  });
+
+  test("opens export settings before the user explicitly starts a render", () => {
+    const headerSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      "utf8",
+    );
+    const queueSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/renders/RenderQueue.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(headerSource).toContain('setRightPanelTab("renders")');
+    expect(headerSource).toContain("setRightCollapsed(false)");
+    expect(headerSource).not.toContain("onExport?.()");
+    expect(queueSource).toContain("if (exportBusy) return");
+    expect(queueSource).toContain("onStartRender(format, quality, outputResolution, fps, outputSize, captureSize)");
   });
 
   test("keeps desktop panel titlebars draggable without swallowing control input", () => {
@@ -67,7 +123,7 @@ describe("HyperFrames Video Studio", () => {
     expect(videoPanelSource).toContain("mac:titlebar-drag");
     expect(sidePanelSource).toContain("px-2 mac:titlebar-drag");
     expect(artifactPanelSource).toContain("ps-4 mac:titlebar-drag");
-    expect(sidebarSource).toContain('SidebarHeader className="gap-4 px-2 pb-6 pt-1 mac:titlebar-drag"');
+    expect(sidebarSource).toContain('SidebarHeader className="gap-4 px-2 pb-8 pt-1 mac:titlebar-drag"');
     expect(appStyles).toContain('[data-titlebar-no-drag]');
     expect(appStyles).toContain("[role=\"tab\"]");
     expect(appStyles).toContain("-webkit-app-region: no-drag;");
@@ -88,13 +144,26 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain("HyperFrames Studio failed to start</p>");
   });
 
+  test("keeps voice dropdowns aligned to their field edges", () => {
+    const voicePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(voicePanelSource.match(/<SelectContent align="start">/g)).toHaveLength(2);
+    expect(voicePanelSource).not.toContain("alignItemWithTrigger");
+  });
+
   test("keeps the application sidebar visible while Video Studio is expanded", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
-    );
+    ).replaceAll("\r\n", "\n");
 
     expect(sessionPageSource).toContain("videoStudioExpanded");
+    expect(sessionPageSource).toContain('rightWorkspaceExpanded && "invisible pointer-events-none"');
+    expect(sessionPageSource).toContain("onOpenSession={handleSidebarOpenSession}");
+    expect(sessionPageSource).toContain("onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}");
     expect(sessionPageSource).toContain('left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0"');
     expect(sessionPageSource).toContain('videoStudioExpanded && (!shellConfig.sidebar || !sidebarOpen) && "mac:[&_header]:!pl-20"');
     expect(sessionPageSource).toContain(
@@ -177,7 +246,7 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    const deleteIndex = electronSource.indexOf('data-action="delete"');
+    const deleteIndex = electronSource.indexOf('<button type="button" data-action="delete"');
     const advancedIndex = electronSource.indexOf('data-action="advanced"');
     const aiIndex = electronSource.indexOf('data-action="ai"');
     const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label="Delete selected element"');
@@ -207,8 +276,11 @@ describe("HyperFrames Video Studio", () => {
     expect(nativeAiIndex).toBeGreaterThan(nativeAdvancedIndex);
     expect(nativeDeleteIndex).toBeGreaterThan(nativeAiIndex);
     expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__icon-button");
-    expect(nativeToolbarSource).toContain("deleteConfirmationOpen");
-    expect(electronSource).toContain("window.confirm('Delete selected element?')");
+    expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__delete-button");
+    expect(nativeToolbarSource).toContain("onClick={deleteSelectedElement}");
+    expect(nativeToolbarSource).not.toContain("deleteConfirmationOpen");
+    expect(electronSource).toContain('button[data-action="delete"]{color:#dc2626}');
+    expect(electronSource).not.toContain("window.confirm('Delete selected element?')");
   });
 
   test("records host-applied video themes in Studio undo history", () => {
@@ -296,21 +368,23 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain("onClick={openLeftSidebar}");
   });
 
-  test("cancels a deferred right-panel resize before the panel unmounts", () => {
+  test("batches right-panel drag updates and cleans up the interaction", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
 
-    const effectStart = sessionPageSource.indexOf("if (!effectiveSidePanelView) return;");
-    const effectEnd = sessionPageSource.indexOf("const browserUrlForTarget", effectStart);
-    const resizeEffect = sessionPageSource.slice(effectStart, effectEnd);
+    const resizeStart = sessionPageSource.indexOf("const startRightPanelResize");
+    const resizeEnd = sessionPageSource.indexOf("const handleDesignAskAi", resizeStart);
+    const resizeInteraction = sessionPageSource.slice(resizeStart, resizeEnd);
 
-    expect(effectStart).toBeGreaterThan(-1);
-    expect(effectEnd).toBeGreaterThan(effectStart);
-    expect(resizeEffect).toContain("const frame = window.requestAnimationFrame");
-    expect(resizeEffect).toContain("const panel = browserPanelRef.current;");
-    expect(resizeEffect).toContain("return () => window.cancelAnimationFrame(frame);");
+    expect(resizeStart).toBeGreaterThan(-1);
+    expect(resizeEnd).toBeGreaterThan(resizeStart);
+    expect(resizeInteraction).toContain("window.requestAnimationFrame(applyPendingWidth)");
+    expect(resizeInteraction).toContain("window.cancelAnimationFrame(frameId)");
+    expect(resizeInteraction).toContain('window.removeEventListener("pointermove", handleMove)');
+    expect(resizeInteraction).toContain('window.removeEventListener("pointercancel", handleStop)');
+    expect(resizeInteraction).toContain('rightPanel.style.pointerEvents = "none"');
   });
 
   test("lets the latest right-panel action take priority in a narrow window", () => {

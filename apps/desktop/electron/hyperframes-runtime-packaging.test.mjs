@@ -6,6 +6,11 @@ const prepareRuntimeSource = await readFile(
   new URL("../scripts/prepare-hyperframes-runtime.mjs", import.meta.url),
   "utf8",
 );
+const buildCopySource = await readFile(
+  new URL("../../../vendor/hyperframes/packages/cli/scripts/build-copy.mjs", import.meta.url),
+  "utf8",
+);
+const electronMainSource = await readFile(new URL("./main.mjs", import.meta.url), "utf8");
 
 test("stages HyperFrames dependencies in an electron-builder-safe layout", () => {
   assert.match(prepareRuntimeSource, /"--linker", "hoisted"/);
@@ -32,4 +37,24 @@ test("keeps the separately packaged registry out of the cached runtime", () => {
   );
   assert.ok(cleanupIndex >= 0);
   assert.ok(cleanupIndex < cacheSkipIndex);
+});
+
+test("cleans stale hashed Studio assets before copying a new build", () => {
+  assert.match(buildCopySource, /rmSync\(join\(DIST, sub\), \{ recursive: true, force: true \}\)/);
+  assert.ok(
+    buildCopySource.indexOf("rmSync(join(DIST, sub)") <
+      buildCopySource.indexOf('for (const entry of ["index.html", "assets", "icons", "favicon.svg"])'),
+  );
+});
+
+test("ships only the Studio browser application", () => {
+  assert.match(buildCopySource, /\["index\.html", "assets", "icons", "favicon\.svg"\]/);
+  assert.doesNotMatch(buildCopySource, /copyDirContents\(studioDist/);
+});
+
+test("keeps a recently closed Studio process warm for a bounded same-session reopen", () => {
+  assert.match(electronMainSource, /HYPERFRAMES_IDLE_STOP_DELAY_MS = 60_000/);
+  assert.match(electronMainSource, /scheduleHyperframesStopForKey/);
+  assert.match(electronMainSource, /current\.projectPath === projectPath/);
+  assert.match(electronMainSource, /clearTimeout\(current\.idleTimeout\)/);
 });
