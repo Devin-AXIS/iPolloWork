@@ -509,14 +509,8 @@ export function StudioRightPanel({
               <PanelTabButton
                 label={t("right.catalog")}
                 tooltip={t("right.catalogTooltip")}
-                active={rightPanelTab === "catalog"}
+                active={rightPanelTab === "catalog" || rightPanelTab === "effects"}
                 onClick={() => selectStudioPanel("catalog")}
-              />
-              <PanelTabButton
-                label={t("right.effects")}
-                tooltip={t("right.effectsTooltip")}
-                active={rightPanelTab === "effects"}
-                onClick={() => selectStudioPanel("effects")}
               />
               </>)}
               <button
@@ -538,17 +532,10 @@ export function StudioRightPanel({
                   compositionPath={activeBlockParams.compositionPath}
                   onClose={onCloseBlockParams ?? (() => {})}
                 />
-              ) : rightPanelTab === "catalog" ? (
+              ) : rightPanelTab === "catalog" || rightPanelTab === "effects" ? (
                 <BlocksTab
                   key="animation"
                   page="animation"
-                  onAddBlock={onAddBlock}
-                  onPreviewBlock={onPreviewBlock}
-                />
-              ) : rightPanelTab === "effects" ? (
-                <BlocksTab
-                  key="scene"
-                  page="scene"
                   onAddBlock={onAddBlock}
                   onPreviewBlock={onPreviewBlock}
                 />
