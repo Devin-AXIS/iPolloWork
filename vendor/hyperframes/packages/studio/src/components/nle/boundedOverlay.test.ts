@@ -41,4 +41,17 @@ describe("resolveBoundedOverlayPosition", () => {
     expect(position.top).toBe(12);
     expect(position.maxHeight).toBe(376);
   });
+
+  it("keeps the toolbar visible when a large background selection touches the bottom edge", () => {
+    const position = resolveBoundedOverlayPosition(
+      { left: 120, top: 70, right: 680, bottom: 446, width: 560, height: 376 },
+      host,
+      { width: 320, height: 80 },
+      { edgePadding: 12, gap: 8 },
+    );
+
+    expect(position.placement).toBe("above");
+    expect(position.top).toBeGreaterThanOrEqual(12);
+    expect(position.top + 80).toBeLessThanOrEqual(388);
+  });
 });

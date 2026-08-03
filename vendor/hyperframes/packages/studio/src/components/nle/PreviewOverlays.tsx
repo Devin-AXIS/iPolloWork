@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CaptionOverlay } from "../../captions/components/CaptionOverlay";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
@@ -175,26 +175,7 @@ export function PreviewOverlays({
   });
 
   if (blockPreview) {
-    return (
-      <div className="absolute inset-0 z-30 bg-black pointer-events-none">
-        {blockPreview.videoUrl ? (
-          <video
-            src={blockPreview.videoUrl}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="w-full h-full object-contain"
-          />
-        ) : blockPreview.posterUrl ? (
-          <img
-            src={blockPreview.posterUrl}
-            alt={blockPreview.title}
-            className="w-full h-full object-contain"
-          />
-        ) : null}
-      </div>
-    );
+    return <BlockPreviewOverlay blockPreview={blockPreview} />;
   }
 
   if (captionEditMode) {
@@ -281,5 +262,40 @@ export function PreviewOverlays({
       )}
       {gestureOverlay}
     </>
+  );
+}
+
+function BlockPreviewOverlay({ blockPreview }: { blockPreview: BlockPreviewInfo }) {
+  const [videoReady, setVideoReady] = useState(false);
+
+  useEffect(() => {
+    setVideoReady(false);
+  }, [blockPreview.videoUrl]);
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 bg-black">
+      {blockPreview.posterUrl ? (
+        <img
+          src={blockPreview.posterUrl}
+          alt={blockPreview.title}
+          className="absolute inset-0 size-full object-contain"
+        />
+      ) : null}
+      {blockPreview.videoUrl ? (
+        <video
+          src={blockPreview.videoUrl}
+          poster={blockPreview.posterUrl}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          onCanPlay={() => setVideoReady(true)}
+          className={`absolute inset-0 size-full object-contain transition-opacity duration-100 ${
+            videoReady ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      ) : !blockPreview.posterUrl ? null : null}
+    </div>
   );
 }

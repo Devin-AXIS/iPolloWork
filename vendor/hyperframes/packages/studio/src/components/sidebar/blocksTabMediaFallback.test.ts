@@ -2,21 +2,23 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./BlocksTab.tsx", import.meta.url), "utf8");
-const runtime = readFileSync(new URL("./blockPreviewRuntime.ts", import.meta.url), "utf8");
+const overlay = readFileSync(new URL("../nle/PreviewOverlays.tsx", import.meta.url), "utf8");
 
 describe("BlocksTab lazy preview media", () => {
   it("keeps a broken poster lightweight until hover intent loads the runtime", () => {
     expect(source).toContain("setPosterFailed(true)");
-    expect(source).toContain('import("./blockPreviewRuntime")');
-    expect(source).toContain("setTimeout(startPreview, 150)");
+    expect(source).toContain("setTimeout(startPreview, 60)");
+    expect(source).toContain("PREVIEW_CLEAR_DELAY_MS = 140");
     expect(source).toContain('alt=""');
-    expect(runtime).toContain('document.createElement("video")');
+    expect(source).toContain("No preview yet");
+    expect(source).not.toContain('import("./blockPreviewRuntime")');
   });
 
-  it("keeps preview media pinned to the card bounds at normal speed", () => {
-    expect(runtime).toContain('className = "absolute inset-0 size-full object-cover"');
-    expect(runtime).toContain("video.defaultPlaybackRate = 1");
-    expect(runtime).toContain("video.playbackRate = 1");
-    expect(runtime).toContain('video.addEventListener("ratechange", normalizePlayback)');
+  it("sends hover previews to the large preview overlay instead of playing inside cards", () => {
+    expect(source).toContain("onPreview?.({ videoUrl, posterUrl, title: block.title })");
+    expect(overlay).toContain("poster={blockPreview.posterUrl}");
+    expect(overlay).toContain('preload="auto"');
+    expect(overlay).toContain("src={blockPreview.videoUrl}");
+    expect(overlay).toContain("onCanPlay={() => setVideoReady(true)}");
   });
 });

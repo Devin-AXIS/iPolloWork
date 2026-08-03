@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -37,7 +38,6 @@ export interface BlockPreviewInfo {
   posterUrl?: string;
   title: string;
 }
-
 interface BlocksTabProps {
   page?: CatalogPage;
   onAddBlock?: (blockName: string) => void;
@@ -45,20 +45,23 @@ interface BlocksTabProps {
 }
 
 const SECTION_TITLES: Record<RegistryItemLibrarySection, { en: string; zh: string }> = {
-  "text-animation": { en: "Text animations", zh: "文字动画" },
-  "interface-animation": { en: "Interface animations", zh: "界面动画" },
-  "transition-scene": { en: "Transition scenes", zh: "转场场景" },
-  "background-scene": { en: "Background scenes", zh: "背景场景" },
+  "text-animation": { en: "Text animations", zh: "\u6587\u5b57\u52a8\u753b" },
+  "interface-animation": { en: "Interface animations", zh: "\u754c\u9762\u52a8\u753b" },
+  "transition-scene": { en: "Transition scenes", zh: "\u8f6c\u573a\u573a\u666f" },
+  "background-scene": { en: "Background scenes", zh: "\u80cc\u666f\u573a\u666f" },
 };
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const DEFAULT_CATALOG_COLUMN_COUNT: CatalogColumnCount = 3;
+const PREVIEW_CLEAR_DELAY_MS = 140;
 const CATALOG_GRID_COLUMNS: Record<CatalogColumnCount, string> = {
   1: "grid-cols-1",
   2: "grid-cols-2",
   3: "grid-cols-3",
   4: "grid-cols-4",
 };
+const ALL_SECTIONS_FILTER = "all" as const;
+type CatalogSectionFilter = RegistryItemLibrarySection | typeof ALL_SECTIONS_FILTER;
 
 function nextCatalogColumnCount(
   current: CatalogColumnCount,
@@ -96,22 +99,52 @@ export const BlocksTab = memo(function BlocksTab({
   const { locale } = useStudioI18n();
   const { loading, error, search, setSearch, sections } = useBlockCatalog(page);
   const [previewController] = useState(() => new PreviewController());
+  const [activeSection, setActiveSection] = useState<CatalogSectionFilter>(ALL_SECTIONS_FILTER);
   const [columnCount, setColumnCount] = useState<CatalogColumnCount>(
     () => readStudioUiPreferences().catalogColumnCount ?? DEFAULT_CATALOG_COLUMN_COUNT,
   );
   const lastDensityWheelAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const previewClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reducedMotion = useSyncExternalStore(
     subscribeReducedMotion,
     getReducedMotionSnapshot,
     getReducedMotionServerSnapshot,
   );
 
-  useEffect(() => () => previewController.dispose(), [previewController]);
+  const emitPreviewBlock = useCallback(
+    (preview: BlockPreviewInfo | null) => {
+      if (previewClearTimerRef.current) {
+        clearTimeout(previewClearTimerRef.current);
+        previewClearTimerRef.current = null;
+      }
+      if (preview) {
+        onPreviewBlock?.(preview);
+        return;
+      }
+      previewClearTimerRef.current = setTimeout(() => {
+        previewClearTimerRef.current = null;
+        onPreviewBlock?.(null);
+      }, PREVIEW_CLEAR_DELAY_MS);
+    },
+    [onPreviewBlock],
+  );
+
+  useEffect(
+    () => () => {
+      if (previewClearTimerRef.current) clearTimeout(previewClearTimerRef.current);
+      previewController.dispose();
+    },
+    [previewController],
+  );
   useEffect(() => {
     writeStudioUiPreferences({ catalogColumnCount: columnCount });
   }, [columnCount]);
   useEffect(() => {
     previewController.stop();
+    if (previewClearTimerRef.current) {
+      clearTimeout(previewClearTimerRef.current);
+      previewClearTimerRef.current = null;
+    }
     onPreviewBlock?.(null);
   }, [onPreviewBlock, page, previewController, reducedMotion, search]);
 
@@ -121,10 +154,20 @@ export const BlocksTab = memo(function BlocksTab({
     lastDensityWheelAtRef.current = now;
     setColumnCount((current) => nextCatalogColumnCount(current, deltaY));
   }, []);
+  const totalCount = useMemo(
+    () => sections.reduce((total, section) => total + section.items.length, 0),
+    [sections],
+  );
+  const visibleSections = useMemo(
+    () => activeSection === ALL_SECTIONS_FILTER
+      ? sections
+      : sections.filter((section) => section.id === activeSection),
+    [activeSection, sections],
+  );
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-shrink-0 px-3 pb-2 pt-2">
+      <div className="flex-shrink-0 space-y-2 px-3 pb-2 pt-2">
         <div className="relative">
           <svg
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500"
@@ -148,11 +191,11 @@ export const BlocksTab = memo(function BlocksTab({
             placeholder={
               page === "animation"
                 ? locale === "zh"
-                  ? "搜索文字动画和界面动画"
-                  : "Search text and interface animations"
+                  ? "搜索动画和场景"
+                  : "Search animations and scenes"
                 : locale === "zh"
-                  ? "搜索转场场景和背景场景"
-                  : "Search transition and background scenes"
+                  ? "搜索场景"
+                  : "Search animations and scenes"
             }
             aria-label={
               page === "animation"
@@ -167,11 +210,28 @@ export const BlocksTab = memo(function BlocksTab({
             className="h-8 w-full rounded-lg border border-neutral-800 bg-neutral-950 pl-7 pr-2 text-[11px] text-neutral-200 outline-none transition-colors placeholder:text-neutral-600 focus:border-emerald-500/50"
           />
         </div>
+        <div className="flex min-w-0 gap-1 overflow-x-auto pb-0.5" role="tablist" aria-label={locale === "zh" ? "动画分类" : "Animation categories"}>
+          <CatalogFilterChip
+            label={locale === "zh" ? "全部" : "All"}
+            count={totalCount}
+            active={activeSection === ALL_SECTIONS_FILTER}
+            onClick={() => setActiveSection(ALL_SECTIONS_FILTER)}
+          />
+          {sections.map((section) => (
+            <CatalogFilterChip
+              key={section.id}
+              label={SECTION_TITLES[section.id][locale]}
+              count={section.items.length}
+              active={activeSection === section.id}
+              onClick={() => setActiveSection(section.id)}
+            />
+          ))}
+        </div>
       </div>
 
       {loading ? (
         <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-neutral-500">
-          {locale === "zh" ? "正在加载预设…" : "Loading presets…"}
+          {locale === "zh" ? "正在加载预设..." : "Loading presets..."}
         </div>
       ) : error ? (
         <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs text-red-400">
@@ -180,33 +240,55 @@ export const BlocksTab = memo(function BlocksTab({
             : "Presets failed to load. Reopen the panel."}
         </div>
       ) : (
-        <div
-          className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2 overflow-hidden px-3 pb-3"
-          data-testid={`block-catalog-${page}`}
-          data-catalog-columns={columnCount}
-        >
-          {sections.map((section) => (
-            <IndependentCatalogSection
-              key={section.id}
-              section={section}
-              search={search}
-              locale={locale}
-              reducedMotion={reducedMotion}
-              columnCount={columnCount}
-              onDensityWheel={handleDensityWheel}
-              previewController={previewController}
-              onAddBlock={onAddBlock}
-              onPreviewBlock={onPreviewBlock}
-            />
-          ))}
-        </div>
+        <CatalogSectionGrid
+          sections={visibleSections}
+          search={search}
+          locale={locale}
+          reducedMotion={reducedMotion}
+          columnCount={columnCount}
+          onDensityWheel={handleDensityWheel}
+          previewController={previewController}
+          onAddBlock={onAddBlock}
+          onPreviewBlock={emitPreviewBlock}
+          showSectionHeaders={activeSection === ALL_SECTIONS_FILTER}
+          testId={`block-catalog-${page}`}
+        />
       )}
     </div>
   );
 });
 
-function IndependentCatalogSection({
-  section,
+function CatalogFilterChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`flex h-7 flex-shrink-0 items-center gap-1 rounded-full border px-2.5 text-[10px] font-medium transition-colors ${
+        active
+          ? "border-emerald-400/35 bg-emerald-400/12 text-emerald-200"
+          : "border-neutral-800 bg-transparent text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
+      }`}
+    >
+      <span>{label}</span>
+      <span className={active ? "text-emerald-200/70" : "text-neutral-600"}>{count}</span>
+    </button>
+  );
+}
+
+function CatalogSectionGrid({
+  sections,
   search,
   locale,
   reducedMotion,
@@ -215,8 +297,10 @@ function IndependentCatalogSection({
   previewController,
   onAddBlock,
   onPreviewBlock,
+  showSectionHeaders,
+  testId,
 }: {
-  section: CatalogSection;
+  sections: CatalogSection[];
   search: string;
   locale: "en" | "zh";
   reducedMotion: boolean;
@@ -225,6 +309,8 @@ function IndependentCatalogSection({
   previewController: PreviewController;
   onAddBlock?: (blockName: string) => void;
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
+  showSectionHeaders: boolean;
+  testId: string;
 }) {
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const [visibleNames, setVisibleNames] = useState<Set<string>>(() => new Set());
@@ -285,7 +371,7 @@ function IndependentCatalogSection({
 
   useEffect(() => {
     if (scrollRoot) scrollRoot.scrollTop = 0;
-  }, [scrollRoot, search]);
+  }, [scrollRoot, search, sections]);
 
   useEffect(() => {
     if (!scrollRoot) return;
@@ -299,50 +385,53 @@ function IndependentCatalogSection({
     return () => scrollRoot.removeEventListener("wheel", handleWheel);
   }, [onDensityWheel, scrollRoot]);
 
-  const title = SECTION_TITLES[section.id][locale];
+  const itemCount = sections.reduce((total, section) => total + section.items.length, 0);
   return (
-    <section
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950/45"
-      data-testid={`catalog-section-${section.id}`}
-      aria-label={title}
+    <div
+      ref={setScrollRoot}
+      className="hf-block-catalog-scroll min-h-0 min-w-0 flex-1 overscroll-contain px-3 pb-3"
+      data-testid={testId}
+      data-catalog-columns={columnCount}
+      tabIndex={0}
+      aria-label={locale === "zh" ? "\u52a8\u753b\u9884\u8bbe\u5217\u8868" : "Animation preset list"}
     >
-      <header className="flex h-8 flex-shrink-0 items-center justify-between border-b border-neutral-800/70 px-2.5">
-        <h2 className="truncate text-[11px] font-semibold text-neutral-200">{title}</h2>
-        <span className="text-[9px] tabular-nums text-neutral-500">{section.items.length}</span>
-      </header>
-      <div
-        ref={setScrollRoot}
-        className="hf-block-catalog-scroll min-h-0 min-w-0 flex-1 overscroll-contain px-1.5 py-1.5"
-        data-testid={`catalog-scroll-${section.id}`}
-        tabIndex={0}
-        aria-label={`${title} ${locale === "zh" ? "预设列表" : "preset list"}`}
-      >
-        {section.items.length === 0 ? (
-          <div className="flex h-full min-h-16 items-center justify-center px-3 text-center text-[10px] text-neutral-600">
-            {locale === "zh" ? "没有匹配的预设" : "No matching presets"}
-          </div>
-        ) : (
-          <div
-            className={`grid min-w-0 gap-1.5 overflow-x-hidden ${CATALOG_GRID_COLUMNS[columnCount]}`}
-            data-testid={`catalog-grid-${section.id}`}
-          >
-            {section.items.map((block) => (
-              <BlockCard
-                key={block.name}
-                block={block}
-                visible={visibleNames.has(block.name)}
-                reducedMotion={reducedMotion}
-                registerCard={registerCard}
-                previewController={previewController}
-                onPreview={onPreviewBlock}
-                locale={locale}
-                onAdd={() => onAddBlock?.(block.name)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+      {itemCount === 0 ? (
+        <div className="flex h-full min-h-16 items-center justify-center px-3 text-center text-[10px] text-neutral-600">
+          {locale === "zh" ? "\u6ca1\u6709\u5339\u914d\u7684\u9884\u8bbe" : "No matching presets"}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {sections.map((section) => (
+            <section key={section.id} data-testid={`catalog-section-${section.id}`}>
+              {showSectionHeaders ? (
+                <header className="mb-2 flex items-center justify-between">
+                  <h2 className="truncate text-[11px] font-semibold text-neutral-300">{SECTION_TITLES[section.id][locale]}</h2>
+                  <span className="text-[9px] tabular-nums text-neutral-600">{section.items.length}</span>
+                </header>
+              ) : null}
+              <div
+                className={`grid min-w-0 gap-1.5 overflow-x-hidden ${CATALOG_GRID_COLUMNS[columnCount]}`}
+                data-testid={`catalog-grid-${section.id}`}
+              >
+                {section.items.map((block) => (
+                  <BlockCard
+                    key={block.name}
+                    block={block}
+                    visible={visibleNames.has(block.name)}
+                    reducedMotion={reducedMotion}
+                    registerCard={registerCard}
+                    previewController={previewController}
+                    onPreview={onPreviewBlock}
+                    locale={locale}
+                    onAdd={() => onAddBlock?.(block.name)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -380,7 +469,7 @@ function formatCompositionContext(ctx: CompositionContext): string {
       `Elements visible at ${formatTime(ctx.currentTime)}:`,
       ...visibleNow.map(
         (element) =>
-          `- ${element.label || element.id} (track ${element.track}, ${formatTime(element.start)}–${formatTime(element.start + element.duration)}${element.compositionSrc ? `, src: ${element.compositionSrc}` : ""})`,
+          `- ${element.label || element.id} (track ${element.track}, ${formatTime(element.start)}-${formatTime(element.start + element.duration)}${element.compositionSrc ? `, src: ${element.compositionSrc}` : ""})`,
       ),
     );
   }
@@ -414,7 +503,7 @@ function buildAgentPrompt(
     transitions: [
       `Using /hyperframes, add the "${title}" transition (registry: ${name}) between my scenes.`,
       description,
-      "Place this transition at the cut point between the current scene and the next. Set the duration to 0.5–1s, position it at the scene boundary on the timeline, and make sure the z-index is above both scenes. Adjust colors to match my palette.",
+      "Place this transition at the cut point between the current scene and the next. Set the duration to 0.5-1s, position it at the scene boundary on the timeline, and make sure the z-index is above both scenes. Adjust colors to match my palette.",
     ].join("\n\n"),
     effects: [
       `Using /hyperframes, add the "${title}" effect (registry: ${name}) as an overlay on my composition.`,
@@ -449,7 +538,6 @@ function buildAgentPrompt(
   return [instruction, "", "## Current composition state", "", compositionInfo].join("\n");
 }
 
-type PreviewStatus = "idle" | "loading" | "playing" | "error";
 
 function BlockCard({
   block,
@@ -472,9 +560,7 @@ function BlockCard({
 }) {
   const [thumbnailEnabled, setThumbnailEnabled] = useState(false);
   const [posterFailed, setPosterFailed] = useState(false);
-  const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
   const [adding, setAdding] = useState(false);
-  const previewMountRef = useRef<HTMLDivElement | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
@@ -483,6 +569,7 @@ function BlockCard({
   const posterUrl = block.preview?.poster;
   const videoUrl = block.preview?.video;
   const canShowPoster = thumbnailEnabled && Boolean(posterUrl) && !posterFailed;
+  const hasPreviewMedia = Boolean(videoUrl || posterUrl);
   const needsWebGL = block.tags?.includes("html-in-canvas") || block.tags?.includes("webgl");
 
   const setCardRef = useCallback(
@@ -498,42 +585,13 @@ function BlockCard({
 
   const startPreview = useCallback(() => {
     if (!visible || reducedMotion || !videoUrl) return;
-    previewController.start(block.name, async ({ signal, isCurrent }) => {
-      if (mountedRef.current) setPreviewStatus("loading");
-      try {
-        const runtime = await import("./blockPreviewRuntime");
-        const container = previewMountRef.current;
-        if (!container || !isCurrent()) return undefined;
+    previewController.start(block.name, async ({ isCurrent }) => {
+      if (!isCurrent()) return undefined;
+      onPreview?.({ videoUrl, posterUrl, title: block.title });
 
-        const cleanupRuntime = runtime.mountBlockPreview({
-          container,
-          videoUrl,
-          signal,
-          onReady: () => {
-            if (mountedRef.current && isCurrent()) setPreviewStatus("playing");
-          },
-          onError: () => {
-            if (!isCurrent()) return;
-            previewController.stop(block.name);
-            onPreview?.(null);
-            if (mountedRef.current) setPreviewStatus("error");
-          },
-        });
-        onPreview?.({ posterUrl, title: block.title });
-
-        return () => {
-          cleanupRuntime();
-          onPreview?.(null);
-          if (mountedRef.current) setPreviewStatus("idle");
-        };
-      } catch {
-        if (isCurrent()) {
-          previewController.stop(block.name);
-          onPreview?.(null);
-          if (mountedRef.current) setPreviewStatus("error");
-        }
-        return undefined;
-      }
+      return () => {
+        onPreview?.(null);
+      };
     });
   }, [
     block.name,
@@ -549,13 +607,12 @@ function BlockCard({
   const handleEnter = useCallback(() => {
     clearHoverTimer();
     if (!visible || reducedMotion || !videoUrl) return;
-    hoverTimerRef.current = setTimeout(startPreview, 150);
+    hoverTimerRef.current = setTimeout(startPreview, 60);
   }, [clearHoverTimer, reducedMotion, startPreview, videoUrl, visible]);
 
   const handleLeave = useCallback(() => {
     clearHoverTimer();
     previewController.stop(block.name);
-    if (mountedRef.current) setPreviewStatus("idle");
   }, [block.name, clearHoverTimer, previewController]);
 
   useEffect(() => {
@@ -679,32 +736,18 @@ function BlockCard({
           />
         ) : (
           <div className={`absolute inset-0 flex items-center justify-center ${colors.bg}`}>
-            <span className={`truncate px-1 text-[7px] font-medium ${colors.text}`}>
-              {getCategoryLabel(block.category, locale)}
-            </span>
+            <div className="flex min-w-0 flex-col items-center gap-1 px-2 text-center">
+              <span className={`max-w-full truncate text-[7px] font-medium ${colors.text}`}>
+                {getCategoryLabel(block.category, locale)}
+              </span>
+              {!hasPreviewMedia ? (
+                <span className="rounded bg-white/60 px-1.5 py-0.5 text-[7px] font-medium text-neutral-600">
+                  {locale === "zh" ? "\u6682\u65e0\u9884\u89c8" : "No preview yet"}
+                </span>
+              ) : null}
+            </div>
           </div>
         )}
-        <div ref={previewMountRef} className="absolute inset-0" aria-hidden="true" />
-
-        {previewStatus === "loading" ? (
-          <div className="absolute inset-0 grid place-items-center bg-black/30">
-            <span className="size-3 animate-spin rounded-full border border-white/35 border-t-white" />
-          </div>
-        ) : null}
-        {previewStatus === "error" ? (
-          <div className="absolute inset-0 grid place-items-center bg-black/55 p-1">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                startPreview();
-              }}
-              className="rounded bg-black/60 px-1.5 py-1 text-[7px] text-white hover:bg-black/80"
-            >
-              {locale === "zh" ? "重试预览" : "Retry preview"}
-            </button>
-          </div>
-        ) : null}
 
         <div className="pointer-events-none absolute left-1 top-1 flex items-center gap-0.5">
           {block.engine?.name.toLowerCase() === "gsap" ? (
@@ -747,20 +790,20 @@ function BlockCard({
               event.stopPropagation();
               handleAdd();
             }}
-            title={locale === "zh" ? "在当前播放头位置添加" : "Add at the current playhead"}
+            title={locale === "zh" ? "\u5728\u5f53\u524d\u64ad\u653e\u5934\u4f4d\u7f6e\u6dfb\u52a0" : "Add at the current playhead"}
             className="flex h-6 min-w-0 items-center justify-center rounded bg-white px-1 text-[8px] font-semibold text-black transition-colors hover:bg-neutral-200"
           >
             <span className="truncate">
-              {adding ? (locale === "zh" ? "已添加" : "Added") : locale === "zh" ? "添加" : "Add"}
+              {adding ? (locale === "zh" ? "\u5df2\u6dfb\u52a0" : "Added") : locale === "zh" ? "\u6dfb\u52a0" : "Add"}
             </span>
           </button>
           <button
             type="button"
             onClick={handleShowPrompt}
-            title={locale === "zh" ? "让 AI 按当前场景集成" : "Ask AI to integrate this effect"}
+            title={locale === "zh" ? "\u8ba9 AI \u6309\u5f53\u524d\u573a\u666f\u96c6\u6210" : "Ask AI to integrate this effect"}
             className="flex h-6 min-w-0 items-center justify-center rounded bg-neutral-800 px-1 text-[8px] font-medium text-neutral-200 transition-colors hover:bg-neutral-700 hover:text-white"
           >
-            <span className="truncate">{locale === "zh" ? "交给 AI" : "Ask AI"}</span>
+            <span className="truncate">{locale === "zh" ? "\u4ea4\u7ed9 AI" : "Ask AI"}</span>
           </button>
         </div>
       </div>
