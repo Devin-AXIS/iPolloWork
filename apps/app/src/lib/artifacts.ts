@@ -37,6 +37,11 @@ type ArtifactEntry = ArtifactItem & {
   sequence: number
 }
 
+type ArtifactPathCandidate = {
+  path: string
+  verifiedFromWrite: boolean
+}
+
 type GetArtifactsOptions = {
   includeTargetFallbacks?: boolean
   supplementalFiles?: readonly string[]
@@ -400,6 +405,11 @@ function parseApplyPatchPaths(patchText: string) {
   return paths;
 }
 
+function artifactPathCandidate(path: string, verifiedFromWrite = false): ArtifactPathCandidate | null {
+  const normalized = path.trim().toLowerCase();
+  return normalized ? { path: normalized, verifiedFromWrite } : null;
+}
+
 const FILE_PATTERN = /(?:^|[\s"'`([{])((?:\.{1,2}[/\\]|~[/\\]|[/\\])?[\w.\-]+(?:[/\\][\w.\-]+)+\.[a-z][a-z0-9]{0,9}|[\w.\-]+\.[a-z][a-z0-9]{0,9})/gi;
 const ASSISTANT_ARTIFACT_MENTION_PATTERN = /\b(?:artifact|created|deck|deliverable|exported|file|generated|opened|presentation|saved|slides?|updated|wrote)\b/i;
 
@@ -418,11 +428,11 @@ function getArtifactPathsFromText(text: string) {
 }
 
 function getArtifactPathsFromMessage(message: UIMessage) {
-  const paths: (string | undefined)[] = [];
+  const paths: ArtifactPathCandidate[] = [];
 
   for (const part of message.parts) {
     if (part.type === "text" && message.role === "assistant") {
-      paths.push(...getArtifactPathsFromText(part.text));
+      paths.push(...getArtifactPathsFromText(part.text).flatMap((path) => artifactPathCandidate(path) ?? []));
       continue;
     }
 
@@ -431,23 +441,22 @@ function getArtifactPathsFromMessage(message: UIMessage) {
     }
 
     if (isWriteToolPart(part)) {
-      paths.push(part.input.filePath);
+      const candidate = artifactPathCandidate(part.input.filePath, true);
+      if (candidate) paths.push(candidate);
       continue;
     }
 
     if (isEditToolPart(part)) {
-      paths.push(part.input.filePath);
+      const candidate = artifactPathCandidate(part.input.filePath, true);
+      if (candidate) paths.push(candidate);
       continue;
     }
     if (isApplyPatchToolPart(part)) {
-      paths.push(...parseApplyPatchPaths(part.input.patchText));
+      paths.push(...parseApplyPatchPaths(part.input.patchText).flatMap((path) => artifactPathCandidate(path, true) ?? []));
     }
   }
 
-  return paths.flatMap((path) => {
-    const normalized = path?.trim().toLowerCase();
-    return normalized ? [normalized] : [];
-  });
+  return paths;
 }
 
 function addArtifact(
@@ -478,13 +487,20 @@ function addArtifact(
   });
 }
 
+function markTargetExists(target: OpenTarget): OpenTarget {
+  return target.exists === true ? target : { ...target, exists: true };
+}
+
 export function getArtifactsFromMessages(messages: UIMessage[], openTargets: OpenTarget[] = [], options: GetArtifactsOptions = {}) {
   const artifacts = new Map<string, ArtifactEntry>();
   let sequence = 0;
 
   messages.forEach((message, messageIndex) => {
-    for (const path of getArtifactPathsFromMessage(message)) {
-      addArtifact(artifacts, path, message.id, messageIndex, sequence, openTargets);
+    for (const candidate of getArtifactPathsFromMessage(message)) {
+      const verifiedTarget = candidate.verifiedFromWrite
+        ? markTargetExists(openTargetFromArtifactPath(candidate.path, getArtifactName(candidate.path), getArtifactType(candidate.path), openTargets))
+        : undefined;
+      addArtifact(artifacts, candidate.path, message.id, messageIndex, sequence, openTargets, verifiedTarget);
       sequence += 1;
     }
   });

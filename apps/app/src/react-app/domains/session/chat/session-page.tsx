@@ -1371,6 +1371,7 @@ export function SessionPage(props: SessionPageProps) {
       type: "artifact",
       label: target.name,
       preview: target.preview,
+      target,
     });
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
@@ -1712,6 +1713,7 @@ export function SessionPage(props: SessionPageProps) {
         type: "artifact",
         label: firstArtifact.name,
         preview: firstArtifact.preview,
+        target: firstArtifact,
       });
     }
     if (!panelRailActive) {
@@ -1735,6 +1737,7 @@ export function SessionPage(props: SessionPageProps) {
         type: "artifact",
         label: firstArtifact.name,
         preview: firstArtifact.preview,
+        target: firstArtifact,
       });
     }
 

@@ -2439,6 +2439,19 @@ const desktopCommandHandlers = {
         return null;
       }
   },
+  "__readLocalTextFile": async (event, ...args) => {
+      const target = String(args[0] ?? "").trim();
+      if (!target) throw new Error("Path is required.");
+      const info = await stat(target);
+      if (!info.isFile()) throw new Error("File not found.");
+      const maxBytes = 20 * 1024 * 1024;
+      if (info.size > maxBytes) throw new Error("File exceeds size limit.");
+      return {
+        content: await readFile(target, "utf8"),
+        size: info.size,
+        updatedAt: info.mtimeMs,
+      };
+  },
   "__readLocalImageAsDataUrl": async (event, ...args) => {
       return readLocalImageAsDataUrl(args[0]);
   },
