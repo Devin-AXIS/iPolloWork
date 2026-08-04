@@ -49,6 +49,8 @@ describe("Studio right panel layout", () => {
     expect(header).toContain("disabled:cursor-not-allowed");
     expect(header).toContain("disabled={isRendering}");
     expect(header).toContain("text-[#fff]");
+    expect(header).not.toContain("ViewModeToggle");
+    expect(header).not.toContain('header.preview');
     expect(header).not.toContain('figma-video-studio/undo.svg');
     expect(header).not.toContain('figma-video-studio/camera.svg');
     expect(header).not.toContain('figma-video-studio/fullscreen.svg');

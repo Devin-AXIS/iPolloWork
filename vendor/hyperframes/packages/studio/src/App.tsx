@@ -66,7 +66,7 @@ import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config"
 type CanvasRect = { left: number; top: number; width: number; height: number };
 
 const HIDE_LEFT_SIDEBAR = true;
-const HIDE_STORYBOARD_VIEW = false;
+const HIDE_STORYBOARD_VIEW = true;
 const StudioLeftSidebar = lazy(() =>
   import("./components/StudioLeftSidebar").then((module) => ({ default: module.StudioLeftSidebar })),
 );
