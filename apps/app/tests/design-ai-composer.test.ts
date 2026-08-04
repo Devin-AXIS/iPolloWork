@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import * as sessionSurface from "../src/react-app/domains/session/surface/session-surface";
+import * as composerDraft from "../src/react-app/domains/session/surface/composer/composer-draft";
 
 const editorUrl = new URL(
   "../src/react-app/domains/session/surface/composer/editor.tsx",
@@ -13,9 +13,9 @@ const sessionPageUrl = new URL(
 
 describe("Design AI composer integration", () => {
   test("converts one Design token into a structured composer part", () => {
-    expect(sessionSurface.parseComposerParts).toBeFunction();
-    if (typeof sessionSurface.parseComposerParts !== "function") return;
-    const parts = sessionSurface.parseComposerParts("[[design-ai:design-ai-1]] make it blue", {
+    expect(composerDraft.parseComposerParts).toBeFunction();
+    if (typeof composerDraft.parseComposerParts !== "function") return;
+    const parts = composerDraft.parseComposerParts("[[design-ai:design-ai-1]] make it blue", {
       mentions: {},
       pasteParts: [],
       designSelectionLabel: () => "H1 路 Original",
@@ -30,10 +30,10 @@ describe("Design AI composer integration", () => {
   });
 
   test("replaces the previous Design token without changing the current prompt", () => {
-    expect(sessionSurface.replaceDesignSelectionToken).toBeFunction();
-    if (typeof sessionSurface.replaceDesignSelectionToken !== "function") return;
+    expect(composerDraft.replaceDesignSelectionToken).toBeFunction();
+    if (typeof composerDraft.replaceDesignSelectionToken !== "function") return;
     expect(
-      sessionSurface.replaceDesignSelectionToken(
+      composerDraft.replaceDesignSelectionToken(
         "[[design-ai:design-ai-old]] make it blue",
         "[[design-ai:design-ai-new]]",
       ),
@@ -41,16 +41,16 @@ describe("Design AI composer integration", () => {
   });
 
   test("preserves a Design selection draft when prompt submission fails", () => {
-    expect(sessionSurface.shouldPreserveComposerDraftAfterSendFailure).toBeFunction();
-    if (typeof sessionSurface.shouldPreserveComposerDraftAfterSendFailure !== "function") return;
+    expect(composerDraft.shouldPreserveComposerDraftAfterSendFailure).toBeFunction();
+    if (typeof composerDraft.shouldPreserveComposerDraftAfterSendFailure !== "function") return;
 
-    expect(sessionSurface.shouldPreserveComposerDraftAfterSendFailure({
+    expect(composerDraft.shouldPreserveComposerDraftAfterSendFailure({
       mode: "prompt",
       parts: [{ type: "design-selection", contextId: "design-ai-1", label: "H1 Original" }],
       attachments: [],
       text: "[[design-ai:design-ai-1]] Make it blue.",
     })).toBe(true);
-    expect(sessionSurface.shouldPreserveComposerDraftAfterSendFailure({
+    expect(composerDraft.shouldPreserveComposerDraftAfterSendFailure({
       mode: "prompt",
       parts: [{ type: "text", text: "Ordinary prompt" }],
       attachments: [],
@@ -59,8 +59,8 @@ describe("Design AI composer integration", () => {
   });
 
   test("uses the composer, not the queue, as the sole retry surface for a failed queued Design draft", () => {
-    expect(sessionSurface.failedDraftRetrySurface).toBeFunction();
-    if (typeof sessionSurface.failedDraftRetrySurface !== "function") return;
+    expect(composerDraft.failedDraftRetrySurface).toBeFunction();
+    if (typeof composerDraft.failedDraftRetrySurface !== "function") return;
 
     const designDraft = {
       mode: "prompt" as const,
@@ -75,8 +75,8 @@ describe("Design AI composer integration", () => {
       text: "Ordinary prompt",
     };
 
-    expect(sessionSurface.failedDraftRetrySurface(designDraft)).toBe("composer");
-    expect(sessionSurface.failedDraftRetrySurface(ordinaryDraft)).toBe("queue");
+    expect(composerDraft.failedDraftRetrySurface(designDraft)).toBe("composer");
+    expect(composerDraft.failedDraftRetrySurface(ordinaryDraft)).toBe("queue");
   });
 
   test("renders a Design token as an atomic purple chip", async () => {
@@ -91,14 +91,26 @@ describe("Design AI composer integration", () => {
 
   test("lets the user remove a Design token from its inline icon", async () => {
     const source = await Bun.file(editorUrl).text();
+    const backspaceCommand = source.indexOf(
+      "KEY_BACKSPACE_COMMAND",
+      source.indexOf("KEY_BACKSPACE_COMMAND") + 1,
+    );
+    const arrowLeftCommand = source.indexOf(
+      "KEY_ARROW_LEFT_COMMAND",
+      source.indexOf("KEY_ARROW_LEFT_COMMAND") + 1,
+    );
+    const backspaceHandler = source.slice(
+      backspaceCommand,
+      arrowLeftCommand,
+    );
 
     expect(source).toContain("data-design-selection-remove-key");
     expect(source).toContain("Remove design selection:");
     expect(source).toContain("function DesignSelectionDeletePlugin");
     expect(source).toContain("$getNodeByKey(key)");
     expect(source).toContain("<DesignSelectionDeletePlugin disabled={props.disabled} />");
-    expect(source).not.toContain("previous instanceof ComposerPastedTextNode || previous instanceof ComposerDesignSelectionNode");
-    expect(source).toContain("if (previous instanceof ComposerDesignSelectionNode) return true;");
+    expect(backspaceHandler).not.toContain("previous instanceof ComposerPastedTextNode || previous instanceof ComposerDesignSelectionNode");
+    expect(backspaceHandler).toContain("if (previous instanceof ComposerDesignSelectionNode) return true;");
   });
 
   test("wires Ask AI through the composer draft store and focuses the prompt", async () => {

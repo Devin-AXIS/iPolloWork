@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import type { ComposerDraft } from "../src/app/types";
-import * as sessionRoute from "../src/react-app/shell/session-route";
+import * as sessionPrompt from "../src/react-app/shell/session-prompt";
 import type { DesignAiSelectionContext } from "../src/react-app/domains/session/design/design-ai-selection";
 import { useDesignAiSelectionStore } from "../src/react-app/domains/session/design/design-ai-selection-store";
 
 const routeUrl = new URL("../src/react-app/shell/session-route.tsx", import.meta.url);
+const promptUrl = new URL("../src/react-app/shell/session-prompt.ts", import.meta.url);
 const runtimeUrl = new URL(
   "../src/react-app/domains/session/sync/runtime-sync.tsx",
   import.meta.url,
@@ -35,8 +36,8 @@ describe("Design AI session lifecycle", () => {
   });
 
   test("expands the selected Design chip to a synthetic scoped agent instruction", async () => {
-    expect(sessionRoute.draftToParts).toBeFunction();
-    if (typeof sessionRoute.draftToParts !== "function") return;
+    expect(sessionPrompt.draftToParts).toBeFunction();
+    if (typeof sessionPrompt.draftToParts !== "function") return;
 
     useDesignAiSelectionStore.getState().createContext({
       id: "design-ai-1",
@@ -65,7 +66,7 @@ describe("Design AI session lifecycle", () => {
       text: "[[design-ai:design-ai-1]] Make it blue.",
     };
 
-    const parts = await sessionRoute.draftToParts(
+    const parts = await sessionPrompt.draftToParts(
       draft,
       "C:/workspace",
       useDesignAiSelectionStore,
@@ -81,26 +82,27 @@ describe("Design AI session lifecycle", () => {
   });
 
   test("preflights the Design snapshot before prompt submission and completes only on idle", async () => {
-    const source = await Bun.file(routeUrl).text();
-    const preflightRead = source.indexOf("readWorkspaceFile(context.workspaceId, context.filePath)");
-    const preflightWrite = source.indexOf("content: current.content");
-    const rebase = source.indexOf("rebasePendingContext(context.id");
-    const markRunning = source.indexOf("markRunning(context.id)");
-    const prompt = source.indexOf("session.promptAsync({");
+    const routeSource = await Bun.file(routeUrl).text();
+    const promptSource = await Bun.file(promptUrl).text();
+    const preflightRead = promptSource.indexOf("readWorkspaceFile(context.workspaceId, context.filePath)");
+    const preflightWrite = promptSource.indexOf("content: current.content");
+    const rebase = promptSource.indexOf("rebasePendingContext(context.id");
+    const markRunning = promptSource.indexOf("markRunning(context.id)");
+    const prompt = promptSource.indexOf("const result = await input.prompt()");
 
     expect(preflightRead).toBeGreaterThan(-1);
-    expect(source).toContain("current.updatedAt ?? null");
-    expect(source).toContain("baseUpdatedAt: current.updatedAt ?? null");
+    expect(promptSource).toContain("current.updatedAt ?? null");
+    expect(promptSource).toContain("baseUpdatedAt: current.updatedAt ?? null");
     expect(preflightWrite).toBeGreaterThan(preflightRead);
     expect(rebase).toBeGreaterThan(preflightWrite);
     expect(markRunning).toBeGreaterThan(rebase);
     expect(prompt).toBeGreaterThan(markRunning);
-    expect(source).toContain('update.status.type !== "idle"');
-    expect(source).toContain("claimCompletion(context.id)");
-    expect(source).toContain("after.content !== context.beforeHtml");
-    expect(source).toContain("afterUpdatedAt: after.updatedAt ?? null");
-    expect(source).toContain("completeWithoutChange(context.id)");
-    expect(source).toContain("onSessionStatus={handleSessionStatus}");
+    expect(routeSource).toContain('update.status.type !== "idle"');
+    expect(routeSource).toContain("claimCompletion(context.id)");
+    expect(routeSource).toContain("after.content !== context.beforeHtml");
+    expect(routeSource).toContain("afterUpdatedAt: after.updatedAt ?? null");
+    expect(routeSource).toContain("completeWithoutChange(context.id)");
+    expect(routeSource).toContain("onSessionStatus={handleSessionStatus}");
   });
 
   test("rebases a stale Design selection to the latest file before prompting", async () => {
@@ -108,7 +110,7 @@ describe("Design AI session lifecycle", () => {
     store.createContext(lifecycleContext);
     let writePayload: { content: string; baseUpdatedAt?: number | null } | undefined;
 
-    await sessionRoute.promptDesignSelectionContexts({
+    await sessionPrompt.promptDesignSelectionContexts({
       contexts: [lifecycleContext],
       workspaceClient: {
         readWorkspaceFile: async () => ({ content: "<h1>Latest</h1>", updatedAt: 12 }),
@@ -134,7 +136,7 @@ describe("Design AI session lifecycle", () => {
     store.createContext(lifecycleContext);
     let prompted = false;
 
-    await expect(sessionRoute.promptDesignSelectionContexts({
+    await expect(sessionPrompt.promptDesignSelectionContexts({
       contexts: [lifecycleContext],
       workspaceClient: {
         readWorkspaceFile: async () => ({ content: "<h1>Latest</h1>", updatedAt: 12 }),
@@ -161,19 +163,19 @@ describe("Design AI session lifecycle", () => {
       text: "",
     });
 
-    await expect(sessionRoute.draftToParts(
+    await expect(sessionPrompt.draftToParts(
       draft(lifecycleContext.id),
       "C:/workspace",
       useDesignAiSelectionStore,
       { sessionId: "ses_2", workspaceId: "workspace_1" },
     )).rejects.toThrow("does not belong to this session");
-    await expect(sessionRoute.draftToParts(
+    await expect(sessionPrompt.draftToParts(
       draft(lifecycleContext.id),
       "C:/workspace",
       useDesignAiSelectionStore,
       { sessionId: "ses_1", workspaceId: "workspace_2" },
     )).rejects.toThrow("does not belong to this workspace");
-    await expect(sessionRoute.draftToParts(
+    await expect(sessionPrompt.draftToParts(
       draft("missing"),
       "C:/workspace",
       useDesignAiSelectionStore,
@@ -196,7 +198,7 @@ describe("Design AI session lifecycle", () => {
       text: "",
     };
 
-    await expect(sessionRoute.draftToParts(
+    await expect(sessionPrompt.draftToParts(
       draft,
       "C:/workspace",
       useDesignAiSelectionStore,
@@ -207,7 +209,7 @@ describe("Design AI session lifecycle", () => {
   test("expands repeated copies of the same Design token only once", async () => {
     const store = useDesignAiSelectionStore.getState();
     store.createContext(lifecycleContext);
-    const parts = await sessionRoute.draftToParts({
+    const parts = await sessionPrompt.draftToParts({
       mode: "prompt",
       parts: [
         { type: "design-selection", contextId: lifecycleContext.id, label: "H1 Original" },
@@ -238,7 +240,7 @@ describe("Design AI session lifecycle", () => {
     store.createContext(lifecycleContext);
     store.createContext(second);
 
-    await expect(sessionRoute.promptDesignSelectionContexts({
+    await expect(sessionPrompt.promptDesignSelectionContexts({
       contexts: [lifecycleContext, second],
       workspaceClient: {
         readWorkspaceFile: async () => ({ content: "<h1>Original</h1>", updatedAt: 11 }),
@@ -260,7 +262,7 @@ describe("Design AI session lifecycle", () => {
     store.createContext(lifecycleContext);
     store.createContext(second);
 
-    await expect(sessionRoute.promptDesignSelectionContexts({
+    await expect(sessionPrompt.promptDesignSelectionContexts({
       contexts: [lifecycleContext, second],
       workspaceClient: {
         readWorkspaceFile: async () => { throw new Error("read failed"); },

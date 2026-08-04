@@ -5,7 +5,7 @@ import { IPOLLOWORK_PACKAGE_EXTENSION } from "@ipollowork/types/templates";
 
 const serverRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(serverRoot, "bundled-templates");
-const target = join(serverRoot, "dist", "bundled-templates");
+const target = process.argv[2] ?? join(serverRoot, "dist", "bundled-templates");
 
 await rm(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
 await mkdir(dirname(target), { recursive: true });

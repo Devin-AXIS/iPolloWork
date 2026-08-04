@@ -128,6 +128,20 @@ body {
 :root[data-ipollowork-theme="light"] .border-neutral-600 {
   border-color: #c4c4c8 !important;
 }
+
+.hf-studio-header-export {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+.hf-studio-header-export:hover {
+  background-color: #292927 !important;
+}
+
+.hf-studio-header-export:active {
+  background-color: #444440 !important;
+}
+
 :root[data-ipollowork-theme="light"] .hover\:bg-neutral-900:hover,
 :root[data-ipollowork-theme="light"] .hover\:bg-neutral-800:hover {
   background-color: #e9eaec !important;

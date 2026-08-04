@@ -154,8 +154,8 @@ describe("Design property number fields", () => {
   test("passes selection summary metadata to the inspector", async () => {
     const source = await Bun.file(panelUrl).text();
     expect(source).toContain("isMultiSelection={isMultiSelection}");
-    expect(source).toContain("selectionCount={selectionSummary.selectionCount}");
-    expect(source).toContain("mixedStyleFields={selectionSummary.mixedStyleFields}");
+    expect(source).toContain("selectionCount={selectionSummary?.selectionCount ?? 0}");
+    expect(source).toContain("mixedStyleFields={selectionSummary?.mixedStyleFields ?? []}");
   });
 
   test("connects layer link, lock, and delete actions with shared icon states", async () => {
@@ -170,8 +170,8 @@ describe("Design property number fields", () => {
     expect(source).toContain('>保存</Button>');
     expect(source).toContain('label={selection.locked ? "Unlock layer" : "Lock layer"}');
     expect(source).toContain('label="Delete layer"');
-    expect(source).toContain('hover:bg-[#f4f5f8] hover:text-[#202228] active:bg-black active:text-white');
-    expect(source).toContain('active && "bg-black text-white hover:bg-black hover:text-white"');
+    expect(source).toContain("hover:bg-muted hover:text-foreground active:bg-foreground active:text-background");
+    expect(source).toContain('active && "bg-foreground text-background hover:bg-foreground hover:text-background"');
     expect(panelSource).toContain("const toggleSelectionLock = () => {");
     expect(panelSource).toContain('type: "lock"');
     expect(panelSource).toContain('onDelete={() => setDeleteConfirmationOpen(true)}');
