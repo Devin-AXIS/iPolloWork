@@ -16,6 +16,8 @@ type TranslationKey =
   | "header.viewLabel"
   | "header.storyboard"
   | "header.preview"
+  | "header.saved"
+  | "header.properties"
   | "header.undo"
   | "header.redo"
   | "header.capture"
@@ -85,8 +87,10 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "app.loadingProject": "Loading project...",
     "app.waitingForServer": "Waiting for Studio server...",
     "header.viewLabel": "Studio view",
-    "header.storyboard": "Storyboard",
+    "header.storyboard": "Edit",
     "header.preview": "Preview",
+    "header.saved": "Saved",
+    "header.properties": "Properties",
     "header.undo": "Undo",
     "header.redo": "Redo",
     "header.capture": "Capture",
@@ -156,8 +160,10 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "app.loadingProject": "正在加载项目...",
     "app.waitingForServer": "正在等待 Studio 服务...",
     "header.viewLabel": "Studio 视图",
-    "header.storyboard": "故事板",
+    "header.storyboard": "编辑",
     "header.preview": "预览",
+    "header.saved": "已保存",
+    "header.properties": "属性",
     "header.undo": "撤销",
     "header.redo": "重做",
     "header.capture": "截图",

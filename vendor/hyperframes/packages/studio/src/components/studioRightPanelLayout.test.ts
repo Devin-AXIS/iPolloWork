@@ -25,6 +25,10 @@ describe("Studio right panel layout", () => {
 
     expect(translations).toContain('"header.inspector": "Layers"');
     expect(translations).toContain('"header.inspector": "\\u56fe\\u5c42"');
+    expect(translations).toContain('"header.saved": "Saved"');
+    expect(translations).toContain('"header.saved": "已保存"');
+    expect(translations).toContain('"header.properties": "Properties"');
+    expect(translations).toContain('"header.properties": "属性"');
     expect(translations).toContain('"right.renders": "Export"');
     expect(translations).toContain('"right.catalog": "Animation"');
     expect(translations).toContain('"right.catalog": "\\u52a8\\u753b"');
@@ -36,7 +40,18 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');
     expect(panel).toContain('rightPanelTab !== "voice" && rightPanelTab !== "style"');
     expect(panel).toContain('useEffect(() => () => closeHostPanel(), [closeHostPanel])');
-    expect(header).toContain('<path d="M9 14 4 9l5-5" />');
+    expect(header).toContain('data-figma-node-id="247:3022"');
+    expect(header).toContain('figma-video-studio/properties.svg');
+    expect(header).toContain('figma-video-studio/export.svg');
+    expect(header).toContain("enabled:hover:bg-[#f6f6f4]");
+    expect(header).toContain("enabled:active:scale-[0.97]");
+    expect(header).toContain("border-[#858a94] bg-transparent");
+    expect(header).toContain("disabled:cursor-not-allowed");
+    expect(header).toContain("disabled={isRendering}");
+    expect(header).toContain("text-[#fff]");
+    expect(header).not.toContain('figma-video-studio/undo.svg');
+    expect(header).not.toContain('figma-video-studio/camera.svg');
+    expect(header).not.toContain('figma-video-studio/fullscreen.svg');
     expect(header).not.toContain('aria-label={t("header.redo")}');
     expect(header).not.toContain('<circle cx="12" cy="12" r="10" />');
   });

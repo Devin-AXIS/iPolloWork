@@ -31,7 +31,6 @@ import { deleteSelectedKeyframes } from "./hooks/timelineEditingHelpers";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
 import { useConsoleErrorCapture } from "./hooks/useConsoleErrorCapture";
-import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
@@ -67,7 +66,7 @@ import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config"
 type CanvasRect = { left: number; top: number; width: number; height: number };
 
 const HIDE_LEFT_SIDEBAR = true;
-const HIDE_STORYBOARD_VIEW = true;
+const HIDE_STORYBOARD_VIEW = false;
 const StudioLeftSidebar = lazy(() =>
   import("./components/StudioLeftSidebar").then((module) => ({ default: module.StudioLeftSidebar })),
 );
@@ -372,12 +371,6 @@ export function StudioApp() {
     projectId,
     refreshKey,
   );
-  const frameCapture = useFrameCapture({
-    projectId,
-    activeCompPath,
-    showToast,
-    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
-  });
   const {
     consoleErrors,
     setConsoleErrors,
@@ -504,11 +497,6 @@ export function StudioApp() {
                   onDrop={dragOverlay.onDrop}
                 >
                   <StudioHeader
-                    captureFrameHref={frameCapture.captureFrameHref}
-                    captureFrameFilename={frameCapture.captureFrameFilename}
-                    handleCaptureFrameClick={frameCapture.handleCaptureFrameClick}
-                    refreshCaptureFrameTime={frameCapture.refreshCaptureFrameTime}
-                    capturing={frameCapture.capturing}
                     inspectorButtonActive={inspectorButtonActive}
                     inspectorPanelActive={inspectorPanelActive}
                   />
