@@ -1401,7 +1401,7 @@ export default {
   "session.undo_title": "撤销上一条消息",
   "session.workspace_fallback": "工作区",
   "settings.api_keys_info": "API密钥由OpenCode存储在本地。环境变量提供商需在工作区环境中修改后重新加载。",
-  "settings.appearance_hint": "跟随系统或使用浅色模式。",
+  "settings.appearance_hint": "跟随系统或使用浅色/深色模式。",
   "settings.appearance_title": "外观",
   "settings.audit_log_title": "审计日志",
   "settings.auto_compact": "自动上下文压缩",

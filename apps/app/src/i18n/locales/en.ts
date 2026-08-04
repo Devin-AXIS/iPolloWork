@@ -1698,7 +1698,7 @@ export default {
   "settings.audit_actor_host": "host",
   "settings.audit_actor_remote": "remote",
   "settings.api_keys_info": "API keys are stored locally by OpenCode. Environment-backed providers must be changed in the worker environment and then reloaded.",
-  "settings.appearance_hint": "Follow the system or use light mode.",
+  "settings.appearance_hint": "Follow the system or use light/dark mode.",
   "settings.appearance_title": "Appearance",
   "settings.analytics_toggle": "Share anonymous usage data",
   "settings.analytics_toggle_desc": "Helps us understand which features matter. Never includes your messages, prompts, code, or file contents.",
