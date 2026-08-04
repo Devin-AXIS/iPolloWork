@@ -433,6 +433,116 @@ describe("Media Center extension", () => {
     });
   });
 
+  test("requires the MiniMax key before synthesizing speech", async () => {
+    await expect(callMediaExtensionAction(config, env({}), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+    }, {})).rejects.toMatchObject({ code: "minimax_api_key_missing" });
+  });
+
+  test("keeps the MiniMax key server-side while synthesizing speech", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://api.minimax.io/v1/t2a_v2");
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer mm-test-key-0000" });
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        model: "speech-2.8-hd",
+        text: "hello",
+        stream: false,
+        voice_setting: { voice_id: "female-qn-qingse" },
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        base_resp: { status_code: 0, status_msg: "success" },
+        data: { audio: "aabb", status: 2 },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+      voice: "female-qn-qingse",
+    }, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      extensionId: MEDIA_EXTENSION_ID,
+      action: "speech_synthesize",
+      result: {
+        provider: "minimax",
+        operation: "speech_synthesize",
+        output: {
+          base_resp: { status_code: 0, status_msg: "success" },
+          data: { audio: "aabb", status: 2 },
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("mm-test-key-0000");
+  });
+
+  test("routes MiniMax TTS to the China regional endpoint when requested", async () => {
+    globalThis.fetch = ((input) => {
+      expect(String(input)).toBe("https://api.minimaxi.com/v1/t2a_v2");
+      return Promise.resolve(new Response(JSON.stringify({
+        base_resp: { status_code: 0 },
+        data: { audio: "aabb" },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      region: "cn_zh",
+      text: "你好",
+    }, {});
+
+    expect(result).toMatchObject({ ok: true, result: { provider: "minimax" } });
+  });
+
+  test("passes MiniMax voice, audio, and pronunciation settings", async () => {
+    globalThis.fetch = ((_input, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({
+        model: "speech-2.6-hd",
+        output_format: "mp3",
+        voice_setting: { voice_id: "male-qn-qingse" },
+        audio_setting: { sample_rate: 32000 },
+        pronunciation_dict: { text: "你好", pinyin: "ni hao" },
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        base_resp: { status_code: 0 },
+        data: { audio: "aabb" },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+      model: "speech-2.6-hd",
+      format: "mp3",
+      voice: "male-qn-qingse",
+      audioSetting: { sample_rate: 32000 },
+      pronunciationDict: { text: "你好", pinyin: "ni hao" },
+    }, {});
+
+    expect(result).toMatchObject({ ok: true, result: { provider: "minimax" } });
+  });
+
+  test("explains MiniMax non-zero status codes", async () => {
+    globalThis.fetch = ((_input, _init) => {
+      return Promise.resolve(new Response(JSON.stringify({
+        base_resp: { status_code: 2004, status_msg: "Invalid parameter" },
+        data: {},
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+    }, {})).rejects.toMatchObject({
+      status: 502,
+      code: "minimax_request_failed",
+      message: "Invalid parameter",
+    });
+  });
+
   test("uses the asynchronous task endpoint for a digital human", async () => {
     globalThis.fetch = ((input, init) => {
       expect(String(input)).toBe("https://dashscope.aliyuncs.com/api/v1/services/aigc/image2video/video-synthesis");
