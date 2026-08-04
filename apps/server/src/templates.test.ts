@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -760,10 +761,16 @@ describe("template installations", () => {
   });
 
   test("build copies strict PPTX-compatible templates into the embedded server catalog", async () => {
-    const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
-    for (const templateId of pptxCompatibleTemplateIds) {
-      expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
-      expect(existsSync(join(builtTemplatesRoot, `${templateId}${IPOLLOWORK_PACKAGE_EXTENSION}`))).toBe(true);
+    const root = await mkdtemp(join(tmpdir(), "ipw-built-templates-"));
+    const builtTemplatesRoot = join(root, "bundled-templates");
+    try {
+      execFileSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "..", "script", "copy-bundled-templates.mjs"), builtTemplatesRoot]);
+      for (const templateId of pptxCompatibleTemplateIds) {
+        expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+        expect(existsSync(join(builtTemplatesRoot, `${templateId}${IPOLLOWORK_PACKAGE_EXTENSION}`))).toBe(true);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 
