@@ -7,9 +7,8 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 import { useStudioI18n } from "../i18n";
-
-const PROPERTIES_ICON_SRC = "/studio-header-properties.svg";
-const EXPORT_ICON_SRC = "/studio-header-export.svg";
+import propertiesIconSrc from "../icons/studioHeaderProperties.svg?url";
+import exportIconSrc from "../icons/studioHeaderExport.svg?url";
 
 export interface StudioHeaderProps {
   inspectorButtonActive: boolean;
@@ -102,7 +101,7 @@ export function StudioHeader({ inspectorButtonActive, inspectorPanelActive }: St
               STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
             }
           >
-            <img className="h-4 w-4 shrink-0" src={PROPERTIES_ICON_SRC} alt="" aria-hidden="true" />
+            <img className="h-4 w-4 shrink-0" src={propertiesIconSrc} alt="" aria-hidden="true" />
             {t("header.inspector")}
           </button>
         </Tooltip>
@@ -110,9 +109,9 @@ export function StudioHeader({ inspectorButtonActive, inspectorPanelActive }: St
           <button
             type="button"
             onClick={openExport}
-            className="flex h-8 items-center gap-1 overflow-hidden rounded-lg bg-black px-2 text-xs font-medium leading-normal text-white transition-[background-color,transform] outline-none hover:bg-[#292927] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98] active:bg-[#444440]"
+            className="hf-studio-header-export flex h-8 items-center gap-1 overflow-hidden rounded-lg px-2 text-xs font-medium leading-normal transition-[background-color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98]"
           >
-            <img className="h-4 w-4 shrink-0" src={EXPORT_ICON_SRC} alt="" aria-hidden="true" />
+            <img className="h-4 w-4 shrink-0" src={exportIconSrc} alt="" aria-hidden="true" />
             {isRendering ? t("header.rendering") : t("header.export")}
           </button>
         </Tooltip>

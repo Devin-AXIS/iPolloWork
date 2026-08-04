@@ -22,6 +22,7 @@ describe("Studio right panel layout", () => {
     const translations = readFileSync(new URL("../i18n.tsx", import.meta.url), "utf8");
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
     const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
+    const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
 
     expect(translations).toContain('"header.inspector": "Properties"');
     expect(translations).toContain('"header.inspector": "属性"');
@@ -38,12 +39,13 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('useEffect(() => () => closeHostPanel(), [closeHostPanel])');
     expect(header).toContain('aria-disabled="true"');
     expect(header).toContain('t("header.previewComingSoon")');
-    expect(header).toContain('const PROPERTIES_ICON_SRC = "/studio-header-properties.svg"');
-    expect(header).toContain('const EXPORT_ICON_SRC = "/studio-header-export.svg"');
+    expect(header).toContain('import propertiesIconSrc from "../icons/studioHeaderProperties.svg?url"');
+    expect(header).toContain('import exportIconSrc from "../icons/studioHeaderExport.svg?url"');
     expect(header).toContain("hover:border-[#62666e]");
     expect(header).toContain("active:bg-[#ededeb]");
-    expect(header).toContain("hover:bg-[#292927]");
-    expect(header).toContain("active:bg-[#444440]");
+    expect(header).toContain("hf-studio-header-export");
+    expect(styles).toContain(".hf-studio-header-export {");
+    expect(styles).toContain("color: #ffffff !important;");
     expect(header).not.toContain('t("header.undo")');
     expect(header).not.toContain('t("header.capture")');
     expect(header).not.toContain("studio-toggle-fullscreen");
