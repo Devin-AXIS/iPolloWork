@@ -38,8 +38,12 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('useEffect(() => () => closeHostPanel(), [closeHostPanel])');
     expect(header).toContain('aria-disabled="true"');
     expect(header).toContain('t("header.previewComingSoon")');
-    expect(header).toContain("<SlidersHorizontal");
-    expect(header).toContain("<DownloadSimple");
+    expect(header).toContain('const PROPERTIES_ICON_SRC = "/studio-header-properties.svg"');
+    expect(header).toContain('const EXPORT_ICON_SRC = "/studio-header-export.svg"');
+    expect(header).toContain("hover:border-[#62666e]");
+    expect(header).toContain("active:bg-[#ededeb]");
+    expect(header).toContain("hover:bg-[#292927]");
+    expect(header).toContain("active:bg-[#444440]");
     expect(header).not.toContain('t("header.undo")');
     expect(header).not.toContain('t("header.capture")');
     expect(header).not.toContain("studio-toggle-fullscreen");

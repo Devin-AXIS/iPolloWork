@@ -1,4 +1,3 @@
-import { DownloadSimple, SlidersHorizontal } from "@phosphor-icons/react";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
@@ -8,6 +7,9 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 import { useStudioI18n } from "../i18n";
+
+const PROPERTIES_ICON_SRC = "/studio-header-properties.svg";
+const EXPORT_ICON_SRC = "/studio-header-export.svg";
 
 export interface StudioHeaderProps {
   inspectorButtonActive: boolean;
@@ -89,18 +91,18 @@ export function StudioHeader({ inspectorButtonActive, inspectorPanelActive }: St
             onClick={toggleProperties}
             disabled={!STUDIO_INSPECTOR_PANELS_ENABLED}
             aria-pressed={inspectorButtonActive}
-            className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors active:scale-[0.98] ${
+            className={`flex h-8 items-center gap-1 overflow-hidden rounded-lg border px-[9px] py-px text-xs font-medium leading-normal transition-[background-color,border-color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98] ${
               inspectorButtonActive
                 ? "border-[#1d1d1b] bg-[#f2f2f0] text-[#1d1d1b]"
                 : STUDIO_INSPECTOR_PANELS_ENABLED
-                  ? "border-[#858a94] bg-white text-[#1d1d1b] hover:bg-[#f7f7f5]"
+                  ? "border-[#858a94] bg-white text-black hover:border-[#62666e] hover:bg-[#f7f7f5] active:border-black active:bg-[#ededeb]"
                   : "cursor-not-allowed border-[#d9dad7] text-[#92948f]"
             }`}
             aria-label={
               STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
             }
           >
-            <SlidersHorizontal size={16} aria-hidden="true" />
+            <img className="h-4 w-4 shrink-0" src={PROPERTIES_ICON_SRC} alt="" aria-hidden="true" />
             {t("header.inspector")}
           </button>
         </Tooltip>
@@ -108,9 +110,9 @@ export function StudioHeader({ inspectorButtonActive, inspectorPanelActive }: St
           <button
             type="button"
             onClick={openExport}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-[#1d1d1b] px-3 text-xs font-medium text-white transition-colors hover:bg-black active:scale-[0.98]"
+            className="flex h-8 items-center gap-1 overflow-hidden rounded-lg bg-black px-2 text-xs font-medium leading-normal text-white transition-[background-color,transform] outline-none hover:bg-[#292927] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98] active:bg-[#444440]"
           >
-            <DownloadSimple size={16} aria-hidden="true" />
+            <img className="h-4 w-4 shrink-0" src={EXPORT_ICON_SRC} alt="" aria-hidden="true" />
             {isRendering ? t("header.rendering") : t("header.export")}
           </button>
         </Tooltip>
