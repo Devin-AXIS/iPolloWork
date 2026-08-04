@@ -22,12 +22,13 @@ describe("Studio right panel layout", () => {
     const translations = readFileSync(new URL("../i18n.tsx", import.meta.url), "utf8");
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
     const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
+    const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
 
-    expect(translations).toContain('"header.inspector": "Layers"');
-    expect(translations).toContain('"header.inspector": "\\u56fe\\u5c42"');
+    expect(translations).toContain('"header.inspector": "Properties"');
+    expect(translations).toContain('"header.inspector": "属性"');
     expect(translations).toContain('"right.renders": "Export"');
     expect(translations).toContain('"right.catalog": "Animation"');
-    expect(translations).toContain('"right.catalog": "\\u52a8\\u753b"');
+    expect(translations).toContain('"right.catalog": "动画"');
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
     expect(panel).toContain('label={t("right.assets")}');
@@ -36,9 +37,18 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');
     expect(panel).toContain('rightPanelTab !== "voice" && rightPanelTab !== "style"');
     expect(panel).toContain('useEffect(() => () => closeHostPanel(), [closeHostPanel])');
-    expect(header).toContain('<path d="M9 14 4 9l5-5" />');
-    expect(header).not.toContain('aria-label={t("header.redo")}');
-    expect(header).not.toContain('<circle cx="12" cy="12" r="10" />');
+    expect(header).toContain('aria-disabled="true"');
+    expect(header).toContain('t("header.previewComingSoon")');
+    expect(header).toContain('import propertiesIconSrc from "../icons/studioHeaderProperties.svg?url"');
+    expect(header).toContain('import exportIconSrc from "../icons/studioHeaderExport.svg?url"');
+    expect(header).toContain("hover:border-[#62666e]");
+    expect(header).toContain("active:bg-[#ededeb]");
+    expect(header).toContain("hf-studio-header-export");
+    expect(styles).toContain(".hf-studio-header-export {");
+    expect(styles).toContain("color: #ffffff !important;");
+    expect(header).not.toContain('t("header.undo")');
+    expect(header).not.toContain('t("header.capture")');
+    expect(header).not.toContain("studio-toggle-fullscreen");
   });
 
   it("keeps search and category filters above one density-controlled scroll region", () => {
