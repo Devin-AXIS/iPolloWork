@@ -67,8 +67,9 @@ describe("personal and Enterprise chat entry wiring", () => {
   });
 
   test("keeps the selected template library scope when an Enterprise launches a template", () => {
-    expect(sessionPage).toContain("template.manifest.id,\n            templateResourceScope,");
-    expect(sessionPage).toContain("props.selectedSessionId,\n                            undefined,\n                            templateResourceScope,");
+    const normalizedSessionPage = sessionPage.replace(/\s+/g, " ");
+    expect(normalizedSessionPage).toContain("template.manifest.id, templateResourceScope,");
+    expect(normalizedSessionPage).toContain("props.selectedSessionId, undefined, templateResourceScope,");
     expect(sessionRoute).toContain("templateScope ?? readActiveWorkContextId()");
     expect(sessionRoute).toContain("Template unavailable");
     expect(sessionRoute).toContain("deleteSession(endpoint.workspaceId, createdSessionId)");

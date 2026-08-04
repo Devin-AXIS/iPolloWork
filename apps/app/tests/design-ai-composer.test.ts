@@ -1,6 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
-import * as sessionSurface from "../src/react-app/domains/session/surface/session-surface";
+mock.module("../src/react-app/domains/session/surface/composer/composer", () => ({
+  ReactSessionComposer: () => null,
+}));
+
+const sessionSurface = await import("../src/react-app/domains/session/surface/session-surface");
 
 const editorUrl = new URL(
   "../src/react-app/domains/session/surface/composer/editor.tsx",
@@ -97,8 +101,10 @@ describe("Design AI composer integration", () => {
     expect(source).toContain("function DesignSelectionDeletePlugin");
     expect(source).toContain("$getNodeByKey(key)");
     expect(source).toContain("<DesignSelectionDeletePlugin disabled={props.disabled} />");
-    expect(source).not.toContain("previous instanceof ComposerPastedTextNode || previous instanceof ComposerDesignSelectionNode");
-    expect(source).toContain("if (previous instanceof ComposerDesignSelectionNode) return true;");
+    const normalizedSource = source.replace(/\s+/g, " ");
+    expect(normalizedSource).toContain(
+      "if (previous instanceof ComposerDesignSelectionNode) return true; if (previous instanceof ComposerMentionNode || previous instanceof ComposerSkillNode || previous instanceof ComposerPastedTextNode) { previous.remove();",
+    );
   });
 
   test("wires Ask AI through the composer draft store and focuses the prompt", async () => {

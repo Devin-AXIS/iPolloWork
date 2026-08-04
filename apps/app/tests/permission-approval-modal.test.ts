@@ -68,7 +68,7 @@ describe("permission approval modal helpers", () => {
     ]);
   });
 
-  test("keeps keyboard order on the safer one-shot approval before session approval", () => {
+  test("keeps the safer one-shot approval visible before the session option", async () => {
     const html = renderToStaticMarkup(
       React.createElement(PermissionApprovalPanel, {
         permission: pendingPermission(),
@@ -80,7 +80,17 @@ describe("permission approval modal helpers", () => {
       match[0].replace(/<[^>]*>/g, "").trim(),
     );
 
-    expect(buttonLabels).toEqual(["Deny", "Allow once", "Allow for session"]);
+    expect(buttonLabels).toEqual(["Deny", "Allow once"]);
+
+    const source = await Bun.file(
+      new URL("../src/react-app/domains/session/chat/permission-approval-modal.tsx", import.meta.url),
+    ).text();
+    const menuStart = source.indexOf("<DropdownMenuContent");
+    const allowOnce = source.indexOf('t("session.allow_once")', menuStart);
+    const allowForSession = source.indexOf('t("session.allow_for_session")', menuStart);
+    expect(menuStart).toBeGreaterThan(-1);
+    expect(allowOnce).toBeGreaterThan(menuStart);
+    expect(allowForSession).toBeGreaterThan(allowOnce);
   });
 
   test("uses readable labels for generic permission titles", () => {

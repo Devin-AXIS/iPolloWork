@@ -1,9 +1,14 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { ComposerDraft } from "../src/app/types";
-import * as sessionRoute from "../src/react-app/shell/session-route";
 import type { DesignAiSelectionContext } from "../src/react-app/domains/session/design/design-ai-selection";
 import { useDesignAiSelectionStore } from "../src/react-app/domains/session/design/design-ai-selection-store";
+
+mock.module("../src/react-app/domains/session/chat/session-page", () => ({
+  SessionPage: () => null,
+}));
+
+const sessionRoute = await import("../src/react-app/shell/session-route");
 
 const routeUrl = new URL("../src/react-app/shell/session-route.tsx", import.meta.url);
 const runtimeUrl = new URL(
