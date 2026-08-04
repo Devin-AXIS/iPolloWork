@@ -78,6 +78,20 @@ describe("Design system theme contract", () => {
     expect(next).toContain(".logo { width: 18px; }");
   });
 
+  test("scales typography from a stable original size instead of compounding from em", async () => {
+    const source = await Bun.file(registryPath).text();
+
+    expect(source).toContain("--ipw-original-font-size");
+    expect(source).toContain("--ipw-original-font-size: var(--text-4xl, 2.5rem)");
+    expect(source).toContain("--ipw-original-font-size: var(--text-base, 1rem)");
+    expect(source).toContain(':where([data-ipw-theme-role="accent"], .eyebrow, .kicker, [class~="accent"]) { --ipw-original-font-size: var(--text-xs, .75rem);');
+    expect(source).toContain(':where([data-ipw-theme-role="muted"], .lede, .lead, .subtitle, .description) { --ipw-original-font-size: var(--text-lg, 1.125rem);');
+    expect(source).toContain("line-height: var(--leading-tight, 1.08) !important");
+    expect(source).toContain("letter-spacing: var(--tracking-display, 0) !important");
+    expect(source).toContain("font-size: calc(var(--ipw-original-font-size) * var(--ipw-type-scale)) !important");
+    expect(source).not.toContain("font-size: calc(1em * var(--ipw-type-scale)) !important");
+  });
+
   test("migrates legacy variables without dropping structural rules", () => {
     const existing = `:root { --ipw-color-bg: red; --template-ratio: 1.5; }\n.ipw-brand-slot img { width: 18px; }`;
     const next = mergeTemplateTokenCss(existing, `/* ipw-theme:start */\n:root { --ipw-color-bg: blue; }\n/* ipw-theme:end */`);
