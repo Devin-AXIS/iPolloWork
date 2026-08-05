@@ -104,7 +104,21 @@ export const preferredLanguage = (localeTags: readonly string[]): Language => {
   return "en";
 };
 
-let localeValue: Language = "en";
+const initialLocaleValue = (): Language => {
+  if (typeof window === "undefined") return "en";
+  try {
+    const stored = window.localStorage.getItem(LANGUAGE_PREF_KEY);
+    if (isLanguage(stored)) return stored;
+  } catch {
+    // initLocale reports persistence errors during app startup.
+  }
+  if (typeof document !== "undefined" && isLanguage(document.documentElement.lang)) {
+    return document.documentElement.lang;
+  }
+  return "en";
+};
+
+let localeValue: Language = initialLocaleValue();
 
 /**
  * Get current locale

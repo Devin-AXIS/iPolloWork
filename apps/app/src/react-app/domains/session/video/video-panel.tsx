@@ -718,7 +718,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             onClose={() => setVoicePanelOpen(false)}
             embedded
           /> : null}
-          {designSystemOpen ? <div className="absolute bottom-0 right-0 top-[82px] z-20 flex w-[400px] max-w-[calc(100%-2rem)] overflow-hidden border-l border-border bg-background" data-testid="video-style-tab-content">
+          {designSystemOpen ? <div className="absolute bottom-0 right-0 top-[96px] z-20 flex w-[400px] max-w-[calc(100%-2rem)] overflow-hidden border-l border-border bg-background" data-testid="video-style-tab-content">
             <DesignSystemDrawer
               embedded
               open
