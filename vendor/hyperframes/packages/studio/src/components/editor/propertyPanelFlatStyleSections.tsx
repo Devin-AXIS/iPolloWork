@@ -37,7 +37,7 @@ import { GradientField, ImageFillField } from "./propertyPanelFill";
 /* ------------------------------------------------------------------ */
 
 // fallow-ignore-next-line complexity
-function FlatFillFields({
+export function FlatFillSection({
   projectId,
   element,
   styles,
@@ -83,7 +83,7 @@ function FlatFillFields({
   };
 
   return (
-    <>
+    <div className="grid gap-1.5">
       <FlatSegmentedRow
         label="Fill"
         options={[
@@ -138,7 +138,7 @@ function FlatFillFields({
           onCommit={(next) => onSetStyle("color", next)}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -146,7 +146,7 @@ function FlatFillFields({
 /*  Flat Stroke row — width (numeric), style (select), color           */
 /* ------------------------------------------------------------------ */
 
-function FlatStrokeRow({
+export function FlatStrokeSection({
   styles,
   disabled,
   onSetStyle,
@@ -165,7 +165,7 @@ function FlatStrokeRow({
   const widthDisplay = formatPxMetricValue(borderWidthValue);
 
   return (
-    <>
+    <div className="grid gap-1.5">
       <FlatRow
         label="Stroke width"
         value={widthDisplay}
@@ -215,7 +215,7 @@ function FlatStrokeRow({
         disabled={disabled}
         onCommit={(next) => onSetStyle("border-color", next)}
       />
-    </>
+    </div>
   );
 }
 
@@ -289,7 +289,7 @@ function FlatShadowBlendRows({
   const blendValue = styles["mix-blend-mode"] || "normal";
 
   return (
-    <>
+    <div className="grid gap-1.5">
       <FlatSelectRow
         label="Shadow"
         value={boxShadowPreset}
@@ -314,7 +314,7 @@ function FlatShadowBlendRows({
         onChange={(next) => void onSetStyle("mix-blend-mode", next)}
         onReset={() => void onSetStyle("mix-blend-mode", "normal")}
       />
-    </>
+    </div>
   );
 }
 
@@ -335,7 +335,7 @@ function FlatBlurSliders({
   const backdropBlurValue = getCssFilterFunctionPx(styles["backdrop-filter"], "blur");
 
   return (
-    <>
+    <div className="grid gap-1.5">
       <FlatSlider
         label="Layer blur"
         value={filterBlurValue}
@@ -363,12 +363,12 @@ function FlatBlurSliders({
           )
         }
       />
-    </>
+    </div>
   );
 }
 
 // Flat Overflow + Mask rows (+ inset sides).
-function FlatOverflowMaskRows({
+export function FlatMaskSection({
   styles,
   disabled,
   onSetStyle,
@@ -382,7 +382,7 @@ function FlatOverflowMaskRows({
   const clipPathPreset = inferClipPathPreset(clipPathValue);
 
   return (
-    <>
+    <div className="grid gap-1.5">
       <FlatSelectRow
         label="Overflow"
         value={styles.overflow || "visible"}
@@ -414,7 +414,7 @@ function FlatOverflowMaskRows({
         disabled={disabled}
         onSetStyle={onSetStyle}
       />
-    </>
+    </div>
   );
 }
 
@@ -467,7 +467,7 @@ export function FlatStyleSection({
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   return (
     <div className="space-y-1.5">
-      <FlatFillFields
+      <FlatFillSection
         projectId={projectId}
         element={element}
         styles={styles}
@@ -475,7 +475,7 @@ export function FlatStyleSection({
         onSetStyle={onSetStyle}
         onImportAssets={onImportAssets}
       />
-      <FlatStrokeRow styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
+      <FlatStrokeSection styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
       <FlatRadiusRow
         styles={styles}
         gsapBorderRadius={gsapBorderRadius}
@@ -488,12 +488,38 @@ export function FlatStyleSection({
         onSetStyle={onSetStyle}
       />
       <FlatBlurSliders styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
-      <FlatOverflowMaskRows
+      <FlatMaskSection
         styles={styles}
         disabled={styleEditingDisabled}
         onSetStyle={onSetStyle}
       />
       <FlatOpacitySlider styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
+    </div>
+  );
+}
+
+export function FlatAppearanceSection({
+  styles,
+  gsapBorderRadius,
+  disabled,
+  onSetStyle,
+}: {
+  styles: Record<string, string>;
+  gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
+  disabled: boolean;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <FlatRadiusRow
+        styles={styles}
+        gsapBorderRadius={gsapBorderRadius}
+        disabled={disabled}
+        onSetStyle={onSetStyle}
+      />
+      <FlatOpacitySlider styles={styles} disabled={disabled} onSetStyle={onSetStyle} />
+      <FlatShadowBlendRows styles={styles} disabled={disabled} onSetStyle={onSetStyle} />
+      <FlatBlurSliders styles={styles} disabled={disabled} onSetStyle={onSetStyle} />
     </div>
   );
 }

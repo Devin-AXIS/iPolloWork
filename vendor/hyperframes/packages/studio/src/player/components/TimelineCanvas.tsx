@@ -47,8 +47,14 @@ interface TimelineCanvasProps extends TimelineLaneBaseProps {
 
 export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvasProps) {
   const { draggedClip, scrollRef, displayTrackOrder } = props;
-  const { onResizeElement, onMoveElement, onToggleTrackHidden, onRazorSplit, onRazorSplitAll } =
-    useTimelineEditContextOptional();
+  const {
+    onResizeElement,
+    onMoveElement,
+    onToggleTrackHidden,
+    onToggleTrackLocked,
+    onRazorSplit,
+    onRazorSplitAll,
+  } = useTimelineEditContextOptional();
   const beatDragging = usePlayerStore((s) => s.beatDragging);
   // Scroll a clip into view when the sidebar (asset card) requests a reveal.
   useTimelineRevealClip(scrollRef);
@@ -156,6 +162,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         draggedElement={draggedElement}
         multiDragPreview={multiDragPreview}
         onToggleTrackHidden={onToggleTrackHidden}
+        onToggleTrackLocked={onToggleTrackLocked}
         onResizeElement={onResizeElement}
         onMoveElement={onMoveElement}
         onRazorSplit={onRazorSplit}

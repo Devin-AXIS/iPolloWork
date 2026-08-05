@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
-import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
+import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 
 interface UsePreviewBlockDropOptions {
   portrait?: boolean;
@@ -11,6 +11,7 @@ interface UsePreviewBlockDropOptions {
   compositionSize?: { width: number; height: number } | null;
   stageRef: RefObject<HTMLDivElement | null>;
   onBlockDrop?: (blockName: string, position: { left: number; top: number }) => void;
+  onAssetDrop?: (assetPath: string) => void;
 }
 
 interface BlockDropPayload {
@@ -28,6 +29,22 @@ function parseBlockPayload(raw: string): BlockDropPayload | null {
   } catch {
     return null;
   }
+}
+
+export function parsePreviewAssetPayload(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw) as { path?: unknown };
+    return typeof parsed.path === "string" && parsed.path.length > 0 ? parsed.path : null;
+  } catch {
+    return null;
+  }
+}
+
+function supportsPreviewDrop(e: React.DragEvent, canDropBlock: boolean, canDropAsset: boolean) {
+  return (
+    (canDropBlock && e.dataTransfer.types.includes(TIMELINE_BLOCK_MIME)) ||
+    (canDropAsset && e.dataTransfer.types.includes(TIMELINE_ASSET_MIME))
+  );
 }
 
 function resolveCompositionPosition(
@@ -68,6 +85,7 @@ export function usePreviewBlockDrop({
   compositionSize,
   stageRef,
   onBlockDrop,
+  onAssetDrop,
 }: UsePreviewBlockDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
   // dragenter/dragleave fire for every internal element boundary; a depth
@@ -76,23 +94,21 @@ export function usePreviewBlockDrop({
 
   const handleDragEnter = useCallback(
     (e: React.DragEvent) => {
-      if (!onBlockDrop) return;
-      if (!e.dataTransfer.types.includes(TIMELINE_BLOCK_MIME)) return;
+      if (!supportsPreviewDrop(e, Boolean(onBlockDrop), Boolean(onAssetDrop))) return;
       dragDepthRef.current += 1;
       setIsDragOver(true);
     },
-    [onBlockDrop],
+    [onAssetDrop, onBlockDrop],
   );
 
   const handleDragOver = useCallback(
     (e: React.DragEvent) => {
-      if (!onBlockDrop) return;
-      if (!e.dataTransfer.types.includes(TIMELINE_BLOCK_MIME)) return;
+      if (!supportsPreviewDrop(e, Boolean(onBlockDrop), Boolean(onAssetDrop))) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
       // dragenter/dragleave own the isDragOver flag (depth-counted).
     },
-    [onBlockDrop],
+    [onAssetDrop, onBlockDrop],
   );
 
   const handleDragLeave = useCallback(() => {
@@ -105,6 +121,16 @@ export function usePreviewBlockDrop({
     (e: React.DragEvent) => {
       dragDepthRef.current = 0;
       setIsDragOver(false);
+
+      const assetPayload = e.dataTransfer.getData(TIMELINE_ASSET_MIME);
+      if (assetPayload && onAssetDrop) {
+        const assetPath = parsePreviewAssetPayload(assetPayload);
+        if (!assetPath) return;
+        e.preventDefault();
+        onAssetDrop(assetPath);
+        return;
+      }
+
       if (!onBlockDrop) return;
 
       const payload = e.dataTransfer.getData(TIMELINE_BLOCK_MIME);
@@ -126,7 +152,7 @@ export function usePreviewBlockDrop({
 
       onBlockDrop(block.name, centerBlockAtPosition(pos, block));
     },
-    [onBlockDrop, stageRef, compositionSize, portrait],
+    [onAssetDrop, onBlockDrop, stageRef, compositionSize, portrait],
   );
 
   return { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop };

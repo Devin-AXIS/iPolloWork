@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { parsePreviewAssetPayload } from "./usePreviewBlockDrop";
 
 describe("preview editing interactions", () => {
   it("selects canvas elements on one click without opening Design automatically", () => {
@@ -11,6 +12,83 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("isDoubleClick");
     expect(source).not.toContain("applyDomSelection(hit, { revealPanel: true })");
     expect(source).not.toContain("exitPreviewFullscreenForInspector");
+  });
+
+  it("clears the selected element when the user clicks outside the preview selection surface", () => {
+    const source = readFileSync(new URL("./PreviewPane.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('document.addEventListener("pointerdown", handlePointerDown, true)');
+    expect(source).toContain('event.target.closest(\'[data-preview-pan-surface="true"]\')');
+    expect(source).toContain('event.target.closest(\'[data-preserve-studio-selection="true"]\')');
+    expect(source).toContain("clearSelectedElement()");
+    expect(source).toContain('type: "ipollowork:hyperframes:clear-selection"');
+    expect(source).toContain('event.data?.type !== "ipollowork:video-studio-clear-selection"');
+    expect(source).toContain('document.removeEventListener("pointerdown", handlePointerDown, true)');
+  });
+
+  it("accepts project assets and animations on the video preview", () => {
+    const previewDropSource = readFileSync(
+      new URL("./usePreviewBlockDrop.ts", import.meta.url),
+      "utf8",
+    );
+    const editorShellSource = readFileSync(new URL("../EditorShell.tsx", import.meta.url), "utf8");
+    const assetCardSource = readFileSync(new URL("../sidebar/AssetCard.tsx", import.meta.url), "utf8");
+    const catalogSource = readFileSync(new URL("../sidebar/BlocksTab.tsx", import.meta.url), "utf8");
+
+    expect(parsePreviewAssetPayload('{"path":"assets/cover.png"}')).toBe("assets/cover.png");
+    expect(parsePreviewAssetPayload('{"path":42}')).toBeNull();
+    expect(parsePreviewAssetPayload("not-json")).toBeNull();
+    expect(previewDropSource).toContain("TIMELINE_ASSET_MIME");
+    expect(previewDropSource).toContain("TIMELINE_BLOCK_MIME");
+    expect(previewDropSource).toContain("onAssetDrop(assetPath)");
+    expect(previewDropSource).toContain("onBlockDrop(block.name");
+    expect(editorShellSource).toContain("useAddAssetAtPlayhead(onAssetDrop)");
+    expect(editorShellSource).toContain("onPreviewAssetDrop={handlePreviewAssetDrop}");
+    expect(editorShellSource).toContain("onPreviewBlockDrop={onPreviewBlockDrop}");
+    expect(assetCardSource).toContain("setData(TIMELINE_ASSET_MIME");
+    expect(catalogSource).toContain("setData(TIMELINE_BLOCK_MIME");
+  });
+
+  it("uploads OS files dropped anywhere in the right-side assets area", () => {
+    const assetsSource = readFileSync(new URL("../sidebar/AssetsTab.tsx", import.meta.url), "utf8");
+
+    expect(assetsSource).toContain('e.dataTransfer.types.includes("Files")');
+    expect(assetsSource).toContain("onImport?.(e.dataTransfer.files)");
+    expect(assetsSource).toContain("Drop files to upload");
+    expect(assetsSource).toContain('title="Source selection is not available yet"');
+    expect(assetsSource).toContain("disabled");
+    expect(assetsSource).toContain("Project 01");
+    expect(assetsSource).toContain('bg-[#171816] text-[#ffffff]');
+    expect(assetsSource).not.toContain('bg-[#2c2d2a] text-white');
+    expect(assetsSource).toContain('flex h-full min-h-0 flex-1 flex-col overflow-hidden');
+    expect(assetsSource).toContain('data-testid="assets-virtual-scroll"');
+    expect(assetsSource).toContain('className="min-h-0 flex-1 overflow-y-auto overscroll-contain"');
+    expect(assetsSource).toContain("new IntersectionObserver");
+    expect(assetsSource).toContain('figmaAssetsImport.svg?url');
+    expect(assetsSource).toContain('figmaAssetsSearch.svg?url');
+    expect(assetsSource).toContain("<select");
+    expect(assetsSource).toContain('className="flex h-[34px] w-auto flex-none');
+    expect(assetsSource).toContain("new IntersectionObserver");
+    expect(assetsSource).toContain("ASSET_VIRTUAL_OVERSCAN_PX");
+    expect(assetsSource).toContain("visible ? (");
+    expect(assetsSource).toContain("CaretDown");
+    expect(assetsSource).not.toContain('timelineChevronDown.svg?url');
+    expect(assetsSource).toContain("e.stopPropagation()");
+    expect(assetsSource).not.toContain("grid-cols-[minmax(0,194px)_104px]");
+  });
+
+  it("keeps OS file uploads inside the assets panel without a global drag mask", () => {
+    const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+    const overlaysSource = readFileSync(new URL("../StudioOverlays.tsx", import.meta.url), "utf8");
+    const contextSource = readFileSync(
+      new URL("../../hooks/useStudioContextValue.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(appSource).toContain("preventUnhandledFileDrop");
+    expect(appSource).not.toContain("useGlobalFileDrop");
+    expect(overlaysSource).not.toContain("StudioGlobalDragOverlay");
+    expect(contextSource).not.toContain("useDragOverlay");
   });
 
   it("drives the floating toolbar from the selected DOM element", () => {

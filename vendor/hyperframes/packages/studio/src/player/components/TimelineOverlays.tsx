@@ -1,4 +1,4 @@
-import type { KeyframeCacheEntry, TimelineElement } from "../store/playerStore";
+import type { KeyframeCacheEntry } from "../store/playerStore";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineRangeSelection } from "./timelineEditing";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -7,15 +7,8 @@ import {
   KeyframeDiamondContextMenu,
   type KeyframeDiamondContextMenuState,
 } from "./KeyframeDiamondContextMenu";
-import { ClipContextMenu } from "./ClipContextMenu";
 import { TrackGapContextMenu } from "./TrackGapContextMenu";
 import { TimelineShortcutHint } from "./TimelineShortcutHint";
-
-interface ClipContextMenuState {
-  x: number;
-  y: number;
-  element: TimelineElement;
-}
 
 /** Resolved model for the empty-lane-space (track gap) context menu. */
 interface TrackGapContextMenuState {
@@ -41,12 +34,6 @@ interface TimelineOverlaysProps {
   onChangeKeyframeEase: TimelineEditCallbacks["onChangeKeyframeEase"];
   onMoveKeyframeToPlayhead: TimelineEditCallbacks["onMoveKeyframeToPlayhead"];
   keyframeCache: Map<string, KeyframeCacheEntry>;
-  clipContextMenu: ClipContextMenuState | null;
-  setClipContextMenu: (value: ClipContextMenuState | null) => void;
-  currentTime: number;
-  onSplitElement: TimelineEditCallbacks["onSplitElement"];
-  pinZoomBeforeEdit: () => void;
-  onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
   gapContextMenu: TrackGapContextMenuState | null;
   onDismissGapContextMenu: () => void;
   onCloseTrackGap: () => void;
@@ -55,8 +42,7 @@ interface TimelineOverlaysProps {
 }
 
 // The timeline's floating overlays, rendered as siblings above the scroll area:
-// the shortcut hint, the range-edit popover, the keyframe-diamond context menu,
-// and the clip context menu.
+// the shortcut hint, the range-edit popover, and the keyframe-diamond context menu.
 export function TimelineOverlays({
   theme,
   showShortcutHint,
@@ -71,12 +57,6 @@ export function TimelineOverlays({
   onChangeKeyframeEase,
   onMoveKeyframeToPlayhead,
   keyframeCache,
-  clipContextMenu,
-  setClipContextMenu,
-  currentTime,
-  onSplitElement,
-  pinZoomBeforeEdit,
-  onDeleteElement,
   gapContextMenu,
   onDismissGapContextMenu,
   onCloseTrackGap,
@@ -120,21 +100,6 @@ export function TimelineOverlays({
             if (kf) {
               void navigator.clipboard.writeText(JSON.stringify(kf.properties, null, 2));
             }
-          }}
-        />
-      )}
-
-      {clipContextMenu && (
-        <ClipContextMenu
-          x={clipContextMenu.x}
-          y={clipContextMenu.y}
-          element={clipContextMenu.element}
-          currentTime={currentTime}
-          onClose={() => setClipContextMenu(null)}
-          onSplit={(el, time) => onSplitElement?.(el, time)}
-          onDelete={(el) => {
-            pinZoomBeforeEdit();
-            onDeleteElement?.(el);
           }}
         />
       )}

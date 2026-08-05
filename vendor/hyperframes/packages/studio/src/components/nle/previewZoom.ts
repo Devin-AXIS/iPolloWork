@@ -7,12 +7,21 @@ export interface PreviewZoomState {
 export const MIN_PREVIEW_ZOOM_PERCENT = 25;
 export const MAX_PREVIEW_ZOOM_PERCENT = 400;
 export const PREVIEW_PAN_SURFACE_SELECTOR = '[data-preview-pan-surface="true"]';
+export const PREVIEW_ZOOM_CONTROLLER_SELECTOR = '[data-preview-zoom-controller="true"]';
+export const PREVIEW_ZOOM_RESET_EVENT = "studio-reset-preview-zoom";
 export const PREVIEW_PAN_OVERSCROLL_PX = 48;
 export const DEFAULT_PREVIEW_ZOOM: PreviewZoomState = {
   zoomPercent: 100,
   panX: 0,
   panY: 0,
 };
+
+export function requestPreviewZoomReset(): void {
+  if (typeof document === "undefined") return;
+  document
+    .querySelector(PREVIEW_ZOOM_CONTROLLER_SELECTOR)
+    ?.dispatchEvent(new Event(PREVIEW_ZOOM_RESET_EVENT));
+}
 
 const ZOOM_SENSITIVITY = 0.007;
 const MAX_DELTA = 10;

@@ -1,5 +1,4 @@
-import { useEffect, useRef } from "react";
-import { Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
+import { useRef, useState } from "react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -7,6 +6,7 @@ import {
 } from "../hooks/useEnableKeyframes";
 import { computeElementPercentage } from "../hooks/gsapShared";
 import { useKeyframeKeyboard } from "../hooks/useKeyframeKeyboard";
+import { useFrameCapture } from "../hooks/useFrameCapture";
 import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
@@ -14,17 +14,33 @@ import {
   timelineSliderToZoomPercent,
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
+import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimelineElements";
 import { usePlayerStore, type TimelineElement } from "../player";
-import {
-  STUDIO_KEYFRAMES_ENABLED,
-  STUDIO_RAZOR_TOOL_ENABLED,
-} from "./editor/manualEditingAvailability";
+import { STUDIO_KEYFRAMES_ENABLED } from "./editor/manualEditingAvailability";
 import { Tooltip } from "./ui";
-import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
-import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
+import {
+  findSelectedTimelineElement,
+  rebaseExpandedTimelineEdit,
+} from "../utils/timelineToolbarSelection";
+import { useStudioShellContext } from "../contexts/StudioContext";
+import { requestPreviewZoomReset } from "./nle/previewZoom";
+import undoIconSrc from "../icons/figmaToolbarUndo.svg?url";
+import redoIconSrc from "../icons/figmaToolbarRedo.svg?url";
+import dividerIconSrc from "../icons/figmaToolbarDivider.svg?url";
+import scissorsIconSrc from "../icons/figmaToolbarScissors.svg?url";
+import diamondIconSrc from "../icons/figmaToolbarDiamond.svg?url";
+import trashIconSrc from "../icons/figmaToolbarTrash.svg?url";
+import zoomOutIconSrc from "../icons/figmaToolbarZoomOut.svg?url";
+import zoomInIconSrc from "../icons/figmaToolbarZoomIn.svg?url";
+import fitIconSrc from "../icons/figmaToolbarFit.svg?url";
+import cameraIconSrc from "../icons/figmaToolbarCamera.svg?url";
+
+export const CANVAS_SNAP_TOOLBAR_SLOT_ID = "hf-canvas-snap-toolbar-slot";
+export const CANVAS_GRID_TOOLBAR_SLOT_ID = "hf-canvas-grid-toolbar-slot";
+export const SHORTCUTS_TOOLBAR_SLOT_ID = "hf-shortcuts-toolbar-slot";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
@@ -33,401 +49,286 @@ interface DomEditSessionSlice extends EnableKeyframesSession {
 
 interface TimelineToolbarProps {
   domEditSession?: DomEditSessionSlice;
-  onSplitElement?: (element: TimelineElement, splitTime: number) => void;
+  onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
+  onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
+  onDeleteDomElement?: (selection: DomEditSelection) => Promise<void> | void;
 }
 
 function useKeyframeToggle(session?: DomEditSessionSlice) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const sessionRef = useRef(session);
   sessionRef.current = session;
-
   const onToggle = useEnableKeyframes(
     sessionRef as React.RefObject<EnableKeyframesSession | undefined>,
   );
 
   if (!session) return { state: "none" as const, onToggle: undefined };
-
-  const sel = session.domEditSelection;
-  const anims = session.selectedGsapAnimations;
-  const kfAnim = anims.find((a) => a.keyframes);
-
+  const selection = session.domEditSelection;
+  const keyframeAnimation = session.selectedGsapAnimations.find((animation) => animation.keyframes);
   let state: "active" | "inactive" | "none" = "none";
-  // Outside the tween, clicking extends the animation to the playhead rather than
-  // toggling a (clamped) edge keyframe — so the button stays an "add" affordance.
-  let willExtend = false;
-  if (kfAnim?.keyframes && sel) {
-    if (!isPlayheadWithinTween(kfAnim, currentTime)) {
+
+  if (keyframeAnimation?.keyframes && selection) {
+    if (!isPlayheadWithinTween(keyframeAnimation, currentTime)) {
       state = "inactive";
-      willExtend = true;
     } else {
-      // Tween-relative percentage (not the clip range) so the button state matches
-      // where the keyframe would actually land.
-      const pct = computeElementPercentage(currentTime, sel, kfAnim);
-      state = kfAnim.keyframes.keyframes.some((k) => Math.abs(k.percentage - pct) <= 1)
+      const percentage = computeElementPercentage(currentTime, selection, keyframeAnimation);
+      state = keyframeAnimation.keyframes.keyframes.some(
+        (keyframe) => Math.abs(keyframe.percentage - percentage) <= 1,
+      )
         ? "active"
         : "inactive";
     }
   }
 
-  return { state, willExtend, onToggle: sel ? onToggle : undefined };
+  return { state, onToggle: selection ? onToggle : undefined };
+}
+
+function ToolbarIcon({ src, size = 16 }: { src: string; size?: number }) {
+  return <img src={src} width={size} height={size} alt="" aria-hidden="true" />;
 }
 
 // fallow-ignore-next-line complexity
-export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineToolbarProps) {
-  const activeTool = usePlayerStore((s) => s.activeTool);
-  const setActiveTool = usePlayerStore((s) => s.setActiveTool);
-  const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
-  const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
-  const autoKeyframeEnabled = usePlayerStore((s) => s.autoKeyframeEnabled);
-  const setAutoKeyframeEnabled = usePlayerStore((s) => s.setAutoKeyframeEnabled);
-  // Subscribe so the add-beat button reacts to playhead movement and analysis load.
+export function TimelineToolbar({
+  domEditSession,
+  onSplitElement,
+  onDeleteElement,
+  onDeleteDomElement,
+}: TimelineToolbarProps) {
+  const [pendingAction, setPendingAction] = useState<"split" | "keyframe" | "delete" | null>(
+    null,
+  );
   const currentTime = usePlayerStore((s) => s.currentTime);
-  const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
-  // Subscribe (not getState) so the split button enables/disables the moment
-  // the selection changes, not only on the next playhead tick.
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
-  const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
-  const elements = usePlayerStore((s) => s.elements);
+  const elements = useExpandedTimelineElements();
+  const selectedElement = findSelectedTimelineElement(elements, selectedElementId);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
-  const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
+  const timelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
+  const { state: keyframeState, onToggle: onToggleKeyframe } = useKeyframeToggle(domEditSession);
   const {
-    state: keyframeState,
-    willExtend: keyframeWillExtend,
-    onToggle: onToggleKeyframe,
-  } = useKeyframeToggle(domEditSession);
+    projectId,
+    activeCompPath,
+    showToast,
+    waitForPendingDomEditSaves,
+    editHistory,
+    handleUndo,
+    handleRedo,
+  } = useStudioShellContext();
+  const {
+    captureFrameHref,
+    captureFrameFilename,
+    handleCaptureFrameClick,
+    capturing,
+  } = useFrameCapture({
+    projectId,
+    activeCompPath,
+    showToast,
+    waitForPendingDomEditSaves,
+  });
 
-  // Wire the "Add keyframe (K)" shortcut the toolbar advertises. Active only when
-  // there's a keyframeable selection; otherwise K stays JKL-pause in playback.
   useKeyframeKeyboard({
     enabled: STUDIO_KEYFRAMES_ENABLED && Boolean(onToggleKeyframe),
     onAddKeyframe: onToggleKeyframe,
   });
 
-  // "N" toggles timeline snapping (industry convention: Resolve/FCP).
-  // Skip when typing in an input/contenteditable.
-  useEffect(() => {
-    // fallow-ignore-next-line complexity
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "n" && e.key !== "N") return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target instanceof HTMLElement ? e.target : null;
-      if (target?.isContentEditable) return;
-      const tag = target?.tagName?.toLowerCase() ?? "";
-      if (tag === "input" || tag === "textarea" || tag === "select") return;
-      const store = usePlayerStore.getState();
-      store.setTimelineSnapEnabled(!store.timelineSnapEnabled);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  // CapCut-flat icon buttons: no per-button border/box chrome — a transparent
-  // 28px hit area with a subtle rounded hover wash, consistent 16px glyphs.
-  const flatBtn = "flex h-7 w-7 items-center justify-center rounded-md transition-colors";
-  const flatIdle = `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200 active:scale-[0.98]`;
-  const flatActive = `${flatBtn} bg-white/[0.08] text-neutral-100 active:scale-[0.98]`;
-  const flatDisabled = `${flatBtn} text-neutral-700 cursor-not-allowed`;
+  const iconButton =
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35 disabled:cursor-not-allowed disabled:opacity-30";
+  const canSplit =
+    Boolean(onSplitElement && selectedElement && canSplitElement(selectedElement)) &&
+    currentTime > (selectedElement?.start ?? 0) &&
+    currentTime < (selectedElement?.start ?? 0) + (selectedElement?.duration ?? 0);
+  const canDelete = Boolean(
+    (selectedElement && onDeleteElement) || (domEditSession?.domEditSelection && onDeleteDomElement),
+  );
+  const runSelectionAction = async (
+    action: "split" | "keyframe" | "delete",
+    execute: () => Promise<void> | void,
+  ) => {
+    if (pendingAction) return;
+    setPendingAction(action);
+    try {
+      await execute();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : `Failed to ${action} selection`, "error");
+    } finally {
+      setPendingAction(null);
+    }
+  };
 
   return (
-    // The "TIMELINE" label is dropped for CapCut-like density — the pane's
-    // position (tracks right below) makes it self-evident.
-    <div className="border-b border-neutral-800/60">
-      <div className="flex items-center justify-between px-2 py-0.5">
-        <div className="flex items-center gap-0.5">
-          {STUDIO_RAZOR_TOOL_ENABLED && (
-            <>
-              <Tooltip label="Selection tool (V)">
-                <button
-                  type="button"
-                  onClick={() => setActiveTool("select")}
-                  aria-label="Selection tool"
-                  aria-pressed={activeTool === "select"}
-                  className={activeTool === "select" ? flatActive : flatIdle}
-                >
-                  <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor">
-                    <path d="M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z" />
-                  </svg>
-                </button>
-              </Tooltip>
-              <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
-                <button
-                  type="button"
-                  onClick={() => setActiveTool("razor")}
-                  aria-label="Razor tool"
-                  aria-pressed={activeTool === "razor"}
-                  className={activeTool === "razor" ? flatActive : flatIdle}
-                >
-                  <Scissors size={16} />
-                </button>
-              </Tooltip>
-              {/* Divider: tool-mode | editing-actions */}
-              <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
-            </>
-          )}
-          <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
-            <button
-              type="button"
-              onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}
-              aria-label="Toggle timeline snapping"
-              aria-pressed={timelineSnapEnabled}
-              className={timelineSnapEnabled ? flatActive : flatIdle}
-            >
-              <Magnet size={16} weight="bold" aria-hidden="true" />
-            </button>
-          </Tooltip>
-          {STUDIO_KEYFRAMES_ENABLED && (
-            // Always rendered (CapCut-style): with no keyframeable selection the
-            // button fades to a disabled state instead of unmounting, so the
-            // toolbar layout never shifts.
-            <Tooltip
-              label={
-                !onToggleKeyframe
-                  ? "Select an animated element to add keyframes"
-                  : keyframeState === "active"
-                    ? "Remove keyframe at playhead (K)"
-                    : keyframeState === "inactive"
-                      ? keyframeWillExtend
-                        ? "Add keyframe at playhead, extends animation (K)"
-                        : "Add keyframe at playhead (K)"
-                      : "Add keyframe (K)"
-              }
-            >
-              <button
-                type="button"
-                disabled={!onToggleKeyframe}
-                onClick={onToggleKeyframe}
-                aria-label={
-                  keyframeState === "active"
-                    ? "Remove keyframe at playhead"
-                    : "Add keyframe at playhead"
-                }
-                className={
-                  !onToggleKeyframe
-                    ? flatDisabled
-                    : `${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
-                        keyframeState === "active"
-                          ? "text-studio-accent"
-                          : keyframeState === "inactive"
-                            ? "text-neutral-400 hover:text-studio-accent"
-                            : "text-neutral-600 hover:text-neutral-400"
-                      }`
-                }
-              >
-                <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                  {keyframeState === "active" ? (
-                    <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
-                  ) : (
-                    <path
-                      d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.2"
-                    />
-                  )}
-                </svg>
-              </button>
-            </Tooltip>
-          )}
-          {STUDIO_KEYFRAMES_ENABLED && (
-            <Tooltip
-              label={
-                autoKeyframeEnabled
-                  ? "Auto-record manual edits as keyframes (click to turn off)"
-                  : "Manual edits will not be recorded as keyframes (click to turn on)"
-              }
-            >
-              <button
-                type="button"
-                onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
-                aria-label="Auto-record manual edits as keyframes"
-                aria-pressed={autoKeyframeEnabled}
-                className={`${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
-                  autoKeyframeEnabled
-                    ? "text-red-400 hover:text-red-300"
-                    : "text-neutral-600 hover:text-neutral-400"
-                }`}
-              >
-                <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
-                  {/* Same diamond outline as the Add-keyframe icon, with a
-                      record-style dot inside: filled = auto-recording,
-                      hollow = manual edits won't be keyframed. */}
-                  <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
-                  <circle
-                    cx="5"
-                    cy="5"
-                    r="1.8"
-                    fill={autoKeyframeEnabled ? "currentColor" : "none"}
-                    stroke="currentColor"
-                    strokeWidth="1"
-                  />
-                </svg>
-              </button>
-            </Tooltip>
-          )}
-          {onSplitElement &&
-            (() => {
-              // Render the button unconditionally (disabled when unusable):
-              // mounting/unmounting mid-task shifts the neighboring controls.
-              // Mirrors the S-key gate: selected clip + playhead strictly inside it.
-              const el = selectedElementId
-                ? elements.find((e) => (e.key ?? e.id) === selectedElementId)
-                : null;
-              const splittable = el != null && canSplitElement(el);
-              const canSplit =
-                splittable && currentTime > el.start && currentTime < el.start + el.duration;
-              return (
-                <Tooltip
-                  label={
-                    canSplit
-                      ? "Split at playhead (S)"
-                      : splittable
-                        ? "Move the playhead inside the clip to split"
-                        : "Select a clip to split"
-                  }
-                >
-                  <button
-                    type="button"
-                    disabled={!canSplit}
-                    aria-label="Split at playhead"
-                    onClick={() => {
-                      if (canSplit && el) onSplitElement(el, currentTime);
-                    }}
-                    className={canSplit ? flatIdle : flatDisabled}
-                  >
-                    {/* "][" split glyph: two outward-facing brackets with a center gap */}
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      {/* Right bracket of left half: ] */}
-                      <path d="M5 3 L7 3 L7 13 L5 13" />
-                      {/* Left bracket of right half: [ */}
-                      <path d="M11 3 L9 3 L9 13 L11 13" />
-                    </svg>
-                  </button>
-                </Tooltip>
-              );
-            })()}
-          {(() => {
-            // Always rendered (CapCut-style): before beat analysis loads (or when
-            // the project has no analyzed music) the button fades to a disabled
-            // state instead of unmounting, so the toolbar layout never shifts.
-            const canAdd = beatAnalysisReady && canAddBeatAt(currentTime);
-            return (
-              <Tooltip
-                label={
-                  !beatAnalysisReady
-                    ? "Add a music track with beat analysis to place beats"
-                    : canAdd
-                      ? "Add beat at playhead"
-                      : "A beat already exists at the playhead"
-                }
-              >
-                <button
-                  type="button"
-                  disabled={!canAdd}
-                  aria-label="Add beat at playhead"
-                  onClick={() => {
-                    if (canAdd) addBeatAtCompositionTime(currentTime);
-                  }}
-                  className={
-                    canAdd
-                      ? `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-[#22c55e] active:scale-[0.98]`
-                      : flatDisabled
-                  }
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              </Tooltip>
-            );
-          })()}
-          {selectedElementIds.size > 1 && (
-            <span
-              className="ml-1 rounded bg-white/[0.06] px-2 py-1 text-[10px] text-neutral-400"
-              title="Plain drag moves one clip. Hold Ctrl (or Command) while dragging to move the selection together."
-            >
-              {selectedElementIds.size} selected · Ctrl-drag together
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-0.5">
-          <Tooltip label="Fit timeline to width">
-            <button
-              type="button"
-              onClick={() => setZoomMode("fit")}
-              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
-                zoomMode === "fit"
-                  ? "bg-studio-accent/10 text-studio-accent"
-                  : "text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
-              }`}
-            >
-              Fit
-            </button>
-          </Tooltip>
-          <Tooltip label="Zoom out">
-            <button
-              type="button"
-              aria-label="Zoom out"
-              onClick={() => {
-                setZoomMode("manual");
-                setManualZoomPercent(
-                  getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent),
-                );
-              }}
-              className={flatIdle}
-            >
-              <MagnifyingGlassMinus size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={timelineZoomPercentToSlider(displayedTimelineZoomPercent)}
-            title={`${displayedTimelineZoomPercent}%`}
-            aria-label="Timeline zoom"
-            onChange={(e) => {
-              setZoomMode("manual");
-              setManualZoomPercent(timelineSliderToZoomPercent(Number(e.target.value)));
-            }}
-            className="mx-1 w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
-          />
-          <Tooltip label="Zoom in">
-            <button
-              type="button"
-              aria-label="Zoom in"
-              onClick={() => {
-                setZoomMode("manual");
-                setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
-              }}
-              className={flatIdle}
-            >
-              <MagnifyingGlassPlus size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
-          {/* Numeric zoom readout (main-parity): "Fit" in fit mode, N% in manual. */}
-          <span
-            className="ml-1 w-[38px] text-right font-mono text-[11px] tabular-nums text-neutral-500 select-none"
-            aria-label="Timeline zoom level"
+    <div
+      className="hf-timeline-toolbar flex h-11 items-center justify-between border-y border-[#ebebeb] bg-white px-4"
+      data-testid="figma-timeline-toolbar"
+      data-preserve-studio-selection="true"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <Tooltip label={editHistory.undoLabel ? `Undo ${editHistory.undoLabel}` : "Undo"}>
+          <button
+            type="button"
+            className={iconButton}
+            onClick={() => void handleUndo()}
+            disabled={!editHistory.canUndo}
+            aria-label="Undo"
           >
-            {zoomMode === "fit" ? "Fit" : `${displayedTimelineZoomPercent}%`}
-          </span>
-        </div>
+            <ToolbarIcon src={undoIconSrc} />
+          </button>
+        </Tooltip>
+        <Tooltip label={editHistory.redoLabel ? `Redo ${editHistory.redoLabel}` : "Redo"}>
+          <button
+            type="button"
+            className={iconButton}
+            onClick={() => void handleRedo()}
+            disabled={!editHistory.canRedo}
+            aria-label="Redo"
+          >
+            <ToolbarIcon src={redoIconSrc} />
+          </button>
+        </Tooltip>
+        <ToolbarIcon src={dividerIconSrc} size={17} />
+        <Tooltip label={canSplit ? "Split at playhead (S)" : "Select a clip and place the playhead inside it"}>
+          <button
+            type="button"
+            className={iconButton}
+            disabled={!canSplit || pendingAction !== null}
+            aria-label="Split at playhead"
+            aria-busy={pendingAction === "split"}
+            onClick={() => {
+              if (canSplit && selectedElement && onSplitElement) {
+                const edit = rebaseExpandedTimelineEdit(selectedElement, currentTime);
+                void runSelectionAction("split", () => onSplitElement(edit.element, edit.time));
+              }
+            }}
+          >
+            <ToolbarIcon src={scissorsIconSrc} />
+          </button>
+        </Tooltip>
+        <div id={CANVAS_SNAP_TOOLBAR_SLOT_ID} className="flex items-center" />
+        {STUDIO_KEYFRAMES_ENABLED && (
+          <Tooltip
+            label={
+              !onToggleKeyframe
+                ? "Select an animated element to add a keyframe"
+                : keyframeState === "active"
+                  ? "Remove keyframe at playhead (K)"
+                  : "Add keyframe at playhead (K)"
+            }
+          >
+            <button
+              type="button"
+              className={`${iconButton} ${keyframeState === "active" ? "bg-[#f2f2f0]" : ""}`}
+              disabled={!onToggleKeyframe || pendingAction !== null}
+              onClick={() => {
+                if (onToggleKeyframe) {
+                  void runSelectionAction("keyframe", onToggleKeyframe);
+                }
+              }}
+              aria-label={keyframeState === "active" ? "Remove keyframe at playhead" : "Add keyframe at playhead"}
+              aria-pressed={keyframeState === "active"}
+              aria-busy={pendingAction === "keyframe"}
+            >
+              <ToolbarIcon src={diamondIconSrc} size={24} />
+            </button>
+          </Tooltip>
+        )}
+        <Tooltip label="Delete selected element">
+          <button
+            type="button"
+            className={iconButton}
+            disabled={!canDelete || pendingAction !== null}
+            aria-label="Delete selected element"
+            aria-busy={pendingAction === "delete"}
+            onClick={() => {
+              if (selectedElement && onDeleteElement) {
+                void runSelectionAction("delete", () =>
+                  onDeleteElement(rebaseExpandedTimelineEdit(selectedElement, currentTime).element),
+                );
+                return;
+              }
+              if (domEditSession?.domEditSelection && onDeleteDomElement) {
+                const selection = domEditSession.domEditSelection;
+                void runSelectionAction("delete", () =>
+                  onDeleteDomElement(selection),
+                );
+              }
+            }}
+          >
+            <ToolbarIcon src={trashIconSrc} size={24} />
+          </button>
+        </Tooltip>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <Tooltip label="Zoom timeline out">
+          <button
+            type="button"
+            className={iconButton}
+            aria-label="Zoom timeline out"
+            onClick={() => {
+              setZoomMode("manual");
+              setManualZoomPercent(getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent));
+            }}
+          >
+            <ToolbarIcon src={zoomOutIconSrc} />
+          </button>
+        </Tooltip>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={timelineZoomPercentToSlider(timelineZoomPercent)}
+          title={`${timelineZoomPercent}%`}
+          aria-label="Timeline zoom"
+          onChange={(event) => {
+            setZoomMode("manual");
+            setManualZoomPercent(timelineSliderToZoomPercent(Number(event.target.value)));
+          }}
+          className="w-[90px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-px [&::-webkit-slider-runnable-track]:bg-[#b8bab7] [&::-webkit-slider-thumb]:-mt-[3.5px] [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#858a94]"
+        />
+        <Tooltip label="Zoom timeline in">
+          <button
+            type="button"
+            className={iconButton}
+            aria-label="Zoom timeline in"
+            onClick={() => {
+              setZoomMode("manual");
+              setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
+            }}
+          >
+            <ToolbarIcon src={zoomInIconSrc} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Reset video to fit">
+          <button
+            type="button"
+            className={iconButton}
+            aria-label="Reset video to fit"
+            data-testid="preview-fit-reset"
+            onClick={requestPreviewZoomReset}
+          >
+            <ToolbarIcon src={fitIconSrc} />
+          </button>
+        </Tooltip>
+        <Tooltip label={capturing ? "Capturing current frame" : "Capture current frame"}>
+          <a
+            href={captureFrameHref}
+            download={captureFrameFilename}
+            onClick={handleCaptureFrameClick}
+            className={`${iconButton} ${capturing ? "pointer-events-none cursor-wait bg-[#f2f2f0]" : ""}`}
+            aria-label={capturing ? "Capturing current frame" : "Capture current frame"}
+            aria-disabled={capturing}
+            aria-busy={capturing}
+          >
+            {capturing ? (
+              <span
+                className="size-4 animate-spin rounded-full border-[1.5px] border-[#858a94]/30 border-t-[#858a94] motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            ) : (
+              <ToolbarIcon src={cameraIconSrc} />
+            )}
+          </a>
+        </Tooltip>
+        <div id={CANVAS_GRID_TOOLBAR_SLOT_ID} className="flex items-center" />
+        <div id={SHORTCUTS_TOOLBAR_SLOT_ID} className="flex items-center" />
       </div>
     </div>
   );

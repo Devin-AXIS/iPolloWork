@@ -18,6 +18,12 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("embedded");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:video-studio-panel"');
     expect(panelSource).toContain('event.data.panel === "style"');
+    expect(panelSource).toContain('const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null)');
+    expect(panelSource).toContain('setStudioHostPanel("voice")');
+    expect(panelSource).toContain('setStudioHostPanel("style")');
+    expect(panelSource).toContain('setStudioHostPanel(null)');
+    expect(panelSource).not.toContain("voicePanelOpen");
+    expect(panelSource).not.toContain("designSystemOpen");
     expect(panelSource).not.toContain('aria-label={t("video.design_system")}');
     expect(panelSource).toContain('data-testid="video-style-tab-content"');
     expect(panelSource).not.toContain("<DesignSystemInspectorShell");
@@ -28,6 +34,28 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
     expect(panelSource).not.toContain("onChooseBackgroundImage=");
     expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
+    expect(panelSource).toContain("top-[90px]");
+  });
+
+  test("keeps embedded voice and style content aligned with the resizable Studio drawer", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const voiceSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("setStudioPanelWidth(Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)))");
+    expect(panelSource).toContain("embeddedWidth={studioPanelWidth}");
+    expect(panelSource).toContain("style={{ width: studioPanelWidth }}");
+    expect(voiceSource).toContain("style={embedded ? { width: embeddedWidth } : undefined}");
+    expect(panelSource).toContain('top-[90px]');
+    expect(voiceSource).toContain('top-[90px]');
+    expect(panelSource).not.toContain('top-[82px]');
+    expect(voiceSource).not.toContain('top-[82px]');
+    expect(voiceSource).not.toContain("flex w-[400px]");
   });
 
   test("keeps a visible fullscreen control in the iPolloWork Video Studio header", () => {
@@ -55,6 +83,8 @@ describe("HyperFrames Video Studio", () => {
 
     expect(panelSource).toContain("const reloadStudio = React.useCallback");
     expect(panelSource).toContain("setRevision((value) => value + 1)");
+    expect(panelSource).toContain("}, [revision]);");
+    expect(panelSource).toContain("setStudioHostPanel(null);");
     expect(panelSource).toContain('onClick={reloadStudio} aria-label={t("video.reload")}');
     expect(panelSource).toContain('event.data?.type !== "ipollowork:studio-ready"');
     expect(panelSource).not.toContain('<TooltipContent>{t("video.reload")}</TooltipContent>');
@@ -154,6 +184,35 @@ describe("HyperFrames Video Studio", () => {
     expect(voicePanelSource).not.toContain("alignItemWithTrigger");
   });
 
+  test("defers remote voice inventory until the user opens My voices", () => {
+    const voicePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
+      "utf8",
+    ).replaceAll("\r\n", "\n");
+    const initialLoadStart = voicePanelSource.indexOf("  React.useEffect(() => {\n    let cancelled = false;");
+    const deferredLoadStart = voicePanelSource.indexOf("  React.useEffect(() => {\n    if (activeTab !== \"mine\"");
+    const initialLoad = voicePanelSource.slice(initialLoadStart, deferredLoadStart);
+
+    expect(initialLoadStart).toBeGreaterThan(-1);
+    expect(deferredLoadStart).toBeGreaterThan(initialLoadStart);
+    expect(initialLoad).not.toContain('callMedia("voice_list"');
+    expect(initialLoad).not.toContain('callStorage("status"');
+    expect(voicePanelSource).toContain('if (activeTab !== "mine"');
+    expect(voicePanelSource).toContain("Promise.allSettled([");
+  });
+
+  test("allows voice cloning without requiring separately configured object storage", () => {
+    const voicePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(voicePanelSource).toContain("将使用百炼免费临时存储");
+    expect(voicePanelSource).toContain("disabled={cloning}");
+    expect(voicePanelSource).not.toContain("disabled={!storageReady || cloning}");
+    expect(voicePanelSource).not.toContain("!mediaReady || !storageReady");
+  });
+
   test("keeps the application sidebar visible while Video Studio is expanded", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
@@ -211,7 +270,7 @@ describe("HyperFrames Video Studio", () => {
       '(!sidePanelOpen || rightWorkspaceExpanded) && "pointer-events-none',
     );
     expect(sessionPageSource).not.toContain("disabled={!sidePanelOpen || rightWorkspaceExpanded}");
-    expect(sessionPageSource).toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
+    expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
     expect(sessionPageSource).toContain("setVideoStudioExpanded(false)");
     expect(sessionPageSource).toContain(
       "if (event.button !== 0 || !sidePanelOpen || rightWorkspaceExpanded) return",
@@ -279,6 +338,10 @@ describe("HyperFrames Video Studio", () => {
     expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__delete-button");
     expect(nativeToolbarSource).toContain("onClick={deleteSelectedElement}");
     expect(nativeToolbarSource).not.toContain("deleteConfirmationOpen");
+    expect(panelSource).toContain("ipollowork:video-studio-clear-selection");
+    expect(electronSource).toContain("ipollowork:hyperframes:clear-selection");
+    expect(electronSource).toContain("finishEditing();");
+    expect(electronSource).toContain("hideToolbar();");
     expect(electronSource).toContain('button[data-action="delete"]{color:#dc2626}');
     expect(electronSource).not.toContain("window.confirm('Delete selected element?')");
   });
@@ -356,16 +419,42 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain('sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : ""');
   });
 
-  test("opens the left sidebar in one action when the right panel occupies a narrow window", () => {
+  test("preserves the right panel state without leaving a blank condensed gutter", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     ).replaceAll("\r\n", "\n");
 
+    const openLeftStart = sessionPageSource.indexOf("const openLeftSidebar = useCallback(() => {");
+    const openLeftEnd = sessionPageSource.indexOf("useEffect(() => {", openLeftStart);
+    const openLeftSidebar = sessionPageSource.slice(openLeftStart, openLeftEnd);
+
     expect(sessionPageSource).toContain("const openLeftSidebar = useCallback(() => {");
-    expect(sessionPageSource).toContain("closeRightPane({ preserveAutoCollapse: true });");
+    expect(sessionPageSource).not.toContain("RIGHT_PANEL_CONDENSED_WIDTH");
+    expect(sessionPageSource).not.toContain("minimumVisibleRightPanelWidth");
+    expect(sessionPageSource).toContain("availableRightPanelWidth = Math.max(");
+    expect(openLeftSidebar).not.toContain("closeRightPane");
+    expect(openLeftSidebar).not.toContain("autoCollapsedSidePanelRef.current");
+    expect(sessionPageSource).not.toContain("if (sidePanelOpen) {\n      autoCollapsedSidePanelRef.current = effectiveSidePanelView;");
+    expect(sessionPageSource).toContain("if (sidebarOpen && userOpenedSidebarWhileNarrowRef.current) return;");
     expect(sessionPageSource).toContain("restoredPanel &&\n      !userOpenedSidebarWhileNarrowRef.current &&\n      !sidePanelOpen");
     expect(sessionPageSource).toContain("onClick={openLeftSidebar}");
+  });
+
+  test("uses coordinated shell transitions for the left and right sidebars", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("const SESSION_SHELL_TRANSITION_MS = 220");
+    expect(sessionPageSource).toContain('const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)"');
+    expect(sessionPageSource).toContain("const sessionShellTransition =");
+    expect(sessionPageSource).toContain("rightPanelTransitionStyle");
+    expect(sessionPageSource).toContain("rightPanelResizing ? \"none\" : sessionShellTransition");
+    expect(sessionPageSource).toContain("transition-[width,min-width,opacity]");
+    expect(sessionPageSource).toContain("**:data-[slot=sidebar-container]:duration-[220ms]");
+    expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
   });
 
   test("batches right-panel drag updates and cleans up the interaction", () => {

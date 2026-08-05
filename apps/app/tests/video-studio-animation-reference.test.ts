@@ -28,4 +28,10 @@ describe("Video Studio animation reference handoff", () => {
     expect(surfaceSource).toContain("item.agentPrompt");
     expect(surfaceSource).toContain("animation.item.title");
   });
+
+  test("the animation reference uses the selected-element chip treatment and confirms the handoff", () => {
+    expect(surfaceSource).toContain('data-composer-token="animation-reference"');
+    expect(surfaceSource).toContain("border-violet-6/35 bg-violet-3/20");
+    expect(surfaceSource).toContain('toast.success(t("new_conversation.animations.added_to_ai"))');
+  });
 });

@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import type { DomEditSelection } from "./domEditing";
-import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
+import { formatTimingValue } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
 import { CommitField } from "./propertyPanelPrimitives";
 import { AnimationCard } from "./AnimationCard";
@@ -83,9 +83,9 @@ export function FlatTimingRow({
   };
 
   const cell = (label: string, value: string, onCommit: (next: string) => void) => (
-    <div className="grid gap-px">
-      <span className="text-[9px] text-panel-text-4">{label}</span>
-      <span className="border-b border-panel-border-input/50 font-mono text-[11px] text-panel-text-0 hover:border-panel-border-input">
+    <div className="flex h-6 min-w-0 items-center justify-between gap-1.5 rounded-[4px] bg-panel-input px-2">
+      <span className="flex-shrink-0 text-[8px] text-panel-text-4">{label}</span>
+      <span className="min-w-0 font-sans text-[10px] text-panel-text-0">
         <CommitField
           value={value}
           onCommit={(next) => {
@@ -98,12 +98,12 @@ export function FlatTimingRow({
   );
 
   return (
-    <div className={RESPONSIVE_GRID}>
+    <div className="grid grid-cols-2 gap-1.5">
       {cell("Start", formatTimingValue(start), commitStart)}
       {cell("End", formatTimingValue(end), commitEnd)}
       {cell("Duration", formatTimingValue(duration), commitDuration)}
       {derived && (
-        <p className="col-span-3 mt-1 text-[10px] leading-snug text-panel-text-3">
+        <p className="col-span-2 mt-1 text-[10px] leading-snug text-panel-text-3">
           Inferred from this element's animation — edit to pin an explicit clip range.
         </p>
       )}

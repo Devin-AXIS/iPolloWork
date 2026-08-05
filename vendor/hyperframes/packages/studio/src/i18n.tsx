@@ -15,7 +15,9 @@ type TranslationKey =
   | "app.waitingForServer"
   | "header.viewLabel"
   | "header.storyboard"
+  | "header.edit"
   | "header.preview"
+  | "header.previewComingSoon"
   | "header.undo"
   | "header.redo"
   | "header.capture"
@@ -86,13 +88,15 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "app.waitingForServer": "Waiting for Studio server...",
     "header.viewLabel": "Studio view",
     "header.storyboard": "Storyboard",
+    "header.edit": "Edit",
     "header.preview": "Preview",
+    "header.previewComingSoon": "Preview is coming soon",
     "header.undo": "Undo",
     "header.redo": "Redo",
     "header.capture": "Capture",
     "header.capturing": "Capturing...",
     "header.captureCurrentFrame": "Capture current frame",
-    "header.inspector": "Layers",
+    "header.inspector": "Properties",
     "header.renderInProgress": "A render is already in progress",
     "header.renderExport": "Open export settings",
     "header.rendering": "Rendering...",
@@ -157,13 +161,15 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "app.waitingForServer": "正在等待 Studio 服务...",
     "header.viewLabel": "Studio 视图",
     "header.storyboard": "故事板",
+    "header.edit": "编辑",
     "header.preview": "预览",
+    "header.previewComingSoon": "预览功能即将开放",
     "header.undo": "撤销",
     "header.redo": "重做",
     "header.capture": "截图",
     "header.capturing": "截图中...",
     "header.captureCurrentFrame": "截取当前帧",
-    "header.inspector": "图层",
+    "header.inspector": "属性",
     "header.renderInProgress": "已有渲染任务正在进行",
     "header.renderExport": "打开导出设置",
     "header.rendering": "渲染中...",
@@ -186,10 +192,10 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.resizeInspector": "调整检查器面板宽度",
     "right.resizePanes": "调整图层与设计面板高度",
     "right.design": "图层",
-    "right.designTooltip": "元素样式和属性",
+    "right.designTooltip": "元素风格和属性",
     "right.voice": "配音",
     "right.voiceTooltip": "视频配音设置",
-    "right.style": "样式",
+    "right.style": "主题",
     "right.styleTooltip": "视频设计系统",
     "right.assets": "素材",
     "right.assetsTooltip": "视频、图片、音频和字体",

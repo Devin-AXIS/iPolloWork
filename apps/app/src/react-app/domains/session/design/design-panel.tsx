@@ -31,6 +31,7 @@ import {
   DESIGN_STYLE_FIELDS,
   isLocalHtmlPath,
   resolveDesignNavigationPath,
+  type DesignAlignment,
   type DesignField,
   type DesignDeckState,
   type DesignRuntimeMessage,
@@ -1561,6 +1562,18 @@ export function DesignPanel({
     }
   };
 
+  const alignSelection = (alignment: DesignAlignment) => {
+    if (!selection || selection.locked || !selectionSummary || !editing) return;
+    setPendingCanvasChange(true);
+    rememberHistory();
+    iframeRef.current?.contentWindow?.postMessage({
+      channel: DESIGN_MESSAGE_CHANNEL,
+      type: "align",
+      ids: selectionSummary.selectionIds,
+      alignment,
+    }, "*");
+  };
+
   const deleteSelection = () => {
     if (!selectionSummary || !selectionSummary.selections.some((member) => member.canDelete) || !editing) return;
     setPendingCanvasChange(true);
@@ -2186,7 +2199,7 @@ export function DesignPanel({
                 {editing && selection && selectionSummary ? (
                   <div
                     ref={floatingToolbarRef}
-                    className="absolute z-20 flex w-max items-center gap-[17px] rounded-lg border border-border bg-popover px-4 py-2 text-popover-foreground shadow-[0_4px_4.2px_rgba(0,0,0,0.09)]"
+                    className="absolute z-20 flex w-max items-center gap-4 rounded-lg border border-border bg-popover px-4 py-2 text-popover-foreground shadow-[0_4px_4.2px_rgba(0,0,0,0.09)]"
                     style={floatingStyle}
                     role="toolbar"
                     aria-label="Design floating toolbar"
@@ -2278,7 +2291,7 @@ export function DesignPanel({
                         </Button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-3">
                         {!isMultiSelection && selection.canEditText ? (
                           <>
                             <button
@@ -2350,11 +2363,20 @@ export function DesignPanel({
                 isMultiSelection={isMultiSelection}
                 selectionCount={selectionSummary?.selectionCount ?? 0}
                 mixedStyleFields={selectionSummary?.mixedStyleFields ?? []}
+                gradientRecommendationColors={[
+                  designTokenValues["--ipw-color-primary"],
+                  designTokenValues["--ipw-color-secondary"],
+                  designTokenValues["--ipw-color-accent"],
+                  designTokenValues["--ipw-color-bg"],
+                  designTokenValues["--ipw-color-surface"],
+                  selection?.styles.backgroundColor,
+                ]}
                 activeTab={propertiesTab}
                 onClose={() => setAdvancedOpen(false)}
                 onActiveTabChange={handlePropertiesTabChange}
                 onApplyField={applyField}
                 onApplyFields={applyStyleFields}
+                onAlign={alignSelection}
                 onToggleLock={toggleSelectionLock}
                 onDelete={() => setDeleteConfirmationOpen(true)}
                 onChooseReplacementImage={() => void chooseReplacementImage()}

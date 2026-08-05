@@ -340,6 +340,7 @@ interface FlatLayoutSectionProps
   styles: Record<string, string>;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   disabled: boolean;
+  include3d?: boolean;
 }
 
 export function FlatLayoutSection({
@@ -355,29 +356,34 @@ export function FlatLayoutSection({
   onCommitAnimatedProperties,
   onSeekToTime,
   onLivePreviewProps,
+  include3d = true,
   ...geometry
 }: FlatLayoutSectionProps) {
   return (
-    <div className="space-y-1.5">
+    <div className="grid grid-cols-2 gap-1.5">
       <LayoutGeometryRows element={element} {...geometry} />
       <LayoutZIndexRow styles={styles} onSetStyle={onSetStyle} />
-      <LayoutFlexBlock styles={styles} onSetStyle={onSetStyle} disabled={disabled} />
-      <LayoutTransform3DBlock
-        gsapRuntimeValues={gsapRuntimeValues}
-        gsapAnimId={geometry.gsapAnimId}
-        resolveAnimIdForProp={resolveAnimIdForProp}
-        gsapKeyframes={gsapKeyframes}
-        currentPct={geometry.currentPct}
-        elStart={elStart}
-        elDuration={elDuration}
-        element={element}
-        onCommitAnimatedProperty={geometry.onCommitAnimatedProperty}
-        onCommitAnimatedProperties={onCommitAnimatedProperties}
-        onSeekToTime={onSeekToTime}
-        onRemoveKeyframe={geometry.onRemoveKeyframe}
-        onConvertToKeyframes={geometry.onConvertToKeyframes}
-        onLivePreviewProps={onLivePreviewProps}
-      />
+      <div className="col-span-2">
+        <LayoutFlexBlock styles={styles} onSetStyle={onSetStyle} disabled={disabled} />
+      </div>
+      {include3d && (
+        <LayoutTransform3DBlock
+          gsapRuntimeValues={gsapRuntimeValues}
+          gsapAnimId={geometry.gsapAnimId}
+          resolveAnimIdForProp={resolveAnimIdForProp}
+          gsapKeyframes={gsapKeyframes}
+          currentPct={geometry.currentPct}
+          elStart={elStart}
+          elDuration={elDuration}
+          element={element}
+          onCommitAnimatedProperty={geometry.onCommitAnimatedProperty}
+          onCommitAnimatedProperties={onCommitAnimatedProperties}
+          onSeekToTime={onSeekToTime}
+          onRemoveKeyframe={geometry.onRemoveKeyframe}
+          onConvertToKeyframes={geometry.onConvertToKeyframes}
+          onLivePreviewProps={onLivePreviewProps}
+        />
+      )}
     </div>
   );
 }

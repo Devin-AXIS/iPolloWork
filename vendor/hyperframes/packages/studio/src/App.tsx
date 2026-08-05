@@ -31,7 +31,6 @@ import { deleteSelectedKeyframes } from "./hooks/timelineEditingHelpers";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
 import { useConsoleErrorCapture } from "./hooks/useConsoleErrorCapture";
-import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
@@ -39,7 +38,6 @@ import { useCompositionContentLoader } from "./hooks/useCompositionContentLoader
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import {
   buildStudioContextValue,
-  useGlobalFileDrop,
   useInspectorState,
 } from "./hooks/useStudioContextValue";
 import type { DomEditSelection } from "./components/editor/domEditing";
@@ -83,6 +81,7 @@ export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   const viewModeValue = useViewModeState();
+  const [previewMode, setPreviewMode] = useState(false);
   useEffect(() => {
     if (resolving || waitingForServer) return;
     if (hasFiredSessionStart()) return;
@@ -343,6 +342,16 @@ export function StudioApp() {
   handleDomZIndexReorderCommitRef.current = domEditSession.handleDomZIndexReorderCommit;
   clearDomSelectionRef.current = domEditSession.clearDomSelection;
   handleDomEditElementDeleteRef.current = domEditSession.handleDomEditElementDelete;
+  const handlePreviewModeChange = useCallback(
+    (nextPreviewMode: boolean) => {
+      setPreviewMode(nextPreviewMode);
+      if (!nextPreviewMode) return;
+      domEditSession.clearDomSelection();
+      usePlayerStore.getState().clearSelection();
+      setBlockPreview(null);
+    },
+    [domEditSession],
+  );
   resetKeyframesRef.current = domEditSession.handleResetSelectedElementKeyframes;
   invalidateGsapCacheRef.current = domEditSession.invalidateGsapCache;
   deleteSelectedKeyframesRef.current = () => deleteSelectedKeyframes(domEditSession);
@@ -372,18 +381,15 @@ export function StudioApp() {
     projectId,
     refreshKey,
   );
-  const frameCapture = useFrameCapture({
-    projectId,
-    activeCompPath,
-    showToast,
-    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
-  });
   const {
     consoleErrors,
     setConsoleErrors,
     resetErrors: resetConsoleErrors,
   } = useConsoleErrorCapture(previewIframe);
-  const dragOverlay = useGlobalFileDrop(timelineEditing.handleTimelineFileDrop);
+  const preventUnhandledFileDrop = useCallback((event: React.DragEvent) => {
+    if (!event.dataTransfer.types.includes("Files") || event.defaultPrevented) return;
+    event.preventDefault();
+  }, []);
   const handleToggleRecordingRef = useRef<() => void>(() => {});
   const domEditSessionRef = useRef(domEditSession);
   domEditSessionRef.current = domEditSession;
@@ -477,9 +483,15 @@ export function StudioApp() {
       <TimelineToolbar
         domEditSession={domEditSession}
         onSplitElement={timelineEditing.handleTimelineElementSplit}
+        onDeleteElement={timelineEditing.handleTimelineElementDelete}
+        onDeleteDomElement={domEditSession.handleDomEditElementDelete}
       />
     ),
-    [domEditSession, timelineEditing.handleTimelineElementSplit],
+    [
+      domEditSession,
+      timelineEditing.handleTimelineElementDelete,
+      timelineEditing.handleTimelineElementSplit,
+    ],
   );
   if (resolving || waitingForServer || !projectId)
     return (
@@ -498,19 +510,14 @@ export function StudioApp() {
                 <DomEditProvider value={domEditSession}>
                 <div
                   className="hf-studio-shell flex flex-col h-full w-full bg-neutral-950 relative"
-                  onDragOver={dragOverlay.onDragOver}
-                  onDragEnter={dragOverlay.onDragEnter}
-                  onDragLeave={dragOverlay.onDragLeave}
-                  onDrop={dragOverlay.onDrop}
+                  onDragOver={preventUnhandledFileDrop}
+                  onDrop={preventUnhandledFileDrop}
                 >
                   <StudioHeader
-                    captureFrameHref={frameCapture.captureFrameHref}
-                    captureFrameFilename={frameCapture.captureFrameFilename}
-                    handleCaptureFrameClick={frameCapture.handleCaptureFrameClick}
-                    refreshCaptureFrameTime={frameCapture.refreshCaptureFrameTime}
-                    capturing={frameCapture.capturing}
                     inspectorButtonActive={inspectorButtonActive}
                     inspectorPanelActive={inspectorPanelActive}
+                    previewMode={previewMode}
+                    onPreviewModeChange={handlePreviewModeChange}
                   />
                   {previewPersistence.domEditSaveQueuePaused && (
                     <SaveQueuePausedBanner
@@ -528,6 +535,7 @@ export function StudioApp() {
                   )}
                   <EditorShell
                     hidden={activeViewMode === "storyboard"}
+                    previewOnly={previewMode}
                     left={
                       HIDE_LEFT_SIDEBAR ? (
                         // Temporarily hidden per local customization. Set HIDE_LEFT_SIDEBAR=false to restore.
@@ -586,6 +594,7 @@ export function StudioApp() {
                     handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
                     handleTimelineGroupResize={timelineEditing.handleTimelineGroupResize}
                     handleToggleTrackHidden={timelineEditing.handleToggleTrackHidden}
+                    handleToggleTrackLocked={timelineEditing.handleToggleTrackLocked}
                     handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
                     handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
                     handleRazorSplit={timelineEditing.handleRazorSplit}
@@ -619,7 +628,6 @@ export function StudioApp() {
                     clearConsoleErrors={() => setConsoleErrors(null)}
                     domEditSession={domEditSession}
                     activeCompPath={activeCompPath}
-                    dragOverlayActive={dragOverlay.active}
                     toasts={toasts}
                     dismissToast={dismissToast}
                   />

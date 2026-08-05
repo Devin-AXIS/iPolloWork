@@ -55,11 +55,17 @@ describe("Design property number fields", () => {
     expect(source).toContain('onApplyField("top", `${value}px`, remember)');
   });
 
-  test("keeps position alignment buttons neutral until selected", async () => {
+  test("matches the Figma position alignment groups and uses spatial edge icons", async () => {
     const source = await Bun.file(inspectorUrl).text();
 
-    expect(source).toContain('<PropertyButton aria-label="Align left"><AlignLeft /></PropertyButton>');
-    expect(source).not.toContain('<PropertyButton active aria-label="Align left"><AlignLeft /></PropertyButton>');
+    expect(source).toContain('className="mt-1 flex gap-3"');
+    expect(source).toContain('className="grid min-w-0 flex-1 grid-cols-3 gap-0.5"');
+    expect(source).toContain('aria-label="Align left" onClick={() => onAlign("left")}><AlignStartVertical />');
+    expect(source).toContain('aria-label="Align right" onClick={() => onAlign("right")}><AlignEndVertical />');
+    expect(source).toContain('aria-label="Align top" onClick={() => onAlign("top")}><AlignVerticalJustifyStart />');
+    expect(source).toContain('aria-label="Align bottom" onClick={() => onAlign("bottom")}><AlignVerticalJustifyEnd />');
+    expect(source).toContain('className="h-[34px]"');
+    expect(source).toContain('{!isMultiSelection ? <>');
   });
 
   test("uses a lazy searchable font picker with self-rendered options", async () => {
@@ -112,6 +118,7 @@ describe("Design property number fields", () => {
   test("applies mixed batch typography buttons instead of toggling from the primary style", async () => {
     const source = await Bun.file(inspectorUrl).text();
 
+    expect(source).toContain('"grid h-9 w-full min-w-0 place-items-center');
     expect(source).toContain('isMixed("fontWeight") ? "700" : numericValue(selection.styles.fontWeight, 400) >= 600 ? "400" : "700"');
     expect(source).toContain('isMixed("fontStyle") ? "italic" : selection.styles.fontStyle === "italic" ? "normal" : "italic"');
     expect(source).toContain('isMixed("textDecoration") ? ensureDecoration(selection.styles.textDecoration, "underline") : toggleDecoration(selection.styles.textDecoration, "underline")');
@@ -154,8 +161,11 @@ describe("Design property number fields", () => {
   test("passes selection summary metadata to the inspector", async () => {
     const source = await Bun.file(panelUrl).text();
     expect(source).toContain("isMultiSelection={isMultiSelection}");
-    expect(source).toContain("selectionCount={selectionSummary.selectionCount}");
-    expect(source).toContain("mixedStyleFields={selectionSummary.mixedStyleFields}");
+    expect(source).toContain("selectionCount={selectionSummary?.selectionCount ?? 0}");
+    expect(source).toContain("mixedStyleFields={selectionSummary?.mixedStyleFields ?? []}");
+    expect(source).toContain("onAlign={alignSelection}");
+    expect(source).toContain("type: \"align\"");
+    expect(source).toContain("rememberHistory();");
   });
 
   test("connects layer link, lock, and delete actions with shared icon states", async () => {
@@ -170,8 +180,8 @@ describe("Design property number fields", () => {
     expect(source).toContain('>保存</Button>');
     expect(source).toContain('label={selection.locked ? "Unlock layer" : "Lock layer"}');
     expect(source).toContain('label="Delete layer"');
-    expect(source).toContain('hover:bg-[#f4f5f8] hover:text-[#202228] active:bg-black active:text-white');
-    expect(source).toContain('active && "bg-black text-white hover:bg-black hover:text-white"');
+    expect(source).toContain("hover:bg-muted hover:text-foreground active:bg-foreground active:text-background");
+    expect(source).toContain('active && "bg-foreground text-background hover:bg-foreground hover:text-background"');
     expect(panelSource).toContain("const toggleSelectionLock = () => {");
     expect(panelSource).toContain('type: "lock"');
     expect(panelSource).toContain('onDelete={() => setDeleteConfirmationOpen(true)}');

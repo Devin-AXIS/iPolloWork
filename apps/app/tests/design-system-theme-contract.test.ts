@@ -124,7 +124,7 @@ describe("Design system theme contract", () => {
     expect(drawer).not.toContain("Reset all</Button>");
     expect(drawer).not.toContain(">当前主题<");
     expect(drawer).not.toContain(">应用主题<");
-    expect(drawer).toContain('PanelSection title="Background"');
+    expect(drawer).toContain('PanelSection title={t("design_system.embedded.background")}');
     expect(drawer).toContain("DesignImageFitSelect");
     expect(drawer).toContain("buildDesignSystemPresetValues(theme)");
     expect(drawer).not.toContain("Image overlay");

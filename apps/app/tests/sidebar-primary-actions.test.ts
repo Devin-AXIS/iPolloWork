@@ -13,13 +13,15 @@ describe("sidebar primary actions", () => {
     expect(sidebarSource).toContain('sidebar-icon/figma-layout-panel-top.svg');
     expect(sidebarSource).toContain('sidebar-icon/figma-plug.svg');
     expect(sidebarSource).toContain('const primarySidebarActionClassName = "h-8 gap-1 rounded-[8px] px-1 py-0 text-sm font-normal leading-4');
-    expect(sidebarSource.match(/className=\{primarySidebarActionClassName\}/g)).toHaveLength(3);
+    expect(sidebarSource.match(/className=\{primarySidebarActionClass\}/g)).toHaveLength(3);
   });
 
   test("retains hover, press, active, focus, and disabled behavior", () => {
-    expect(sidebarSource).toContain("hover:bg-black/5");
-    expect(sidebarSource).toContain("active:bg-black/10");
-    expect(sidebarSource).toContain("data-active:bg-black/5");
+    expect(sidebarSource).toContain("hover:bg-sidebar-accent");
+    expect(sidebarSource).toContain("hover:text-sidebar-accent-foreground");
+    expect(sidebarSource).toContain("active:bg-sidebar-accent");
+    expect(sidebarSource).toContain("data-active:bg-sidebar-accent");
+    expect(sidebarSource).toContain("data-active:text-sidebar-accent-foreground");
     expect(sidebarSource).toContain("focus-visible:ring-1");
     expect(sidebarSource).toContain('disabled={props.newTaskDisabled || !props.selectedWorkspaceId}');
   });

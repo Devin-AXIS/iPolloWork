@@ -61,7 +61,8 @@ import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
 import { useSessionManagementStore } from "../sidebar/session-management-store";
-import { replaceDesignSelectionToken, SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
+import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
+import { replaceDesignSelectionToken } from "../surface/composer/composer-draft";
 import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
 import {
   SidebarInset,
@@ -116,6 +117,9 @@ const AUTO_RESTORE_WORKSPACE_WIDTH = 600;
 const MIN_DESIGN_PANEL_WIDTH = 420;
 const MIN_RIGHT_PANEL_WIDTH = 320;
 const NARROW_LAYOUT_WIDTH = 960;
+const VIDEO_PANEL_DEFAULT_WIDTH = 1120;
+const SESSION_SHELL_TRANSITION_MS = 220;
+const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateSessionData = {
   sessionId: string;
@@ -1126,6 +1130,7 @@ export function SessionPage(props: SessionPageProps) {
   });
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
   const [rightPanelManuallyResized, setRightPanelManuallyResized] = useState(false);
+  const [rightPanelResizing, setRightPanelResizing] = useState(false);
   const rightPanelElementRef = useRef<HTMLElement>(null);
   const [videoStudioExpanded, setVideoStudioExpanded] = useState(false);
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
@@ -1140,15 +1145,21 @@ export function SessionPage(props: SessionPageProps) {
     ? MIN_DESIGN_PANEL_WIDTH
     : MIN_RIGHT_PANEL_WIDTH;
   const visibleLeftSidebarWidth = shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0;
+  const workspaceWidthAfterLeftSidebar = Math.max(0, viewportWidth - visibleLeftSidebarWidth);
+  const mainWorkspaceMinWidth = Math.min(
+    MAIN_WORKSPACE_MIN_WIDTH,
+    workspaceWidthAfterLeftSidebar,
+  );
   const availableRightPanelWidth = Math.max(
     0,
-    viewportWidth - visibleLeftSidebarWidth - MAIN_WORKSPACE_MIN_WIDTH,
+    workspaceWidthAfterLeftSidebar - mainWorkspaceMinWidth,
   );
   const effectiveRightPanelMinWidth = Math.min(availableRightPanelWidth, desiredRightPanelWidth);
+  const preferredVideoPanelWidth = rightPanelManuallyResized
+    ? browserPanelDefaultWidth
+    : Math.max(browserPanelDefaultWidth, VIDEO_PANEL_DEFAULT_WIDTH);
   const preferredBrowserPanelWidth = effectiveSidePanelView === "video"
-    ? rightPanelManuallyResized
-      ? browserPanelDefaultWidth
-      : Math.max(browserPanelDefaultWidth, 1120)
+    ? preferredVideoPanelWidth
     : effectiveSidePanelView === "launcher"
       ? 320
       : effectiveSidePanelView === "outputs"
@@ -1166,6 +1177,15 @@ export function SessionPage(props: SessionPageProps) {
   const sidebarProviderStyle: CSSProperties & Record<"--sidebar-width", string> = {
     "--sidebar-width": `${effectiveLeftSidebarWidth}px`,
   };
+  const sessionShellTransition = [
+    `width ${SESSION_SHELL_TRANSITION_MS}ms ${SESSION_SHELL_TRANSITION_EASING}`,
+    `min-width ${SESSION_SHELL_TRANSITION_MS}ms ${SESSION_SHELL_TRANSITION_EASING}`,
+    `opacity ${Math.round(SESSION_SHELL_TRANSITION_MS * 0.75)}ms ease-out`,
+  ].join(", ");
+  const rightPanelTransitionStyle: CSSProperties = {
+    transition: rightPanelResizing ? "none" : sessionShellTransition,
+    opacity: sidePanelOpen ? 1 : 0,
+  };
   const availableMainWorkspaceWidth = viewportWidth
     - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0)
     - (sidePanelOpen ? effectiveBrowserPanelWidth : 0);
@@ -1178,10 +1198,6 @@ export function SessionPage(props: SessionPageProps) {
   const expandedRightPanelWorkspaceWidth = viewportWidth
     - visibleLeftSidebarWidth
     - (autoCollapsedSidePanelRef.current ? effectiveBrowserPanelWidth : 0);
-  const mainWorkspaceMinWidth = Math.min(
-    MAIN_WORKSPACE_MIN_WIDTH,
-    Math.max(0, viewportWidth - visibleLeftSidebarWidth),
-  );
   const sidebarVisuallyCollapsed = !sidebarOpen;
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
@@ -1260,6 +1276,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [closeExpandedWorkSurface, props.sidebar.onOpenSessionSearch]);
   const startRightPanelResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !sidePanelOpen || rightWorkspaceExpanded) return;
+    setRightPanelResizing(true);
     const workspaceWidth = viewportWidth - visibleLeftSidebarWidth;
     const maximumWidth = Math.max(
       effectiveRightPanelMinWidth,
@@ -1295,6 +1312,7 @@ export function SessionPage(props: SessionPageProps) {
       document.body.style.removeProperty("user-select");
       rightPanel?.style.removeProperty("will-change");
       rightPanel?.style.removeProperty("pointer-events");
+      setRightPanelResizing(false);
       if (resizeHandle.hasPointerCapture(event.pointerId)) {
         resizeHandle.releasePointerCapture(event.pointerId);
       }
@@ -1483,14 +1501,10 @@ export function SessionPage(props: SessionPageProps) {
   const openLeftSidebar = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = true;
     autoCollapsedSidebarRef.current = false;
-    if (sidePanelOpen) {
-      autoCollapsedSidePanelRef.current = effectiveSidePanelView;
-      userOpenedSidePanelWhileNarrowRef.current = false;
-      closeRightPane({ preserveAutoCollapse: true });
-    }
     setSidebarOpen(true);
-  }, [closeRightPane, effectiveSidePanelView, setSidebarOpen, sidePanelOpen]);
+  }, [setSidebarOpen]);
   useEffect(() => {
+    if (sidebarOpen && userOpenedSidebarWhileNarrowRef.current) return;
     if (
       (
         sidebarOpen
@@ -2136,11 +2150,10 @@ export function SessionPage(props: SessionPageProps) {
         open={sidebarOpen}
         onOpenChange={handleSidebarOpenChange}
         className={cn(
-          "relative min-h-0 flex-1 mac:bg-transparent",
+          "relative min-h-0 flex-1 mac:bg-transparent **:data-[slot=sidebar-container]:duration-[220ms] **:data-[slot=sidebar-gap]:duration-[220ms] **:data-[slot=sidebar-container]:ease-[cubic-bezier(0.22,1,0.36,1)] **:data-[slot=sidebar-gap]:ease-[cubic-bezier(0.22,1,0.36,1)]",
           leftSidebarResizing &&
             "**:data-[slot=sidebar-container]:transition-none **:data-[slot=sidebar-gap]:transition-none",
           !shellConfig.sidebar && "**:data-[slot=sidebar-container]:hidden **:data-[slot=sidebar-gap]:hidden",
-          rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0",
         )}
         style={sidebarProviderStyle}
       >
@@ -2229,7 +2242,16 @@ export function SessionPage(props: SessionPageProps) {
                 <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
               </Tooltip>
             ) : null}
-            <div className={cn("min-w-0 flex-1", rightWorkspaceExpanded && "invisible pointer-events-none")} style={{ minWidth: rightWorkspaceExpanded ? 0 : mainWorkspaceMinWidth }}>
+            <div
+              className={cn(
+                "min-w-0 flex-1 transition-[width,min-width,opacity]",
+                rightWorkspaceExpanded && "invisible pointer-events-none",
+              )}
+              style={{
+                minWidth: rightWorkspaceExpanded ? 0 : mainWorkspaceMinWidth,
+                transition: sessionShellTransition,
+              }}
+            >
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
@@ -2631,7 +2653,10 @@ export function SessionPage(props: SessionPageProps) {
                 <aside
                   ref={rightPanelElementRef}
                   className="min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col"
-                  style={{ width: sidePanelOpen ? effectiveBrowserPanelWidth : 0 }}
+                  style={{
+                    width: sidePanelOpen ? effectiveBrowserPanelWidth : 0,
+                    ...rightPanelTransitionStyle,
+                  }}
                 >
                   {sidePanelOpen && effectiveSidePanelView === "launcher" ? (
                     <div className="flex h-full flex-col bg-background px-6 pt-16 text-[#6B7280] min-[960px]:px-10 min-[960px]:pt-[44vh]">

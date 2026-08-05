@@ -14,6 +14,10 @@ export { isSafePath, walkDir } from "./helpers/safePath.js";
 export type { PreviewApiAdapter } from "./helpers/mediaProxyPreview.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
 export {
+  loadRegistryPreviewAssetFromRoot,
+  loadRegistryPreviewFromRoot,
+} from "./helpers/registryPreview.js";
+export {
   consumeFileWriteReceipt,
   fileContentVersion,
   type FileWriteReceipt,

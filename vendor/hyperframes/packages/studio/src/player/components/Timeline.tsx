@@ -53,7 +53,6 @@ export const Timeline = memo(function Timeline({
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
-  onDeleteElement: _onDeleteElement,
   onMoveElement: onMoveElementOverride,
   onMoveElements: onMoveElementsOverride,
   onResizeElement: onResizeElementOverride,
@@ -69,7 +68,6 @@ export const Timeline = memo(function Timeline({
     onResizeElement,
     onResizeElements,
     onBlockedEditAttempt,
-    onSplitElement,
     onRazorSplitAll,
     onDeleteKeyframe,
     onDeleteAllKeyframes,
@@ -145,12 +143,6 @@ export const Timeline = memo(function Timeline({
 
   const [showPopover, setShowPopover] = useState(false);
   const [kfContextMenu, setKfContextMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
-  const [clipContextMenu, setClipContextMenu] = useState<{
-    x: number;
-    y: number;
-    element: TimelineElement;
-  } | null>(null);
-
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
     containerRef.current = el;
   }, []);
@@ -179,7 +171,6 @@ export const Timeline = memo(function Timeline({
   const fitPpsRef = useRef(100);
 
   const {
-    pinZoomBeforeEdit,
     setRangeSelectionRef,
     pinnedOnMoveElement,
     pinnedOnMoveElements,
@@ -537,16 +528,8 @@ export const Timeline = memo(function Timeline({
               currentEase: kf?.ease ?? kfData?.ease,
             });
           }}
-          onContextMenuClip={(e, el) => {
-            e.preventDefault();
-            setSelectedElementId(el.key ?? el.id);
-            onSelectElement?.(el);
-            dismissGapMenu();
-            setClipContextMenu({ x: e.clientX, y: e.clientY, element: el });
-          }}
           onContextMenuLane={(e, track, time) => {
             if (draggedClip?.started || resizingClip) return;
-            setClipContextMenu(null);
             openGapMenu({ x: e.clientX, y: e.clientY, track, time });
           }}
         />
@@ -575,12 +558,6 @@ export const Timeline = memo(function Timeline({
         onChangeKeyframeEase={onChangeKeyframeEase}
         onMoveKeyframeToPlayhead={onMoveKeyframeToPlayhead}
         keyframeCache={keyframeCache}
-        clipContextMenu={clipContextMenu}
-        setClipContextMenu={setClipContextMenu}
-        currentTime={currentTime}
-        onSplitElement={onSplitElement}
-        pinZoomBeforeEdit={pinZoomBeforeEdit}
-        onDeleteElement={_onDeleteElement}
         gapContextMenu={gapMenuModel}
         onDismissGapContextMenu={dismissGapMenu}
         onCloseTrackGap={closeTrackGap}

@@ -35,6 +35,8 @@ import {
   createBackgroundRemovalJob,
   consumeFileWriteReceipt,
   getMimeType,
+  loadRegistryPreviewAssetFromRoot,
+  loadRegistryPreviewFromRoot,
   type PreviewApiAdapter,
   type ResolvedProject,
   type RenderJobState,
@@ -722,6 +724,18 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         (e) => e.type === "hyperframes:block" || e.type === "hyperframes:component",
       );
       return loadAllItems(blockAndComponentEntries);
+    },
+
+    async loadRegistryPreview({ blockName }) {
+      const bundledRegistryRoot = resolveBundledRegistryRoot();
+      if (!bundledRegistryRoot) return null;
+      return loadRegistryPreviewFromRoot(bundledRegistryRoot, blockName);
+    },
+
+    async loadRegistryPreviewAsset({ blockName, assetPath }) {
+      const bundledRegistryRoot = resolveBundledRegistryRoot();
+      if (!bundledRegistryRoot) return null;
+      return loadRegistryPreviewAssetFromRoot(bundledRegistryRoot, blockName, assetPath);
     },
 
     async installRegistryBlock(opts) {

@@ -11,17 +11,20 @@ describe("appearance settings options", () => {
     expect(LANGUAGES).toContain("ja");
   });
 
-  test("hides the dark theme choice without removing theme compatibility", () => {
+  test("shows system, light, and dark theme choices", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/settings/appearance/theme-section.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(source).not.toContain('value="dark"');
-    expect(source).not.toContain('t("settings.theme_dark")');
     expect(source).toContain('value="system"');
     expect(source).toContain('value="light"');
-    expect(en["settings.appearance_hint"]).not.toContain("dark");
-    expect(zh["settings.appearance_hint"]).not.toContain("深色");
+    expect(source).toContain('value="dark"');
+    expect(source).toContain('t("settings.theme_dark")');
+    expect(source).toContain('<ThemePreview value="dark" className="bg-black" />');
+    expect(source).toContain('<div className="w-1/2 bg-white" />');
+    expect(source).toContain('<div className="w-1/2 bg-black" />');
+    expect(en["settings.appearance_hint"]).toContain("dark");
+    expect(zh["settings.appearance_hint"]).toContain("深色");
   });
 });

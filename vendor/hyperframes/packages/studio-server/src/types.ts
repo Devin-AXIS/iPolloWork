@@ -202,6 +202,19 @@ export interface StudioApiAdapter {
   /** Optional: list all registry items (blocks + components) for the catalog. */
   listRegistryCatalog?(): Promise<RegistryItem[]>;
 
+  /** Optional: load a bundled block composition for the catalog's live preview. */
+  loadRegistryPreview?(opts: { blockName: string }): Promise<{
+    html: string;
+    duration: number;
+    dimensions: { width: number; height: number };
+  } | null>;
+
+  /** Optional: load an asset declared by a bundled registry block. */
+  loadRegistryPreviewAsset?(opts: {
+    blockName: string;
+    assetPath: string;
+  }): Promise<{ body: Uint8Array; contentType: string } | null>;
+
   /** Optional: install a registry item into a project directory. */
   installRegistryBlock?(opts: {
     project: ResolvedProject;
