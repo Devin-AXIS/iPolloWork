@@ -160,6 +160,39 @@ export type iPolloWorkPluginPackageMetadata = {
   checksum?: { algorithm: "sha256"; value: string };
 };
 
+export type iPolloWorkPluginAuthorizationMethodTranslation = {
+  label?: string;
+  description?: string;
+  fields?: Record<string, {
+    label?: string;
+    description?: string;
+    placeholder?: string;
+  }>;
+};
+
+export type iPolloWorkExtensionTranslation = {
+  name?: string;
+  description?: string;
+  category?: string;
+  composer?: { prompt?: string };
+  setup?: {
+    instructions?: string;
+    primaryCta?: string;
+    secondaryCta?: string;
+  };
+  resources?: Record<string, {
+    label?: string;
+    description?: string;
+  }>;
+  permissions?: Record<string, { reason?: string }>;
+  authorizationMethods?: Record<string, iPolloWorkPluginAuthorizationMethodTranslation>;
+};
+
+export type iPolloWorkExtensionLocalization = {
+  defaultLocale: string;
+  translations: Record<string, iPolloWorkExtensionTranslation>;
+};
+
 // ---------------------------------------------------------------------------
 // Enablement — declarative conditions for extension "active" state
 // ---------------------------------------------------------------------------
@@ -209,6 +242,8 @@ export type iPolloWorkExtensionManifest = {
   lifecycle?: iPolloWorkExtensionLifecycle;
   /** Optional package metadata for independently distributed extensions. */
   package?: iPolloWorkPluginPackageMetadata;
+  /** Locale-specific display metadata. Runtime identifiers and behavior are never localized. */
+  localization?: iPolloWorkExtensionLocalization;
   /** Permissions shown before installing executable third-party packages. */
   permissions?: iPolloWorkPluginPermission[];
   /** Plugin-owned authorization; intentionally independent from Authorization Center. */

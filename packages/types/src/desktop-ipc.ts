@@ -476,7 +476,10 @@ export type DesktopCommandMap = {
     result: string | string[] | null;
   };
   saveFile: {
-    args: [options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }];
+    args: [
+      options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] },
+      data?: ArrayBuffer,
+    ];
     result: string | null;
   };
 

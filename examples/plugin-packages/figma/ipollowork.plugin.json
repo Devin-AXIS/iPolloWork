@@ -21,6 +21,53 @@
     "primaryCta": "连接 Figma Desktop",
     "secondaryCta": "查看官方设置指南"
   },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Complete Figma design-to-code, Code Connect, design system, and canvas authoring workflows.",
+        "category": "Design & Development",
+        "composer": { "prompt": "Use the Figma plugin to read design context and implement it according to the current project's conventions." },
+        "setup": {
+          "instructions": "Figma authorization is managed independently by Figma Desktop. Sign in to the desktop app, open a Design file, switch to Dev Mode, and enable the Desktop MCP server from the Inspect panel.",
+          "primaryCta": "Connect Figma Desktop",
+          "secondaryCta": "View Official Setup Guide"
+        },
+        "resources": {
+          "figma-mcp": {
+            "label": "Official Figma Desktop MCP",
+            "description": "Use the account signed in to Figma Desktop to provide read and write tools through the official local MCP service."
+          },
+          "figma-design-to-code": { "label": "Design to Code" },
+          "figma-create-new-file": { "label": "Create Figma File" },
+          "figma-generate-design": { "label": "Generate and Update Designs" },
+          "figma-generate-diagram": { "label": "Generate Diagrams" },
+          "figma-generate-library": { "label": "Generate Design System Library" },
+          "figma-implement-motion": { "label": "Implement Motion" },
+          "figma-swiftui": { "label": "SwiftUI Workflow" },
+          "figma-use-figjam": { "label": "FigJam Workflow" },
+          "figma-use-motion": { "label": "Figma Motion Workflow" },
+          "figma-use-slides": { "label": "Figma Slides Workflow" },
+          "figma-skill-files": { "label": "Figma Skill References and Scripts" },
+          "figma-command-implement": { "label": "Implement from Figma" },
+          "figma-command-connect-components": { "label": "Connect Figma Components" },
+          "figma-command-design-rules": { "label": "Create Design System Rules" },
+          "figma-command-parity-review": { "label": "Review Design Parity" },
+          "figma-agent-implementation": { "label": "Figma Implementation Agent" },
+          "figma-agent-design-rules": { "label": "Design System Rules Agent" },
+          "figma-agent-parity-review": { "label": "Design Parity Review Agent" },
+          "figma-assets": { "label": "Figma Showcase Assets" },
+          "figma-readme": { "label": "Usage Guide" },
+          "figma-upstream-readme": { "label": "Upstream Guide" }
+        },
+        "permissions": {
+          "network": { "reason": "Connect to the official MCP service running in Figma Desktop and read or update files accessible to the current Figma account." },
+          "workspace-read": { "reason": "Analyze project components, design tokens, framework, and code conventions." },
+          "workspace-write": { "reason": "Implement designs, generate Code Connect files, and create project design rules as requested by the user." }
+        }
+      }
+    }
+  },
   "contributions": [
     {
       "type": "setup-instructions",
@@ -29,7 +76,7 @@
     }
   ],
   "package": {
-    "version": "2.0.16",
+    "version": "2.0.17",
     "publisher": {
       "id": "figma",
       "name": "Figma"

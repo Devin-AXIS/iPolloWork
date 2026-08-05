@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { IPOLLOWORK_PACKAGE_MEDIA_TYPE, LEGACY_TEMPLATE_PACKAGE_MEDIA_TYPE } from "@ipollowork/types/templates";
+import { IPOLLOWORK_PACKAGE_EXTENSION, IPOLLOWORK_PACKAGE_MEDIA_TYPE, LEGACY_TEMPLATE_PACKAGE_MEDIA_TYPE } from "@ipollowork/types/templates";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
@@ -65,6 +66,56 @@ describe("template API", () => {
     const videoTemplate = await fetch(`${base}/workspace/ws/template-sessions/session_video`, { headers }).then((response) => response.json());
     expect(videoTemplate.manifest.surface).toBe("video");
     expect((await fetch(`${base}/workspace/ws/design-sessions/session_video/template`, { headers })).status).toBe(404);
+
+    const directPackageResponse = await fetch(`${base}/workspace/ws/templates/from-session/package`, {
+      method: "POST",
+      headers: { ...headers, Origin: "http://localhost:5193" },
+      body: JSON.stringify({ sessionId: "session_video", category: "video", title: "Export-only video" }),
+    });
+    expect(directPackageResponse.status).toBe(200);
+    expect(directPackageResponse.headers.get("content-type")).toBe(IPOLLOWORK_PACKAGE_MEDIA_TYPE);
+    expect(directPackageResponse.headers.get("content-disposition")).toEndWith(`${IPOLLOWORK_PACKAGE_EXTENSION}"`);
+    const directArchive = Buffer.from(await directPackageResponse.arrayBuffer());
+    expect(directArchive.subarray(0, 2).toString("ascii")).toBe("PK");
+    const catalogAfterDirectExport = await fetch(`${base}/workspace/ws/templates`, { headers }).then((response) => response.json());
+    expect(catalogAfterDirectExport.items.every((item: { sourceType: string }) => item.sourceType === "bundled")).toBe(true);
+    const directImportResponse = await fetch(`${base}/workspace/ws/templates/import`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": IPOLLOWORK_PACKAGE_MEDIA_TYPE, "X-iPolloWork-Template-Category": "video" },
+      body: directArchive,
+    });
+    expect(directImportResponse.status).toBe(201);
+    const directImported = await directImportResponse.json();
+    expect(directImported.item).toMatchObject({ sourceType: "local", manifest: { surface: "video", title: "Export-only video" } });
+    expect((await fetch(`${base}/workspace/ws/templates/${directImported.item.manifest.id}`, { method: "DELETE", headers })).status).toBe(200);
+
+    const savedResponse = await fetch(`${base}/workspace/ws/templates/from-session`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ sessionId: "session_video", category: "video", title: "Personal video" }),
+    });
+    expect(savedResponse.status).toBe(201);
+    const saved = await savedResponse.json();
+    const packageResponse = await fetch(`${base}/workspace/ws/templates/${saved.item.manifest.id}/package`, {
+      headers: { ...headers, Origin: "http://localhost:5193" },
+    });
+    expect(packageResponse.status).toBe(200);
+    expect(packageResponse.headers.get("content-type")).toBe(IPOLLOWORK_PACKAGE_MEDIA_TYPE);
+    expect(packageResponse.headers.get("content-disposition")).toBe(`attachment; filename="${saved.item.manifest.id}-${saved.item.manifest.version}${IPOLLOWORK_PACKAGE_EXTENSION}"`);
+    expect(packageResponse.headers.get("access-control-expose-headers")).toContain("Content-Disposition");
+    expect(packageResponse.headers.get("cache-control")).toBe("private, no-store");
+    const archive = Buffer.from(await packageResponse.arrayBuffer());
+    expect(packageResponse.headers.get("x-ipollo-artifact-sha256")).toBe(createHash("sha256").update(archive).digest("hex"));
+    expect((await fetch(`${base}/workspace/ws/templates/ipollowork.saas-landing/package`, { headers })).status).toBe(404);
+
+    expect((await fetch(`${base}/workspace/ws/templates/${saved.item.manifest.id}`, { method: "DELETE", headers })).status).toBe(200);
+    const importedResponse = await fetch(`${base}/workspace/ws/templates/import`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": IPOLLOWORK_PACKAGE_MEDIA_TYPE, "X-iPolloWork-Template-Category": "video" },
+      body: archive,
+    });
+    expect(importedResponse.status).toBe(201);
+    expect((await importedResponse.json()).item).toMatchObject({ sourceType: "local", manifest: { id: saved.item.manifest.id, surface: "video" } });
 
     await mkdir(join(root, "video", "legacy_video"), { recursive: true });
     await writeFile(join(root, "video", "legacy_video", "index.html"), "<!doctype html><div data-composition-id=\"legacy-video\" data-duration=\"8\"></div>", "utf8");

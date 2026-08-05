@@ -435,16 +435,16 @@ describe("plugin package lifecycle", () => {
       expect(catalog.status).toBe(200);
       expect(await catalog.json()).toMatchObject({
         items: [
-          { pluginId: "figma", version: "2.0.16", installedVersion: null, updateAvailable: false },
-          { pluginId: "notion", version: "1.0.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "linear", version: "1.0.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "sentry", version: "1.0.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "stripe", version: "1.0.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "context7", version: "1.0.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "github", version: "0.1.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-official", version: "0.1.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: "0.1.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "video-agent", version: "0.1.1", installedVersion: null, updateAvailable: false },
+          { pluginId: "figma", version: "2.0.17", installedVersion: null, updateAvailable: false },
+          { pluginId: "notion", version: "1.0.1", installedVersion: null, updateAvailable: false },
+          { pluginId: "linear", version: "1.0.1", installedVersion: null, updateAvailable: false },
+          { pluginId: "sentry", version: "1.0.1", installedVersion: null, updateAvailable: false },
+          { pluginId: "stripe", version: "1.0.1", installedVersion: null, updateAvailable: false },
+          { pluginId: "context7", version: "1.0.1", installedVersion: null, updateAvailable: false },
+          { pluginId: "github", version: "0.1.1", installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-official", version: "0.1.1", installedVersion: null, updateAvailable: false },
+          { pluginId: "design-agent", version: "0.1.1", installedVersion: null, updateAvailable: false },
+          { pluginId: "video-agent", version: "0.1.2", installedVersion: null, updateAvailable: false },
         ],
       });
 
@@ -453,7 +453,7 @@ describe("plugin package lifecycle", () => {
         headers,
       });
       expect(installation.status).toBe(200);
-      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "figma", version: "2.0.16" } });
+      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "figma", version: "2.0.17" } });
       expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.figma).toEqual({
         type: "remote",
         url: "http://127.0.0.1:3845/mcp",
@@ -480,7 +480,7 @@ describe("plugin package lifecycle", () => {
         });
         expect(serviceInstallation.status).toBe(200);
         expect(await serviceInstallation.json()).toMatchObject({
-          result: { status: "installed", pluginId: service.id, version: "1.0.0" },
+          result: { status: "installed", pluginId: service.id, version: "1.0.1" },
           item: { pluginId: service.id, manifest: { source: { trusted: true } } },
         });
         expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.[service.id]).toEqual({
@@ -500,7 +500,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(githubInstallation.status).toBe(200);
       expect(await githubInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "github", version: "0.1.0" },
+        result: { status: "installed", pluginId: "github", version: "0.1.1" },
         item: {
           pluginId: "github",
           manifest: {
@@ -530,7 +530,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(wechatInstallation.status).toBe(200);
       expect(await wechatInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "wechat-official", version: "0.1.0" },
+        result: { status: "installed", pluginId: "wechat-official", version: "0.1.1" },
         item: {
           pluginId: "wechat-official",
           manifest: {
@@ -598,13 +598,13 @@ describe("plugin package lifecycle", () => {
     const packages = [
       {
         pluginId: "design-agent",
-        version: "0.1.0",
+        version: "0.1.1",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
         heading: "# iPolloWork Design Studio",
       },
       {
         pluginId: "video-agent",
-        version: "0.1.1",
+        version: "0.1.2",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },

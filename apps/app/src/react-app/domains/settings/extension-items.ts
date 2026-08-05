@@ -5,6 +5,7 @@ import { evaluateEnablement, type EnablementContext } from "../../../app/enablem
 import type { EnablementResult } from "../../../app/extensions";
 import type { DenExternalMcpConnection, DenOrgMarketplaceResolved, DenOrgPlugin } from "../../../app/lib/den";
 import type { McpServerEntry } from "../../../app/types";
+import { t, type Language } from "../../../i18n";
 
 export type ExtensionItemSource = "builtin" | "marketplace" | "org-connection" | "mcp-directory" | "skill";
 export type ExtensionInstallState = "available" | "installed" | "update_available";
@@ -54,6 +55,16 @@ export type ExtensionItemBuildInput = {
 };
 
 const MCP_IMPORT_PATH_PREFIX = "opencode.jsonc#mcp.";
+const HAN_TEXT_RE = /\p{Script=Han}/u;
+
+export function skillDescriptionForLocale(description: string | undefined, locale: Language): string {
+  const value = description?.trim();
+  if (!value) return t("settings.extensions.skill_installed_description", locale);
+  if (locale === "en" && HAN_TEXT_RE.test(value)) {
+    return t("settings.extensions.skill_description_unavailable_english", locale);
+  }
+  return value;
+}
 
 export function isToggleControlledExtension(entry: McpDirectoryInfo) {
   return entry.extensionManifest?.enablement?.some((condition) => condition.type === "toggle-enabled") === true;

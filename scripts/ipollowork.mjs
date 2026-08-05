@@ -87,6 +87,7 @@ switch (command) {
     requireCommand("pnpm", "Run: corepack enable");
     run(pnpm, ["--filter", "@ipollowork/desktop", "dev", ...args], {
       ...process.env,
+      COREPACK_ENABLE_PROJECT_SPEC: process.env.COREPACK_ENABLE_PROJECT_SPEC ?? "0",
       IPOLLOWORK_DEV_MODE: "1",
     });
     break;
