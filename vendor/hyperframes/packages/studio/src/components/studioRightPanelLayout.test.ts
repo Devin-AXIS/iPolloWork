@@ -28,6 +28,8 @@ describe("Studio right panel layout", () => {
     expect(translations).toContain('"header.inspector": "属性"');
     expect(translations).toContain('"right.renders": "Export"');
     expect(translations).toContain('"right.catalog": "Animation"');
+    expect(translations).toContain('"right.style": "主题"');
+    expect(translations).not.toContain('"right.style": "风格"');
     expect(translations).toContain('"right.catalog": "动画"');
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
@@ -49,6 +51,16 @@ describe("Studio right panel layout", () => {
     expect(header).not.toContain('t("header.undo")');
     expect(header).not.toContain('t("header.capture")');
     expect(header).not.toContain("studio-toggle-fullscreen");
+  });
+
+  it("keeps the right panel tabs clear of embedded host content", () => {
+    const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
+
+    expect(panel).toContain("hf-studio-right-panel-tabs");
+    expect(panel).toContain("h-14");
+    expect(panel).toContain("px-3 pb-3 pt-2");
+    expect(panel).toContain("rightPanelTab === \"voice\" || rightPanelTab === \"style\" ? (");
+    expect(panel).toContain("className=\"min-h-0 min-w-0 flex-1 overflow-hidden pt-3\"");
   });
 
   it("keeps search and category filters above one density-controlled scroll region", () => {

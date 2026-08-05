@@ -472,7 +472,7 @@ export function StudioRightPanel({
           <CaptionPropertyPanel iframeRef={previewIframeRef} />
         ) : (
           <>
-            <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
+            <div className="hf-studio-right-panel-tabs flex h-14 min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 pb-3 pt-2">
               {exportDrawer ? (
                 <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-200">
                   {t("right.renders")}
@@ -523,7 +523,7 @@ export function StudioRightPanel({
                 <X size={14} weight="bold" />
               </button>
             </div>
-            <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            <div className="min-h-0 min-w-0 flex-1 overflow-hidden pt-3">
               {rightPanelTab === "block-params" && activeBlockParams ? (
                 <BlockParamsPanel
                   blockName={activeBlockParams.blockName}

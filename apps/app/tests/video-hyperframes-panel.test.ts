@@ -28,6 +28,7 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
     expect(panelSource).not.toContain("onChooseBackgroundImage=");
     expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
+    expect(panelSource).toContain("top-[96px]");
   });
 
   test("keeps a visible fullscreen control in the iPolloWork Video Studio header", () => {
@@ -211,7 +212,7 @@ describe("HyperFrames Video Studio", () => {
       '(!sidePanelOpen || rightWorkspaceExpanded) && "pointer-events-none',
     );
     expect(sessionPageSource).not.toContain("disabled={!sidePanelOpen || rightWorkspaceExpanded}");
-    expect(sessionPageSource).toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
+    expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
     expect(sessionPageSource).toContain("setVideoStudioExpanded(false)");
     expect(sessionPageSource).toContain(
       "if (event.button !== 0 || !sidePanelOpen || rightWorkspaceExpanded) return",
@@ -356,16 +357,42 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain('sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : ""');
   });
 
-  test("opens the left sidebar in one action when the right panel occupies a narrow window", () => {
+  test("preserves the right panel state without leaving a blank condensed gutter", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     ).replaceAll("\r\n", "\n");
 
+    const openLeftStart = sessionPageSource.indexOf("const openLeftSidebar = useCallback(() => {");
+    const openLeftEnd = sessionPageSource.indexOf("useEffect(() => {", openLeftStart);
+    const openLeftSidebar = sessionPageSource.slice(openLeftStart, openLeftEnd);
+
     expect(sessionPageSource).toContain("const openLeftSidebar = useCallback(() => {");
-    expect(sessionPageSource).toContain("closeRightPane({ preserveAutoCollapse: true });");
+    expect(sessionPageSource).not.toContain("RIGHT_PANEL_CONDENSED_WIDTH");
+    expect(sessionPageSource).not.toContain("minimumVisibleRightPanelWidth");
+    expect(sessionPageSource).toContain("availableRightPanelWidth = Math.max(");
+    expect(openLeftSidebar).not.toContain("closeRightPane");
+    expect(openLeftSidebar).not.toContain("autoCollapsedSidePanelRef.current");
+    expect(sessionPageSource).not.toContain("if (sidePanelOpen) {\n      autoCollapsedSidePanelRef.current = effectiveSidePanelView;");
+    expect(sessionPageSource).toContain("if (sidebarOpen && userOpenedSidebarWhileNarrowRef.current) return;");
     expect(sessionPageSource).toContain("restoredPanel &&\n      !userOpenedSidebarWhileNarrowRef.current &&\n      !sidePanelOpen");
     expect(sessionPageSource).toContain("onClick={openLeftSidebar}");
+  });
+
+  test("uses coordinated shell transitions for the left and right sidebars", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("const SESSION_SHELL_TRANSITION_MS = 220");
+    expect(sessionPageSource).toContain('const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)"');
+    expect(sessionPageSource).toContain("const sessionShellTransition =");
+    expect(sessionPageSource).toContain("rightPanelTransitionStyle");
+    expect(sessionPageSource).toContain("rightPanelResizing ? \"none\" : sessionShellTransition");
+    expect(sessionPageSource).toContain("transition-[width,min-width,opacity]");
+    expect(sessionPageSource).toContain("**:data-[slot=sidebar-container]:duration-[220ms]");
+    expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
   });
 
   test("batches right-panel drag updates and cleans up the interaction", () => {
