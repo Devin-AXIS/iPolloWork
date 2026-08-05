@@ -85,6 +85,50 @@ The package contract extends the existing schema-version-1 extension manifest. E
 }
 ```
 
+### Localized display metadata
+
+Packages can keep their authored display text as the manifest default and add locale-specific UI text without changing runtime identifiers or behavior:
+
+```json
+{
+  "localization": {
+    "defaultLocale": "en",
+    "translations": {
+      "zh": {
+        "name": "Acme 研究",
+        "description": "搜索 Acme 的研究服务。",
+        "category": "研究",
+        "composer": { "prompt": "使用 Acme 研究插件。" },
+        "setup": {
+          "instructions": "连接 Acme 后继续。",
+          "primaryCta": "连接",
+          "secondaryCta": "查看帮助"
+        },
+        "resources": {
+          "acme-search": {
+            "label": "Acme 搜索",
+            "description": "搜索已授权的研究资料。"
+          }
+        },
+        "permissions": {
+          "network": { "reason": "连接 Acme 研究 API。" }
+        },
+        "authorizationMethods": {
+          "api-key": {
+            "label": "API 密钥",
+            "fields": {
+              "apiKey": { "label": "API 密钥", "placeholder": "请输入密钥" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Locale tags must be valid BCP 47-style tags. Resource, permission, authorization-method, and authorization-field keys must reference IDs declared by the base manifest. iPolloWork resolves the selected locale first, then English, then the manifest default. Localization is display-only: IDs, paths, relationships, credentials, and runtime behavior always come from the base manifest. Because localization is part of the immutable manifest and package checksum, published packages must increment their semantic version when adding or changing translations.
+
 Package versions use semantic versions. A published version is immutable: changing a file without changing the version is rejected. A resource `path` may name a regular file or a directory; directories are expanded recursively, while symbolic links and special files are rejected. The installer records a SHA-256 digest for every owned file, preserves unrelated workspace files, and refuses to overwrite files changed outside the package manager.
 
 ## Authorization methods

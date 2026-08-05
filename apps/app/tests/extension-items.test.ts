@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { McpDirectoryInfo } from "../src/app/constants";
 import type { DenExternalMcpConnection } from "../src/app/lib/den";
 import type { McpServerEntry } from "../src/app/types";
-import { buildExtensionItems } from "../src/react-app/domains/settings/extension-items";
+import { buildExtensionItems, skillDescriptionForLocale } from "../src/react-app/domains/settings/extension-items";
 
 const connectedBuiltIn: McpDirectoryInfo = {
   id: "ipollowork-browser",
@@ -72,6 +72,14 @@ function orgMcpConnection(input: Partial<DenExternalMcpConnection> = {}): DenExt
 }
 
 describe("extension item projection", () => {
+  test("keeps English skill descriptions and replaces Chinese descriptions in English UI", () => {
+    expect(skillDescriptionForLocale("Find and install skills.", "en")).toBe("Find and install skills.");
+    expect(skillDescriptionForLocale("查询自己的考勤打卡记录", "en")).toBe("English description unavailable.");
+    expect(skillDescriptionForLocale("查询自己的考勤打卡记录", "zh")).toBe("查询自己的考勤打卡记录");
+    expect(skillDescriptionForLocale(undefined, "en")).toBe("Installed skill");
+    expect(skillDescriptionForLocale(undefined, "zh")).toBe("已安装的技能");
+  });
+
   test("keeps unconnected built-ins out of My Extensions quick connect", () => {
     const result = buildExtensionItems({
       quickConnect: [connectedBuiltIn, availableBuiltIn],

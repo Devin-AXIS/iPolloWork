@@ -2621,6 +2621,8 @@ export default {
   "settings.extensions.your_account": "你的账号",
   "settings.extensions.empty_title": "未找到扩展",
   "settings.extensions.empty_description": "请尝试其他搜索词或筛选条件，或打开市场添加扩展。",
+  "settings.extensions.skill_installed_description": "已安装的技能",
+  "settings.extensions.skill_description_unavailable_english": "暂无英文描述。",
   "settings.shell.cloud_only": "仅限云端",
   "settings.shell.branding_title": "品牌",
   "settings.shell.branding_description": "自定义用户在整个应用中看到的名称。",

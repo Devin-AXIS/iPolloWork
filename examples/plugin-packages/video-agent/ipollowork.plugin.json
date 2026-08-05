@@ -16,8 +16,30 @@
   "composer": {
     "prompt": "使用 iPolloWork Video Agent 在当前会话的 Video Studio 项目中创建或编辑视频。"
   },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Official Agent Skills for iPolloWork Video Studio, HyperFrames, and voiceover workflows, without replacing the built-in Studio, timeline, or video project.",
+        "category": "Creative & Design",
+        "composer": { "prompt": "Use iPolloWork Video Agent to create or edit video in the current session's Video Studio project." },
+        "resources": {
+          "ipollowork-video-studio": { "description": "Safely create and edit HyperFrames video in the current iPolloWork Video Studio session." },
+          "ipollowork-video-voiceover": {
+            "label": "Video Voiceover",
+            "description": "Generate and verify scene-by-scene voiceover using the current Video Studio media capabilities."
+          }
+        },
+        "permissions": {
+          "workspace-read": { "reason": "Read the current session's HyperFrames project, timeline, media, and voiceover settings." },
+          "workspace-write": { "reason": "Update the current session's video project and media references as requested by the user." },
+          "process": { "reason": "Run read-only HyperFrames inspection and validation commands for the current session project." }
+        }
+      }
+    }
+  },
   "package": {
-    "version": "0.1.1",
+    "version": "0.1.2",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"

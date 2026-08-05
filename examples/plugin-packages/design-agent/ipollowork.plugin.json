@@ -16,8 +16,29 @@
   "composer": {
     "prompt": "使用 iPolloWork Design Agent 在当前会话的设计项目中创建或编辑内容。"
   },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Official Agent Skills for iPolloWork Design Studio and presentations, without replacing the built-in design workspace, templates, or project files.",
+        "category": "Creative & Design",
+        "composer": { "prompt": "Use iPolloWork Design Agent to create or edit content in the current session's design project." },
+        "resources": {
+          "ipollowork-design-studio": { "description": "Safely create and edit HTML designs in the current iPolloWork Design session." },
+          "ipollowork-presentations": {
+            "label": "Presentations",
+            "description": "Create, revise, and inspect presentations in the current Design session."
+          }
+        },
+        "permissions": {
+          "workspace-read": { "reason": "Read user-selected design files, templates, and design tokens from the current session." },
+          "workspace-write": { "reason": "Update design or presentation files in the current session as requested by the user." }
+        }
+      }
+    }
+  },
   "package": {
-    "version": "0.1.0",
+    "version": "0.1.1",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"

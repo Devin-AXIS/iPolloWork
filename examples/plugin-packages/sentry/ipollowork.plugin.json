@@ -12,8 +12,44 @@
   },
   "icon": { "simpleIconSlug": "sentry" },
   "composer": { "prompt": "使用 Sentry 插件读取生产证据，先确认组织、项目、环境和时间范围，再调查问题或验证修复。" },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Combine production issue investigation, regression monitoring, release health, and fix verification into evidence-backed Sentry workflows.",
+        "category": "Observability",
+        "composer": { "prompt": "Use the Sentry plugin to read production evidence, confirming the organization, project, environment, and time range before investigating an issue or verifying a fix." },
+        "resources": {
+          "sentry-mcp": {
+            "label": "Official Sentry Remote MCP",
+            "description": "Read authorized Sentry organizations, projects, issues, and release data through persistent OAuth."
+          },
+          "sentry-issue-investigation": {
+            "label": "Production Issue Investigation",
+            "description": "Identify the most likely root cause using events, stacks, tags, and timelines."
+          },
+          "sentry-regression-monitoring": {
+            "label": "Regression Monitoring",
+            "description": "Compare releases and time windows to identify new issues, regressions, and impact changes."
+          },
+          "sentry-release-health": {
+            "label": "Release Health",
+            "description": "Evaluate release quality using errors, user impact, and version evidence."
+          },
+          "sentry-fix-verification": {
+            "label": "Fix Verification",
+            "description": "Connect code fixes, release versions, and production event trends into closed-loop evidence."
+          }
+        },
+        "permissions": {
+          "network": { "reason": "Connect to the official Sentry remote MCP and read error and release data authorized through OAuth." },
+          "workspace-read": { "reason": "Compare Sentry stacks, versions, and commit evidence with the current code." }
+        }
+      }
+    }
+  },
   "package": {
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
     "compatibility": { "ipollowork": ">=0.18.0", "opencode": ">=1.18.0" },
     "updateId": "ipollowork/sentry",

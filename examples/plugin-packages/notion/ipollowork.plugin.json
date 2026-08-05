@@ -12,8 +12,44 @@
   },
   "icon": { "simpleIconSlug": "notion" },
   "composer": { "prompt": "使用 Notion 插件查找、整理或更新团队知识，并在写入前确认目标页面或数据库。" },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Combine Notion pages, databases, project documents, and meeting notes into reliable knowledge workflows.",
+        "category": "Knowledge & Collaboration",
+        "composer": { "prompt": "Use the Notion plugin to find, organize, or update team knowledge, confirming the target page or database before writing." },
+        "resources": {
+          "notion-mcp": {
+            "label": "Official Notion Remote MCP",
+            "description": "Read and update the user's authorized Notion content through persistent OAuth."
+          },
+          "notion-knowledge": {
+            "label": "Knowledge Retrieval",
+            "description": "Find, verify, and summarize sourced team knowledge from pages and databases."
+          },
+          "notion-databases": {
+            "label": "Database Workflows",
+            "description": "Safely query, create, and update Notion database entries."
+          },
+          "notion-project-docs": {
+            "label": "Project Documentation",
+            "description": "Organize project evidence into clear, maintainable Notion documents."
+          },
+          "notion-meeting-notes": {
+            "label": "Meeting Notes",
+            "description": "Organize decisions, owners, and follow-up actions and write them to an explicit destination."
+          }
+        },
+        "permissions": {
+          "network": { "reason": "Connect to the official Notion remote MCP and access workspace content authorized through OAuth." },
+          "workspace-read": { "reason": "Read user-selected workspace materials to compare or organize them with Notion content." }
+        }
+      }
+    }
+  },
   "package": {
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
     "compatibility": { "ipollowork": ">=0.18.0", "opencode": ">=1.18.0" },
     "updateId": "ipollowork/notion",

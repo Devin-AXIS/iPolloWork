@@ -2602,6 +2602,8 @@ export default {
   "settings.extensions.your_account": "Your account",
   "settings.extensions.empty_title": "No extensions found",
   "settings.extensions.empty_description": "Try a different search or filter, or open Marketplace to add one.",
+  "settings.extensions.skill_installed_description": "Installed skill",
+  "settings.extensions.skill_description_unavailable_english": "English description unavailable.",
   "settings.shell.cloud_only": "Cloud only",
   "settings.shell.branding_title": "Branding",
   "settings.shell.branding_description": "Customize the name your users see across the app.",

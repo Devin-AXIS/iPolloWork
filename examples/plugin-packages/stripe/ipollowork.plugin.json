@@ -12,8 +12,44 @@
   },
   "icon": { "simpleIconSlug": "stripe" },
   "composer": { "prompt": "使用 Stripe 插件先核对测试/生产环境、对象和金额，再调查支付、订阅、账单或执行经确认的操作。" },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Combine payment investigation, subscriptions and billing, reconciliation, and high-risk operation review into safe Stripe workflows.",
+        "category": "Payments & Finance",
+        "composer": { "prompt": "Use the Stripe plugin to verify the test or production environment, object, and amount before investigating payments, subscriptions, invoices, or performing confirmed operations." },
+        "resources": {
+          "stripe-mcp": {
+            "label": "Official Stripe Remote MCP",
+            "description": "Access the user's authorized Stripe account and tools through persistent OAuth."
+          },
+          "stripe-payment-investigation": {
+            "label": "Payment Investigation",
+            "description": "Investigate payment issues using PaymentIntent, Charge, refund, and event evidence."
+          },
+          "stripe-billing-subscriptions": {
+            "label": "Subscriptions & Billing",
+            "description": "Verify customers, subscriptions, invoices, prices, and lifecycle status."
+          },
+          "stripe-reconciliation": {
+            "label": "Payment Reconciliation",
+            "description": "Reconcile Stripe objects with business records by currency and time range."
+          },
+          "stripe-safe-operations": {
+            "label": "Safe Operations",
+            "description": "Confirm the object, amount, and environment before refunds, cancellations, or other high-risk writes."
+          }
+        },
+        "permissions": {
+          "network": { "reason": "Connect to the official Stripe remote MCP and access payment and billing data authorized through OAuth." },
+          "workspace-read": { "reason": "Read user-selected order or reconciliation materials from the current workspace." }
+        }
+      }
+    }
+  },
   "package": {
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
     "compatibility": { "ipollowork": ">=0.18.0", "opencode": ">=1.18.0" },
     "updateId": "ipollowork/stripe",
