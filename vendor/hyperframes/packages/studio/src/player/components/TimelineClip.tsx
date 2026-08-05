@@ -138,7 +138,7 @@ export const TimelineClip = memo(function TimelineClip({
             top: 0,
             bottom: 0,
             width: 14,
-            cursor: "col-resize",
+            cursor: "ew-resize",
             zIndex: 4,
           }}
         >
@@ -168,7 +168,7 @@ export const TimelineClip = memo(function TimelineClip({
             top: 0,
             bottom: 0,
             width: 14,
-            cursor: "col-resize",
+            cursor: "ew-resize",
             zIndex: 4,
           }}
         >

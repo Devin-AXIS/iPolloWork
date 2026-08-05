@@ -192,13 +192,18 @@ const BOX_SHADOW_PRESETS = {
 export type BoxShadowPreset = keyof typeof BOX_SHADOW_PRESETS | "custom";
 
 export {
+  buildMaskGeometry,
   buildClipPathValue,
   buildInsetClipPathSides,
   buildInsetClipPathValue,
   getClipPathInsetPx,
   inferClipPathPreset,
+  inferMaskShape,
+  parseMaskGeometry,
   parseInsetClipPathSides,
   type ClipPathInsetSides,
+  type MaskGeometry,
+  type MaskShape,
 } from "./clipPathHelpers";
 
 /* ------------------------------------------------------------------ */

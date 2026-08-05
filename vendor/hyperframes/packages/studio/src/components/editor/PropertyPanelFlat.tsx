@@ -13,13 +13,10 @@ import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import {
   FlatAppearanceSection,
   FlatFillSection,
-  FlatMaskSection,
   FlatStrokeSection,
 } from "./propertyPanelFlatStyleSections";
-import {
-  FlatLayoutSection,
-  LayoutTransform3DBlock,
-} from "./propertyPanelFlatLayoutSection";
+import { FlatMaskSection } from "./propertyPanelFlatMaskSection";
+import { FlatLayoutSection, LayoutTransform3DBlock } from "./propertyPanelFlatLayoutSection";
 import { FlatMotionSection, FlatTimingRow } from "./propertyPanelFlatMotionSection";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
@@ -75,16 +72,10 @@ export function PropertyPanelFlat({
   gsapBorderRadius,
   fontAssets = [],
   showEditableSections,
-  selectedElementHidden,
-  selectedElementId,
-  clipboardCopied,
-  onCopyElementInfo,
   projectId,
   projectDir,
   assets,
   previewIframeRef,
-  onClearSelection,
-  onUngroup,
   onSetStyle,
   onSetAttribute,
   onSetAttributes,
@@ -97,7 +88,6 @@ export function PropertyPanelFlat({
   onAddTextField,
   onRemoveTextField,
   onAskAgent,
-  onToggleElementHidden,
   onImportAssets,
   onImportFonts,
   recordingState,
@@ -152,8 +142,6 @@ export function PropertyPanelFlat({
   | "projectDir"
   | "assets"
   | "previewIframeRef"
-  | "onClearSelection"
-  | "onUngroup"
   | "onSetStyle"
   | "onSetAttribute"
   | "onSetAttributes"
@@ -166,7 +154,6 @@ export function PropertyPanelFlat({
   | "onAddTextField"
   | "onRemoveTextField"
   | "onAskAgent"
-  | "onToggleElementHidden"
   | "onImportAssets"
   | "onImportFonts"
   | "fontAssets"
@@ -225,10 +212,6 @@ export function PropertyPanelFlat({
     sourceLabel: string;
     gsapBorderRadius: { tl: number; tr: number; br: number; bl: number } | null;
     showEditableSections: boolean;
-    selectedElementHidden: boolean;
-    selectedElementId: string | null;
-    clipboardCopied: boolean;
-    onCopyElementInfo: () => void;
     currentTime: number;
   }) {
   // Lazy initializer: pick whichever group actually renders for this element
@@ -596,17 +579,7 @@ export function PropertyPanelFlat({
             name={element.label}
             meta={`${sourceLabel} · ${element.tagName}`}
             elementKind={elementKind}
-            hidden={selectedElementHidden}
-            onToggleHidden={
-              selectedElementId && onToggleElementHidden
-                ? () => void onToggleElementHidden(selectedElementId, !selectedElementHidden)
-                : undefined
-            }
-            copied={clipboardCopied}
-            onCopy={onCopyElementInfo}
-            onClear={onClearSelection}
-            onUngroup={onUngroup}
-            showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
+            onAskAgent={onAskAgent}
           />
         </DesignPanelInputProvider>
         <div
@@ -630,9 +603,9 @@ export function PropertyPanelFlat({
                   {isOpen && (
                     <div
                       data-flat-group-content="true"
-                      className={`${justToggledIds.includes(group.id) ? "hf-flat-group-enter " : ""}border-b border-panel-hairline bg-panel-bg px-3 py-2 dark:bg-panel-bg`}
+                      className={`${justToggledIds.includes(group.id) ? "hf-flat-group-enter " : ""}border-b-[0.5px] border-[#ebebeb] bg-panel-bg px-[17px] pb-[15px] pt-2 dark:border-panel-hairline dark:bg-panel-bg`}
                     >
-                      <div className="border-l-2 border-[#20bbc0] pl-2">{group.content}</div>
+                      {group.content}
                     </div>
                   )}
                 </section>
@@ -642,7 +615,6 @@ export function PropertyPanelFlat({
         </div>
         <DesignPanelInputProvider section="footer">
           <PropertyPanelFlatFooter
-            onAskAgent={onAskAgent}
             recordingState={recordingState}
             recordingDuration={recordingDuration}
             onToggleRecording={onToggleRecording}

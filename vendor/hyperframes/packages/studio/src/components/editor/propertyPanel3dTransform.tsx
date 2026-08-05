@@ -1,11 +1,8 @@
 import { useState } from "react";
 import type { DomEditSelection } from "./domEditingTypes";
-import { STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
-import { MetricField } from "./propertyPanelPrimitives";
-import { KeyframeNavigation } from "./KeyframeNavigation";
-import { formatPxMetricValue, parsePxMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { Transform3DCube, type CubePose } from "./Transform3DCube";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { ChevronDown } from "../../icons/SystemIcons";
 
 // translateZ only foreshortens under a perspective lens. Rather than hardcode one
 // (an arbitrary px value reads wrong at different canvas sizes), derive it from the
@@ -127,8 +124,8 @@ function Cube3dControl({
     });
 
   return (
-    <div className="mb-2 px-2">
-      <div className="mx-auto max-w-[184px]">
+    <div>
+      <div className="w-full">
         <Transform3DCube
           pose={pose}
           perspective={gsapRuntimeValues.transformPerspective ?? 0}
@@ -179,107 +176,10 @@ function Cube3dControl({
           onKeyframe={onKeyframe}
           keyframed={keyframed}
         />
-        <p className="mt-1 text-center text-[9px] leading-snug text-neutral-600">
-          Drag to tilt · Shift-drag to roll · Scroll for depth
+        <p className="mt-1 text-center text-[10px] leading-snug text-[#858a94]">
+          Drag to adjust the view
         </p>
       </div>
-    </div>
-  );
-}
-
-interface FieldCtx {
-  element: DomEditSelection;
-  gsapRuntimeValues: Record<string, number>;
-  gsapKeyframes: KeyframeEntry;
-  gsapAnimId: string | null;
-  currentPct: number;
-  elStart: number;
-  elDuration: number;
-  resolveAnimIdForProp?: (prop: string) => string | null;
-  onCommitAnimatedProperty?: (
-    element: DomEditSelection,
-    property: string,
-    value: number,
-  ) => Promise<void>;
-  onSeekToTime?: (time: number) => void;
-  onRemoveKeyframe?: (animId: string, pct: number) => void;
-  onConvertToKeyframes?: (animId: string, duration?: number) => void;
-}
-
-const parseDeg = (s: string): number | null => {
-  const n = Number.parseFloat(s.replace("°", ""));
-  return Number.isFinite(n) ? n : null;
-};
-const parseScale = (s: string): number | null => {
-  const n = Number.parseFloat(s);
-  return Number.isFinite(n) ? n : null;
-};
-const parsePxNonNeg = (s: string): number | null => {
-  const v = parsePxMetricValue(s);
-  return v != null && v >= 0 ? v : null;
-};
-
-/**
- * One 3D-transform field: a number/scrub input plus its keyframe diamond, so
- * rotation / perspective / Z / scale can each be keyframed just like Layout's
- * X / Y — the diamond was previously missing on the rotation + perspective rows.
- */
-function Transform3dField({
-  label,
-  prop,
-  scrub,
-  format,
-  parse,
-  defaultValue,
-  ctx,
-}: {
-  label: string;
-  prop: string;
-  scrub?: boolean;
-  format: (v: number) => string;
-  parse: (s: string) => number | null;
-  defaultValue: number;
-  ctx: FieldCtx;
-}) {
-  const { gsapAnimId, onCommitAnimatedProperty } = ctx;
-  const idFor = (p: string) => ctx.resolveAnimIdForProp?.(p) ?? gsapAnimId;
-  const current = ctx.gsapRuntimeValues[prop] ?? defaultValue;
-  return (
-    <div className="flex items-center gap-1">
-      <div className="flex-1">
-        <MetricField
-          label={label}
-          value={format(current)}
-          scrub={scrub}
-          onCommit={(next) => {
-            const v = parse(next);
-            if (v != null && onCommitAnimatedProperty) {
-              void onCommitAnimatedProperty(ctx.element, prop, v);
-            }
-          }}
-        />
-      </div>
-      {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
-        <KeyframeNavigation
-          property={prop}
-          keyframes={ctx.gsapKeyframes}
-          currentPercentage={ctx.currentPct}
-          onSeek={(pct) => ctx.onSeekToTime?.(ctx.elStart + (pct / 100) * ctx.elDuration)}
-          onAddKeyframe={() => {
-            if (onCommitAnimatedProperty) void onCommitAnimatedProperty(ctx.element, prop, current);
-          }}
-          onRemoveKeyframe={(pct) => {
-            const id = idFor(prop);
-            if (id) ctx.onRemoveKeyframe?.(id, pct);
-          }}
-          onConvertToKeyframes={() => {
-            const id = idFor(prop);
-            // Pass the element's clip duration so a converted static 3D `set`
-            // spans the whole clip (keyframes land in range at any playhead).
-            if (id) ctx.onConvertToKeyframes?.(id, ctx.elDuration);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -300,113 +200,127 @@ export function PropertyPanel3dTransform({
   onConvertToKeyframes,
   onLivePreviewProps,
 }: PropertyPanel3dTransformProps) {
-  // Expanded by default — the cube gizmo is the headline of this panel, so show
-  // it up front rather than hiding it behind a collapsed header.
-  const [collapsed, setCollapsed] = useState(false);
-  const ctx: FieldCtx = {
-    element,
-    gsapRuntimeValues,
-    gsapKeyframes,
-    gsapAnimId,
-    currentPct,
-    elStart,
-    elDuration,
-    resolveAnimIdForProp,
-    onCommitAnimatedProperty,
-    onSeekToTime,
-    onRemoveKeyframe,
-    onConvertToKeyframes,
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [view, setView] = useState("Front");
+  const presets: Record<string, { rotationX: number; rotationY: number; rotationZ: number }> = {
+    Front: { rotationX: 0, rotationY: 0, rotationZ: 0 },
+    Left: { rotationX: 0, rotationY: -90, rotationZ: 0 },
+    Right: { rotationX: 0, rotationY: 90, rotationZ: 0 },
+    "Low Angle": { rotationX: -28, rotationY: 0, rotationZ: 0 },
+    Custom: {
+      rotationX: gsapRuntimeValues.rotationX ?? 0,
+      rotationY: gsapRuntimeValues.rotationY ?? 0,
+      rotationZ: gsapRuntimeValues.rotationZ ?? 0,
+    },
   };
+  const choosePreset = (name: string) => {
+    const pose = presets[name];
+    if (!pose) return;
+    setView(name);
+    setPresetOpen(false);
+    if (name !== "Custom") void onCommitAnimatedProperties?.(element, pose);
+  };
+  const commitRange = (property: "z" | "scale", raw: string) => {
+    const value = Number.parseFloat(raw);
+    if (!Number.isFinite(value)) return;
+    void onCommitAnimatedProperty?.(element, property, value);
+  };
+  const rangeControls: Array<{
+    label: string;
+    property: "z" | "scale";
+    value: number;
+    min: number;
+    max: number;
+    step: number;
+  }> = [
+    {
+      label: "Depth",
+      property: "z",
+      value: gsapRuntimeValues.z ?? 0,
+      min: -500,
+      max: 500,
+      step: 1,
+    },
+    {
+      label: "Size",
+      property: "scale",
+      value: gsapRuntimeValues.scale ?? 1,
+      min: 0.1,
+      max: 3,
+      step: 0.05,
+    },
+  ];
 
   return (
-    <div data-flat-3d-transform="true" className="mt-2 border-t border-panel-hairline pt-2">
-      <button
-        type="button"
-        onClick={() => setCollapsed((v) => !v)}
-        className="mb-2 flex h-6 w-full items-center justify-between rounded-[4px] bg-panel-input px-2 text-[8px] font-medium uppercase tracking-[0.08em] text-panel-text-3 hover:text-panel-text-1"
-      >
-        <span>3D Transform</span>
-        <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor" aria-hidden>
-          {collapsed ? <path d="M3 2l4 3-4 3z" /> : <path d="M2 3l3 4 3-4z" />}
-        </svg>
-      </button>
-      {collapsed ? null : (
-        <>
-          {onCommitAnimatedProperties && (
-            <Cube3dControl
-              element={element}
-              gsapRuntimeValues={gsapRuntimeValues}
-              onCommitAnimatedProperties={onCommitAnimatedProperties}
-              onLivePreviewProps={onLivePreviewProps}
-              keyframed={(gsapKeyframes ?? []).some(
-                (kf) =>
-                  "rotationX" in kf.properties ||
-                  "rotationY" in kf.properties ||
-                  "rotationZ" in kf.properties,
-              )}
-              onKeyframe={() => {
-                // Convert the 3D ("other"-group) static set to keyframes so the
-                // cube can animate; spans the element's clip via elDuration.
-                const id = resolveAnimIdForProp?.("rotationX") ?? gsapAnimId;
-                if (id) onConvertToKeyframes?.(id, elDuration);
-              }}
-            />
+    <div data-flat-3d-transform="true" className="grid gap-2">
+      {onCommitAnimatedProperties && (
+        <Cube3dControl
+          element={element}
+          gsapRuntimeValues={gsapRuntimeValues}
+          onCommitAnimatedProperties={onCommitAnimatedProperties}
+          onLivePreviewProps={onLivePreviewProps}
+          keyframed={(gsapKeyframes ?? []).some(
+            (kf) =>
+              "rotationX" in kf.properties ||
+              "rotationY" in kf.properties ||
+              "rotationZ" in kf.properties,
           )}
-          <div className={RESPONSIVE_GRID}>
-            <Transform3dField
-              ctx={ctx}
-              label="Z"
-              prop="z"
-              scrub
-              format={formatPxMetricValue}
-              parse={parsePxMetricValue}
-              defaultValue={0}
-            />
-            <Transform3dField
-              ctx={ctx}
-              label="Scale"
-              prop="scale"
-              scrub
-              format={(v) => String(v)}
-              parse={parseScale}
-              defaultValue={1}
-            />
-            <Transform3dField
-              ctx={ctx}
-              label="RotX"
-              prop="rotationX"
-              format={(v) => `${v}°`}
-              parse={parseDeg}
-              defaultValue={0}
-            />
-            <Transform3dField
-              ctx={ctx}
-              label="RotY"
-              prop="rotationY"
-              format={(v) => `${v}°`}
-              parse={parseDeg}
-              defaultValue={0}
-            />
-            <Transform3dField
-              ctx={ctx}
-              label="RotZ"
-              prop="rotationZ"
-              format={(v) => `${v}°`}
-              parse={parseDeg}
-              defaultValue={0}
-            />
-            <Transform3dField
-              ctx={ctx}
-              label="Perspective"
-              prop="transformPerspective"
-              scrub
-              format={formatPxMetricValue}
-              parse={parsePxNonNeg}
-              defaultValue={0}
-            />
-          </div>
-        </>
+          onKeyframe={() => {
+            // Convert the 3D ("other"-group) static set to keyframes so the
+            // cube can animate; spans the element's clip via elDuration.
+            const id = resolveAnimIdForProp?.("rotationX") ?? gsapAnimId;
+            if (id) onConvertToKeyframes?.(id, elDuration);
+          }}
+        />
       )}
+      <div className="relative">
+        <button
+          type="button"
+          aria-expanded={presetOpen}
+          onClick={() => setPresetOpen((open) => !open)}
+          className="flex h-[34px] w-full items-center justify-between rounded-[6px] bg-panel-input pl-2 pr-4"
+        >
+          <span className="text-[10px] text-[#858a94]">View</span>
+          <span className="flex items-center gap-4 text-[13px] text-[#24262b] dark:text-panel-text-1">
+            {view}
+            <ChevronDown size={16} className="text-[#858a94]" />
+          </span>
+        </button>
+        {presetOpen && (
+          <div className="absolute inset-x-0 top-[42px] z-20 grid gap-[9px] rounded-[12px] border border-[#dedfe3] bg-white p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)] dark:border-panel-hairline dark:bg-panel-bg">
+            {Object.keys(presets).map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => choosePreset(name)}
+                className={`flex h-[34px] items-center rounded-[6px] px-[10px] text-left text-[12px] text-[#24262b] dark:text-panel-text-1 ${view === name ? "bg-[#f4f5f7] dark:bg-panel-input" : "hover:bg-[#f4f5f7] dark:hover:bg-panel-input"}`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2 px-2">
+        {rangeControls.map((control) => (
+          <label
+            key={control.property}
+            className="flex h-[34px] items-center gap-1 text-[10px] text-[#858a94]"
+          >
+            <span>{control.label}</span>
+            <input
+              type="range"
+              aria-label={control.label}
+              min={control.min}
+              max={control.max}
+              step={control.step}
+              value={control.value}
+              onChange={(event) => commitRange(control.property, event.target.value)}
+              className="min-w-0 flex-1 accent-black dark:accent-white"
+            />
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

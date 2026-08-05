@@ -9,6 +9,7 @@ import {
   resolveTimelineLayerLabel,
   shouldDisplayTimelineElement,
 } from "./timelineLayerPresentation";
+import { getTimelinePaletteStyle, getTimelineTrackStyle } from "./timelineTheme";
 
 function element(overrides: Partial<TimelineElement> = {}): TimelineElement {
   return {
@@ -70,6 +71,23 @@ describe("timeline layer presentation", () => {
     );
   });
 
+  test("uses one neutral clip style for every timeline kind and palette index", () => {
+    const expected = {
+      accent: "#20BBC0",
+      clip: "#F5F6F9",
+      clipActive: "#F5F6F9",
+      border: "#CCCCCC",
+      hover: "#F5F6F9",
+      dragging: "#20BBC0",
+      label: "#20262D",
+    };
+
+    expect(getTimelineTrackStyle("text")).toEqual(expected);
+    expect(getTimelineTrackStyle("audio")).toEqual(expected);
+    expect(getTimelinePaletteStyle(0)).toEqual(expected);
+    expect(getTimelinePaletteStyle(11)).toEqual(expected);
+  });
+
   test("exposes authored binding metadata without inventing a group", () => {
     expect(
       resolveTimelineBindingId([
@@ -82,10 +100,7 @@ describe("timeline layer presentation", () => {
 
   test("hides only implicit structural wrappers", () => {
     expect(
-      shouldDisplayTimelineElement(
-        element({ id: "chrome", timingSource: "implicit" }),
-        false,
-      ),
+      shouldDisplayTimelineElement(element({ id: "chrome", timingSource: "implicit" }), false),
     ).toBe(false);
     expect(
       shouldDisplayTimelineElement(

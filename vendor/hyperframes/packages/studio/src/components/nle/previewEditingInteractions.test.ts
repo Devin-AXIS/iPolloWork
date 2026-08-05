@@ -4,7 +4,10 @@ import { parsePreviewAssetPayload } from "./usePreviewBlockDrop";
 
 describe("preview editing interactions", () => {
   it("selects canvas elements on one click without opening Design automatically", () => {
-    const source = readFileSync(new URL("../../hooks/usePreviewInteraction.ts", import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL("../../hooks/usePreviewInteraction.ts", import.meta.url),
+      "utf8",
+    );
 
     expect(source).toContain("applyDomSelection(nextSelection, { revealPanel: false })");
     expect(source).toContain("applyDomSelection(nextSel, { revealPanel: false })");
@@ -14,16 +17,12 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("exitPreviewFullscreenForInspector");
   });
 
-  it("clears the selected element when the user clicks outside the preview selection surface", () => {
+  it("keeps the selected element while the user interacts outside the preview surface", () => {
     const source = readFileSync(new URL("./PreviewPane.tsx", import.meta.url), "utf8");
 
-    expect(source).toContain('document.addEventListener("pointerdown", handlePointerDown, true)');
-    expect(source).toContain('event.target.closest(\'[data-preview-pan-surface="true"]\')');
-    expect(source).toContain('event.target.closest(\'[data-preserve-studio-selection="true"]\')');
-    expect(source).toContain("clearSelectedElement()");
-    expect(source).toContain('type: "ipollowork:hyperframes:clear-selection"');
-    expect(source).toContain('event.data?.type !== "ipollowork:video-studio-clear-selection"');
-    expect(source).toContain('document.removeEventListener("pointerdown", handlePointerDown, true)');
+    expect(source).not.toContain('document.addEventListener("pointerdown"');
+    expect(source).not.toContain("clearSelectedElement");
+    expect(source).not.toContain("ipollowork:video-studio-clear-selection");
   });
 
   it("accepts project assets and animations on the video preview", () => {
@@ -32,8 +31,14 @@ describe("preview editing interactions", () => {
       "utf8",
     );
     const editorShellSource = readFileSync(new URL("../EditorShell.tsx", import.meta.url), "utf8");
-    const assetCardSource = readFileSync(new URL("../sidebar/AssetCard.tsx", import.meta.url), "utf8");
-    const catalogSource = readFileSync(new URL("../sidebar/BlocksTab.tsx", import.meta.url), "utf8");
+    const assetCardSource = readFileSync(
+      new URL("../sidebar/AssetCard.tsx", import.meta.url),
+      "utf8",
+    );
+    const catalogSource = readFileSync(
+      new URL("../sidebar/BlocksTab.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(parsePreviewAssetPayload('{"path":"assets/cover.png"}')).toBe("assets/cover.png");
     expect(parsePreviewAssetPayload('{"path":42}')).toBeNull();
@@ -58,21 +63,21 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain('title="Source selection is not available yet"');
     expect(assetsSource).toContain("disabled");
     expect(assetsSource).toContain("Project 01");
-    expect(assetsSource).toContain('bg-[#171816] text-[#ffffff]');
-    expect(assetsSource).not.toContain('bg-[#2c2d2a] text-white');
-    expect(assetsSource).toContain('flex h-full min-h-0 flex-1 flex-col overflow-hidden');
+    expect(assetsSource).toContain("bg-[#171816] text-[#ffffff]");
+    expect(assetsSource).not.toContain("bg-[#2c2d2a] text-white");
+    expect(assetsSource).toContain("flex h-full min-h-0 flex-1 flex-col overflow-hidden");
     expect(assetsSource).toContain('data-testid="assets-virtual-scroll"');
     expect(assetsSource).toContain('className="min-h-0 flex-1 overflow-y-auto overscroll-contain"');
     expect(assetsSource).toContain("new IntersectionObserver");
-    expect(assetsSource).toContain('figmaAssetsImport.svg?url');
-    expect(assetsSource).toContain('figmaAssetsSearch.svg?url');
+    expect(assetsSource).toContain("figmaAssetsImport.svg?url");
+    expect(assetsSource).toContain("figmaAssetsSearch.svg?url");
     expect(assetsSource).toContain("<select");
     expect(assetsSource).toContain('className="flex h-[34px] w-auto flex-none');
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("ASSET_VIRTUAL_OVERSCAN_PX");
     expect(assetsSource).toContain("visible ? (");
     expect(assetsSource).toContain("CaretDown");
-    expect(assetsSource).not.toContain('timelineChevronDown.svg?url');
+    expect(assetsSource).not.toContain("timelineChevronDown.svg?url");
     expect(assetsSource).toContain("e.stopPropagation()");
     expect(assetsSource).not.toContain("grid-cols-[minmax(0,194px)_104px]");
   });
@@ -92,7 +97,10 @@ describe("preview editing interactions", () => {
   });
 
   it("drives the floating toolbar from the selected DOM element", () => {
-    const source = readFileSync(new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(source).toContain("activeSelection?.element");
     expect(source).toContain("isTextLeafElement");
@@ -105,17 +113,20 @@ describe("preview editing interactions", () => {
   });
 
   it("keeps rich-text formatting for text leaf elements", () => {
-    const source = readFileSync(new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(source).toContain("activeFormats: TextFormatState");
     expect(source).toContain("detectSelectionFormats(range)");
     expect(source).toContain("toggleMarkedSelectionFormat(");
     expect(source).toContain("current.activeFormats[action]");
-    expect(source).toContain('aria-pressed={state.activeFormats.bold}');
-    expect(source).toContain('aria-pressed={state.activeFormats.italic}');
-    expect(source).toContain('aria-pressed={state.activeFormats.strike}');
-    expect(source).toContain('aria-pressed={state.activeFormats.code}');
-    expect(source).toContain('aria-pressed={state.activeFormats.link}');
+    expect(source).toContain("aria-pressed={state.activeFormats.bold}");
+    expect(source).toContain("aria-pressed={state.activeFormats.italic}");
+    expect(source).toContain("aria-pressed={state.activeFormats.strike}");
+    expect(source).toContain("aria-pressed={state.activeFormats.code}");
+    expect(source).toContain("aria-pressed={state.activeFormats.link}");
   });
 
   it("deletes the selected element directly from a destructive toolbar action", () => {

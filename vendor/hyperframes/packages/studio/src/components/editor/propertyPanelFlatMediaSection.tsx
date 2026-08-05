@@ -117,7 +117,7 @@ export function FlatMediaSection({
   };
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <div className="flex min-h-8 items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2">
           <span className="h-5 w-8 flex-shrink-0 rounded-[3px] bg-panel-surface" />

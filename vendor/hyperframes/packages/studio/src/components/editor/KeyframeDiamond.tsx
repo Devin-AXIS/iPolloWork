@@ -19,8 +19,7 @@ export const KeyframeDiamond = memo(function KeyframeDiamond({
   isHold = false,
 }: KeyframeDiamondProps) {
   const isFilled = state === "active";
-  const opacity = state === "ghost" ? 0.25 : state === "inactive" ? 0.6 : 1;
-  const color = state === "active" ? "#3CE6AC" : "#a3a3a3";
+  const color = state === "active" ? "#3CE6AC" : "#858A94";
 
   return (
     <button
@@ -30,7 +29,7 @@ export const KeyframeDiamond = memo(function KeyframeDiamond({
         onClick();
       }}
       className="flex-shrink-0 p-0.5 transition-opacity hover:opacity-100"
-      style={{ color, opacity }}
+      style={{ color }}
       title={title}
     >
       <svg width={size} height={size} viewBox="0 0 10 10">

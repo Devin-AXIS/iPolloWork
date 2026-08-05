@@ -8,6 +8,7 @@ import {
 } from "react";
 import { SlidersHorizontal, Sparkle, Trash } from "@phosphor-icons/react";
 import { type DomEditSelection } from "../editor/domEditing";
+import { postVideoAiSelectionToHost } from "../editor/domEditingAgentPrompt";
 import { useDomEditActionsContext } from "../../contexts/DomEditContext";
 import { resolveBoundedOverlayPosition } from "./boundedOverlay";
 
@@ -460,29 +461,7 @@ export function PreviewTextSelectionToolbar({
 
   const askAiAboutSelection = useCallback(() => {
     if (!activeSelection) return;
-    const element = activeSelection.element;
-    const computed = element.ownerDocument.defaultView?.getComputedStyle(element);
-    window.parent?.postMessage({
-      type: "ipollowork:hyperframes:ask-ai-selection",
-      target: {
-        file: activeSelection.sourceFile || "index.html",
-        hfId: activeSelection.hfId,
-        id: activeSelection.id ?? undefined,
-        selector: activeSelection.selector,
-        selectorIndex: activeSelection.selectorIndex,
-      },
-      tag: element.tagName.toLowerCase(),
-      text: element.textContent || "",
-      src: element.getAttribute("src") || "",
-      alt: element.getAttribute("alt") || "",
-      styles: {
-        color: computed?.color ?? "",
-        backgroundColor: computed?.backgroundColor ?? "",
-        fontSize: computed?.fontSize ?? "",
-        fontWeight: computed?.fontWeight ?? "",
-        opacity: computed?.opacity ?? "",
-      },
-    }, "*");
+    postVideoAiSelectionToHost(activeSelection);
     stateRef.current = null;
     setState(null);
   }, [activeSelection]);
