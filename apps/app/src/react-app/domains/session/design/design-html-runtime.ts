@@ -34,6 +34,7 @@ export const DESIGN_STYLE_FIELDS = [
 
 export type DesignStyleField = (typeof DESIGN_STYLE_FIELDS)[number];
 export type DesignField = "text" | "href" | "src" | "alt" | DesignStyleField;
+export type DesignAlignment = "left" | "center-horizontal" | "right" | "top" | "center-vertical" | "bottom";
 
 export const DESIGN_MULTI_SELECTION_STYLE_FIELDS = [
   "color", "backgroundColor", "fontSize", "fontFamily", "fontWeight", "fontStyle", "textDecoration",
@@ -430,6 +431,9 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   const editingAttribute = "data-ipollowork-design-editing";
   const idAttribute = "data-ipollowork-design-id";
   const overlayId = "ipollowork-design-transform-overlay";
+  const verticalGuideId = "ipollowork-design-guide-vertical";
+  const horizontalGuideId = "ipollowork-design-guide-horizontal";
+  const guideSnapThreshold = 5;
   const textNodeAttribute = "data-ipollowork-design-text-node";
   const modeAttribute = "data-ipollowork-design-mode";
   const panningAttribute = "data-ipollowork-design-panning";
@@ -474,6 +478,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     handle: string;
     startX: number;
     startY: number;
+    bounds: DesignRect;
     targets: TransformTarget[];
     moved: boolean;
   } | null = null;
@@ -501,6 +506,9 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     #${overlayId} [data-handle="s"] { left: 50%; bottom: -5px; transform: translateX(-50%); cursor: ns-resize; }
     #${overlayId} [data-handle="sw"] { left: -5px; bottom: -5px; cursor: nesw-resize; }
     #${overlayId} [data-handle="w"] { left: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+    #${verticalGuideId}, #${horizontalGuideId} { position: fixed; z-index: 2147483645; display: none; pointer-events: none; background: #ec4899; box-shadow: 0 0 0 1px rgba(255,255,255,.72); }
+    #${verticalGuideId} { inset-block: 0; width: 1px; }
+    #${horizontalGuideId} { inset-inline: 0; height: 1px; }
   `;
   document.head.appendChild(style);
 
@@ -514,6 +522,13 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     overlay.appendChild(control);
   }
   document.body.appendChild(overlay);
+  const verticalGuide = document.createElement("div");
+  verticalGuide.id = verticalGuideId;
+  verticalGuide.setAttribute("aria-hidden", "true");
+  const horizontalGuide = document.createElement("div");
+  horizontalGuide.id = horizontalGuideId;
+  horizontalGuide.setAttribute("aria-hidden", "true");
+  document.body.append(verticalGuide, horizontalGuide);
 
   // Direct button text has no DOM element of its own, which makes it impossible
   // to distinguish a click on the label from a click on the button shell. Give
@@ -529,7 +544,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   });
 
   const elements = Array.from(document.querySelectorAll<HTMLElement>(`${editableSelector},[${textNodeAttribute}]`))
-    .filter((element) => element !== overlay && !overlay.contains(element) && !isPresentationRoot(element));
+    .filter((element) => element !== overlay && element !== verticalGuide && element !== horizontalGuide && !overlay.contains(element) && !isPresentationRoot(element));
   elements.forEach((element, index) => element.setAttribute(idAttribute, String(index + 1)));
 
   const elementLocator = (element: HTMLElement) => {
@@ -560,6 +575,8 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     clone.querySelector(`#${styleId}`)?.remove();
     clone.querySelector("#ipollowork-design-template-token-style")?.remove();
     clone.querySelector(`#${overlayId}`)?.remove();
+    clone.querySelector(`#${verticalGuideId}`)?.remove();
+    clone.querySelector(`#${horizontalGuideId}`)?.remove();
     clone.querySelectorAll("[data-ipw-materialize-once]").forEach((element) => element.remove());
     clone.querySelectorAll(`[${textNodeAttribute}]`).forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
     clone.querySelectorAll(`[${idAttribute}]`).forEach((element) => element.removeAttribute(idAttribute));
@@ -655,6 +672,69 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     return { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
   };
 
+  const hideGuides = () => {
+    verticalGuide.style.display = "none";
+    horizontalGuide.style.display = "none";
+  };
+
+  const showGuides = (vertical: number | null, horizontal: number | null) => {
+    verticalGuide.style.display = vertical === null ? "none" : "block";
+    horizontalGuide.style.display = horizontal === null ? "none" : "block";
+    if (vertical !== null) verticalGuide.style.left = `${vertical}px`;
+    if (horizontal !== null) horizontalGuide.style.top = `${horizontal}px`;
+  };
+
+  const guideCandidates = () => {
+    const canvas = primaryElement?.closest<HTMLElement>(slideRootSelector) ?? document.documentElement;
+    const canvasRect = canvas.getBoundingClientRect();
+    const horizontal = [canvasRect.left, canvasRect.left + canvasRect.width / 2, canvasRect.right];
+    const vertical = [canvasRect.top, canvasRect.top + canvasRect.height / 2, canvasRect.bottom];
+    elements.forEach((element) => {
+      if (!element.isConnected || selectedElements.some((selected) => selected === element || selected.contains(element) || element.contains(selected))) return;
+      const computed = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      if (computed.display === "none" || computed.visibility === "hidden" || rect.width < 1 || rect.height < 1) return;
+      horizontal.push(rect.left, rect.left + rect.width / 2, rect.right);
+      vertical.push(rect.top, rect.top + rect.height / 2, rect.bottom);
+    });
+    return { horizontal, vertical };
+  };
+
+  const nearestGuide = (anchors: number[], candidates: number[]) => {
+    let match: { offset: number; coordinate: number; distance: number } | null = null;
+    for (const anchor of anchors) {
+      for (const candidate of candidates) {
+        const offset = candidate - anchor;
+        const distance = Math.abs(offset);
+        if (distance <= guideSnapThreshold && (!match || distance < match.distance)) match = { offset, coordinate: candidate, distance };
+      }
+    }
+    return match;
+  };
+
+  const snappedMoveDelta = (dx: number, dy: number) => {
+    if (!transform) return { dx, dy, vertical: null, horizontal: null };
+    const bounds = transform.bounds;
+    const candidates = guideCandidates();
+    const x = nearestGuide([bounds.left + dx, bounds.left + bounds.width / 2 + dx, bounds.left + bounds.width + dx], candidates.horizontal);
+    const y = nearestGuide([bounds.top + dy, bounds.top + bounds.height / 2 + dy, bounds.top + bounds.height + dy], candidates.vertical);
+    return { dx: dx + (x?.offset ?? 0), dy: dy + (y?.offset ?? 0), vertical: x?.coordinate ?? null, horizontal: y?.coordinate ?? null };
+  };
+
+  const snappedResizeDelta = (dx: number, dy: number, preserveRatio: boolean) => {
+    if (!transform) return { dx, dy, vertical: null, horizontal: null };
+    const west = transform.handle.includes("w");
+    const east = transform.handle.includes("e");
+    const north = transform.handle.includes("n");
+    const south = transform.handle.includes("s");
+    const snapHorizontalAxis = (west || east) && (!preserveRatio || !(north || south) || Math.abs(dx) >= Math.abs(dy));
+    const snapVerticalAxis = (north || south) && (!preserveRatio || !(west || east) || Math.abs(dy) > Math.abs(dx));
+    const candidates = guideCandidates();
+    const x = snapHorizontalAxis ? nearestGuide([west ? transform.bounds.left + dx : transform.bounds.left + transform.bounds.width + dx], candidates.horizontal) : null;
+    const y = snapVerticalAxis ? nearestGuide([north ? transform.bounds.top + dy : transform.bounds.top + transform.bounds.height + dy], candidates.vertical) : null;
+    return { dx: dx + (x?.offset ?? 0), dy: dy + (y?.offset ?? 0), vertical: x?.coordinate ?? null, horizontal: y?.coordinate ?? null };
+  };
+
   const syncSelectionMarkers = () => {
     normalizeSelection();
     document.querySelectorAll<HTMLElement>(`[${selectedAttribute}],[${primaryAttribute}]`).forEach((element) => {
@@ -711,6 +791,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       handle,
       startX: event.clientX,
       startY: event.clientY,
+      bounds: selectionBounds(),
       targets: selectedElements.map((element) => {
         const rect = element.getBoundingClientRect();
         const computed = window.getComputedStyle(element);
@@ -821,6 +902,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     textRange = null;
     transform = null;
     overlay.style.display = "none";
+    hideGuides();
     if (notify && hadSelection) window.parent.postMessage({ channel, frameRevision, type: "deselected" }, "*");
   };
 
@@ -873,7 +955,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   }, true);
 
   document.addEventListener("pointerdown", (event) => {
-    if (!editingEnabled || primaryElement?.hasAttribute(editingAttribute) && !event.ctrlKey && !event.metaKey) return;
+    if (!editingEnabled || primaryElement?.hasAttribute(editingAttribute) && !event.shiftKey) return;
     const target = event.target;
     if (!(target instanceof Element) || overlay.contains(target)) return;
     if (!event.altKey && isDeckNavigation(target)) return;
@@ -883,7 +965,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       target.setPointerCapture?.(event.pointerId);
       return;
     }
-    if (!element || isLockedElement(element) || !selectedElements.includes(element) || event.ctrlKey || event.metaKey) return;
+    if (!element || isLockedElement(element) || !selectedElements.includes(element) || event.shiftKey) return;
     prepareTransform("move", "move", event);
   }, true);
 
@@ -903,8 +985,12 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       return;
     }
     if (!primaryElement || !transform) return;
-    const dx = event.clientX - transform.startX;
-    const dy = event.clientY - transform.startY;
+    const rawDx = event.clientX - transform.startX;
+    const rawDy = event.clientY - transform.startY;
+    const snapped = transform.mode === "move"
+      ? snappedMoveDelta(rawDx, rawDy)
+      : snappedResizeDelta(rawDx, rawDy, event.shiftKey);
+    const { dx, dy } = snapped;
     if (!transform.moved && Math.hypot(dx, dy) < 3) return;
     if (!transform.moved) {
       cancelPendingSelection();
@@ -913,6 +999,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     }
     event.preventDefault();
     event.stopPropagation();
+    showGuides(snapped.vertical, snapped.horizontal);
     if (transform.mode === "move") {
       transform.targets.forEach((target) => {
         if (selectedElements.some((element) => element !== target.element && element.contains(target.element))) return;
@@ -948,6 +1035,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
 
   const finishTransform = (event: PointerEvent) => {
     if (!editingEnabled) return;
+    hideGuides();
     if (canvasPan) {
       const moved = canvasPan.moved;
       canvasPan = null;
@@ -993,7 +1081,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     const pendingElement = pendingSelectionClick
       ? selectionCandidate(target, pendingSelectionClick.primaryElement, pendingSelectionClick.selectedElements)
       : null;
-    if (pendingSelectionClick && !event.ctrlKey && !event.metaKey && event.detail > 1 && pendingElement && pendingSelectionClick.selectedElements.includes(pendingElement)) {
+    if (pendingSelectionClick && !event.shiftKey && event.detail > 1 && pendingElement && pendingSelectionClick.selectedElements.includes(pendingElement)) {
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -1004,7 +1092,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       clearSelection(true);
       return;
     }
-    const selectionModifier = event.ctrlKey || event.metaKey;
+    const selectionModifier = event.shiftKey;
     if (element.hasAttribute(editingAttribute) && !selectionModifier) return;
     event.preventDefault();
     event.stopPropagation();
@@ -1108,6 +1196,56 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     });
   };
 
+  const moveElementBy = (element: HTMLElement, deltaX: number, deltaY: number) => {
+    const computed = window.getComputedStyle(element);
+    if (computed.position === "static") element.style.position = "relative";
+    if (deltaX) {
+      const inlineLeft = Number.parseFloat(element.style.left);
+      const computedLeft = Number.parseFloat(computed.left);
+      const left = Number.isFinite(inlineLeft) ? inlineLeft : Number.isFinite(computedLeft) ? computedLeft : 0;
+      element.style.left = `${left + deltaX}px`;
+      element.style.right = "auto";
+    }
+    if (deltaY) {
+      const inlineTop = Number.parseFloat(element.style.top);
+      const computedTop = Number.parseFloat(computed.top);
+      const top = Number.isFinite(inlineTop) ? inlineTop : Number.isFinite(computedTop) ? computedTop : 0;
+      element.style.top = `${top + deltaY}px`;
+      element.style.bottom = "auto";
+    }
+  };
+
+  const alignTargets = (targets: HTMLElement[], alignment: string) => {
+    const rects = targets.map((target) => target.getBoundingClientRect());
+    const selectionRect = {
+      left: Math.min(...rects.map((rect) => rect.left)),
+      top: Math.min(...rects.map((rect) => rect.top)),
+      right: Math.max(...rects.map((rect) => rect.right)),
+      bottom: Math.max(...rects.map((rect) => rect.bottom)),
+    };
+    const canvasRect = targets[0]?.closest<HTMLElement>(slideRootSelector)?.getBoundingClientRect() ?? document.documentElement.getBoundingClientRect();
+    const reference = targets.length === 1 ? canvasRect : selectionRect;
+    targets.forEach((target, index) => {
+      const rect = rects[index];
+      if (!rect) return;
+      const deltaX = alignment === "left"
+        ? reference.left - rect.left
+        : alignment === "center-horizontal"
+          ? (reference.left + reference.right - rect.left - rect.right) / 2
+          : alignment === "right"
+            ? reference.right - rect.right
+            : 0;
+      const deltaY = alignment === "top"
+        ? reference.top - rect.top
+        : alignment === "center-vertical"
+          ? (reference.top + reference.bottom - rect.top - rect.bottom) / 2
+          : alignment === "bottom"
+            ? reference.bottom - rect.bottom
+            : 0;
+      moveElementBy(target, deltaX, deltaY);
+    });
+  };
+
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent) return;
     const data = event.data;
@@ -1155,6 +1293,16 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       const targets = selectedTargets(data.ids);
       if (!targets.length) return;
       targets.forEach((target) => target.toggleAttribute(lockedAttribute, data.locked));
+      syncOverlay();
+      post("draft");
+      return;
+    }
+    if (data.type === "align" && typeof data.alignment === "string") {
+      const alignments = ["left", "center-horizontal", "right", "top", "center-vertical", "bottom"];
+      if (!alignments.includes(data.alignment)) return;
+      const targets = selectedTargets(data.ids);
+      if (!targets.length || targets.some(isLockedElement)) return;
+      alignTargets(targets, data.alignment);
       syncOverlay();
       post("draft");
       return;

@@ -27,7 +27,12 @@ describe("Design System toolbar", () => {
     expect(source).toContain("const THEME_COLOR_TOKEN_NAMES = [");
     expect(source).toContain("const resetThemeColors = React.useCallback(() => {");
     expect(source).toContain("THEME_COLOR_TOKEN_NAMES.map((name) => [name, presetValues[name] ?? DEFAULTS[name]])");
-    expect(source).toContain("onClick={onResetColors}");
-    expect(source).toContain("onClick={onReset}><RotateCcw /> Reset");
+    expect(source).toContain("const canResetThemeColors = colorValues.some");
+    expect(source).toContain("event.stopPropagation(); onResetColors();");
+    expect(source).toContain("disabled={!canResetThemeColors}");
+    expect(source).toContain('className="absolute inset-0 size-full cursor-pointer opacity-0"');
+    expect(source).toContain('className="relative z-10 grid size-[25px]');
+    expect(source).toContain('title={t("design_system.embedded.reset_theme_colors")}');
+    expect(source).toContain('onClick={onReset}><RotateCcw /> {t("design_system.embedded.reset")}');
   });
 });

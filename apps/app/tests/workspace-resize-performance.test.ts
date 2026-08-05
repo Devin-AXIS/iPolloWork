@@ -59,8 +59,8 @@ describe("workspace resize performance", () => {
     expect(dragBody).toContain("setRightPanelManuallyResized(true);");
     expect(dragBody).toContain("resizeHandle.setPointerCapture(event.pointerId);");
     expect(sessionPageSource).toContain("ref={rightPanelElementRef}");
-    expect(sessionPageSource).toContain(
-      "rightPanelManuallyResized\n      ? browserPanelDefaultWidth",
+    expect(sessionPageSource).toMatch(
+      /const preferredVideoPanelWidth = rightPanelManuallyResized\s+\? browserPanelDefaultWidth/,
     );
   });
 

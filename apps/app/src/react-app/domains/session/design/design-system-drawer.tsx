@@ -11,7 +11,6 @@ import backgroundImageIcon from "./assets/background-image.svg";
 import backgroundNoneIcon from "./assets/background-none.svg";
 import backgroundSolidActiveIcon from "./assets/background-solid-active.svg";
 import backgroundSolidDefaultIcon from "./assets/background-solid-default.svg";
-import designSystemRefreshIcon from "./assets/design-system-refresh.svg";
 import designSystemSearchIcon from "./assets/design-system-search.svg";
 import designSystemChevronUpIcon from "./assets/design-system-chevron-up.svg";
 
@@ -26,6 +25,7 @@ import {
 } from "./design-system-registry";
 import type { DesignTokenValues } from "./design-system-files";
 import { DesignColorField } from "./design-color-field";
+import { DesignGradientPicker } from "./design-gradient-picker";
 import { DesignImageFitSelect, type DesignImageFitMode } from "./design-image-fit-select";
 import { DesignPanelSelect } from "./design-panel-select";
 
@@ -538,6 +538,10 @@ function EmbeddedDesignSystemControls({
     });
   }, [category, query]);
   const colorValues = themeControlColors(values, selectedTheme);
+  const presetColorValues = themeControlColors(selectedTheme ? buildDesignSystemPresetValues(selectedTheme) : DEFAULTS, selectedTheme);
+  const canResetThemeColors = colorValues.some((value, index) => (
+    normalizeHex(value, "#ffffff") !== normalizeHex(presetColorValues[index] ?? "#ffffff", "#ffffff")
+  ));
   const themeTokens = selectedTheme ? parseCssVariableMap(selectedTheme.tokensCss) : {};
   const displayFont = resolveThemeTokenValue(values["--ipw-font-display"], themeTokens) ?? DEFAULTS["--ipw-font-display"];
   const bodyFont = resolveThemeTokenValue(values["--ipw-font-body"], themeTokens) ?? DEFAULTS["--ipw-font-body"];
@@ -580,7 +584,7 @@ function EmbeddedDesignSystemControls({
         </PanelSection>
 
         <PanelSection title={t("design_system.embedded.theme_colors")}>
-          <div className="flex items-center gap-[11px]">{THEME_COLOR_TOKEN_NAMES.map((name, index) => <ColorSwatch key={name} label={[t("design_system.embedded.primary"), t("design_system.embedded.secondary"), t("design_system.embedded.background")][index] ?? name} value={colorValues[index] ?? DEFAULTS[name]} onChange={(value) => onTokenChange(name, value)} />)}<button type="button" onClick={onResetColors} className="grid size-[25px] place-items-center rounded-[7px] border border-border bg-muted" aria-label={t("design_system.embedded.reset_theme_colors")}><img src={designSystemRefreshIcon} alt="" className="size-4" /></button></div>
+          <div className="flex items-center gap-[11px]">{THEME_COLOR_TOKEN_NAMES.map((name, index) => <ColorSwatch key={name} label={[t("design_system.embedded.primary"), t("design_system.embedded.secondary"), t("design_system.embedded.background")][index] ?? name} value={colorValues[index] ?? DEFAULTS[name]} onChange={(value) => onTokenChange(name, value)} />)}<button type="button" onClick={(event) => { event.stopPropagation(); onResetColors(); }} disabled={!canResetThemeColors} className="relative z-10 grid size-[25px] place-items-center rounded-[7px] border border-border bg-muted text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("design_system.embedded.reset_theme_colors")} title={t("design_system.embedded.reset_theme_colors")}><RotateCcw className="size-4" /></button></div>
         </PanelSection>
 
         <BackgroundSection mode={backgroundMode} values={values} colors={colorValues} onSelectMode={applyBackgroundMode} onTokenChange={onTokenChange} onChooseMedia={onChooseBackgroundImage} />
@@ -626,7 +630,7 @@ function PanelSection({ title, children }: { title: string; children: React.Reac
 function SegmentButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) { return <button type="button" className={cn("h-[34px] rounded-lg px-1 text-[14px] font-normal transition-colors", active ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent")} onClick={onClick} aria-pressed={active}>{children}</button>; }
 function TokenSelect({ value, ariaLabel, options, onChange }: { value: string; ariaLabel: string; options: Array<{ label: string; value: string }>; onChange: (value: string) => void }) { const option = options.find((item) => item.value === value) ?? options[0]; if (!option) return null; return <DesignPanelSelect value={option.value} options={options} onChange={onChange} ariaLabel={ariaLabel} className="h-[34px] w-full rounded-lg bg-muted" />; }
 function LabeledTokenSelect({ label, ...props }: { label: string; value: string; ariaLabel: string; options: Array<{ label: string; value: string }>; onChange: (value: string) => void }) { return <label className="block"><span className="mb-1 block text-[10px] text-muted-foreground">{label}</span><TokenSelect {...props} /></label>; }
-function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="group relative grid size-[25px] cursor-pointer place-items-center rounded-[7px] border border-black/10" title={label} style={{ backgroundColor: normalizeHex(value, "#ffffff") }}><input type="color" className="absolute inset-0 cursor-pointer opacity-0" value={normalizeHex(value, "#ffffff")} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`${label} color`} /></label>; }
+function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="group relative grid size-[25px] cursor-pointer place-items-center overflow-hidden rounded-[7px] border border-black/10" title={label} style={{ backgroundColor: normalizeHex(value, "#ffffff") }}><input type="color" className="absolute inset-0 size-full cursor-pointer opacity-0" value={normalizeHex(value, "#ffffff")} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`${label} color`} /></label>; }
 function BackgroundSection({ mode, values, colors, onSelectMode, onTokenChange, onChooseMedia }: { mode: BackgroundMode; values: DesignTokenValues; colors: string[]; onSelectMode: (mode: BackgroundMode) => void; onTokenChange: (name: string, value: string) => void; onChooseMedia?: () => void }) {
   const controls: Array<{ mode: BackgroundMode; label: string; icon: string }> = [{ mode: "none", label: t("design_system.embedded.no_background"), icon: backgroundNoneIcon }, { mode: "solid", label: t("design_system.embedded.solid_color"), icon: backgroundSolidDefaultIcon }, { mode: "gradient", label: t("design_system.embedded.gradient"), icon: backgroundGradientIcon }, { mode: "image", label: t("design_system.embedded.image"), icon: backgroundImageIcon }];
   const solidColor = normalizeHex(colors[2] ?? "#ffffff", "#ffffff");
@@ -635,7 +639,18 @@ function BackgroundSection({ mode, values, colors, onSelectMode, onTokenChange, 
   return <PanelSection title={t("design_system.embedded.background")}>
     <div className="flex gap-1">{controls.map(({ mode: itemMode, label, icon }) => <button key={itemMode} type="button" className={cn("grid h-[34px] flex-1 place-items-center rounded-lg transition-colors", mode === itemMode ? "bg-foreground" : "bg-muted hover:bg-accent")} onClick={() => onSelectMode(itemMode)} aria-label={label} aria-pressed={mode === itemMode}>{itemMode === "solid" ? <img src={mode === "solid" ? backgroundSolidActiveIcon : icon} alt="" className="h-[34px] w-[68px] max-w-none" /> : <img src={icon} alt="" className={cn("size-4", mode === itemMode && "brightness-0 invert")} />}</button>)}</div>
     {mode === "solid" ? <DesignColorField value={solidColor} onChange={(value) => onTokenChange("--ipw-color-bg", value)} className="mt-3" /> : null}
-    {mode === "gradient" ? <button type="button" className="mt-3 flex h-[34px] w-full items-center justify-between rounded-lg bg-muted px-2 pr-4 text-left"><span className="flex items-center gap-2"><span className="size-5 rounded-[4px] bg-gradient-to-b from-[#2e6bdb] to-[#76e3e9]" /><span className="text-[13px]">{t("design_system.embedded.gradient")}</span></span><ChevronDown className="size-4 text-muted-foreground" /></button> : null}
+    {mode === "gradient" ? <DesignGradientPicker
+      value={values["--ipw-bg-gradient"] ?? "linear-gradient(135deg, #2e6bdb 0%, #76e3e9 100%)"}
+      recommendationColors={[
+        colors[0],
+        colors[1],
+        values["--ipw-color-accent"],
+        colors[2],
+        values["--ipw-color-surface"],
+        colors[2],
+      ]}
+      onChange={(value) => onTokenChange("--ipw-bg-gradient", value)}
+    /> : null}
     {mode === "image" ? <div className="mt-3 space-y-3">
       <DesignImageFitSelect value={imageMode} onChange={(value) => { onTokenChange("--ipw-bg-size", backgroundSizeFor(value)); onTokenChange("--ipw-bg-position", "50% 50%"); }} ariaLabel={t("design_system.embedded.background_image_fit_mode")} />
       <div className="group relative flex h-[100px] w-full items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(45deg,#929292_25%,#9f9f9f_25%,#9f9f9f_50%,#929292_50%,#929292_75%,#9f9f9f_75%)] bg-[length:24px_24px]" style={backgroundImageStyle(values["--ipw-bg-image"], values["--ipw-bg-size"], values["--ipw-bg-position"])}>
