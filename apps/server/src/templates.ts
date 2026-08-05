@@ -6,6 +6,7 @@ import { basename, dirname, extname, join, posix, resolve, sep } from "node:path
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { inflateRaw } from "node:zlib";
+import { importNodeSqlite } from "./node-sqlite.js";
 import {
   MAX_TEMPLATE_PACKAGE_BYTES,
   templateCategorySchema,
@@ -203,7 +204,7 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
       upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
     };
   }
-  const { DatabaseSync } = await import("node:sqlite");
+  const { DatabaseSync } = await importNodeSqlite();
   const sqlite = new DatabaseSync(path);
   sqlite.exec(sql);
   const get = sqlite.prepare("SELECT workspace_id AS workspaceId, template_id AS templateId, version, source_type AS sourceType, package_path AS packagePath, package_hash AS packageHash, status, manifest_json AS manifestJson, installed_at AS installedAt, updated_at AS updatedAt FROM template_installations WHERE workspace_id = ? AND template_id = ?");

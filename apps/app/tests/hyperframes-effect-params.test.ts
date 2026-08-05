@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { hyperframesCatalogItemSchema } from "@ipollowork/types/hyperframes";
 import {
+  hyperframesAnimationDisplayMetadata,
   hyperframesSelectionPayload,
+  parseHyperframesAnimationDisplayMetadata,
   updateHyperframesEffectVariableOverride,
 } from "../src/app/lib/hyperframes-effect-params";
 
@@ -72,5 +74,14 @@ describe("HyperFrames effect parameter overrides", () => {
         backgroundColor: "#09090b",
       },
     });
+  });
+
+  test("round-trips the persisted animation display metadata", () => {
+    const metadata = hyperframesAnimationDisplayMetadata([{ item, values: {} }]);
+
+    expect(parseHyperframesAnimationDisplayMetadata(`Capability context\n${metadata}\nAgent instructions`)).toEqual([
+      { name: "test-effect", label: "Test effect" },
+    ]);
+    expect(parseHyperframesAnimationDisplayMetadata("Selected HyperFrames animation references:")).toBeNull();
   });
 });

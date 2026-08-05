@@ -320,16 +320,17 @@ describe("Media Center extension", () => {
     frame.set([0xff, 0xfb, 0x90, 0x00]); // MPEG-1 Layer III, 128 kbps, 44.1 kHz.
     const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
     let request = 0;
-    globalThis.fetch = ((input) => {
+    globalThis.fetch = ((input, init) => {
       request += 1;
       if (request === 1) {
         expect(String(input)).toContain("SpeechSynthesizer");
-        return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://audio.example.test/scene.mp3" } } }), {
+        return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "http://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/scene.mp3?Expires=42" } } }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }));
       }
-      expect(String(input)).toBe("https://audio.example.test/scene.mp3");
+      expect(String(input)).toBe("https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/scene.mp3?Expires=42");
+      expect(init?.redirect).toBe("error");
       return Promise.resolve(new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } }));
     }) as typeof fetch;
 
@@ -384,6 +385,32 @@ describe("Media Center extension", () => {
     const expectedDuration = 100 * 1152 / 44_100;
     expect(Math.abs(measuredDuration - expectedDuration)).toBeLessThan(0.001);
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-scene-1.mp3"))).toEqual(mp3);
+  });
+
+  test("rejects synthesized audio URLs outside Model Studio result storage", async () => {
+    const workspace = await workspaceConfig();
+    let requests = 0;
+    globalThis.fetch = ((input, init) => {
+      requests += 1;
+      expect(String(input)).toContain("SpeechSynthesizer");
+      return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://127.0.0.1/private.mp3" } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    }) as typeof fetch;
+
+    await expect(callMediaExtensionAction(workspace.config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize_workspace_file", {
+      text: "Visible narration",
+      sceneId: "scene-hook",
+      sceneText: "Visible narration",
+      sceneStart: 0,
+      sceneDuration: 2,
+      outputPath: "video/session/assets/voiceover-scene-unsafe.mp3",
+    }, { directory: workspace.root })).rejects.toMatchObject({
+      code: "bailian_audio_url_invalid",
+      message: "Alibaba Model Studio returned an unsafe synthesized audio URL.",
+    });
+    expect(requests).toBe(1);
   });
 
   test("keeps the Model Studio key server-side while synthesizing speech", async () => {

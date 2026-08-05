@@ -703,9 +703,15 @@ function synthesizedAudioUrl(payload: unknown): string {
   } catch {
     throw new ApiError(502, "bailian_audio_url_invalid", "Alibaba Model Studio returned an invalid synthesized audio URL.");
   }
-  if (url.protocol !== "https:" || url.username || url.password) {
+  const hostname = url.hostname.toLowerCase();
+  const trustedResultHost = /^dashscope-result(?:-[a-z0-9-]+)?\.oss-[a-z0-9-]+\.aliyuncs\.com$/.test(hostname);
+  if (!trustedResultHost || url.username || url.password || (url.protocol !== "http:" && url.protocol !== "https:")) {
     throw new ApiError(502, "bailian_audio_url_invalid", "Alibaba Model Studio returned an unsafe synthesized audio URL.");
   }
+  // Model Studio's documented non-streaming TTS response still returns an
+  // HTTP URL on its own OSS result host. Upgrade only that trusted host before
+  // downloading; arbitrary HTTP URLs remain rejected.
+  url.protocol = "https:";
   return url.toString();
 }
 
@@ -714,7 +720,7 @@ async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await mediaProviderFetch(url, { signal: controller.signal });
+    response = await mediaProviderFetch(url, { signal: controller.signal, redirect: "error" });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_audio_download_timeout", "The synthesized audio download timed out.");

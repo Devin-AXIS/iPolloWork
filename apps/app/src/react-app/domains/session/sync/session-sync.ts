@@ -20,6 +20,8 @@ import {
 } from "../status/session-activity-store";
 import { notifyDesktopEvent } from "../../../shell/desktop-notifications";
 import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
+import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
+import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
 
 type SyncOptions = {
   workspaceId: string;
@@ -419,13 +421,7 @@ function toFileUIParts(part: FilePart): UIMessage["parts"] {
 
 function toUIPart(part: Part): UIMessage["parts"][number] | null {
   if (part.type === "text") {
-    if (part.synthetic) {
-      const selection = parseDesignAiSelectionDisplayMetadata(part.text);
-      return selection ? {
-        type: "data-design-selection" as const,
-        data: { ...selection, partId: part.id },
-      } : null;
-    }
+    if (part.synthetic) return null;
     if (part.ignored) return null;
     return {
       type: "text",
@@ -465,6 +461,25 @@ function toUIPart(part: Part): UIMessage["parts"][number] | null {
 
 function toUIParts(part: Part): UIMessage["parts"] {
   if (part.type === "file") return toFileUIParts(part);
+  if (part.type === "text" && part.synthetic) {
+    const metadataParts: UIMessage["parts"] = [];
+    const selection = parseDesignAiSelectionDisplayMetadata(part.text);
+    if (selection) metadataParts.push({
+      type: "data-design-selection" as const,
+      data: { ...selection, partId: part.id },
+    });
+    const animations = parseHyperframesAnimationDisplayMetadata(part.text);
+    if (animations) metadataParts.push({
+      type: "data-animation-references" as const,
+      data: { items: animations, partId: part.id },
+    });
+    const voice = parseVideoVoiceDisplayMetadata(part.text);
+    if (voice) metadataParts.push({
+      type: "data-voice-reference" as const,
+      data: { ...voice, partId: part.id },
+    });
+    return metadataParts;
+  }
   const mapped = toUIPart(part);
   if (!mapped) return [];
   if (part.type === "tool" && part.tool === STRUCTURED_OUTPUT_TOOL) return [mapped];
@@ -475,7 +490,7 @@ function toUIParts(part: Part): UIMessage["parts"] {
 }
 
 function getPartMetadataId(part: UIMessage["parts"][number]) {
-  if (part.type === "data-design-selection") {
+  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference") {
     const partId = part.data && typeof part.data === "object" && "partId" in part.data
       ? (part.data as { partId?: unknown }).partId
       : null;

@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { importNodeSqlite } from "./node-sqlite.js";
 import type { ServerConfig } from "./types.js";
 import { ensureDir, shortId } from "./utils.js";
 
@@ -131,7 +132,7 @@ async function openSessionGroupDb(path: string): Promise<SessionGroupDb> {
     };
   }
 
-  const { DatabaseSync } = await import("node:sqlite");
+  const { DatabaseSync } = await importNodeSqlite();
   const sqlite = new DatabaseSync(path);
   sqlite.exec("CREATE TABLE IF NOT EXISTS session_group_states (workspace_id TEXT PRIMARY KEY NOT NULL, state_json TEXT NOT NULL, schema_version INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL)");
   const get = sqlite.prepare("SELECT state_json AS stateJson, updated_at AS updatedAt FROM session_group_states WHERE workspace_id = ?");

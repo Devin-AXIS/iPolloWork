@@ -7,6 +7,7 @@ import type { ServerConfig } from "./types.js";
 import { ApiError } from "./errors.js";
 import { parseFrontmatter, buildFrontmatter } from "./frontmatter.js";
 import { addMcp, removeMcp } from "./mcp.js";
+import { importNodeSqlite } from "./node-sqlite.js";
 import { ensureDir } from "./utils.js";
 
 const OPENCODE_SKILL_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -520,7 +521,7 @@ async function openCloudPluginDb(path: string): Promise<CloudPluginDb> {
       },
     };
   }
-  const { DatabaseSync } = await import("node:sqlite");
+  const { DatabaseSync } = await importNodeSqlite();
   const sqlite = new DatabaseSync(path);
   sqlite.exec("CREATE TABLE IF NOT EXISTS cloud_plugin_install_configs (workspace_id TEXT PRIMARY KEY NOT NULL, config_json TEXT NOT NULL, updated_at INTEGER NOT NULL)");
   const get = sqlite.prepare("SELECT config_json AS configJson FROM cloud_plugin_install_configs WHERE workspace_id = ?");
