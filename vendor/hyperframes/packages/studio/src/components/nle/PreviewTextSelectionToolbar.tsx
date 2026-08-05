@@ -394,24 +394,6 @@ export function PreviewTextSelectionToolbar({
     [activeSelection, buildDomSelectionFromTarget, handleDomInnerHtmlCommit],
   );
 
-  const applyFormat = useCallback(
-    async (action: TextFormatAction) => {
-      const current = stateRef.current;
-      if (!current?.showTextControls) return;
-      const nextHtml = removeSelectionMarkers(
-        toggleMarkedSelectionFormat(
-          current.markedHtml,
-          action,
-          current.activeFormats[action],
-        ),
-      );
-      await commitSelectedHtml(nextHtml, current, { keepToolbar: true });
-      const next = buildToolbarState();
-      if (next) setState(next);
-    },
-    [buildToolbarState, commitSelectedHtml],
-  );
-
   const updateReplacementPreview = useCallback(
     (value: string) => {
       const current = stateRef.current;
@@ -529,11 +511,6 @@ export function PreviewTextSelectionToolbar({
             }}
             aria-label="Edit element text"
           />
-          <button type="button" className="hf-preview-text-toolbar__button" aria-pressed={state.activeFormats.bold} onClick={() => applyFormat("bold")}>B</button>
-          <button type="button" className="hf-preview-text-toolbar__button italic" aria-pressed={state.activeFormats.italic} onClick={() => applyFormat("italic")}>I</button>
-          <button type="button" className="hf-preview-text-toolbar__button line-through" aria-pressed={state.activeFormats.strike} onClick={() => applyFormat("strike")}>S</button>
-          <button type="button" className="hf-preview-text-toolbar__button font-mono" aria-pressed={state.activeFormats.code} onClick={() => applyFormat("code")}>&lt;/&gt;</button>
-          <button type="button" className="hf-preview-text-toolbar__button" aria-pressed={state.activeFormats.link} onClick={() => applyFormat("link")}>Link</button>
         </div>
       )}
       <button

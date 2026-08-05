@@ -168,6 +168,14 @@ function visibleTextFromHtml(value: string) {
   ));
 }
 
+function narrationSourceTextFromHtml(value: string) {
+  const sources = Array.from(
+    value.matchAll(/<([a-zA-Z][\w:-]*)\b(?=[^>]*\bdata-ipw-narration-source\s*=\s*["']true["'])[^>]*>([\s\S]*?)<\/\1>/gi),
+    (match) => visibleTextFromHtml(match[2] ?? ""),
+  ).filter(Boolean);
+  return sources.length > 0 ? normalizeSceneText(sources.join(" ")) : visibleTextFromHtml(value);
+}
+
 function nodeInnerHtml(html: string, node: TimelineNode) {
   const closeTag = `</${node.tagName}>`;
   const end = html.toLowerCase().indexOf(closeTag, node.contentStart);
@@ -255,7 +263,7 @@ export function validateVoiceoverTimelineHtml(html: string, options: { voiceover
       id: node.attributes.get("id")?.trim() ?? "",
       start: finiteTimelineNumber(node, "data-start"),
       duration: finiteTimelineNumber(node, "data-duration"),
-      text: visibleTextFromHtml(nodeInnerHtml(html, node)),
+      text: narrationSourceTextFromHtml(nodeInnerHtml(html, node)),
     }));
   const scenesById = new Map(scenes.filter((scene) => scene.id).map((scene) => [scene.id, scene]));
   for (const scene of scenes) {
@@ -330,6 +338,19 @@ export function validateVoiceoverTimelineHtml(html: string, options: { voiceover
   }
   const referencedSources = referencedVoiceoverSources(html);
   const normalizedAssets = (options.voiceoverAssets ?? []).map((value) => value.replace(/\\/g, "/").replace(/^\.\//, ""));
+  if (options.voiceoverAssets !== undefined) {
+    const availableFileNames = new Set(normalizedAssets.map((asset) => asset.split("/").pop() ?? asset));
+    const missingAssets = Array.from(referencedSources).filter((source) => {
+      const fileName = source.split("/").pop() ?? source;
+      return !availableFileNames.has(fileName);
+    });
+    if (missingAssets.length > 0) {
+      issues.push({
+        code: "voiceover_assets_missing",
+        message: `Voiceover timeline files are missing from the composition assets directory: ${missingAssets.slice(0, 5).join(", ")}${missingAssets.length > 5 ? ", ..." : ""}.`,
+      });
+    }
+  }
   const orphanAssets = normalizedAssets.filter((asset) => {
     const fileName = asset.split("/").pop() ?? asset;
     return !referencedSources.has(asset) && !referencedSources.has(`assets/${fileName}`) && !referencedSources.has(fileName);
@@ -425,7 +446,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
       properties: {
         text: { type: "string", description: "One visual scene's narration text." },
         sceneId: { type: "string", description: "The exact .scene element id narrated by this file." },
-        sceneText: { type: "string", description: "The scene's visible text snapshot. Must exactly equal text." },
+        sceneText: { type: "string", description: "The scene's marked narration-source transcript, or full visible text for legacy scenes. Must exactly equal text." },
         sceneStart: { type: "number", description: "The exact scene start time in seconds." },
         sceneDuration: { type: "number", description: "The visual scene's current duration in seconds. Used with the measured MP3 duration to return a non-overlapping timeline allocation." },
         outputPath: { type: "string", description: "New immutable .mp3 path relative to the active workspace." },
@@ -455,7 +476,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
             properties: {
               text: { type: "string", description: "One visual scene's narration text." },
               sceneId: { type: "string", description: "The exact .scene element id narrated by this file." },
-              sceneText: { type: "string", description: "The scene's visible text snapshot. Must exactly equal text." },
+              sceneText: { type: "string", description: "The scene's marked narration-source transcript, or full visible text for legacy scenes. Must exactly equal text." },
               sceneStart: { type: "number", description: "The scene's current start time before narration shifts are applied." },
               sceneDuration: { type: "number", description: "The scene's current duration in seconds." },
               outputPath: { type: "string", description: "New immutable .mp3 path relative to the active workspace." },
@@ -465,6 +486,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
           },
         },
         compositionPath: { type: "string", description: "Optional index.html path relative to the active workspace." },
+        targetDurationSeconds: { type: "number", description: "Optional user-requested final duration. Narration is rejected before synthesis when its estimated timeline cannot fit." },
         voice: { type: "string", description: "Model Studio voice name or cloned voice id." },
         model: { type: "string", description: "Speech model. Defaults to cosyvoice-v3-flash." },
         sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
@@ -951,6 +973,15 @@ async function synthesizeWorkspaceVoiceover(input: {
   };
 }
 
+export function estimateVoiceoverDurationSeconds(text: string) {
+  const cjkCharacters = Array.from(text.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)).length;
+  const latinWords = text
+    .replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu, " ")
+    .match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)?.length ?? 0;
+  const sentencePauses = text.match(/[。！？!?；;:：]/g)?.length ?? 0;
+  return roundVoiceoverTime(Math.max(0.5, (cjkCharacters / 4) + (latinWords / 2.5) + (sentencePauses * 0.12)));
+}
+
 function workspaceVoiceoverResult(
   synthesized: SynthesizedWorkspaceVoiceover,
   compositionPath: string | undefined,
@@ -1389,6 +1420,33 @@ export async function callMediaExtensionAction(
       if (scenes.some((scene, index) => index > 0 && scene.sceneStart < scenes[index - 1]!.sceneStart)) {
         throw new ApiError(400, "unordered_voiceover_scenes", "Batch scenes must be ordered by sceneStart.");
       }
+      let estimatedShiftSeconds = 0;
+      let estimatedTimelineEndSeconds = 0;
+      for (const scene of scenes) {
+        const estimatedStart = scene.sceneStart + estimatedShiftSeconds;
+        const estimatedTiming = planSceneVoiceoverTiming(
+          estimatedStart,
+          scene.sceneDuration,
+          estimateVoiceoverDurationSeconds(scene.text),
+        );
+        estimatedShiftSeconds = roundVoiceoverTime(estimatedShiftSeconds + estimatedTiming.shiftFollowingBySeconds);
+        estimatedTimelineEndSeconds = Math.max(
+          estimatedTimelineEndSeconds,
+          estimatedStart + estimatedTiming.requiredSceneDurationSeconds,
+        );
+      }
+      estimatedTimelineEndSeconds = roundVoiceoverTime(estimatedTimelineEndSeconds);
+      const targetDurationSeconds = readOptionalNumber(args, "targetDurationSeconds");
+      if (targetDurationSeconds !== undefined && targetDurationSeconds <= 0) {
+        throw new ApiError(400, "invalid_voiceover_target_duration", "targetDurationSeconds must be greater than zero.");
+      }
+      if (targetDurationSeconds !== undefined && estimatedTimelineEndSeconds > targetDurationSeconds + 1) {
+        throw new ApiError(
+          400,
+          "voiceover_target_duration_exceeded",
+          `Narration is estimated to require ${estimatedTimelineEndSeconds} seconds, exceeding the requested ${targetDurationSeconds} seconds. Preserve the important page facts, but compact the narration before synthesis.`,
+        );
+      }
       const compositionPath = readStringField(args, "compositionPath");
       if (compositionPath && extname(compositionPath).toLowerCase() !== ".html") {
         throw new ApiError(400, "invalid_voiceover_composition_path", "compositionPath must use the .html extension.");
@@ -1432,6 +1490,7 @@ export async function callMediaExtensionAction(
       result = {
         items,
         sceneCount: items.length,
+        estimatedTimelineDurationSeconds: estimatedTimelineEndSeconds,
         totalShiftSeconds: cumulativeShiftSeconds,
         rootDurationMustBeAtLeastSeconds: roundVoiceoverTime(items.reduce(
           (maximum, item) => Math.max(maximum, item.timelinePatch.rootDurationMustBeAtLeastSeconds),

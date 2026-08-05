@@ -138,6 +138,17 @@ describe("HyperFrames Video Studio", () => {
     expect(queueSource).toContain("onStartRender(format, quality, outputResolution, fps, outputSize, captureSize)");
   });
 
+  test("hides properties and export actions while previewing", () => {
+    const headerSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(headerSource).toContain("{!previewMode ? (");
+    expect(headerSource.indexOf("{!previewMode ? (")).toBeLessThan(headerSource.indexOf("onClick={toggleProperties}"));
+    expect(headerSource.indexOf("{!previewMode ? (")).toBeLessThan(headerSource.indexOf("onClick={openExport}"));
+  });
+
   test("keeps desktop panel titlebars draggable without swallowing control input", () => {
     const videoPanelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
@@ -548,6 +559,8 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Batch compatible HTML/CSS/JS changes into one complete edit or write");
     expect(contract).toContain("Never create or inspect another `video/`/`videos/` project");
     expect(contract).toContain("Never stop all Node processes");
+    expect(contract).toContain("not an HTML/JSON response saved with a media extension");
+    expect(contract).toContain("verify its response type and local file signature");
     expect(contract).toContain("never run `npx hyperframes check`");
     expect(contract).toContain("never use legacy `.frame` millisecond timelines");
     expect(contract).toContain("seconds-based `data-start`");
@@ -575,7 +588,9 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("voiceover_timeline_validate");
     expect(contract).toContain("fix all reported issues together");
     expect(contract).toContain('data-ipw-voiceover="true"');
-    expect(contract).toContain("exact visible text");
+    expect(contract).toContain('data-ipw-narration-source="true"');
+    expect(contract).toContain("existing headings, body copy, names, dates, metrics, labels");
+    expect(contract).toContain("targetDurationSeconds");
     expect(contract).toContain("Never overlap");
     expect(contract).toContain("root duration");
     expect(contract).toContain("GSAP");
@@ -594,6 +609,15 @@ describe("HyperFrames Video Studio", () => {
     expect(videoPromptRequestsVoiceoverContext(undefined, "Make the second scene longer")).toBe(false);
     expect(videoCompositionHasVoiceover('<audio data-ipw-voiceover="true" src="assets/voiceover-a.mp3"></audio>')).toBe(true);
     expect(videoCompositionHasVoiceover('<main data-composition-id="main"></main>')).toBe(false);
+  });
+
+  test("uses an adaptive operation plan without forcing one video workflow", () => {
+    const contract = videoTaskSystemContext("ses_video_a", "/workspace/current");
+    expect(contract).toContain("Adaptive execution contract");
+    expect(contract).toContain("update-element");
+    expect(contract).toContain("freeform-patch");
+    expect(contract).toContain("For a small local edit, patch only that element");
+    expect(contract).toContain("structural, multi-scene, or narrated edit");
   });
 
   test("keeps an imported video template as the agent's editing source", () => {

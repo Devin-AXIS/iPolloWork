@@ -9,6 +9,7 @@ import type { ServerConfig } from "../types.js";
 import {
   MEDIA_EXTENSION_ID,
   callMediaExtensionAction,
+  estimateVoiceoverDurationSeconds,
   planSceneVoiceoverTiming,
   validateVoiceoverTimelineHtml,
 } from "./media-center.js";
@@ -51,6 +52,11 @@ async function workspaceConfig() {
 }
 
 describe("Media Center extension", () => {
+  test("estimates multilingual narration duration before provider synthesis", () => {
+    expect(estimateVoiceoverDurationSeconds("这是八个汉字的旁白。")).toBeGreaterThan(2);
+    expect(estimateVoiceoverDurationSeconds("Five clear words for this scene.")).toBeGreaterThan(2);
+  });
+
   test("allocates narration inside its scene and reports the exact downstream shift", () => {
     expect(planSceneVoiceoverTiming(4, 3, 4.5)).toEqual({
       startSeconds: 4,
@@ -95,6 +101,22 @@ describe("Media Center extension", () => {
     </body>`);
 
     expect(result).toMatchObject({ valid: true, sceneCount: 2, voiceoverCount: 2, issues: [] });
+  });
+
+  test("binds narration to marked captions while preserving richer scene content", () => {
+    const narration = "乔丹六次夺冠，并六次当选总决赛 MVP。关键时刻的统治力定义了一个时代。";
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="12">
+        <section id="jordan" class="scene clip" data-start="0" data-duration="12">
+          <h1>Michael Jordan</h1>
+          <strong>6× Champion</strong><span>Chicago Bulls · 1984–1998</span>
+          <p data-ipw-narration-source="true">${narration}</p>
+        </section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="jordan" data-ipw-scene-text="${narration}" data-ipw-narration-text="${narration}" data-start="0" data-duration="11"></audio>
+      </main>
+    </body>`);
+
+    expect(result).toMatchObject({ valid: true, sceneCount: 1, voiceoverCount: 1, issues: [] });
   });
 
   test("rejects narration metadata that no longer matches the scene's visible text", () => {
@@ -250,6 +272,25 @@ describe("Media Center extension", () => {
 
     expect(result).toMatchObject({ ok: true, result: { output: { valid: false, voiceoverAssetCount: 1 } } });
     expect((result as any).result.output.issues.map((issue: any) => issue.code)).toContain("voiceover_assets_unreferenced");
+  });
+
+  test("rejects timeline voiceover references whose files are missing", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+      <audio src="./assets/voiceover-missing.mp3" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="4"></audio>
+    </main>`);
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video.html" },
+      { directory: workspace.root },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false } } });
+    expect(JSON.stringify(result)).toContain("voiceover_assets_missing");
   });
 
   test("rejects underscore voiceover files present in assets but missing from the timeline", async () => {
@@ -454,6 +495,35 @@ describe("Media Center extension", () => {
     });
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-intro.mp3"))).toEqual(mp3);
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-details.mp3"))).toEqual(mp3);
+  });
+
+  test("rejects narration that cannot fit a requested duration before provider synthesis", async () => {
+    const workspace = await workspaceConfig();
+    const narration = "这是需要保留页面事实但明显无法塞进五秒镜头的详细旁白。".repeat(12);
+    let requested = false;
+    Reflect.set(globalThis, mediaProviderFetchKey, () => {
+      requested = true;
+      throw new Error("provider must not be called");
+    });
+
+    await expect(callMediaExtensionAction(
+      workspace.config,
+      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      "speech_synthesize_workspace_batch",
+      {
+        scenes: [{
+          text: narration,
+          sceneId: "details",
+          sceneText: narration,
+          sceneStart: 0,
+          sceneDuration: 5,
+          outputPath: "video/session/assets/voiceover-too-long.mp3",
+        }],
+        targetDurationSeconds: 5,
+      },
+      { directory: workspace.root },
+    )).rejects.toMatchObject({ code: "voiceover_target_duration_exceeded" });
+    expect(requested).toBe(false);
   });
 
   test("rejects synthesized audio URLs outside Model Studio result storage", async () => {
