@@ -66,6 +66,8 @@ describe("Studio right panel layout", () => {
     expect(translations).toContain('"header.inspector": "属性"');
     expect(translations).toContain('"right.renders": "Export"');
     expect(translations).toContain('"right.catalog": "Animation"');
+    expect(translations).toContain('"right.style": "主题"');
+    expect(translations).not.toContain('"right.style": "风格"');
     expect(translations).toContain('"right.catalog": "动画"');
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
