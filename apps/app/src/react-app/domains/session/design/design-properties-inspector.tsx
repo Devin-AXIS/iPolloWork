@@ -2,9 +2,11 @@
 import * as React from "react";
 import {
   AlignCenter,
+  AlignEndVertical,
   AlignHorizontalJustifyCenter,
   AlignLeft,
   AlignRight,
+  AlignStartVertical,
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
@@ -37,11 +39,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { listSystemFontFamilies } from "@/app/lib/desktop";
 import { cn } from "@/lib/utils";
-import type { DesignField, DesignSelection, DesignStyleField } from "./design-html-runtime";
+import type { DesignAlignment, DesignField, DesignSelection, DesignStyleField } from "./design-html-runtime";
 import { toggleTransformScale } from "./design-transform";
 import { FALLBACK_FONT_FAMILIES, filterFontFamilyOptions, fontFamilyOptions } from "./font-family-catalog";
 import { displayFontFamily } from "./font-family-display";
 import { DesignColorField } from "./design-color-field";
+import { DesignGradientPicker } from "./design-gradient-picker";
 import { DesignImageFitSelect, type DesignImageFitMode } from "./design-image-fit-select";
 import { DesignPanelSelect } from "./design-panel-select";
 import panelSelectChevron from "./assets/panel-select-chevron.svg";
@@ -51,11 +54,13 @@ type DesignPropertiesInspectorProps = {
   isMultiSelection: boolean;
   selectionCount: number;
   mixedStyleFields: readonly DesignStyleField[];
+  gradientRecommendationColors: readonly (string | undefined)[];
   activeTab: "element" | "design-system";
   onClose: () => void;
   onActiveTabChange: (tab: "element" | "design-system") => void;
   onApplyField: (field: DesignField, value: string, remember?: boolean) => void;
   onApplyFields: (fields: Partial<Record<DesignStyleField, string>>, remember?: boolean) => void;
+  onAlign: (alignment: DesignAlignment) => void;
   onToggleLock: () => void;
   onDelete: () => void;
   onChooseReplacementImage: () => void;
@@ -79,9 +84,11 @@ function ElementPropertiesContent({
   isMultiSelection,
   selectionCount,
   mixedStyleFields,
+  gradientRecommendationColors,
   onClose,
   onApplyField,
   onApplyFields,
+  onAlign,
   onToggleLock,
   onDelete,
   onChooseReplacementImage,
@@ -133,7 +140,7 @@ function ElementPropertiesContent({
     }
     if (type === "gradient") {
       setImageFillOpen(false);
-      onApplyFields({ backgroundColor: "transparent", backgroundImage: DEFAULT_GRADIENT });
+      onApplyFields({ backgroundImage: DEFAULT_GRADIENT });
     }
     if (type === "image") setImageFillOpen(true);
   };
@@ -256,28 +263,34 @@ function ElementPropertiesContent({
         </InspectorSection>
       ) : null}
 
-      {!isMultiSelection ? <InspectorSection title="Position">
+      <InspectorSection title="Position">
         <FieldCaption>Alignment</FieldCaption>
-        <div className="grid grid-cols-6 gap-1">
-          <PropertyButton aria-label="Align left"><AlignLeft /></PropertyButton>
-          <PropertyButton aria-label="Align horizontal center"><AlignHorizontalJustifyCenter /></PropertyButton>
-          <PropertyButton aria-label="Align right"><AlignRight /></PropertyButton>
-          <PropertyButton aria-label="Align top"><AlignVerticalJustifyStart /></PropertyButton>
-          <PropertyButton aria-label="Align vertical center"><AlignVerticalJustifyCenter /></PropertyButton>
-          <PropertyButton aria-label="Align bottom"><AlignVerticalJustifyEnd /></PropertyButton>
+        <div className="mt-1 flex gap-3">
+          <div className="grid min-w-0 flex-1 grid-cols-3 gap-0.5">
+            <PropertyButton className="h-[34px]" aria-label="Align left" onClick={() => onAlign("left")}><AlignStartVertical /></PropertyButton>
+            <PropertyButton className="h-[34px]" aria-label="Align horizontal center" onClick={() => onAlign("center-horizontal")}><AlignHorizontalJustifyCenter /></PropertyButton>
+            <PropertyButton className="h-[34px]" aria-label="Align right" onClick={() => onAlign("right")}><AlignEndVertical /></PropertyButton>
+          </div>
+          <div className="grid min-w-0 flex-1 grid-cols-3 gap-0.5">
+            <PropertyButton className="h-[34px]" aria-label="Align top" onClick={() => onAlign("top")}><AlignVerticalJustifyStart /></PropertyButton>
+            <PropertyButton className="h-[34px]" aria-label="Align vertical center" onClick={() => onAlign("center-vertical")}><AlignVerticalJustifyCenter /></PropertyButton>
+            <PropertyButton className="h-[34px]" aria-label="Align bottom" onClick={() => onAlign("bottom")}><AlignVerticalJustifyEnd /></PropertyButton>
+          </div>
         </div>
-        <FieldCaption className="mt-3">Position</FieldCaption>
-        <div className="grid grid-cols-2 gap-2">
-          <DragNumberField label="X" value={selection.styles.left || `${Math.round(selection.rect.left)}px`} suffix="px" onChange={(value, remember) => onApplyField("left", `${value}px`, remember)} />
-          <DragNumberField label="Y" value={selection.styles.top || `${Math.round(selection.rect.top)}px`} suffix="px" onChange={(value, remember) => onApplyField("top", `${value}px`, remember)} />
-        </div>
-        <div className="mt-2 grid grid-cols-[1fr_42px_42px_42px] gap-1">
-          <DragNumberField label="Rotation" value={`${rotation}°`} suffix="°" onChange={(value, remember) => onApplyField("transform", `rotate(${value}deg)`, remember)} />
-          <PropertyButton aria-label="Rotate clockwise" onClick={() => onApplyField("transform", `rotate(${rotation + 90}deg)`)}><RotateCw /></PropertyButton>
-          <PropertyButton aria-label="Flip horizontal" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "x"))}><FlipHorizontal2 /></PropertyButton>
-          <PropertyButton aria-label="Flip vertical" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "y"))}><SeparatorHorizontal /></PropertyButton>
-        </div>
-      </InspectorSection> : null}
+        {!isMultiSelection ? <>
+          <FieldCaption className="mt-3">Position</FieldCaption>
+          <div className="grid grid-cols-2 gap-2">
+            <DragNumberField label="X" value={selection.styles.left || `${Math.round(selection.rect.left)}px`} suffix="px" onChange={(value, remember) => onApplyField("left", `${value}px`, remember)} />
+            <DragNumberField label="Y" value={selection.styles.top || `${Math.round(selection.rect.top)}px`} suffix="px" onChange={(value, remember) => onApplyField("top", `${value}px`, remember)} />
+          </div>
+          <div className="mt-2 grid grid-cols-[1fr_42px_42px_42px] gap-1">
+            <DragNumberField label="Rotation" value={`${rotation}°`} suffix="°" onChange={(value, remember) => onApplyField("transform", `rotate(${value}deg)`, remember)} />
+            <PropertyButton aria-label="Rotate clockwise" onClick={() => onApplyField("transform", `rotate(${rotation + 90}deg)`)}><RotateCw /></PropertyButton>
+            <PropertyButton aria-label="Flip horizontal" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "x"))}><FlipHorizontal2 /></PropertyButton>
+            <PropertyButton aria-label="Flip vertical" onClick={() => onApplyField("transform", toggleTransformScale(selection.styles.transform, "y"))}><SeparatorHorizontal /></PropertyButton>
+          </div>
+        </> : null}
+      </InspectorSection>
 
       {!isMultiSelection ? <InspectorSection title="Size">
         <div className="grid grid-cols-[1fr_1fr_34px] gap-2">
@@ -301,7 +314,7 @@ function ElementPropertiesContent({
           <ColorField label="Background color" mixed={isMixed("backgroundColor")} value={selection.styles.backgroundColor || "#000000"} onChange={(value, remember) => onApplyField("backgroundColor", value, remember)} />
         </> : <>
           {fillType === "solid" ? <ColorField value={backgroundValue || "#000000"} onChange={(value, remember) => onApplyField(fillField, value, remember)} /> : null}
-          {fillType === "gradient" ? <FillSummary swatchClassName="bg-[linear-gradient(180deg,#2e6bdb_0%,#76e3e9_100%)]" label="Gradient" /> : null}
+          {fillType === "gradient" ? <DesignGradientPicker value={selection.styles.backgroundImage} recommendationColors={gradientRecommendationColors} onChange={(value, remember) => onApplyField("backgroundImage", value, remember)} /> : null}
           {fillType === "image" ? <ImageFillPicker selection={selection} onApplyFields={onApplyFields} onChooseImage={selection.tag === "img" ? onChooseReplacementImage : onChooseBackgroundImage} /> : null}
         </>}
       </InspectorSection>
@@ -391,10 +404,6 @@ function fillTypeFor(selection: DesignSelection): FillType {
   if (/^url\(/i.test(image)) return "image";
   if (image !== "none" && image) return "gradient";
   return isTransparentColor(selection.styles.backgroundColor) ? "none" : "solid";
-}
-
-function FillSummary({ swatchClassName, label }: { swatchClassName: string; label: string }) {
-  return <div className="mt-3 flex h-[34px] items-center justify-between rounded-lg bg-muted px-2 pr-4"><span className="flex items-center gap-2 text-[13px] text-foreground"><span className={cn("size-5 rounded-[4px]", swatchClassName)} />{label}</span><ChevronDown className="size-4 text-muted-foreground" /></div>;
 }
 
 function ImageFillPicker({ selection, onApplyFields, onChooseImage }: { selection: DesignSelection; onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void; onChooseImage: () => void }) {
@@ -707,9 +716,9 @@ function ColorField({ label = "Color", value, onChange, mixed = false }: { label
   return <DesignColorField label={label} mixed={mixed} value={value} onChange={onChange} className="mt-2 h-9 bg-muted px-2.5" />;
 }
 
-function PropertyButton({ active = false, disabled = false, onClick, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+function PropertyButton({ active = false, disabled = false, className, onClick, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
   return (
-    <button type="button" className={cn("grid h-9 min-w-0 place-items-center rounded-lg bg-muted text-muted-foreground transition-colors [&_svg]:size-4", active && "bg-foreground text-background", !disabled && "hover:bg-accent hover:text-foreground", active && !disabled && "hover:bg-foreground hover:text-background")} disabled={disabled} onClick={onClick} {...props}>
+    <button type="button" className={cn("grid h-9 w-full min-w-0 place-items-center rounded-lg bg-muted text-muted-foreground transition-colors [&_svg]:size-4", active && "bg-foreground text-background", !disabled && "hover:bg-accent hover:text-foreground", active && !disabled && "hover:bg-foreground hover:text-background", className)} disabled={disabled} onClick={onClick} {...props}>
       {children}
     </button>
   );

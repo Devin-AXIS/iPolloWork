@@ -261,13 +261,13 @@ describe("Design HTML runtime", () => {
     expect(presentationPreview).toContain('type: "zoom"');
   });
 
-  test("emits ordered modifier selections and their union rectangle", async () => {
+  test("uses Shift-click for ordered multi-selection and its union rectangle", async () => {
     const preview = buildDesignPreviewDocument("<!doctype html><html><body><p>One</p><p>Two</p></body></html>", true);
     const runtimeSource = await Bun.file(new URL("../src/react-app/domains/session/design/design-html-runtime.ts", import.meta.url)).text();
     expect(preview).toContain('const primaryAttribute = "data-ipollowork-design-primary"');
     expect(preview).toContain("let selectedElements: HTMLElement[] = []");
     expect(preview).toContain("let primaryElement: HTMLElement | null = null");
-    expect(preview).toContain("event.ctrlKey || event.metaKey");
+    expect(preview).toContain("const selectionModifier = event.shiftKey");
     expect(preview).toContain("toggleSelection(element)");
     expect(preview).toContain("selectionRect: selectionBounds()");
     expect(preview).toContain("selections: selectedElements.map(describe)");
@@ -279,14 +279,14 @@ describe("Design HTML runtime", () => {
   test("modifier-click exits active text editing before toggling that selection", async () => {
     const runtimeSource = await Bun.file(new URL("../src/react-app/domains/session/design/design-html-runtime.ts", import.meta.url)).text();
 
-    expect(runtimeSource).toContain("primaryElement?.hasAttribute(editingAttribute) && !event.ctrlKey && !event.metaKey");
-    expect(runtimeSource).toContain("const selectionModifier = event.ctrlKey || event.metaKey;");
+    expect(runtimeSource).toContain("primaryElement?.hasAttribute(editingAttribute) && !event.shiftKey");
+    expect(runtimeSource).toContain("const selectionModifier = event.shiftKey;");
     expect(runtimeSource).toContain("if (selectionModifier && element.hasAttribute(editingAttribute)) {");
     expect(runtimeSource).toContain("element.removeAttribute(editingAttribute);");
     expect(runtimeSource).toContain('element.removeAttribute("contenteditable");');
     expect(runtimeSource).toContain("window.getSelection()?.removeAllRanges();");
     expect(runtimeSource).toContain("textRange = null;");
-    expect(runtimeSource.indexOf("const selectionModifier = event.ctrlKey || event.metaKey;")).toBeLessThan(runtimeSource.indexOf("if (selectionModifier && element.hasAttribute(editingAttribute)) {"));
+    expect(runtimeSource.indexOf("const selectionModifier = event.shiftKey;")).toBeLessThan(runtimeSource.indexOf("if (selectionModifier && element.hasAttribute(editingAttribute)) {"));
   });
 
   test("moves a selected set and prevents its resize", async () => {
@@ -298,6 +298,37 @@ describe("Design HTML runtime", () => {
     expect(runtimeSource).toContain('const effectiveMode = selectedElements.length > 1 ? "move" : mode');
     expect(runtimeSource).toContain("element !== target.element && element.contains(target.element)");
     expect(runtimeSource).toContain("restorePendingSelection(element)");
+  });
+
+  test("shows runtime-only smart guides and snaps move or resize transforms", async () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><div>One</div><div>Two</div></body></html>", true);
+    const runtimeSource = await Bun.file(new URL("../src/react-app/domains/session/design/design-html-runtime.ts", import.meta.url)).text();
+
+    expect(preview).toContain("ipollowork-design-guide-vertical");
+    expect(preview).toContain("ipollowork-design-guide-horizontal");
+    expect(runtimeSource).toContain("const guideSnapThreshold = 5");
+    expect(preview).toContain("snappedMoveDelta(rawDx, rawDy)");
+    expect(preview).toContain("snappedResizeDelta(rawDx, rawDy, event.shiftKey)");
+    expect(preview).toContain("showGuides(snapped.vertical, snapped.horizontal)");
+    expect(runtimeSource).toContain("selected.contains(element) || element.contains(selected)");
+    expect(runtimeSource).toContain("element !== verticalGuide && element !== horizontalGuide");
+    expect(runtimeSource).toContain('clone.querySelector(`#${verticalGuideId}`)?.remove()');
+    expect(runtimeSource).toContain('clone.querySelector(`#${horizontalGuideId}`)?.remove()');
+    expect(runtimeSource).toContain("hideGuides();");
+  });
+
+  test("aligns one selection to its canvas and multiple selections to their bounds", async () => {
+    const preview = buildDesignPreviewDocument("<!doctype html><html><body><section class=\"slide\"><div>One</div><div>Two</div></section></body></html>", true);
+    const runtimeSource = await Bun.file(new URL("../src/react-app/domains/session/design/design-html-runtime.ts", import.meta.url)).text();
+
+    expect(preview).toContain('data.type === "align"');
+    expect(runtimeSource).toContain("const reference = targets.length === 1 ? canvasRect : selectionRect");
+    expect(runtimeSource).toContain('alignment === "center-horizontal"');
+    expect(runtimeSource).toContain('alignment === "center-vertical"');
+    expect(runtimeSource).toContain("moveElementBy(target, deltaX, deltaY)");
+    expect(runtimeSource).toContain('element.style.right = "auto"');
+    expect(runtimeSource).toContain('element.style.bottom = "auto"');
+    expect(runtimeSource).toContain('post("draft")');
   });
 
   test("uses selected IDs for safe batch delete and styles", async () => {
