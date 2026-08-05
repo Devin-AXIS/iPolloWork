@@ -3,6 +3,7 @@ import { readFile, writeFile, rm } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
+import { IPOLLOWORK_PACKAGE_EXTENSION, IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateCategorySchema } from "@ipollowork/types/templates";
 import type { ApprovalRequest, Capabilities, ServerConfig, WorkspaceInfo, Actor, ReloadReason, ReloadTrigger, TokenScope } from "./types.js";
 import { ApprovalService } from "./approvals.js";
 import { addPlugin, listPlugins, normalizePluginSpec, removePlugin } from "./plugins.js";
@@ -108,6 +109,8 @@ import {
   MAX_TEMPLATE_PACKAGE_BYTES,
   adoptLegacyVideoSession,
   createTemplateAuthoringSession,
+  exportLocalTemplatePackage,
+  exportTemplateFromSession,
   importTemplate,
   installBundledTemplate,
   listTemplateSessions,
@@ -1060,6 +1063,22 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
+function parseTemplateFromSessionInput(body: Record<string, unknown>) {
+  const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+  const category = templateCategorySchema.safeParse(body.category);
+  const title = typeof body.title === "string" ? body.title : "";
+  if (!sessionId || !category.success || !title) throw new ApiError(400, "invalid_payload", "sessionId, category and title are required");
+  return {
+    sessionId,
+    category: category.data,
+    title,
+    description: typeof body.description === "string" ? body.description : undefined,
+    subcategory: typeof body.subcategory === "string" ? body.subcategory : undefined,
+    style: typeof body.style === "string" ? body.style : undefined,
+    tags: Array.isArray(body.tags) ? body.tags.filter((tag): tag is string => typeof tag === "string") : undefined,
+  };
+}
+
 function withCors(response: Response, request: Request, config: ServerConfig) {
   const origin = request.headers.get("origin");
   const allowedOrigins = config.corsOrigins;
@@ -1077,6 +1096,7 @@ function withCors(response: Response, request: Request, config: ServerConfig) {
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, X-iPolloWork-Host-Token, X-iPolloWork-Client-Id, X-iPolloWork-Filename, X-iPolloWork-Resource-Scope, X-iPolloWork-Template-Category, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
   );
+  headers.set("Access-Control-Expose-Headers", "Content-Disposition, X-iPollo-Artifact-SHA256");
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   headers.set("Vary", "Origin");
   return new Response(response.body, { status: response.status, headers });
@@ -1466,6 +1486,20 @@ function createRoutes(
     return new Response(cover.data, { headers: { "Content-Type": cover.contentType, "Cache-Control": "no-store" } });
   });
 
+  addRoute(routes, "GET", "/workspace/:id/templates/:templateId/package", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const scope = parseTemplateLibraryScope(ctx.request.headers.get("x-ipollowork-resource-scope"));
+    const template = await exportLocalTemplatePackage(config, workspace.id, ctx.params.templateId, scope);
+    return new Response(Uint8Array.from(template.archive), {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": `attachment; filename="${template.manifest.id}-${template.manifest.version}${IPOLLOWORK_PACKAGE_EXTENSION}"`,
+        "Content-Type": IPOLLOWORK_PACKAGE_MEDIA_TYPE,
+        "X-iPollo-Artifact-SHA256": template.digest,
+      },
+    });
+  });
+
   addRoute(routes, "POST", "/workspace/:id/templates/import", "client", async (ctx) => {
     ensureWritable(config);
     requireClientScope(ctx, "collaborator");
@@ -1478,26 +1512,27 @@ function createRoutes(
     return jsonResponse({ item: await importTemplate(config, workspace.id, archive, category, scope) }, 201);
   });
 
+  addRoute(routes, "POST", "/workspace/:id/templates/from-session/package", "client", async (ctx) => {
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const template = await exportTemplateFromSession(config, workspace, parseTemplateFromSessionInput(await readJsonBody(ctx.request)));
+    return new Response(Uint8Array.from(template.archive), {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": `attachment; filename="${template.manifest.id}-${template.manifest.version}${IPOLLOWORK_PACKAGE_EXTENSION}"`,
+        "Content-Type": IPOLLOWORK_PACKAGE_MEDIA_TYPE,
+        "X-iPollo-Artifact-SHA256": template.digest,
+      },
+    });
+  });
+
   addRoute(routes, "POST", "/workspace/:id/templates/from-session", "client", async (ctx) => {
     ensureWritable(config);
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const scope = parseTemplateLibraryScope(ctx.request.headers.get("x-ipollowork-resource-scope"));
     await requireApproval(ctx, { workspaceId: workspace.id, action: "template.save", summary: "Save the current work as a personal template", paths: [join(dirname(runtimeDbPathForServer(config)), "templates")] });
-    const body = await readJsonBody(ctx.request);
-    const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
-    const category = typeof body.category === "string" ? body.category : "";
-    const title = typeof body.title === "string" ? body.title : "";
-    if (!sessionId || !category || !title) throw new ApiError(400, "invalid_payload", "sessionId, category and title are required");
-    return jsonResponse({ item: await saveTemplateFromSession(config, workspace, {
-      sessionId,
-      category: category as import("@ipollowork/types/templates").TemplateCategory,
-      title,
-      description: typeof body.description === "string" ? body.description : undefined,
-      subcategory: typeof body.subcategory === "string" ? body.subcategory : undefined,
-      style: typeof body.style === "string" ? body.style : undefined,
-      tags: Array.isArray(body.tags) ? body.tags.filter((tag): tag is string => typeof tag === "string") : undefined,
-    }, scope) }, 201);
+    return jsonResponse({ item: await saveTemplateFromSession(config, workspace, parseTemplateFromSessionInput(await readJsonBody(ctx.request)), scope) }, 201);
   });
 
   addRoute(routes, "POST", "/workspace/:id/templates/authoring-sessions", "client", async (ctx) => {

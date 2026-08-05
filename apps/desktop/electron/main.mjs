@@ -2334,7 +2334,19 @@ const desktopCommandHandlers = {
         defaultPath: options.defaultPath,
         filters: options.filters,
       });
-      return result.canceled ? null : (result.filePath ?? null);
+      const filePath = result.canceled ? null : (result.filePath ?? null);
+      if (!filePath) return null;
+      const data = args[1];
+      if (data !== undefined) {
+        if (data instanceof ArrayBuffer) {
+          await writeFile(filePath, new Uint8Array(data));
+        } else if (ArrayBuffer.isView(data)) {
+          await writeFile(filePath, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+        } else {
+          throw new TypeError("saveFile data must be binary");
+        }
+      }
+      return filePath;
   },
   "importSkill": async (event, ...args) => {
       const projectDir = String(args[0] ?? "").trim();

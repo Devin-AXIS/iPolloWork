@@ -44,7 +44,7 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
     expect(panelSource).not.toContain("onChooseBackgroundImage=");
     expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
-    expect(panelSource).toContain("top-[96px]");
+    expect(panelSource).toContain("top-[90px]");
   });
 
   test("keeps embedded voice and style content aligned with the resizable Studio drawer", () => {

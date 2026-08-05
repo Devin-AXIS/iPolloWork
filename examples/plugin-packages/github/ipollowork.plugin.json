@@ -16,8 +16,37 @@
   "composer": {
     "prompt": "使用 GitHub 检查 PR、Issue 和 CI，并在发布代码前确认本地变更范围。"
   },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Inspect repositories, handle pull requests and issues, diagnose Actions, and safely publish local changes as a draft pull request.",
+        "category": "Developer Tools",
+        "composer": { "prompt": "Use GitHub to inspect pull requests, issues, and CI, confirming the local change scope before publishing code." },
+        "resources": {
+          "github-service": { "description": "Access fixed, bounded GitHub API capabilities through encrypted authorization." },
+          "github": { "description": "Inspect repositories, pull requests, issues, and collaboration status." },
+          "github-review-follow-up": { "description": "Organize and address unresolved pull request review feedback." },
+          "github-ci-debug": { "description": "Diagnose GitHub Actions failures and develop the smallest viable fix." },
+          "github-publish-changes": { "description": "Confirm the change scope, commit, push, and create a draft pull request." }
+        },
+        "permissions": {
+          "network": { "reason": "Access GitHub repositories, pull requests, issues, and Actions data authorized by the user." },
+          "workspace-read": { "reason": "Understand the current repository, branch, and local changes awaiting publication." },
+          "workspace-write": { "reason": "Address review or CI issues within the scope selected by the user." },
+          "process": { "reason": "Run user-confirmed local Git commands during publishing workflows." }
+        },
+        "authorizationMethods": {
+          "github-token": {
+            "label": "Connect GitHub",
+            "description": "Use a fine-grained personal access token limited to the selected repositories and required permissions. The token is stored only in iPolloWork's encrypted authorization store."
+          }
+        }
+      }
+    }
+  },
   "package": {
-    "version": "0.1.0",
+    "version": "0.1.1",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"

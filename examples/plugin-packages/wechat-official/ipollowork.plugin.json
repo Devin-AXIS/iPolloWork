@@ -16,8 +16,66 @@
   "composer": {
     "prompt": "使用微信公众号运营插件，先检查账号能力与草稿状态，再按确认范围处理内容、评论、菜单或粉丝互动。"
   },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "WeChat Official Account",
+        "description": "Manage WeChat Official Account articles, drafts, publishing, comments, messages, followers, menus, and operational workflows.",
+        "category": "Content & Operations",
+        "composer": { "prompt": "Use the WeChat Official Account operations plugin to check account capabilities and draft status before handling content, comments, menus, or follower interactions within the confirmed scope." },
+        "resources": {
+          "wechat-official-service": {
+            "label": "WeChat Official Account Operations Service",
+            "description": "Call WeChat Official Account content and operations APIs through controlled, confirmable actions."
+          },
+          "wechat-official-content": {
+            "label": "Official Account Content Creation",
+            "description": "Create titles, summaries, body copy, and calls to action structured for WeChat Official Account articles."
+          },
+          "wechat-official-assets": {
+            "label": "Card and Asset Adaptation",
+            "description": "Adapt workspace cards and images into cover and body assets for WeChat Official Account articles."
+          },
+          "wechat-official-publishing": {
+            "label": "Drafts and Publishing",
+            "description": "Manage drafts, previews, publishing confirmation, and publication status."
+          },
+          "wechat-official-comments": {
+            "label": "Comment Operations",
+            "description": "View, filter, reply to, feature, and moderate article comments."
+          },
+          "wechat-official-messages": {
+            "label": "Message Automation",
+            "description": "Design safe direct-message reply policies and send confirmed messages within the currently available customer-service window."
+          },
+          "wechat-official-community": {
+            "label": "Follower and Menu Operations",
+            "description": "Understand follower scope and review or update the Official Account custom menu."
+          },
+          "wechat-official-review": {
+            "label": "Operations Review",
+            "description": "Summarize operational results and next steps from draft, publishing, and comment evidence."
+          }
+        },
+        "permissions": {
+          "network": { "reason": "Access WeChat Official Account content, comments, followers, and menu APIs authorized by the user." },
+          "workspace-read": { "reason": "Read images selected by the user for upload from the current workspace." }
+        },
+        "authorizationMethods": {
+          "wechat-official-account": {
+            "label": "Connect WeChat Official Account",
+            "description": "Enter the service account AppID and AppSecret. Credentials are stored only in iPolloWork's encrypted authorization store; the account must be verified and have the required API publishing permissions.",
+            "fields": {
+              "appSecret": { "placeholder": "Enter the Official Account AppSecret" }
+            }
+          }
+        }
+      }
+    }
+  },
   "package": {
-    "version": "0.1.0",
+    "version": "0.1.1",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"

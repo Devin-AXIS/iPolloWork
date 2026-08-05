@@ -97,6 +97,15 @@ describe("Design deck navigation", () => {
     expect(source.lastIndexOf('aria-label="Ask AI about selected element"')).toBeGreaterThan(source.lastIndexOf('aria-label="Toggle advanced design settings"'));
   });
 
+  test("keeps the floating toolbar spacing compact and consistent", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('items-center gap-4 rounded-lg border border-border bg-popover px-4 py-2');
+    expect(source).toContain('<div className="flex items-center gap-3">');
+    expect(source).toContain('<div className="flex items-center gap-1">');
+    expect(source).not.toContain("gap-[17px]");
+  });
+
   test("keeps protected runtime controls unavailable to AI", async () => {
     const source = await Bun.file(panelUrl).text();
     const labelIndex = source.lastIndexOf('aria-label="Ask AI about selected element"');

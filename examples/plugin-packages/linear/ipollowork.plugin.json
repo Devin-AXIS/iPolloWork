@@ -12,8 +12,44 @@
   },
   "icon": { "simpleIconSlug": "linear" },
   "composer": { "prompt": "使用 Linear 插件核对团队、项目和 Issue 状态，再按明确范围进行分流、规划或更新。" },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Combine issue triage, sprint planning, delivery follow-up, and project updates into a consistent Linear workflow.",
+        "category": "Projects & Engineering",
+        "composer": { "prompt": "Use the Linear plugin to verify team, project, and issue status before triaging, planning, or updating within a clear scope." },
+        "resources": {
+          "linear-mcp": {
+            "label": "Official Linear Remote MCP",
+            "description": "Read and update the user's authorized Linear workspace through persistent OAuth."
+          },
+          "linear-triage": {
+            "label": "Issue Triage",
+            "description": "Organize the backlog after checking duplicates, priority, team, and assignee."
+          },
+          "linear-sprint-planning": {
+            "label": "Sprint Planning",
+            "description": "Plan cycles using real capacity, dependencies, and priorities."
+          },
+          "linear-issue-delivery": {
+            "label": "Issue Delivery",
+            "description": "Keep code evidence, acceptance criteria, and issue status aligned."
+          },
+          "linear-project-updates": {
+            "label": "Project Updates",
+            "description": "Generate project status updates from real issue and milestone evidence."
+          }
+        },
+        "permissions": {
+          "network": { "reason": "Connect to the official Linear remote MCP and access teams, projects, and issues authorized through OAuth." },
+          "workspace-read": { "reason": "Read workspace code and change evidence to verify issue and delivery status." }
+        }
+      }
+    }
+  },
   "package": {
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
     "compatibility": { "ipollowork": ">=0.18.0", "opencode": ">=1.18.0" },
     "updateId": "ipollowork/linear",
