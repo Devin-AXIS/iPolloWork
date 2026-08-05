@@ -97,6 +97,7 @@ function prepareMacDevelopmentElectron() {
   cpSync(sourceApp, macDevElectronApp, {
     recursive: true,
     force: true,
+    verbatimSymlinks: true,
     mode: fsConstants.COPYFILE_FICLONE,
   });
 
@@ -398,7 +399,7 @@ process.once("SIGTERM", () => void stopAll(143));
 
 if (process.env.IPOLLOWORK_ELECTRON_SKIP_SHARED_PREPARE !== "1") {
   runSync(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], { cwd: desktopRoot });
-  runSync(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", "--outdir", electronHelperDir], { cwd: desktopRoot });
+  runSync(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--outdir", electronHelperDir], { cwd: desktopRoot });
 }
 
 // Build the server TS → JS so Electron can import it in-process
