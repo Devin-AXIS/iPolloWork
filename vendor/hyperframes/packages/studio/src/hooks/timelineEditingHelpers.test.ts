@@ -6,6 +6,7 @@ import {
   buildTimelineResizeTimingPatch,
   resolveTimelinePatch,
 } from "./timelineEditingHelpers";
+import { patchTimelineLayerStateInSource } from "./timelineTrackVisibility";
 
 const SCENE_REPLAY = {
   id: "scene-replay",
@@ -24,6 +25,45 @@ function moveSceneReplay(start: string) {
 }
 
 describe("timeline edit patch resolution", () => {
+  test("persists visibility and lock state for authored timeline layers", () => {
+    const original = '<main><div id="authored-layer"></div></main>';
+    const element = {
+      id: "authored-layer",
+      domId: "authored-layer",
+      tag: "div",
+      start: 0,
+      duration: 2,
+      track: 0,
+    };
+
+    const hidden = patchTimelineLayerStateInSource(original, element, "hidden", true);
+    expect(hidden).toContain('data-hidden=""');
+    const locked = patchTimelineLayerStateInSource(hidden ?? original, element, "timelineLocked", true);
+    expect(locked).toContain('data-timeline-locked=""');
+    expect(
+      patchTimelineLayerStateInSource(locked ?? original, element, "timelineLocked", false),
+    ).not.toContain("data-timeline-locked");
+  });
+
+  test("treats runtime-generated timeline descendants as a non-persistable target", () => {
+    const source = '<div id="caption-root"></div><script>word.id = "gl-w-" + i;</script>';
+    expect(
+      patchTimelineLayerStateInSource(
+        source,
+        {
+          id: "gl-w-3",
+          domId: "gl-w-3",
+          tag: "span",
+          start: 0,
+          duration: 2,
+          track: 0,
+        },
+        "hidden",
+        true,
+      ),
+    ).toBeNull();
+  });
+
   test("accepts an already-applied repeated drag as an unchanged success", () => {
     const original =
       '<html><body><section id="scene-replay" data-start="1" data-duration="2"></section></body></html>';

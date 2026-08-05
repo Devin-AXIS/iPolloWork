@@ -54,6 +54,7 @@ export interface TimelineEditCallbacks {
     options?: { coalesceKey?: string },
   ) => Promise<void> | void;
   onToggleTrackHidden?: (track: number, hidden: boolean) => Promise<void> | void;
+  onToggleTrackLocked?: (track: number, locked: boolean) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;

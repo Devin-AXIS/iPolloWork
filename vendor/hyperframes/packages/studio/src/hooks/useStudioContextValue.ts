@@ -1,9 +1,7 @@
-import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
+import { useMemo } from "react";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import type { StudioContextValue } from "../contexts/StudioContext";
 import type { RightInspectorPanes } from "../utils/studioHelpers";
-import type { TimelineFileDropHandler } from "./useTimelineEditingTypes";
-import { usePlayerStore } from "../player";
 
 interface StudioContextInput {
   projectId: string;
@@ -103,47 +101,4 @@ export function useInspectorState(
         !isGestureRecording,
     };
   }, [rightPanelTab, rightInspectorPanes, rightCollapsed, isPlaying, isGestureRecording]);
-}
-
-// fallow-ignore-next-line complexity
-function useDragOverlay(onImportFiles: (files: FileList) => void) {
-  const [active, setActive] = useState(false);
-  const counterRef = useRef(0);
-  const onDragOver = useCallback((e: DragEvent) => {
-    if (!e.dataTransfer.types.includes("Files")) return;
-    e.preventDefault();
-  }, []);
-  const onDragEnter = useCallback((e: DragEvent) => {
-    if (!e.dataTransfer.types.includes("Files")) return;
-    e.preventDefault();
-    counterRef.current++;
-    setActive(true);
-  }, []);
-  const onDragLeave = useCallback(() => {
-    counterRef.current--;
-    if (counterRef.current === 0) setActive(false);
-  }, []);
-  const onDrop = useCallback(
-    (e: DragEvent) => {
-      counterRef.current = 0;
-      setActive(false);
-      if (e.defaultPrevented) return;
-      e.preventDefault();
-      if (e.dataTransfer.files.length) onImportFiles(e.dataTransfer.files);
-    },
-    [onImportFiles],
-  );
-  return { active, onDragOver, onDragEnter, onDragLeave, onDrop };
-}
-
-/** Global OS file drop: imports and places at the playhead position. */
-export function useGlobalFileDrop(handleTimelineFileDrop: TimelineFileDropHandler) {
-  const onDrop = useCallback(
-    (files: FileList) => {
-      const start = usePlayerStore.getState().currentTime;
-      void handleTimelineFileDrop(Array.from(files), { start, track: 0 });
-    },
-    [handleTimelineFileDrop],
-  );
-  return useDragOverlay(onDrop);
 }

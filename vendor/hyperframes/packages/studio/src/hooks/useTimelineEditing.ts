@@ -28,6 +28,7 @@ import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import type { TimelineStackingReorderIntent } from "../player/components/timelineEditing";
 import {
   useTimelineElementVisibilityEditing,
+  useTimelineTrackLockEditing,
   useTimelineTrackVisibilityEditing,
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
@@ -396,6 +397,20 @@ export function useTimelineEditing({
     forceReloadSdkSession,
   });
 
+  const handleToggleTrackLocked = useTimelineTrackLockEditing({
+    projectIdRef,
+    activeCompPath,
+    timelineElements,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+    forceReloadSdkSession,
+  });
+
   const handleToggleElementHidden = useTimelineElementVisibilityEditing({
     projectIdRef,
     activeCompPath,
@@ -581,6 +596,7 @@ export function useTimelineEditing({
     handleTimelineElementMove,
     handleTimelineElementResize,
     handleToggleTrackHidden,
+    handleToggleTrackLocked,
     handleToggleElementHidden,
     handleTimelineElementDelete,
     handleTimelineElementSplit: handleRazorSplit,

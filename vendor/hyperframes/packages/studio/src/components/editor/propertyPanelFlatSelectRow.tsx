@@ -50,15 +50,11 @@ export function FlatSelectRow({
       ? [{ value, label: value }, ...normalizedOptions]
       : normalizedOptions;
   return (
-    <div className="group flex min-h-[30px] items-center justify-between">
-      <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
-      <span className="flex items-center gap-2">
+    <div className="group flex h-6 min-w-0 items-center justify-between gap-1.5 rounded-[4px] bg-panel-input px-2">
+      <span className={`flex-shrink-0 text-[8px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
         <label
-          className={`flex items-center gap-1.5 border-b pb-px ${
-            tier === "explicitCustom"
-              ? "border-panel-accent/30 group-hover:border-panel-accent/70"
-              : "border-panel-border-input/50 group-hover:border-panel-border-input"
-          }`}
+          className="flex min-w-0 items-center gap-1.5"
         >
           <select
             value={value}
@@ -68,7 +64,7 @@ export function FlatSelectRow({
               track("select", trackName);
               onChange(e.target.value);
             }}
-            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-none disabled:cursor-not-allowed ${VALUE_TIER_VALUE_CLASS[tier]}`}
+            className={`min-w-0 appearance-none bg-transparent text-right font-sans text-[10px] outline-none disabled:cursor-not-allowed ${VALUE_TIER_VALUE_CLASS[tier]}`}
           >
             {renderedOptions.map((option) => (
               <option key={option.value} value={option.value}>

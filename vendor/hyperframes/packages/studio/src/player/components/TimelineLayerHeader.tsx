@@ -1,19 +1,8 @@
-import {
-  CaretDown,
-  CaretRight,
-  Clock,
-  DotsSixVertical,
-  Eye,
-  EyeSlash,
-  LinkSimple,
-  LockSimple,
-  LockSimpleOpen,
-} from "@phosphor-icons/react";
+import { DotsSixVertical, LinkSimple } from "@phosphor-icons/react";
 import { type PointerEvent as ReactPointerEvent } from "react";
-import type { TimelineElement } from "../store/playerStore";
+import type { TimelineElement, TimelineKind } from "../store/playerStore";
 import type { TimelineTheme, TimelineTrackStyle } from "./timelineTheme";
 import { GUTTER } from "./timelineLayout";
-import { TimelineKindIcon } from "./TimelineClipContent";
 import { getTimelineEditCapabilities } from "./timelineEditing";
 import {
   resolveTimelineKind,
@@ -21,17 +10,38 @@ import {
   resolveTimelineLayerDepth,
   resolveTimelineLayerLabel,
 } from "./timelineLayerPresentation";
+import timelineChevronDownSrc from "../../icons/timelineChevronDown.svg?url";
+import timelineContainerSrc from "../../icons/figmaTimelineContainer.svg?url";
+import timelineContainerMutedSrc from "../../icons/figmaTimelineContainerMuted.svg?url";
+import timelineImageSrc from "../../icons/figmaTimelineImage.svg?url";
+import timelineEffectSrc from "../../icons/figmaTimelineEffect.svg?url";
+import timelineTextSrc from "../../icons/figmaTimelineText.svg?url";
+import timelineLockSrc from "../../icons/figmaTimelineLock.svg?url";
+import timelineLockOpenSrc from "../../icons/figmaTimelineLockOpen.svg?url";
+import timelineEyeSrc from "../../icons/figmaTimelineEye.svg?url";
+import timelineEyeOffSrc from "../../icons/figmaTimelineEyeOff.svg?url";
+
+function resolveFigmaKindIcon(kind: TimelineKind, selected: boolean): string {
+  if (kind === "text") return timelineTextSrc;
+  if (kind === "image" || kind === "video") return timelineImageSrc;
+  if (kind === "effect") return timelineEffectSrc;
+  return selected ? timelineContainerSrc : timelineContainerMutedSrc;
+}
 
 interface TimelineLayerHeaderProps {
   track: number;
   elements: TimelineElement[];
   hidden: boolean;
+  locked: boolean;
   selected: boolean;
   expanded: boolean;
+  expandable: boolean;
   theme: TimelineTheme;
   visualStyle: TimelineTrackStyle;
   onToggleHidden: (hidden: boolean) => void;
+  onToggleLocked: (locked: boolean) => void;
   onSelect: (element: TimelineElement | null) => void;
+  onToggleExpanded: (element: TimelineElement) => void;
   onReorderPointerDown?: (
     event: ReactPointerEvent<HTMLButtonElement>,
     element: TimelineElement,
@@ -42,12 +52,16 @@ export function TimelineLayerHeader({
   track,
   elements,
   hidden,
+  locked,
   selected,
   expanded,
+  expandable,
   theme,
   visualStyle,
   onToggleHidden,
+  onToggleLocked,
   onSelect,
+  onToggleExpanded,
   onReorderPointerDown,
 }: TimelineLayerHeaderProps) {
   const first = elements[0] ?? null;
@@ -57,9 +71,6 @@ export function TimelineLayerHeader({
   const depth = resolveTimelineLayerDepth(elements);
   const capabilities = first ? getTimelineEditCapabilities(first) : null;
   const status = capabilities?.status ?? "missing-target";
-  const editable = Boolean(
-    capabilities?.canMove || capabilities?.canTrimStart || capabilities?.canTrimEnd,
-  );
   const statusTitle =
     status === "materializes-timing"
       ? "Timing is inferred; the first edit saves explicit timing"
@@ -81,8 +92,6 @@ export function TimelineLayerHeader({
       : canReorder
         ? "Drag vertically to reorder this layer"
         : statusTitle;
-  const isComposition = elements.some((element) => Boolean(element.compositionSrc));
-
   return (
     <div
       className={`hf-timeline-layer-header sticky left-0 z-[12] flex flex-shrink-0 items-center ${
@@ -90,11 +99,9 @@ export function TimelineLayerHeader({
       }`}
       style={{
         width: GUTTER,
-        paddingLeft: 6 + depth * 14,
+        paddingLeft: 16 + depth * 19,
         color: selected ? theme.textPrimary : theme.textSecondary,
-        background: selected
-          ? (visualStyle.clipActive ?? visualStyle.clip)
-          : theme.gutterBackground,
+        background: theme.gutterBackground,
         borderRight: `1px solid ${theme.gutterBorder}`,
         borderBottom: `1px solid ${theme.rowBorder}`,
       }}
@@ -102,40 +109,29 @@ export function TimelineLayerHeader({
       data-layer-depth={depth}
       data-layer-group={bindingId ?? undefined}
     >
-      <button
-        type="button"
-        aria-label={hidden ? `Show ${label}` : `Hide ${label}`}
-        title={hidden ? `Show ${label}` : `Hide ${label}`}
-        className={`hf-timeline-layer-header__visibility ${hidden ? "is-hidden" : ""}`}
-        style={{ color: hidden ? visualStyle.accent : "inherit" }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleHidden(!hidden);
-        }}
-      >
-        {hidden ? (
-          <EyeSlash size={14} weight="bold" aria-hidden="true" />
-        ) : (
-          <Eye size={14} weight="bold" aria-hidden="true" />
-        )}
-      </button>
-
-      <span
-        className={`hf-timeline-layer-header__status ${
-          editable ? "is-editable" : "is-locked"
-        } ${status === "materializes-timing" ? "is-materializing" : ""}`}
-        aria-label={`${label}: ${statusTitle}`}
-        title={statusTitle}
-      >
-        {status === "materializes-timing" ? (
-          <Clock size={12} weight="bold" aria-hidden="true" />
-        ) : editable ? (
-          <LockSimpleOpen size={12} aria-hidden="true" />
-        ) : (
-          <LockSimple size={12} weight="fill" aria-hidden="true" />
-        )}
-      </span>
+      {first && expandable ? (
+        <button
+          type="button"
+          className="hf-timeline-layer-header__caret"
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${label}`}
+          aria-expanded={expanded}
+          title={`${expanded ? "Collapse" : "Expand"} ${label}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleExpanded(first);
+          }}
+        >
+          <img
+            src={timelineChevronDownSrc}
+            alt=""
+            aria-hidden="true"
+            className={`h-[6px] w-[10px] transition-transform ${expanded ? "" : "-rotate-90"}`}
+          />
+        </button>
+      ) : (
+        <span className="hf-timeline-layer-header__caret-spacer" aria-hidden="true" />
+      )}
 
       <button
         type="button"
@@ -149,11 +145,8 @@ export function TimelineLayerHeader({
           onSelect(selected ? null : first);
         }}
       >
-        <span
-          className="hf-timeline-layer-header__kind"
-          style={{ color: visualStyle.accent }}
-        >
-          <TimelineKindIcon kind={kind} size={15} />
+        <span className="hf-timeline-layer-header__kind">
+          <img src={resolveFigmaKindIcon(kind, selected)} alt="" aria-hidden="true" />
         </span>
         <span className="hf-timeline-layer-header__label">{label}</span>
         {bindingId && (
@@ -166,33 +159,58 @@ export function TimelineLayerHeader({
             <LinkSimple size={11} weight="bold" aria-hidden="true" />
           </span>
         )}
-        {isComposition && (
-          <span className="hf-timeline-layer-header__caret">
-            {expanded ? (
-              <CaretDown size={11} weight="bold" aria-hidden="true" />
-            ) : (
-              <CaretRight size={11} weight="bold" aria-hidden="true" />
-            )}
-          </span>
-        )}
       </button>
 
-      {first && (
+      <span className="hf-timeline-layer-header__actions">
         <button
           type="button"
-          className="hf-timeline-layer-header__reorder"
-          aria-label={`Reorder ${label}`}
-          title={reorderTitle}
-          disabled={!canReorder}
-          onPointerDown={(event) => {
-            event.preventDefault();
+          className={`hf-timeline-layer-header__status ${
+            locked ? "is-locked" : "is-editable"
+          }`}
+          aria-label={locked ? `Unlock ${label}` : `Lock ${label}`}
+          aria-pressed={locked}
+          title={locked ? `Unlock ${label}` : `Lock ${label}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
             event.stopPropagation();
-            if (canReorder) onReorderPointerDown?.(event, first);
+            onToggleLocked(!locked);
           }}
         >
-          <DotsSixVertical size={14} weight="bold" aria-hidden="true" />
+          <img src={locked ? timelineLockSrc : timelineLockOpenSrc} alt="" aria-hidden="true" />
         </button>
-      )}
+
+        <button
+          type="button"
+          aria-label={hidden ? `Show ${label}` : `Hide ${label}`}
+          title={hidden ? `Show ${label}` : `Hide ${label}`}
+          className={`hf-timeline-layer-header__visibility ${hidden ? "is-hidden" : ""}`}
+          style={{ color: hidden ? visualStyle.accent : "inherit" }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleHidden(!hidden);
+          }}
+        >
+          <img src={hidden ? timelineEyeOffSrc : timelineEyeSrc} alt="" aria-hidden="true" />
+        </button>
+
+        {first && (
+          <button
+            type="button"
+            className="hf-timeline-layer-header__reorder"
+            aria-label={`Reorder ${label}`}
+            title={reorderTitle}
+            disabled={!canReorder}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (canReorder) onReorderPointerDown?.(event, first);
+            }}
+          >
+            <DotsSixVertical size={14} weight="bold" aria-hidden="true" />
+          </button>
+        )}
+      </span>
     </div>
   );
 }

@@ -36,16 +36,12 @@ export function FlatRow({
 }) {
   const track = useTrackDesignInput();
   return (
-    <div className="group flex min-h-[30px] items-center justify-between gap-3">
-      <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
+    <div className="group flex h-6 min-w-0 items-center justify-between gap-1.5 rounded-[4px] border border-transparent bg-panel-input px-2 transition-colors focus-within:border-panel-accent/50">
+      <span className={`flex-shrink-0 text-[8px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
       <span className="flex min-w-0 flex-shrink-0 items-center gap-1.5">
         <span
           data-flat-row-value="true"
-          className={`min-w-0 border-b pb-px font-mono text-[11px] ${VALUE_TIER_VALUE_CLASS[tier]} ${
-            tier === "explicitCustom"
-              ? "border-panel-accent/30 group-hover:border-panel-accent/70"
-              : "border-panel-border-input/50 group-hover:border-panel-border-input"
-          }`}
+          className={`min-w-0 font-sans text-[10px] ${VALUE_TIER_VALUE_CLASS[tier]}`}
         >
           <CommitField
             value={value}
@@ -120,11 +116,11 @@ export function FlatSegmentedRow({
 }) {
   const track = useTrackDesignInput();
   return (
-    <div className="flex min-h-[32px] items-center justify-between">
-      <span className="text-[11px] text-panel-text-3">{label}</span>
-      <span className="flex items-center gap-0.5">
+    <div className="grid gap-1.5">
+      <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-panel-text-4">{label}</span>
+      <span className="grid auto-cols-fr grid-flow-col items-center gap-1">
         {options.map((option, index) => (
-          <span key={option.key} className="flex items-center">
+          <span key={option.key} className="flex w-full items-center">
             <button
               type="button"
               data-flat-segment="true"
@@ -135,10 +131,10 @@ export function FlatSegmentedRow({
                 if (!option.active) track("segmented", label);
                 onChange(option.key);
               }}
-              className={`px-1.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed ${
+              className={`flex h-6 w-full items-center justify-center rounded-[4px] px-1.5 text-[9px] transition-colors disabled:cursor-not-allowed ${
                 option.active
-                  ? "border-b-2 border-panel-accent text-panel-text-0"
-                  : "border-b-2 border-transparent text-panel-text-4 hover:text-panel-text-2"
+                  ? "bg-[#171816] text-white"
+                  : "bg-panel-input text-panel-text-4 hover:text-panel-text-1"
               }`}
             >
               {option.node}
@@ -191,39 +187,32 @@ export function FlatGroupHeader({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 w-full flex-shrink-0 items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-4 text-left`}
+        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-9 w-full items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-3 text-left transition-colors hover:bg-panel-input dark:hover:bg-panel-input/60`}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <span className="text-[12px] font-medium text-panel-text-2">{title}</span>
+          <span className="text-[11px] font-medium text-[#2c2d2a] dark:text-panel-text-1">{title}</span>
           {summary && (
-            <span className="min-w-0 truncate font-mono text-[9px] text-panel-text-4">
+            <span className="min-w-0 truncate font-mono text-[8px] text-panel-text-4">
               {summary}
             </span>
           )}
         </span>
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          fill="currentColor"
-          className="flex-shrink-0 text-panel-text-5"
-        >
-          <path d="M4 2l4 4-4 4z" />
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0 text-[#858a94]">
+          <path d="m6 4.67 3.33 3.33L6 11.33" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
     );
   }
 
   return (
-    <div
-      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 flex-shrink-0 items-center justify-between bg-panel-bg px-4`}
-    >
-      <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
+    <div className={`${animateEntrance ? "hf-flat-group-enter " : ""}relative flex h-9 items-center justify-between border-b border-panel-hairline bg-panel-bg px-3 shadow-[inset_2px_0_0_#20bbc0]`}>
+      <button type="button" onClick={onToggleOpen} className="absolute inset-0" aria-label={`Collapse ${title}`} />
+      <span className="relative text-[11px] font-medium text-[#2c2d2a] dark:text-panel-text-1">{title}</span>
       <span className="flex items-center gap-2.5 text-panel-text-5">
         {accessory}
-        <button type="button" onClick={onToggleOpen} title="Collapse" className="text-panel-text-3">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-            <path d="M2 4l4 4 4-4z" />
+        <button type="button" onClick={onToggleOpen} title="Collapse" className="relative text-[#858a94]">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="m4.67 6 3.33 3.33L11.33 6" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
       </span>
@@ -409,8 +398,8 @@ export function FlatSlider({
   };
 
   return (
-    <div className="flex min-h-[28px] items-center gap-2.5">
-      <span className="w-[86px] flex-shrink-0 text-[11px] text-panel-text-3">{label}</span>
+    <div className="flex min-h-7 items-center gap-2">
+      <span className="w-[72px] flex-shrink-0 text-[9px] text-panel-text-3">{label}</span>
       <div
         data-flat-slider-track="true"
         role="slider"
@@ -532,7 +521,7 @@ export function FlatSlider({
       </div>
       <span
         data-flat-slider-value="true"
-        className={`w-11 flex-shrink-0 text-right font-mono text-[10px] ${
+        className={`w-10 flex-shrink-0 text-right font-mono text-[9px] ${
           tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
         }`}
       >

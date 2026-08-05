@@ -1,6 +1,10 @@
 import { useState, useCallback, useRef, useEffect, memo } from "react";
+import { createPortal } from "react-dom";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
+import keyboardIconSrc from "../../icons/figmaToolbarKeyboard.svg?url";
+
+const SHORTCUTS_TOOLBAR_SLOT_ID = "hf-shortcuts-toolbar-slot";
 
 const SHORTCUT_SECTIONS = [
   {
@@ -102,7 +106,22 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
 }: ShortcutsPanelProps) {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [jumpFrame, setJumpFrame] = useState("");
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null);
   const shortcutsPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const findSlot = () => {
+      const slot = document.getElementById(SHORTCUTS_TOOLBAR_SLOT_ID);
+      setToolbarSlot(slot);
+      return Boolean(slot);
+    };
+    if (findSlot()) return;
+    const observer = new MutationObserver(() => {
+      if (findSlot()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!showShortcuts) return;
@@ -141,43 +160,38 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
     [commitJumpFrame],
   );
 
-  return (
+  const panel = (
     <div ref={shortcutsPanelRef} className="relative flex-shrink-0">
       <Tooltip label="Shortcuts and tools">
         <button
           type="button"
           onClick={() => setShowShortcuts((v) => !v)}
-          className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
+          className={`flex h-6 w-6 items-center justify-center rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#858a94]/35 ${
             showShortcuts
-              ? "border-neutral-600 text-neutral-200 bg-neutral-800"
-              : "border-neutral-800 text-neutral-600 hover:text-neutral-300 hover:border-neutral-600"
+              ? "bg-[#f2f2f0]"
+              : "hover:bg-[#f2f2f0]"
           }`}
           aria-label="Shortcuts and tools"
           aria-expanded={showShortcuts}
         >
-          <svg
-            width="11"
-            height="11"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <rect x="2" y="4" width="20" height="16" rx="2" />
-            <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8" />
-          </svg>
+          <img src={keyboardIconSrc} width="16" height="16" alt="" aria-hidden="true" />
         </button>
       </Tooltip>
       {showShortcuts && (
         <div
-          className="hf-shortcuts-panel absolute bottom-full right-0 mb-2 z-50 rounded-lg shadow-xl min-w-[220px] overflow-y-auto"
+          className={`hf-shortcuts-panel z-[100] min-w-[220px] overflow-y-auto rounded-lg shadow-xl ${
+            toolbarSlot ? "fixed" : "absolute bottom-full right-0 mb-2"
+          }`}
           style={{
             background: "var(--hf-shortcuts-bg)",
             border: "1px solid var(--hf-shortcuts-border)",
             maxHeight: "min(280px, calc(100vh - 80px))",
+            ...(toolbarSlot && shortcutsPanelRef.current
+              ? {
+                  bottom: window.innerHeight - shortcutsPanelRef.current.getBoundingClientRect().top + 8,
+                  right: window.innerWidth - shortcutsPanelRef.current.getBoundingClientRect().right,
+                }
+              : {}),
           }}
         >
           <div className="px-3 pt-3 pb-2.5">
@@ -325,4 +339,5 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
       )}
     </div>
   );
+  return toolbarSlot ? createPortal(panel, toolbarSlot) : panel;
 });

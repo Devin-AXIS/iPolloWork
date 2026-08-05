@@ -306,7 +306,10 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   }
 
   const classicPanel = (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1"
+      data-preserve-studio-selection="true"
+    >
       <DesignPanelInputProvider section="header">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between gap-4">

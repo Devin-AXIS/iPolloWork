@@ -1,0 +1,6 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="lucide/repeat">
+<rect x="0.25" y="0.25" width="23.5" height="23.5" rx="3.75" stroke="#858A94" stroke-width="0.5"/>
+<path id="Vector" d="M15.3333 10.6667L18 8L15.3333 5.33333M18 8L8.66667 8C7.95942 8 7.28115 8.28095 6.78105 8.78105C6.28095 9.28115 6 9.95942 6 10.6667V11.3333M8.66667 13.3333L6 16L8.66667 18.6667M6 16L15.3333 16C16.0406 16 16.7189 15.719 17.219 15.219C17.719 14.7189 18 14.0406 18 13.3333V12.6667" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg>

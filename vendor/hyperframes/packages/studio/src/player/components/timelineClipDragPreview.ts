@@ -146,6 +146,17 @@ export function computeDragPreview(
       nextMove.track,
       ctx,
     );
+    // A layer-header drag represents a visible reorder, not a request to
+    // temporarily share another clip's lane. Dropping on a row therefore uses
+    // the same insert-and-renumber path as dropping in the gap between rows.
+    // Without this fallback, a row-body drop can retain the old packing order
+    // after the source write, making the drag look like it did nothing.
+    const currentTrackIndex = Math.max(0, trackOrder.indexOf(drag.element.track));
+    const targetTrackIndex = Math.max(0, trackOrder.indexOf(nextMove.track));
+    const reorderInsertRow =
+      targetTrackIndex === currentTrackIndex
+        ? null
+        : targetTrackIndex + (targetTrackIndex > currentTrackIndex ? 1 : 0);
     return {
       ...drag,
       started: true,
@@ -154,7 +165,7 @@ export function computeDragPreview(
       previewStart: drag.element.start,
       previewTrack,
       desiredTrack: nextMove.track,
-      insertRow,
+      insertRow: insertRow ?? reorderInsertRow,
       snapTime: null,
       snapType: null,
     };

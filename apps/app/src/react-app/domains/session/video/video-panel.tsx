@@ -48,6 +48,7 @@ type VideoPanelProps = {
 };
 
 type StudioStartupStage = "starting-service" | "waiting-for-studio" | "loading-frame";
+type StudioHostPanel = "voice" | "style" | null;
 
 type StudioHistoryFiles = Record<"index.html" | "design-tokens.css", {
   before: string;
@@ -66,6 +67,10 @@ const studioStartupDetailKey: Record<StudioStartupStage, string> = {
   "loading-frame": "video.startup.loading_frame_detail",
 };
 
+const DEFAULT_STUDIO_PANEL_WIDTH = 400;
+const MIN_STUDIO_PANEL_WIDTH = 160;
+const MAX_STUDIO_PANEL_WIDTH = 600;
+
 export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
@@ -80,8 +85,8 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [studioHistoryReady, setStudioHistoryReady] = React.useState(false);
-  const [voicePanelOpen, setVoicePanelOpen] = React.useState(false);
-  const [designSystemOpen, setDesignSystemOpen] = React.useState(false);
+  const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null);
+  const [studioPanelWidth, setStudioPanelWidth] = React.useState(DEFAULT_STUDIO_PANEL_WIDTH);
   const [designTokenSource, setDesignTokenSource] = React.useState("");
   const designTokenSourceRef = React.useRef("");
   const designTokenSaveTimerRef = React.useRef<number | null>(null);
@@ -121,9 +126,9 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   }, [client, designTokenPath, workspaceId]);
 
   React.useEffect(() => {
-    if (!designSystemOpen) return;
+    if (studioHostPanel !== "style") return;
     void loadDesignSystemFiles();
-  }, [designSystemOpen, loadDesignSystemFiles]);
+  }, [loadDesignSystemFiles, studioHostPanel]);
 
   React.useEffect(() => {
     const handlePanelRequest = (event: MessageEvent) => {
@@ -131,19 +136,33 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       if (event.origin !== new URL(studioUrl).origin) return;
       if (event.data?.type !== "ipollowork:video-studio-panel") return;
       if (event.data.projectId !== videoProjectId(sessionId)) return;
+      if (typeof event.data.width === "number" && Number.isFinite(event.data.width)) {
+        setStudioPanelWidth(Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)));
+      }
       if (event.data.panel === "voice") {
-        setDesignSystemOpen(false);
-        setVoicePanelOpen(true);
+        setStudioHostPanel("voice");
       } else if (event.data.panel === "style") {
-        setVoicePanelOpen(false);
-        setDesignSystemOpen(true);
+        setStudioHostPanel("style");
       } else if (event.data.panel === null) {
-        setVoicePanelOpen(false);
-        setDesignSystemOpen(false);
+        setStudioHostPanel(null);
       }
     };
     window.addEventListener("message", handlePanelRequest);
     return () => window.removeEventListener("message", handlePanelRequest);
+  }, [sessionId, studioUrl]);
+
+  React.useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const frame = studioFrameRef.current;
+      if (!frame?.contentWindow || !(event.target instanceof Node)) return;
+      if (frame.contains(event.target)) return;
+      frame.contentWindow.postMessage({
+        type: "ipollowork:video-studio-clear-selection",
+        projectId: videoProjectId(sessionId),
+      }, new URL(studioUrl).origin);
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [sessionId, studioUrl]);
 
   React.useEffect(() => {
@@ -335,7 +354,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   }, [client, compositionPath, designTokenPath, recordStudioHostEdit, saveDesignTokenSource, studioHistoryReady, workspaceId]);
 
   React.useEffect(() => {
-    if (!designSystemOpen) return;
+    if (studioHostPanel !== "style") return;
     const handleHistoryShortcut = (event: KeyboardEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
       const target = event.target;
@@ -361,7 +380,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     };
     window.addEventListener("keydown", handleHistoryShortcut);
     return () => window.removeEventListener("keydown", handleHistoryShortcut);
-  }, [designSystemOpen, sessionId, studioUrl]);
+  }, [sessionId, studioHostPanel, studioUrl]);
 
   const syncStudioLocale = React.useCallback(() => {
     const frameWindow = studioFrameRef.current?.contentWindow;
@@ -600,8 +619,13 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     setStudioChromeReady(false);
     setStartupStage("loading-frame");
     setDetail(t("video.reloading"));
+    setStudioHostPanel(null);
     setRevision((value) => value + 1);
   }, []);
+
+  React.useEffect(() => {
+    setStudioHostPanel(null);
+  }, [revision]);
 
   React.useEffect(() => {
     if (!expanded) return;
@@ -709,23 +733,24 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             setStatus("failed");
             setDetail(t("video.could_not_load", { url: studioUrl }));
           }} /> : null}
-          {voicePanelOpen ? <VideoVoicePanel
+          {studioHostPanel === "voice" ? <VideoVoicePanel
             sessionId={sessionId}
             workspaceRoot={workspaceRoot}
             client={client}
             workspaceId={workspaceId}
             previewRequest={0}
-            onClose={() => setVoicePanelOpen(false)}
+            onClose={() => setStudioHostPanel(null)}
+            embeddedWidth={studioPanelWidth}
             embedded
           /> : null}
-          {designSystemOpen ? <div className="absolute bottom-0 right-0 top-[96px] z-20 flex w-[400px] max-w-[calc(100%-2rem)] overflow-hidden border-l border-border bg-background" data-testid="video-style-tab-content">
+          {studioHostPanel === "style" ? <div className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden border-l border-border bg-background" style={{ width: studioPanelWidth }} data-testid="video-style-tab-content">
             <DesignSystemDrawer
               embedded
               open
               templateName="Video Studio"
               currentThemeId={appliedDesignSystemId}
               initialValues={designTokenValues}
-              onClose={() => setDesignSystemOpen(false)}
+              onClose={() => setStudioHostPanel(null)}
               onTokenChange={handleDesignTokenChange}
               onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
             />

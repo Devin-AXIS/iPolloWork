@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "
 import { Player } from "../../player";
 import {
   DEFAULT_PREVIEW_ZOOM,
+  PREVIEW_ZOOM_RESET_EVENT,
   canStartPreviewPan,
   clampPreviewPan,
   clampPreviewZoomPercent,
@@ -138,7 +139,6 @@ export const NLEPreview = memo(function NLEPreview({
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
   const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
-  const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(() => zoomRef.current);
   const hudRef = useRef<HTMLDivElement>(null);
   const hudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -238,13 +238,6 @@ export const NLEPreview = memo(function NLEPreview({
         zoomingRef.current = false;
         const final = zoomRef.current;
         writeStudioUiPreferences({ previewZoom: final });
-        setSettledZoom((prev) =>
-          prev.zoomPercent === final.zoomPercent &&
-          prev.panX === final.panX &&
-          prev.panY === final.panY
-            ? prev
-            : final,
-        );
         if (showHud) {
           const hud = hudRef.current;
           if (hud) {
@@ -264,6 +257,14 @@ export const NLEPreview = memo(function NLEPreview({
     (next: PreviewZoomState) => applyTransform(next, true),
     [applyTransform],
   );
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const resetZoom = () => applyZoom(DEFAULT_PREVIEW_ZOOM);
+    viewport.addEventListener(PREVIEW_ZOOM_RESET_EVENT, resetZoom);
+    return () => viewport.removeEventListener(PREVIEW_ZOOM_RESET_EVENT, resetZoom);
+  }, [applyZoom]);
 
   const applyPan = useCallback(
     (next: PreviewZoomState) => applyTransform(next, false),
@@ -462,6 +463,7 @@ export const NLEPreview = memo(function NLEPreview({
         className="hf-preview-surface relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-none focus:ring-1 focus:ring-studio-accent/40 bg-neutral-950"
         tabIndex={0}
         aria-label="Composition preview"
+        data-preview-zoom-controller="true"
       >
         <div className="absolute inset-2 flex items-center justify-center pointer-events-none">
           <div
@@ -513,17 +515,6 @@ export const NLEPreview = memo(function NLEPreview({
           style={{ opacity: 0, transition: "opacity 200ms ease-in" }}
           aria-live="polite"
         />
-        {!isPreviewAtFit(settledZoom) && (
-          <button
-            type="button"
-            className="absolute bottom-3 right-3 z-50 rounded-md px-2.5 py-1 text-xs font-medium text-white/80 bg-black/50 backdrop-blur-sm hover:bg-black/70 hover:text-white transition-colors"
-            onClick={() => applyZoom(DEFAULT_PREVIEW_ZOOM)}
-            aria-label="Reset zoom to fit"
-            data-testid="preview-reset-zoom"
-          >
-            {Math.round(settledZoom.zoomPercent)}% — Reset
-          </button>
-        )}
       </div>
     </div>
   );

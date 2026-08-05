@@ -37,17 +37,29 @@ interface ToggleTimelineElementHiddenInput extends Omit<ToggleTimelineTrackHidde
   elementKey: string | readonly string[];
 }
 
-interface SetElementsHiddenInput {
+interface ToggleTimelineTrackLockedInput extends Omit<ToggleTimelineTrackHiddenInput, "hidden"> {
+  locked: boolean;
+}
+
+type TimelineLayerStateProperty = "hidden" | "timelineLocked";
+
+interface SetElementsLayerStateInput {
   projectId: string;
   activeCompPath: string | null;
   elements: readonly TimelineElement[];
-  hidden: boolean;
+  property: TimelineLayerStateProperty;
+  enabled: boolean;
   label: string;
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: MutableRef<number>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
+}
+
+interface SetElementsLayerStateResult {
+  changedPaths: string[];
+  runtimeOnlyCount: number;
 }
 
 interface UseTimelineTrackVisibilityEditingInput extends Omit<
@@ -72,6 +84,8 @@ interface UseTimelineElementVisibilityEditingInput extends Omit<
   forceReloadSdkSession?: () => void;
 }
 
+type UseTimelineTrackLockEditingInput = UseTimelineTrackVisibilityEditingInput;
+
 function getTimelineElementTargetPath(
   element: TimelineElement,
   activeCompPath: string | null,
@@ -79,19 +93,21 @@ function getTimelineElementTargetPath(
   return element.sourceFile || activeCompPath || "index.html";
 }
 
-function patchLiveHiddenState(
+function patchLiveLayerState(
   iframe: HTMLIFrameElement | null,
   elements: readonly TimelineElement[],
-  hidden: boolean,
+  property: TimelineLayerStateProperty,
+  enabled: boolean,
   activeCompPath: string | null,
 ): void {
+  const attribute = property === "hidden" ? "data-hidden" : "data-timeline-locked";
   for (const element of elements) {
     const target = findTimelineElementInIframe(iframe, element, activeCompPath);
     if (!target) continue;
-    if (hidden) {
-      target.setAttribute("data-hidden", "");
+    if (enabled) {
+      target.setAttribute(attribute, "");
     } else {
-      target.removeAttribute("data-hidden");
+      target.removeAttribute(attribute);
     }
   }
 }
@@ -121,31 +137,49 @@ function groupElementsByTargetPath(
   return byPath;
 }
 
+export function patchTimelineLayerStateInSource(
+  source: string,
+  element: TimelineElement,
+  property: TimelineLayerStateProperty,
+  enabled: boolean,
+): string | null {
+  const patchTarget = buildPatchTarget(element);
+  if (!patchTarget || readTagSnippetByTarget(source, patchTarget) === undefined) return null;
+  const operation: PatchOperation = {
+    type: "attribute",
+    property: property === "hidden" ? "hidden" : "timeline-locked",
+    value: enabled ? "" : null,
+  };
+  return applyPatchByTarget(source, patchTarget, operation);
+}
+
 // fallow-ignore-next-line complexity
-async function setElementsHidden({
+async function setElementsLayerState({
   projectId,
   activeCompPath,
   elements,
-  hidden,
+  property,
+  enabled,
   label,
   previewIframe,
   writeProjectFile,
   recordEdit,
   domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
-}: SetElementsHiddenInput): Promise<string[]> {
-  if (elements.length === 0) return [];
+}: SetElementsLayerStateInput): Promise<SetElementsLayerStateResult> {
+  if (elements.length === 0) return { changedPaths: [], runtimeOnlyCount: 0 };
 
-  patchLiveHiddenState(previewIframe, elements, hidden, activeCompPath);
+  patchLiveLayerState(previewIframe, elements, property, enabled, activeCompPath);
   reseekPreviewRuntime(previewIframe);
+  for (const element of elements) {
+    usePlayerStore
+      .getState()
+      .setTimelineLayerStateOverride(element.key ?? element.id, { [property]: enabled });
+  }
 
-  const hiddenOperation: PatchOperation = {
-    type: "attribute",
-    property: "hidden",
-    value: hidden ? "" : null,
-  };
   const originalByPath = new Map<string, string>();
   const files: Record<string, string> = {};
+  let runtimeOnlyCount = 0;
 
   try {
     for (const [targetPath, fileElements] of groupElementsByTargetPath(elements, activeCompPath)) {
@@ -153,45 +187,59 @@ async function setElementsHidden({
       originalByPath.set(targetPath, patchedContent);
 
       for (const element of fileElements) {
-        const patchTarget = buildPatchTarget(element);
-        if (!patchTarget) {
-          throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+        const nextContent = patchTimelineLayerStateInSource(
+          patchedContent,
+          element,
+          property,
+          enabled,
+        );
+        if (nextContent === null) {
+          // Runtime-generated descendants (for example words created inside a
+          // caption component) have a real preview id but no authored HTML tag.
+          // Keep their state as a Studio-session override instead of surfacing a
+          // false save error. Authored layers still persist through the same path.
+          runtimeOnlyCount += 1;
+          continue;
         }
-        if (readTagSnippetByTarget(patchedContent, patchTarget) === undefined) {
-          throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
-        }
-        patchedContent = applyPatchByTarget(patchedContent, patchTarget, hiddenOperation);
+        patchedContent = nextContent;
       }
 
-      files[targetPath] = patchedContent;
-      pendingTimelineEditPathRef.current.add(targetPath);
+      if (patchedContent !== originalByPath.get(targetPath)) {
+        files[targetPath] = patchedContent;
+        pendingTimelineEditPathRef.current.add(targetPath);
+      }
     }
 
-    domEditSaveTimestampRef.current = Date.now();
-    const changedPaths = await saveProjectFilesWithHistory({
-      projectId,
-      label,
-      kind: "timeline",
-      files,
-      readFile: async (path) => {
-        const original = originalByPath.get(path);
-        if (original !== undefined) return original;
-        return readFileContent(projectId, path);
-      },
-      writeFile: writeProjectFile,
-      recordEdit,
-    });
-    domEditSaveTimestampRef.current = Date.now();
-    for (const element of elements) {
-      usePlayerStore.getState().updateElement(element.key ?? element.id, { hidden });
+    let changedPaths: string[] = [];
+    if (Object.keys(files).length > 0) {
+      domEditSaveTimestampRef.current = Date.now();
+      changedPaths = await saveProjectFilesWithHistory({
+        projectId,
+        label,
+        kind: "timeline",
+        files,
+        readFile: async (path) => {
+          const original = originalByPath.get(path);
+          if (original !== undefined) return original;
+          return readFileContent(projectId, path);
+        },
+        writeFile: writeProjectFile,
+        recordEdit,
+      });
+      domEditSaveTimestampRef.current = Date.now();
     }
-    return changedPaths;
+    return { changedPaths, runtimeOnlyCount };
   } catch (error) {
     // The optimistic live patch already ran; a patch-target/save failure here would
     // otherwise leave the preview showing the wrong visibility until a reload. Revert
     // the live DOM to the prior state so what's on screen matches what persisted.
-    patchLiveHiddenState(previewIframe, elements, !hidden, activeCompPath);
+    patchLiveLayerState(previewIframe, elements, property, !enabled, activeCompPath);
     reseekPreviewRuntime(previewIframe);
+    for (const element of elements) {
+      usePlayerStore
+        .getState()
+        .setTimelineLayerStateOverride(element.key ?? element.id, { [property]: !enabled });
+    }
     throw error;
   }
 }
@@ -207,12 +255,13 @@ export async function toggleTimelineTrackHidden({
   recordEdit,
   domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
-}: ToggleTimelineTrackHiddenInput): Promise<string[]> {
-  return setElementsHidden({
+}: ToggleTimelineTrackHiddenInput): Promise<SetElementsLayerStateResult> {
+  return setElementsLayerState({
     projectId,
     activeCompPath,
     elements: timelineElements.filter((element) => element.track === track),
-    hidden,
+    property: "hidden",
+    enabled: hidden,
     label: hidden ? `Hide track ${track}` : `Show track ${track}`,
     previewIframe,
     writeProjectFile,
@@ -233,14 +282,15 @@ export async function toggleTimelineElementHidden({
   recordEdit,
   domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
-}: ToggleTimelineElementHiddenInput): Promise<string[]> {
+}: ToggleTimelineElementHiddenInput): Promise<SetElementsLayerStateResult> {
   const keys = new Set(typeof elementKey === "string" ? [elementKey] : elementKey);
   const elements = timelineElements.filter((item) => keys.has(item.key ?? item.id));
-  return setElementsHidden({
+  return setElementsLayerState({
     projectId,
     activeCompPath,
     elements,
-    hidden,
+    property: "hidden",
+    enabled: hidden,
     label:
       elements.length > 1
         ? hidden
@@ -249,6 +299,33 @@ export async function toggleTimelineElementHidden({
         : hidden
           ? "Hide element"
           : "Show element",
+    previewIframe,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    pendingTimelineEditPathRef,
+  });
+}
+
+export async function toggleTimelineTrackLocked({
+  projectId,
+  activeCompPath,
+  timelineElements,
+  track,
+  locked,
+  previewIframe,
+  writeProjectFile,
+  recordEdit,
+  domEditSaveTimestampRef,
+  pendingTimelineEditPathRef,
+}: ToggleTimelineTrackLockedInput): Promise<SetElementsLayerStateResult> {
+  return setElementsLayerState({
+    projectId,
+    activeCompPath,
+    elements: timelineElements.filter((element) => element.track === track),
+    property: "timelineLocked",
+    enabled: locked,
+    label: locked ? `Lock track ${track}` : `Unlock track ${track}`,
     previewIframe,
     writeProjectFile,
     recordEdit,
@@ -283,7 +360,7 @@ export function useTimelineTrackVisibilityEditing({
       const pid = projectIdRef.current;
       if (!pid) return;
       try {
-        await toggleTimelineTrackHidden({
+        const result = await toggleTimelineTrackHidden({
           projectId: pid,
           activeCompPath,
           timelineElements: expandedElements,
@@ -295,11 +372,72 @@ export function useTimelineTrackVisibilityEditing({
           domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
-        forceReloadSdkSession?.();
+        if (result.runtimeOnlyCount === 0 && result.changedPaths.length > 0) {
+          forceReloadSdkSession?.();
+        }
       } catch (error) {
         console.error("[Timeline] Failed to toggle track visibility", error);
         const message =
           error instanceof Error ? error.message : "Failed to toggle track visibility";
+        showToast(message);
+      }
+    },
+    [
+      activeCompPath,
+      expandedElements,
+      previewIframeRef,
+      writeProjectFile,
+      recordEdit,
+      domEditSaveTimestampRef,
+      pendingTimelineEditPathRef,
+      isRecordingRef,
+      showToast,
+      forceReloadSdkSession,
+      projectIdRef,
+    ],
+  );
+}
+
+export function useTimelineTrackLockEditing({
+  projectIdRef,
+  activeCompPath,
+  showToast,
+  writeProjectFile,
+  recordEdit,
+  domEditSaveTimestampRef,
+  previewIframeRef,
+  pendingTimelineEditPathRef,
+  isRecordingRef,
+  forceReloadSdkSession,
+}: UseTimelineTrackLockEditingInput): (track: number, locked: boolean) => Promise<void> {
+  const expandedElements = useExpandedTimelineElements();
+  return useCallback(
+    async (track: number, locked: boolean) => {
+      if (isRecordingRef?.current) {
+        showToast("Cannot edit timeline while recording", "error");
+        return;
+      }
+      const pid = projectIdRef.current;
+      if (!pid) return;
+      try {
+        const result = await toggleTimelineTrackLocked({
+          projectId: pid,
+          activeCompPath,
+          timelineElements: expandedElements,
+          track,
+          locked,
+          previewIframe: previewIframeRef.current,
+          writeProjectFile,
+          recordEdit,
+          domEditSaveTimestampRef,
+          pendingTimelineEditPathRef,
+        });
+        if (result.runtimeOnlyCount === 0 && result.changedPaths.length > 0) {
+          forceReloadSdkSession?.();
+        }
+      } catch (error) {
+        console.error("[Timeline] Failed to toggle track lock", error);
+        const message = error instanceof Error ? error.message : "Failed to toggle track lock";
         showToast(message);
       }
     },
@@ -352,7 +490,7 @@ export function useTimelineElementVisibilityEditing({
       const pid = projectIdRef.current;
       if (!pid) return;
       try {
-        await toggleTimelineElementHidden({
+        const result = await toggleTimelineElementHidden({
           projectId: pid,
           activeCompPath,
           timelineElements: expandedElements,
@@ -364,7 +502,9 @@ export function useTimelineElementVisibilityEditing({
           domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
-        forceReloadSdkSession?.();
+        if (result.runtimeOnlyCount === 0 && result.changedPaths.length > 0) {
+          forceReloadSdkSession?.();
+        }
       } catch (error) {
         console.error("[Timeline] Failed to toggle element visibility", error);
         const message =
