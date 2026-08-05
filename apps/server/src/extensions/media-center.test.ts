@@ -387,6 +387,75 @@ describe("Media Center extension", () => {
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-scene-1.mp3"))).toEqual(mp3);
   });
 
+  test("synthesizes an ordered voiceover batch concurrently and returns cumulative timeline shifts", async () => {
+    const workspace = await workspaceConfig();
+    const frame = Buffer.alloc(417);
+    frame.set([0xff, 0xfb, 0x90, 0x00]);
+    const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
+    let activeSynthesisRequests = 0;
+    let maximumSynthesisRequests = 0;
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      if (!url.includes("SpeechSynthesizer")) {
+        return new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } });
+      }
+      activeSynthesisRequests += 1;
+      maximumSynthesisRequests = Math.max(maximumSynthesisRequests, activeSynthesisRequests);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeSynthesisRequests -= 1;
+      const body = JSON.parse(String(init?.body));
+      const sceneName = body.input.text === "Intro" ? "intro" : "details";
+      return new Response(JSON.stringify({ output: { audio: { url: `https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/${sceneName}.mp3` } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      "speech_synthesize_workspace_batch",
+      {
+        scenes: [
+          { text: "Intro", sceneId: "intro", sceneText: "Intro", sceneStart: 0, sceneDuration: 1, outputPath: "video/session/assets/voiceover-batch-intro.mp3" },
+          { text: "Details", sceneId: "details", sceneText: "Details", sceneStart: 1, sceneDuration: 1, outputPath: "video/session/assets/voiceover-batch-details.mp3" },
+        ],
+        compositionPath: "video/session/index.html",
+        voice: "longyingmu_v3",
+      },
+      { directory: workspace.root },
+    );
+
+    expect(maximumSynthesisRequests).toBe(2);
+    expect(result).toMatchObject({
+      result: {
+        output: {
+          sceneCount: 2,
+          totalShiftSeconds: expect.any(Number),
+          rootDurationMustBeAtLeastSeconds: expect.any(Number),
+          items: [
+            {
+              sceneId: "intro",
+              originalSceneStart: 0,
+              sceneStart: 0,
+              cumulativeShiftAfterSeconds: expect.any(Number),
+              audioElementHtml: expect.stringContaining('src="./assets/voiceover-batch-intro.mp3"'),
+            },
+            {
+              sceneId: "details",
+              originalSceneStart: 1,
+              sceneStart: expect.any(Number),
+              cumulativeShiftAfterSeconds: expect.any(Number),
+              audioElementHtml: expect.stringContaining('src="./assets/voiceover-batch-details.mp3"'),
+            },
+          ],
+        },
+      },
+    });
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-intro.mp3"))).toEqual(mp3);
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-details.mp3"))).toEqual(mp3);
+  });
+
   test("rejects synthesized audio URLs outside Model Studio result storage", async () => {
     const workspace = await workspaceConfig();
     let requests = 0;

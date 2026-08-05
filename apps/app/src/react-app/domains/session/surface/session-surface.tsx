@@ -490,7 +490,7 @@ function animationSelectionInstruction(animations: HyperframesAnimationSelection
     "Selected HyperFrames animation references:",
     choices,
     "Use /hyperframes and treat these as the user's explicit motion direction for the video.",
-    "Install or adapt the selected registry items where they support the story. Apply the supplied variables through HyperFrames data-variable-values/getVariables so preview and deterministic render use the same values.",
+    "Adapt the supplied reference and variables directly through HyperFrames data-variable-values/getVariables so preview and deterministic render use the same values. The selection payload is complete: do not run package installation, registry catalog, update, or version commands.",
     "Do not paste unrelated demo content and do not force every selection into every scene. Preserve the visual characteristics that motivated each selection while producing one coherent video.",
   ].join("\n");
 }
