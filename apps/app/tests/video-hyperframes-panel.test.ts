@@ -18,6 +18,12 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("embedded");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:video-studio-panel"');
     expect(panelSource).toContain('event.data.panel === "style"');
+    expect(panelSource).toContain('const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null)');
+    expect(panelSource).toContain('setStudioHostPanel("voice")');
+    expect(panelSource).toContain('setStudioHostPanel("style")');
+    expect(panelSource).toContain('setStudioHostPanel(null)');
+    expect(panelSource).not.toContain("voicePanelOpen");
+    expect(panelSource).not.toContain("designSystemOpen");
     expect(panelSource).not.toContain('aria-label={t("video.design_system")}');
     expect(panelSource).toContain('data-testid="video-style-tab-content"');
     expect(panelSource).not.toContain("<DesignSystemInspectorShell");
@@ -28,6 +34,27 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
     expect(panelSource).not.toContain("onChooseBackgroundImage=");
     expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
+  });
+
+  test("keeps embedded voice and style content aligned with the resizable Studio drawer", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const voiceSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("setStudioPanelWidth(Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)))");
+    expect(panelSource).toContain("embeddedWidth={studioPanelWidth}");
+    expect(panelSource).toContain("style={{ width: studioPanelWidth }}");
+    expect(voiceSource).toContain("style={embedded ? { width: embeddedWidth } : undefined}");
+    expect(panelSource).toContain('top-[90px]');
+    expect(voiceSource).toContain('top-[90px]');
+    expect(panelSource).not.toContain('top-[82px]');
+    expect(voiceSource).not.toContain('top-[82px]');
+    expect(voiceSource).not.toContain("flex w-[400px]");
   });
 
   test("keeps a visible fullscreen control in the iPolloWork Video Studio header", () => {
@@ -55,6 +82,8 @@ describe("HyperFrames Video Studio", () => {
 
     expect(panelSource).toContain("const reloadStudio = React.useCallback");
     expect(panelSource).toContain("setRevision((value) => value + 1)");
+    expect(panelSource).toContain("}, [revision]);");
+    expect(panelSource).toContain("setStudioHostPanel(null);");
     expect(panelSource).toContain('onClick={reloadStudio} aria-label={t("video.reload")}');
     expect(panelSource).toContain('event.data?.type !== "ipollowork:studio-ready"');
     expect(panelSource).not.toContain('<TooltipContent>{t("video.reload")}</TooltipContent>');
@@ -308,6 +337,10 @@ describe("HyperFrames Video Studio", () => {
     expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__delete-button");
     expect(nativeToolbarSource).toContain("onClick={deleteSelectedElement}");
     expect(nativeToolbarSource).not.toContain("deleteConfirmationOpen");
+    expect(panelSource).toContain("ipollowork:video-studio-clear-selection");
+    expect(electronSource).toContain("ipollowork:hyperframes:clear-selection");
+    expect(electronSource).toContain("finishEditing();");
+    expect(electronSource).toContain("hideToolbar();");
     expect(electronSource).toContain('button[data-action="delete"]{color:#dc2626}');
     expect(electronSource).not.toContain("window.confirm('Delete selected element?')");
   });

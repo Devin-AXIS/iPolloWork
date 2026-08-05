@@ -4,37 +4,23 @@ import type { ClipManifestClip } from "../lib/playbackTypes";
 import { createTimelineElementFromManifestClip } from "../lib/timelineDOM";
 import { buildTimelineElementKey } from "../lib/timelineElementHelpers";
 
-function findTopLevelAncestor(id: string, parentMap: Map<string, string>): string | null {
-  let current = parentMap.get(id);
-  if (!current) return null;
-  const visited = new Set<string>();
-  visited.add(id);
-  while (parentMap.has(current)) {
-    if (visited.has(current)) return current;
-    visited.add(current);
-    const parent = parentMap.get(current);
-    if (!parent) return current;
-    current = parent;
-  }
-  return current;
-}
-
 function extractDomId(key: string): string {
   const hashIdx = key.lastIndexOf("#");
   return hashIdx >= 0 ? key.slice(hashIdx + 1) : key;
 }
 
 function resolveRawId(
-  selectedId: string | null,
+  elementId: string | null,
   manifest: ClipManifestClip[],
   parentMap: Map<string, string>,
 ): string | null {
-  if (!selectedId) return null;
-  const rawId = extractDomId(selectedId);
-  if (parentMap.has(rawId)) return rawId;
-  if (parentMap.has(selectedId)) return selectedId;
-  const clip = manifest.find((c) => c.label === selectedId || c.label === rawId);
-  if (clip?.id && parentMap.has(clip.id)) return clip.id;
+  if (!elementId) return null;
+  const rawId = extractDomId(elementId);
+  const knownIds = new Set([...parentMap.keys(), ...parentMap.values()]);
+  if (knownIds.has(rawId)) return rawId;
+  if (knownIds.has(elementId)) return elementId;
+  const clip = manifest.find((c) => c.label === elementId || c.label === rawId);
+  if (clip?.id && knownIds.has(clip.id)) return clip.id;
   return null;
 }
 
@@ -226,6 +212,30 @@ function domSiblingClips(
     );
 }
 
+function childClipsForParent(
+  manifest: ClipManifestClip[],
+  parentMap: Map<string, string>,
+  domClipChildren: DomClipChild[],
+  parentId: string,
+  parentElement: TimelineElement,
+  displayDelta: number,
+): ClipManifestClip[] {
+  const manifestChildren = manifest.filter(
+    (clip) => clip.id != null && parentMap.get(clip.id) === parentId,
+  );
+  const adjustedManifestChildren =
+    displayDelta === 0
+      ? manifestChildren
+      : manifestChildren.map((clip) => ({ ...clip, start: clip.start + displayDelta }));
+  const manifestIds = new Set(
+    adjustedManifestChildren.flatMap((clip) => (clip.id ? [clip.id] : [])),
+  );
+  const domChildren = domSiblingClips(domClipChildren, parentId, parentElement).filter(
+    (clip) => !clip.id || !manifestIds.has(clip.id),
+  );
+  return [...adjustedManifestChildren, ...domChildren];
+}
+
 // Exported for tests.
 export function buildExpandedElements(
   elements: TimelineElement[],
@@ -238,30 +248,19 @@ export function buildExpandedElements(
   const topLevelElement = elements.find((el) => el.id === topLevelId || el.domId === topLevelId);
   if (!topLevelElement) return filterToTopLevel(elements, parentMap);
 
-  // Prefer real manifest children; fall back to DOM-only sub-comp children
-  // (groups/pills) that have no data-start and thus never enter the manifest.
-  const { siblings, displayDelta } = (() => {
-    const fromManifest = manifest.filter(
-      (c) => c.id != null && parentMap.get(c.id) === siblingParentId,
-    );
-    if (fromManifest.length > 0) {
-      const manifestTopLevel = manifest.find((clip) => clip.id === topLevelId);
-      const displayDelta = manifestTopLevel
-        ? topLevelElement.start - manifestTopLevel.start
-        : 0;
-      return {
-        siblings:
-          displayDelta === 0
-            ? fromManifest
-            : fromManifest.map((clip) => ({ ...clip, start: clip.start + displayDelta })),
-        displayDelta,
-      };
-    }
-    return {
-      siblings: domSiblingClips(domClipChildren, siblingParentId, topLevelElement),
-      displayDelta: 0,
-    };
-  })();
+  // Merge timed manifest children with untimed DOM-only children. Treating
+  // these as fallback sources made DOM siblings disappear whenever a parent
+  // happened to contain at least one authored/timed child.
+  const manifestTopLevel = manifest.find((clip) => clip.id === topLevelId);
+  const displayDelta = manifestTopLevel ? topLevelElement.start - manifestTopLevel.start : 0;
+  const siblings = childClipsForParent(
+    manifest,
+    parentMap,
+    domClipChildren,
+    siblingParentId,
+    topLevelElement,
+    displayDelta,
+  );
   if (siblings.length === 0) return filterToTopLevel(elements, parentMap);
 
   // The sub-comp host the children actually live in: top-level host for 1-level
@@ -289,52 +288,133 @@ export function buildExpandedElements(
     .flatMap((el) => ((el.key ?? el.id) === parentKey ? [el, ...expanded] : [el]));
 }
 
+/** Build the visible hierarchy while preserving every expanded ancestor. */
+export function buildExpandedElementTree(
+  elements: TimelineElement[],
+  manifest: ClipManifestClip[],
+  parentMap: Map<string, string>,
+  expandedRawIds: ReadonlySet<string>,
+  domClipChildren: DomClipChild[] = [],
+): TimelineElement[] {
+  const topLevelElements = filterToTopLevel(elements, parentMap);
+
+  return topLevelElements.flatMap((topLevelElement) => {
+    const topLevelId = topLevelElement.domId ?? topLevelElement.id;
+    const topLevelKey = topLevelElement.key ?? topLevelElement.id;
+    const manifestTopLevel = manifest.find((clip) => clip.id === topLevelId);
+    const displayDelta = manifestTopLevel ? topLevelElement.start - manifestTopLevel.start : 0;
+    const flattened: Array<{ element: TimelineElement; ancestors: string[] }> = [
+      { element: topLevelElement, ancestors: [] },
+    ];
+    const visited = new Set<string>();
+
+    const appendChildren = (
+      parentId: string,
+      parentElement: TimelineElement,
+      ancestors: string[],
+    ) => {
+      if (!expandedRawIds.has(parentId) || visited.has(parentId)) return;
+      visited.add(parentId);
+
+      const siblings = childClipsForParent(
+        manifest,
+        parentMap,
+        domClipChildren,
+        parentId,
+        parentElement,
+        displayDelta,
+      );
+      const parentHost = manifest.find((clip) => clip.id === parentId);
+      const editBasis = {
+        start: (parentHost?.start ?? parentElement.start) + displayDelta,
+        sourceFile:
+          parentHost?.compositionSrc ?? parentElement.compositionSrc ?? parentElement.sourceFile,
+      };
+      const nextAncestors = [...ancestors, parentId];
+      const children = buildChildElements(
+        siblings,
+        {
+          start: topLevelElement.start,
+          end: topLevelElement.start + topLevelElement.duration,
+          track: topLevelElement.track,
+        },
+        editBasis,
+      );
+
+      for (const child of children) {
+        const childId = child.domId ?? child.id;
+        const nestedChild = {
+          ...child,
+          compositionAncestors: nextAncestors,
+          expandedDisplayHostKey: topLevelKey,
+        };
+        flattened.push({ element: nestedChild, ancestors: nextAncestors });
+        appendChildren(childId, nestedChild, nextAncestors);
+      }
+    };
+
+    appendChildren(topLevelId, topLevelElement, []);
+    const descendantCount = flattened.length - 1;
+    return flattened.map(({ element }, index) =>
+      index === 0
+        ? element
+        : {
+            ...element,
+            track: topLevelElement.track + index / (descendantCount + 1),
+          },
+    );
+  });
+}
+
+export function applyTimelineLayerStateOverrides(
+  elements: TimelineElement[],
+  overrides: ReadonlyMap<string, Partial<Pick<TimelineElement, "hidden" | "timelineLocked">>>,
+): TimelineElement[] {
+  return elements.map((element) => {
+    const override = overrides.get(element.key ?? element.id);
+    return override ? { ...element, ...override } : element;
+  });
+}
+
 export function useExpandedTimelineElements(): TimelineElement[] {
   const elements = usePlayerStore((s) => s.elements);
+  const layerStateOverrides = usePlayerStore((s) => s.timelineLayerStateOverrides);
   const clipManifest = usePlayerStore((s) => s.clipManifest);
   const clipParentMap = usePlayerStore((s) => s.clipParentMap);
   const domClipChildren = usePlayerStore((s) => s.domClipChildren);
-  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const currentTime = usePlayerStore((s) => s.currentTime);
+  const expandedTimelineElementIds = usePlayerStore((s) => s.expandedTimelineElementIds);
 
-  // Resolve which raw clip drives expansion. This reads currentTime (for paused
-  // auto-expand) so it re-runs each scrub tick, but it's a cheap manifest scan and
-  // its RESULT only changes when the playhead crosses a composition boundary. Keying
-  // the expensive build below on these ids (not raw currentTime) avoids re-allocating
-  // expandedElements — and cascading TimelineClip re-renders — on every tick.
-  const { rawId, selectedRawId } = useMemo(() => {
-    if (!clipManifest || clipManifest.length === 0 || clipParentMap.size === 0) {
-      return { rawId: null as string | null, selectedRawId: null as string | null };
+  // Store explicit expanded ids. Manual caret clicks toggle one id, while a
+  // canvas selection may add its ancestor chain so the selected row is visible.
+  const expandedRawIds = useMemo(() => {
+    const rawIds = new Set<string>();
+    if (clipParentMap.size === 0) return rawIds;
+    const manifest = clipManifest ?? [];
+    for (const elementId of expandedTimelineElementIds) {
+      const rawId = resolveRawId(elementId, manifest, clipParentMap);
+      if (rawId) rawIds.add(rawId);
     }
-    return {
-      rawId: resolveTimelineExpansionRawId({
-        selectedElementId,
-        isPlaying,
-        currentTime,
-        manifest: clipManifest,
-        parentMap: clipParentMap,
-      }),
-      selectedRawId: resolveRawId(selectedElementId, clipManifest, clipParentMap),
-    };
-  }, [clipManifest, clipParentMap, selectedElementId, isPlaying, currentTime]);
+    return rawIds;
+  }, [clipManifest, clipParentMap, expandedTimelineElementIds]);
 
   return useMemo(() => {
-    if (!clipManifest || clipManifest.length === 0 || clipParentMap.size === 0) {
-      return elements;
-    }
-    if (!rawId) return filterToTopLevel(elements, clipParentMap);
-
-    const immediateParent = selectedRawId ? clipParentMap.get(rawId) : rawId;
-    if (!immediateParent) return filterToTopLevel(elements, clipParentMap);
-    const topLevel = findTopLevelAncestor(rawId, clipParentMap) ?? immediateParent;
-    return buildExpandedElements(
-      elements,
-      clipManifest,
-      clipParentMap,
-      topLevel,
-      immediateParent,
-      domClipChildren,
-    );
-  }, [elements, clipManifest, clipParentMap, domClipChildren, rawId, selectedRawId]);
+    const expandedElements =
+      clipParentMap.size === 0
+        ? elements
+        : buildExpandedElementTree(
+            elements,
+            clipManifest ?? [],
+            clipParentMap,
+            expandedRawIds,
+            domClipChildren,
+          );
+    return applyTimelineLayerStateOverrides(expandedElements, layerStateOverrides);
+  }, [
+    elements,
+    clipManifest,
+    clipParentMap,
+    domClipChildren,
+    expandedRawIds,
+    layerStateOverrides,
+  ]);
 }

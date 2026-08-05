@@ -30,7 +30,7 @@ interface TrackGapContextMenuProps {
  * an inapplicable action dims with a tooltip explaining why, rather than
  * vanishing into a one-item menu. Hovering an actionable row highlights the
  * gap strip(s) it would close (via onHoverAction → TimelineCanvas overlay).
- * Styling mirrors ClipContextMenu.
+ * Uses the same compact floating-menu treatment as the other timeline overlays.
  */
 export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   x,

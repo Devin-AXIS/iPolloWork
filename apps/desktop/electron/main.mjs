@@ -3855,6 +3855,11 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         // stationary click is converted into lightweight text editing below.
         window.__HF_PICKER_API?.enable?.();
       }, true);
+      window.addEventListener('message', (event) => {
+        if (event.data?.type !== 'ipollowork:hyperframes:clear-selection') return;
+        finishEditing();
+        hideToolbar();
+      });
       document.addEventListener('pointermove', (event) => {
         if (!pendingPointer) return;
         if (Math.hypot(event.clientX - pendingPointer.x, event.clientY - pendingPointer.y) > 4) {

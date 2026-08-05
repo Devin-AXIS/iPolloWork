@@ -10,7 +10,7 @@ import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
-import { basename, ext, truncateMiddle, formatDuration } from "./assetHelpers";
+import { basename, ext, formatDuration } from "./assetHelpers";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
 
 /** Drag payload writer shared by the asset tile and the font row: copy effect
@@ -187,18 +187,18 @@ export function AssetCard({
         onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-        className={`flex flex-col gap-1 cursor-pointer rounded-md p-1 transition-colors ${
-          isCopied ? "bg-studio-accent/10" : "hover:bg-neutral-800/40"
+        className={`flex min-w-0 cursor-pointer flex-col transition-shadow ${
+          isCopied ? "rounded-lg ring-2 ring-studio-accent/30" : ""
         }`}
       >
         {/* Thumbnail */}
-        <div className="w-full aspect-video rounded overflow-hidden bg-neutral-900 relative">
+        <div className="relative aspect-[37/26] w-full overflow-hidden rounded-lg border border-panel-border bg-[#f4f5f7]">
           {isImage && (
             <img
               src={serveUrl}
               alt={name}
               loading="lazy"
-              className="w-full h-full object-cover"
+              className={`h-full w-full ${extension === "SVG" ? "object-contain p-4" : "object-cover"}`}
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
               }}
@@ -225,30 +225,32 @@ export function AssetCard({
             </div>
           )}
 
-          {/* "Added" badge — top-left */}
+          {/* Figma usage badge — top-right */}
           {used && (
-            <span className="absolute top-1 left-1 text-[9px] font-semibold leading-none px-1.5 py-[3px] rounded bg-neutral-950/80 text-panel-text-1">
-              Added
+            <span className="absolute right-[7px] top-[7px] flex h-5 items-center gap-1 rounded-full bg-white/90 px-[7px] text-[9px] font-bold text-[#168e92] shadow-sm">
+              <span aria-hidden="true">●</span>
+              In use
             </span>
           )}
 
-          {/* Duration badge — top-right, media only */}
+          {/* Duration stays visible without competing with the usage badge. */}
           {durationLabel && (
-            <span className="absolute top-1 right-1 text-[9px] font-medium leading-none px-1.5 py-[3px] rounded bg-neutral-950/80 text-panel-text-2 tabular-nums">
+            <span className="absolute left-[7px] top-[7px] rounded bg-neutral-950/80 px-1.5 py-[3px] text-[9px] font-medium leading-none text-white tabular-nums">
               {durationLabel}
             </span>
           )}
         </div>
 
         {/* Filename caption */}
-        <span
-          className={`text-[10px] leading-tight text-center block w-full ${
-            used ? "text-panel-text-2" : "text-panel-text-4"
-          }`}
-          title={fullName}
-        >
-          {truncateMiddle(fullName, 22)}
-        </span>
+        <div className="flex w-full min-w-0 items-start justify-between gap-1 px-0.5 pt-[7px] leading-4">
+          <span
+            className="min-w-0 truncate text-[10px] font-medium text-panel-text-1"
+            title={fullName}
+          >
+            {fullName}
+          </span>
+          <span className="flex-none text-[9px] uppercase text-panel-text-3">{extension}</span>
+        </div>
       </div>
 
       {contextMenu && (

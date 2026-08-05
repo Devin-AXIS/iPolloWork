@@ -319,11 +319,11 @@ export function PropertyPanel3dTransform({
   };
 
   return (
-    <div className="mt-3 border-t border-neutral-800/40 pt-3">
+    <div data-flat-3d-transform="true" className="mt-2 border-t border-panel-hairline pt-2">
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
-        className="mb-2 flex w-full items-center justify-between text-[10px] font-medium uppercase tracking-wider text-neutral-600 hover:text-neutral-400"
+        className="mb-2 flex h-6 w-full items-center justify-between rounded-[4px] bg-panel-input px-2 text-[8px] font-medium uppercase tracking-[0.08em] text-panel-text-3 hover:text-panel-text-1"
       >
         <span>3D Transform</span>
         <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor" aria-hidden>

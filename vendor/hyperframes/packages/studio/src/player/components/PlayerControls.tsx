@@ -8,6 +8,9 @@ import { ShortcutsPanel } from "./ShortcutsPanel";
 import { SpeedMenu } from "./SpeedMenu";
 import { useSeekBarDrag, resolveSeekPercent } from "./useSeekBarDrag";
 import { useStudioI18n } from "../../i18n";
+import playIconSrc from "../../icons/figmaPlayerPlay.svg?url";
+import repeatIconSrc from "../../icons/figmaPlayerRepeat.svg?url";
+import volumeIconSrc from "../../icons/figmaPlayerVolume.svg?url";
 
 export { resolveSeekPercent };
 
@@ -17,19 +20,14 @@ export { resolveSeekPercent };
 function PlayPauseIcon({ playing }: { playing: boolean }) {
   return (
     <span className="relative inline-flex h-4 w-4 items-center justify-center" aria-hidden="true">
-      <svg
-        width="15"
-        height="15"
-        viewBox="0 0 24 24"
-        fill="none"
-        className="hf-studio-play-icon"
-      >
-        {playing ? (
-          <path d="M7 5.5h3v13H7zM14 5.5h3v13h-3z" fill="currentColor" />
-        ) : (
-          <path d="M8 5.5v13L18 12 8 5.5z" fill="currentColor" />
-        )}
-      </svg>
+      {playing ? (
+        <span className="flex h-4 w-4 items-center justify-center gap-[3px]">
+          <span className="h-[11px] w-[2px] rounded-[1px] bg-white" />
+          <span className="h-[11px] w-[2px] rounded-[1px] bg-white" />
+        </span>
+      ) : (
+        <img className="h-4 w-4" src={playIconSrc} alt="" />
+      )}
     </span>
   );
 }
@@ -60,36 +58,13 @@ const MuteButton = memo(function MuteButton({
         disabled={controlsDisabled}
         aria-label={label}
         aria-pressed={effectiveAudioMuted}
-        className={`h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md border transition-colors disabled:pointer-events-none ${
+        className={`relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors disabled:pointer-events-none disabled:opacity-40 ${
           effectiveAudioMuted
-            ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-            : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
+            ? "bg-[#e8eaed] opacity-60"
+            : "hover:bg-[#e8eaed]"
         }`}
       >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M11 5 6 9H3v6h3l5 4V5Z" />
-          {effectiveAudioMuted ? (
-            <>
-              <path d="m19 9-6 6" />
-              <path d="m13 9 6 6" />
-            </>
-          ) : (
-            <>
-              <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-              <path d="M18.5 5.5a9 9 0 0 1 0 13" />
-            </>
-          )}
-        </svg>
+        <img src={volumeIconSrc} width="24" height="24" alt="" aria-hidden="true" />
       </button>
     </Tooltip>
   );
@@ -114,87 +89,17 @@ const LoopButton = memo(function LoopButton({
           setLoopEnabled(!loopEnabled);
         }}
         disabled={disabled}
-        className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+        className={`flex h-6 w-6 items-center justify-center rounded transition-colors disabled:opacity-40 ${
           loopEnabled
-            ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-            : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
+            ? "bg-[#dff6f6]"
+            : "hover:bg-[#e8eaed]"
         }`}
         aria-label={loopEnabled ? t("player.disableLoop") : t("player.enableLoop")}
         aria-pressed={loopEnabled}
       >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M17 2l4 4-4 4" />
-          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-          <path d="M7 22l-4-4 4-4" />
-          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-        </svg>
+        <img src={repeatIconSrc} width="24" height="24" alt="" aria-hidden="true" />
       </button>
     </Tooltip>
-  );
-});
-
-const FullscreenButton = memo(function FullscreenButton({
-  isFullscreen,
-  onToggleFullscreen,
-}: {
-  isFullscreen: boolean;
-  onToggleFullscreen: () => void;
-}) {
-  const { t } = useStudioI18n();
-  const label = isFullscreen ? t("player.exitFullscreen") : t("player.enterFullscreen");
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        trackStudioEvent("playback", { action: "fullscreen_toggle", active: !isFullscreen });
-        onToggleFullscreen();
-      }}
-      title={`${label} (F)`}
-      className={`h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md border transition-colors ${
-        isFullscreen
-          ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-          : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
-      }`}
-      aria-label={label}
-    >
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        {isFullscreen ? (
-          <>
-            <path d="M8 3v3a2 2 0 0 1-2 2H3" />
-            <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
-            <path d="M3 16h3a2 2 0 0 1 2 2v3" />
-            <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
-          </>
-        ) : (
-          <>
-            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-            <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-            <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-          </>
-        )}
-      </svg>
-    </button>
   );
 });
 
@@ -281,29 +186,25 @@ const SeekBar = memo(function SeekBar({
       aria-valuemin={0}
       aria-valuemax={Math.round(duration)}
       aria-valuenow={0}
-      className={`min-w-[96px] flex-1 h-6 flex items-center group outline-none focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:rounded ${
+      className={`group flex h-6 min-w-[96px] flex-1 items-center rounded outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/30 ${
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
       style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
     >
-      <div
-        className="w-full rounded-full relative"
-        style={{ background: "rgba(255,255,255,0.15)", height: "3px" }}
-      >
+      <div className="relative h-1 w-full rounded-lg bg-[#858a94]">
         <WorkAreaOverlay inPoint={inPoint} outPoint={outPoint} duration={duration} />
         <div
           ref={progressFillRef}
           className="absolute top-0 bottom-0 left-0 z-[1] rounded-full"
-          style={{ background: "linear-gradient(90deg, var(--hf-accent, #3CE6AC), #2BBFA0)" }}
+          style={{ background: "#20bbc0" }}
         />
         <div
           ref={progressThumbRef}
-          className="absolute top-1/2 z-[4] w-3 h-3 rounded-full -translate-y-1/2 -translate-x-1/2 transition-transform group-hover:scale-125"
+          className="absolute top-1/2 z-[4] h-[11px] w-[11px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#20bbc0] transition-transform group-hover:scale-110"
           style={{
-            background: "var(--hf-accent, #3CE6AC)",
-            boxShadow: "0 0 6px rgba(60,230,172,0.4), 0 1px 4px rgba(0,0,0,0.4)",
+            boxShadow: "0 0 0 0 rgba(32,187,192,0.14)",
           }}
         />
       </div>
@@ -325,8 +226,6 @@ export const PlayerControls = memo(function PlayerControls({
   onTogglePlay,
   onSeek,
   disabled = false,
-  isFullscreen = false,
-  onToggleFullscreen,
 }: PlayerControlsProps) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const duration = usePlayerStore((s) => s.duration);
@@ -403,11 +302,9 @@ export const PlayerControls = memo(function PlayerControls({
     <div
       // No own background/border: the transport blends into the preview
       // panel's surface — buttons carry their own chrome.
-      className="px-4 py-2 flex flex-wrap items-center gap-x-2 gap-y-1"
+      className="hf-player-controls flex h-[52px] flex-shrink-0 items-center gap-4 bg-[#f5f6f9] px-4"
       aria-disabled={disabled || undefined}
-      style={{
-        paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))",
-      }}
+      data-testid="figma-player-controls"
     >
       <Tooltip label={isPlaying ? t("player.pause") : t("player.play")}>
         <button
@@ -418,12 +315,7 @@ export const PlayerControls = memo(function PlayerControls({
             onTogglePlay();
           }}
           disabled={controlsDisabled}
-          className="hf-studio-play-control flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full border disabled:opacity-30 disabled:pointer-events-none transition-colors"
-          style={{
-            background: "var(--hf-panel-input)",
-            borderColor: "var(--hf-panel-border-input)",
-            color: "var(--hf-panel-text-1)",
-          }}
+          className="hf-studio-play-control flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#171816] transition-opacity hover:opacity-85 disabled:pointer-events-none disabled:opacity-30"
         >
           <PlayPauseIcon playing={isPlaying} />
         </button>
@@ -436,14 +328,12 @@ export const PlayerControls = memo(function PlayerControls({
           type="button"
           onClick={() => setTimeDisplayMode(timeDisplayMode === "time" ? "frame" : "time")}
           disabled={disabled}
-          className="font-mono text-[11px] tabular-nums flex-shrink-0 w-[118px] text-left transition-colors disabled:pointer-events-none hover:opacity-80"
-          style={{ color: "#A1A1AA", cursor: "pointer" }}
+          className="w-[76px] flex-shrink-0 text-left text-xs tabular-nums text-[#080808] transition-opacity hover:opacity-75 disabled:pointer-events-none"
         >
           <span ref={timeDisplayRef}>{formatTime(0)}</span>
           {timeDisplayMode === "time" ? (
             <>
-              <span style={{ color: "#3F3F46", margin: "0 2px" }}>/</span>
-              <span style={{ color: "#52525B" }}>{formatTime(duration)}</span>
+              <span className="text-[#999]">{` / ${formatTime(duration)}`}</span>
             </>
           ) : null}
         </button>
@@ -462,30 +352,32 @@ export const PlayerControls = memo(function PlayerControls({
         onKeyDown={handleKeyDown}
       />
 
-      <MuteButton
-        audioMuted={audioMuted}
-        effectiveAudioMuted={effectiveAudioMuted}
-        controlsDisabled={controlsDisabled}
-        setAudioMuted={setAudioMuted}
-      />
+      <div className="flex flex-shrink-0 items-center gap-[10px] rounded-lg">
+        <SpeedMenu
+          playbackRate={playbackRate}
+          setPlaybackRate={setPlaybackRate}
+          disabled={disabled}
+        />
 
-      <SpeedMenu
-        playbackRate={playbackRate}
-        setPlaybackRate={setPlaybackRate}
-        disabled={disabled}
-      />
+        <LoopButton loopEnabled={loopEnabled} disabled={disabled} setLoopEnabled={setLoopEnabled} />
 
-      <LoopButton loopEnabled={loopEnabled} disabled={disabled} setLoopEnabled={setLoopEnabled} />
+        <MuteButton
+          audioMuted={audioMuted}
+          effectiveAudioMuted={effectiveAudioMuted}
+          controlsDisabled={controlsDisabled}
+          setAudioMuted={setAudioMuted}
+        />
 
-      <ShortcutsPanel
-        disabled={disabled}
-        duration={duration}
-        inPoint={inPoint}
-        outPoint={outPoint}
-        setInPoint={setInPoint}
-        setOutPoint={setOutPoint}
-        onSeek={onSeek}
-      />
+        <ShortcutsPanel
+          disabled={disabled}
+          duration={duration}
+          inPoint={inPoint}
+          outPoint={outPoint}
+          setInPoint={setInPoint}
+          setOutPoint={setOutPoint}
+          onSeek={onSeek}
+        />
+      </div>
     </div>
   );
 });

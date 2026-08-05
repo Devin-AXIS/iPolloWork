@@ -114,14 +114,17 @@ export const TimelineRuler = memo(function TimelineRuler({
               a tick spans [x, x+1) and its center is half a pixel right. */}
           {minor.map((t) => (
             <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps - 0.5 }}>
-              <div className="w-px h-2" style={{ background: theme.tickMinor }} />
+              <div
+                className="hf-timeline-ruler-minor-tick h-2 w-px"
+                style={{ background: theme.tickMinor }}
+              />
             </div>
           ))}
 
           {major.map((t) => (
             <div key={`M-${t}`} className="absolute top-0" style={{ left: t * pps - 0.5 }}>
               <span
-                className="absolute font-mono tabular-nums leading-none whitespace-nowrap"
+                className="hf-timeline-ruler-label absolute font-mono tabular-nums leading-none whitespace-nowrap"
                 style={{
                   color: theme.tickText,
                   left: 5,
@@ -133,7 +136,10 @@ export const TimelineRuler = memo(function TimelineRuler({
                   ? secondsToFrame(t)
                   : formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
               </span>
-              <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
+              <div
+                className="hf-timeline-ruler-major-tick w-px"
+                style={{ height: RULER_H, background: theme.tickMajor }}
+              />
             </div>
           ))}
         </div>

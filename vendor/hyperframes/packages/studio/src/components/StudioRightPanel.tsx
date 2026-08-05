@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { PropertyPanel } from "./editor/PropertyPanel";
-import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
 import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
@@ -27,7 +26,6 @@ import {
 } from "./studioColorGradingScope";
 import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
-import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
 import { useStudioI18n } from "../i18n";
 import { X } from "../icons/SystemIcons";
 import { BlocksTab, type BlockPreviewInfo } from "./sidebar/BlocksTab";
@@ -172,13 +170,6 @@ export function StudioRightPanel({
     fileTree,
   } = useFileManagerContext();
 
-  const {
-    layersPanePercent,
-    splitContainerRef,
-    handleInspectorSplitResizeStart,
-    handleInspectorSplitResizeMove,
-    handleInspectorSplitResizeEnd,
-  } = useInspectorSplitResize();
   const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
 
   useEffect(
@@ -400,15 +391,19 @@ export function StudioRightPanel({
     />
   );
 
-  const openHostPanel = (panel: "voice" | "style") => {
-    setRightPanelTab(panel);
+  const postHostPanel = useCallback((panel: "voice" | "style") => {
     if (window.parent !== window) {
       window.parent.postMessage({
         type: "ipollowork:video-studio-panel",
         projectId,
         panel,
+        width: rightWidth,
       }, "*");
     }
+  }, [projectId, rightWidth]);
+
+  const openHostPanel = (panel: "voice" | "style") => {
+    setRightPanelTab(panel);
   };
 
   const closeHostPanel = useCallback(() => {
@@ -422,10 +417,12 @@ export function StudioRightPanel({
   }, [projectId]);
 
   useEffect(() => {
-    if (rightPanelTab !== "voice" && rightPanelTab !== "style") {
-      closeHostPanel();
+    if (rightPanelTab === "voice" || rightPanelTab === "style") {
+      postHostPanel(rightPanelTab);
+      return;
     }
-  }, [closeHostPanel, rightPanelTab]);
+    closeHostPanel();
+  }, [closeHostPanel, postHostPanel, rightPanelTab]);
 
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
@@ -465,14 +462,14 @@ export function StudioRightPanel({
         <div className="absolute top-1/2 left-0 h-[52px] w-[3px] -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>
       <div
-        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900"
+        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border border-panel-hairline bg-panel-bg"
         style={{ width: rightWidth }}
       >
         {captionEditMode ? (
           <CaptionPropertyPanel iframeRef={previewIframeRef} />
         ) : (
           <>
-            <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
+            <div className="relative z-30 flex h-[49px] min-w-0 items-center gap-[5px] overflow-visible border-b border-panel-hairline bg-panel-bg px-3">
               {exportDrawer ? (
                 <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-200">
                   {t("right.renders")}
@@ -552,28 +549,7 @@ export function StudioRightPanel({
                   {rightPanelTab === "voice" ? t("right.voiceTooltip") : t("right.styleTooltip")}
                 </div>
               ) : inspectorTabActive ? (
-                <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
-                  <div
-                    className="min-h-[120px] overflow-hidden"
-                    style={{ flexBasis: `${layersPanePercent}%`, flexShrink: 0 }}
-                  >
-                    <LayersPanel />
-                  </div>
-                  <div
-                    role="separator"
-                    aria-label={t("right.resizePanes")}
-                    aria-orientation="horizontal"
-                    className="group flex h-2 flex-shrink-0 cursor-row-resize items-center justify-center border-y border-neutral-800 bg-neutral-900"
-                    style={{ touchAction: "none" }}
-                    onPointerDown={handleInspectorSplitResizeStart}
-                    onPointerMove={handleInspectorSplitResizeMove}
-                    onPointerUp={handleInspectorSplitResizeEnd}
-                    onPointerCancel={handleInspectorSplitResizeEnd}
-                  >
-                    <div className="h-px w-10 rounded-full bg-white/12 transition-colors group-hover:bg-white/24 group-active:bg-studio-accent/70" />
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-hidden">{propertyPanel}</div>
-                </div>
+                <div className="h-full min-h-0 min-w-0 overflow-hidden">{propertyPanel}</div>
               ) : (
                 renderQueuePanel
               )}

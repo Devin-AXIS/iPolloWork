@@ -46,6 +46,7 @@ function deselectIfPointerOutsideFrame(
 
 export interface PreviewPaneProps {
   portrait?: boolean;
+  editingEnabled?: boolean;
   /** Slot for overlays rendered on top of the preview (cursors, highlights, etc.) */
   previewOverlay?: ReactNode;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
@@ -53,14 +54,17 @@ export interface PreviewPaneProps {
     blockName: string,
     position: { left: number; top: number },
   ) => Promise<void> | void;
+  onPreviewAssetDrop?: (assetPath: string) => Promise<void> | void;
 }
 
 // fallow-ignore-next-line complexity
 export function PreviewPane({
   portrait,
+  editingEnabled = true,
   previewOverlay,
   onSelectTimelineElement,
   onPreviewBlockDrop,
+  onPreviewAssetDrop,
 }: PreviewPaneProps) {
   const {
     projectId,
@@ -78,6 +82,39 @@ export function PreviewPane({
   } = useNLEContext();
   const { domEditSelection } = useDomEditSelectionContext();
 
+  const clearSelectedElement = useCallback(() => {
+    onSelectTimelineElement?.(null);
+    iframeRef.current?.contentWindow?.postMessage({
+      type: "ipollowork:hyperframes:clear-selection",
+    }, "*");
+  }, [iframeRef, onSelectTimelineElement]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest('[data-preview-pan-surface="true"]')) return;
+      // Selection-dependent controls must finish their pointer/click gesture before
+      // the selection can be cleared. Without this boundary, capture-phase pointerdown
+      // unmounted the toolbar/inspector before Split, Keyframe, Delete, or a property
+      // control received its click.
+      if (event.target.closest('[data-preserve-studio-selection="true"]')) return;
+      clearSelectedElement();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [clearSelectedElement]);
+
+  useEffect(() => {
+    const handleClearSelection = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      if (event.data?.type !== "ipollowork:video-studio-clear-selection") return;
+      if (event.data.projectId !== projectId) return;
+      clearSelectedElement();
+    };
+    window.addEventListener("message", handleClearSelection);
+    return () => window.removeEventListener("message", handleClearSelection);
+  }, [clearSelectedElement, projectId]);
+
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
   const handleStageRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {
     stageRefForDrop.current = ref.current;
@@ -94,6 +131,7 @@ export function PreviewPane({
     compositionSize: previewCompositionSize,
     stageRef: stageRefForDrop as React.RefObject<HTMLDivElement | null>,
     onBlockDrop: onPreviewBlockDrop,
+    onAssetDrop: onPreviewAssetDrop,
   });
 
   // Preview-only fullscreen: fullscreen targets THIS pane's container, so the
@@ -182,7 +220,7 @@ export function PreviewPane({
         className="flex-1 min-h-0 relative overflow-hidden"
         data-preview-pan-surface="true"
         onPointerDown={(e) =>
-          deselectIfPointerOutsideFrame(e, iframeRef.current, onSelectTimelineElement)
+          deselectIfPointerOutsideFrame(e, iframeRef.current, clearSelectedElement)
         }
         onDragEnter={handlePreviewDragEnter}
         onDragOver={handlePreviewDragOver}
@@ -206,12 +244,12 @@ export function PreviewPane({
           )}
           <AssetPreviewOverlay />
         </div>
-        {!isFullscreen && previewOverlay}
+        {!isFullscreen && editingEnabled && previewOverlay}
         <PreviewTextSelectionToolbar
           iframeRef={iframeRef}
           containerRef={containerRef}
-          activeSelection={domEditSelection}
-          hidden={timelineDisabled}
+          activeSelection={editingEnabled ? domEditSelection : null}
+          hidden={timelineDisabled || !editingEnabled}
         />
       </div>
       {/* Transport row: no own background or border — the controls sit flat on

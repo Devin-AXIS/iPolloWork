@@ -176,28 +176,34 @@ export function useTimelineSyncCallbacks({
           walk(clipTree.roots);
         }
 
-        // Descend into each sub-composition host: its internal elements (group
-        // wrappers + their children) carry no `data-start`, so the clip
-        // tree/manifest never enumerate them. Surface them studio-side as DOM
-        // children + parent links so the timeline can expand a sub-comp/group
-        // row to show them. Manifest stays lean (timed clips only).
+        // Descend into every id'd timeline host. Internal wrappers and children
+        // without `data-start` never enter the clip manifest, but they still form
+        // the editable layer tree. This intentionally includes ordinary element
+        // hosts, not only compositions: any element may own child layers.
         const domClipChildren: DomClipChild[] = [];
+        const collectedDomIds = new Set<string>();
         if (iframeDoc) {
           for (const clip of data.clips) {
-            if (clip.kind !== "composition" || !clip.id) continue;
+            if (!clip.id) continue;
             const hostEl = iframeDoc.getElementById(clip.id);
             if (!hostEl) continue;
             const hostId = clip.id;
-            const innerRoot = hostEl.querySelector("[data-hf-inner-root]") ?? hostEl;
-            // Collect the sub-comp's id'd descendants (grouped OR ungrouped) so they
-            // expand into timeline rows. Descends through id-less structural wrappers
-            // (the inlined sub-comp body), and one level into groups for drill-in.
+            const innerRoot =
+              clip.kind === "composition"
+                ? (hostEl.querySelector("[data-hf-inner-root]") ?? hostEl)
+                : hostEl;
+            // Collect every id'd descendant, not only data-hf-group wrappers. Any
+            // element can own another editable element, so the timeline hierarchy
+            // must keep walking until it reaches a real leaf. Id-less structural
+            // wrappers are transparent and preserve the nearest id'd parent.
             const collect = (parentEl: Element, parentId: string) => {
               for (const child of Array.from(parentEl.children)) {
                 if (!child.id) {
                   collect(child, parentId); // unwrap id-less structural containers
                   continue;
                 }
+                if (collectedDomIds.has(child.id)) continue;
+                collectedDomIds.add(child.id);
                 const isGroup = child.hasAttribute("data-hf-group");
                 const selector = getTimelineElementSelector(child);
                 domClipChildren.push({
@@ -215,7 +221,7 @@ export function useTimelineSyncCallbacks({
                   stackingContextId: resolveCssStackingContextId(child),
                 });
                 parentMap.set(child.id, parentId);
-                if (isGroup) collect(child, child.id);
+                collect(child, child.id);
               }
             };
             collect(innerRoot, hostId);

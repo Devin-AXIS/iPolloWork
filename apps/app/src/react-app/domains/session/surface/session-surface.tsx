@@ -4,7 +4,7 @@ import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
-import { Check, Film, Minimize2, X } from "lucide-react";
+import { Check, Minimize2, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
@@ -444,11 +444,14 @@ function StarterCapabilityChip({ capability, onClear }: { capability: StarterCap
 function AnimationChip({ animation, onClear }: { animation: HyperframesAnimationSelection; onClear: () => void }) {
   const configuredCount = Object.keys(animation.values).length;
   return (
-    <div className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/8 px-2.5 text-[11px] text-dls-text shadow-sm">
-      <Film className="size-3.5 shrink-0 text-emerald-600" aria-hidden />
-      <span className="max-w-[12rem] truncate font-medium">{animation.item.title}</span>
-      {configuredCount ? <span className="rounded-full bg-emerald-500/12 px-1.5 text-[9px] text-emerald-700">{t("new_conversation.animations.customized", { count: configuredCount })}</span> : null}
-      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-dls-secondary hover:bg-emerald-500/15 hover:text-dls-text" aria-label={t("new_conversation.animations.remove", { title: animation.item.title })} onClick={onClear}>
+    <div
+      className="inline-flex h-7 max-w-full items-center gap-1 rounded-full border border-violet-6/35 bg-violet-3/20 py-1 pl-2.5 pr-1.5 text-xs font-medium text-violet-11"
+      data-composer-token="animation-reference"
+      title={animation.item.title}
+    >
+      <span className="max-w-[13rem] truncate">{animation.item.title}</span>
+      {configuredCount ? <span className="rounded-full bg-violet-4 px-1.5 text-[9px] text-violet-11">{t("new_conversation.animations.customized", { count: configuredCount })}</span> : null}
+      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-violet-10 transition-colors hover:bg-violet-4 hover:text-violet-12 active:bg-violet-5" aria-label={t("new_conversation.animations.remove", { title: animation.item.title })} onClick={onClear}>
         <X className="size-3" aria-hidden />
       </button>
     </div>
@@ -535,6 +538,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         ...current.filter((animation) => animation.item.name !== item.name),
         { item, values: {} },
       ]);
+      toast.success(t("new_conversation.animations.added_to_ai"));
     };
     window.addEventListener("ipollowork:add-animation-reference", addAnimationReference);
     return () => window.removeEventListener("ipollowork:add-animation-reference", addAnimationReference);

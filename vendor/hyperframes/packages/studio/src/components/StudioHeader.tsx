@@ -13,9 +13,16 @@ import exportIconSrc from "../icons/studioHeaderExport.svg?url";
 export interface StudioHeaderProps {
   inspectorButtonActive: boolean;
   inspectorPanelActive: boolean;
+  previewMode: boolean;
+  onPreviewModeChange: (previewMode: boolean) => void;
 }
 
-export function StudioHeader({ inspectorButtonActive, inspectorPanelActive }: StudioHeaderProps) {
+export function StudioHeader({
+  inspectorButtonActive,
+  inspectorPanelActive,
+  previewMode,
+  onPreviewModeChange,
+}: StudioHeaderProps) {
   const { renderQueue, projectId } = useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const { t } = useStudioI18n();
@@ -44,6 +51,16 @@ export function StudioHeader({ inspectorButtonActive, inspectorPanelActive }: St
     setRightCollapsed(false);
   };
 
+  const setPreviewMode = (nextPreviewMode: boolean) => {
+    if (nextPreviewMode && window.parent !== window) {
+      window.parent.postMessage(
+        { type: "ipollowork:video-studio-panel", projectId, panel: null },
+        "*",
+      );
+    }
+    onPreviewModeChange(nextPreviewMode);
+  };
+
   return (
     <header className="relative flex h-[49px] flex-shrink-0 items-center border-b border-[#ebebeb] bg-white/90 px-3 text-[#1d1d1b] backdrop-blur-sm">
       <div className="min-w-0 flex-1">
@@ -60,22 +77,29 @@ export function StudioHeader({ inspectorButtonActive, inspectorPanelActive }: St
         <button
           type="button"
           role="tab"
-          aria-selected="true"
-          className="h-[26px] rounded-md bg-white px-3 text-xs font-semibold text-[#1d1d1b] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
+          aria-selected={!previewMode}
+          onClick={() => setPreviewMode(false)}
+          className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${
+            !previewMode
+              ? "bg-white font-semibold text-[#1d1d1b] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
+              : "font-medium text-[#777974] hover:text-[#1d1d1b]"
+          }`}
         >
           {t("header.edit")}
         </button>
-        <Tooltip label={t("header.previewComingSoon")} side="bottom">
-          <button
-            type="button"
-            role="tab"
-            aria-selected="false"
-            aria-disabled="true"
-            className="h-[26px] cursor-default rounded-md px-3 text-xs font-medium text-[#777974]"
-          >
-            {t("header.preview")}
-          </button>
-        </Tooltip>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={previewMode}
+          onClick={() => setPreviewMode(true)}
+          className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${
+            previewMode
+              ? "bg-white font-semibold text-[#1d1d1b] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
+              : "font-medium text-[#777974] hover:text-[#1d1d1b]"
+          }`}
+        >
+          {t("header.preview")}
+        </button>
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-4">

@@ -3,11 +3,11 @@ import type { ZoomMode } from "../store/playerStore";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
 /** Fixed layer-control column. Time zero begins immediately after this header. */
-export const LAYER_HEADER_W = 196;
+export const LAYER_HEADER_W = 255;
 /** Backward-compatible geometry name used by the existing time conversion helpers. */
 export const GUTTER = LAYER_HEADER_W;
-export const TRACK_H = 48;
-export const RULER_H = 24;
+export const TRACK_H = 47;
+export const RULER_H = 32;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
 /**
@@ -27,12 +27,12 @@ export const INSERT_BOUNDARY_BAND = CLIP_Y / TRACK_H;
  * track-row y computation via {@link getTimelineRowTop} — never inline a magic
  * offset; a track row's top is always `RULER_H + TRACKS_TOP_PAD + row*TRACK_H`.
  *
- * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track
- *   (~half a track height) so the first clip isn't jammed under the ruler.
+ * - TRACKS_TOP_PAD: the reference editor aligns the first layer directly below
+ *   the ruler, so this intentionally remains zero.
  * - TRACKS_BOTTOM_PAD: empty space below the last track (~1.5 track heights),
  *   enough to comfortably drag a clip into the void to create a new bottom lane.
  */
-export const TRACKS_TOP_PAD = 50;
+export const TRACKS_TOP_PAD = 0;
 export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
 /**
  * Breathing room LEFT of t=0 (CapCut-style), inside the scroll content — the

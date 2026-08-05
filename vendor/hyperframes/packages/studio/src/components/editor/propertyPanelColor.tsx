@@ -357,8 +357,8 @@ export function ColorField({
 
   if (flat) {
     return (
-      <div className="flex min-h-[30px] items-center justify-between">
-        <span className="text-[11px] text-panel-text-2">{label}</span>
+      <div className="flex h-6 min-w-0 items-center justify-between rounded-[4px] bg-panel-input px-2">
+        <span className="text-[8px] text-panel-text-4">{label}</span>
         <button
           type="button"
           data-flat-color-trigger="true"
@@ -366,13 +366,13 @@ export function ColorField({
           aria-label={`Pick ${label.toLowerCase()} color`}
           ref={buttonRef}
           onClick={openPicker}
-          className="flex items-center gap-2 disabled:cursor-not-allowed"
+          className="flex min-w-0 items-center gap-1.5 disabled:cursor-not-allowed"
         >
           <span
-            className="h-4 w-4 flex-shrink-0 rounded-[4px]"
+            className="h-4 w-4 flex-shrink-0 rounded-[3px] border border-black/5"
             style={{ backgroundColor: value || "transparent" }}
           />
-          <span className="font-mono text-[11px] text-panel-text-0">{value}</span>
+          <span className="min-w-0 truncate font-sans text-[10px] text-panel-text-0">{value}</span>
         </button>
         {picker}
       </div>

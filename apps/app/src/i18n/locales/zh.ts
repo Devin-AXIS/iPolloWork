@@ -224,6 +224,7 @@ export default {
   "new_conversation.animations.adjustable": "可调参数",
   "new_conversation.animations.configure": "调整参数",
   "new_conversation.animations.customized": "已调整 {count} 项",
+  "new_conversation.animations.added_to_ai": "已添加到 AI 对话框",
   "new_conversation.animations.parameters_title": "调整 {title}",
   "new_conversation.animations.parameters_description": "参数只校验一次，并由预览、视频 Agent 和确定性渲染共同使用。",
   "new_conversation.animations.live_preview": "参数实时预览",

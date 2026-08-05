@@ -222,6 +222,7 @@ export default {
   "new_conversation.animations.adjustable": "Adjustable",
   "new_conversation.animations.configure": "Adjust parameters",
   "new_conversation.animations.customized": "{count} custom",
+  "new_conversation.animations.added_to_ai": "Added to the AI conversation",
   "new_conversation.animations.parameters_title": "Adjust {title}",
   "new_conversation.animations.parameters_description": "These values are validated once and reused by preview, the video agent, and deterministic rendering.",
   "new_conversation.animations.live_preview": "Live parameter preview",

@@ -18,6 +18,10 @@ import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureT
 import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
+import {
+  collectTimelineAncestorIds,
+  resolveTimelineTreeSelectionKey,
+} from "../player/lib/timelineTreeSelection";
 
 export interface UseDomEditWiringParams {
   projectId: string | null;
@@ -150,6 +154,10 @@ export function useDomEditWiring({
   removeAllKeyframes,
   handleDomManualEditsReset,
 }: UseDomEditWiringParams) {
+  const timelineElements = usePlayerStore((state) => state.elements);
+  const clipManifest = usePlayerStore((state) => state.clipManifest);
+  const clipParentMap = usePlayerStore((state) => state.clipParentMap);
+  const domClipChildren = usePlayerStore((state) => state.domClipChildren);
   // ── Click-to-source navigation ──
 
   const onClickToSource = useCallback(
@@ -170,13 +178,30 @@ export function useDomEditWiring({
 
   useEffect(() => {
     if (!domEditSelection?.id) return;
-    const { selectedElementId, elements, setSelectedElementId } = usePlayerStore.getState();
-    const matchKey = elements.find(
-      (el) => el.domId === domEditSelection.id || el.id === domEditSelection.id,
+    const store = usePlayerStore.getState();
+    const key = resolveTimelineTreeSelectionKey({
+      elementId: domEditSelection.id,
+      sourceFile: domEditSelection.sourceFile,
+      selector: domEditSelection.selector,
+      selectorIndex: domEditSelection.selectorIndex,
+      elements: timelineElements,
+      manifest: clipManifest ?? [],
+      domClipChildren,
+    });
+    store.expandTimelineElementIds(
+      collectTimelineAncestorIds(domEditSelection.id, clipParentMap),
     );
-    const key = matchKey ? (matchKey.key ?? matchKey.id) : null;
-    if (key && key !== selectedElementId) setSelectedElementId(key);
-  }, [domEditSelection?.id]);
+    if (key !== store.selectedElementId) store.setSelectedElementId(key);
+  }, [
+    clipManifest,
+    clipParentMap,
+    domClipChildren,
+    domEditSelection?.id,
+    domEditSelection?.selector,
+    domEditSelection?.selectorIndex,
+    domEditSelection?.sourceFile,
+    timelineElements,
+  ]);
 
   // ── GSAP cache sync ──
 

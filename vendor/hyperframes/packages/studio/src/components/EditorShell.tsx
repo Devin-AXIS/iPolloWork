@@ -15,6 +15,7 @@ import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { TimelineElement } from "../player";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
+import { useAddAssetAtPlayhead } from "../hooks/useAddAssetAtPlayhead";
 
 type RenderClipContent = (
   element: TimelineElement,
@@ -31,6 +32,8 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   right: ReactNode;
   /** Hide the whole shell (e.g. while the storyboard view is active). */
   hidden?: boolean;
+  /** Playback-only workspace: preview canvas + transport, without editing chrome. */
+  previewOnly?: boolean;
   timelineToolbar: ReactNode;
   renderClipContent: RenderClipContent;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void> | void;
@@ -67,6 +70,7 @@ export function EditorShell({
   left,
   right,
   hidden,
+  previewOnly = false,
   timelineToolbar,
   renderClipContent,
   handleTimelineElementDelete,
@@ -79,6 +83,7 @@ export function EditorShell({
   handleTimelineElementResize,
   handleTimelineGroupResize,
   handleToggleTrackHidden,
+  handleToggleTrackLocked,
   handleBlockedTimelineEdit,
   handleTimelineElementSplit,
   handleRazorSplit,
@@ -103,6 +108,7 @@ export function EditorShell({
     handleTimelineElementResize,
     handleTimelineGroupResize,
     handleToggleTrackHidden,
+    handleToggleTrackLocked,
     handleBlockedTimelineEdit,
     handleTimelineElementSplit,
     handleRazorSplit,
@@ -132,16 +138,17 @@ export function EditorShell({
           <EditorShellBody
             left={left}
             right={right}
+            previewOnly={previewOnly}
             captionEditMode={captionEditMode}
             onSelectTimelineElement={handleTimelineElementSelect}
-            onPreviewBlockDrop={handlePreviewBlockDrop}
+            onPreviewBlockDrop={previewOnly ? undefined : handlePreviewBlockDrop}
             timelineToolbar={timelineToolbar}
             renderClipContent={renderClipContent}
             onFileDrop={handleTimelineFileDrop}
             onAssetDrop={handleTimelineAssetDrop}
             onBlockDrop={handleTimelineBlockDrop}
             onDeleteElement={handleTimelineElementDelete}
-            previewOverlay={
+            previewOverlay={previewOnly ? null :
               <PreviewOverlays
                 shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                 blockPreview={blockPreview}
@@ -154,7 +161,7 @@ export function EditorShell({
           />
         </NLEProvider>
       </TimelineEditProvider>
-      <StudioFeedbackBar />
+      {!previewOnly && <StudioFeedbackBar />}
     </div>
   );
 }
@@ -162,6 +169,7 @@ export function EditorShell({
 interface EditorShellBodyProps {
   left: ReactNode;
   right: ReactNode;
+  previewOnly: boolean;
   captionEditMode: boolean;
   previewOverlay: ReactNode;
   onSelectTimelineElement: (element: TimelineElement | null) => void;
@@ -180,6 +188,7 @@ interface EditorShellBodyProps {
 function EditorShellBody({
   left,
   right,
+  previewOnly,
   captionEditMode,
   previewOverlay,
   onSelectTimelineElement,
@@ -192,6 +201,7 @@ function EditorShellBody({
   onDeleteElement,
 }: EditorShellBodyProps) {
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
+  const handlePreviewAssetDrop = useAddAssetAtPlayhead(onAssetDrop);
 
   // Keyboard: Escape to pop composition level
   const handleKeyDown = useCallback(
@@ -214,6 +224,11 @@ function EditorShellBody({
     >
       {/* Top row: [left | preview | right] — outer padding + the 8px resize
           seams give the panels CapCut-style separation on the dark canvas. */}
+      {previewOnly ? (
+        <div className="flex min-h-0 flex-1 p-px">
+          <PreviewPane editingEnabled={false} />
+        </div>
+      ) : (
       <div className="flex flex-row flex-1 min-h-0 px-px pt-px">
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 min-w-0 flex-1">
@@ -223,6 +238,7 @@ function EditorShellBody({
                 previewOverlay={previewOverlay}
                 onSelectTimelineElement={onSelectTimelineElement}
                 onPreviewBlockDrop={onPreviewBlockDrop}
+                onPreviewAssetDrop={handlePreviewAssetDrop}
               />
             </div>
           </div>
@@ -251,6 +267,7 @@ function EditorShellBody({
         </div>
         {right}
       </div>
+      )}
     </div>
   );
 }

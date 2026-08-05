@@ -10,9 +10,17 @@ import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
-import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
-import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
-import { FlatMotionSection } from "./propertyPanelFlatMotionSection";
+import {
+  FlatAppearanceSection,
+  FlatFillSection,
+  FlatMaskSection,
+  FlatStrokeSection,
+} from "./propertyPanelFlatStyleSections";
+import {
+  FlatLayoutSection,
+  LayoutTransform3DBlock,
+} from "./propertyPanelFlatLayoutSection";
+import { FlatMotionSection, FlatTimingRow } from "./propertyPanelFlatMotionSection";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { createGsapLivePreview } from "./gsapLivePreview";
@@ -230,13 +238,7 @@ export function PropertyPanelFlat({
   // switching the selection re-mounts this component and re-derives the
   // default instead of preserving stale state across unrelated elements.
   const [openGroupId, setOpenGroupId] = useState<string>(() =>
-    isTextEditableSelection(element)
-      ? "text"
-      : showEditableSections
-        ? "style"
-        : sections.media
-          ? "media"
-          : "layout",
+    sections.timing ? "timing" : sections.layout ? "layout" : showEditableSections ? "fill" : "",
   );
 
   // Tracks which group(s) are actively transitioning this toggle cycle, so
@@ -341,12 +343,25 @@ export function PropertyPanelFlat({
         }
       : null;
   const showMotionEffects = gsapEffectHandlers !== null;
-  const showMotionGroup = showMotionTiming || showMotionEffects;
 
   // Ordered group descriptors — one per FlatGroup this panel renders, gated by
   // the same conditions the inline JSX used. Split below into before-open/
   // open/after-open regions for the one-open accordion.
   const groups: FlatGroupDescriptor[] = [];
+  if (showMotionTiming) {
+    groups.push({
+      id: "timing",
+      title: "Timing",
+      content: (
+        <FlatTimingRow
+          element={element}
+          animations={gsapAnimations}
+          onSetAttribute={onSetAttribute}
+          onSetAttributes={onSetAttributes}
+        />
+      ),
+    });
+  }
   if (isTextEditable) {
     groups.push({
       id: "text",
@@ -367,26 +382,56 @@ export function PropertyPanelFlat({
     });
   }
   if (showEditableSections) {
-    // Number.isFinite guard (not `|| 1`): opacity 0 is a real value — an
-    // invisible element must summarize as 0%, not 100%.
-    const opacityValue = parseFloat(styles.opacity ?? "1");
-    const opacityPct = Math.round((Number.isFinite(opacityValue) ? opacityValue : 1) * 100);
     groups.push({
-      id: "style",
-      title: "Style",
-      summary: `fill ${styles["background-image"] && styles["background-image"] !== "none" ? "image/gradient" : styles["background-color"] ? "set" : "none"} · ${opacityPct}%`,
+      id: "fill",
+      title: "Fill",
       content: (
-        <FlatStyleSection
+        <FlatFillSection
           projectId={projectId}
           element={element}
           styles={styles}
           assets={assets}
           onSetStyle={onSetStyle}
           onImportAssets={onImportAssets}
-          gsapBorderRadius={gsapBorderRadius}
         />
       ),
     });
+    groups.push(
+      {
+        id: "stroke",
+        title: "Stroke",
+        content: (
+          <FlatStrokeSection
+            styles={styles}
+            disabled={!element.capabilities.canEditStyles}
+            onSetStyle={onSetStyle}
+          />
+        ),
+      },
+      {
+        id: "appearance",
+        title: "Appearance",
+        content: (
+          <FlatAppearanceSection
+            styles={styles}
+            gsapBorderRadius={gsapBorderRadius}
+            disabled={!element.capabilities.canEditStyles}
+            onSetStyle={onSetStyle}
+          />
+        ),
+      },
+      {
+        id: "mask",
+        title: "Mask",
+        content: (
+          <FlatMaskSection
+            styles={styles}
+            disabled={!element.capabilities.canEditStyles}
+            onSetStyle={onSetStyle}
+          />
+        ),
+      },
+    );
   }
   if (sections.layout) {
     groups.push({
@@ -428,26 +473,51 @@ export function PropertyPanelFlat({
           onRemoveKeyframe={onRemoveKeyframe}
           onConvertToKeyframes={onConvertToKeyframes}
           onLivePreviewProps={createGsapLivePreview(previewIframeRef ?? { current: null })}
+          include3d={false}
         />
       ),
     });
   }
-  if (showMotionGroup) {
+  if (showMotionEffects) {
     groups.push({
-      id: "motion",
-      title: "Motion",
+      id: "animation",
+      title: "Animation",
       summary: `${gsapAnimations.length} effect${gsapAnimations.length === 1 ? "" : "s"}`,
       content: (
         <FlatMotionSection
           element={element}
           animations={gsapAnimations}
-          showTiming={showMotionTiming}
+          showTiming={false}
           showEffects={showMotionEffects}
           multipleTimelines={gsapMultipleTimelines}
           unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
           onSetAttribute={onSetAttribute}
           onSetAttributes={onSetAttributes}
           {...(gsapEffectHandlers ?? EMPTY_GSAP_EFFECT_HANDLERS)}
+        />
+      ),
+    });
+  }
+  if (sections.layout) {
+    groups.push({
+      id: "transform-3d",
+      title: "3D Transform",
+      content: (
+        <LayoutTransform3DBlock
+          gsapRuntimeValues={gsapRuntimeValues}
+          gsapAnimId={gsapAnimId}
+          resolveAnimIdForProp={animIdForProp}
+          gsapKeyframes={navKeyframes}
+          currentPct={currentPct}
+          elStart={elStart}
+          elDuration={elDuration}
+          element={element}
+          onCommitAnimatedProperty={onCommitAnimatedProperty}
+          onCommitAnimatedProperties={onCommitAnimatedProperties}
+          onSeekToTime={onSeekToTime}
+          onRemoveKeyframe={onRemoveKeyframe}
+          onConvertToKeyframes={onConvertToKeyframes}
+          onLivePreviewProps={createGsapLivePreview(previewIframeRef ?? { current: null })}
         />
       ),
     });
@@ -500,14 +570,27 @@ export function PropertyPanelFlat({
   // a dedicated region between the two fixed header stacks. When no group is
   // open, every group is just a collapsed header — there's no scrollable
   // middle region at all, since nothing is expanded.
-  const openIndex = groups.findIndex((g) => g.id === openGroupId);
-  const beforeOpen = openIndex === -1 ? groups : groups.slice(0, openIndex);
-  const openGroup = openIndex === -1 ? null : groups[openIndex];
-  const afterOpen = openIndex === -1 ? [] : groups.slice(openIndex + 1);
-
+  const groupOrder = [
+    "timing",
+    "layout",
+    "fill",
+    "stroke",
+    "appearance",
+    "mask",
+    "animation",
+    "transform-3d",
+    "text",
+    "grade",
+    "media",
+  ];
+  groups.sort((a, b) => groupOrder.indexOf(a.id) - groupOrder.indexOf(b.id));
   return (
     <DesignPanelInputProvider ui="flat">
-      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
+      <div
+        className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1"
+        data-preserve-studio-selection="true"
+        data-testid="figma-property-inspector"
+      >
         <DesignPanelInputProvider section="header">
           <PropertyPanelFlatHeader
             name={element.label}
@@ -526,47 +609,36 @@ export function PropertyPanelFlat({
             showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
           />
         </DesignPanelInputProvider>
-        <div data-flat-panel-body="true" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {beforeOpen.map((g) => (
-            <DesignPanelInputProvider key={g.id} section={slugifyDesignInput(g.title)}>
-              <FlatGroupHeader
-                title={g.title}
-                isOpen={false}
-                onToggleOpen={() => toggleOpen(g.id)}
-                summary={g.summary}
-                animateEntrance={justToggledIds.includes(g.id)}
-              />
-            </DesignPanelInputProvider>
-          ))}
-          {openGroup && (
-            <DesignPanelInputProvider section={slugifyDesignInput(openGroup.title)}>
-              <div data-flat-group-open="true" className="flex min-h-0 flex-1 flex-col">
-                <FlatGroupHeader
-                  title={openGroup.title}
-                  isOpen
-                  onToggleOpen={() => toggleOpen(openGroup.id)}
-                  accessory={openGroup.accessory}
-                  animateEntrance={justToggledIds.includes(openGroup.id)}
-                />
-                <div
-                  className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline bg-panel-bg-inset px-4 py-3 shadow-[inset_0_2px_4px_-1px_rgba(0,0,0,0.5)]`}
-                >
-                  {openGroup.content}
-                </div>
-              </div>
-            </DesignPanelInputProvider>
-          )}
-          {afterOpen.map((g) => (
-            <DesignPanelInputProvider key={g.id} section={slugifyDesignInput(g.title)}>
-              <FlatGroupHeader
-                title={g.title}
-                isOpen={false}
-                onToggleOpen={() => toggleOpen(g.id)}
-                summary={g.summary}
-                animateEntrance={justToggledIds.includes(g.id)}
-              />
-            </DesignPanelInputProvider>
-          ))}
+        <div
+          data-flat-panel-body="true"
+          data-flat-inspector-surface="true"
+          className="min-h-0 flex-1 overflow-y-auto bg-panel-bg"
+        >
+          {groups.map((group) => {
+            const isOpen = group.id === openGroupId;
+            return (
+              <DesignPanelInputProvider key={group.id} section={slugifyDesignInput(group.title)}>
+                <section data-flat-group={group.id} data-flat-group-open={isOpen || undefined}>
+                  <FlatGroupHeader
+                    title={group.title}
+                    isOpen={isOpen}
+                    onToggleOpen={() => toggleOpen(group.id)}
+                    accessory={isOpen ? group.accessory : undefined}
+                    summary={isOpen ? undefined : group.summary}
+                    animateEntrance={justToggledIds.includes(group.id)}
+                  />
+                  {isOpen && (
+                    <div
+                      data-flat-group-content="true"
+                      className={`${justToggledIds.includes(group.id) ? "hf-flat-group-enter " : ""}border-b border-panel-hairline bg-panel-bg px-3 py-2 dark:bg-panel-bg`}
+                    >
+                      <div className="border-l-2 border-[#20bbc0] pl-2">{group.content}</div>
+                    </div>
+                  )}
+                </section>
+              </DesignPanelInputProvider>
+            );
+          })}
         </div>
         <DesignPanelInputProvider section="footer">
           <PropertyPanelFlatFooter

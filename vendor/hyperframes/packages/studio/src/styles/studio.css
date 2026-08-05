@@ -152,37 +152,17 @@ body {
   color: #18181b;
 }
 
-/* Keep the primary transport control readable against the pale preview
-   surface; the icon inherits this semantic foreground color. */
-:root[data-ipollowork-theme="light"] .hf-studio-play-control {
-  background: #ffffff !important;
-  border-color: #b8c3cf !important;
-  color: #0f172a !important;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.14),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.72);
-}
-
-:root:not([data-ipollowork-theme="light"]) .hf-studio-play-control {
-  background: #27272a !important;
-  border-color: #52525b !important;
-  color: #ffffff !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-
 .hf-studio-play-control {
   min-width: 2rem;
   min-height: 2rem;
+  background: #171816;
   border-radius: 9999px !important;
   transition:
-    background-color 150ms ease,
-    border-color 150ms ease,
-    color 150ms ease,
-    transform 150ms ease,
-    box-shadow 150ms ease;
+    opacity 150ms ease,
+    transform 150ms ease;
 }
 .hf-studio-play-control:hover {
-  transform: translateY(-1px);
+  transform: scale(1.03);
 }
 
 .hf-studio-play-icon {
@@ -501,6 +481,49 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   background-color: var(--hf-workspace-surface) !important;
 }
 
+:root[data-ipollowork-theme="light"] .hf-timeline-toolbar {
+  border-color: var(--hf-workspace-border) !important;
+  background: var(--hf-workspace-surface);
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-toolbar .text-neutral-400,
+:root[data-ipollowork-theme="light"] .hf-timeline-toolbar .text-neutral-500,
+:root[data-ipollowork-theme="light"] .hf-timeline-toolbar .text-neutral-600 {
+  color: #7a838d !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-toolbar .text-neutral-700 {
+  color: #c4cad0 !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-toolbar [class*="hover:bg-white"]:hover,
+:root[data-ipollowork-theme="light"] .hf-timeline-toolbar .bg-white\/\[0\.08\] {
+  background-color: #eef1f3 !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-toolbar input[type="range"]::-webkit-slider-runnable-track {
+  background: #aab2bb !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-toolbar input[type="range"]::-webkit-slider-thumb {
+  background: #ffffff !important;
+  box-shadow:
+    0 0 0 2px #32373d,
+    0 1px 3px rgba(15, 23, 42, 0.2) !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler-label {
+  color: #8b929a !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler-major-tick {
+  background: #cfd4da !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-ruler-minor-tick {
+  background: #e2e5e9 !important;
+}
+
 /* The empty timeline has its own hard-coded dark surface and therefore needs
    an explicit light-theme bridge, just like the populated timeline lanes. */
 :root[data-ipollowork-theme="light"] .hf-timeline-empty {
@@ -767,18 +790,31 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   isolation: isolate;
 }
 
+.hf-timeline-layer-header.is-selected {
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+.hf-timeline-layer-header__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  margin-right: 4px;
+  margin-left: 8px;
+}
+
 .hf-timeline-layer-header__visibility {
   display: flex;
-  width: 28px;
-  height: 28px;
+  width: 16px;
+  height: 16px;
   flex: none;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
-  opacity: 0.58;
+  opacity: 1;
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
@@ -791,13 +827,14 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 }
 
 .hf-timeline-layer-header__visibility.is-hidden {
-  border-color: currentColor;
-  background: rgba(255, 255, 255, 0.035);
+  background: transparent;
   opacity: 1;
 }
 
 .hf-timeline-layer-header__visibility:focus-visible,
+.hf-timeline-layer-header__status:focus-visible,
 .hf-timeline-layer-header__select:focus-visible,
+.hf-timeline-layer-header__caret:focus-visible,
 .hf-timeline-layer-header__reorder:focus-visible {
   outline: 1px solid #3ce6ac;
   outline-offset: -1px;
@@ -805,16 +842,25 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 
 .hf-timeline-layer-header__status {
   display: flex;
-  width: 20px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   flex: none;
   align-items: center;
   justify-content: center;
-  opacity: 0.3;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  opacity: 1;
+  transition: background-color 120ms ease;
+}
+
+.hf-timeline-layer-header__status:hover {
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .hf-timeline-layer-header__status.is-locked {
-  opacity: 0.72;
+  opacity: 1;
 }
 
 .hf-timeline-layer-header__status.is-materializing {
@@ -827,8 +873,8 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   min-width: 0;
   flex: 1;
   align-items: center;
-  gap: 6px;
-  padding: 5px 6px;
+  gap: 4px;
+  padding: 0;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -845,13 +891,44 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 
 .hf-timeline-layer-header__kind,
 .hf-timeline-layer-header__binding,
-.hf-timeline-layer-header__caret {
+.hf-timeline-layer-header__caret,
+.hf-timeline-layer-header__caret-spacer {
   display: flex;
   width: 16px;
   height: 16px;
   flex: none;
   align-items: center;
   justify-content: center;
+}
+
+.hf-timeline-layer-header__kind img {
+  width: 11px;
+  height: 11px;
+}
+
+.hf-timeline-layer-header__status img,
+.hf-timeline-layer-header__visibility img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.hf-timeline-layer-header__caret {
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.hf-timeline-layer-header__caret-spacer {
+  pointer-events: none;
+}
+
+.hf-timeline-layer-header__caret:hover {
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .hf-timeline-layer-header__binding {
@@ -864,9 +941,9 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  font-size: 11px;
-  font-weight: 550;
-  line-height: 1.2;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -877,8 +954,8 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 
 .hf-timeline-layer-header__reorder {
   display: flex;
-  width: 22px;
-  height: 28px;
+  width: 20px;
+  height: 24px;
   flex: none;
   align-items: center;
   justify-content: center;
@@ -888,10 +965,15 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   background: transparent;
   color: inherit;
   cursor: row-resize;
-  opacity: 0.42;
+  opacity: 0;
   transition:
     background-color 120ms ease,
     opacity 120ms ease;
+}
+
+.hf-timeline-layer-header:hover .hf-timeline-layer-header__reorder,
+.hf-timeline-layer-header:focus-within .hf-timeline-layer-header__reorder {
+  opacity: 0.42;
 }
 
 .hf-timeline-layer-header__reorder:hover:not(:disabled) {
@@ -902,6 +984,71 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 .hf-timeline-layer-header__reorder:disabled {
   cursor: not-allowed;
   opacity: 0.15;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-layer-header {
+  color: #858a94 !important;
+  background: #ffffff !important;
+  border-right-color: #e2e5e9 !important;
+  border-bottom-color: #eceef0 !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-layer-header.is-selected {
+  color: #111111 !important;
+  background: #f5f6f9 !important;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-layer-header__select:hover,
+:root[data-ipollowork-theme="light"] .hf-timeline-layer-header__caret:hover,
+:root[data-ipollowork-theme="light"] .hf-timeline-layer-header__visibility:hover,
+:root[data-ipollowork-theme="light"] .hf-timeline-layer-header__reorder:hover:not(:disabled) {
+  background: #e7eaed;
+}
+
+:root[data-ipollowork-theme="light"] .hf-timeline-layer-header__visibility.is-hidden {
+  background: transparent;
+}
+
+:root[data-ipollowork-theme="light"] .timeline-clip {
+  background-color: #f5f6f9 !important;
+  border-width: 0.5px;
+  border-color: #cccccc !important;
+  color: #111111;
+}
+
+:root[data-ipollowork-theme="light"] .timeline-clip.is-hovered {
+  background-color: #e9edf0 !important;
+}
+
+:root[data-ipollowork-theme="light"] .timeline-clip.is-selected {
+  background-color: #20bbc0 !important;
+  border-color: transparent !important;
+  box-shadow: none;
+}
+
+:root[data-ipollowork-theme="light"] .timeline-clip__label,
+:root[data-ipollowork-theme="light"] .hf-timeline-clip-content__label {
+  color: #20262d !important;
+  text-shadow: none;
+}
+
+:root[data-ipollowork-theme="light"] .timeline-clip.is-selected .timeline-clip__label,
+:root[data-ipollowork-theme="light"] .timeline-clip.is-selected .hf-timeline-clip-content__label {
+  color: #000000 !important;
+}
+
+:root[data-ipollowork-theme="light"] .timeline-clip__label {
+  top: 50%;
+  left: 10px;
+  color: #111111 !important;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: normal;
+  transform: translateY(-50%);
+}
+
+:root[data-ipollowork-theme="light"] .timeline-clip__timecode {
+  display: none;
 }
 
 .hf-timeline-clip-content {
@@ -1239,6 +1386,24 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 
 .hf-flat-group-enter {
   animation: hf-flat-group-in 120ms ease-out;
+}
+
+/* Compact Figma-style layer inspector: every expanded group is one quiet
+ * status card, while its controls retain their existing editing callbacks. */
+[data-flat-inspector-surface="true"] [data-flat-group-content="true"] {
+  box-shadow: inset 0 1px 0 rgb(20 184 166 / 0.06);
+}
+
+[data-flat-inspector-surface="true"] [data-flat-group-content="true"] [data-flat-slider-track="true"] {
+  min-height: 18px;
+}
+
+[data-flat-inspector-surface="true"] [data-flat-group-content="true"] [data-flat-slider-track="true"] > div:first-child {
+  height: 3px;
+}
+
+[data-flat-inspector-surface="true"] [data-flat-3d-transform="true"] {
+  border-color: var(--hf-panel-hairline);
 }
 
 @media (prefers-reduced-motion: reduce) {
