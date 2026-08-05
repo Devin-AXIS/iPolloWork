@@ -371,10 +371,7 @@ export function useDomSelection({
     async (element: TimelineElement | null) => {
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
       const seq = ++timelineSelectSeqRef.current;
-      if (!element) {
-        applyDomSelection(null, { revealPanel: false });
-        return;
-      }
+      if (!element) return;
 
       const selection = await buildDomSelectionForTimelineElement(element);
       // A newer selection superseded this one while we were resolving — drop the stale result.
@@ -518,7 +515,6 @@ export function useDomSelection({
         return;
       }
       if (selections.length === 0) {
-        if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
       }
       const current = domEditSelectionRef.current;

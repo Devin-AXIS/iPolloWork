@@ -164,12 +164,11 @@ export function Transform3DCube({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-neutral-800 bg-gradient-to-b from-neutral-900 to-neutral-950">
+    <div className="relative h-[142px] overflow-hidden rounded-[8px] bg-[#0b0f0e]">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-        className="block w-full cursor-grab touch-none select-none active:cursor-grabbing"
-        style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
+        className="block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

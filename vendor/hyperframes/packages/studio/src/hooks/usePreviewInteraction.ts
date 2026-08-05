@@ -164,7 +164,6 @@ export function usePreviewInteraction({
       nextSelection = nextSelection ?? options?.hoverSelection ?? null;
       if (!nextSelection) {
         cycleRef.current = null;
-        applyDomSelection(null, { revealPanel: false });
         resumeIfNothingSelected();
         return;
       }

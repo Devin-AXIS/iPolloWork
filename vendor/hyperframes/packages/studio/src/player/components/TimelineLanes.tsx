@@ -158,9 +158,7 @@ export const TimelineLanes = memo(function TimelineLanes({
   onRazorSplitAll,
 }: TimelineLanesProps) {
   const clipParentMap = usePlayerStore((state) => state.clipParentMap);
-  const expandedTimelineElementIds = usePlayerStore(
-    (state) => state.expandedTimelineElementIds,
-  );
+  const expandedTimelineElementIds = usePlayerStore((state) => state.expandedTimelineElementIds);
   const expandableParentIds = useMemo(() => new Set(clipParentMap.values()), [clipParentMap]);
   const tracksByNumber = new Map(tracks);
   const deferOffscreenLanes = displayTrackOrder.length >= 40;
@@ -241,9 +239,10 @@ export const TimelineLanes = memo(function TimelineLanes({
             const key = element.key ?? element.id;
             return selectedElementId === key || selectedElementIds.has(key);
           });
-          const expanded = els.some((element) =>
-            expandedTimelineElementIds.has(element.domId ?? element.id) ||
-            expandedTimelineElementIds.has(element.key ?? element.id),
+          const expanded = els.some(
+            (element) =>
+              expandedTimelineElementIds.has(element.domId ?? element.id) ||
+              expandedTimelineElementIds.has(element.key ?? element.id),
           );
           const expandable = els.some((element) =>
             expandableParentIds.has(element.domId ?? element.id),
@@ -614,7 +613,6 @@ export const TimelineLanes = memo(function TimelineLanes({
                               clipWidthPx={Math.max(previewElement.duration * pps, 4)}
                               clipHeightPx={TRACK_H - 2 * CLIP_Y}
                               beatsActive={beatStripOnTrack}
-                              accentColor={clipStyle.accent}
                               isSelected={isSelected}
                               currentPercentage={
                                 previewElement.duration > 0

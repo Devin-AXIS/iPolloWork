@@ -1,22 +1,25 @@
-import { useMemo, useRef, useState } from "react";
-import { Plus, RotateCcw, X } from "../../icons/SystemIcons";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ArrowLeftRight, ChevronDown, Eyedropper, Plus, X } from "../../icons/SystemIcons";
 import {
   buildDefaultGradientModel,
-  insertGradientStop,
   parseGradient,
   serializeGradient,
   type GradientModel,
 } from "./gradientValue";
 import { IMAGE_EXT } from "../../utils/mediaTypes";
-import { FIELD, LABEL, RESPONSIVE_GRID } from "./propertyPanelHelpers";
-import {
-  DetailField,
-  SelectField,
-  SegmentedControl,
-  SliderControl,
-} from "./propertyPanelPrimitives";
-import { ColorField } from "./propertyPanelColor";
+import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
+import { DetailField } from "./propertyPanelPrimitives";
+import { FlatDropdown } from "./propertyPanelFlatSelectRow";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { formatCssColor, hsvToRgb, parseCssColor, rgbToHsv, toHexColor } from "./colorValue";
+import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
+
+declare global {
+  interface Window {
+    EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> };
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /*  Asset path helpers                                                 */
@@ -72,6 +75,7 @@ function resolveSelectedAsset(
 /* ------------------------------------------------------------------ */
 
 export function ImageFillField({
+  flat,
   projectId,
   sourceFile,
   value,
@@ -80,6 +84,7 @@ export function ImageFillField({
   onCommit,
   onImportAssets,
 }: {
+  flat?: boolean;
   projectId: string;
   sourceFile: string;
   value: string;
@@ -112,6 +117,65 @@ export function ImageFillField({
       setUploading(false);
     }
   };
+
+  if (flat) {
+    return (
+      <div className="grid gap-3">
+        <div className="flex h-[34px] items-center justify-between gap-3 rounded-[6px] bg-panel-input pl-2 pr-4">
+          <span className="text-[13px] text-[#24262b] dark:text-panel-text-1">Image</span>
+          <FlatDropdown
+            ariaLabel="Image fill"
+            value={selectedAsset ?? ""}
+            disabled={disabled}
+            options={[
+              { value: "", label: "Choose media" },
+              ...imageAssets.map((asset) => ({
+                value: asset,
+                label: asset.split("/").pop() ?? asset,
+              })),
+            ]}
+            className="max-w-[190px] flex-1"
+            valueClassName="text-[12px] text-[#858a94]"
+            onChange={(next) => {
+              track("select", "Image fill");
+              onCommit(next ? `url("${toProjectRootAssetPath(next)}")` : "none");
+            }}
+          />
+        </div>
+        <div
+          className="flex h-[100px] items-center justify-center overflow-hidden rounded-[8px] border border-[#ebebeb]"
+          style={{
+            backgroundColor: "white",
+            backgroundImage: selectedAsset
+              ? `url("/api/projects/${projectId}/preview/${selectedAsset}")`
+              : "linear-gradient(45deg,#f1f1f1 25%,transparent 25%),linear-gradient(-45deg,#f1f1f1 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f1f1f1 75%),linear-gradient(-45deg,transparent 75%,#f1f1f1 75%)",
+            backgroundPosition: selectedAsset ? "center" : "0 0,0 8px,8px -8px,-8px 0",
+            backgroundSize: selectedAsset ? "cover" : "16px 16px",
+          }}
+        >
+          <button
+            type="button"
+            disabled={disabled || uploading || !onImportAssets}
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded-[8px] bg-black px-4 py-2 text-[10px] text-white shadow-sm transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {uploading ? "Uploading…" : "Choose Media"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            aria-label="Choose image media"
+            className="hidden"
+            onChange={async (event) => {
+              await handleUpload(event.target.files);
+              event.target.value = "";
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -212,227 +276,370 @@ export function GradientField({
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
-  const previewRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const saturationRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [selectedStop, setSelectedStop] = useState(0);
+  const [colorMode, setColorMode] = useState<"hsb" | "rgb" | "hex">("hsb");
+  const [panelPosition, setPanelPosition] = useState<FloatingPosition | null>(null);
   const parsed = parseGradient(value) ?? buildDefaultGradientModel(fallbackColor);
+  const stopIndex = Math.min(selectedStop, parsed.stops.length - 1);
+  const stop = parsed.stops[stopIndex];
+  const color = colorFromCss(stop.color);
+  const hsv = rgbToHsv(color);
+  const hueColor = formatCssColor({
+    ...hsvToRgb({ hue: hsv.hue, saturation: 1, value: 1 }),
+    alpha: 1,
+  });
+  const preview = serializeGradient(parsed);
 
   const commit = (next: GradientModel) => onCommit(serializeGradient(next));
-  const patch = (partial: Partial<GradientModel>) => commit({ ...parsed, ...partial });
-
   const updateStop = (index: number, partial: Partial<GradientModel["stops"][number]>) => {
     const stops = parsed.stops.map((stop, i) => (i === index ? { ...stop, ...partial } : stop));
     commit({ ...parsed, stops });
   };
-
-  const addStop = (position?: number) => {
-    const nextGradient =
-      position != null
-        ? insertGradientStop(parsed, position)
-        : insertGradientStop(
-            parsed,
-            parsed.stops.at(-1)?.position != null
-              ? Math.min(100, (parsed.stops.at(-1)?.position ?? 90) + 10)
-              : 100,
-          );
-    track("button", "Add gradient stop");
-    commit(nextGradient);
+  const commitColor = (next: string) => {
+    track("color", `Gradient stop ${stopIndex + 1}`);
+    updateStop(stopIndex, { color: next });
   };
-
-  const removeStop = (index: number) => {
-    if (parsed.stops.length <= 2) return;
-    track("button", `Remove gradient stop ${index + 1}`);
-    commit({ ...parsed, stops: parsed.stops.filter((_, i) => i !== index) });
+  const commitHsv = (next: { hue?: number; saturation?: number; value?: number }) => {
+    const rgb = hsvToRgb({
+      hue: next.hue ?? hsv.hue,
+      saturation: next.saturation ?? hsv.saturation,
+      value: next.value ?? hsv.value,
+    });
+    commitColor(formatCssColor({ ...rgb, alpha: color.alpha }));
   };
+  const updateSaturation = (clientX: number, clientY: number) => {
+    const rect = saturationRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    commitHsv({
+      saturation: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+      value: Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height)),
+    });
+  };
+  const updatePanelPosition = useCallback(() => {
+    const anchor = triggerRef.current?.getBoundingClientRect();
+    if (!anchor) return;
+    setPanelPosition(
+      resolveFloatingPanelPosition(
+        anchor,
+        { width: window.innerWidth, height: window.innerHeight },
+        { width: 280, height: 426 },
+      ),
+    );
+  }, []);
 
-  const previewStyle = { backgroundImage: serializeGradient(parsed) };
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePanelPosition();
+    window.addEventListener("resize", updatePanelPosition);
+    window.addEventListener("scroll", updatePanelPosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePanelPosition);
+      window.removeEventListener("scroll", updatePanelPosition, true);
+    };
+  }, [open, updatePanelPosition]);
 
-  return (
-    <div className="space-y-4">
-      <div className={`${FIELD} space-y-3 p-3`}>
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [open]);
+
+  const recommendations = useMemo(() => {
+    const base = colorFromCss(fallbackColor || stop.color);
+    const baseHsv = rgbToHsv(base);
+    const candidates = [
+      "#000000",
+      "#ffffff",
+      ...parsed.stops.map((item) => toHexColor(colorFromCss(item.color))),
+      toHexColor(hsvToRgb({ ...baseHsv, value: Math.min(1, baseHsv.value + 0.22) })),
+      toHexColor(hsvToRgb({ ...baseHsv, value: Math.max(0.18, baseHsv.value - 0.22) })),
+      toHexColor(hsvToRgb({ ...baseHsv, hue: (baseHsv.hue + 32) % 360 })),
+      "#20BBC0",
+      "#7C5CFC",
+      "#F6C344",
+    ];
+    return [...new Set(candidates.map((item) => item.toUpperCase()))].slice(0, 6);
+  }, [fallbackColor, parsed.stops, stop.color]);
+
+  const fields =
+    colorMode === "hsb"
+      ? [
+          {
+            label: "H",
+            value: Math.round(hsv.hue),
+            max: 360,
+            commit: (next: number) => commitHsv({ hue: next }),
+          },
+          {
+            label: "S",
+            value: Math.round(hsv.saturation * 100),
+            max: 100,
+            commit: (next: number) => commitHsv({ saturation: next / 100 }),
+          },
+          {
+            label: "B",
+            value: Math.round(hsv.value * 100),
+            max: 100,
+            commit: (next: number) => commitHsv({ value: next / 100 }),
+          },
+        ]
+      : [
+          {
+            label: "R",
+            value: Math.round(color.red),
+            max: 255,
+            commit: (next: number) => commitColor(formatCssColor({ ...color, red: next })),
+          },
+          {
+            label: "G",
+            value: Math.round(color.green),
+            max: 255,
+            commit: (next: number) => commitColor(formatCssColor({ ...color, green: next })),
+          },
+          {
+            label: "B",
+            value: Math.round(color.blue),
+            max: 255,
+            commit: (next: number) => commitColor(formatCssColor({ ...color, blue: next })),
+          },
+        ];
+
+  const picker = open
+    ? createPortal(
         <div
-          ref={previewRef}
-          className="relative h-11 overflow-hidden rounded-lg border border-neutral-700"
-          style={previewStyle}
-          onClick={(event) => {
-            if (disabled) return;
-            const rect = previewRef.current?.getBoundingClientRect();
-            if (!rect || rect.width <= 0) return;
-            addStop(((event.clientX - rect.left) / rect.width) * 100);
-          }}
+          ref={panelRef}
+          className="fixed z-[9999] w-[280px] overflow-hidden rounded-[16px] border border-[#dedede] bg-white text-[#171717] shadow-[0_16px_40px_rgba(0,0,0,0.14),0_2px_8px_rgba(0,0,0,0.06)] dark:border-panel-hairline dark:bg-panel-bg dark:text-panel-text-1"
+          style={{ left: panelPosition?.left ?? -9999, top: panelPosition?.top ?? -9999 }}
         >
-          {parsed.stops.map((stop, index) => (
-            <div
-              key={`stop-preview-${index}`}
-              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
-              style={{
-                left: `calc(${stop.position}% - 8px)`,
-                backgroundColor: stop.color,
-              }}
-            />
-          ))}
-        </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <SegmentedControl
-            trackName="Gradient type"
-            disabled={disabled}
-            value={parsed.kind}
-            onChange={(next) => patch({ kind: next as GradientModel["kind"] })}
-            options={[
-              { label: "Linear", value: "linear" },
-              { label: "Radial", value: "radial" },
-              { label: "Conic", value: "conic" },
-            ]}
-          />
-          <label className="flex items-center gap-2 text-[11px] font-medium text-neutral-400">
-            <input
-              type="checkbox"
-              checked={parsed.repeating}
-              disabled={disabled}
-              onChange={(e) => {
-                track("toggle", "Repeat gradient");
-                patch({ repeating: e.target.checked });
-              }}
-              className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
-            />
-            Repeat
-          </label>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => {
-              track("button", "Reverse gradient");
-              commit({
-                ...parsed,
-                stops: [...parsed.stops].reverse().map((stop) => ({
-                  ...stop,
-                  position: 100 - stop.position,
-                })),
-              });
-            }}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
-          >
-            <RotateCcw size={12} />
-            Reverse
-          </button>
-        </div>
-      </div>
-
-      {(parsed.kind === "linear" || parsed.kind === "conic") && (
-        <div className="grid gap-1.5">
-          <span className={LABEL}>{parsed.kind === "linear" ? "Angle" : "Start angle"}</span>
-          <SliderControl
-            trackName={parsed.kind === "linear" ? "Angle" : "Start angle"}
-            value={parsed.angle}
-            min={0}
-            max={360}
-            step={1}
-            disabled={disabled}
-            displayValue={`${Math.round(parsed.angle)}°`}
-            formatDisplayValue={(next) => `${Math.round(next)}°`}
-            onCommit={(next) => patch({ angle: next })}
-          />
-        </div>
-      )}
-
-      {parsed.kind === "radial" && (
-        <div className={RESPONSIVE_GRID}>
-          <SelectField
-            label="Shape"
-            value={parsed.shape}
-            disabled={disabled}
-            onChange={(next) => patch({ shape: next as GradientModel["shape"] })}
-            options={["ellipse", "circle"]}
-          />
-          <SelectField
-            label="Size"
-            value={parsed.radialSize}
-            disabled={disabled}
-            onChange={(next) => patch({ radialSize: next as GradientModel["radialSize"] })}
-            options={["closest-side", "closest-corner", "farthest-side", "farthest-corner"]}
-          />
-        </div>
-      )}
-
-      {(parsed.kind === "radial" || parsed.kind === "conic") && (
-        <div className={RESPONSIVE_GRID}>
-          <div className="grid min-w-0 gap-1.5">
-            <span className={LABEL}>Center X</span>
-            <SliderControl
-              trackName="Center X"
-              value={parsed.centerX}
-              min={0}
-              max={100}
-              step={1}
-              disabled={disabled}
-              displayValue={`${Math.round(parsed.centerX)}%`}
-              formatDisplayValue={(next) => `${Math.round(next)}%`}
-              onCommit={(next) => patch({ centerX: next })}
-            />
-          </div>
-          <div className="grid min-w-0 gap-1.5">
-            <span className={LABEL}>Center Y</span>
-            <SliderControl
-              trackName="Center Y"
-              value={parsed.centerY}
-              min={0}
-              max={100}
-              step={1}
-              disabled={disabled}
-              displayValue={`${Math.round(parsed.centerY)}%`}
-              formatDisplayValue={(next) => `${Math.round(next)}%`}
-              onCommit={(next) => patch({ centerY: next })}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className={LABEL}>Stops</span>
-          <button
-            type="button"
-            disabled={disabled || parsed.stops.length >= 6}
-            onClick={() => addStop()}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
-          >
-            <Plus size={12} />
-            Add stop
-          </button>
-        </div>
-        <div className="space-y-3">
-          {parsed.stops.map((stop, index) => (
-            <div
-              key={`stop-editor-${index}`}
-              className="grid min-w-0 grid-cols-[minmax(0,1fr)_68px_28px] gap-2"
+          <div className="flex h-12 items-center justify-between border-b border-[#e5e5e5] px-4 dark:border-panel-hairline">
+            <span className="text-[14px] font-semibold tracking-[-0.3px]">Gradient</span>
+            <button
+              type="button"
+              aria-label="Close gradient editor"
+              onClick={() => setOpen(false)}
+              className="flex size-7 items-center justify-center rounded-[8px] hover:bg-[#f5f5f5] dark:hover:bg-panel-input"
             >
-              <ColorField
-                label={`Stop ${index + 1}`}
-                value={stop.color}
-                disabled={disabled}
-                onCommit={(next) => updateStop(index, { color: next })}
-              />
-              <DetailField
-                label="Pos"
-                value={`${Math.round(stop.position)}%`}
-                disabled={disabled}
-                onCommit={(next) =>
-                  updateStop(index, {
-                    position: Number.parseFloat(next.replace("%", "")) || 0,
-                  })
-                }
-              />
+              <X size={16} />
+            </button>
+          </div>
+          <div className="grid gap-[14px] p-[14px_16px_16px]">
+            <div className="flex items-center justify-between pr-2">
+              <div
+                className="relative h-4 w-[182px] rounded-[7px]"
+                style={{ backgroundImage: preview }}
+              >
+                {parsed.stops.map((item, index) => (
+                  <button
+                    key={`${item.color}-${index}`}
+                    type="button"
+                    aria-label={`Select gradient stop ${index + 1}`}
+                    onClick={() => setSelectedStop(index)}
+                    className={`absolute top-1/2 flex size-[26px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[7px] border bg-white shadow-sm ${index === stopIndex ? "border-black" : "border-[#dedede]"}`}
+                    style={{ left: `${item.position}%` }}
+                  >
+                    <span
+                      className="size-[13px] rounded-[3px]"
+                      style={{ backgroundColor: item.color }}
+                    />
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
-                disabled={disabled || parsed.stops.length <= 2}
-                onClick={() => removeStop(index)}
-                className="mt-[22px] flex h-10 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950 text-neutral-400 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-700"
-                aria-label={`Remove stop ${index + 1}`}
+                aria-label="Reverse gradient"
+                onClick={() => {
+                  track("button", "Reverse gradient");
+                  commit({
+                    ...parsed,
+                    stops: [...parsed.stops]
+                      .reverse()
+                      .map((item) => ({ ...item, position: 100 - item.position })),
+                  });
+                  setSelectedStop(parsed.stops.length - 1 - stopIndex);
+                }}
               >
-                <X size={12} />
+                <ArrowLeftRight size={16} />
               </button>
             </div>
-          ))}
-        </div>
-      </div>
-    </div>
+            <div
+              ref={saturationRef}
+              role="slider"
+              aria-label="Saturation and brightness"
+              tabIndex={0}
+              className="relative h-[165px] cursor-crosshair overflow-hidden rounded-[8px] border border-[#d9d9d9]"
+              style={{ backgroundColor: hueColor }}
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                updateSaturation(event.clientX, event.clientY);
+              }}
+              onPointerMove={(event) => {
+                if (event.buttons === 1) updateSaturation(event.clientX, event.clientY);
+              }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
+              <span
+                className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow"
+                style={{
+                  left: `${hsv.saturation * 100}%`,
+                  top: `${(1 - hsv.value) * 100}%`,
+                  backgroundColor: stop.color,
+                }}
+              />
+            </div>
+            <div className="grid grid-cols-[28px_minmax(0,1fr)] items-center gap-4">
+              <button
+                type="button"
+                aria-label="Pick color from screen"
+                disabled={!window.EyeDropper}
+                onClick={async () => {
+                  const Picker = window.EyeDropper;
+                  if (!Picker) return;
+                  const result = await new Picker().open();
+                  commitColor(result.sRGBHex);
+                }}
+                className="flex size-7 items-center justify-center disabled:opacity-30"
+              >
+                <Eyedropper size={16} />
+              </button>
+              <div className="grid gap-[11px]">
+                <input
+                  type="range"
+                  aria-label="Hue"
+                  min={0}
+                  max={360}
+                  value={hsv.hue}
+                  onChange={(event) => commitHsv({ hue: Number(event.target.value) })}
+                  className="h-4 w-full appearance-none rounded-full"
+                  style={{
+                    background: "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)",
+                  }}
+                />
+                <input
+                  type="range"
+                  aria-label="Opacity"
+                  min={0}
+                  max={100}
+                  value={Math.round(color.alpha * 100)}
+                  onChange={(event) =>
+                    commitColor(
+                      formatCssColor({ ...color, alpha: Number(event.target.value) / 100 }),
+                    )
+                  }
+                  className="h-4 w-full appearance-none rounded-full"
+                  style={{
+                    background: `linear-gradient(90deg,transparent,${formatCssColor({ ...color, alpha: 1 })})`,
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex h-9 overflow-hidden rounded-[8px] border border-[#e5e5e5] bg-[#f5f5f5]">
+              <FlatDropdown
+                ariaLabel="Gradient color format"
+                value={colorMode}
+                options={[
+                  { value: "hsb", label: "HSB" },
+                  { value: "rgb", label: "RGB" },
+                  { value: "hex", label: "HEX" },
+                ]}
+                className="h-full w-[64px] border-r border-white px-2 uppercase"
+                valueClassName="text-[12px]"
+                onChange={(next) => {
+                  if (next === "hsb" || next === "rgb" || next === "hex") setColorMode(next);
+                }}
+              />
+              {colorMode === "hex" ? (
+                <input
+                  aria-label="Hex color"
+                  value={toHexColor(color).slice(1).toUpperCase()}
+                  onChange={(event) => {
+                    const next = parseCssColor(`#${event.target.value}`);
+                    if (next) commitColor(formatCssColor({ ...next, alpha: color.alpha }));
+                  }}
+                  className="min-w-0 flex-1 bg-transparent px-2 text-center text-[12px] outline-none"
+                />
+              ) : (
+                fields.map((field) => (
+                  <input
+                    key={field.label}
+                    aria-label={field.label}
+                    type="number"
+                    min={0}
+                    max={field.max}
+                    value={field.value}
+                    onChange={(event) =>
+                      field.commit(Math.max(0, Math.min(field.max, Number(event.target.value))))
+                    }
+                    className="min-w-0 flex-1 border-r border-white bg-transparent text-center text-[12px] outline-none"
+                  />
+                ))
+              )}
+              <label className="flex w-12 items-center justify-center gap-0.5 text-[12px]">
+                <input
+                  aria-label="Alpha percent"
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={Math.round(color.alpha * 100)}
+                  onChange={(event) =>
+                    commitColor(
+                      formatCssColor({
+                        ...color,
+                        alpha: Math.max(0, Math.min(100, Number(event.target.value))) / 100,
+                      }),
+                    )
+                  }
+                  className="w-7 bg-transparent text-center outline-none"
+                />
+                <span className="text-[#727272]">%</span>
+              </label>
+            </div>
+            <div className="grid grid-cols-6 gap-2">
+              {recommendations.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  aria-label={`Use recommended color ${item}`}
+                  onClick={() => commitColor(item)}
+                  className="aspect-square rounded-[7px] border border-[#dedede]"
+                  style={{ backgroundColor: item }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        aria-label="Edit gradient"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex h-[34px] w-full items-center justify-between rounded-[8px] bg-panel-input pl-2 pr-4"
+      >
+        <span className="flex items-center gap-2 text-[13px] text-[#24262b] dark:text-panel-text-1">
+          <span className="size-5 rounded-[4px]" style={{ backgroundImage: preview }} />
+          Gradient
+        </span>
+        <ChevronDown size={16} className="text-[#858a94]" />
+      </button>
+      {picker}
+    </>
   );
 }

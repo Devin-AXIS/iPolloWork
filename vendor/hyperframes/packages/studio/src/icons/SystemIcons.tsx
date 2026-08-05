@@ -22,6 +22,20 @@ import {
   Gear,
   Scissors as PhScissors,
   Link as PhLink,
+  FlipHorizontal as PhFlipHorizontal,
+  FlipVertical as PhFlipVertical,
+  DotsNine as PhDotsNine,
+  ImageSquare as PhImageSquare,
+  Eyedropper as PhEyedropper,
+  ExcludeSquare as PhExcludeSquare,
+  Trash as PhTrash,
+  ArrowsLeftRight as PhArrowsLeftRight,
+  ListBullets as PhListBullets,
+  ListNumbers as PhListNumbers,
+  TextAlignCenter as PhTextAlignCenter,
+  TextAlignLeft as PhTextAlignLeft,
+  TextAlignRight as PhTextAlignRight,
+  TextIndent as PhTextIndent,
 } from "@phosphor-icons/react";
 import type { Icon as PhosphorIcon, IconProps as PhosphorIconProps } from "@phosphor-icons/react";
 
@@ -71,3 +85,17 @@ export const RotateCw = makeIcon(ArrowClockwise);
 export const Settings = makeIcon(Gear);
 export const Scissors = makeIcon(PhScissors);
 export const Link = makeIcon(PhLink);
+export const FlipHorizontal = makeIcon(PhFlipHorizontal);
+export const FlipVertical = makeIcon(PhFlipVertical);
+export const DotsNine = makeIcon(PhDotsNine);
+export const ImageSquare = makeIcon(PhImageSquare);
+export const Eyedropper = makeIcon(PhEyedropper);
+export const ExcludeSquare = makeIcon(PhExcludeSquare);
+export const Trash = makeIcon(PhTrash);
+export const ArrowLeftRight = makeIcon(PhArrowsLeftRight);
+export const AlignLeft = makeIcon(PhTextAlignLeft);
+export const AlignCenter = makeIcon(PhTextAlignCenter);
+export const AlignRight = makeIcon(PhTextAlignRight);
+export const ListBullets = makeIcon(PhListBullets);
+export const ListNumbers = makeIcon(PhListNumbers);
+export const TextIndent = makeIcon(PhTextIndent);
