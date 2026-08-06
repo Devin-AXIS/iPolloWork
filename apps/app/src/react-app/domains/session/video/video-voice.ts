@@ -3,6 +3,7 @@ import { videoProjectDirectory } from "./video-project";
 export const VOICEOVER_SETTINGS_FILE = "voiceover.json";
 export const MAX_VOICE_SAMPLE_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_COSYVOICE_MODEL = "cosyvoice-v3-flash";
+const VIDEO_VOICE_DISPLAY_PREFIX = "Video voice display:";
 
 export type VideoVoiceSource = "preset" | "cloned";
 
@@ -12,6 +13,10 @@ export type VideoVoiceoverSettings = {
   voiceId: string;
   source: VideoVoiceSource;
   updatedAt: string;
+};
+
+export type VideoVoiceAiReference = Pick<VideoVoiceoverSettings, "model" | "voiceId"> & {
+  label: string;
 };
 
 export type VoiceSampleDescriptor = {
@@ -93,6 +98,28 @@ export function migrateVideoVoiceoverSettings(value: VideoVoiceoverSettings): Vi
 
 export function serializeVideoVoiceoverSettings(value: VideoVoiceoverSettings) {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+export function videoVoiceDisplayMetadata(reference: VideoVoiceAiReference) {
+  return `${VIDEO_VOICE_DISPLAY_PREFIX}${JSON.stringify(reference)}`;
+}
+
+export function parseVideoVoiceDisplayMetadata(text: string): VideoVoiceAiReference | null {
+  const line = text
+    .split(/\r?\n/)
+    .map((candidate) => candidate.trim())
+    .find((candidate) => candidate.startsWith(VIDEO_VOICE_DISPLAY_PREFIX));
+  if (!line) return null;
+  try {
+    const value: unknown = JSON.parse(line.slice(VIDEO_VOICE_DISPLAY_PREFIX.length));
+    if (!isRecord(value)) return null;
+    const voiceId = readString(value, "voiceId");
+    const model = readString(value, "model");
+    const label = readString(value, "label");
+    return voiceId && model && label ? { voiceId, model, label } : null;
+  } catch {
+    return null;
+  }
 }
 
 export function validateVoiceSampleFile(file: VoiceSampleDescriptor): string | null {

@@ -112,21 +112,14 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("TextSelectionDrag");
   });
 
-  it("keeps rich-text formatting for text leaf elements", () => {
-    const source = readFileSync(
-      new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),
-      "utf8",
-    );
+  it("hides inline rich-text actions from the selected-element toolbar", () => {
+    const source = readFileSync(new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url), "utf8");
 
-    expect(source).toContain("activeFormats: TextFormatState");
-    expect(source).toContain("detectSelectionFormats(range)");
-    expect(source).toContain("toggleMarkedSelectionFormat(");
-    expect(source).toContain("current.activeFormats[action]");
-    expect(source).toContain("aria-pressed={state.activeFormats.bold}");
-    expect(source).toContain("aria-pressed={state.activeFormats.italic}");
-    expect(source).toContain("aria-pressed={state.activeFormats.strike}");
-    expect(source).toContain("aria-pressed={state.activeFormats.code}");
-    expect(source).toContain("aria-pressed={state.activeFormats.link}");
+    expect(source).not.toContain('onClick={() => applyFormat("bold")}');
+    expect(source).not.toContain('onClick={() => applyFormat("italic")}');
+    expect(source).not.toContain('onClick={() => applyFormat("strike")}');
+    expect(source).not.toContain('onClick={() => applyFormat("code")}');
+    expect(source).not.toContain('onClick={() => applyFormat("link")}');
   });
 
   it("deletes the selected element directly from a destructive toolbar action", () => {

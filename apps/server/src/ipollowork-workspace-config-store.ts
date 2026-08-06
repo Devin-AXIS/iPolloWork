@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { importNodeSqlite } from "./node-sqlite.js";
 import type { ServerConfig } from "./types.js";
 import { ensureDir } from "./utils.js";
 
@@ -58,7 +59,7 @@ async function openDb(path: string): Promise<iPolloWorkWorkspaceConfigDb> {
       },
     };
   }
-  const { DatabaseSync } = await import("node:sqlite");
+  const { DatabaseSync } = await importNodeSqlite();
   const sqlite = new DatabaseSync(path);
   sqlite.exec("CREATE TABLE IF NOT EXISTS ipollowork_workspace_configs (workspace_id TEXT PRIMARY KEY NOT NULL, config_json TEXT NOT NULL, updated_at INTEGER NOT NULL)");
   const get = sqlite.prepare("SELECT config_json AS configJson FROM ipollowork_workspace_configs WHERE workspace_id = ?");

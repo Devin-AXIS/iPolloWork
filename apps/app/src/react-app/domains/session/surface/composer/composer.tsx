@@ -64,6 +64,7 @@ type ComposerProps = {
   onConfigureModels?: () => void;
   onConfigureTokenStar?: () => void;
   attachments: ComposerAttachment[];
+  hasPromptContext?: boolean;
   onAttachFiles: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
   attachmentsEnabled: boolean;
@@ -378,7 +379,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   // Editor submit (Enter). While idle this sends normally; while busy
   // Enter queues and Cmd/Ctrl+Enter sends immediately (steer).
   const handleEditorSubmit = useCallback((options: { queue: boolean }) => {
-    const hasContent = props.draft.trim().length > 0 || props.attachments.length > 0;
+    const hasContent = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
     if (!hasContent) return;
     if (props.busy) {
       if (options.queue) void props.onQueue();
@@ -386,7 +387,7 @@ export function ReactSessionComposer(props: ComposerProps) {
       return;
     }
     void props.onSend();
-  }, [props.busy, props.draft, props.attachments, props.onSend, props.onSteer, props.onQueue]);
+  }, [props.busy, props.draft, props.attachments, props.hasPromptContext, props.onSend, props.onSteer, props.onQueue]);
 
   const slashCommandQuery = getSlashCommandQuery(props.draft);
   const slashOpenNext = slashCommandQuery !== null;
@@ -759,7 +760,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     !builtInExtensionsDisabled &&
     !isiPolloWorkExtensionHidden(entry) && isComposerExtensionAvailable(entry)
   );
-  const canSend = props.draft.trim().length > 0 || props.attachments.length > 0;
+  const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
 
   useEffect(() => {
     if (!toolMenuSection.startsWith("plugin:")) return;

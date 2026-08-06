@@ -89,6 +89,9 @@ import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/do
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
 import {
   shouldInjectVideoTaskContext,
+  videoCompositionHasVoiceover,
+  videoProjectEntryPath,
+  videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
 } from "@/react-app/domains/session/video/video-project";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -834,17 +837,20 @@ export function SessionRoute() {
           useDesignAiSelectionStore,
           designSelectionScope,
         );
-        const envSystemContext = await buildiPolloWorkEnvSystemContext(client, {
-          cacheKey: targetSessionId,
-          runtimeKey: environmentRuntimeKey,
-        });
         const capabilitySystemContext = draft.capability?.instruction ?? null;
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
-        let sessionTemplate = selectedWorkspaceEndpoint
-          ? await selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
-          : null;
+        const [envSystemContext, initialSessionTemplate] = await Promise.all([
+          buildiPolloWorkEnvSystemContext(client, {
+            cacheKey: targetSessionId,
+            runtimeKey: environmentRuntimeKey,
+          }),
+          selectedWorkspaceEndpoint
+            ? selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
+            : Promise.resolve(null),
+        ]);
+        let sessionTemplate = initialSessionTemplate;
         // Claim a pre-template Studio project before the prompt is sent. This
         // is the one-time migration that makes the persisted session record,
         // the agent contract, and the right-side Studio point at one path.
@@ -852,14 +858,27 @@ export function SessionRoute() {
           sessionTemplate = await selectedWorkspaceEndpoint.client.adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null);
         }
         const cachedSessionType = readSessionType(targetSessionId);
-        const videoSystemContext = shouldInjectVideoTaskContext(
+        const isVideoTask = shouldInjectVideoTaskContext(
           sessionTemplate?.manifest.surface,
           cachedSessionType,
-        )
+        );
+        let includeVoiceoverContext = isVideoTask && videoPromptRequestsVoiceoverContext(
+          draft.capability?.id,
+          draft.resolvedText ?? draft.text,
+        );
+        if (isVideoTask && !includeVoiceoverContext && selectedWorkspaceEndpoint) {
+          const entryPath = sessionTemplate?.state.entry ?? videoProjectEntryPath(targetSessionId);
+          const entry = await selectedWorkspaceEndpoint.client
+            .readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, entryPath)
+            .catch(() => null);
+          includeVoiceoverContext = videoCompositionHasVoiceover(entry?.content);
+        }
+        const videoSystemContext = isVideoTask
           ? videoTaskSystemContext(
               targetSessionId,
               selectedWorkspaceRoot,
               sessionTemplate?.manifest.surface === "video" ? sessionTemplate.manifest : null,
+              { includeVoiceover: includeVoiceoverContext },
             )
           : null;
         const isDesignTask = sessionTemplate?.surface === "design";

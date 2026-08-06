@@ -3527,7 +3527,9 @@ async function syncRuntimeMcpToOpencodeEngine(
 
   const runtimeConfig = await readRuntimeOpencodeConfig(config, workspace.id);
   const entries = Object.entries(runtimeMcpMap(runtimeConfig)).filter(
-    ([name]) => !onlyNames || onlyNames.includes(name),
+    ([name, mcpConfig]) =>
+      (!onlyNames || onlyNames.includes(name)) &&
+      (Boolean(onlyNames) || mcpConfig.enabled !== false),
   );
   if (entries.length === 0) return;
 
@@ -3558,7 +3560,8 @@ async function syncRuntimeMcpToOpencodeEngine(
 
   if (failures.length > 0) {
     const names = failures.map((failure) => failure.name).join(", ");
-    createServerLogger(config).log("warn", `Engine MCP sync failed for workspace ${workspace.id}: ${names}`, {
+    const details = failures.map(formatEngineMcpSyncFailure).join(", ");
+    createServerLogger(config).log("warn", `Engine MCP sync failed for workspace ${workspace.id}: ${details}`, {
       "workspace.id": workspace.id,
       "mcp.failed": names,
     });
@@ -3566,6 +3569,25 @@ async function syncRuntimeMcpToOpencodeEngine(
       failures,
     });
   }
+}
+
+function formatEngineMcpSyncFailure(failure: EngineMcpSyncFailure): string {
+  if (failure.status !== undefined) {
+    return `${failure.name} (HTTP ${failure.status}: ${engineMcpFailureMessage(failure.body)})`;
+  }
+  return `${failure.name} (${failure.message ?? "request failed"})`;
+}
+
+function engineMcpFailureMessage(body: unknown): string {
+  if (typeof body === "string" && body.trim()) return body.trim();
+  if (isRecord(body)) {
+    const code = typeof body.code === "string" ? body.code : null;
+    const message = typeof body.message === "string" ? body.message : null;
+    if (code && message) return `${code}: ${message}`;
+    if (message) return message;
+    if (code) return code;
+  }
+  return "request rejected";
 }
 
 // POST one MCP entry to the engine, retrying once on 5xx/network errors

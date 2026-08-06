@@ -6,6 +6,8 @@ import type { iPolloWorkSessionSnapshot } from "../../../../app/lib/ipollowork-s
 import { safeStringify } from "../../../../app/utils";
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "../../../../app/types";
 import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
+import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
+import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
 import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
@@ -197,11 +199,23 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
       parts: message.parts.flatMap<UIMessage["parts"][number]>((part) => {
         if (part.type === "text") {
           if (part.synthetic) {
+            const metadataParts: UIMessage["parts"] = [];
             const selection = parseDesignAiSelectionDisplayMetadata(part.text);
-            return selection ? [{
+            if (selection) metadataParts.push({
               type: "data-design-selection" as const,
               data: { ...selection, partId: part.id },
-            }] : [];
+            });
+            const animations = parseHyperframesAnimationDisplayMetadata(part.text);
+            if (animations) metadataParts.push({
+              type: "data-animation-references" as const,
+              data: { items: animations, partId: part.id },
+            });
+            const voice = parseVideoVoiceDisplayMetadata(part.text);
+            if (voice) metadataParts.push({
+              type: "data-voice-reference" as const,
+              data: { ...voice, partId: part.id },
+            });
+            return metadataParts;
           }
           if (part.ignored) return [];
           return [{

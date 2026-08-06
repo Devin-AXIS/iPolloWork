@@ -103,42 +103,46 @@ export function StudioHeader({
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-4">
-        <Tooltip
-          label={
-            STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
-          }
-          side="bottom"
-        >
-          <button
-            type="button"
-            onClick={toggleProperties}
-            disabled={!STUDIO_INSPECTOR_PANELS_ENABLED}
-            aria-pressed={inspectorButtonActive}
-            className={`flex h-8 items-center gap-1 overflow-hidden rounded-lg border px-[9px] py-px text-xs font-medium leading-normal transition-[background-color,border-color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98] ${
-              inspectorButtonActive
-                ? "border-[#1d1d1b] bg-[#f2f2f0] text-[#1d1d1b]"
-                : STUDIO_INSPECTOR_PANELS_ENABLED
-                  ? "border-[#858a94] bg-white text-black hover:border-[#62666e] hover:bg-[#f7f7f5] active:border-black active:bg-[#ededeb]"
-                  : "cursor-not-allowed border-[#d9dad7] text-[#92948f]"
-            }`}
-            aria-label={
-              STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
-            }
-          >
-            <img className="h-4 w-4 shrink-0" src={propertiesIconSrc} alt="" aria-hidden="true" />
-            {t("header.inspector")}
-          </button>
-        </Tooltip>
-        <Tooltip label={isRendering ? t("header.renderInProgress") : t("header.renderExport")} side="bottom">
-          <button
-            type="button"
-            onClick={openExport}
-            className="hf-studio-header-export flex h-8 items-center gap-1 overflow-hidden rounded-lg px-2 text-xs font-medium leading-normal transition-[background-color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98]"
-          >
-            <img className="h-4 w-4 shrink-0" src={exportIconSrc} alt="" aria-hidden="true" />
-            {isRendering ? t("header.rendering") : t("header.export")}
-          </button>
-        </Tooltip>
+        {!previewMode ? (
+          <>
+            <Tooltip
+              label={
+                STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
+              }
+              side="bottom"
+            >
+              <button
+                type="button"
+                onClick={toggleProperties}
+                disabled={!STUDIO_INSPECTOR_PANELS_ENABLED}
+                aria-pressed={inspectorButtonActive}
+                className={`flex h-8 items-center gap-1 overflow-hidden rounded-lg border px-[9px] py-px text-xs font-medium leading-normal transition-[background-color,border-color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98] ${
+                  inspectorButtonActive
+                    ? "border-[#1d1d1b] bg-[#f2f2f0] text-[#1d1d1b]"
+                    : STUDIO_INSPECTOR_PANELS_ENABLED
+                      ? "border-[#858a94] bg-white text-black hover:border-[#62666e] hover:bg-[#f7f7f5] active:border-black active:bg-[#ededeb]"
+                      : "cursor-not-allowed border-[#d9dad7] text-[#92948f]"
+                }`}
+                aria-label={
+                  STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
+                }
+              >
+                <img className="h-4 w-4 shrink-0" src={propertiesIconSrc} alt="" aria-hidden="true" />
+                {t("header.inspector")}
+              </button>
+            </Tooltip>
+            <Tooltip label={isRendering ? t("header.renderInProgress") : t("header.renderExport")} side="bottom">
+              <button
+                type="button"
+                onClick={openExport}
+                className="hf-studio-header-export flex h-8 items-center gap-1 overflow-hidden rounded-lg px-2 text-xs font-medium leading-normal transition-[background-color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98]"
+              >
+                <img className="h-4 w-4 shrink-0" src={exportIconSrc} alt="" aria-hidden="true" />
+                {isRendering ? t("header.rendering") : t("header.export")}
+              </button>
+            </Tooltip>
+          </>
+        ) : null}
       </div>
     </header>
   );

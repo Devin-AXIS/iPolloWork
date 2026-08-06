@@ -421,10 +421,14 @@ describe("runtime MCP engine sync", () => {
       });
       expect(listResponse.status).toBe(200);
       const listBody = await listResponse.json() as {
-        engineSync?: { status: string; failures: Array<{ name: string }> } | null;
+        engineSync?: { status: string; failures: Array<{ name: string; status?: number; body?: unknown }> } | null;
       };
       expect(listBody.engineSync?.status).toBe("failed");
-      expect(listBody.engineSync?.failures.map((failure) => failure.name)).toContain("bad");
+      expect(listBody.engineSync?.failures).toContainEqual({
+        name: "bad",
+        status: 500,
+        body: { code: "mcp_invalid", message: "Invalid MCP config" },
+      });
       expect(listBody.engineSync?.failures.map((failure) => failure.name)).not.toContain("posthog");
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
@@ -469,6 +473,52 @@ describe("runtime MCP engine sync", () => {
       const byName = new Map(syncs.map((entry) => [(entry.body as { name?: string } | null)?.name, entry.search]));
       expect(byName.get("posthog")).toContain(`directory=${encodeURIComponent(rootA)}`);
       expect(byName.get("stripe")).toContain(`directory=${encodeURIComponent(rootB)}`);
+    } finally {
+      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
+    }
+  });
+
+  test("startup sync skips disabled runtime MCPs", async () => {
+    const workspaceRoot = await createWorkspaceRoot();
+    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    try {
+      const mock = startMockOpencode();
+      const baseUrl = `http://127.0.0.1:${mock.server.port}`;
+      const config: ServerConfig = {
+        host: "127.0.0.1",
+        port: 0,
+        token: "owt_test_token",
+        hostToken: "owt_host_token",
+        approval: { mode: "auto", timeoutMs: 1000 },
+        corsOrigins: ["*"],
+        workspaces: [
+          { id: "ws_1", name: "A", path: workspaceRoot, preset: "starter", workspaceType: "local", baseUrl },
+        ],
+        authorizedRoots: [workspaceRoot],
+        readOnly: false,
+        startedAt: Date.now(),
+        tokenSource: "cli",
+        hostTokenSource: "cli",
+        logFormat: "pretty",
+        logRequests: false,
+      };
+
+      await writeRuntimeOpencodeConfig(config, "ws_1", (current) => ({
+        ...current,
+        mcp: {
+          disabled: { ...POSTHOG_CONFIG, enabled: false },
+          enabled: POSTHOG_CONFIG,
+        },
+      }));
+
+      await syncAllWorkspacesRuntimeMcpToEngine(config);
+
+      const syncedNames = mock.requests
+        .filter((entry) => entry.method === "POST" && entry.pathname === "/mcp")
+        .map((entry) => (entry.body as { name?: string } | null)?.name);
+      expect(syncedNames).toEqual(["enabled"]);
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;

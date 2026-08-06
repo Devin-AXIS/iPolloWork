@@ -15,6 +15,8 @@ const DEFAULT_ALIYUN_MEDIA_BASE_URL = "https://dashscope.aliyuncs.com";
 const BAILIAN_REQUEST_TIMEOUT_MS = 90_000;
 const MAX_TRANSLATION_AUDIO_CHARS = 16 * 1024 * 1024;
 const MAX_SYNTHESIZED_AUDIO_BYTES = 50 * 1024 * 1024;
+const MAX_VOICEOVER_BATCH_SCENES = 24;
+const VOICEOVER_BATCH_CONCURRENCY = 3;
 const COSYVOICE_V3_FLASH = "cosyvoice-v3-flash";
 const VOICEOVER_READING_BUFFER_SECONDS = 0.25;
 const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
@@ -166,6 +168,14 @@ function visibleTextFromHtml(value: string) {
   ));
 }
 
+function narrationSourceTextFromHtml(value: string) {
+  const sources = Array.from(
+    value.matchAll(/<([a-zA-Z][\w:-]*)\b(?=[^>]*\bdata-ipw-narration-source\s*=\s*["']true["'])[^>]*>([\s\S]*?)<\/\1>/gi),
+    (match) => visibleTextFromHtml(match[2] ?? ""),
+  ).filter(Boolean);
+  return sources.length > 0 ? normalizeSceneText(sources.join(" ")) : visibleTextFromHtml(value);
+}
+
 function nodeInnerHtml(html: string, node: TimelineNode) {
   const closeTag = `</${node.tagName}>`;
   const end = html.toLowerCase().indexOf(closeTag, node.contentStart);
@@ -253,7 +263,7 @@ export function validateVoiceoverTimelineHtml(html: string, options: { voiceover
       id: node.attributes.get("id")?.trim() ?? "",
       start: finiteTimelineNumber(node, "data-start"),
       duration: finiteTimelineNumber(node, "data-duration"),
-      text: visibleTextFromHtml(nodeInnerHtml(html, node)),
+      text: narrationSourceTextFromHtml(nodeInnerHtml(html, node)),
     }));
   const scenesById = new Map(scenes.filter((scene) => scene.id).map((scene) => [scene.id, scene]));
   for (const scene of scenes) {
@@ -328,6 +338,19 @@ export function validateVoiceoverTimelineHtml(html: string, options: { voiceover
   }
   const referencedSources = referencedVoiceoverSources(html);
   const normalizedAssets = (options.voiceoverAssets ?? []).map((value) => value.replace(/\\/g, "/").replace(/^\.\//, ""));
+  if (options.voiceoverAssets !== undefined) {
+    const availableFileNames = new Set(normalizedAssets.map((asset) => asset.split("/").pop() ?? asset));
+    const missingAssets = Array.from(referencedSources).filter((source) => {
+      const fileName = source.split("/").pop() ?? source;
+      return !availableFileNames.has(fileName);
+    });
+    if (missingAssets.length > 0) {
+      issues.push({
+        code: "voiceover_assets_missing",
+        message: `Voiceover timeline files are missing from the composition assets directory: ${missingAssets.slice(0, 5).join(", ")}${missingAssets.length > 5 ? ", ..." : ""}.`,
+      });
+    }
+  }
   const orphanAssets = normalizedAssets.filter((asset) => {
     const fileName = asset.split("/").pop() ?? asset;
     return !referencedSources.has(asset) && !referencedSources.has(`assets/${fileName}`) && !referencedSources.has(fileName);
@@ -423,7 +446,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
       properties: {
         text: { type: "string", description: "One visual scene's narration text." },
         sceneId: { type: "string", description: "The exact .scene element id narrated by this file." },
-        sceneText: { type: "string", description: "The scene's visible text snapshot. Must exactly equal text." },
+        sceneText: { type: "string", description: "The scene's marked narration-source transcript, or full visible text for legacy scenes. Must exactly equal text." },
         sceneStart: { type: "number", description: "The exact scene start time in seconds." },
         sceneDuration: { type: "number", description: "The visual scene's current duration in seconds. Used with the measured MP3 duration to return a non-overlapping timeline allocation." },
         outputPath: { type: "string", description: "New immutable .mp3 path relative to the active workspace." },
@@ -433,6 +456,42 @@ export const MEDIA_EXTENSION_ACTIONS = [
         sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
       },
       required: ["text", "sceneId", "sceneText", "sceneStart", "sceneDuration", "outputPath"],
+      additionalProperties: false,
+    },
+  },
+  {
+    extensionId: MEDIA_EXTENSION_ID,
+    action: "speech_synthesize_workspace_batch",
+    title: "Synthesize scene voiceovers to workspace files",
+    description: "Create a bounded batch of scene MP3 voiceovers with one tool call, synthesize up to three scenes concurrently, and return ordered non-overlapping timeline allocations.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scenes: {
+          type: "array",
+          minItems: 1,
+          maxItems: MAX_VOICEOVER_BATCH_SCENES,
+          items: {
+            type: "object",
+            properties: {
+              text: { type: "string", description: "One visual scene's narration text." },
+              sceneId: { type: "string", description: "The exact .scene element id narrated by this file." },
+              sceneText: { type: "string", description: "The scene's marked narration-source transcript, or full visible text for legacy scenes. Must exactly equal text." },
+              sceneStart: { type: "number", description: "The scene's current start time before narration shifts are applied." },
+              sceneDuration: { type: "number", description: "The scene's current duration in seconds." },
+              outputPath: { type: "string", description: "New immutable .mp3 path relative to the active workspace." },
+            },
+            required: ["text", "sceneId", "sceneText", "sceneStart", "sceneDuration", "outputPath"],
+            additionalProperties: false,
+          },
+        },
+        compositionPath: { type: "string", description: "Optional index.html path relative to the active workspace." },
+        targetDurationSeconds: { type: "number", description: "Optional user-requested final duration. Narration is rejected before synthesis when its estimated timeline cannot fit." },
+        voice: { type: "string", description: "Model Studio voice name or cloned voice id." },
+        model: { type: "string", description: "Speech model. Defaults to cosyvoice-v3-flash." },
+        sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
+      },
+      required: ["scenes"],
       additionalProperties: false,
     },
   },
@@ -703,9 +762,15 @@ function synthesizedAudioUrl(payload: unknown): string {
   } catch {
     throw new ApiError(502, "bailian_audio_url_invalid", "Alibaba Model Studio returned an invalid synthesized audio URL.");
   }
-  if (url.protocol !== "https:" || url.username || url.password) {
+  const hostname = url.hostname.toLowerCase();
+  const trustedResultHost = /^dashscope-result(?:-[a-z0-9-]+)?\.oss-[a-z0-9-]+\.aliyuncs\.com$/.test(hostname);
+  if (!trustedResultHost || url.username || url.password || (url.protocol !== "http:" && url.protocol !== "https:")) {
     throw new ApiError(502, "bailian_audio_url_invalid", "Alibaba Model Studio returned an unsafe synthesized audio URL.");
   }
+  // Model Studio's documented non-streaming TTS response still returns an
+  // HTTP URL on its own OSS result host. Upgrade only that trusted host before
+  // downloading; arbitrary HTTP URLs remain rejected.
+  url.protocol = "https:";
   return url.toString();
 }
 
@@ -714,7 +779,7 @@ async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await mediaProviderFetch(url, { signal: controller.signal });
+    response = await mediaProviderFetch(url, { signal: controller.signal, redirect: "error" });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_audio_download_timeout", "The synthesized audio download timed out.");
@@ -796,6 +861,165 @@ function mp3DurationSeconds(bytes: Uint8Array): number {
   }
   if (!frames) throw new ApiError(502, "bailian_audio_invalid", "Alibaba Model Studio returned audio without valid MP3 frames.");
   return duration;
+}
+
+type WorkspaceVoiceoverSceneInput = {
+  text: string;
+  sceneId: string;
+  sceneText: string;
+  sceneStart: number;
+  sceneDuration: number;
+  outputPath: string;
+};
+
+type SynthesizedWorkspaceVoiceover = {
+  scene: WorkspaceVoiceoverSceneInput;
+  sourcePath: string;
+  absolutePath: string;
+  durationSeconds: number;
+  bytes: number;
+  model: string;
+  voice: string;
+};
+
+function workspaceVoiceoverSceneInput(value: unknown): WorkspaceVoiceoverSceneInput {
+  const text = requireString(value, "text");
+  const sceneId = requireString(value, "sceneId");
+  const sceneText = requireString(value, "sceneText");
+  const sceneStart = readOptionalNumber(value, "sceneStart");
+  const sceneDuration = readOptionalNumber(value, "sceneDuration");
+  if (text !== sceneText) {
+    throw new ApiError(400, "voiceover_scene_text_mismatch", "text must exactly equal sceneText so narration matches the visible scene.");
+  }
+  if (!/^[-_A-Za-z0-9:.]+$/.test(sceneId)) {
+    throw new ApiError(400, "invalid_voiceover_scene_id", "sceneId contains unsupported characters.");
+  }
+  if (sceneStart === undefined || sceneStart < 0) {
+    throw new ApiError(400, "invalid_voiceover_scene_start", "sceneStart must be a non-negative number.");
+  }
+  if (sceneDuration === undefined || sceneDuration <= 0) {
+    throw new ApiError(400, "invalid_voiceover_scene_duration", "sceneDuration must be greater than zero.");
+  }
+  const outputPath = requireString(value, "outputPath");
+  if (extname(outputPath).toLowerCase() !== ".mp3") {
+    throw new ApiError(400, "invalid_synthesized_audio_path", "outputPath must use the .mp3 extension.");
+  }
+  return { text, sceneId, sceneText, sceneStart, sceneDuration, outputPath };
+}
+
+async function mapWithConcurrency<T, R>(items: readonly T[], concurrency: number, map: (item: T) => Promise<R>): Promise<R[]> {
+  const results: Array<R | undefined> = new Array(items.length);
+  let nextIndex = 0;
+  let firstError: unknown;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (firstError === undefined) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      try {
+        results[index] = await map(items[index]!);
+      } catch (error) {
+        firstError = error;
+      }
+    }
+  });
+  await Promise.all(workers);
+  if (firstError !== undefined) throw firstError;
+  return results.filter((value): value is R => value !== undefined);
+}
+
+async function synthesizeWorkspaceVoiceover(input: {
+  config: ServerConfig;
+  context: JsonRecord;
+  apiKey: string;
+  baseUrl: string;
+  scene: WorkspaceVoiceoverSceneInput;
+  model: string;
+  voice: string;
+  sampleRate?: number;
+}): Promise<SynthesizedWorkspaceVoiceover> {
+  const providerResponse = await requestProviderJson({
+    apiKey: input.apiKey,
+    url: endpoint(input.baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
+    body: {
+      model: input.model,
+      input: {
+        text: input.scene.text,
+        ...(input.voice ? { voice: input.voice } : {}),
+        format: "mp3",
+        ...(input.sampleRate ? { sample_rate: input.sampleRate } : {}),
+      },
+    },
+  });
+  const audio = await downloadSynthesizedAudio(synthesizedAudioUrl(providerResponse));
+  const workspace = workspaceForContext(input.config, input.context);
+  const destination = resolveWorkspaceFile(workspace.path, input.scene.outputPath);
+  const temporaryPath = `${destination.absolutePath}.${randomUUID()}.tmp`;
+  await mkdir(dirname(destination.absolutePath), { recursive: true });
+  try {
+    await writeFile(temporaryPath, audio, { flag: "wx" });
+    await link(temporaryPath, destination.absolutePath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+  return {
+    scene: input.scene,
+    sourcePath: destination.relativePath,
+    absolutePath: destination.absolutePath,
+    durationSeconds: mp3DurationSeconds(audio),
+    bytes: audio.byteLength,
+    model: input.model,
+    voice: input.voice,
+  };
+}
+
+export function estimateVoiceoverDurationSeconds(text: string) {
+  const cjkCharacters = Array.from(text.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)).length;
+  const latinWords = text
+    .replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu, " ")
+    .match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)?.length ?? 0;
+  const sentencePauses = text.match(/[。！？!?；;:：]/g)?.length ?? 0;
+  return roundVoiceoverTime(Math.max(0.5, (cjkCharacters / 4) + (latinWords / 2.5) + (sentencePauses * 0.12)));
+}
+
+function workspaceVoiceoverResult(
+  synthesized: SynthesizedWorkspaceVoiceover,
+  compositionPath: string | undefined,
+  startSeconds: number,
+) {
+  const scene = synthesized.scene;
+  const timing = planSceneVoiceoverTiming(startSeconds, scene.sceneDuration, synthesized.durationSeconds);
+  const audioElementId = htmlAudioIdForVoiceover(scene.sceneId, synthesized.sourcePath);
+  const audioElementSourcePath = relativeHtmlMediaSource(compositionPath, synthesized.sourcePath);
+  return {
+    sourcePath: synthesized.sourcePath,
+    durationSeconds: synthesized.durationSeconds,
+    bytes: synthesized.bytes,
+    sceneId: scene.sceneId,
+    sceneText: scene.sceneText,
+    sceneStart: timing.startSeconds,
+    originalSceneStart: scene.sceneStart,
+    sceneDuration: scene.sceneDuration,
+    timing,
+    audioElementId,
+    audioElementHtml: voiceoverAudioElementHtml({
+      id: audioElementId,
+      sourcePath: audioElementSourcePath,
+      sceneId: scene.sceneId,
+      sceneText: scene.sceneText,
+      startSeconds: timing.startSeconds,
+      durationSeconds: synthesized.durationSeconds,
+    }),
+    timelinePatch: {
+      setSceneStartSeconds: timing.startSeconds,
+      setSceneDurationSeconds: timing.requiredSceneDurationSeconds,
+      shiftFollowingBySeconds: timing.shiftFollowingBySeconds,
+      rootDurationMustBeAtLeastSeconds: timing.endSeconds + VOICEOVER_READING_BUFFER_SECONDS,
+      keepSceneVisibleUntilSeconds: timing.endSeconds,
+    },
+    model: synthesized.model,
+    ...(synthesized.voice ? { voice: synthesized.voice } : {}),
+  };
 }
 
 function voiceListFromPayload(payload: unknown) {
@@ -1157,27 +1381,7 @@ export async function callMediaExtensionAction(
       break;
     }
     case "speech_synthesize_workspace_file": {
-      const text = requireString(args, "text");
-      const sceneId = requireString(args, "sceneId");
-      const sceneText = requireString(args, "sceneText");
-      const sceneStart = readOptionalNumber(args, "sceneStart");
-      const sceneDuration = readOptionalNumber(args, "sceneDuration");
-      if (text !== sceneText) {
-        throw new ApiError(400, "voiceover_scene_text_mismatch", "text must exactly equal sceneText so narration matches the visible scene.");
-      }
-      if (!/^[-_A-Za-z0-9:.]+$/.test(sceneId)) {
-        throw new ApiError(400, "invalid_voiceover_scene_id", "sceneId contains unsupported characters.");
-      }
-      if (sceneStart === undefined || sceneStart < 0) {
-        throw new ApiError(400, "invalid_voiceover_scene_start", "sceneStart must be a non-negative number.");
-      }
-      if (sceneDuration === undefined || sceneDuration <= 0) {
-        throw new ApiError(400, "invalid_voiceover_scene_duration", "sceneDuration must be greater than zero.");
-      }
-      const outputPath = requireString(args, "outputPath");
-      if (extname(outputPath).toLowerCase() !== ".mp3") {
-        throw new ApiError(400, "invalid_synthesized_audio_path", "outputPath must use the .mp3 extension.");
-      }
+      const scene = workspaceVoiceoverSceneInput(args);
       const compositionPath = readStringField(args, "compositionPath");
       if (compositionPath && extname(compositionPath).toLowerCase() !== ".html") {
         throw new ApiError(400, "invalid_voiceover_composition_path", "compositionPath must use the .html extension.");
@@ -1185,60 +1389,113 @@ export async function callMediaExtensionAction(
       const model = readStringField(args, "model") || COSYVOICE_V3_FLASH;
       const requestedVoice = readStringField(args, "voice");
       const voice = requestedVoice ? compatibleCosyVoiceVoice(model, requestedVoice) : "";
-      const providerResponse = await requestProviderJson({
+      const composition = compositionPath
+        ? resolveWorkspaceFile(workspaceForContext(config, context).path, compositionPath).relativePath
+        : undefined;
+      const synthesized = await synthesizeWorkspaceVoiceover({
+        config,
+        context,
         apiKey,
-        url: endpoint(baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
-        body: {
-          model,
-          input: {
-            text,
-            ...(voice ? { voice } : {}),
-            format: "mp3",
-            ...(readOptionalNumber(args, "sampleRate") ? { sample_rate: readOptionalNumber(args, "sampleRate") } : {}),
-          },
-        },
+        baseUrl,
+        scene,
+        model,
+        voice,
+        sampleRate: readOptionalNumber(args, "sampleRate"),
       });
-      const audio = await downloadSynthesizedAudio(synthesizedAudioUrl(providerResponse));
-      const durationSeconds = mp3DurationSeconds(audio);
-      const workspace = workspaceForContext(config, context);
-      const destination = resolveWorkspaceFile(workspace.path, outputPath);
-      const composition = compositionPath ? resolveWorkspaceFile(workspace.path, compositionPath) : undefined;
-      const temporaryPath = `${destination.absolutePath}.${randomUUID()}.tmp`;
-      await mkdir(dirname(destination.absolutePath), { recursive: true });
-      try {
-        await writeFile(temporaryPath, audio, { flag: "wx" });
-        await link(temporaryPath, destination.absolutePath);
-      } finally {
-        await rm(temporaryPath, { force: true });
+      result = workspaceVoiceoverResult(synthesized, composition, scene.sceneStart);
+      break;
+    }
+    case "speech_synthesize_workspace_batch": {
+      const rawScenes = Array.isArray(args.scenes) ? args.scenes : [];
+      if (rawScenes.length < 1 || rawScenes.length > MAX_VOICEOVER_BATCH_SCENES) {
+        throw new ApiError(400, "invalid_voiceover_batch", `scenes must contain between 1 and ${MAX_VOICEOVER_BATCH_SCENES} items.`);
       }
-      const timing = planSceneVoiceoverTiming(sceneStart, sceneDuration, durationSeconds);
-      const audioElementId = htmlAudioIdForVoiceover(sceneId, destination.relativePath);
-      const audioElementSourcePath = relativeHtmlMediaSource(composition?.relativePath, destination.relativePath);
+      const scenes = rawScenes.map(workspaceVoiceoverSceneInput);
+      if (new Set(scenes.map((scene) => scene.sceneId)).size !== scenes.length) {
+        throw new ApiError(400, "duplicate_voiceover_scene", "Each batch sceneId must be unique.");
+      }
+      if (new Set(scenes.map((scene) => scene.outputPath)).size !== scenes.length) {
+        throw new ApiError(400, "duplicate_voiceover_output", "Each batch outputPath must be unique.");
+      }
+      if (scenes.some((scene, index) => index > 0 && scene.sceneStart < scenes[index - 1]!.sceneStart)) {
+        throw new ApiError(400, "unordered_voiceover_scenes", "Batch scenes must be ordered by sceneStart.");
+      }
+      let estimatedShiftSeconds = 0;
+      let estimatedTimelineEndSeconds = 0;
+      for (const scene of scenes) {
+        const estimatedStart = scene.sceneStart + estimatedShiftSeconds;
+        const estimatedTiming = planSceneVoiceoverTiming(
+          estimatedStart,
+          scene.sceneDuration,
+          estimateVoiceoverDurationSeconds(scene.text),
+        );
+        estimatedShiftSeconds = roundVoiceoverTime(estimatedShiftSeconds + estimatedTiming.shiftFollowingBySeconds);
+        estimatedTimelineEndSeconds = Math.max(
+          estimatedTimelineEndSeconds,
+          estimatedStart + estimatedTiming.requiredSceneDurationSeconds,
+        );
+      }
+      estimatedTimelineEndSeconds = roundVoiceoverTime(estimatedTimelineEndSeconds);
+      const targetDurationSeconds = readOptionalNumber(args, "targetDurationSeconds");
+      if (targetDurationSeconds !== undefined && targetDurationSeconds <= 0) {
+        throw new ApiError(400, "invalid_voiceover_target_duration", "targetDurationSeconds must be greater than zero.");
+      }
+      if (targetDurationSeconds !== undefined && estimatedTimelineEndSeconds > targetDurationSeconds + 1) {
+        throw new ApiError(
+          400,
+          "voiceover_target_duration_exceeded",
+          `Narration is estimated to require ${estimatedTimelineEndSeconds} seconds, exceeding the requested ${targetDurationSeconds} seconds. Preserve the important page facts, but compact the narration before synthesis.`,
+        );
+      }
+      const compositionPath = readStringField(args, "compositionPath");
+      if (compositionPath && extname(compositionPath).toLowerCase() !== ".html") {
+        throw new ApiError(400, "invalid_voiceover_composition_path", "compositionPath must use the .html extension.");
+      }
+      const workspace = workspaceForContext(config, context);
+      const composition = compositionPath
+        ? resolveWorkspaceFile(workspace.path, compositionPath).relativePath
+        : undefined;
+      const model = readStringField(args, "model") || COSYVOICE_V3_FLASH;
+      const requestedVoice = readStringField(args, "voice");
+      const voice = requestedVoice ? compatibleCosyVoiceVoice(model, requestedVoice) : "";
+      const sampleRate = readOptionalNumber(args, "sampleRate");
+      const created: SynthesizedWorkspaceVoiceover[] = [];
+      let synthesizedScenes: SynthesizedWorkspaceVoiceover[];
+      try {
+        synthesizedScenes = await mapWithConcurrency(scenes, VOICEOVER_BATCH_CONCURRENCY, async (scene) => {
+          const synthesized = await synthesizeWorkspaceVoiceover({
+            config,
+            context,
+            apiKey,
+            baseUrl,
+            scene,
+            model,
+            voice,
+            sampleRate,
+          });
+          created.push(synthesized);
+          return synthesized;
+        });
+      } catch (error) {
+        await Promise.all(created.map((item) => rm(item.absolutePath, { force: true })));
+        throw error;
+      }
+      let cumulativeShiftSeconds = 0;
+      const items = synthesizedScenes.map((synthesized) => {
+        const startSeconds = synthesized.scene.sceneStart + cumulativeShiftSeconds;
+        const item = workspaceVoiceoverResult(synthesized, composition, startSeconds);
+        cumulativeShiftSeconds = roundVoiceoverTime(cumulativeShiftSeconds + item.timing.shiftFollowingBySeconds);
+        return { ...item, cumulativeShiftAfterSeconds: cumulativeShiftSeconds };
+      });
       result = {
-        sourcePath: destination.relativePath,
-        durationSeconds,
-        bytes: audio.byteLength,
-        sceneId,
-        sceneText,
-        sceneStart,
-        sceneDuration,
-        timing,
-        audioElementId,
-        audioElementHtml: voiceoverAudioElementHtml({
-          id: audioElementId,
-          sourcePath: audioElementSourcePath,
-          sceneId,
-          sceneText,
-          startSeconds: timing.startSeconds,
-          durationSeconds,
-        }),
-        timelinePatch: {
-          setSceneStartSeconds: timing.startSeconds,
-          setSceneDurationSeconds: timing.requiredSceneDurationSeconds,
-          shiftFollowingBySeconds: timing.shiftFollowingBySeconds,
-          rootDurationMustBeAtLeastSeconds: timing.endSeconds + VOICEOVER_READING_BUFFER_SECONDS,
-          keepSceneVisibleUntilSeconds: timing.endSeconds,
-        },
+        items,
+        sceneCount: items.length,
+        estimatedTimelineDurationSeconds: estimatedTimelineEndSeconds,
+        totalShiftSeconds: cumulativeShiftSeconds,
+        rootDurationMustBeAtLeastSeconds: roundVoiceoverTime(items.reduce(
+          (maximum, item) => Math.max(maximum, item.timelinePatch.rootDurationMustBeAtLeastSeconds),
+          0,
+        )),
         model,
         ...(voice ? { voice } : {}),
       };
