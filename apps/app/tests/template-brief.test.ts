@@ -1,7 +1,17 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import { setLocale } from "../src/i18n";
-import { isVideoStudioReady, templateBriefConfigFor, templateBriefPrompt } from "../src/react-app/domains/session/templates/template-brief";
+import JSZip from "jszip";
+
+import {
+  isTemplateBriefReferenceFile,
+  isVideoStudioReady,
+  inferTemplateBriefFromReferenceFile,
+  prepareTemplateBriefReferenceAttachment,
+  templateBriefFromReferenceText,
+  templateBriefConfigFor,
+  templateBriefPrompt,
+} from "../src/react-app/domains/session/templates/template-brief";
 
 describe("template brief", () => {
   beforeEach(() => {
@@ -123,5 +133,93 @@ describe("template brief", () => {
     expect(prompt).toContain("Update existing elements in place");
     expect(prompt).toContain("template-specific class names");
     expect(prompt).toContain("do not rebuild it as a generic split hero");
+  });
+
+  test("accepts supported optional reference document formats", () => {
+    const files = [
+      new File(["%PDF"], "brief.pdf", { type: "application/pdf" }),
+      new File(["copy"], "notes.md", { type: "text/markdown" }),
+      new File(["copy"], "notes.txt", { type: "text/plain" }),
+      new File(["image"], "visual.PNG", { type: "image/png" }),
+      new File(["image"], "photo.jpg", { type: "image/jpeg" }),
+      new File(["image"], "photo.jpeg", { type: "image/jpeg" }),
+      new File(["image"], "mock.webp", { type: "image/webp" }),
+      new File(["a,b"], "metrics.csv", { type: "text/csv" }),
+      new File(['{"a":1}'], "data.json", { type: "application/json" }),
+      new File([""], "word.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+    ];
+
+    expect(files.map(isTemplateBriefReferenceFile)).toEqual(files.map(() => true));
+  });
+
+  test("rejects unsupported optional reference document formats", () => {
+    expect(isTemplateBriefReferenceFile(new File(["deck"], "old-deck.pptx", { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }))).toBe(false);
+    expect(isTemplateBriefReferenceFile(new File(["sheet"], "budget.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))).toBe(false);
+    expect(isTemplateBriefReferenceFile(new File(["svg"], "logo.svg", { type: "image/svg+xml" }))).toBe(false);
+  });
+
+  test("converts docx reference files to text attachments before sending", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:r><w:t>Brand voice</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Use concise clinical language.</w:t></w:r></w:p>
+        </w:body>
+      </w:document>`);
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const attachment = await prepareTemplateBriefReferenceAttachment(
+      new File([buffer], "reference.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+    );
+
+    expect(attachment.name).toBe("reference.docx");
+    expect(attachment.mimeType).toBe("text/plain");
+    expect(attachment.kind).toBe("file");
+    expect(await attachment.file.text()).toContain("Use concise clinical language.");
+  });
+
+  test("infers brief fields from markdown reference text", () => {
+    const brief = templateBriefFromReferenceText({
+      filename: "ignored.md",
+      text: `# Clinical Handoff
+
+## Audience
+Ward 7 nurses deciding handoff priorities.
+
+## Key information
+Escalation path, risk flags, checklist, and shift-owner notes.`,
+    });
+
+    expect(brief.title).toBe("Clinical Handoff");
+    expect(brief.audience).toContain("Ward 7 nurses");
+    expect(brief.details).toContain("Escalation path");
+  });
+
+  test("infers brief fields from docx reference files", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:r><w:t>Clinical Handoff</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Audience: Ward 7 nurses deciding handoff priorities.</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Include escalation path, risk flags, checklist, and shift-owner notes.</w:t></w:r></w:p>
+        </w:body>
+      </w:document>`);
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const brief = await inferTemplateBriefFromReferenceFile(
+      new File([buffer], "clinical-handoff.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+    );
+
+    expect(brief.title).toBe("Clinical Handoff");
+    expect(brief.audience).toContain("Ward 7 nurses");
+    expect(brief.details).toContain("escalation path");
+  });
+
+  test("uses a readable filename fallback when reference text cannot be extracted", () => {
+    const brief = templateBriefFromReferenceText({ filename: "clinical-handoff.pdf", text: "" });
+
+    expect(brief.title).toBe("clinical handoff");
+    expect(brief.audience).toBe("");
+    expect(brief.details).toBe("");
   });
 });
