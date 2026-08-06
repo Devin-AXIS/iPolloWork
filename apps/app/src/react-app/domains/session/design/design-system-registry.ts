@@ -567,15 +567,21 @@ function pickThemeToken(values: Record<string, string>, names: string[], fallbac
   return fallback;
 }
 
+function templateTokenAliasLine(name: string) {
+  const storageName = designSystemTokenStorageName(name);
+  if (/^--text-[A-Za-z0-9_-]+$/.test(name)) {
+    return `  ${name}: calc(var(${storageName}) * var(--ipw-type-scale)) !important;`;
+  }
+  return `  ${name}: var(${storageName}) !important;`;
+}
+
 export function buildTemplateTokenCss(theme: DesignSystemTheme) {
   const tokens = themeTokenValues(theme);
   const values = buildTemplateTokenValues(theme);
   const sourceTokenLines = Object.entries(tokens).map(([name, value]) =>
     `  ${designSystemTokenStorageName(name)}: ${rewriteThemeTokenReferences(value)};`,
   );
-  const sourceAliasLines = Object.keys(tokens).map((name) =>
-    `  ${name}: var(${designSystemTokenStorageName(name)}) !important;`,
-  );
+  const sourceAliasLines = Object.keys(tokens).map(templateTokenAliasLine);
   const lines = [
     `/* ipw-theme:start */`,
     designSystemMarker(theme.id),
@@ -685,7 +691,9 @@ export function buildTemplateTokenCss(theme: DesignSystemTheme) {
     `html:root :where(h6, p, li, blockquote, [data-ipw-theme-role="body"]) { --ipw-original-font-size: var(--text-base, 1rem); }`,
     `html:root :where([data-ipw-theme-role="accent"], .eyebrow, .kicker, [class~="accent"]) { --ipw-original-font-size: var(--text-xs, .75rem); }`,
     `html:root :where([data-ipw-theme-role="muted"], .lede, .lead, .subtitle, .description) { --ipw-original-font-size: var(--text-lg, 1.125rem); }`,
-    `html:root :where(h1, h2, h3, h4, h5, h6, p, li, blockquote, [data-ipw-theme-role="heading"], [data-ipw-theme-role="body"], [data-ipw-theme-role="accent"], [data-ipw-theme-role="muted"], .eyebrow, .kicker, .lede, .lead, .subtitle, .description, [class~="accent"]) { font-size: calc(var(--ipw-original-font-size) * var(--ipw-type-scale)) !important; }`,
+    `html:root :where(.title, .headline, .hero-title, .section-title, .card-title) { --ipw-original-font-size: var(--text-3xl, 2rem); }`,
+    `html:root :where(.body, .copy, .caption, .meta, .label, .metric, .stat, .badge) { --ipw-original-font-size: var(--text-base, 1rem); }`,
+    `html:root :where(h1, h2, h3, h4, h5, h6, p, li, blockquote, [data-ipw-theme-role="heading"], [data-ipw-theme-role="body"], [data-ipw-theme-role="accent"], [data-ipw-theme-role="muted"], .eyebrow, .kicker, .lede, .lead, .subtitle, .description, [class~="accent"], .title, .headline, .hero-title, .section-title, .card-title, .body, .copy, .caption, .meta, .label, .metric, .stat, .badge) { font-size: calc(var(--ipw-original-font-size) * var(--ipw-type-scale)) !important; }`,
     `html:root :where(button, input, select, textarea, [role="button"]) { border-radius: var(--ipw-button-radius) !important; }`,
     `html:root :where(article, [data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], [class~="card"], [class*="-card"], [class~="panel"], [class*="-panel"], [class~="tile"], [class~="task"]) { border-radius: var(--ipw-card-radius) !important; }`,
     `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell, main) { padding-inline: var(--ipw-page-padding) !important; background-color: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,

@@ -12,12 +12,22 @@ import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
 import { usePlayerStore } from "../player";
+import {
+  acceptsIPolloWorkHostHistoryOrigin,
+  parentOrigin,
+} from "./useIPolloWorkHostHistoryBridge";
 
 /** The restore payload the undo/redo preview-sync consumes (from the history store). */
 interface HistoryPreviewRestore {
   paths?: string[];
   files?: Record<string, UndoRestoreFile>;
 }
+
+type HostDesignTokensMessage = {
+  type: "ipollowork:studio-design-token-change";
+  projectId: string;
+  tokens: Record<string, string>;
+};
 
 // ── Types ──
 
@@ -52,6 +62,50 @@ function readIframeDocument(iframe: HTMLIFrameElement): Document | null {
   } catch {
     return null;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseHostDesignTokensMessage(
+  value: unknown,
+  activeProjectId: string | null,
+): HostDesignTokensMessage | null {
+  if (!activeProjectId || !isRecord(value)) return null;
+  if (
+    value.type !== "ipollowork:studio-design-token-change"
+    || value.projectId !== activeProjectId
+    || !isRecord(value.tokens)
+  ) {
+    return null;
+  }
+
+  const tokens: Record<string, string> = {};
+  for (const [name, tokenValue] of Object.entries(value.tokens)) {
+    if (!/^--ipw-[A-Za-z0-9_-]+$/.test(name) || typeof tokenValue !== "string") continue;
+    tokens[name] = tokenValue;
+  }
+  return Object.keys(tokens).length
+    ? {
+        type: "ipollowork:studio-design-token-change",
+        projectId: activeProjectId,
+        tokens,
+      }
+    : null;
+}
+
+function applyDesignTokensToPreview(
+  iframe: HTMLIFrameElement | null,
+  tokens: Record<string, string>,
+): boolean {
+  if (!iframe) return false;
+  const doc = readIframeDocument(iframe);
+  if (!doc) return false;
+  for (const [name, value] of Object.entries(tokens)) {
+    doc.documentElement.style.setProperty(name, value);
+  }
+  return true;
 }
 
 const manualEditReadinessCleanup = new WeakMap<HTMLIFrameElement, () => void>();
@@ -248,6 +302,22 @@ export function usePreviewPersistence({
   // the legacy codepath no-ops.
   useMountEffect(() => {
     void clearLegacyStudioMotionFile(_readOptionalProjectFile, _writeProjectFile);
+  });
+
+  useMountEffect(() => {
+    const expectedParentOrigin = parentOrigin();
+    if (!expectedParentOrigin) return;
+    const handleMessage = (event: MessageEvent) => {
+      if (window.parent === window || event.source !== window.parent) return;
+      if (!acceptsIPolloWorkHostHistoryOrigin(event.origin, expectedParentOrigin)) return;
+      const message = parseHostDesignTokensMessage(event.data, projectIdRef.current);
+      if (!message) return;
+      if (applyDesignTokensToPreview(previewIframeRef.current, message.tokens)) {
+        domEditSaveTimestampRef.current = Date.now();
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   });
 
   // ── Listen for external file changes (HMR / SSE) ──

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
-import { ChevronDown, RotateCcw } from "../../icons/SystemIcons";
+import { ChevronDown, ChevronRight, RotateCcw } from "../../icons/SystemIcons";
 import { CommitField } from "./propertyPanelPrimitives";
 import {
   VALUE_TIER_LABEL_CLASS,
@@ -221,7 +221,7 @@ export function FlatGroupHeader({
             </span>
           )}
         </span>
-        <ChevronDown size={16} className="flex-shrink-0 rotate-180 text-[#858a94]" />
+        <ChevronRight size={16} className="flex-shrink-0 text-[#858a94]" />
       </button>
     );
   }

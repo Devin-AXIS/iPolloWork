@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, type MutableRefObject } from "react";
 import { usePlayerStore } from "../player";
 import {
   readProjectFileContent,
@@ -8,6 +8,7 @@ import {
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
   buildDomEditPatchTarget,
+  findElementForSelection,
   readHfId,
   type DomEditSelection,
 } from "../components/editor/domEditing";
@@ -23,6 +24,7 @@ import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditComm
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 
 interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
+  previewIframeRef: MutableRefObject<HTMLIFrameElement | null>;
   /** Route delete through SDK when session resolves the hf-id. */
   onTrySdkDelete?: (
     hfId: string,
@@ -43,6 +45,32 @@ interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
 // laneChangeGestureSeq precedent in timelineClipDragCommit.ts: the key only has
 // to be unique per gesture and identical across the gesture's records.
 let zReorderGestureSeq = 0;
+
+function removeLivePreviewElement(
+  iframe: HTMLIFrameElement | null,
+  selection: DomEditSelection,
+  activeCompPath: string | null,
+): { restore: () => void } | null {
+  let doc: Document | null = null;
+  try {
+    doc = iframe?.contentDocument ?? null;
+  } catch {
+    return null;
+  }
+  if (!doc) return null;
+  const element = findElementForSelection(doc, selection, activeCompPath);
+  if (!element || element === doc.body || element === doc.documentElement) return null;
+  const parent = element.parentNode;
+  if (!parent) return null;
+  const nextSibling = element.nextSibling;
+  element.remove();
+  return {
+    restore: () => {
+      if (element.isConnected) return;
+      parent.insertBefore(element, nextSibling?.parentNode === parent ? nextSibling : null);
+    },
+  };
+}
 
 /**
  * Undo coalesce key for ONE z-reorder gesture — unique per call. The key
@@ -70,6 +98,7 @@ export function zReorderCoalesceKey(
 
 export function useElementLifecycleOps({
   activeCompPath,
+  previewIframeRef,
   showToast,
   writeProjectFile,
   domEditSaveTimestampRef,
@@ -92,6 +121,7 @@ export function useElementLifecycleOps({
       const label = selection.label || selection.id || selection.selector || selection.tagName;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      let liveRemoval: { restore: () => void } | null = null;
       try {
         const originalContent = await readProjectFileContent(pid, targetPath);
 
@@ -100,17 +130,29 @@ export function useElementLifecycleOps({
           throw new Error("Selected element has no patchable target");
         }
 
+        liveRemoval = removeLivePreviewElement(
+          previewIframeRef.current,
+          selection,
+          activeCompPath,
+        );
+        domEditSaveTimestampRef.current = Date.now();
+
         if (onTrySdkDelete && selection.hfId) {
-          const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
-          if (cutoverCommittedOrThrow(handled)) {
-            clearDomSelection();
-            usePlayerStore.getState().setSelectedElementId(null);
-            showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
-            return;
+          try {
+            const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
+            if (cutoverCommittedOrThrow(handled)) {
+              clearDomSelection();
+              usePlayerStore.getState().setSelectedElementId(null);
+              if (!liveRemoval) reloadPreview();
+              showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+              return;
+            }
+          } catch (error) {
+            liveRemoval?.restore();
+            throw error;
           }
         }
 
-        domEditSaveTimestampRef.current = Date.now();
         const removeResponse = await fetch(
           `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
           {
@@ -150,10 +192,11 @@ export function useElementLifecycleOps({
         // Server wrote the file; resync the stale in-memory SDK doc so a later
         // SDK edit doesn't resurrect the deleted element.
         forceReloadSdkSession?.();
-        reloadPreview();
+        if (!liveRemoval) reloadPreview();
         onElementDeleted?.(selection);
         showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
+        liveRemoval?.restore();
         const message = error instanceof Error ? error.message : "Failed to delete element";
         showToast(message);
       }
@@ -163,6 +206,7 @@ export function useElementLifecycleOps({
       clearDomSelection,
       domEditSaveTimestampRef,
       editHistory.recordEdit,
+      previewIframeRef,
       onTrySdkDelete,
       onElementDeleted,
       forceReloadSdkSession,

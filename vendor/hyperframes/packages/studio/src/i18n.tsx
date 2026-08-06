@@ -40,6 +40,20 @@ type TranslationKey =
   | "sidebar.compsTooltip"
   | "sidebar.assetsTooltip"
   | "sidebar.catalogTooltip"
+  | "assets.import"
+  | "assets.source"
+  | "assets.sourceUnavailable"
+  | "assets.searchPlaceholder"
+  | "assets.dropUpload"
+  | "assets.mediaTypes"
+  | "assets.dropMediaHere"
+  | "assets.filterAll"
+  | "assets.filterUsed"
+  | "assets.filterUnused"
+  | "assets.categoryAudio"
+  | "assets.categoryImages"
+  | "assets.categoryVideo"
+  | "assets.categoryFonts"
   | "sidebar.selectFile"
   | "sidebar.lint"
   | "sidebar.linting"
@@ -67,6 +81,7 @@ type TranslationKey =
   | "right.variables"
   | "right.variablesTooltip"
   | "right.inspectorUnavailable"
+  | "right.openingProperties"
   | "right.showRenders"
   | "player.audioMutedSpeed"
   | "player.unmuteAudio"
@@ -113,6 +128,20 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.compsTooltip": "Compositions and sub-compositions",
     "sidebar.assetsTooltip": "Videos, images, audio, fonts",
     "sidebar.catalogTooltip": "Browse blocks and components",
+    "assets.import": "Import",
+    "assets.source": "Source",
+    "assets.sourceUnavailable": "Source selection is not available yet",
+    "assets.searchPlaceholder": "Search assets...",
+    "assets.dropUpload": "Drop files to upload",
+    "assets.mediaTypes": "Images, video, audio, and fonts",
+    "assets.dropMediaHere": "Drop media files here",
+    "assets.filterAll": "All",
+    "assets.filterUsed": "In use",
+    "assets.filterUnused": "Unused",
+    "assets.categoryAudio": "Audio",
+    "assets.categoryImages": "Images",
+    "assets.categoryVideo": "Video",
+    "assets.categoryFonts": "Fonts",
     "sidebar.selectFile": "Select a file to edit",
     "sidebar.lint": "Lint",
     "sidebar.linting": "Linting...",
@@ -141,6 +170,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.variablesTooltip": "Template variables - declare, preview with values",
     "right.inspectorUnavailable":
       "Inspector is unavailable right now - select the Design or Layers pane above, or pause playback/recording to inspect elements.",
+    "right.openingProperties": "Opening properties...",
     "right.showRenders": "Show Renders",
     "player.audioMutedSpeed": "Audio muted above 1x speed",
     "player.unmuteAudio": "Unmute audio",
@@ -186,6 +216,20 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.compsTooltip": "合成与子合成",
     "sidebar.assetsTooltip": "视频、图片、音频、字体",
     "sidebar.catalogTooltip": "浏览区块和组件",
+    "assets.import": "导入",
+    "assets.source": "来源",
+    "assets.sourceUnavailable": "暂不支持选择来源",
+    "assets.searchPlaceholder": "搜索素材...",
+    "assets.dropUpload": "拖放文件以上传",
+    "assets.mediaTypes": "图片、视频、音频和字体",
+    "assets.dropMediaHere": "将媒体文件拖到这里",
+    "assets.filterAll": "全部",
+    "assets.filterUsed": "使用中",
+    "assets.filterUnused": "未使用",
+    "assets.categoryAudio": "音频",
+    "assets.categoryImages": "图片",
+    "assets.categoryVideo": "视频",
+    "assets.categoryFonts": "字体",
     "sidebar.selectFile": "选择一个文件进行编辑",
     "sidebar.lint": "检查",
     "sidebar.linting": "检查中...",
@@ -214,6 +258,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.variablesTooltip": "模板变量 - 声明并用取值预览",
     "right.inspectorUnavailable":
       "检查器当前不可用 - 请在上方选择设计或图层面板，或暂停播放/录制后再检查元素。",
+    "right.openingProperties": "正在打开属性...",
     "right.showRenders": "显示渲染",
     "player.audioMutedSpeed": "播放速度超过 1x 时音频已静音",
     "player.unmuteAudio": "取消静音",

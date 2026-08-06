@@ -117,13 +117,27 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     [designTokenSource],
   );
 
+  const syncStudioDesignTokens = React.useCallback((tokens: Record<string, string>) => {
+    const frameWindow = studioFrameRef.current?.contentWindow;
+    if (!frameWindow || Object.keys(tokens).length === 0) return;
+    frameWindow.postMessage(
+      {
+        type: "ipollowork:studio-design-token-change",
+        projectId: videoProjectId(sessionId),
+        tokens,
+      },
+      new URL(studioUrl).origin,
+    );
+  }, [sessionId, studioUrl]);
+
   const loadDesignSystemFiles = React.useCallback(async () => {
     if (!client || !workspaceId) return;
     const tokens = await client.readWorkspaceFile(workspaceId, designTokenPath).catch(() => null);
     const source = tokens?.content ?? "";
     designTokenSourceRef.current = source;
     setDesignTokenSource(source);
-  }, [client, designTokenPath, workspaceId]);
+    syncStudioDesignTokens(parseDesignTokenValues(source));
+  }, [client, designTokenPath, syncStudioDesignTokens, workspaceId]);
 
   React.useEffect(() => {
     if (studioHostPanel !== "style") return;
@@ -189,12 +203,20 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     }, 350);
   }, [client, designTokenPath, workspaceId]);
 
-  const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
-    const next = replaceDesignTokenValue(designTokenSourceRef.current, name, value);
+  const handleDesignTokenChanges = React.useCallback((values: DesignTokenValues) => {
+    let next = designTokenSourceRef.current;
+    for (const [name, value] of Object.entries(values)) {
+      next = replaceDesignTokenValue(next, name, value);
+    }
     designTokenSourceRef.current = next;
     setDesignTokenSource(next);
+    syncStudioDesignTokens(values);
     saveDesignTokenSource(next);
-  }, [saveDesignTokenSource]);
+  }, [saveDesignTokenSource, syncStudioDesignTokens]);
+
+  const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
+    handleDesignTokenChanges({ [name]: value });
+  }, [handleDesignTokenChanges]);
 
   const recordStudioHostEdit = React.useCallback((label: string, files: StudioHistoryFiles) => {
     const frameWindow = studioFrameRef.current?.contentWindow;
@@ -271,6 +293,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         toast.info(`${theme.name} is already applied to Video Studio.`);
         return;
       }
+      syncStudioDesignTokens(parseDesignTokenValues(nextTokens));
       await client.writeWorkspaceFile(workspaceId, {
         path: designTokenPath,
         content: nextTokens,
@@ -337,7 +360,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       }
       toast.error(error instanceof Error ? error.message : "Could not apply the video design system.");
     }
-  }, [client, compositionPath, designTokenPath, recordStudioHostEdit, saveDesignTokenSource, studioHistoryReady, workspaceId]);
+  }, [client, compositionPath, designTokenPath, recordStudioHostEdit, saveDesignTokenSource, studioHistoryReady, syncStudioDesignTokens, workspaceId]);
 
   React.useEffect(() => {
     if (studioHostPanel !== "style") return;
@@ -738,6 +761,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
               initialValues={designTokenValues}
               onClose={() => setStudioHostPanel(null)}
               onTokenChange={handleDesignTokenChange}
+              onTokenChangeMany={handleDesignTokenChanges}
               onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
             />
           </div> : null}

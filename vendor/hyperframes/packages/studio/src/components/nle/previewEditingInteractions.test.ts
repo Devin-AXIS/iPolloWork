@@ -59,8 +59,8 @@ describe("preview editing interactions", () => {
 
     expect(assetsSource).toContain('e.dataTransfer.types.includes("Files")');
     expect(assetsSource).toContain("onImport?.(e.dataTransfer.files)");
-    expect(assetsSource).toContain("Drop files to upload");
-    expect(assetsSource).toContain('title="Source selection is not available yet"');
+    expect(assetsSource).toContain('t("assets.dropUpload")');
+    expect(assetsSource).toContain('title={t("assets.sourceUnavailable")}');
     expect(assetsSource).toContain("disabled");
     expect(assetsSource).toContain("Project 01");
     expect(assetsSource).toContain("bg-[#171816] text-[#ffffff]");

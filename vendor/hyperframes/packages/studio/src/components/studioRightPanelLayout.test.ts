@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { flipScaleValue } from "./editor/propertyPanelFlatLayoutSection";
 
 describe("Studio right panel layout", () => {
   it("matches the Figma property-inspector group and timing states", () => {
@@ -33,7 +34,9 @@ describe("Studio right panel layout", () => {
     expect(primitives).toContain('large ? "h-[34px] rounded-[6px] px-[10px]"');
     expect(primitives).toContain("px-[17px]");
     expect(primitives).toContain("text-[12px] font-medium text-[#2c2d2a]");
-    expect(primitives).toContain("rotate-180 text-[#858a94]");
+    expect(primitives).toContain("<ChevronRight size={16}");
+    expect(primitives).toContain("<ChevronDown size={16}");
+    expect(primitives).not.toContain("rotate-180 text-[#858a94]");
     expect(primitives).toContain("shadow-[inset_3px_0_0_#20bbc0]");
     expect(primitives).toContain("<ChevronDown size={16}");
     expect(selects).toContain('large ? "h-[34px] rounded-[6px] pl-2 pr-4"');
@@ -94,6 +97,16 @@ describe("Studio right panel layout", () => {
     expect(layout).toContain("<RotateCw size={16}");
     expect(layout).toContain("<FlipHorizontal size={16}");
     expect(layout).toContain("<FlipVertical size={16}");
+    expect(layout).toContain('aria-label="Flip horizontally"');
+    expect(layout).toContain('aria-label="Flip vertically"');
+    expect(layout).toContain('commitScaleFlip("scaleX")');
+    expect(layout).toContain('commitScaleFlip("scaleY")');
+    expect(layout).not.toContain("Flip horizontally (unavailable)");
+    expect(layout).not.toContain("Flip vertically (unavailable)");
+    expect(flipScaleValue(1)).toBe(-1);
+    expect(flipScaleValue(-1.25)).toBe(1.25);
+    expect(flipScaleValue(0)).toBe(-1);
+    expect(flipScaleValue(undefined)).toBe(-1);
     expect(layout).not.toContain("style={{ opacity: hasKeyframesOnProp ? 1 : 0.3 }}");
     expect(keyframeDiamond).toContain('state === "active" ? "#3CE6AC" : "#858A94"');
     expect(keyframeDiamond).not.toContain("style={{ color, opacity }}");
@@ -450,5 +463,20 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain("scrollbar-gutter: stable;");
     expect(styles).toContain("scrollbar-width: thin;");
     expect(styles).toContain(':root[data-ipollowork-theme="light"] .hf-block-catalog-scroll');
+  });
+
+  it("localizes asset import controls", () => {
+    const assets = readFileSync(new URL("./sidebar/AssetsTab.tsx", import.meta.url), "utf8");
+    const i18n = readFileSync(new URL("../i18n.tsx", import.meta.url), "utf8");
+
+    expect(assets).toContain("useStudioI18n");
+    expect(assets).toContain('t("assets.import")');
+    expect(assets).toContain('t("assets.dropUpload")');
+    expect(assets).toContain('t("assets.mediaTypes")');
+    expect(assets).toContain('placeholder={t("assets.searchPlaceholder")}');
+    expect(assets).not.toContain(">Import<");
+    expect(assets).not.toContain("Drop files to upload");
+    expect(i18n).toContain('"assets.import": "Import"');
+    expect(i18n).toContain('"assets.import": "导入"');
   });
 });

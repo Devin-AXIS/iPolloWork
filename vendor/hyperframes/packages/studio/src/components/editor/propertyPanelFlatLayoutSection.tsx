@@ -43,6 +43,10 @@ interface GeometryRowsProps {
   large?: boolean;
 }
 
+export function flipScaleValue(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value !== 0 ? -value : -1;
+}
+
 function KeyframeGutter({
   element,
   property,
@@ -350,6 +354,11 @@ interface FlatLayoutSectionProps
 }
 
 export function FlatLayoutSection(props: FlatLayoutSectionProps) {
+  const commitScaleFlip = (property: "scaleX" | "scaleY") => {
+    const nextValue = flipScaleValue(props.gsapRuntimeValues[property]);
+    void props.onCommitAnimatedProperty?.(props.element, property, nextValue);
+  };
+
   return (
     <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2">
       <LayoutGeometryRows {...props} large />
@@ -365,17 +374,19 @@ export function FlatLayoutSection(props: FlatLayoutSectionProps) {
         </button>
         <button
           type="button"
-          aria-label="Flip horizontally (unavailable)"
-          disabled
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] disabled:cursor-not-allowed"
+          aria-label="Flip horizontally"
+          disabled={props.disabled}
+          onClick={() => commitScaleFlip("scaleX")}
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed"
         >
           <FlipHorizontal size={16} />
         </button>
         <button
           type="button"
-          aria-label="Flip vertically (unavailable)"
-          disabled
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] disabled:cursor-not-allowed"
+          aria-label="Flip vertically"
+          disabled={props.disabled}
+          onClick={() => commitScaleFlip("scaleY")}
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed"
         >
           <FlipVertical size={16} />
         </button>

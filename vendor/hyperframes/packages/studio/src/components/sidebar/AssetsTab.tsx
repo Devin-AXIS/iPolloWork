@@ -4,9 +4,10 @@ import { CaretDown } from "@phosphor-icons/react";
 import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
-import { type MediaCategory, getCategory, CATEGORY_LABELS, FILTER_ORDER } from "./assetHelpers";
+import { type MediaCategory, getCategory, FILTER_ORDER } from "./assetHelpers";
 import { AudioRow } from "./AudioRow";
 import { AssetCard, FontRow } from "./AssetCard";
+import { useStudioI18n } from "../../i18n";
 import importIconSrc from "../../icons/figmaAssetsImport.svg?url";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
 
@@ -156,8 +157,15 @@ export const AssetsTab = memo(function AssetsTab({
   const [manifest, setManifest] = useState<
     Map<string, { description?: string; duration?: number; width?: number; height?: number }>
   >(new Map());
+  const { t } = useStudioI18n();
 
   const manifest404Ref = useRef<Set<string>>(new Set());
+  const categoryLabels: Record<MediaCategory, string> = {
+    audio: t("assets.categoryAudio"),
+    images: t("assets.categoryImages"),
+    video: t("assets.categoryVideo"),
+    fonts: t("assets.categoryFonts"),
+  };
 
   const registerAssetSlot = useCallback((asset: string, element: HTMLElement | null) => {
     const previous = assetSlotsRef.current.get(asset);
@@ -343,8 +351,10 @@ export const AssetsTab = memo(function AssetsTab({
       {dragOver && (
         <div className="pointer-events-none absolute inset-2 z-50 grid place-items-center rounded-lg border-2 border-dashed border-panel-accent/70 bg-panel-bg/90">
           <div className="flex flex-col items-center gap-1 text-center">
-            <span className="text-xs font-semibold text-panel-accent">Drop files to upload</span>
-            <span className="text-[10px] text-panel-text-3">Images, video, audio, and fonts</span>
+            <span className="text-xs font-semibold text-panel-accent">
+              {t("assets.dropUpload")}
+            </span>
+            <span className="text-[10px] text-panel-text-3">{t("assets.mediaTypes")}</span>
           </div>
         </div>
       )}
@@ -352,10 +362,10 @@ export const AssetsTab = memo(function AssetsTab({
       <div className="flex-shrink-0 border-b border-panel-border px-4 pb-[15px] pt-3">
         <div className="flex items-end gap-2">
           <label className="grid min-w-0 flex-1 gap-[5px] text-[10px] font-medium leading-3 text-panel-text-3">
-            Source
+            {t("assets.source")}
             <select
               disabled
-              title="Source selection is not available yet"
+              title={t("assets.sourceUnavailable")}
               value="project-01"
               className="h-[34px] min-w-0 cursor-not-allowed rounded-md border-0 bg-panel-input px-[11px] text-[13px] font-medium text-panel-text-1 opacity-100 outline-none"
             >
@@ -371,7 +381,7 @@ export const AssetsTab = memo(function AssetsTab({
                 className="flex h-[34px] w-auto flex-none items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-[#858a94] bg-panel-bg px-3 text-xs font-medium text-panel-text-1 transition-colors hover:bg-panel-input"
               >
                 <img src={importIconSrc} alt="" className="h-4 w-4" />
-                Import
+                {t("assets.import")}
               </button>
               <input
                 ref={fileInputRef}
@@ -396,7 +406,7 @@ export const AssetsTab = memo(function AssetsTab({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search assets…"
+            placeholder={t("assets.searchPlaceholder")}
             className="min-w-0 w-full bg-transparent text-[13px] text-panel-text-1 outline-none placeholder:text-[#a2a6af]"
           />
         </div>
@@ -411,7 +421,7 @@ export const AssetsTab = memo(function AssetsTab({
                 : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
             }`}
           >
-            All {allMediaAssets.length}
+            {t("assets.filterAll")} {allMediaAssets.length}
           </button>
           <button
             type="button"
@@ -422,7 +432,7 @@ export const AssetsTab = memo(function AssetsTab({
                 : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
             }`}
           >
-            In use {usageCounts.used}
+            {t("assets.filterUsed")} {usageCounts.used}
           </button>
           <button
             type="button"
@@ -433,7 +443,7 @@ export const AssetsTab = memo(function AssetsTab({
                 : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
             }`}
           >
-            Unused {usageCounts.unused}
+            {t("assets.filterUnused")} {usageCounts.unused}
           </button>
         </div>
       </div>
@@ -462,7 +472,9 @@ export const AssetsTab = memo(function AssetsTab({
               <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
               <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" />
             </svg>
-            <p className="text-[10px] text-neutral-600 text-center">Drop media files here</p>
+            <p className="text-[10px] text-neutral-600 text-center">
+              {t("assets.dropMediaHere")}
+            </p>
           </div>
         ) : (
           visibleCategories.map((cat) => (
@@ -479,7 +491,7 @@ export const AssetsTab = memo(function AssetsTab({
                     weight="bold"
                     className={`h-3 w-3 flex-none text-[#858a94] transition-transform ${collapsedCategories.has(cat) ? "-rotate-90" : ""}`}
                   />
-                  {CATEGORY_LABELS[cat]}
+                  {categoryLabels[cat]}
                 </span>
                 <span className="text-xs font-normal tabular-nums">{categorized[cat].length}</span>
                 <span
