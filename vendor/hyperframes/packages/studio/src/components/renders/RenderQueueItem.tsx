@@ -2,6 +2,7 @@ import { memo, useCallback, useState } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
 import { Button } from "../ui/Button";
 import type { RenderJob } from "./useRenderQueue";
+import { useStudioI18n } from "../../i18n";
 
 interface RenderQueueItemProps {
   job: RenderJob;
@@ -31,6 +32,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
   onDelete,
   onCancel,
 }: RenderQueueItemProps) {
+  const { tx } = useStudioI18n();
   const [hovered, setHovered] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -74,7 +76,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           type="button"
           onClick={isComplete ? handleOpen : undefined}
           disabled={!isComplete}
-          aria-label={isComplete ? `Open ${job.filename} in a new tab` : undefined}
+          aria-label={isComplete ? tx(`Open ${job.filename} in a new tab`) : undefined}
           className={[
             "w-20 h-[45px] rounded-md overflow-hidden bg-panel-input flex-shrink-0 relative",
             "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent",
@@ -138,7 +140,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           {isRendering && (
             <div className="mt-1">
               <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[9px] text-panel-text-4">{job.stage || "Rendering"}</span>
+                <span className="text-[9px] text-panel-text-4">{tx(job.stage || "Rendering")}</span>
                 <span className="text-[9px] font-mono text-panel-accent">{job.progress}%</span>
               </div>
               <div
@@ -147,7 +149,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                 aria-valuenow={job.progress}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-label={`Render progress: ${job.progress}%`}
+                aria-label={tx(`Render progress: ${job.progress}%`)}
               >
                 <div
                   className="h-full bg-panel-accent rounded-full transition-all duration-300"
@@ -161,11 +163,11 @@ export const RenderQueueItem = memo(function RenderQueueItem({
             <span className="text-[9px] text-red-400 mt-0.5 block">{job.error}</span>
           )}
           {job.status === "cancelled" && (
-            <span className="text-[9px] text-panel-text-4 mt-0.5 block">Cancelled</span>
+            <span className="text-[9px] text-panel-text-4 mt-0.5 block">{tx("Cancelled")}</span>
           )}
 
           {!isRendering && (
-            <span className="text-[9px] text-panel-text-5">{formatTimeAgo(job.createdAt)}</span>
+            <span className="text-[9px] text-panel-text-5">{tx(formatTimeAgo(job.createdAt))}</span>
           )}
         </div>
 
@@ -180,7 +182,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                 onCancel();
               }}
             >
-              Cancel
+              {tx("Cancel")}
             </Button>
           ) : confirmingDelete ? (
             <>
@@ -193,7 +195,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                   onDelete();
                 }}
               >
-                Delete?
+                {tx("Delete?")}
               </Button>
               <Button
                 size="sm"
@@ -203,7 +205,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                   setConfirmingDelete(false);
                 }}
               >
-                Keep
+                {tx("Keep")}
               </Button>
             </>
           ) : (
@@ -215,8 +217,8 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                     ? "text-panel-text-5 hover:text-panel-accent"
                     : "text-panel-text-5/30 cursor-default"
                 }`}
-                title={isComplete ? "Download" : undefined}
-                aria-label={`Download ${job.filename}`}
+                title={isComplete ? tx("Download") : undefined}
+                aria-label={tx(`Download ${job.filename}`)}
                 disabled={!isComplete}
               >
                 <svg
@@ -240,8 +242,8 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                   setConfirmingDelete(true);
                 }}
                 className="p-1.5 min-w-6 min-h-6 rounded text-panel-text-5 hover:text-red-400 transition-colors outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent"
-                title="Delete render file"
-                aria-label={`Delete ${job.filename}`}
+                title={tx("Delete render file")}
+                aria-label={tx(`Delete ${job.filename}`)}
               >
                 <svg
                   width="12"

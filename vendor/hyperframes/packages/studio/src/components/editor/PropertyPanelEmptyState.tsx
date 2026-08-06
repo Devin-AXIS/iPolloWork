@@ -1,7 +1,9 @@
 import { Eye, Layers } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditingTypes";
+import { useStudioI18n } from "../../i18n";
 
 function FlatEmptyState() {
+  const { tx } = useStudioI18n();
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2.5 px-8 py-10 text-center">
       <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-panel-border-input bg-panel-input text-panel-text-3">
@@ -16,15 +18,15 @@ function FlatEmptyState() {
           <path d="M4 3l6 14 2-6 6-2z" strokeLinejoin="round" />
         </svg>
       </span>
-      <div className="text-[13px] font-semibold text-panel-text-0">Nothing selected</div>
+      <div className="text-[13px] font-semibold text-panel-text-0">{tx("Nothing selected")}</div>
       <div className="max-w-[250px] text-[11px] leading-[1.5] text-panel-text-3">
-        Click any element on the canvas to edit it, or drag to select several.
+        {tx("Click any element on the canvas to edit it, or drag to select several.")}
       </div>
       <div className="mt-2 flex w-full flex-col gap-1.5">
         <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
           <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
             <span className="text-panel-danger">●</span>
-            Record a gesture
+            {tx("Record a gesture")}
           </span>
           <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
             R
@@ -33,7 +35,7 @@ function FlatEmptyState() {
         <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
           <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
             <span className="text-panel-accent">✦</span>
-            Describe a change to the agent
+            {tx("Describe a change to the agent")}
           </span>
           <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
             ⌘K
@@ -67,6 +69,7 @@ function FlatMultiSelectState({
   onHideAllSelected?: () => void;
   onClearSelection?: () => void;
 }) {
+  const { tx } = useStudioI18n();
   return (
     <div className="flex flex-col gap-3 px-4 py-3">
       <div className="flex items-center gap-3 rounded-xl border border-panel-border bg-panel-surface p-3">
@@ -75,16 +78,16 @@ function FlatMultiSelectState({
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-semibold text-panel-text-0">
-            {multiSelectCount} elements selected
+            {tx(`${multiSelectCount} elements selected`)}
           </div>
           <div className="mt-px font-mono text-[10px] text-panel-text-3">
-            shift-click to add or remove
+            {tx("shift-click to add or remove")}
           </div>
         </div>
         <button
           type="button"
           data-flat-multiselect-clear="true"
-          aria-label="Clear selection"
+          aria-label={tx("Clear selection")}
           onClick={onClearSelection}
           className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center text-panel-text-3"
         >
@@ -131,7 +134,7 @@ function FlatMultiSelectState({
           className="flex h-[34px] flex-1 items-center justify-center gap-2 rounded-lg bg-panel-hover text-[11px] font-semibold text-panel-text-0"
         >
           <Layers size={13} />
-          Group selection
+          {tx("Group selection")}
         </button>
         <button
           type="button"
@@ -140,11 +143,11 @@ function FlatMultiSelectState({
           className="flex h-[34px] items-center gap-1.5 rounded-lg border border-panel-border-input bg-panel-input px-3 text-[11px] font-medium text-panel-text-2"
         >
           <Eye size={13} />
-          Hide all
+          {tx("Hide all")}
         </button>
       </div>
       <span className="text-center text-[10px] text-panel-text-5">
-        Select a single element to edit its properties
+        {tx("Select a single element to edit its properties")}
       </span>
     </div>
   );

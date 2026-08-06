@@ -10,6 +10,7 @@ import {
 } from "@hyperframes/core/color-grading";
 import { Compare, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import { LUT_EXT } from "../../utils/mediaTypes";
 import { FlatDropdown, FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { resolveValueTier } from "./propertyPanelValueTier";
@@ -32,6 +33,7 @@ export function FlatColorGradingAccessory({
   >;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const { grading, compareEnabled, runtimeStatus, commitCompare, resetGrading } = state;
   const gradingActive = isHfColorGradingActive(grading);
   // Tracks the active hold's cleanup so it can be torn down on unmount too —
@@ -52,7 +54,7 @@ export function FlatColorGradingAccessory({
       <button
         type="button"
         aria-pressed={compareEnabled}
-        aria-label="Hold to show original"
+        aria-label={tx("Hold to show original")}
         disabled={!gradingActive}
         onPointerDown={(e) => {
           if (!gradingActive) return;
@@ -88,28 +90,28 @@ export function FlatColorGradingAccessory({
           e.preventDefault();
           commitCompare(false);
         }}
-        title="Hold to show original"
+        title={tx("Hold to show original")}
         className="flex-shrink-0 text-panel-text-3 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Compare size={12} />
       </button>
-      <span className="flex min-w-0 items-center gap-1" title={runtimeStatus.message}>
+      <span className="flex min-w-0 items-center gap-1" title={tx(runtimeStatus.message)}>
         <span
           data-flat-grade-status-dot="true"
-          title={runtimeStatus.message}
+          title={tx(runtimeStatus.message)}
           className={`h-[5px] w-[5px] flex-shrink-0 rounded-full ${STATUS_DOT_CLASS[runtimeStatus.state]}`}
         />
         <span
           data-flat-grade-status-message="true"
           className="max-w-[84px] truncate text-[9px] text-panel-text-4"
         >
-          {runtimeStatus.message}
+          {tx(runtimeStatus.message)}
         </span>
       </span>
       <button
         type="button"
         data-flat-grade-reset="true"
-        title="Reset color grading"
+        title={tx("Reset color grading")}
         onClick={(e) => {
           e.stopPropagation();
           track("button", "Reset color grading");
@@ -188,6 +190,7 @@ const EFFECT_SLIDERS: Array<{ key: HfColorGradingEffectKey; label: string }> = [
 ];
 
 function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
+  const { tx } = useStudioI18n();
   if (metadata?.color.dynamicRange !== "hdr") return null;
   const details = [
     metadata.color.codecName,
@@ -204,14 +207,13 @@ function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
       className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] leading-4 text-amber-100"
     >
       <div className="mb-0.5 flex items-center justify-between gap-2">
-        <span className="font-semibold">{metadata.color.label} source</span>
+        <span className="font-semibold">{metadata.color.label} {tx("Source")}</span>
         <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-100">
-          SDR preview
+          {tx("SDR preview")}
         </span>
       </div>
       <p className="text-amber-100/80">
-        These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this
-        is not true HDR color grading yet.
+        {tx("These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this is not true HDR color grading yet.")}
       </p>
       {details && (
         <p
@@ -250,6 +252,7 @@ export function FlatColorGradingSection({
   mediaMetadata: MediaMetadata | null;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutOpen, setLutOpen] = useState(false);
   const [detailSettingsOpen, setDetailSettingsOpen] = useState<"vignette" | "grain" | null>(null);
@@ -320,7 +323,7 @@ export function FlatColorGradingSection({
     <div className="space-y-1.5">
       <HdrBanner metadata={mediaMetadata} />
       <div data-flat-grade-preset="true" className="flex min-h-[30px] items-center justify-between">
-        <span className="text-[11px] text-panel-text-2">Preset</span>
+        <span className="text-[11px] text-panel-text-2">{tx("Preset")}</span>
         <FlatSelectRow
           label=""
           ariaLabel="Preset"
@@ -351,7 +354,7 @@ export function FlatColorGradingSection({
           onClick={() => setLutOpen((v) => !v)}
           className="flex min-h-[30px] w-full items-center justify-between text-left"
         >
-          <span className="text-[11px] text-panel-text-2">Custom LUT</span>
+          <span className="text-[11px] text-panel-text-2">{tx("Custom LUT")}</span>
           <svg
             width="10"
             height="10"
@@ -366,7 +369,7 @@ export function FlatColorGradingSection({
           <div className="space-y-1.5 pb-1">
             <div className="flex items-center justify-between gap-2">
               <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-panel-text-3">
-                {selectedLutName ?? "None"}
+                {selectedLutName ?? tx("None")}
               </span>
               <span data-flat-grade-lut-select="true">
                 <FlatDropdown
@@ -391,7 +394,7 @@ export function FlatColorGradingSection({
                 type="button"
                 disabled={!onImportAssets}
                 onClick={() => lutInputRef.current?.click()}
-                title="Import .cube LUT"
+                title={tx("Import .cube LUT")}
                 className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Plus size={12} />
@@ -425,7 +428,7 @@ export function FlatColorGradingSection({
 
       <div className="space-y-0.5 border-t border-panel-hairline pt-1.5">
         <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Adjust
+          {tx("Adjust")}
         </div>
         {ADJUST_SLIDERS.map((slider) => {
           const rawPercent = grading.adjust[slider.key] * 100;
@@ -463,14 +466,14 @@ export function FlatColorGradingSection({
 
       <div className="space-y-1.5 border-t border-panel-hairline pt-1.5">
         <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Finishing
+          {tx("Finishing")}
         </div>
         <div className="flex items-center gap-1.5">
           <div className="flex-1">{renderDetailSlider("vignette")}</div>
           <button
             type="button"
             data-flat-grade-settings="vignette"
-            title="Vignette settings"
+            title={tx("Vignette settings")}
             onClick={() => setDetailSettingsOpen((c) => (c === "vignette" ? null : "vignette"))}
             className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1"
           >
@@ -482,7 +485,7 @@ export function FlatColorGradingSection({
           <button
             type="button"
             data-flat-grade-settings="grain"
-            title="Grain settings"
+            title={tx("Grain settings")}
             onClick={() => setDetailSettingsOpen((c) => (c === "grain" ? null : "grain"))}
             className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1"
           >
@@ -500,7 +503,7 @@ export function FlatColorGradingSection({
 
       <div className="space-y-0.5 border-t border-panel-hairline pt-1.5">
         <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Effects
+          {tx("Effects")}
         </div>
         {EFFECT_SLIDERS.map((slider) => {
           const value = grading.effects[slider.key];
@@ -537,7 +540,7 @@ export function FlatColorGradingSection({
       {onApplyScopeAvailable && (
         <div className="flex items-center justify-between gap-2 border-t border-panel-hairline pt-1.5">
           <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-panel-text-2">
-            Copy grade to
+            {tx("Copy grade to")}
             <FlatDropdown
               ariaLabel="Copy grade to"
               value={applyScope}
@@ -564,7 +567,7 @@ export function FlatColorGradingSection({
             }}
             className="text-[11px] font-medium text-panel-accent hover:text-panel-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {applyBusy ? "Applying" : "Apply"}
+            {tx(applyBusy ? "Applying" : "Apply")}
           </button>
         </div>
       )}

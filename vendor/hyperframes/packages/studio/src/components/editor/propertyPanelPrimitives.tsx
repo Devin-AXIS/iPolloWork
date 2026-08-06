@@ -3,6 +3,7 @@ import {
   DesignPanelInputProvider,
   useTrackDesignInput,
 } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import { adjustNumericToken, FIELD, LABEL, parseNumericToken } from "./propertyPanelHelpers";
 
 export function CommitField({
@@ -22,6 +23,7 @@ export function CommitField({
   align?: "left" | "right";
   onCommit: (nextValue: string) => void;
 }) {
+  const { tx } = useStudioI18n();
   const [draft, setDraft] = useState(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const valueRef = useRef(value);
@@ -97,7 +99,7 @@ export function CommitField({
         setDraft(nextDraft);
         scheduleCommit(nextDraft);
       }}
-      title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
+      title={parseNumericToken(value) ? tx("Scroll or use Arrow keys to adjust") : undefined}
       className={`min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600 ${
         align === "right" ? "text-right" : "text-left"
       }`}
@@ -129,6 +131,7 @@ export function MetricField({
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const scrubRef = useRef<{ startX: number; startValue: number; pointerId: number } | null>(null);
   const commit = useCallback(
     (nextValue: string) => {
@@ -175,9 +178,9 @@ export function MetricField({
       : ({ className: "flex-shrink-0 text-[11px] font-medium text-neutral-500" } as const);
 
   return (
-    <div className={FIELD} title={tooltip}>
+    <div className={FIELD} title={tooltip ? tx(tooltip) : undefined}>
       <div className="flex min-w-0 items-center gap-3">
-        <span {...scrubProps}>{label}</span>
+        <span {...scrubProps}>{tx(label)}</span>
         <CommitField value={value} disabled={disabled} liveCommit={liveCommit} onCommit={commit} />
         {suffix && <span className="flex-shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
       </div>
@@ -201,13 +204,14 @@ export function DetailField({
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const commit = (nextValue: string) => {
     if (nextValue !== value) track("text", label);
     onCommit(nextValue);
   };
   return (
     <label className="grid min-w-0 gap-1.5">
-      <span className={LABEL}>{label}</span>
+      <span className={LABEL}>{tx(label)}</span>
       <div className={FIELD}>
         <CommitField value={value} disabled={disabled} onCommit={commit} />
       </div>
@@ -309,6 +313,7 @@ export function SegmentedControl({
   onChange: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   return (
     <div
       className="grid min-w-0 gap-[2px] rounded-md bg-panel-input p-[2px]"
@@ -329,7 +334,7 @@ export function SegmentedControl({
               : "text-panel-text-4 hover:text-panel-text-2"
           }`}
         >
-          {option.label}
+          {tx(option.label)}
         </button>
       ))}
     </div>
@@ -350,10 +355,11 @@ export function SelectField({
   onChange: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <label className={`${FIELD} flex items-center gap-3`}>
-      <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
+      <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{tx(label)}</span>
       <select
         value={value}
         disabled={disabled}
@@ -365,7 +371,7 @@ export function SelectField({
       >
         {renderedOptions.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {tx(option)}
           </option>
         ))}
       </select>
@@ -387,6 +393,7 @@ export function Section({
   defaultCollapsed?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const { tx } = useStudioI18n();
   const collapseIcon = collapsed ? (
     <svg
       width="12"
@@ -419,7 +426,7 @@ export function Section({
             onClick={() => setCollapsed((v) => !v)}
             className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
           >
-            <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
+            <h3 className="text-[12px] font-semibold text-panel-text-1">{tx(title)}</h3>
             {collapseIcon}
           </button>
           {accessory && <div className="flex flex-shrink-0 items-center">{accessory}</div>}

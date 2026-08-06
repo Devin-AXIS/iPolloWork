@@ -3,6 +3,7 @@ import { useCaptionStore } from "../store";
 import type { CaptionStyle } from "../types";
 import { CaptionAnimationPanel } from "./CaptionAnimationPanel";
 import { Section, Row, inputCls } from "./shared";
+import { useStudioI18n } from "../../i18n";
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -15,6 +16,7 @@ interface CaptionPropertyPanelProps {
 export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   iframeRef,
 }: CaptionPropertyPanelProps) {
+  const { tx } = useStudioI18n();
   const model = useCaptionStore((s) => s.model);
   const selectedSegmentIds = useCaptionStore((s) => s.selectedSegmentIds);
   const selectedGroupId = useCaptionStore((s) => s.selectedGroupId);
@@ -166,7 +168,9 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   if (selectedSegmentIds.size === 0) {
     return (
       <div className="flex items-center justify-center h-full px-4 text-center">
-        <p className="text-xs text-neutral-500">Select caption words to edit their style</p>
+        <p className="text-xs text-neutral-500">
+          {tx("Select caption words to edit their style")}
+        </p>
       </div>
     );
   }
@@ -188,7 +192,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
       {/* Header */}
       <div className="px-3 py-2 border-b border-neutral-800 flex-shrink-0">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-2xs text-neutral-500">{countLabel}</span>
+          <span className="text-2xs text-neutral-500">{tx(countLabel)}</span>
         </div>
         {/* Tab switcher */}
         <div className="flex gap-1">
@@ -202,7 +206,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
                 : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",
             ].join(" ")}
           >
-            Style
+            {tx("Style")}
           </button>
           <button
             type="button"
@@ -214,7 +218,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
                 : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",
             ].join(" ")}
           >
-            Animation
+            {tx("Animation")}
           </button>
         </div>
       </div>

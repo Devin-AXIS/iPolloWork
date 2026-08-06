@@ -11,6 +11,7 @@ import { type DomEditSelection } from "../editor/domEditing";
 import { postVideoAiSelectionToHost } from "../editor/domEditingAgentPrompt";
 import { useDomEditActionsContext } from "../../contexts/DomEditContext";
 import { resolveBoundedOverlayPosition } from "./boundedOverlay";
+import { useStudioI18n } from "../../i18n";
 
 type TextFormatAction = "bold" | "italic" | "strike" | "code" | "link";
 type TextFormatState = Record<TextFormatAction, boolean>;
@@ -292,6 +293,7 @@ export function PreviewTextSelectionToolbar({
   activeSelection,
   hidden,
 }: PreviewTextSelectionToolbarProps) {
+  const { tx } = useStudioI18n();
   const { applyDomSelection, buildDomSelectionFromTarget, handleDomEditElementDelete, handleDomInnerHtmlCommit } =
     useDomEditActionsContext();
   const [state, setState] = useState<TextSelectionState | null>(null);
@@ -461,11 +463,11 @@ export function PreviewTextSelectionToolbar({
         event.preventDefault();
       }}
       role="toolbar"
-      aria-label="Element editing"
+      aria-label={tx("Element editing")}
     >
       {state.showTextControls && (
         <div className="hf-preview-text-toolbar__text-controls">
-          <span className="px-2 text-[11px] font-medium">Text</span>
+          <span className="px-2 text-[11px] font-medium">{tx("Text")}</span>
           <input
             className="hf-preview-text-toolbar__input"
             value={replacementText}
@@ -488,15 +490,15 @@ export function PreviewTextSelectionToolbar({
             onBlur={() => {
               if (stateRef.current) void replaceSelection();
             }}
-            aria-label="Edit element text"
+            aria-label={tx("Edit element text")}
           />
         </div>
       )}
       <button
         type="button"
         className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
-        aria-label="Open Design properties"
-        title="Design"
+        aria-label={tx("Open Design properties")}
+        title={tx("Design")}
         onClick={openDesignProperties}
       >
         <SlidersHorizontal size={18} />
@@ -504,8 +506,8 @@ export function PreviewTextSelectionToolbar({
       <button
         type="button"
         className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
-        aria-label="Ask AI about selected element"
-        title="Ask AI"
+        aria-label={tx("Ask AI about selected element")}
+        title={tx("Ask AI")}
         onClick={askAiAboutSelection}
       >
         <Sparkle size={18} />
@@ -514,8 +516,8 @@ export function PreviewTextSelectionToolbar({
       <button
         type="button"
         className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button hf-preview-text-toolbar__delete-button"
-        aria-label="Delete selected element"
-        title="Delete"
+        aria-label={tx("Delete selected element")}
+        title={tx("Delete")}
         onClick={deleteSelectedElement}
       >
         <Trash size={18} />
