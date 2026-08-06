@@ -116,6 +116,20 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     () => readAppliedDesignSystemId(designTokenSource),
     [designTokenSource],
   );
+  const showStudioStartupOverlay = status === "starting" || (status === "ready" && !studioChromeReady);
+
+  const syncStudioDesignTokens = React.useCallback((tokens: Record<string, string>) => {
+    const frameWindow = studioFrameRef.current?.contentWindow;
+    if (!frameWindow || Object.keys(tokens).length === 0) return;
+    frameWindow.postMessage(
+      {
+        type: "ipollowork:studio-design-token-change",
+        projectId: videoProjectId(sessionId),
+        tokens,
+      },
+      new URL(studioUrl).origin,
+    );
+  }, [sessionId, studioUrl]);
 
   const loadDesignSystemFiles = React.useCallback(async () => {
     if (!client || !workspaceId) return;
@@ -123,7 +137,8 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     const source = tokens?.content ?? "";
     designTokenSourceRef.current = source;
     setDesignTokenSource(source);
-  }, [client, designTokenPath, workspaceId]);
+    syncStudioDesignTokens(parseDesignTokenValues(source));
+  }, [client, designTokenPath, syncStudioDesignTokens, workspaceId]);
 
   React.useEffect(() => {
     if (studioHostPanel !== "style") return;
@@ -189,12 +204,20 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     }, 350);
   }, [client, designTokenPath, workspaceId]);
 
-  const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
-    const next = replaceDesignTokenValue(designTokenSourceRef.current, name, value);
+  const handleDesignTokenChanges = React.useCallback((values: DesignTokenValues) => {
+    let next = designTokenSourceRef.current;
+    for (const [name, value] of Object.entries(values)) {
+      next = replaceDesignTokenValue(next, name, value);
+    }
     designTokenSourceRef.current = next;
     setDesignTokenSource(next);
+    syncStudioDesignTokens(values);
     saveDesignTokenSource(next);
-  }, [saveDesignTokenSource]);
+  }, [saveDesignTokenSource, syncStudioDesignTokens]);
+
+  const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
+    handleDesignTokenChanges({ [name]: value });
+  }, [handleDesignTokenChanges]);
 
   const recordStudioHostEdit = React.useCallback((label: string, files: StudioHistoryFiles) => {
     const frameWindow = studioFrameRef.current?.contentWindow;
@@ -271,6 +294,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         toast.info(`${theme.name} is already applied to Video Studio.`);
         return;
       }
+      syncStudioDesignTokens(parseDesignTokenValues(nextTokens));
       await client.writeWorkspaceFile(workspaceId, {
         path: designTokenPath,
         content: nextTokens,
@@ -337,7 +361,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       }
       toast.error(error instanceof Error ? error.message : "Could not apply the video design system.");
     }
-  }, [client, compositionPath, designTokenPath, recordStudioHostEdit, saveDesignTokenSource, studioHistoryReady, workspaceId]);
+  }, [client, compositionPath, designTokenPath, recordStudioHostEdit, saveDesignTokenSource, studioHistoryReady, syncStudioDesignTokens, workspaceId]);
 
   React.useEffect(() => {
     if (studioHostPanel !== "style") return;
@@ -693,7 +717,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       ) : (
         <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[#0c0c0d]">
           <div className="relative min-w-0 flex-1">
-          {status === "starting" || (status === "ready" && !studioChromeReady) ? (
+          {showStudioStartupOverlay ? (
             <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm" aria-live="polite">
               <div className="text-center">
                 <Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" />
@@ -704,7 +728,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             </div>
           ) : null}
           {status === "failed" ? <div className="absolute inset-0 z-20 grid place-items-center bg-background p-6"><div className="max-w-md text-center"><p className="text-sm font-medium">{t("video.failed_to_start")}</p><p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{detail}</p><Button className="mt-4" variant="secondary" size="sm" onClick={() => { setStatus("starting"); setStartupStage("starting-service"); setDetail(t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL })); setStudioFrameLoaded(false); studioChromeReadyRef.current = false; setStudioChromeReady(false); setStartAttempt((value) => value + 1); }}>{t("common.retry")}</Button></div></div> : null}
-          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title={t("video.iframe_title")} allow="fullscreen" allowFullScreen className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
+          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title={t("video.iframe_title")} allow="fullscreen" allowFullScreen className="h-full w-full border-0" data-loading-covered={showStudioStartupOverlay ? "true" : "false"} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
             setStudioFrameLoaded(true);
             if (studioChromeReadyRef.current) return;
             if (studioReadyFallbackRef.current != null) window.clearTimeout(studioReadyFallbackRef.current);
@@ -738,6 +762,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
               initialValues={designTokenValues}
               onClose={() => setStudioHostPanel(null)}
               onTokenChange={handleDesignTokenChange}
+              onTokenChangeMany={handleDesignTokenChanges}
               onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
             />
           </div> : null}

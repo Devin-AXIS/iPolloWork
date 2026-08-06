@@ -46,6 +46,7 @@ export function PreviewPane({
 }: PreviewPaneProps) {
   const {
     projectId,
+    refreshKey,
     iframeRef,
     togglePlay,
     seek,
@@ -172,6 +173,7 @@ export function PreviewPane({
         <div className="absolute inset-0 overflow-hidden">
           <NLEPreview
             projectId={projectId}
+            refreshToken={refreshKey}
             iframeRef={iframeRef}
             onIframeLoad={onIframeLoad}
             onCompositionLoadingChange={setCompositionLoading}

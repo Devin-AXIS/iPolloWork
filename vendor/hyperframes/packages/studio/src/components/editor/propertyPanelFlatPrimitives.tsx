@@ -226,7 +226,7 @@ export function FlatGroupHeader({
             </span>
           )}
         </span>
-        <ChevronDown size={16} className="flex-shrink-0 rotate-180 text-[#858a94]" />
+        <ChevronRight size={16} className="flex-shrink-0 text-[#858a94]" />
       </button>
     );
   }

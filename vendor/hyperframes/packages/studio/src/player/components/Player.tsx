@@ -15,6 +15,7 @@ interface PlayerProps {
   portrait?: boolean;
   style?: React.CSSProperties;
   suppressLoadingOverlay?: boolean;
+  refreshToken?: number;
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
@@ -38,9 +39,22 @@ function getShaderTransitionLoading(event: Event): boolean | null {
 }
 
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
+const REFRESH_LOADING_OVERLAY_DELAY_MS = 220;
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
   return compositionLoading;
+}
+
+export function shouldShowRefreshLoadingOverlay({
+  compositionLoading,
+  suppressLoadingOverlay,
+  deferred,
+}: {
+  compositionLoading: boolean;
+  suppressLoadingOverlay?: boolean;
+  deferred: boolean;
+}): boolean {
+  return Boolean(suppressLoadingOverlay) && !deferred && compositionLoading;
 }
 
 function enableInteractiveIframe(player: HyperframesPlayerElement): void {
@@ -115,6 +129,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       portrait,
       style,
       suppressLoadingOverlay,
+      refreshToken,
     },
     ref,
   ) => {
@@ -128,6 +143,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const [shaderTransitionLoading, setShaderTransitionLoading] = useState(false);
     const [compositionLoading, setCompositionLoading] = useState(true);
     const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
+    const previousRefreshTokenRef = useRef(refreshToken);
 
     // eslint-disable-next-line no-restricted-syntax
     useEffect(() => {
@@ -137,10 +153,19 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       }
       const timer = setTimeout(
         () => setCompositionOverlayDeferred(false),
-        COMPOSITION_LOADING_OVERLAY_DELAY_MS,
+        suppressLoadingOverlay
+          ? REFRESH_LOADING_OVERLAY_DELAY_MS
+          : COMPOSITION_LOADING_OVERLAY_DELAY_MS,
       );
       return () => clearTimeout(timer);
-    }, [compositionLoading]);
+    }, [compositionLoading, suppressLoadingOverlay]);
+
+    useEffect(() => {
+      if (refreshToken === previousRefreshTokenRef.current) return;
+      previousRefreshTokenRef.current = refreshToken;
+      if (loadCountRef.current === 0) return;
+      setCompositionLoading(true);
+    }, [refreshToken]);
 
     useMountEffect(() => {
       const container = containerRef.current;
@@ -330,8 +355,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       !suppressLoadingOverlay &&
       !compositionOverlayDeferred &&
       shouldShowCompositionLoadingOverlay(compositionLoading);
+    const showRefreshOverlay = shouldShowRefreshLoadingOverlay({
+      compositionLoading,
+      suppressLoadingOverlay,
+      deferred: compositionOverlayDeferred,
+    });
     const showAssetOverlay =
-      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay;
+      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay && !showRefreshOverlay;
 
     useEffect(() => {
       onCompositionLoadingChange?.(showCompositionOverlay || showAssetOverlay);
@@ -358,6 +388,25 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               detail="Preparing the Studio preview."
               size={56}
             />
+          </div>
+        )}
+        {showRefreshOverlay && (
+          <div
+            className="absolute inset-0 bg-black/45 flex items-center justify-center z-30 select-none backdrop-blur-[1px]"
+            data-hyperframes-ignore=""
+            data-testid="composition-refresh-loading-overlay"
+            draggable={false}
+            style={{
+              transition: "opacity 180ms ease-out",
+            }}
+            onDragStart={(event) => event.preventDefault()}
+            onMouseDown={(event) => event.preventDefault()}
+            onPointerDown={(event) => event.preventDefault()}
+          >
+            <div className="flex flex-col items-center gap-3 px-6 text-center" role="status">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500 motion-reduce:animate-none" />
+              <p className="text-xs text-neutral-400">Preparing preview…</p>
+            </div>
           </div>
         )}
         {showAssetOverlay && (

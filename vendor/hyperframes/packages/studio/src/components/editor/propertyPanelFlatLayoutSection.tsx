@@ -44,6 +44,10 @@ interface GeometryRowsProps {
   large?: boolean;
 }
 
+export function flipScaleValue(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value !== 0 ? -value : -1;
+}
+
 function KeyframeGutter({
   element,
   property,

@@ -48,7 +48,7 @@ export function acceptsIPolloWorkHostHistoryOrigin(eventOrigin: string, ancestor
   }
 }
 
-function parentOrigin() {
+export function parentOrigin() {
   const ancestorOrigin = window.location.ancestorOrigins?.item(0);
   if (ancestorOrigin) return ancestorOrigin;
   if (!document.referrer) return "";

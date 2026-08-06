@@ -4,9 +4,10 @@ import { CaretDown } from "@phosphor-icons/react";
 import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
-import { type MediaCategory, getCategory, CATEGORY_LABELS, FILTER_ORDER } from "./assetHelpers";
+import { type MediaCategory, getCategory, FILTER_ORDER } from "./assetHelpers";
 import { AudioRow } from "./AudioRow";
 import { AssetCard, FontRow } from "./AssetCard";
+import { useStudioI18n } from "../../i18n";
 import importIconSrc from "../../icons/figmaAssetsImport.svg?url";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
 import { useStudioI18n } from "../../i18n";
@@ -158,8 +159,15 @@ export const AssetsTab = memo(function AssetsTab({
   const [manifest, setManifest] = useState<
     Map<string, { description?: string; duration?: number; width?: number; height?: number }>
   >(new Map());
+  const { t } = useStudioI18n();
 
   const manifest404Ref = useRef<Set<string>>(new Set());
+  const categoryLabels: Record<MediaCategory, string> = {
+    audio: t("assets.categoryAudio"),
+    images: t("assets.categoryImages"),
+    video: t("assets.categoryVideo"),
+    fonts: t("assets.categoryFonts"),
+  };
 
   const registerAssetSlot = useCallback((asset: string, element: HTMLElement | null) => {
     const previous = assetSlotsRef.current.get(asset);

@@ -15,6 +15,7 @@ import {
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 interface NLEPreviewProps {
   projectId: string;
+  refreshToken?: number;
   iframeRef: RefObject<HTMLIFrameElement | null>;
   onIframeLoad: () => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
@@ -119,6 +120,7 @@ export function resolvePreviewStageSize(
 
 export const NLEPreview = memo(function NLEPreview({
   projectId,
+  refreshToken,
   iframeRef,
   onIframeLoad,
   onCompositionLoadingChange,
@@ -493,6 +495,7 @@ export const NLEPreview = memo(function NLEPreview({
               ref={setPreviewIframeRef}
               projectId={directUrl ? undefined : projectId}
               directUrl={directUrl}
+              refreshToken={refreshToken}
               onLoad={() => {
                 updateCompositionSizeFromPreview();
                 onIframeLoad();
