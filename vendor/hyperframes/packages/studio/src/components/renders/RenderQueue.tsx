@@ -4,6 +4,7 @@ import { Button } from "../ui/Button";
 import type { OutputSize, RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
+import { useStudioI18n } from "../../i18n";
 
 export interface CompositionDimensions {
   width: number;
@@ -175,6 +176,7 @@ const FORMAT_INFO: Record<"mp4" | "webm" | "mov", { label: string; desc: string 
 // aria-describedby, and Escape dismisses (WCAG 1.4.13). Content is too rich
 // for the one-line ui/Tooltip primitive, so this stays a local popover.
 function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
+  const { tx } = useStudioI18n();
   const [open, setOpen] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const panelId = useId();
@@ -204,7 +206,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
     <div className="relative" onPointerEnter={show} onPointerLeave={hide}>
       <button
         type="button"
-        aria-label="About video formats"
+        aria-label={tx("About video formats")}
         aria-expanded={open}
         aria-describedby={open ? panelId : undefined}
         onFocus={show}
@@ -235,7 +237,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
           className="absolute top-full right-0 mt-1.5 w-52 p-2 rounded bg-panel-input border border-neutral-700 shadow-lg z-50"
         >
           <p className="text-[10px] font-semibold text-panel-text-1 mb-0.5">{info.label}</p>
-          <p className="text-[9px] text-panel-text-3 leading-tight">{info.desc}</p>
+          <p className="text-[9px] text-panel-text-3 leading-tight">{tx(info.desc)}</p>
           <div className="mt-1.5 pt-1.5 border-t border-neutral-800">
             {(["mp4", "mov", "webm"] as const)
               .filter((f) => f !== format)
@@ -243,7 +245,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
                 <p key={f} className="text-[9px] text-panel-text-4 leading-relaxed">
                   <span className="text-panel-text-3 font-medium">{FORMAT_INFO[f].label}</span>
                   {" — "}
-                  {FORMAT_INFO[f].desc}
+                  {tx(FORMAT_INFO[f].desc)}
                 </p>
               ))}
           </div>
@@ -279,6 +281,7 @@ function FormatExportButton({
   compositionDimensions?: CompositionDimensions | null;
   lastRenderDurationMs?: number;
 }) {
+  const { tx } = useStudioI18n();
   const persisted = getPersistedRenderSettings();
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">(persisted.format);
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
@@ -298,7 +301,7 @@ function FormatExportButton({
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1">
-            <span className="text-[10px] text-panel-text-4">Format</span>
+            <span className="text-[10px] text-panel-text-4">{tx("Format")}</span>
             <FormatInfoTooltip format={format} />
           </div>
           <select
@@ -317,7 +320,7 @@ function FormatExportButton({
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] text-panel-text-4">Resolution</span>
+          <span className="text-[10px] text-panel-text-4">{tx("Resolution")}</span>
           <select
             value={resolution}
             onChange={(e) => {
@@ -340,7 +343,7 @@ function FormatExportButton({
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] text-panel-text-4">Frame rate</span>
+          <span className="text-[10px] text-panel-text-4">{tx("Frame rate")}</span>
           <select
             value={fps}
             onChange={(e) => {
@@ -359,7 +362,7 @@ function FormatExportButton({
         </div>
         {showQuality && (
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] text-panel-text-4">Quality</span>
+            <span className="text-[10px] text-panel-text-4">{tx("Quality")}</span>
             <select
               value={quality}
               onChange={(e) => {
@@ -372,7 +375,7 @@ function FormatExportButton({
             >
               {QUALITY_OPTIONS.map((q) => (
                 <option key={q.value} value={q.value}>
-                  {q.label}
+                  {tx(q.label)}
                 </option>
               ))}
             </select>
@@ -406,11 +409,11 @@ function FormatExportButton({
         }}
         className="w-full text-[11px] font-semibold"
       >
-        {isRendering ? "Rendering…" : isStarting ? "Preparing…" : "Export"}
+        {tx(isRendering ? "Rendering…" : isStarting ? "Preparing…" : "Export")}
       </Button>
       {lastRenderDurationMs !== undefined && !isRendering && (
         <p className="text-[9px] text-panel-text-5 text-center -mt-1.5">
-          Last render took {formatEta(lastRenderDurationMs)}
+          {tx(`Last render took ${formatEta(lastRenderDurationMs)}`)}
         </p>
       )}
     </div>
@@ -431,6 +434,7 @@ export const RenderQueue = memo(function RenderQueue({
   onDismissActionError,
   compositionDimensions,
 }: RenderQueueProps) {
+  const { tx } = useStudioI18n();
   const listRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new jobs are added.
@@ -466,7 +470,7 @@ export const RenderQueue = memo(function RenderQueue({
           {onDismissActionError && (
             <button
               onClick={onDismissActionError}
-              aria-label="Dismiss error"
+              aria-label={tx("Dismiss error")}
               className="text-[10px] text-panel-text-4 hover:text-panel-text-2 flex-shrink-0"
             >
               ✕
@@ -482,7 +486,7 @@ export const RenderQueue = memo(function RenderQueue({
             <p className="text-[10px] text-red-400 text-center">{loadError}</p>
             {onRetryLoad && (
               <Button size="sm" variant="secondary" onClick={onRetryLoad}>
-                Retry
+                {tx("Retry")}
               </Button>
             )}
           </div>
@@ -513,23 +517,23 @@ export const RenderQueue = memo(function RenderQueue({
                 strokeLinejoin="round"
               />
             </svg>
-            <p className="text-[10px] text-panel-text-5 text-center">No renders yet</p>
+            <p className="text-[10px] text-panel-text-5 text-center">{tx("No renders yet")}</p>
           </div>
         ) : (
           <div>
             {completedCount > 0 && (
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-panel-border">
                 <span className="text-[10px] text-panel-text-4">
-                  {jobs.length} render{jobs.length === 1 ? "" : "s"}
+                  {tx(`${jobs.length} render${jobs.length === 1 ? "" : "s"}`)}
                 </span>
                 {/* "Hide", not "Clear": files stay on disk (delete is per-row
                     and confirmed); hidden rows don't resurrect on reload. */}
                 <button
                   onClick={onClearCompleted}
-                  title="Hide finished renders from this list (files stay on disk)"
+                  title={tx("Hide finished renders from this list (files stay on disk)")}
                   className="text-[10px] text-panel-text-4 hover:text-panel-text-2 transition-colors"
                 >
-                  Hide finished
+                  {tx("Hide finished")}
                 </button>
               </div>
             )}

@@ -102,11 +102,136 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain('`${projectDirectory}/design-tokens.css`');
     expect(panelSource).toContain("ensureHtmlDesignSystemContract(current.content, theme.id)");
     expect(panelSource).toContain("buildTemplateTokenCss(theme)");
-    expect(panelSource).toContain("replaceDesignTokenValue(designTokenSourceRef.current, name, value)");
+    expect(panelSource).toContain("next = replaceDesignTokenValue(next, name, value)");
+    expect(panelSource).toContain("handleDesignTokenChanges({ [name]: value })");
+    expect(panelSource).toContain('type: "ipollowork:studio-design-token-change"');
     expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
     expect(panelSource).not.toContain("onChooseBackgroundImage=");
     expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
     expect(panelSource).toContain("top-[90px]");
+  });
+
+  test("patches Video Studio theme tokens live without remounting the preview iframe", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const previewPersistenceSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/usePreviewPersistence.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("const syncStudioDesignTokens = React.useCallback");
+    expect(panelSource).toContain("syncStudioDesignTokens(parseDesignTokenValues(nextTokens))");
+    expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
+    expect(panelSource).not.toContain("key={`${sessionId}:${revision}:${studioHostPanel}`}");
+    expect(previewPersistenceSource).toContain("parseHostDesignTokensMessage");
+    expect(previewPersistenceSource).toContain("applyDesignTokensToPreview");
+    expect(previewPersistenceSource).toContain("doc.documentElement.style.setProperty(name, value)");
+    expect(previewPersistenceSource).toContain("domEditSaveTimestampRef.current = Date.now()");
+  });
+
+  test("scales legacy video typography tokens and common text classes through the theme bridge", () => {
+    const registrySource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-system-registry.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(registrySource).toContain("function templateTokenAliasLine");
+    expect(registrySource).toContain("/^--text-[A-Za-z0-9_-]+$/.test(name)");
+    expect(registrySource).toContain("calc(var(${storageName}) * var(--ipw-type-scale)) !important");
+    expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title");
+    expect(registrySource).toContain(".body, .copy, .caption, .meta, .label, .metric, .stat, .badge");
+    expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title, .body, .copy, .caption, .meta");
+    expect(registrySource).not.toContain(":where(div, span)");
+  });
+
+  test("keeps the quick toolbar visible and opens properties without hash-driven canvas resync", () => {
+    const desktopSource = readFileSync(
+      new URL("../../../apps/desktop/electron/main.mjs", import.meta.url),
+      "utf8",
+    );
+    const urlStateSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useStudioUrlState.ts", import.meta.url),
+      "utf8",
+    );
+    const studioSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(desktopSource).toContain("window.__ipolloworkSimpleVideoListener !== 15");
+    expect(desktopSource).toContain("new CustomEvent('ipollowork:studio-apply-selection'");
+    expect(desktopSource).toContain("applyCanvasSelectionLive(target, { revealPanel: true })");
+    expect(desktopSource).not.toContain("const current = document.querySelector('button[aria-label=\"Inspector\"]')");
+    expect(studioSource).toContain("const loadStudioRightPanel = () => import(\"./components/StudioRightPanel\")");
+    expect(studioSource).toContain("void loadStudioRightPanel()");
+    expect(studioSource).toContain("function RightPanelLoadingFallback({ width }: { width: number })");
+    expect(studioSource).toContain('t("right.openingProperties")');
+    expect(studioSource).toContain("style={{ width }}");
+    expect(studioSource).toContain("Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}");
+
+    const advancedBranchStart = desktopSource.indexOf("} else if (action === 'advanced') {");
+    const advancedBranchEnd = desktopSource.indexOf("postEditorMessage({\n            type: 'ipollowork:hyperframes:open-advanced'", advancedBranchStart);
+    expect(advancedBranchStart).toBeGreaterThan(-1);
+    expect(advancedBranchEnd).toBeGreaterThan(advancedBranchStart);
+    expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).toContain("showToolbar(selected)");
+    expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).not.toContain("toolbar.style.display = 'none'");
+
+    expect(urlStateSource).toContain('window.addEventListener("ipollowork:studio-apply-selection"');
+    expect(urlStateSource).toContain("setRightPanelTab(\"design\")");
+    expect(urlStateSource).toContain("setRightCollapsed(false)");
+    expect(urlStateSource.indexOf("setRightPanelTab(\"design\")")).toBeLessThan(urlStateSource.indexOf("applyUrlSelection(command.selection)"));
+  });
+
+  test("deletes selected canvas elements in place without forcing a full preview reload", () => {
+    const desktopSource = readFileSync(
+      new URL("../../../apps/desktop/electron/main.mjs", import.meta.url),
+      "utf8",
+    );
+    const lifecycleSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useElementLifecycleOps.ts", import.meta.url),
+      "utf8",
+    );
+    const commitsSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useDomEditCommits.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(lifecycleSource).toContain("function removeLivePreviewElement");
+    expect(lifecycleSource).toContain("findElementForSelection(doc, selection, activeCompPath)");
+    expect(lifecycleSource).toContain("parent.insertBefore(element, nextSibling?.parentNode === parent ? nextSibling : null)");
+    expect(lifecycleSource).toContain("if (!liveRemoval) reloadPreview()");
+    expect(lifecycleSource).not.toContain("forceReloadSdkSession?.();\n        reloadPreview();");
+    expect(commitsSource).toContain("previewIframeRef,");
+    const deleteFunctionStart = desktopSource.indexOf("const deleteSelectedElement = async () => {");
+    const deleteFunctionEnd = desktopSource.indexOf("const displayScale = () => {", deleteFunctionStart);
+    expect(deleteFunctionStart).toBeGreaterThan(-1);
+    expect(deleteFunctionEnd).toBeGreaterThan(deleteFunctionStart);
+    const deleteFunctionSource = desktopSource.slice(deleteFunctionStart, deleteFunctionEnd);
+    expect(desktopSource).toContain("data-ipollowork-delete-pending");
+    expect(deleteFunctionSource).toContain("element.setAttribute('data-ipollowork-delete-pending', 'true')");
+    expect(deleteFunctionSource).toContain("element.removeAttribute('data-ipollowork-delete-pending')");
+    expect(deleteFunctionSource).not.toContain("postEditorMessage({ type: 'ipollowork:hyperframes:close-side-panels' });");
+  });
+
+  test("commits embedded theme reset tokens as a single batch", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const drawerSource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-system-drawer.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(drawerSource).toContain("onTokenChangeMany?: (values: DesignTokenValues) => void");
+    expect(drawerSource).toContain("if (onTokenChangeMany) {");
+    expect(drawerSource).toContain("onTokenChangeMany(next)");
+    expect(panelSource).toContain("const handleDesignTokenChanges = React.useCallback");
+    expect(panelSource).toContain("for (const [name, value] of Object.entries(values))");
+    expect(panelSource).toContain("syncStudioDesignTokens(values)");
+    expect(panelSource).toContain("onTokenChangeMany={handleDesignTokenChanges}");
   });
 
   test("keeps embedded voice and style content aligned with the resizable Studio drawer", () => {
@@ -163,6 +288,23 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain('type: "ipollowork:studio-refresh-preview"');
     expect(studioSource).not.toContain('event.data?.type !== "ipollowork:studio-refresh-preview"');
     expect(studioSource).toContain('type: "ipollowork:studio-ready"');
+  });
+
+  test("covers the video canvas with startup loading without remounting or hiding the iframe", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("const showStudioStartupOverlay = status === \"starting\" || (status === \"ready\" && !studioChromeReady)");
+    expect(panelSource).toContain("{showStudioStartupOverlay ? (");
+    expect(panelSource).toContain("absolute inset-0 z-10 grid place-items-center");
+    expect(panelSource).toContain('data-loading-covered={showStudioStartupOverlay ? "true" : "false"}');
+    expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
+    expect(panelSource).not.toContain("studioChromeReady ? \"opacity-100\" : \"opacity-0\"");
+    expect(panelSource.indexOf("setStudioChromeReady(true)")).toBeLessThan(
+      panelSource.indexOf("scheduleStudioLocaleSync()"),
+    );
   });
 
   test("debounces source saves and lazy-loads optional Studio panels", () => {

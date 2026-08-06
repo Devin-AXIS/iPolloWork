@@ -34,8 +34,43 @@ interface UseStudioUrlStateParams {
       preserveGroup?: boolean;
     },
   ) => void;
+  setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   initialState: StudioUrlState;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function selectionFromEventDetail(detail: unknown): {
+  revealPanel: boolean;
+  selection: StudioUrlSelectionState | null;
+} | null {
+  if (!isRecord(detail)) return null;
+  const revealPanel = detail.revealPanel === true;
+  if (!isRecord(detail.selection)) return { revealPanel, selection: null };
+  const sourceFile = typeof detail.selection.sourceFile === "string"
+    ? detail.selection.sourceFile
+    : undefined;
+  const id = typeof detail.selection.id === "string" ? detail.selection.id : undefined;
+  const selector = typeof detail.selection.selector === "string"
+    ? detail.selection.selector
+    : undefined;
+  const selectorIndex = typeof detail.selection.selectorIndex === "number"
+    && Number.isFinite(detail.selection.selectorIndex)
+    ? Math.max(0, Math.floor(detail.selection.selectorIndex))
+    : undefined;
+  if (!sourceFile && !id && !selector) return { revealPanel, selection: null };
+  return {
+    revealPanel,
+    selection: {
+      sourceFile,
+      id,
+      selector,
+      selectorIndex,
+    },
+  };
 }
 
 function toPersistedSelection(selection: DomEditSelection | null): StudioUrlSelectionState | null {
@@ -69,6 +104,7 @@ export function useStudioUrlState({
   domEditSelection,
   buildDomSelectionFromTarget,
   applyDomSelection,
+  setRightCollapsed,
   setRightPanelTab,
   initialState,
 }: UseStudioUrlStateParams) {
@@ -243,4 +279,20 @@ export function useStudioUrlState({
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, [projectId, duration, applyUrlSelection, setRightPanelTab]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const handleApplySelection = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const command = selectionFromEventDetail(event.detail);
+      if (!command) return;
+      if (command.revealPanel) {
+        setRightPanelTab("design");
+        setRightCollapsed(false);
+      }
+      applyUrlSelection(command.selection);
+    };
+    window.addEventListener("ipollowork:studio-apply-selection", handleApplySelection);
+    return () => window.removeEventListener("ipollowork:studio-apply-selection", handleApplySelection);
+  }, [applyUrlSelection, projectId, setRightCollapsed, setRightPanelTab]);
 }

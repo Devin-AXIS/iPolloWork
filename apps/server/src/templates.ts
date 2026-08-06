@@ -68,7 +68,8 @@ function templateLibraryId(scope: string | null | undefined): string {
 const ALLOWED_EXTENSIONS = new Set([
   ".html", ".css", ".js", ".mjs", ".json", ".svg", ".png", ".jpg", ".jpeg",
   ".webp", ".gif", ".avif", ".woff", ".woff2", ".ttf", ".otf", ".txt", ".md",
-  ".glb", ".gltf", ".bin",
+  ".glb", ".gltf", ".bin", ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".oga",
+  ".opus", ".mp4", ".webm", ".mov",
 ]);
 const EXECUTABLE_EXTENSIONS = new Set([".exe", ".dll", ".com", ".bat", ".cmd", ".sh", ".ps1", ".app", ".dmg", ".pkg"]);
 const SESSION_TEMPLATE_EXCLUDED_PATHS = ["brief.json", "template.json", "renders", "captures", "exports", ".hyperframes/backup"];

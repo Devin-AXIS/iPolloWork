@@ -137,7 +137,7 @@ export function StudioRightPanel({
     renderQueue,
   } = useStudioShellContext();
   const { captionEditMode } = useStudioPlaybackContext();
-  const { t } = useStudioI18n();
+  const { t, tx } = useStudioI18n();
 
   const {
     domEditSelection,
@@ -572,8 +572,8 @@ export function StudioRightPanel({
                   setRightCollapsed(true);
                 }}
                 className="absolute right-3 top-1/2 z-20 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md border border-transparent bg-panel-bg text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-panel-input hover:text-neutral-200 active:scale-[0.96]"
-                aria-label="Close right panel"
-                title="Close right panel"
+                aria-label={tx("Close right panel")}
+                title={tx("Close right panel")}
               >
                 <X size={14} weight="bold" />
               </button>

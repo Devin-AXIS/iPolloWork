@@ -48,7 +48,7 @@ import { ViewModeProvider, useViewModeState } from "./contexts/ViewModeContext";
 import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
-import { StudioI18nProvider } from "./i18n";
+import { StudioI18nProvider, useStudioI18n } from "./i18n";
 import { useServerConnection } from "./hooks/useServerConnection";
 import {
   normalizeStudioCompositionPath,
@@ -74,6 +74,19 @@ const StoryboardView = lazy(() =>
   })),
 );
 
+function RightPanelLoadingFallback({ width }: { width: number }) {
+  const { t } = useStudioI18n();
+  return (
+    <div
+      className="flex h-full min-w-[280px] flex-shrink-0 items-center border-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-5 text-xs text-neutral-500"
+      style={{ width }}
+    >
+      <span className="h-3 w-3 shrink-0 animate-spin rounded-full border border-neutral-700 border-t-neutral-300 motion-reduce:animate-none" />
+      <span className="ml-2 truncate">{t("right.openingProperties")}</span>
+    </div>
+  );
+}
+
 // fallow-ignore-next-line complexity
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
@@ -97,6 +110,10 @@ export function StudioApp() {
     if (hasFiredSessionStart()) return;
     markSessionStartFired();
     trackStudioSessionStart({ has_project: projectId != null });
+  }, [projectId, resolving, waitingForServer]);
+  useEffect(() => {
+    if (resolving || waitingForServer || !projectId) return;
+    void loadStudioRightPanel();
   }, [projectId, resolving, waitingForServer]);
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
@@ -448,6 +465,7 @@ export function StudioApp() {
     domEditSelection: domEditSession.domEditSelection,
     buildDomSelectionFromTarget: domEditSession.buildDomSelectionFromTarget,
     applyDomSelection: domEditSession.applyDomSelection,
+    setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
     initialState: initialUrlStateRef.current,
   });
@@ -549,11 +567,7 @@ export function StudioApp() {
                       }
                       right={
                         panelLayout.rightCollapsed ? null : (
-                          <Suspense
-                            fallback={
-                              <div className="h-full w-full animate-pulse bg-neutral-900 motion-reduce:animate-none" />
-                            }
-                          >
+                          <Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}>
                             <StudioRightPanel
                               designPanelActive={designPanelActive}
                               activeBlockParams={activeBlockParams}

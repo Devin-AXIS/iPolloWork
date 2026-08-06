@@ -5,6 +5,7 @@ import { StudioToast } from "./StudioToast";
 import { buildAgentContextPreview } from "./editor/domEditingAgentPrompt";
 import type { useDomEditSession } from "../hooks/useDomEditSession";
 import type { useToast } from "../hooks/useToast";
+import { useStudioI18n } from "../i18n";
 
 type LintFindings = ComponentProps<typeof LintModal>["findings"];
 
@@ -39,6 +40,7 @@ export function StudioOverlays({
   toasts,
   dismissToast,
 }: StudioOverlaysProps) {
+  const { tx } = useStudioI18n();
   return (
     <>
       {lintModal !== null && (
@@ -56,8 +58,8 @@ export function StudioOverlays({
           findings={consoleErrors}
           projectId={projectId}
           projectDir={projectDir}
-          title="Console errors in preview"
-          promptIntro="Fix these runtime console errors from the composition preview"
+          title={tx("Console errors in preview")}
+          promptIntro={tx("Fix these runtime console errors from the composition preview")}
           onClose={clearConsoleErrors}
         />
       )}

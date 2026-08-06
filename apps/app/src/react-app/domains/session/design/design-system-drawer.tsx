@@ -99,6 +99,7 @@ type DesignSystemDrawerProps = {
   initialValues?: DesignTokenValues;
   onClose: () => void;
   onTokenChange: (name: string, value: string) => void;
+  onTokenChangeMany?: (values: DesignTokenValues) => void;
   onApplyDesignSystem?: (theme: DesignSystemTheme) => void;
   onChooseBackgroundImage?: () => void;
 };
@@ -124,6 +125,7 @@ export function DesignSystemDrawer({
   initialValues,
   onClose,
   onTokenChange,
+  onTokenChangeMany,
   onApplyDesignSystem,
   onChooseBackgroundImage,
 }: DesignSystemDrawerProps) {
@@ -225,10 +227,14 @@ export function DesignSystemDrawer({
 
   const updateMany = React.useCallback((next: DesignTokenValues) => {
     setValues((current) => ({ ...current, ...next }));
+    if (onTokenChangeMany) {
+      onTokenChangeMany(next);
+      return;
+    }
     Object.entries(next).forEach(([name, value]) => {
       if (typeof value === "string") onTokenChange(name, value);
     });
-  }, [onTokenChange]);
+  }, [onTokenChange, onTokenChangeMany]);
 
   const resetAll = React.useCallback(() => {
     updateMany(Object.fromEntries(selectedThemeControls.map((control) => [control.storageName, control.value])));
