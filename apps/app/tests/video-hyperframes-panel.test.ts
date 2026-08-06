@@ -12,8 +12,39 @@ import {
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
 } from "../src/react-app/domains/session/video/video-project";
+import {
+  parseVideoIllustrationDisplayMetadata,
+  parseVideoIllustrationReference,
+  videoIllustrationReferenceInstruction,
+} from "../src/react-app/domains/session/video/video-illustration";
 
 describe("HyperFrames Video Studio", () => {
+  test("passes the Ian illustration skill through the composer and asset-library contract", () => {
+    const reference = parseVideoIllustrationReference({
+      id: "ian-xiaohei-illustrations",
+      label: "Ian 小黑正文插画",
+      repository: "helloianneo/ian-xiaohei-illustrations",
+    });
+    expect(reference).not.toBeNull();
+    if (!reference) throw new Error("Expected a valid illustration reference");
+    const instruction = videoIllustrationReferenceInstruction(reference);
+    expect(instruction).toContain("helloianneo/ian-xiaohei-illustrations");
+    expect(instruction).toContain("self-contained HTML file");
+    expect(instruction).toContain("existing workspace file-reading and HTML-authoring capability");
+    expect(instruction).not.toContain("ipollowork_extension_call");
+    expect(instruction).not.toContain("extensionId openai-image-generation");
+    expect(instruction).toContain("current video project's index.html");
+    expect(instruction).toContain("assets/video-illustrations/");
+    expect(instruction).toContain("插画已生成并放入素材库");
+    expect(instruction).toContain("read the file back");
+    expect(parseVideoIllustrationDisplayMetadata(instruction)).toEqual(reference);
+
+    const panelSource = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
+    const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
+    expect(panelSource).toContain('ipollowork:hyperframes:illustration-reference');
+    expect(surfaceSource).toContain('ipollowork:add-illustration-reference');
+    expect(surfaceSource).toContain("AI 插画已添加到对话框");
+  });
   test("reuses the embedded Design system inspector for the active video composition", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),

@@ -72,6 +72,8 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
     expect(panel).toContain('label={t("right.assets")}');
+    expect(panel).toContain('label="插画"');
+    expect(panel).toContain('<IllustrationTab />');
     expect(panel).not.toContain('label={t("right.renders")}');
     expect(panel).not.toContain('label={t("right.effects")}');
     expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');

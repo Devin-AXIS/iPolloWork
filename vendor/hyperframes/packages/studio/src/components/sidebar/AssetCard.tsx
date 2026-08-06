@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
-import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
+import { VIDEO_EXT, IMAGE_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -124,6 +124,7 @@ export function AssetCard({
   const serveUrl = resolveMediaPreviewUrl(asset, projectId);
   const isVideo = VIDEO_EXT.test(asset);
   const isImage = IMAGE_EXT.test(asset);
+  const isIllustrationHtml = isHtmlIllustrationAsset(asset);
   const probedDuration = useProbedDuration(serveUrl, !isVideo || duration != null);
   const resolvedDuration = duration ?? probedDuration ?? undefined;
   const durationLabel = formatDuration(resolvedDuration ?? 0);
@@ -219,7 +220,16 @@ export function AssetCard({
               )}
             </>
           )}
-          {!isImage && !isVideo && (
+          {isIllustrationHtml && (
+            <iframe
+              src={serveUrl}
+              title={name}
+              loading="lazy"
+              sandbox=""
+              className="pointer-events-none h-full w-full border-0 bg-white"
+            />
+          )}
+          {!isImage && !isVideo && !isIllustrationHtml && (
             <div className="w-full h-full flex items-center justify-center">
               <span className="text-[10px] font-medium text-neutral-600">{extension}</span>
             </div>

@@ -9,3 +9,7 @@ export const MEDIA_EXT =
 export function isMediaFile(path: string): boolean {
   return MEDIA_EXT.test(path);
 }
+
+export function isHtmlIllustrationAsset(path: string): boolean {
+  return /^assets\/video-illustrations\/[^/]+\.html?$/i.test(path.replace(/\\/g, "/"));
+}

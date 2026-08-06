@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parsePreviewAssetPayload } from "./usePreviewBlockDrop";
+import { buildTimelineAssetInsertHtml, getTimelineAssetKind } from "../../utils/timelineAssetDrop";
 
 describe("preview editing interactions", () => {
   it("selects canvas elements on one click without opening Design automatically", () => {
@@ -49,6 +50,30 @@ describe("preview editing interactions", () => {
     expect(catalogSource).toContain("setData(TIMELINE_BLOCK_MIME");
   });
 
+  it("authors resizable geometry for visual assets dragged from the library", () => {
+    const source = readFileSync(new URL("../../utils/timelineAssetDrop.ts", import.meta.url), "utf8");
+    expect(source).toContain("width: ${geometry.width}px");
+    expect(source).toContain("height: ${geometry.height}px");
+    expect(source).toContain('id="${input.id}" data-hf-id="${input.hfId}"');
+    expect(source).toContain('input.kind === "html"');
+    expect(source).toContain('pointer-events: none; width: 100%; height: 100%');
+    expect(getTimelineAssetKind("assets/video-illustrations/idea.html")).toBe("html");
+    const htmlAsset = buildTimelineAssetInsertHtml({
+      id: "idea",
+      hfId: "hf-idea",
+      assetPath: "assets/video-illustrations/idea.html",
+      kind: "html",
+      start: 0,
+      duration: 5,
+      track: 0,
+      zIndex: 2,
+      geometry: { left: 120, top: 80, width: 480, height: 270 },
+    });
+    expect(htmlAsset).toContain("<iframe");
+    expect(htmlAsset).toContain("left: 120px");
+    expect(htmlAsset).toContain("width: 480px");
+  });
+
   it("uploads OS files dropped anywhere in the right-side assets area", () => {
     const assetsSource = readFileSync(new URL("../sidebar/AssetsTab.tsx", import.meta.url), "utf8");
 
@@ -64,6 +89,7 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain('data-testid="assets-virtual-scroll"');
     expect(assetsSource).toContain('className="min-h-0 flex-1 overflow-y-auto overscroll-contain"');
     expect(assetsSource).toContain("new IntersectionObserver");
+    expect(assetsSource).toContain("window.setInterval(refreshVisibleAssets, 2500)");
     expect(assetsSource).toContain('figmaAssetsImport.svg?url');
     expect(assetsSource).toContain('figmaAssetsSearch.svg?url');
     expect(assetsSource).toContain("<select");

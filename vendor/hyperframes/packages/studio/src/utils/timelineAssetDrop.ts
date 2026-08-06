@@ -1,4 +1,4 @@
-import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
+import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, isHtmlIllustrationAsset } from "./mediaTypes";
 import { roundToCenti } from "./rounding";
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 import { patchRootCompositionDuration, readRootCompositionDuration } from "./rootDuration";
@@ -7,9 +7,10 @@ export const TIMELINE_ASSET_MIME = "application/x-hyperframes-asset";
 export const TIMELINE_BLOCK_MIME = "application/x-hyperframes-block";
 const FALLBACK_TIMELINE_FILE_DROP_DURATION = 5;
 
-export type TimelineAssetKind = "image" | "video" | "audio";
+export type TimelineAssetKind = "image" | "video" | "audio" | "html";
 
 export function getTimelineAssetKind(assetPath: string): TimelineAssetKind | null {
+  if (isHtmlIllustrationAsset(assetPath)) return "html";
   if (IMAGE_EXT.test(assetPath)) return "image";
   if (VIDEO_EXT.test(assetPath)) return "video";
   if (AUDIO_EXT.test(assetPath)) return "audio";
@@ -127,6 +128,10 @@ export function buildTimelineAssetInsertHtml(input: {
 
   if (input.kind === "video") {
     return `<video ${sharedAttrs} muted playsinline style="${visualStyles}"></video>`;
+  }
+
+  if (input.kind === "html") {
+    return `<div ${sharedAttrs} style="${visualStyles}; overflow: hidden"><iframe src="${input.assetPath}" title="Illustration" sandbox="" style="pointer-events: none; width: 100%; height: 100%; border: 0; background: white"></iframe></div>`;
   }
 
   return `<audio ${sharedAttrs} data-volume="1" style="z-index: ${input.zIndex}"></audio>`;

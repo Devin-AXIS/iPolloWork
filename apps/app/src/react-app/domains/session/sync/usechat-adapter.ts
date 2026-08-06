@@ -8,6 +8,7 @@ import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "../../../../app/types";
 import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
 import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
 import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
+import { parseVideoIllustrationDisplayMetadata } from "../video/video-illustration";
 import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
@@ -214,6 +215,11 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
             if (voice) metadataParts.push({
               type: "data-voice-reference" as const,
               data: { ...voice, partId: part.id },
+            });
+            const illustration = parseVideoIllustrationDisplayMetadata(part.text);
+            if (illustration) metadataParts.push({
+              type: "data-illustration-reference" as const,
+              data: { ...illustration, partId: part.id },
             });
             return metadataParts;
           }

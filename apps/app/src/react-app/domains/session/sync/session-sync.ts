@@ -22,6 +22,7 @@ import { notifyDesktopEvent } from "../../../shell/desktop-notifications";
 import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
 import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
 import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
+import { parseVideoIllustrationDisplayMetadata } from "../video/video-illustration";
 
 type SyncOptions = {
   workspaceId: string;
@@ -478,6 +479,11 @@ function toUIParts(part: Part): UIMessage["parts"] {
       type: "data-voice-reference" as const,
       data: { ...voice, partId: part.id },
     });
+    const illustration = parseVideoIllustrationDisplayMetadata(part.text);
+    if (illustration) metadataParts.push({
+      type: "data-illustration-reference" as const,
+      data: { ...illustration, partId: part.id },
+    });
     return metadataParts;
   }
   const mapped = toUIPart(part);
@@ -490,7 +496,7 @@ function toUIParts(part: Part): UIMessage["parts"] {
 }
 
 function getPartMetadataId(part: UIMessage["parts"][number]) {
-  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference") {
+  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference" || part.type === "data-illustration-reference") {
     const partId = part.data && typeof part.data === "object" && "partId" in part.data
       ? (part.data as { partId?: unknown }).partId
       : null;

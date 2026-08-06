@@ -577,6 +577,11 @@ type VoiceReferenceDataPart = UIMessage["parts"][number] & {
   data: { voiceId: string; model: string; label: string }
 }
 
+type IllustrationReferenceDataPart = UIMessage["parts"][number] & {
+  type: "data-illustration-reference"
+  data: { id: string; label: string; repository: string }
+}
+
 function isDesignSelectionDataPart(part: UIMessage["parts"][number]): part is DesignSelectionDataPart {
   if (part.type !== "data-design-selection" || !part.data || typeof part.data !== "object") return false
   const data = part.data as { contextId?: unknown; label?: unknown }
@@ -600,14 +605,21 @@ function isVoiceReferenceDataPart(part: UIMessage["parts"][number]): part is Voi
   return typeof data.voiceId === "string" && typeof data.model === "string" && typeof data.label === "string" && Boolean(data.label.trim())
 }
 
-function UserReferenceChip(props: { label: string; kind: "design" | "animation" | "voice" }) {
+function isIllustrationReferenceDataPart(part: UIMessage["parts"][number]): part is IllustrationReferenceDataPart {
+  if (part.type !== "data-illustration-reference" || !part.data || typeof part.data !== "object") return false
+  const data = part.data as { id?: unknown; label?: unknown; repository?: unknown }
+  return data.id === "ian-xiaohei-illustrations" && typeof data.label === "string" && data.repository === "helloianneo/ian-xiaohei-illustrations"
+}
+
+function UserReferenceChip(props: { label: string; kind: "design" | "animation" | "voice" | "illustration" }) {
   return (
     <span
       data-message-design-selection={props.kind === "design" ? "true" : undefined}
       data-message-animation-reference={props.kind === "animation" ? "true" : undefined}
       data-message-voice-reference={props.kind === "voice" ? "true" : undefined}
+      data-message-illustration-reference={props.kind === "illustration" ? "true" : undefined}
       className="inline-flex max-w-full items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11"
-      title={`${props.kind === "design" ? "Design selection" : props.kind === "animation" ? "Animation reference" : "Voice reference"}: ${props.label}`}
+      title={`${props.kind === "design" ? "Design selection" : props.kind === "animation" ? "Animation reference" : props.kind === "voice" ? "Voice reference" : "Illustration reference"}: ${props.label}`}
     >
       <span className="truncate">{props.label}</span>
     </span>
@@ -687,6 +699,9 @@ const UserMessage = React.memo(
                 ))}
                 {message.parts.filter(isVoiceReferenceDataPart).map((part) => (
                   <UserReferenceChip key={part.data.voiceId} label={part.data.label} kind="voice" />
+                ))}
+                {message.parts.filter(isIllustrationReferenceDataPart).map((part) => (
+                  <UserReferenceChip key={part.data.id} label={`插画 · ${part.data.label}`} kind="illustration" />
                 ))}
                 {message.parts.some((part) => part.type === "text" && part.text) ? (
                   <MessageContent

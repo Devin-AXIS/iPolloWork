@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "../design/design-ai-selection";
+import { parseVideoIllustrationReference } from "./video-illustration";
 import { DesignSystemDrawer } from "../design/design-system-drawer";
 import { mergeTemplateTokenCss, parseDesignTokenValues, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
 import { buildTemplateTokenCss, type DesignSystemTheme } from "../design/design-system-registry";
@@ -451,6 +452,22 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [client, onAskAi, onExpandedChange, projectDirectory, sessionId, studioUrl, workspaceId]);
+
+  React.useEffect(() => {
+    const handleIllustrationReference = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow) return;
+      if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type !== "ipollowork:hyperframes:illustration-reference") return;
+      const reference = parseVideoIllustrationReference(event.data.illustration);
+      if (!reference) return;
+      window.dispatchEvent(new CustomEvent("ipollowork:add-illustration-reference", {
+        detail: { sessionId, reference },
+      }));
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    };
+    window.addEventListener("message", handleIllustrationReference);
+    return () => window.removeEventListener("message", handleIllustrationReference);
+  }, [sessionId, studioUrl]);
 
   React.useEffect(() => {
     const handleAnimationReference = (event: MessageEvent) => {

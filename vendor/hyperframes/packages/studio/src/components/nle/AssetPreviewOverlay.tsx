@@ -12,7 +12,7 @@
  * Switching to another not-added asset replaces the current preview.
  */
 import { useEffect, useCallback } from "react";
-import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
+import { VIDEO_EXT, IMAGE_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { shouldDismissAssetPreview } from "../../utils/assetPreviewDismiss";
@@ -22,9 +22,10 @@ function basename(path: string): string {
   return path.split("/").pop() ?? path;
 }
 
-type AssetKind = "image" | "video" | "audio";
+type AssetKind = "image" | "video" | "audio" | "html";
 
 function resolveAssetKind(path: string): AssetKind {
+  if (isHtmlIllustrationAsset(path)) return "html";
   if (VIDEO_EXT.test(path)) return "video";
   if (IMAGE_EXT.test(path)) return "image";
   return "audio";
@@ -54,6 +55,16 @@ function AssetPreviewMedia({
         muted
         playsInline
         className="max-w-full max-h-[40vh] rounded"
+      />
+    );
+  }
+  if (kind === "html") {
+    return (
+      <iframe
+        src={serveUrl}
+        title={name}
+        sandbox=""
+        className="aspect-video w-[52vw] max-w-full rounded border-0 bg-white"
       />
     );
   }

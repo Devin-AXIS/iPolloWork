@@ -30,6 +30,7 @@ import { useStudioI18n } from "../i18n";
 import { X } from "../icons/SystemIcons";
 import { BlocksTab, type BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { AssetsTab } from "./sidebar/AssetsTab";
+import { IllustrationTab } from "./sidebar/IllustrationTab";
 
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
@@ -426,7 +427,7 @@ export function StudioRightPanel({
 
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
-  const selectStudioPanel = (panel: "design" | "assets" | "catalog" | "effects") => {
+  const selectStudioPanel = (panel: "design" | "illustration" | "assets" | "catalog" | "effects") => {
     closeHostPanel();
     setRightPanelTab(panel);
   };
@@ -498,6 +499,12 @@ export function StudioRightPanel({
                 onClick={() => openHostPanel("style")}
               />
               <PanelTabButton
+                label="插画"
+                tooltip="使用 Ian 小黑插画能力生成视频素材"
+                active={rightPanelTab === "illustration"}
+                onClick={() => selectStudioPanel("illustration")}
+              />
+              <PanelTabButton
                 label={t("right.assets")}
                 tooltip={t("right.assetsTooltip")}
                 active={rightPanelTab === "assets"}
@@ -536,10 +543,13 @@ export function StudioRightPanel({
                   onAddBlock={onAddBlock}
                   onPreviewBlock={onPreviewBlock}
                 />
+              ) : rightPanelTab === "illustration" ? (
+                <IllustrationTab />
               ) : rightPanelTab === "assets" ? (
                 <AssetsTab
                   projectId={projectId}
                   assets={assets}
+                  onRefresh={refreshFileTree}
                   onImport={handleImportFiles}
                   onDelete={handleDeleteFile}
                   onRename={handleRenameFile}
