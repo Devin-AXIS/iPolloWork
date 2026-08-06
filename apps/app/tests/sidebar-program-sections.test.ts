@@ -32,6 +32,14 @@ describe("sidebar Program and Ungrouped sections", () => {
     expect(sidebarSource).not.toContain('label={t("session_management.recently")}');
   });
 
+  test("orders grouped, ungrouped, and child conversations by most recent activity", () => {
+    expect(sidebarSource).toContain("const compareByMostRecent");
+    expect(sidebarSource).toContain("right.session.time?.updated ?? right.session.time?.created");
+    expect(sidebarSource).toContain("rootRowsByGroup.values()) rows.sort(compareByMostRecent)");
+    expect(sidebarSource).toContain("childrenByParent.values()) rows.sort(compareByMostRecent)");
+    expect(sidebarSource).toContain("ungroupedRows.sort(compareByMostRecent)");
+  });
+
   test("keeps rename and delete in the group's more menu", () => {
     expect(sidebarSource).toContain('t("session_management.group_actions"');
     expect(sidebarSource).toContain('t("session_management.rename_group")');

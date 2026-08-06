@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { CaretDown } from "@phosphor-icons/react";
-import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
+import { MEDIA_EXT, FONT_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { type MediaCategory, getCategory, FILTER_ORDER } from "./assetHelpers";
@@ -58,6 +58,7 @@ function VirtualAssetSlot({
 interface AssetsTabProps {
   projectId: string;
   assets: string[];
+  onRefresh?: () => Promise<void> | void;
   onImport?: (files: FileList) => void;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
@@ -140,6 +141,7 @@ export function deriveUsedPaths(elements: Array<{ src?: string }>): Set<string> 
 export const AssetsTab = memo(function AssetsTab({
   projectId,
   assets,
+  onRefresh,
   onImport,
   onDelete,
   onRename,
@@ -160,6 +162,20 @@ export const AssetsTab = memo(function AssetsTab({
     Map<string, { description?: string; duration?: number; width?: number; height?: number }>
   >(new Map());
   const { t } = useStudioI18n();
+
+  useEffect(() => {
+    if (!onRefresh) return;
+    const refreshVisibleAssets = () => {
+      if (!document.hidden) void onRefresh();
+    };
+    refreshVisibleAssets();
+    const interval = window.setInterval(refreshVisibleAssets, 2500);
+    document.addEventListener("visibilitychange", refreshVisibleAssets);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshVisibleAssets);
+    };
+  }, [onRefresh, projectId]);
 
   const manifest404Ref = useRef<Set<string>>(new Set());
   const categoryLabels: Record<MediaCategory, string> = {
@@ -279,7 +295,7 @@ export const AssetsTab = memo(function AssetsTab({
   const elements = usePlayerStore((s) => s.elements);
   const usedPaths = useMemo(() => deriveUsedPaths(elements), [elements]);
   const allMediaAssets = useMemo(
-    () => assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
+    () => assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a) || isHtmlIllustrationAsset(a)),
     [assets],
   );
   const mediaAssets = useMemo(() => {
@@ -301,7 +317,7 @@ export const AssetsTab = memo(function AssetsTab({
     });
   }, [allMediaAssets, searchQuery, manifest, usageFilter, usedPaths]);
   const categorized = useMemo(() => {
-    const groups: Record<MediaCategory, string[]> = { audio: [], images: [], video: [], fonts: [] };
+    const groups: Record<MediaCategory, string[]> = { audio: [], illustrations: [], images: [], video: [], fonts: [] };
     for (const a of mediaAssets) {
       const cat = getCategory(a);
       if (cat) groups[cat].push(a);
@@ -521,7 +537,7 @@ export const AssetsTab = memo(function AssetsTab({
                     )}
                   />
                 ))}
-              {!collapsedCategories.has(cat) && (cat === "images" || cat === "video") && (
+              {!collapsedCategories.has(cat) && (cat === "illustrations" || cat === "images" || cat === "video") && (
                 <div className="grid grid-cols-2 gap-x-[10px] gap-y-[14px] px-4 pb-6 pt-[14px]">
                   {categorized[cat].map((a) => (
                     <VirtualAssetSlot

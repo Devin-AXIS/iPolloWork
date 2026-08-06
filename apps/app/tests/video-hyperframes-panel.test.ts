@@ -12,8 +12,70 @@ import {
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
 } from "../src/react-app/domains/session/video/video-project";
+import {
+  parseVideoIllustrationDisplayMetadata,
+  parseVideoIllustrationReference,
+  videoIllustrationReferenceInstruction,
+} from "../src/react-app/domains/session/video/video-illustration";
 
 describe("HyperFrames Video Studio", () => {
+  test("passes the Ian illustration skill through the composer and asset-library contract", () => {
+    const reference = parseVideoIllustrationReference({
+      id: "ian-xiaohei-illustrations",
+      label: "Ian 小黑正文插画",
+      repository: "helloianneo/ian-xiaohei-illustrations",
+    });
+    expect(reference).not.toBeNull();
+    if (!reference) throw new Error("Expected a valid illustration reference");
+    const instruction = videoIllustrationReferenceInstruction(reference);
+    expect(instruction).toContain("helloianneo/ian-xiaohei-illustrations");
+    expect(instruction).toContain("self-contained HTML file");
+    expect(instruction).toContain("existing workspace file-reading and HTML-authoring capability");
+    expect(instruction).not.toContain("ipollowork_extension_call");
+    expect(instruction).not.toContain("extensionId openai-image-generation");
+    expect(instruction).toContain("current video project's index.html");
+    expect(instruction).toContain("assets/video-illustrations/");
+    expect(instruction).toContain("插画已生成并放入素材库");
+    expect(instruction).toContain("read the file back");
+    expect(parseVideoIllustrationDisplayMetadata(instruction)).toEqual(reference);
+
+    const panelSource = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
+    const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
+    expect(panelSource).toContain('ipollowork:hyperframes:illustration-reference');
+    expect(surfaceSource).toContain('ipollowork:add-illustration-reference');
+    expect(surfaceSource).toContain("Every selected reference is a required deliverable");
+    expect(surfaceSource).toContain("data-ipw-animation-reference");
+    expect(surfaceSource).toContain("requirements.animationReferences");
+    expect(surfaceSource).toContain("AI 插画已添加到对话框");
+  });
+
+  test("maps all six illustration choices to offline self-contained HTML contracts", () => {
+    const profiles = [
+      ["ian-xiaohei-illustrations", "helloianneo/ian-xiaohei-illustrations", "ian-xiaohei-illustrations"],
+      ["html-infographic", "openai/visualize", "visualize"],
+      ["html-concept-explainer", "ipollowork/faceless-explainer", "faceless-explainer + hyperframes-core"],
+      ["html-kinetic-typography", "heygen-com/hyperframes", "hyperframes-animation"],
+      ["html-svg-path", "heygen-com/hyperframes", "hyperframes-keyframes"],
+      ["html-3d-space", "heygen-com/hyperframes", "hyperframes-keyframes"],
+    ];
+
+    for (const [id, repository, skill] of profiles) {
+      const reference = parseVideoIllustrationReference({ id, label: id, repository });
+      expect(reference).not.toBeNull();
+      if (!reference) throw new Error(`Expected ${id} to be a valid illustration profile`);
+      const instruction = videoIllustrationReferenceInstruction(reference);
+      expect(instruction).toContain(skill);
+      expect(instruction).toContain("exactly one self-contained HTML file");
+      expect(instruction).toContain("editable HTML/CSS/inline SVG");
+      expect(instruction).toContain("no CDN, remote font, network request");
+      expect(instruction).toContain("1600x900");
+      expect(instruction).toContain("complete composition must be visible and meaningful on its first frame");
+      expect(instruction).toContain("prefers-reduced-motion: reduce");
+      expect(instruction).toContain("assets/video-illustrations/");
+    }
+
+    expect(parseVideoIllustrationReference({ id: "unknown", label: "Unknown", repository: "unknown" })).toBeNull();
+  });
   test("reuses the embedded Design system inspector for the active video composition", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
@@ -695,6 +757,7 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
+    expect(sessionRouteSource).toContain("draft.capability?.instruction");
     expect(sessionRouteSource).toContain("[envSystemContext, videoSystemContext, designSystemContext, authoringSystemContext, capabilitySystemContext]");
   });
 
@@ -707,11 +770,18 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never create or inspect another `video/`/`videos/` project");
     expect(contract).toContain("Never stop all Node processes");
     expect(contract).toContain("not an HTML/JSON response saved with a media extension");
+    expect(contract).toContain("Use `/media-use` to resolve BGM");
     expect(contract).toContain("verify its response type and local file signature");
     expect(contract).toContain("never run `npx hyperframes check`");
     expect(contract).toContain("never use legacy `.frame` millisecond timelines");
     expect(contract).toContain("seconds-based `data-start`");
     expect(contract).toContain("Root `data-duration` must cover the last scene/audio/clip");
+    expect(contract).toContain("Delivery requirements contract");
+    expect(contract).toContain('data-ipw-caption="true"');
+    expect(contract).toContain('data-ipw-bgm="true"');
+    expect(contract).toContain("animationReferences");
+    expect(contract).toContain("unresolved earlier requests");
+    expect(contract).toContain("never claim completion from structural validation alone");
     expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
     expect(contract).toContain("top-left/bottom-right placement");
     expect(contract).toContain("and local fallback");
@@ -722,6 +792,11 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("/workspace/current/video/ses_current_video/voiceover.json");
     expect(contract).toContain("ipollowork_extension_call");
     expect(contract).toContain("speech_synthesize_workspace_batch");
+    expect(contract).toContain("built into the installed desktop application");
+    expect(contract).toContain("Never check for, install, authenticate, or recommend HeyGen/HyperFrames CLI");
+    expect(contract).toContain("never ask the user to run an auth/login command");
+    expect(contract).toContain("ipollowork_extension_list_actions");
+    expect(contract).toContain("do not replace it with user setup instructions or an external CLI");
     expect(contract).toContain("Never use generic `speech_synthesize`");
     expect(contract).toContain("voiceId");
     expect(contract).toContain("assets/voiceover-<revision>-<scene>.mp3");
@@ -741,6 +816,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never overlap");
     expect(contract).toContain("root duration");
     expect(contract).toContain("GSAP");
+    expect(contract).toContain("requirements.captions: true");
     expect(contract).toContain("another provider");
   });
 

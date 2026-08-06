@@ -274,8 +274,8 @@ function BlockPreviewOverlay({ blockPreview }: { blockPreview: BlockPreviewInfo 
     setVideoFailed(false);
   }, [blockPreview.videoUrl]);
 
-  const showComposition =
-    Boolean(blockPreview.compositionUrl) && (!blockPreview.videoUrl || videoFailed);
+  const showComposition = Boolean(blockPreview.compositionUrl);
+  const showVideo = !showComposition && Boolean(blockPreview.videoUrl) && !videoFailed;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30 bg-black">
@@ -286,7 +286,14 @@ function BlockPreviewOverlay({ blockPreview }: { blockPreview: BlockPreviewInfo 
           className="absolute inset-0 size-full object-contain"
         />
       ) : null}
-      {blockPreview.videoUrl && !videoFailed ? (
+      {showComposition ? (
+        <iframe
+          src={blockPreview.compositionUrl}
+          title={blockPreview.title}
+          sandbox="allow-scripts"
+          className="absolute inset-0 size-full border-0 bg-black"
+        />
+      ) : showVideo ? (
         <video
           src={blockPreview.videoUrl}
           poster={blockPreview.posterUrl}
@@ -301,13 +308,6 @@ function BlockPreviewOverlay({ blockPreview }: { blockPreview: BlockPreviewInfo 
           className={`absolute inset-0 size-full object-contain transition-opacity duration-100 ${
             videoReady ? "opacity-100" : "opacity-0"
           }`}
-        />
-      ) : showComposition ? (
-        <iframe
-          src={blockPreview.compositionUrl}
-          title={blockPreview.title}
-          sandbox="allow-scripts"
-          className="absolute inset-0 size-full border-0 bg-black"
         />
       ) : null}
     </div>

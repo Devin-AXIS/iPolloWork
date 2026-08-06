@@ -3,6 +3,19 @@ import { describe, expect, it } from "vitest";
 import { flipScaleValue } from "./editor/propertyPanelFlatLayoutSection";
 
 describe("Studio right panel layout", () => {
+  it("offers six selectable HTML illustration capabilities", () => {
+    const illustration = readFileSync(new URL("./sidebar/IllustrationTab.tsx", import.meta.url), "utf8");
+    expect(illustration).toContain('id: "ian-xiaohei-illustrations"');
+    expect(illustration).toContain('id: "html-infographic"');
+    expect(illustration).toContain('id: "html-concept-explainer"');
+    expect(illustration).toContain('id: "html-kinetic-typography"');
+    expect(illustration).toContain('id: "html-svg-path"');
+    expect(illustration).toContain('id: "html-3d-space"');
+    expect(illustration).toContain("onChange={(event) =>");
+    expect(illustration).not.toContain("disabled");
+    expect(illustration).toContain("自包含 HTML 插画");
+  });
+
   it("matches the Figma property-inspector group and timing states", () => {
     const panel = readFileSync(new URL("./editor/PropertyPanelFlat.tsx", import.meta.url), "utf8");
     const header = readFileSync(
@@ -234,7 +247,7 @@ describe("Studio right panel layout", () => {
     expect(source).not.toContain("<LayersPanel />");
     expect(source).not.toContain("useInspectorSplitResize");
     expect(source).not.toContain('aria-label={t("right.resizePanes")}');
-    expect(source).toContain("{propertyPanel}");
+    expect(source).toContain("const propertyPanel = singleDomEditSelection ? (");
     expect(source).not.toContain('label={t("right.effects")}');
     expect(source).not.toContain('page="scene"');
     expect(source).not.toContain("<PreviewFullscreenButton />");
@@ -262,6 +275,8 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
     expect(panel).toContain('label={t("right.assets")}');
+    expect(panel).toContain('label="插画"');
+    expect(panel).toContain('<IllustrationTab />');
     expect(panel).not.toContain('label={t("right.renders")}');
     expect(panel).not.toContain('label={t("right.effects")}');
     expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');
@@ -280,6 +295,9 @@ describe("Studio right panel layout", () => {
     expect(app).toContain("onToggleRecording: undefined");
     expect(app).toContain("const recordingToggle = undefined");
     expect(app).toContain("gestureOverlay={undefined}");
+    expect(app).toContain("const StudioRightPanel = lazy(loadStudioRightPanel)");
+    expect(app).toContain("window.requestIdleCallback");
+    expect(app).toContain("module.preloadStudioPropertyPanel()");
     expect(shell).toContain("previewOnly ? (");
     expect(shell).toContain("<PreviewPane editingEnabled={false} />");
     expect(shell).toContain("!previewOnly && <StudioFeedbackBar />");
@@ -304,6 +322,33 @@ describe("Studio right panel layout", () => {
     expect(header).not.toContain('t("header.undo")');
     expect(header).not.toContain('t("header.capture")');
     expect(header).not.toContain("studio-toggle-fullscreen");
+  });
+
+  it("keeps the empty property inspector off playback hot paths", () => {
+    const propertyPanel = readFileSync(
+      new URL("./editor/PropertyPanel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(propertyPanel).toContain("element ? s.currentTime : 0");
+    expect(propertyPanel).toContain("element ? s.isPlaying : false");
+    expect(propertyPanel).toContain("if (!isPlaying || !element) return;");
+  });
+
+  it("lazy mounts and destroys right-panel tab content", () => {
+    const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
+
+    expect(panel).toContain("const PropertyPanel = lazy(");
+    expect(panel).toContain("export const preloadStudioPropertyPanel");
+    expect(panel).toContain("const BlocksTab = lazy(");
+    expect(panel).toContain("const AssetsTab = lazy(");
+    expect(panel).toContain("const IllustrationTab = lazy(");
+    expect(panel).toContain("<Suspense");
+    expect(panel).toContain("key={rightPanelTab}");
+    expect(panel).not.toContain('import { PropertyPanel } from "./editor/PropertyPanel"');
+    expect(panel).not.toContain('import { BlocksTab,');
+    expect(panel).toContain("const propertyPanel = singleDomEditSelection ? (");
+    expect(panel).toContain("propertyPanelContent");
   });
 
   it("uses the timeline gutter as the single layer hierarchy surface", () => {

@@ -21,7 +21,6 @@ import { buildStableSelector } from "./domEditingDom";
 import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
 import { useLayerReorderTimelineMirror } from "../nle/useCanvasZOrderTimelineMirror";
 import { runZLaneGesture } from "../nle/zLaneGesture";
-import { useLayerRevealOverride } from "./useLayerRevealOverride";
 
 const TAG_ICONS: Record<string, string> = {
   video: "Vi",
@@ -112,10 +111,6 @@ export const LayersPanel = memo(function LayersPanel() {
   const prevDocVersionRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const mirrorLayerReorderToTimeline = useLayerReorderTimelineMirror();
-  const { scheduleReveal } = useLayerRevealOverride({
-    isPlaying,
-    selectedElement: domEditSelection?.element ?? null,
-  });
 
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
 
@@ -246,13 +241,8 @@ export const LayersPanel = memo(function LayersPanel() {
       if (!selection) return;
       applyDomSelection(selection);
       await seekToLayer(layer);
-      // Force-reveal AFTER the seek's runtime visibility sync has had a beat:
-      // a clip made active by the seek shows naturally and needs no override,
-      // so the reveal only touches nodes that REMAIN hidden (animation-parked
-      // opacity, non-clip display/visibility hides, hidden ancestors).
-      scheduleReveal(selection.element, 150);
     },
-    [resolveSelection, applyDomSelection, seekToLayer, scheduleReveal],
+    [resolveSelection, applyDomSelection, seekToLayer],
   );
 
   // Double-click a group row → drill into it; any other row → select it.

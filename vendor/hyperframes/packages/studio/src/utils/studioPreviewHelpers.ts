@@ -41,8 +41,17 @@ export function coversComposition(
   );
 }
 
-function isFullBleedTarget(el: HTMLElement, viewport: DomEditViewport): boolean {
+function isEmbeddedHtmlAssetContainer(el: HTMLElement): boolean {
+  const source = (el.getAttribute("src") ?? "").replace(/\\/g, "/");
+  return (
+    el.getAttribute("data-hf-asset-kind") === "html" ||
+    (el.hasAttribute("data-hf-lock-aspect-ratio") && /\.html?$/i.test(source))
+  );
+}
+
+export function isFullBleedTarget(el: HTMLElement, viewport: DomEditViewport): boolean {
   if (FULL_BLEED_SELECTABLE_MEDIA_TAGS.has(el.tagName.toLowerCase())) return false;
+  if (isEmbeddedHtmlAssetContainer(el)) return false;
   return coversComposition(el.getBoundingClientRect(), viewport);
 }
 
@@ -209,7 +218,15 @@ export function resolveEffectStackSelectionTarget(element: HTMLElement): HTMLEle
 }
 
 function promoteEffectStackTarget(target: HTMLElement): HTMLElement {
-  return resolveEffectStackSelectionTarget(target);
+  return resolveEffectStackSelectionTarget(resolveEmbeddedHtmlAssetSelectionTarget(target));
+}
+
+/** HTML illustration iframes are viewports; the surrounding clip owns geometry. */
+export function resolveEmbeddedHtmlAssetSelectionTarget(target: HTMLElement): HTMLElement {
+  if (target.tagName.toLowerCase() !== "iframe") return target;
+  const parent = target.parentElement;
+  if (!parent) return target;
+  return isEmbeddedHtmlAssetContainer(parent) ? parent : target;
 }
 
 // Animated group members can move outside their wrapper's static layout box, so

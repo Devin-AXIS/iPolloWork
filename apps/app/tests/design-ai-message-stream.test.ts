@@ -73,7 +73,7 @@ describe("Design AI message stream", () => {
       data: {
         contextId: context.id,
         label: context.target.label,
-        partId: "part_selection",
+        partId: "part_selection:design-selection",
       },
     });
     expect(message?.parts).toContainEqual(expect.objectContaining({ type: "text", text: "Delete this." }));
@@ -111,7 +111,7 @@ describe("Design AI message stream", () => {
       type: "data-animation-references",
       data: {
         items: [{ name: "video-span", label: "VIDEO SPAN · starts here." }],
-        partId: "part_animation",
+        partId: "part_animation:animation-references",
       },
     });
     expect(message?.parts).toContainEqual({
@@ -120,7 +120,7 @@ describe("Design AI message stream", () => {
         voiceId: "longanyang",
         model: "cosyvoice-v3-flash",
         label: "配音 · 龙安阳",
-        partId: "part_animation",
+        partId: "part_animation:voice-reference",
       },
     });
     expect(message?.parts).toContainEqual(expect.objectContaining({ type: "text", text: "Make this entrance faster." }));

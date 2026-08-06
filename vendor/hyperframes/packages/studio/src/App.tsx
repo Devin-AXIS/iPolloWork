@@ -64,9 +64,9 @@ const StudioLeftSidebar = lazy(() =>
     default: module.StudioLeftSidebar,
   })),
 );
-const loadStudioRightPanel = () => import("./components/StudioRightPanel").then((module) => ({
-  default: module.StudioRightPanel,
-}));
+const loadStudioRightPanelModule = () => import("./components/StudioRightPanel");
+const loadStudioRightPanel = () =>
+  loadStudioRightPanelModule().then((module) => ({ default: module.StudioRightPanel }));
 const StudioRightPanel = lazy(loadStudioRightPanel);
 const StoryboardView = lazy(() =>
   import("./components/storyboard/StoryboardView").then((module) => ({
@@ -92,6 +92,18 @@ export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   const viewModeValue = useViewModeState();
+
+  // Warm the inspector shell and the default Properties chunk only while the
+  // browser is idle. Optional tabs remain on-demand, while the first Properties
+  // open reuses the cached modules instead of fetching and evaluating on click.
+  useEffect(() => {
+    const idleId = window.requestIdleCallback(() => {
+      void loadStudioRightPanelModule()
+        .then((module) => module.preloadStudioPropertyPanel())
+        .catch(() => undefined);
+    });
+    return () => window.cancelIdleCallback(idleId);
+  }, []);
   const [previewMode, setPreviewMode] = useState(false);
   useEffect(() => {
     if (resolving || waitingForServer) return;

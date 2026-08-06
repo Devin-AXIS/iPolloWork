@@ -106,14 +106,34 @@ export function getMediaBadge(part: FileUIPart) {
 }
 
 export function getMessageCreated(message: UIMessage): number | null {
+  return getMessageOpencodeTime(message, "created")
+}
+
+export function getMessageCompleted(message: UIMessage): number | null {
+  return getMessageOpencodeTime(message, "completed")
+}
+
+function getMessageOpencodeTime(message: UIMessage, key: "created" | "completed"): number | null {
   const metadata: unknown = message.metadata
   if (!metadata || typeof metadata !== "object" || !("opencode" in metadata)) return null
 
   const opencode: unknown = metadata.opencode
-  if (!opencode || typeof opencode !== "object" || !("created" in opencode)) return null
+  if (!opencode || typeof opencode !== "object" || !(key in opencode)) return null
 
-  const created: unknown = opencode.created
-  return typeof created === "number" ? created : null
+  const timestamp: unknown = Reflect.get(opencode, key)
+  return typeof timestamp === "number" ? timestamp : null
+}
+
+export function formatProcessDuration(durationMs: number): string {
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
+  const seconds = totalSeconds % 60
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  const minutes = totalMinutes % 60
+  const hours = Math.floor(totalMinutes / 60)
+  const twoDigits = (value: number) => String(value).padStart(2, "0")
+  return hours > 0
+    ? `${hours}:${twoDigits(minutes)}:${twoDigits(seconds)}`
+    : `${twoDigits(minutes)}:${twoDigits(seconds)}`
 }
 
 export function formatMessageTimestamp(timestampMs: number): string {

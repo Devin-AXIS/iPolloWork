@@ -1,8 +1,9 @@
+import { useEffect, useState } from "react";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
 } from "./editor/manualEditingAvailability";
-import { useStudioShellContext } from "../contexts/StudioContext";
+import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
@@ -23,10 +24,23 @@ export function StudioHeader({
   previewMode,
   onPreviewModeChange,
 }: StudioHeaderProps) {
-  const { renderQueue, projectId } = useStudioShellContext();
+  const { renderQueue, projectId, previewIframeRef } = useStudioShellContext();
+  const { compositionLoading, refreshKey } = useStudioPlaybackContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const { t } = useStudioI18n();
   const isRendering = renderQueue.isRendering;
+  const [compositionTitle, setCompositionTitle] = useState(projectId);
+
+  useEffect(() => {
+    const preview = previewIframeRef.current;
+    const updateTitle = () => {
+      const title = preview?.contentDocument?.title.trim();
+      setCompositionTitle(title || projectId);
+    };
+    updateTitle();
+    preview?.addEventListener("load", updateTitle);
+    return () => preview?.removeEventListener("load", updateTitle);
+  }, [compositionLoading, previewIframeRef, projectId, refreshKey]);
 
   const toggleProperties = () => {
     if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
@@ -64,8 +78,8 @@ export function StudioHeader({
   return (
     <header className="relative flex h-[49px] flex-shrink-0 items-center border-b border-[#ebebeb] bg-white/90 px-3 text-[#1d1d1b] backdrop-blur-sm">
       <div className="min-w-0 flex-1">
-        <span className="block max-w-64 truncate text-[13px] font-medium text-[#71736e]" title={projectId}>
-          {projectId}
+        <span className="block max-w-64 truncate text-[13px] font-medium text-[#71736e]" title={compositionTitle}>
+          {compositionTitle}
         </span>
       </div>
 

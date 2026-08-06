@@ -332,6 +332,8 @@ interface PlayerState {
 /** A DOM-only timeline child (no data-start) and its nesting context. */
 export interface DomClipChild {
   id: string;
+  /** Actual DOM id when `id` is a selector/hf-id backed tree identity. */
+  domId?: string;
   hfId?: string;
   selector?: string;
   selectorIndex?: number;

@@ -37,6 +37,8 @@ export {
   resolveMediaElement,
   // fallow-ignore-next-line unused-exports
   applyMediaMetadataFromElement,
+  getImplicitTimelineLayerLabel,
+  isImplicitTimelineLayerCandidate,
   getTimelineElementSelector,
   // fallow-ignore-next-line unused-exports
   getTimelineElementSourceFile,

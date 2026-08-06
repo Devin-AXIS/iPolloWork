@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
-import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
+import { VIDEO_EXT, IMAGE_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -12,6 +12,7 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
 import { basename, ext, formatDuration } from "./assetHelpers";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import { HtmlIllustrationPreview } from "./HtmlIllustrationPreview";
 
 /** Drag payload writer shared by the asset tile and the font row: copy effect
  *  plus the timeline-asset MIME and a plain-text path fallback. */
@@ -124,6 +125,7 @@ export function AssetCard({
   const serveUrl = resolveMediaPreviewUrl(asset, projectId);
   const isVideo = VIDEO_EXT.test(asset);
   const isImage = IMAGE_EXT.test(asset);
+  const isIllustrationHtml = isHtmlIllustrationAsset(asset);
   const probedDuration = useProbedDuration(serveUrl, !isVideo || duration != null);
   const resolvedDuration = duration ?? probedDuration ?? undefined;
   const durationLabel = formatDuration(resolvedDuration ?? 0);
@@ -219,7 +221,12 @@ export function AssetCard({
               )}
             </>
           )}
-          {!isImage && !isVideo && (
+          {isIllustrationHtml && (
+            <div className="absolute inset-0 flex items-center bg-white">
+              <HtmlIllustrationPreview src={serveUrl} title={name} className="w-full" />
+            </div>
+          )}
+          {!isImage && !isVideo && !isIllustrationHtml && (
             <div className="w-full h-full flex items-center justify-center">
               <span className="text-[10px] font-medium text-neutral-600">{extension}</span>
             </div>

@@ -89,6 +89,8 @@ export const Timeline = memo(function Timeline({
   const rawElements = usePlayerStore((s) => s.elements);
   const expandedElements = useExpandedTimelineElements();
   const keyframeCache = usePlayerStore((s) => s.keyframeCache);
+  const clipParentMap = usePlayerStore((s) => s.clipParentMap);
+  const expandableIds = useMemo(() => new Set(clipParentMap.values()), [clipParentMap]);
   const displayElements = useMemo(
     () =>
       expandedElements.filter((element) => {
@@ -99,9 +101,13 @@ export const Timeline = memo(function Timeline({
         const hasAnimation =
           (cacheEntry?.animationSegments?.length ?? 0) > 0 ||
           (cacheEntry?.keyframes.length ?? 0) > 0;
-        return shouldDisplayTimelineElement(element, hasAnimation);
+        return shouldDisplayTimelineElement(
+          element,
+          hasAnimation,
+          expandableIds.has(element.domId ?? element.id),
+        );
       }),
-    [expandedElements, keyframeCache],
+    [expandableIds, expandedElements, keyframeCache],
   );
   const beatAnalysis = usePlayerStore((s) => s.beatAnalysis);
   const musicElement = usePlayerStore((s) => s.elements.find(isMusicTrack) ?? null);

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parsePreviewAssetPayload } from "./usePreviewBlockDrop";
+import { buildTimelineAssetInsertHtml, getTimelineAssetKind } from "../../utils/timelineAssetDrop";
 
 describe("preview editing interactions", () => {
   it("selects canvas elements on one click without opening Design automatically", () => {
@@ -39,6 +40,10 @@ describe("preview editing interactions", () => {
       new URL("../sidebar/BlocksTab.tsx", import.meta.url),
       "utf8",
     );
+    const previewOverlaySource = readFileSync(
+      new URL("./PreviewOverlays.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(parsePreviewAssetPayload('{"path":"assets/cover.png"}')).toBe("assets/cover.png");
     expect(parsePreviewAssetPayload('{"path":42}')).toBeNull();
@@ -51,7 +56,79 @@ describe("preview editing interactions", () => {
     expect(editorShellSource).toContain("onPreviewAssetDrop={handlePreviewAssetDrop}");
     expect(editorShellSource).toContain("onPreviewBlockDrop={onPreviewBlockDrop}");
     expect(assetCardSource).toContain("setData(TIMELINE_ASSET_MIME");
+    expect(assetCardSource).toContain("HtmlIllustrationPreview");
     expect(catalogSource).toContain("setData(TIMELINE_BLOCK_MIME");
+    expect(previewOverlaySource).toContain(
+      "const showComposition = Boolean(blockPreview.compositionUrl)",
+    );
+    expect(previewOverlaySource.indexOf("showComposition ? (")).toBeLessThan(
+      previewOverlaySource.indexOf("showVideo ? ("),
+    );
+  });
+
+  it("keeps paused timeline selections visible and selectable across right-panel tabs", () => {
+    const sessionSource = readFileSync(
+      new URL("../../hooks/useDomEditSession.ts", import.meta.url),
+      "utf8",
+    );
+    const layersSource = readFileSync(
+      new URL("../editor/LayersPanel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionSource).toContain("useTimelineSelectionPreviewSync({");
+    expect(sessionSource).toContain("useLayerRevealOverride({");
+    expect(sessionSource).toContain("scheduleReveal(element, 0)");
+    expect(layersSource).not.toContain("useLayerRevealOverride");
+  });
+
+  it("keeps timeline selection while clearing an inactive current-frame preview selection", () => {
+    const selectionSource = readFileSync(
+      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+      "utf8",
+    );
+    const syncSource = readFileSync(
+      new URL("../../hooks/useTimelineSelectionPreviewSync.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(selectionSource).toContain("isElementComputedVisible(targetElement)");
+    expect(selectionSource).toContain("preserveTimelineSelection: true");
+    expect(syncSource).toContain("const visibleIds = resolved.map");
+    expect(syncSource).toContain("preserveTimelineSelection: true");
+    expect(syncSource).not.toContain("if (selections.length < resolvableCount) return");
+  });
+
+  it("authors resizable geometry for visual assets dragged from the library", () => {
+    const source = readFileSync(
+      new URL("../../utils/timelineAssetDrop.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("width: ${geometry.width}px");
+    expect(source).toContain("height: ${geometry.height}px");
+    expect(source).toContain('id="${input.id}" data-hf-id="${input.hfId}"');
+    expect(source).toContain('input.kind === "html"');
+    expect(source).toContain("pointer-events: none; position: absolute");
+    expect(getTimelineAssetKind("assets/video-illustrations/idea.html")).toBe("html");
+    const htmlAsset = buildTimelineAssetInsertHtml({
+      id: "idea",
+      hfId: "hf-idea",
+      assetPath: "assets/video-illustrations/idea.html",
+      kind: "html",
+      start: 0,
+      duration: 5,
+      track: 0,
+      zIndex: 2,
+      geometry: { left: 120, top: 80, width: 480, height: 270 },
+    });
+    expect(htmlAsset).toContain("<iframe");
+    expect(htmlAsset).toContain("left: 120px");
+    expect(htmlAsset).toContain("width: 480px");
+    expect(htmlAsset).toContain('data-hf-lock-aspect-ratio="16:9"');
+    expect(htmlAsset).toContain('data-hf-asset-kind="html"');
+    expect(htmlAsset).toContain('width="1600" height="900"');
+    expect(htmlAsset).toContain("new ResizeObserver(r)");
+    expect(htmlAsset).toContain("p.clientWidth/1600");
   });
 
   it("uploads OS files dropped anywhere in the right-side assets area", () => {
@@ -69,6 +146,7 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain('data-testid="assets-virtual-scroll"');
     expect(assetsSource).toContain('className="min-h-0 flex-1 overflow-y-auto overscroll-contain"');
     expect(assetsSource).toContain("new IntersectionObserver");
+    expect(assetsSource).toContain("window.setInterval(refreshVisibleAssets, 2500)");
     expect(assetsSource).toContain("figmaAssetsImport.svg?url");
     expect(assetsSource).toContain("figmaAssetsSearch.svg?url");
     expect(assetsSource).toContain("<select");
@@ -113,7 +191,10 @@ describe("preview editing interactions", () => {
   });
 
   it("hides inline rich-text actions from the selected-element toolbar", () => {
-    const source = readFileSync(new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(source).not.toContain('onClick={() => applyFormat("bold")}');
     expect(source).not.toContain('onClick={() => applyFormat("italic")}');

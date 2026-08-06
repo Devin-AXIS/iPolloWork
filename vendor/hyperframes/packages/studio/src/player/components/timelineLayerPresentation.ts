@@ -59,8 +59,10 @@ export function resolveTimelineKind(element: TimelineElement): TimelineKind {
 export function shouldDisplayTimelineElement(
   element: TimelineElement,
   hasAnimation: boolean,
+  hasChildren = false,
 ): boolean {
   if (element.timingSource !== "implicit") return true;
+  if (hasChildren) return true;
   if (element.timelineKind || element.timelineRole?.trim()) return true;
   return resolveTimelineKind(element) !== "element" || hasAnimation;
 }

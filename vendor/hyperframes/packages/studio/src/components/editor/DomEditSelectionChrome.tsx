@@ -22,9 +22,8 @@ const RESIZE_HANDLE_DEFS: Array<{
   { handle: "se", cursor: "nwse-resize", x: "right", y: "bottom" },
 ];
 
-// Visible dot is 9px; the pointer target is a 16px invisible square centered
-// on the corner so click targets don't shrink with the smaller dot.
-const RESIZE_HANDLE_HIT_PX = 16;
+// Keep the dot compact while making corners practical to grab at any zoom.
+const RESIZE_HANDLE_HIT_PX = 24;
 
 type CropInset = { top: number; right: number; bottom: number; left: number };
 const NO_CROP_INSET: CropInset = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -229,7 +228,7 @@ export function DomEditSelectionChrome({
             def.handle !== "se" && !selection.capabilities.canApplyManualOffset ? null : (
               <div
                 key={def.handle}
-                className="pointer-events-auto absolute flex h-4 w-4 items-center justify-center"
+                className="pointer-events-auto absolute flex h-6 w-6 items-center justify-center"
                 style={{
                   ...resizeHandleStyle(def, overlayRect, cropOutlineInsetPx ?? undefined),
                   // Cursor rotates with the object: bucket the corner's base
