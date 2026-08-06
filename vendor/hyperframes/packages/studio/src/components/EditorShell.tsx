@@ -16,6 +16,7 @@ import type { TimelineElement } from "../player";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
 import { useAddAssetAtPlayhead } from "../hooks/useAddAssetAtPlayhead";
+import { useStudioI18n } from "../i18n";
 
 type RenderClipContent = (
   element: TimelineElement,
@@ -202,6 +203,7 @@ function EditorShellBody({
   onBlockDrop,
   onDeleteElement,
 }: EditorShellBodyProps) {
+  const { tx } = useStudioI18n();
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
   const handlePreviewAssetDrop = useAddAssetAtPlayhead(onAssetDrop);
 
@@ -260,7 +262,7 @@ function EditorShellBody({
                   >
                     <div className="flex items-center gap-1.5 px-2 py-0.5">
                       <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
-                        Captions
+                        {tx("Captions")}
                       </span>
                     </div>
                     <CaptionTimeline pixelsPerSecond={100} />

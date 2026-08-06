@@ -1,3 +1,5 @@
+import { useStudioI18n } from "../i18n";
+
 interface StudioToastProps {
   message: string;
   tone?: "error" | "info";
@@ -7,6 +9,7 @@ interface StudioToastProps {
 }
 
 export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastProps) {
+  const { tx } = useStudioI18n();
   const isError = tone === "error";
   return (
     <div
@@ -39,7 +42,7 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
             type="button"
             onClick={onDismiss}
             className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
-            aria-label="Dismiss"
+            aria-label={tx("Dismiss")}
           >
             <svg
               width="10"

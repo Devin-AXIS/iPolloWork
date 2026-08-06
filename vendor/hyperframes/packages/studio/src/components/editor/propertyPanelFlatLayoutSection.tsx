@@ -1,4 +1,5 @@
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import { FlipHorizontal, FlipVertical, RotateCw } from "../../icons/SystemIcons";
 import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
@@ -217,19 +218,20 @@ export function LayoutFlexBlock({
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   disabled: boolean;
 }) {
+  const { tx } = useStudioI18n();
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   if (!isFlex) return null;
   const direction = styles["flex-direction"] || "row";
   return (
     <div className="border-l-2 border-panel-border-input py-0.5 pl-[10px]">
       <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-        Flex
+        {tx("Flex")}
       </div>
       <FlatSegmentedRow
         label="Direction"
         options={[
-          { key: "row", node: "→ Row", label: "Row", active: direction === "row" },
-          { key: "column", node: "Column", label: "Column", active: direction === "column" },
+          { key: "row", node: tx("→ Row"), label: "Row", active: direction === "row" },
+          { key: "column", node: tx("Column"), label: "Column", active: direction === "column" },
         ]}
         disabled={disabled}
         onChange={(next) => void onSetStyle("flex-direction", next)}
@@ -354,18 +356,14 @@ interface FlatLayoutSectionProps
 }
 
 export function FlatLayoutSection(props: FlatLayoutSectionProps) {
-  const commitScaleFlip = (property: "scaleX" | "scaleY") => {
-    const nextValue = flipScaleValue(props.gsapRuntimeValues[property]);
-    void props.onCommitAnimatedProperty?.(props.element, property, nextValue);
-  };
-
+  const { tx } = useStudioI18n();
   return (
     <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2">
       <LayoutGeometryRows {...props} large />
       <div className="grid h-[34px] grid-cols-3 gap-[5px]">
         <button
           type="button"
-          aria-label="Rotate clockwise"
+          aria-label={tx("Rotate clockwise")}
           disabled={props.manualRotationEditingDisabled}
           onClick={() => props.commitManualRotation(String((props.displayR + 90) % 360))}
           className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed"
@@ -374,19 +372,17 @@ export function FlatLayoutSection(props: FlatLayoutSectionProps) {
         </button>
         <button
           type="button"
-          aria-label="Flip horizontally"
-          disabled={props.disabled}
-          onClick={() => commitScaleFlip("scaleX")}
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed"
+          aria-label={tx("Flip horizontally (unavailable)")}
+          disabled
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] disabled:cursor-not-allowed"
         >
           <FlipHorizontal size={16} />
         </button>
         <button
           type="button"
-          aria-label="Flip vertically"
-          disabled={props.disabled}
-          onClick={() => commitScaleFlip("scaleY")}
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed"
+          aria-label={tx("Flip vertically (unavailable)")}
+          disabled
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] disabled:cursor-not-allowed"
         >
           <FlipVertical size={16} />
         </button>

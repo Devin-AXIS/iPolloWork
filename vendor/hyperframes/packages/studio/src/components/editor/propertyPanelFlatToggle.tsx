@@ -5,6 +5,7 @@
 /* ------------------------------------------------------------------ */
 
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 
 export function FlatToggle({
   label,
@@ -18,20 +19,21 @@ export function FlatToggle({
   onChange: (next: boolean) => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   return (
     <div className="flex h-[34px] items-center justify-between rounded-[6px] bg-panel-input px-[10px]">
       <span
         data-flat-toggle-label="true"
         className="text-[10px] font-normal text-[#858a94]"
       >
-        {label}
+        {tx(label)}
       </span>
       <button
         type="button"
         data-flat-toggle="true"
         role="switch"
         aria-checked={checked}
-        aria-label={label}
+        aria-label={tx(label)}
         disabled={disabled}
         onClick={() => {
           track("toggle", label);

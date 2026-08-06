@@ -12,6 +12,7 @@ import {
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import { FlatDropdown } from "./propertyPanelFlatSelectRow";
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
@@ -43,6 +44,7 @@ function ColorSlider({
   disabled?: boolean;
   onCommit: (nextValue: number) => void;
 }) {
+  const { tx } = useStudioI18n();
   const trackRef = useRef<HTMLDivElement | null>(null);
   const percent = ((value - min) / (max - min)) * 100;
 
@@ -61,14 +63,14 @@ function ColorSlider({
   return (
     <div className="grid gap-1.5">
       <div className="flex items-center justify-between">
-        <span className={LABEL}>{label}</span>
+        <span className={LABEL}>{tx(label)}</span>
         <span className="text-[10px] font-medium text-neutral-400">{displayValue}</span>
       </div>
       <div
         ref={trackRef}
         role="slider"
         tabIndex={disabled ? -1 : 0}
-        aria-label={label}
+        aria-label={tx(label)}
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={value}
@@ -136,6 +138,8 @@ export function ColorField({
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
+  const { locale, tx } = useStudioI18n();
+  const pickColorLabel = locale === "zh" ? `选择${tx(label)}` : `Pick ${label.toLowerCase()} color`;
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -251,14 +255,14 @@ export function ColorField({
         >
           <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
             <div className="min-w-0">
-              <div className="truncate text-[11px] font-medium text-neutral-100">{label}</div>
-              <div className="text-[9px] uppercase tracking-[0.16em] text-neutral-600">Color</div>
+              <div className="truncate text-[11px] font-medium text-neutral-100">{tx(label)}</div>
+              <div className="text-[9px] uppercase tracking-[0.16em] text-neutral-600">{tx("Color")}</div>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
-              aria-label="Close color picker"
+              aria-label={tx("Close color picker")}
             >
               <X size={13} />
             </button>
@@ -338,7 +342,7 @@ export function ColorField({
             />
 
             <label className="grid gap-1.5">
-              <span className={LABEL}>Hex</span>
+              <span className={LABEL}>{tx("Hex")}</span>
               <input
                 value={hexDraft}
                 onChange={(event) => handleHexCommit(event.target.value)}
@@ -374,7 +378,7 @@ export function ColorField({
             type="button"
             data-flat-color-trigger="true"
             disabled={disabled}
-            aria-label={`Pick ${label.toLowerCase()} color`}
+            aria-label={pickColorLabel}
             onClick={openPicker}
             className="flex-shrink-0 disabled:cursor-not-allowed"
           >
@@ -404,7 +408,7 @@ export function ColorField({
             type="button"
             data-flat-color-value-trigger="true"
             disabled={disabled}
-            aria-label={`Pick ${label.toLowerCase()} color`}
+            aria-label={pickColorLabel}
             ref={buttonRef}
             onClick={openPicker}
             className="ml-2 min-w-0 flex-1 truncate text-right font-sans text-[13px] font-normal text-[#24262b] disabled:cursor-not-allowed"
@@ -417,12 +421,12 @@ export function ColorField({
     }
     return (
       <div className="flex h-6 min-w-0 items-center justify-between rounded-[4px] bg-panel-input px-2">
-        <span className="text-[8px] text-panel-text-4">{label}</span>
+        <span className="text-[8px] text-panel-text-4">{tx(label)}</span>
         <button
           type="button"
           data-flat-color-trigger="true"
           disabled={disabled}
-          aria-label={`Pick ${label.toLowerCase()} color`}
+          aria-label={pickColorLabel}
           ref={buttonRef}
           onClick={openPicker}
           className="flex min-w-0 items-center gap-1.5 disabled:cursor-not-allowed"
@@ -440,11 +444,11 @@ export function ColorField({
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      <span className={LABEL}>{label}</span>
+      <span className={LABEL}>{tx(label)}</span>
       <button
         type="button"
         disabled={disabled}
-        aria-label={`Pick ${label.toLowerCase()} color`}
+        aria-label={pickColorLabel}
         ref={buttonRef}
         onClick={openPicker}
         className={`${FIELD} flex items-center gap-3 text-left hover:border-neutral-700 disabled:cursor-not-allowed ${open ? "border-neutral-600" : ""}`}

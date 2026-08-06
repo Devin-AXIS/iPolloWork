@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { DomEditSelection } from "./domEditingTypes";
 import { Transform3DCube, type CubePose } from "./Transform3DCube";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import { ChevronDown } from "../../icons/SystemIcons";
 
 // translateZ only foreshortens under a perspective lens. Rather than hardcode one
@@ -70,6 +71,7 @@ function Cube3dControl({
   keyframed?: boolean;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const pose: CubePose = {
     rotationX: gsapRuntimeValues.rotationX ?? 0,
     rotationY: gsapRuntimeValues.rotationY ?? 0,
@@ -177,7 +179,7 @@ function Cube3dControl({
           keyframed={keyframed}
         />
         <p className="mt-1 text-center text-[10px] leading-snug text-[#858a94]">
-          Drag to adjust the view
+          {tx("Drag to adjust the view")}
         </p>
       </div>
     </div>
@@ -200,6 +202,7 @@ export function PropertyPanel3dTransform({
   onConvertToKeyframes,
   onLivePreviewProps,
 }: PropertyPanel3dTransformProps) {
+  const { tx } = useStudioI18n();
   const [presetOpen, setPresetOpen] = useState(false);
   const [view, setView] = useState("Front");
   const presets: Record<string, { rotationX: number; rotationY: number; rotationZ: number }> = {
@@ -280,9 +283,9 @@ export function PropertyPanel3dTransform({
           onClick={() => setPresetOpen((open) => !open)}
           className="flex h-[34px] w-full items-center justify-between rounded-[6px] bg-panel-input pl-2 pr-4"
         >
-          <span className="text-[10px] text-[#858a94]">View</span>
+          <span className="text-[10px] text-[#858a94]">{tx("View")}</span>
           <span className="flex items-center gap-4 text-[13px] text-[#24262b] dark:text-panel-text-1">
-            {view}
+            {tx(view)}
             <ChevronDown size={16} className="text-[#858a94]" />
           </span>
         </button>
@@ -295,7 +298,7 @@ export function PropertyPanel3dTransform({
                 onClick={() => choosePreset(name)}
                 className={`flex h-[34px] items-center rounded-[6px] px-[10px] text-left text-[12px] text-[#24262b] dark:text-panel-text-1 ${view === name ? "bg-[#f4f5f7] dark:bg-panel-input" : "hover:bg-[#f4f5f7] dark:hover:bg-panel-input"}`}
               >
-                {name}
+                {tx(name)}
               </button>
             ))}
           </div>
@@ -307,10 +310,10 @@ export function PropertyPanel3dTransform({
             key={control.property}
             className="flex h-[34px] items-center gap-1 text-[10px] text-[#858a94]"
           >
-            <span>{control.label}</span>
+            <span>{tx(control.label)}</span>
             <input
               type="range"
-              aria-label={control.label}
+              aria-label={tx(control.label)}
               min={control.min}
               max={control.max}
               step={control.step}
