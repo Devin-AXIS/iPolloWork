@@ -649,6 +649,7 @@ export default {
   "message.process_file_count": "{count} 个文件",
   "message.process_file_count_one": "{count} 个文件",
   "message.process_file_count_other": "{count} 个文件",
+  "message.process_duration": "耗时 {duration}",
   "message.expand_process": "展开处理过程",
   "message.collapse_process": "收起处理过程",
   "link_action.open_default": "使用默认应用打开",

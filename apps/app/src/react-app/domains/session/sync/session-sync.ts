@@ -467,22 +467,22 @@ function toUIParts(part: Part): UIMessage["parts"] {
     const selection = parseDesignAiSelectionDisplayMetadata(part.text);
     if (selection) metadataParts.push({
       type: "data-design-selection" as const,
-      data: { ...selection, partId: part.id },
+      data: { ...selection, partId: `${part.id}:design-selection` },
     });
     const animations = parseHyperframesAnimationDisplayMetadata(part.text);
     if (animations) metadataParts.push({
       type: "data-animation-references" as const,
-      data: { items: animations, partId: part.id },
+      data: { items: animations, partId: `${part.id}:animation-references` },
     });
     const voice = parseVideoVoiceDisplayMetadata(part.text);
     if (voice) metadataParts.push({
       type: "data-voice-reference" as const,
-      data: { ...voice, partId: part.id },
+      data: { ...voice, partId: `${part.id}:voice-reference` },
     });
     const illustration = parseVideoIllustrationDisplayMetadata(part.text);
     if (illustration) metadataParts.push({
       type: "data-illustration-reference" as const,
-      data: { ...illustration, partId: part.id },
+      data: { ...illustration, partId: `${part.id}:illustration-reference` },
     });
     return metadataParts;
   }
@@ -839,7 +839,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
 
   if (event.type === "message.updated") {
     const props = (event.properties ?? {}) as {
-      info?: { id?: string; role?: UIMessage["role"] | string; sessionID?: string; time?: { created?: number } };
+      info?: { id?: string; role?: UIMessage["role"] | string; sessionID?: string; time?: { created?: number; completed?: number } };
     };
     const info = props.info;
     if (!info?.id || !info.sessionID || (info.role !== "user" && info.role !== "assistant" && info.role !== "system")) {
@@ -848,10 +848,16 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
     useSessionActivityStore.getState().markMessageRole(workspaceId, info.sessionID, info.id, info.role);
     if (!isTrackedSession(entry, info.sessionID)) return;
     const created = info.time?.created;
+    const completed = info.time?.completed;
     const next = {
       id: info.id,
       role: info.role,
-      ...(typeof created === "number" ? { metadata: { opencode: { created } } } : {}),
+      ...(typeof created === "number" || typeof completed === "number"
+        ? { metadata: { opencode: {
+            ...(typeof created === "number" ? { created } : {}),
+            ...(typeof completed === "number" ? { completed } : {}),
+          } } }
+        : {}),
       parts: [],
     } satisfies UIMessage;
     queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, info.sessionID), (current = []) =>

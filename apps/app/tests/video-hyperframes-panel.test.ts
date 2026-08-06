@@ -43,6 +43,9 @@ describe("HyperFrames Video Studio", () => {
     const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
     expect(panelSource).toContain('ipollowork:hyperframes:illustration-reference');
     expect(surfaceSource).toContain('ipollowork:add-illustration-reference');
+    expect(surfaceSource).toContain("Every selected reference is a required deliverable");
+    expect(surfaceSource).toContain("data-ipw-animation-reference");
+    expect(surfaceSource).toContain("requirements.animationReferences");
     expect(surfaceSource).toContain("AI 插画已添加到对话框");
   });
   test("reuses the embedded Design system inspector for the active video composition", () => {
@@ -584,6 +587,7 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
+    expect(sessionRouteSource).toContain("draft.capability?.instruction");
     expect(sessionRouteSource).toContain("[envSystemContext, videoSystemContext, designSystemContext, authoringSystemContext, capabilitySystemContext]");
   });
 
@@ -596,11 +600,18 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never create or inspect another `video/`/`videos/` project");
     expect(contract).toContain("Never stop all Node processes");
     expect(contract).toContain("not an HTML/JSON response saved with a media extension");
+    expect(contract).toContain("Use `/media-use` to resolve BGM");
     expect(contract).toContain("verify its response type and local file signature");
     expect(contract).toContain("never run `npx hyperframes check`");
     expect(contract).toContain("never use legacy `.frame` millisecond timelines");
     expect(contract).toContain("seconds-based `data-start`");
     expect(contract).toContain("Root `data-duration` must cover the last scene/audio/clip");
+    expect(contract).toContain("Delivery requirements contract");
+    expect(contract).toContain('data-ipw-caption="true"');
+    expect(contract).toContain('data-ipw-bgm="true"');
+    expect(contract).toContain("animationReferences");
+    expect(contract).toContain("unresolved earlier requests");
+    expect(contract).toContain("never claim completion from structural validation alone");
     expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
     expect(contract).toContain("top-left/bottom-right placement");
     expect(contract).toContain("and local fallback");
@@ -611,6 +622,11 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("/workspace/current/video/ses_current_video/voiceover.json");
     expect(contract).toContain("ipollowork_extension_call");
     expect(contract).toContain("speech_synthesize_workspace_batch");
+    expect(contract).toContain("built into the installed desktop application");
+    expect(contract).toContain("Never check for, install, authenticate, or recommend HeyGen/HyperFrames CLI");
+    expect(contract).toContain("never ask the user to run an auth/login command");
+    expect(contract).toContain("ipollowork_extension_list_actions");
+    expect(contract).toContain("do not replace it with user setup instructions or an external CLI");
     expect(contract).toContain("Never use generic `speech_synthesize`");
     expect(contract).toContain("voiceId");
     expect(contract).toContain("assets/voiceover-<revision>-<scene>.mp3");
@@ -630,6 +646,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never overlap");
     expect(contract).toContain("root duration");
     expect(contract).toContain("GSAP");
+    expect(contract).toContain("requirements.captions: true");
     expect(contract).toContain("another provider");
   });
 

@@ -514,6 +514,12 @@ export function StudioRightPanel({
                       onClick={() => openHostPanel("voice")}
                     />
                     <PanelTabButton
+                      label="插画"
+                      tooltip="使用 Ian 小黑插画能力生成视频素材"
+                      active={rightPanelTab === "illustration"}
+                      onClick={() => selectStudioPanel("illustration")}
+                    />
+                    <PanelTabButton
                       label={t("right.assets")}
                       tooltip={t("right.assetsTooltip")}
                       active={rightPanelTab === "assets"}
@@ -522,37 +528,6 @@ export function StudioRightPanel({
                   </div>
                 </div>
               )}
-              <PanelTabButton
-                label={t("right.voice")}
-                tooltip={t("right.voiceTooltip")}
-                active={rightPanelTab === "voice"}
-                onClick={() => openHostPanel("voice")}
-              />
-              <PanelTabButton
-                label={t("right.style")}
-                tooltip={t("right.styleTooltip")}
-                active={rightPanelTab === "style"}
-                onClick={() => openHostPanel("style")}
-              />
-              <PanelTabButton
-                label="插画"
-                tooltip="使用 Ian 小黑插画能力生成视频素材"
-                active={rightPanelTab === "illustration"}
-                onClick={() => selectStudioPanel("illustration")}
-              />
-              <PanelTabButton
-                label={t("right.assets")}
-                tooltip={t("right.assetsTooltip")}
-                active={rightPanelTab === "assets"}
-                onClick={() => selectStudioPanel("assets")}
-              />
-              <PanelTabButton
-                label={t("right.catalog")}
-                tooltip={t("right.catalogTooltip")}
-                active={rightPanelTab === "catalog" || rightPanelTab === "effects"}
-                onClick={() => selectStudioPanel("catalog")}
-              />
-              </>)}
               <button
                 type="button"
                 onClick={() => {

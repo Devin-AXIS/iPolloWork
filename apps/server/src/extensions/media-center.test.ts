@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { EnvService } from "../env-file.js";
 import type { ServerConfig } from "../types.js";
 import {
+  MEDIA_EXTENSION_ACTIONS,
   MEDIA_EXTENSION_ID,
   callMediaExtensionAction,
   estimateVoiceoverDurationSeconds,
@@ -36,6 +37,16 @@ afterEach(async () => {
   while (directories.length) {
     const directory = directories.pop();
     if (directory) await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("describes workspace speech synthesis as an installed iPolloWork capability", () => {
+  const speechActions = MEDIA_EXTENSION_ACTIONS.filter((action) => action.action.startsWith("speech_synthesize"));
+  expect(speechActions).toHaveLength(3);
+  for (const action of speechActions) {
+    expect(action.description).toContain("Built-in iPolloWork CosyVoice action");
+    expect(action.description.toLowerCase()).toContain("without");
+    expect(action.description.toLowerCase()).toContain("external cli");
   }
 });
 
@@ -180,6 +191,29 @@ describe("Media Center extension", () => {
 
     expect(result.valid).toBe(false);
     expect(result.issues.map((issue) => issue.code)).toContain("manual_voiceover_playback");
+  });
+
+  test("rejects captions whose hidden animation target cannot resolve", () => {
+    const result = validateVoiceoverTimelineHtml(`
+      <main data-composition-id="main" data-duration="4">
+        <section id="scene" class="scene clip" data-start="0" data-duration="4"></section>
+        <div data-hf-id="caption-one" data-ipw-caption="true" class="clip caption" data-start="0" data-duration="4">Caption</div>
+      </main>
+      <style>.caption { opacity: 0; }</style>
+      <script>timeline.to('#caption-one', { opacity: 1 });</script>
+    `);
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: "caption_animation_target_missing" }));
+  });
+
+  test("rejects infinite caption animation that cannot be sought deterministically", () => {
+    const result = validateVoiceoverTimelineHtml(`
+      <main data-composition-id="main" data-duration="4">
+        <section id="scene" class="scene clip" data-start="0" data-duration="4"></section>
+        <div id="caption-one" data-ipw-caption="true" class="clip caption" data-start="0" data-duration="4">Caption</div>
+      </main>
+      <style>.caption { animation: flicker .1s infinite; }</style>
+    `);
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: "non_seek_safe_caption_animation" }));
   });
 
   test("rejects legacy frame timelines that only describe a longer narrated video in script", () => {
@@ -328,6 +362,52 @@ describe("Media Center extension", () => {
       { directory: workspace.root },
     );
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
+  });
+
+  test("rejects completion when explicitly requested media deliverables are absent", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+    </main>`, {
+      requirements: {
+        voiceover: true,
+        captions: true,
+        bgm: true,
+        animationReferences: ["caption-clip-wipe"],
+      },
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining([
+      "required_voiceover_missing",
+      "required_captions_missing",
+      "required_bgm_missing",
+      "required_animation_missing",
+    ]));
+  });
+
+  test("accepts requested media only when the timeline contains every deliverable", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><main data-composition-id="main" data-duration="5.25">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5.25"><span data-ipw-narration-source="true">Intro</span></section>
+      <div class="clip" data-ipw-caption="true" data-ipw-animation-reference="caption-clip-wipe" data-start="0" data-duration="5">Intro</div>
+      <audio src="./assets/voiceover-intro.mp3" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+      <audio src="./assets/bgm.mp3" data-ipw-bgm="true" data-start="0" data-duration="5.25" data-track-index="11"></audio>
+    </main>`, {
+      mediaAssets: ["assets/voiceover-intro.mp3", "assets/bgm.mp3"],
+      requirements: {
+        voiceover: true,
+        captions: true,
+        bgm: true,
+        animationReferences: ["caption-clip-wipe"],
+      },
+    });
+
+    expect(result).toMatchObject({
+      valid: true,
+      voiceoverCount: 1,
+      captionCount: 1,
+      bgmCount: 1,
+      animationReferences: ["caption-clip-wipe"],
+    });
   });
 
   test("rejects narration that differs from its visible scene text before calling Model Studio", async () => {
@@ -495,6 +575,49 @@ describe("Media Center extension", () => {
     });
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-intro.mp3"))).toEqual(mp3);
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-details.mp3"))).toEqual(mp3);
+  });
+
+  test("reuses identical synthesized narration without changing workspace output paths", async () => {
+    const workspace = await workspaceConfig();
+    const frame = Buffer.alloc(417);
+    frame.set([0xff, 0xfb, 0x90, 0x00]);
+    const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
+    let synthesisRequests = 0;
+    let downloadRequests = 0;
+    globalThis.fetch = ((input) => {
+      if (String(input).includes("SpeechSynthesizer")) {
+        synthesisRequests += 1;
+        return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/cache-test.mp3" } } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }
+      downloadRequests += 1;
+      return Promise.resolve(new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } }));
+    }) as typeof fetch;
+
+    const common = {
+      text: "Unique resumable narration cache test",
+      sceneId: "cache-scene",
+      sceneText: "Unique resumable narration cache test",
+      sceneStart: 0,
+      sceneDuration: 2,
+      voice: "longyingmu_v3",
+    };
+    for (const revision of ["first", "second"]) {
+      await callMediaExtensionAction(
+        workspace.config,
+        env({ DASHSCOPE_API_KEY: "sk-cache-test" }),
+        "speech_synthesize_workspace_file",
+        { ...common, outputPath: `video/session/assets/voiceover-cache-${revision}.mp3` },
+        { directory: workspace.root },
+      );
+    }
+
+    expect(synthesisRequests).toBe(1);
+    expect(downloadRequests).toBe(1);
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-cache-first.mp3"))).toEqual(mp3);
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-cache-second.mp3"))).toEqual(mp3);
   });
 
   test("rejects narration that cannot fit a requested duration before provider synthesis", async () => {

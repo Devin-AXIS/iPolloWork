@@ -125,6 +125,7 @@ export interface DomEditViewport {
 export interface TimelineElementDomTarget {
   id?: string;
   domId?: string;
+  hfId?: string;
   selector?: string;
   selectorIndex?: number;
   sourceFile?: string;

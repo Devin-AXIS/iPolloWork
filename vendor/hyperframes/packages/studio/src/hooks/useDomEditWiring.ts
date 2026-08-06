@@ -20,6 +20,7 @@ import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import {
   collectTimelineAncestorIds,
+  resolveTimelineTreeSelectionId,
   resolveTimelineTreeSelectionKey,
 } from "../player/lib/timelineTreeSelection";
 
@@ -177,25 +178,28 @@ export function useDomEditWiring({
   // ── DOM selection -> timeline element sync ──
 
   useEffect(() => {
-    if (!domEditSelection?.id) return;
+    if (!domEditSelection) return;
     const store = usePlayerStore.getState();
-    const key = resolveTimelineTreeSelectionKey({
-      elementId: domEditSelection.id,
+    const selectionIdentity = {
+      elementId: domEditSelection.id ?? undefined,
+      hfId: domEditSelection.hfId,
       sourceFile: domEditSelection.sourceFile,
       selector: domEditSelection.selector,
       selectorIndex: domEditSelection.selectorIndex,
       elements: timelineElements,
       manifest: clipManifest ?? [],
       domClipChildren,
-    });
-    store.expandTimelineElementIds(
-      collectTimelineAncestorIds(domEditSelection.id, clipParentMap),
-    );
+    };
+    const treeId = resolveTimelineTreeSelectionId(selectionIdentity);
+    if (!treeId) return;
+    const key = resolveTimelineTreeSelectionKey(selectionIdentity);
+    store.expandTimelineElementIds(collectTimelineAncestorIds(treeId, clipParentMap));
     if (key !== store.selectedElementId) store.setSelectedElementId(key);
   }, [
     clipManifest,
     clipParentMap,
     domClipChildren,
+    domEditSelection?.hfId,
     domEditSelection?.id,
     domEditSelection?.selector,
     domEditSelection?.selectorIndex,

@@ -127,4 +127,14 @@ describe("timeline layer presentation", () => {
       ),
     ).toBe(true);
   });
+
+  test("keeps an implicit structural parent visible when it owns selectable children", () => {
+    expect(
+      shouldDisplayTimelineElement(
+        element({ id: "topbar", timingSource: "implicit", tag: "header" }),
+        false,
+        true,
+      ),
+    ).toBe(true);
+  });
 });

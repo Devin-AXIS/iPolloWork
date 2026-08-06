@@ -646,6 +646,7 @@ export default {
   "message.process_tool_count_other": "{count} commands",
   "message.process_file_count_one": "{count} file",
   "message.process_file_count_other": "{count} files",
+  "message.process_duration": "took {duration}",
   "message.expand_process": "Expand process",
   "message.collapse_process": "Collapse process",
   "link_action.open_default": "Open with default app",

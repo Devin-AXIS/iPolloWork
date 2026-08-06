@@ -1170,6 +1170,9 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
   // Child rows follow their parent regardless of group.
   const childrenByParent = new Map<string, FlattenedSessionRow[]>();
   const rowIndexById = new Map(sessionRows.map((row, index) => [row.session.id, index]));
+  const compareByMostRecent = (left: FlattenedSessionRow, right: FlattenedSessionRow) =>
+    (right.session.time?.updated ?? right.session.time?.created ?? 0)
+    - (left.session.time?.updated ?? left.session.time?.created ?? 0);
 
   for (const row of sessionRows) {
     if (row.depth > 0) {
@@ -1195,6 +1198,10 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
       ungroupedRows.push(row);
     }
   }
+
+  for (const rows of rootRowsByGroup.values()) rows.sort(compareByMostRecent);
+  for (const rows of childrenByParent.values()) rows.sort(compareByMostRecent);
+  ungroupedRows.sort(compareByMostRecent);
 
   const renderRow = (row: FlattenedSessionRow) => (
     <React.Fragment key={row.session.id}>

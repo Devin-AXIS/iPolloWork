@@ -131,7 +131,7 @@ export function buildTimelineAssetInsertHtml(input: {
   }
 
   if (input.kind === "html") {
-    return `<div ${sharedAttrs} style="${visualStyles}; overflow: hidden"><iframe src="${input.assetPath}" title="Illustration" sandbox="" style="pointer-events: none; width: 100%; height: 100%; border: 0; background: white"></iframe></div>`;
+    return `<div ${sharedAttrs} data-hf-asset-kind="html" data-hf-lock-aspect-ratio="16:9" style="${visualStyles}; overflow: hidden"><iframe src="${input.assetPath}" title="Illustration" sandbox="" width="1600" height="900" onload="var f=this,p=f.parentElement,r=function(){f.style.transform='scale('+(p.clientWidth/1600)+')'};r();if(f.__hfResizeObserver)f.__hfResizeObserver.disconnect();f.__hfResizeObserver=new ResizeObserver(r);f.__hfResizeObserver.observe(p)" style="pointer-events: none; position: absolute; inset: 0 auto auto 0; width: 1600px; height: 900px; max-width: none; border: 0; background: white; transform-origin: 0 0"></iframe></div>`;
   }
 
   return `<audio ${sharedAttrs} data-volume="1" style="z-index: ${input.zIndex}"></audio>`;

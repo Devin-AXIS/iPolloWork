@@ -17,6 +17,7 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { shouldDismissAssetPreview } from "../../utils/assetPreviewDismiss";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import { HtmlIllustrationPreview } from "../sidebar/HtmlIllustrationPreview";
 
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
@@ -60,11 +61,10 @@ function AssetPreviewMedia({
   }
   if (kind === "html") {
     return (
-      <iframe
+      <HtmlIllustrationPreview
         src={serveUrl}
         title={name}
-        sandbox=""
-        className="aspect-video w-[52vw] max-w-full rounded border-0 bg-white"
+        className="w-[52vw] max-w-full rounded"
       />
     );
   }

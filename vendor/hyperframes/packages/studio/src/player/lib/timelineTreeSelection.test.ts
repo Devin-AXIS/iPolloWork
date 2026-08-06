@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   collectTimelineAncestorIds,
+  resolveTimelineTreeSelectionId,
   resolveTimelineTreeSelectionKey,
 } from "./timelineTreeSelection";
 
@@ -36,5 +37,59 @@ describe("timeline tree selection", () => {
         ],
       }),
     ).toBe("compositions/scene.html#title");
+  });
+
+  test("resolves an id-less preview selection through its hf id and expands its parents", () => {
+    const domClipChildren = [
+      {
+        id: "hf-title",
+        hfId: "hf-title",
+        parentId: "hero",
+        hostId: "scene",
+        label: "Title",
+        sourceFile: "compositions/scene.html",
+        selector: ".title",
+        selectorIndex: 0,
+        stackingContextId: "root",
+      },
+    ];
+    const input = {
+      hfId: "hf-title",
+      sourceFile: "compositions/scene.html",
+      elements: [],
+      manifest: [],
+      domClipChildren,
+    };
+
+    expect(resolveTimelineTreeSelectionId(input)).toBe("hf-title");
+    expect(resolveTimelineTreeSelectionKey(input)).toBe("compositions/scene.html:.title:0");
+    expect(collectTimelineAncestorIds("hf-title", new Map([["hf-title", "hero"]]))).toEqual([
+      "hero",
+    ]);
+  });
+
+  test("resolves a selector-only preview element to its timeline tree identity", () => {
+    const domClipChildren = [
+      {
+        id: "compositions/scene.html:h2:1",
+        parentId: "hero",
+        hostId: "scene",
+        label: "H2",
+        sourceFile: "compositions/scene.html",
+        selector: "h2",
+        selectorIndex: 1,
+        stackingContextId: "root",
+      },
+    ];
+    expect(
+      resolveTimelineTreeSelectionId({
+        sourceFile: "compositions/scene.html",
+        selector: "h2",
+        selectorIndex: 1,
+        elements: [],
+        manifest: [],
+        domClipChildren,
+      }),
+    ).toBe("compositions/scene.html:h2:1");
   });
 });

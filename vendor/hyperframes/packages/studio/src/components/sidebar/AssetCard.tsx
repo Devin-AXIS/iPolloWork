@@ -12,6 +12,7 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
 import { basename, ext, formatDuration } from "./assetHelpers";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import { HtmlIllustrationPreview } from "./HtmlIllustrationPreview";
 
 /** Drag payload writer shared by the asset tile and the font row: copy effect
  *  plus the timeline-asset MIME and a plain-text path fallback. */
@@ -221,13 +222,9 @@ export function AssetCard({
             </>
           )}
           {isIllustrationHtml && (
-            <iframe
-              src={serveUrl}
-              title={name}
-              loading="lazy"
-              sandbox=""
-              className="pointer-events-none h-full w-full border-0 bg-white"
-            />
+            <div className="absolute inset-0 flex items-center bg-white">
+              <HtmlIllustrationPreview src={serveUrl} title={name} className="w-full" />
+            </div>
           )}
           {!isImage && !isVideo && !isIllustrationHtml && (
             <div className="w-full h-full flex items-center justify-center">

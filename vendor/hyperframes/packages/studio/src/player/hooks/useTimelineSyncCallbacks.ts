@@ -22,6 +22,9 @@ import {
   getTimelineElementSelector,
   getTimelineElementSelectorIndex,
   getTimelineElementSourceFile,
+  getImplicitTimelineLayerLabel,
+  isImplicitTimelineLayerCandidate,
+  buildTimelineElementIdentity,
   readTimelineDurationFromDocument,
 } from "../lib/timelineDOM";
 import {
@@ -181,8 +184,46 @@ export function useTimelineSyncCallbacks({
         // the editable layer tree. This intentionally includes ordinary element
         // hosts, not only compositions: any element may own child layers.
         const domClipChildren: DomClipChild[] = [];
-        const collectedDomIds = new Set<string>();
+        const collectedTreeIds = new Set<string>();
         if (iframeDoc) {
+          const collect = (parentEl: Element, parentId: string, hostId: string) => {
+            for (const child of Array.from(parentEl.children)) {
+              const selector = getTimelineElementSelector(child);
+              if (!selector) {
+                collect(child, parentId, hostId);
+                continue;
+              }
+              const sourceFile = getTimelineElementSourceFile(child);
+              const selectorIndex = getTimelineElementSelectorIndex(iframeDoc, child, selector);
+              const domId = child.id || undefined;
+              const hfId = child.getAttribute("data-hf-id") || undefined;
+              const treeId =
+                domId ??
+                hfId ??
+                `${sourceFile ?? "index.html"}:${selector}:${selectorIndex ?? 0}`;
+              if (collectedTreeIds.has(treeId)) continue;
+              collectedTreeIds.add(treeId);
+              const isGroup = child.hasAttribute("data-hf-group");
+              domClipChildren.push({
+                id: treeId,
+                domId,
+                hfId,
+                selector,
+                selectorIndex,
+                sourceFile,
+                parentId,
+                hostId,
+                label:
+                  (isGroup ? child.getAttribute("data-hf-group") : null) ||
+                  getImplicitTimelineLayerLabel(child as HTMLElement),
+                tagName: child.tagName.toLowerCase(),
+                stackingContextId: resolveCssStackingContextId(child),
+              });
+              parentMap.set(treeId, parentId);
+              collect(child, treeId, hostId);
+            }
+          };
+
           for (const clip of data.clips) {
             if (!clip.id) continue;
             const hostEl = iframeDoc.getElementById(clip.id);
@@ -192,39 +233,32 @@ export function useTimelineSyncCallbacks({
               clip.kind === "composition"
                 ? (hostEl.querySelector("[data-hf-inner-root]") ?? hostEl)
                 : hostEl;
-            // Collect every id'd descendant, not only data-hf-group wrappers. Any
-            // element can own another editable element, so the timeline hierarchy
-            // must keep walking until it reaches a real leaf. Id-less structural
-            // wrappers are transparent and preserve the nearest id'd parent.
-            const collect = (parentEl: Element, parentId: string) => {
-              for (const child of Array.from(parentEl.children)) {
-                if (!child.id) {
-                  collect(child, parentId); // unwrap id-less structural containers
-                  continue;
-                }
-                if (collectedDomIds.has(child.id)) continue;
-                collectedDomIds.add(child.id);
-                const isGroup = child.hasAttribute("data-hf-group");
-                const selector = getTimelineElementSelector(child);
-                domClipChildren.push({
-                  id: child.id,
-                  hfId: child.getAttribute("data-hf-id") || undefined,
-                  selector,
-                  selectorIndex: selector
-                    ? getTimelineElementSelectorIndex(iframeDoc, child, selector)
-                    : undefined,
-                  sourceFile: getTimelineElementSourceFile(child),
-                  parentId,
-                  hostId,
-                  label: isGroup ? child.getAttribute("data-hf-group") || child.id : child.id,
-                  tagName: child.tagName.toLowerCase(),
-                  stackingContextId: resolveCssStackingContextId(child),
-                });
-                parentMap.set(child.id, parentId);
-                collect(child, child.id);
-              }
-            };
-            collect(innerRoot, hostId);
+            collect(innerRoot, hostId, hostId);
+          }
+
+          // Root-level static layers have no timing attributes, but they are
+          // visible/selectable throughout the composition. They already become
+          // implicit top-level timeline rows; attach their descendants here so
+          // canvas selection can reveal the complete path to any static child.
+          const compositionRoot = iframeDoc.querySelector("[data-composition-id]");
+          if (compositionRoot) {
+            for (const child of Array.from(compositionRoot.children)) {
+              if (!isImplicitTimelineLayerCandidate(compositionRoot, child)) continue;
+              const selector = getTimelineElementSelector(child);
+              if (!selector) continue;
+              const selectorIndex = getTimelineElementSelectorIndex(iframeDoc, child, selector);
+              const sourceFile = getTimelineElementSourceFile(child);
+              const identity = buildTimelineElementIdentity({
+                preferredId: child.id || null,
+                label: getImplicitTimelineLayerLabel(child),
+                fallbackIndex: 0,
+                domId: child.id || undefined,
+                selector,
+                selectorIndex,
+                sourceFile,
+              });
+              collect(child, identity.id, identity.id);
+            }
           }
         }
         usePlayerStore.getState().setClipParentMap(parentMap);

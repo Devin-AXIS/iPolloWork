@@ -300,6 +300,7 @@ export function findElementForTimelineElement(
       doc,
       {
         id: element.domId ?? undefined,
+        hfId: element.hfId,
         selector,
         selectorIndex: element.selectorIndex,
         sourceFile,

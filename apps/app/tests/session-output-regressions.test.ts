@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { formatProcessDuration } from "../src/components/chat/utils";
 
 describe("session output issue regressions", () => {
+  test("process duration uses a compact clock format", () => {
+    expect(formatProcessDuration(8_400)).toBe("00:08");
+    expect(formatProcessDuration(83_000)).toBe("01:23");
+    expect(formatProcessDuration(3_723_000)).toBe("1:02:03");
+  });
+
   test("session header offers full-session Markdown export", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),

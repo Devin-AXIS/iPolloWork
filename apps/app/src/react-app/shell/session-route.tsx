@@ -864,7 +864,7 @@ export function SessionRoute() {
         );
         let includeVoiceoverContext = isVideoTask && videoPromptRequestsVoiceoverContext(
           draft.capability?.id,
-          draft.resolvedText ?? draft.text,
+          [draft.resolvedText ?? draft.text, draft.capability?.instruction].filter(Boolean).join("\n"),
         );
         if (isVideoTask && !includeVoiceoverContext && selectedWorkspaceEndpoint) {
           const entryPath = sessionTemplate?.state.entry ?? videoProjectEntryPath(targetSessionId);

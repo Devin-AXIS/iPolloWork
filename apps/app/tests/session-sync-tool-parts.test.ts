@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { Part } from "@opencode-ai/sdk/v2/client";
 import type { UIMessage } from "ai";
 
+import { hyperframesAnimationDisplayMetadata } from "../src/app/lib/hyperframes-effect-params";
 import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
   __applySessionSyncEventForTest,
@@ -14,6 +15,7 @@ import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
 } from "../src/react-app/domains/session/sync/parse-tool-parts";
+import { videoVoiceDisplayMetadata } from "../src/react-app/domains/session/video/video-voice";
 
 afterEach(() => {
   getReactQueryClient().clear();
@@ -175,6 +177,56 @@ describe("tool part mapper", () => {
         state: "input-streaming",
         input: { content: "hello", filePath: "src/main.ts" },
       });
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("session sync preserves every reference tag from one synthetic part", () => {
+    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.updated",
+        properties: { info: { id: "msg-a", role: "user", sessionID: "session-a" } },
+      } as any);
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-context",
+            sessionID: "session-a",
+            messageID: "msg-a",
+            type: "text",
+            synthetic: true,
+            text: [
+              hyperframesAnimationDisplayMetadata([{
+                item: { name: "video-span", title: "VIDEO SPAN · starts here." },
+              }]),
+              videoVoiceDisplayMetadata({
+                voiceId: "longanyang",
+                model: "cosyvoice-v3-flash",
+                label: "配音 · 龙安阳",
+              }),
+            ].join("\n"),
+          },
+        },
+      } as any);
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript?.[0]?.parts).toEqual([
+        expect.objectContaining({
+          type: "data-animation-references",
+          data: expect.objectContaining({ partId: "part-context:animation-references" }),
+        }),
+        expect.objectContaining({
+          type: "data-voice-reference",
+          data: expect.objectContaining({ partId: "part-context:voice-reference" }),
+        }),
+      ]);
     } finally {
       release();
       cleanup();
