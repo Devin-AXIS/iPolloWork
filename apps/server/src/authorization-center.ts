@@ -65,6 +65,17 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
     },
   },
   {
+    id: "minimax-media",
+    keys: ["MINIMAX_API_KEY"],
+    category: "media",
+    agent: {
+      capability: "MiniMax speech TTS",
+      useWhen: "Use when the user asks to synthesize speech or create narration audio with a MiniMax account.",
+      instruction:
+        "Use the iPolloWork media extension speech_synthesize action from trusted runtime code. It keeps MINIMAX_API_KEY on this device and calls the MiniMax Text to Audio v2 endpoint without modifying OpenCode.",
+    },
+  },
+  {
     id: "volcengine-video",
     keys: ["ARK_API_KEY"],
     category: "media",
