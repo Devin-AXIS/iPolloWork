@@ -20,6 +20,7 @@ import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEdit
 import {
   findElementForSelection,
   findElementForTimelineElement,
+  isElementComputedVisible,
   resolveDomEditSelection,
   type DomEditSelection,
 } from "../components/editor/domEditing";
@@ -31,6 +32,8 @@ export interface ApplyDomSelectionOptions {
   revealPanel?: boolean;
   additive?: boolean;
   preserveGroup?: boolean;
+  /** Clear only the canvas overlay while retaining the timeline/tree selection. */
+  preserveTimelineSelection?: boolean;
 }
 
 export interface ResolveDomSelectionOptions {
@@ -149,18 +152,14 @@ export function useDomSelection({
     // fallow-ignore-next-line complexity
     (
       selection: DomEditSelection | null,
-      options?: {
-        revealPanel?: boolean;
-        additive?: boolean;
-        preserveGroup?: boolean;
-      },
+      options?: ApplyDomSelectionOptions,
     ) => {
       if (!selection) {
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
         setDomEditSelection(null);
         setDomEditGroupSelections([]);
-        setSelectedTimelineElementId(null);
+        if (!options?.preserveTimelineSelection) setSelectedTimelineElementId(null);
         return;
       }
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) {
@@ -358,7 +357,10 @@ export function useDomSelection({
         compIdToSrc,
         isMasterView,
       });
-      return targetElement
+      // Timeline rows exist for the whole composition, while the preview only
+      // represents the current frame. Never create an overlay for a timed clip
+      // (or one of its descendants) while the runtime has it hidden.
+      return targetElement && isElementComputedVisible(targetElement)
         ? buildDomSelectionFromTarget(targetElement, {
             preferClipAncestor: false,
           })
@@ -371,12 +373,21 @@ export function useDomSelection({
     async (element: TimelineElement | null) => {
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
       const seq = ++timelineSelectSeqRef.current;
-      if (!element) return;
+      if (!element) {
+        applyDomSelection(null, { revealPanel: false });
+        return;
+      }
 
       const selection = await buildDomSelectionForTimelineElement(element);
       // A newer selection superseded this one while we were resolving — drop the stale result.
       if (seq !== timelineSelectSeqRef.current) return;
       if (selection) applyDomSelection(selection);
+      else {
+        applyDomSelection(null, {
+          revealPanel: false,
+          preserveTimelineSelection: true,
+        });
+      }
     },
     [applyDomSelection, buildDomSelectionForTimelineElement],
   );

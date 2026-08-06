@@ -2076,7 +2076,6 @@ export default {
   "composer.queued_count": "已排队 {count} 条",
   "composer.queued_delete_selected": "删除 {count} 条",
   "composer.queued_delete_selected_confirm": "删除 {count} 条排队任务？",
-  "composer.queued_drag_handle": "拖拽调整顺序",
   "composer.queued_select": "选择",
   "composer.queued_select_all": "全选",
   "composer.queued_select_item": "选择第 {index} 条排队任务",

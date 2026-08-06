@@ -48,6 +48,34 @@ describe("HyperFrames Video Studio", () => {
     expect(surfaceSource).toContain("requirements.animationReferences");
     expect(surfaceSource).toContain("AI 插画已添加到对话框");
   });
+
+  test("maps all six illustration choices to offline self-contained HTML contracts", () => {
+    const profiles = [
+      ["ian-xiaohei-illustrations", "helloianneo/ian-xiaohei-illustrations", "ian-xiaohei-illustrations"],
+      ["html-infographic", "openai/visualize", "visualize"],
+      ["html-concept-explainer", "ipollowork/faceless-explainer", "faceless-explainer + hyperframes-core"],
+      ["html-kinetic-typography", "heygen-com/hyperframes", "hyperframes-animation"],
+      ["html-svg-path", "heygen-com/hyperframes", "hyperframes-keyframes"],
+      ["html-3d-space", "heygen-com/hyperframes", "hyperframes-keyframes"],
+    ];
+
+    for (const [id, repository, skill] of profiles) {
+      const reference = parseVideoIllustrationReference({ id, label: id, repository });
+      expect(reference).not.toBeNull();
+      if (!reference) throw new Error(`Expected ${id} to be a valid illustration profile`);
+      const instruction = videoIllustrationReferenceInstruction(reference);
+      expect(instruction).toContain(skill);
+      expect(instruction).toContain("exactly one self-contained HTML file");
+      expect(instruction).toContain("editable HTML/CSS/inline SVG");
+      expect(instruction).toContain("no CDN, remote font, network request");
+      expect(instruction).toContain("1600x900");
+      expect(instruction).toContain("complete composition must be visible and meaningful on its first frame");
+      expect(instruction).toContain("prefers-reduced-motion: reduce");
+      expect(instruction).toContain("assets/video-illustrations/");
+    }
+
+    expect(parseVideoIllustrationReference({ id: "unknown", label: "Unknown", repository: "unknown" })).toBeNull();
+  });
   test("reuses the embedded Design system inspector for the active video composition", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),

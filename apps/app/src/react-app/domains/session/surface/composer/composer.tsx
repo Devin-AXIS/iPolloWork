@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent } from "@opencode-ai/sdk/v2/client";
-import { AppWindowMac, ArrowUp, Check, ChevronRight, Clock3, FileText, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Check, ChevronRight, FileText, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
@@ -49,7 +49,6 @@ type ComposerProps = {
   mentions: Record<string, ComposerMentionKind>;
   onDraftChange: (value: string) => void;
   onSend: () => void | Promise<void>;
-  onSteer: () => void | Promise<void>;
   onQueue: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
   busy: boolean;
@@ -376,18 +375,17 @@ export function ReactSessionComposer(props: ComposerProps) {
     if (escapeTimerRef.current) clearTimeout(escapeTimerRef.current);
   }, []);
 
-  // Editor submit (Enter). While idle this sends normally; while busy
-  // Enter queues and Cmd/Ctrl+Enter sends immediately (steer).
-  const handleEditorSubmit = useCallback((options: { queue: boolean }) => {
+  // Editor submit (Enter). While idle this sends normally; while busy every
+  // submit is queued. Only the explicit Stop control may interrupt a run.
+  const handleEditorSubmit = useCallback(() => {
     const hasContent = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
     if (!hasContent) return;
     if (props.busy) {
-      if (options.queue) void props.onQueue();
-      else void props.onSteer();
+      void props.onQueue();
       return;
     }
     void props.onSend();
-  }, [props.busy, props.draft, props.attachments, props.hasPromptContext, props.onSend, props.onSteer, props.onQueue]);
+  }, [props.busy, props.draft, props.attachments, props.hasPromptContext, props.onSend, props.onQueue]);
 
   const slashCommandQuery = getSlashCommandQuery(props.draft);
   const slashOpenNext = slashCommandQuery !== null;
@@ -1682,12 +1680,9 @@ export function ReactSessionComposer(props: ComposerProps) {
               {/*
                 Action area.
                 - Idle: single "Run task" button (sends immediately).
-                - Busy: an outline "Stop" on the left (kept apart from the
-                  send cluster), then a split send button — the primary
-                  segment sends now (the agent adjusts mid-task, aka
-                  "steer"; Enter does the same), and the chevron opens a
-                  menu with "Send when agent finishes" (queue, ⌘⏎). A badge
-                  on the chevron shows how many messages are queued.
+                - Busy: Stop is the only action that can interrupt the active
+                  run. The send button appends the draft to the queue, and its
+                  badge shows how many follow-ups are waiting.
                   Escape arms a "Hit Escape again to stop the agent" prompt.
               */}
               <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5">
@@ -1709,31 +1704,22 @@ export function ReactSessionComposer(props: ComposerProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void props.onSteer()}
+                      onClick={canSend ? props.onQueue : undefined}
                       disabled={!canSend}
-                      aria-label={t("composer.steer")}
-                      className={`inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
+                      aria-label={t("composer.queue")}
+                      className={`relative inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
                         canSend
                           ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
                           : "bg-gray-4 text-gray-10"
                       }`}
-                      title={t("composer.steer_hint")}
-                    >
-                      <ArrowUp size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={canSend ? props.onQueue : undefined}
-                      disabled={!canSend}
-                      aria-label={t("composer.queue")}
-                      className={`inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
-                        canSend
-                          ? "bg-gray-3 text-gray-11 hover:bg-gray-4"
-                          : "bg-gray-4 text-gray-10"
-                      }`}
                       title={t("composer.queue_hint")}
                     >
-                      <Clock3 size={15} />
+                      <ArrowUp size={15} />
+                      {props.queuedCount > 0 ? (
+                        <span className="absolute -right-1.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-gray-12 px-1 text-[9px] font-semibold leading-4 text-gray-1 ring-2 ring-[var(--dls-surface)]">
+                          {props.queuedCount > 99 ? "99+" : props.queuedCount}
+                        </span>
+                      ) : null}
                     </button>
                   </>
                 ) : (

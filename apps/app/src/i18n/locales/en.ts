@@ -868,7 +868,6 @@ export default {
   "composer.queued_count": "{count} queued",
   "composer.queued_delete_selected": "Delete {count}",
   "composer.queued_delete_selected_confirm": "Delete {count} queued item(s)?",
-  "composer.queued_drag_handle": "Drag to reorder",
   "composer.queued_select": "Select",
   "composer.queued_select_all": "Select all",
   "composer.queued_select_item": "Select queued item {index}",

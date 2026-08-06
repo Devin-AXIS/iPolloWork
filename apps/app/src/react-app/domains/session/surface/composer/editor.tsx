@@ -43,7 +43,7 @@ type EditorProps = {
   disabled: boolean;
   placeholder: string;
   onChange: (value: string) => void;
-  onSubmit: (options: { queue: boolean }) => void | Promise<void>;
+  onSubmit: () => void | Promise<void>;
   onExpandPastedText?: (label: string) => void;
   onPaste?: React.ClipboardEventHandler<HTMLDivElement>;
   onPasteText?: (text: string) => void;
@@ -716,7 +716,7 @@ function SyncPlugin(props: { value: string; mentions: Record<string, ComposerMen
   return null;
 }
 
-function SubmitPlugin(props: { onSubmit: (options: { queue: boolean }) => void | Promise<void>; disabled: boolean }) {
+function SubmitPlugin(props: { onSubmit: () => void | Promise<void>; disabled: boolean }) {
   const [editor] = useLexicalComposerContext();
   const onSubmitRef = useRef(props.onSubmit);
 
@@ -738,10 +738,11 @@ function SubmitPlugin(props: { onSubmit: (options: { queue: boolean }) => void |
         if (event?.shiftKey) return false;
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return false;
-        // Plain Enter uses the default send path. Cmd/Ctrl+Enter requests an
-        // immediate send while the agent is busy.
+        // Every submit uses the same safe path. The composer decides whether
+        // to send immediately (idle) or append to the queue (busy); keyboard
+        // modifiers must never bypass that queue and steer an active run.
         event?.preventDefault();
-        void onSubmitRef.current({ queue: !(event?.metaKey === true || event?.ctrlKey === true) });
+        void onSubmitRef.current();
         return true;
       },
       COMMAND_PRIORITY_HIGH,

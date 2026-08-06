@@ -110,6 +110,12 @@ const EMPTY_TRANSCRIPT: UIMessage[] = [];
 const IDLE_STATUS: SessionStatus = { type: "idle" };
 const DEFAULT_COMPOSER_CONTROL_TEXT = "Help me outline the next iPolloWork task.";
 const SESSION_SURFACE_SELECTOR = "[data-session-surface-id]";
+const ACTIVE_SESSION_ACTIVITY_STATUSES = new Set<SessionActivityStatus>([
+  "thinking",
+  "responding",
+  "waiting",
+  "compacting",
+]);
 
 type SessionError = {
   message: string;
@@ -137,7 +143,7 @@ export type SessionSurfaceProps = {
   selectedModel: ModelRef;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
-  onSendDraft: (draft: ComposerDraft, sessionId: string) => void;
+  onSendDraft: (draft: ComposerDraft, sessionId: string) => boolean | Promise<boolean>;
   onDraftChange: (draft: ComposerDraft) => void;
   attachmentsEnabled: boolean;
   attachmentsDisabledReason: string | null;
@@ -557,7 +563,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const queuedDrafts = useComposerStateStore((state) => getComposerQueuedDrafts(state, props.sessionId));
   const appendQueuedDraft = useComposerStateStore((state) => state.appendQueuedDraft);
   const removeQueuedDraftFromStore = useComposerStateStore((state) => state.removeQueuedDraft);
-  const clearQueuedDrafts = useComposerStateStore((state) => state.clearQueuedDrafts);
   const prependQueuedDrafts = useComposerStateStore((state) => state.prependQueuedDrafts);
   const [error, setError] = useState<SessionError | null>(null);
   const [sending, setSending] = useState(false);
@@ -579,6 +584,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [selectedAnimations, setSelectedAnimations] = useState<HyperframesAnimationSelection[]>([]);
   const [selectedVoiceReference, setSelectedVoiceReference] = useState<VideoVoiceAiReference | null>(null);
   const [selectedIllustrationReference, setSelectedIllustrationReference] = useState<VideoIllustrationAiReference | null>(null);
+  const runActivityObservedRef = useRef(false);
 
   useEffect(() => {
     const addAnimationReference = (event: Event) => {
@@ -670,6 +676,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     hydratedKeyRef.current = null;
     setError(null);
     setSending(false);
+    runActivityObservedRef.current = false;
     setShowDelayedLoading(false);
     setAwaitingAssistantBaseline(null);
     // Composer draft state lives in the shared store keyed by session id, so
@@ -765,7 +772,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
     cachedRendered: rendered,
   });
   const liveStatus = statusState ?? snapshot?.status ?? IDLE_STATUS;
-  const chatStreaming = sending || liveStatus.type === "busy" || liveStatus.type === "retry";
+  const activityRunActive = ACTIVE_SESSION_ACTIVITY_STATUSES.has(sessionActivityStatus);
+  const chatStreaming = sending || liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive;
   const status = useMemo((): ThreadStatus => {
     if (sending) {
       return "submitted";
@@ -959,18 +967,17 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
   };
 
-  // Core sender shared by initial send and steered follow-ups. OpenCode
-  // accepts follow-up user turns mid-run (steering) — the running loop picks
-  // up the new message — so this is safe to call while the agent is busy.
+  // Core sender used only while the session is idle. Busy follow-ups remain
+  // in the local queue until the current run has completed.
   const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[]) => {
     setError(null);
     // Record the prompt for Up/Down recall in the composer (#2012).
     appendComposerHistory(props.sessionId, nextDraft.text);
-    useSessionActivityStore.getState().setRunStatus(props.workspaceId, props.sessionId, { type: "busy" });
+    runActivityObservedRef.current = false;
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
     try {
-      await props.onSendDraft(nextDraft, props.sessionId);
+      const dispatched = await props.onSendDraft(nextDraft, props.sessionId);
       if (selectedAnimations.length) {
         recordInspectorEvent("composer.hyperframes_sent", {
           workspaceId: props.workspaceId,
@@ -983,7 +990,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setSelectedAnimations([]);
       setSelectedVoiceReference(null);
       setSelectedIllustrationReference(null);
-      setSending(false);
+      // promptAsync resolves once the run is accepted, before generation
+      // finishes. Keep the optimistic busy latch until the session's idle
+      // event; only release immediately when the route did not dispatch.
+      if (!dispatched) {
+        runActivityObservedRef.current = false;
+        setSending(false);
+      }
     } catch (nextError) {
       const parsed = parseSessionError(nextError);
       captureAnalyticsEvent("task_send_failed", {});
@@ -991,6 +1004,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       useSessionActivityStore.getState().setError(props.workspaceId, props.sessionId, parsed.message);
       if (!shouldPreserveComposerDraftAfterSendFailure(nextDraft)) setComposerDraft(props.sessionId, "");
       setAwaitingAssistantBaseline(null);
+      runActivityObservedRef.current = false;
       setSending(false);
       throw nextError;
     }
@@ -1020,8 +1034,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
     } catch {}
   }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, newConversationMode, props.onActivateVideoStudio, props.sessionId, selectedAnimations.length, selectedIllustrationReference, selectedVoiceReference, sendDraft, setComposerDraft]);
 
-  const handleSteer = handleSend;
-
   // Queue: hold the draft locally and clear the composer. The drain effect
   // sends it once the session reports idle.
   const handleQueue = useCallback(() => {
@@ -1039,13 +1051,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     removeQueuedDraftFromStore(props.sessionId, index);
   }, [props.sessionId, removeQueuedDraftFromStore]);
   const removeQueuedDrafts = useComposerStateStore((state) => state.removeQueuedDrafts);
-  const reorderQueuedDraft = useComposerStateStore((state) => state.reorderQueuedDraft);
   const removeManyQueuedDrafts = useCallback((indices: number[]) => {
     removeQueuedDrafts(props.sessionId, indices);
   }, [props.sessionId, removeQueuedDrafts]);
-  const reorderQueuedDrafts = useCallback((fromIndex: number, toIndex: number) => {
-    reorderQueuedDraft(props.sessionId, fromIndex, toIndex);
-  }, [props.sessionId, reorderQueuedDraft]);
 
   // One label per queued draft, kept index-aligned with `queuedDrafts` so the
   // panel's remove action targets the correct entry. Attachment-only drafts
@@ -1063,10 +1071,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const handleAbort = useCallback(async () => {
     if (!chatStreaming) return;
     setError(null);
-    // Stop means stop: drop queued follow-ups before aborting, otherwise the
-    // queue-drain effect below re-prompts the agent the moment the abort
-    // lands and the session reports idle (#2014).
-    clearQueuedDrafts(props.sessionId);
+    // Abort only the active run. Queued follow-ups stay intact and the drain
+    // effect below starts the next one after the session reports idle.
     // The prompt was sent through a directory-scoped client (session-route
     // passes the workspace root), so the abort must target the same scope —
     // without it the server resolves the default project, finds no live run,
@@ -1082,7 +1088,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
     captureAnalyticsEvent("task_run_stopped", {});
     await snapshotQuery.refetch();
-  }, [chatStreaming, clearQueuedDrafts, opencodeClient, props.sessionId, props.workspaceRoot, snapshotQuery.refetch]);
+  }, [chatStreaming, opencodeClient, props.sessionId, props.workspaceRoot, snapshotQuery.refetch]);
 
   const handleDismissError = useCallback(() => {
     setError(null);
@@ -1090,10 +1096,18 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.sessionId, props.workspaceId]);
 
   useEffect(() => {
-    if (liveStatus.type === "idle") {
-      setSending(false);
+    if (liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive) {
+      runActivityObservedRef.current = true;
+      return;
     }
-  }, [liveStatus.type]);
+    if (!sending || liveStatus.type !== "idle") return;
+    // Ignore an idle snapshot left over from before promptAsync accepted this
+    // request. Release the optimistic latch only after this run was observed,
+    // or after new assistant output proves it actually ran.
+    if (!runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;
+    runActivityObservedRef.current = false;
+    setSending(false);
+  }, [activityRunActive, assistantOutputAfterAwaitStart, liveStatus.type, sending]);
 
   // Drain one queued follow-up each time the session goes idle. The ref guards
   // against re-entrancy while the send is in flight.
@@ -1553,7 +1567,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mentions={mentions}
           onDraftChange={handleComposerDraftChange}
           onSend={handleSend}
-          onSteer={handleSteer}
           onQueue={handleQueue}
           onStop={handleAbort}
           busy={chatStreaming}
@@ -1618,7 +1631,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                   </div>
                 ) : null}
                 {queuedMessages.length > 0 ? (
-                  <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} onRemoveMany={removeManyQueuedDrafts} onReorder={reorderQueuedDrafts} />
+                  <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} onRemoveMany={removeManyQueuedDrafts} />
                 ) : null}
                 {props.activeQuestion ? (
                   <QuestionPanel

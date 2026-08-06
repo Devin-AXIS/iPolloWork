@@ -1,15 +1,24 @@
-const IAN_ILLUSTRATION_SKILL = {
-  id: "ian-xiaohei-illustrations",
-  label: "Ian 小黑正文插画",
-  repository: "helloianneo/ian-xiaohei-illustrations",
-} as const;
+import { useState } from "react";
+
+const ILLUSTRATION_SKILLS = [
+  { id: "ian-xiaohei-illustrations", label: "小黑手绘插画", repository: "helloianneo/ian-xiaohei-illustrations" },
+  { id: "html-infographic", label: "信息图插画", repository: "openai/visualize" },
+  { id: "html-concept-explainer", label: "概念解释插画", repository: "ipollowork/faceless-explainer" },
+  { id: "html-kinetic-typography", label: "动态排版插画", repository: "heygen-com/hyperframes" },
+  { id: "html-svg-path", label: "SVG 路径插画", repository: "heygen-com/hyperframes" },
+  { id: "html-3d-space", label: "3D 空间插画", repository: "heygen-com/hyperframes" },
+] as const;
+
+type IllustrationSkillId = typeof ILLUSTRATION_SKILLS[number]["id"];
 
 export function IllustrationTab() {
+  const [selectedId, setSelectedId] = useState<IllustrationSkillId>(ILLUSTRATION_SKILLS[0].id);
+  const selectedSkill = ILLUSTRATION_SKILLS.find((skill) => skill.id === selectedId) ?? ILLUSTRATION_SKILLS[0];
   const askAi = () => {
     window.parent.postMessage(
       {
         type: "ipollowork:hyperframes:illustration-reference",
-        illustration: IAN_ILLUSTRATION_SKILL,
+        illustration: selectedSkill,
       },
       "*",
     );
@@ -20,15 +29,20 @@ export function IllustrationTab() {
       <label className="grid gap-2 text-xs font-medium">
         插画能力
         <select
-          value={IAN_ILLUSTRATION_SKILL.id}
-          disabled
-          className="h-10 w-full cursor-not-allowed rounded-lg border border-panel-border bg-panel-input px-3 text-[13px] text-panel-text-1 opacity-100 outline-none"
+          value={selectedId}
+          onChange={(event) => {
+            const next = ILLUSTRATION_SKILLS.find((skill) => skill.id === event.target.value);
+            if (next) setSelectedId(next.id);
+          }}
+          className="h-10 w-full rounded-lg border border-panel-border bg-panel-input px-3 text-[13px] text-panel-text-1 outline-none transition-colors hover:border-panel-text-3 focus:border-panel-accent focus:ring-2 focus:ring-panel-accent/20"
         >
-          <option value={IAN_ILLUSTRATION_SKILL.id}>{IAN_ILLUSTRATION_SKILL.label}</option>
+          {ILLUSTRATION_SKILLS.map((skill) => (
+            <option key={skill.id} value={skill.id}>{skill.label}</option>
+          ))}
         </select>
       </label>
       <p className="mt-3 text-[11px] leading-5 text-panel-text-3">
-        AI 会读取当前视频内容，生成可直接使用的 16:9 Ian 小黑风格 HTML 插画，并保存到当前项目素材库。不需要额外 API Key。
+        AI 会读取当前视频内容，按所选能力生成可编辑的 16:9 自包含 HTML 插画，并保存到当前项目素材库。不需要额外下载 Skill 或配置图片 API Key。
       </p>
       <button
         type="button"

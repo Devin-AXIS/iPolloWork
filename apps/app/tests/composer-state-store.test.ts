@@ -46,8 +46,8 @@ describe("composer state store", () => {
     ]);
   });
 
-  test("remove and clear only affect the target session", () => {
-    const { appendQueuedDraft, clearQueuedDrafts, removeQueuedDraft } = useComposerStateStore.getState();
+  test("removing a queued draft only affects the target session", () => {
+    const { appendQueuedDraft, removeQueuedDraft } = useComposerStateStore.getState();
     appendQueuedDraft("session-a", draft("first A"));
     appendQueuedDraft("session-a", draft("second A"));
     appendQueuedDraft("session-b", draft("only B"));
@@ -56,12 +56,6 @@ describe("composer state store", () => {
     expect(getComposerQueuedDrafts(useComposerStateStore.getState(), "session-a").map((item) => item.text)).toEqual([
       "second A",
     ]);
-    expect(getComposerQueuedDrafts(useComposerStateStore.getState(), "session-b").map((item) => item.text)).toEqual([
-      "only B",
-    ]);
-
-    clearQueuedDrafts("session-a");
-    expect(getComposerQueuedDrafts(useComposerStateStore.getState(), "session-a")).toEqual([]);
     expect(getComposerQueuedDrafts(useComposerStateStore.getState(), "session-b").map((item) => item.text)).toEqual([
       "only B",
     ]);

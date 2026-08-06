@@ -117,16 +117,20 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   const { showToast } = useStudioShellContext();
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const storeTime = usePlayerStore((s) => s.currentTime);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const timelineElements = usePlayerStore((s) => s.elements);
-  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
-  const selectedElementHidden = isSelectedElementHidden(timelineElements, selectedElementId);
+  // The inspector's empty state has no time-dependent content. Returning
+  // stable selector values here keeps opening Properties during playback from
+  // subscribing the empty panel to player ticks or timeline-array updates.
+  const storeTime = usePlayerStore((s) => (element ? s.currentTime : 0));
+  const isPlaying = usePlayerStore((s) => (element ? s.isPlaying : false));
+  const selectedElementId = usePlayerStore((s) => (element ? s.selectedElementId : null));
+  const selectedElementHidden = usePlayerStore((s) =>
+    element ? isSelectedElementHidden(s.elements, s.selectedElementId) : false,
+  );
   const visibilityToggleLabel = selectedElementHidden ? "Show element" : "Hide element";
   const liveTimeRef = useRef(storeTime);
   const [, forceRender] = useState(0);
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || !element) return;
     let timerId: ReturnType<typeof setTimeout> | 0 = 0;
     const unsub = liveTime.subscribe((t) => {
       liveTimeRef.current = t;

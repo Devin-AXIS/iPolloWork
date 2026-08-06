@@ -82,6 +82,23 @@ describe("preview editing interactions", () => {
     expect(layersSource).not.toContain("useLayerRevealOverride");
   });
 
+  it("keeps timeline selection while clearing an inactive current-frame preview selection", () => {
+    const selectionSource = readFileSync(
+      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+      "utf8",
+    );
+    const syncSource = readFileSync(
+      new URL("../../hooks/useTimelineSelectionPreviewSync.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(selectionSource).toContain("isElementComputedVisible(targetElement)");
+    expect(selectionSource).toContain("preserveTimelineSelection: true");
+    expect(syncSource).toContain("const visibleIds = resolved.map");
+    expect(syncSource).toContain("preserveTimelineSelection: true");
+    expect(syncSource).not.toContain("if (selections.length < resolvableCount) return");
+  });
+
   it("authors resizable geometry for visual assets dragged from the library", () => {
     const source = readFileSync(
       new URL("../../utils/timelineAssetDrop.ts", import.meta.url),

@@ -617,7 +617,9 @@ function isVoiceReferenceDataPart(part: UIMessage["parts"][number]): part is Voi
 function isIllustrationReferenceDataPart(part: UIMessage["parts"][number]): part is IllustrationReferenceDataPart {
   if (part.type !== "data-illustration-reference" || !part.data || typeof part.data !== "object") return false
   const data = part.data as { id?: unknown; label?: unknown; repository?: unknown }
-  return data.id === "ian-xiaohei-illustrations" && typeof data.label === "string" && data.repository === "helloianneo/ian-xiaohei-illustrations"
+  return typeof data.id === "string" && Boolean(data.id.trim())
+    && typeof data.label === "string" && Boolean(data.label.trim())
+    && typeof data.repository === "string" && Boolean(data.repository.trim())
 }
 
 function UserReferenceChip(props: { label: string; kind: "design" | "animation" | "voice" | "illustration" }) {
