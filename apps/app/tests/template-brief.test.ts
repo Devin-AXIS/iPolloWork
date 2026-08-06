@@ -178,6 +178,18 @@ describe("template brief", () => {
     expect(await attachment.file.text()).toContain("Use concise clinical language.");
   });
 
+  test("does not send raw pdf bytes through the composer attachment channel", async () => {
+    const attachment = await prepareTemplateBriefReferenceAttachment(
+      new File(["%PDF-1.7\nlarge binary body"], "annual-review.pdf", { type: "application/pdf" }),
+    );
+
+    expect(attachment.name).toBe("annual-review.pdf");
+    expect(attachment.mimeType).toBe("text/plain");
+    expect(attachment.kind).toBe("file");
+    expect(await attachment.file.text()).toContain("annual-review.pdf");
+    expect(await attachment.file.text()).not.toContain("%PDF-1.7");
+  });
+
   test("infers brief fields from markdown reference text", () => {
     const brief = templateBriefFromReferenceText({
       filename: "ignored.md",

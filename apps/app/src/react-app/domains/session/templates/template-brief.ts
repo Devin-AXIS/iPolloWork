@@ -99,6 +99,16 @@ function templateBriefReferenceMime(file: Pick<File, "name" | "type">) {
   return TEMPLATE_BRIEF_REFERENCE_MIME_BY_EXTENSION[templateBriefReferenceExtension(file.name)] ?? "text/plain";
 }
 
+function pdfReferencePlaceholder(file: File) {
+  return [
+    `Reference document uploaded: ${file.name}`,
+    "Format: PDF",
+    `Size: ${file.size} bytes`,
+    "The PDF bytes are intentionally not embedded in the composer request to keep template generation stable.",
+    "Use the filename, any auto-filled brief fields, and the saved reference metadata as context.",
+  ].join("\n");
+}
+
 function decodeXmlText(value: string) {
   return value
     .replace(/&lt;/g, "<")
@@ -295,10 +305,13 @@ export async function prepareTemplateBriefReferenceAttachment(file: File): Promi
 
   const originalMime = templateBriefReferenceMime(file);
   const isDocx = templateBriefReferenceExtension(file.name) === "docx" || originalMime === DOCX_MIME;
+  const isPdf = templateBriefReferenceExtension(file.name) === "pdf" || originalMime === "application/pdf";
   const attachmentFile = isDocx
     ? new File([await extractDocxText(file)], `${file.name}.txt`, { type: "text/plain" })
+    : isPdf
+      ? new File([pdfReferencePlaceholder(file)], `${file.name}.txt`, { type: "text/plain" })
     : file;
-  const mimeType = isDocx ? "text/plain" : originalMime;
+  const mimeType = isDocx || isPdf ? "text/plain" : originalMime;
   const kind = mimeType.startsWith("image/") ? "image" as const : "file" as const;
   const previewUrl = kind === "image" && typeof URL !== "undefined" && "createObjectURL" in URL
     ? URL.createObjectURL(file)
