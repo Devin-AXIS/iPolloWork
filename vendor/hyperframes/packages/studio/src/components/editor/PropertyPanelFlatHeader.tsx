@@ -1,4 +1,5 @@
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import askAiSparkleSrc from "../../icons/figmaAskAiSparkle.svg?url";
 
 export function PropertyPanelFlatHeader({
@@ -13,6 +14,7 @@ export function PropertyPanelFlatHeader({
   onAskAgent?: () => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
 
   return (
     <div
@@ -27,8 +29,8 @@ export function PropertyPanelFlatHeader({
       </div>
       <button
         type="button"
-        aria-label="Ask AI about selected element"
-        title="Ask AI"
+        aria-label={tx("Ask AI about selected element")}
+        title={tx("Ask AI")}
         disabled={!onAskAgent}
         onClick={() => {
           track("button", "Ask agent");
@@ -37,7 +39,7 @@ export function PropertyPanelFlatHeader({
         className="hf-property-ask-ai flex h-8 flex-shrink-0 items-center justify-center gap-1 rounded-lg px-2 text-[12px] font-medium transition-[background-color,color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#54b2ff]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 dark:focus-visible:ring-[#ffcc73]/70 dark:focus-visible:ring-offset-panel-bg"
       >
         <img src={askAiSparkleSrc} alt="" aria-hidden="true" className="size-[18px] flex-shrink-0" />
-        <span className="hf-property-ask-ai__label whitespace-nowrap">Ask AI</span>
+        <span className="hf-property-ask-ai__label whitespace-nowrap">{tx("Ask AI")}</span>
       </button>
     </div>
   );

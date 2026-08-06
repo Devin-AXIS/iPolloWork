@@ -9,6 +9,7 @@ import { AudioRow } from "./AudioRow";
 import { AssetCard, FontRow } from "./AssetCard";
 import importIconSrc from "../../icons/figmaAssetsImport.svg?url";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
+import { useStudioI18n } from "../../i18n";
 
 const ASSET_VIRTUAL_OVERSCAN_PX = 480;
 
@@ -143,6 +144,7 @@ export const AssetsTab = memo(function AssetsTab({
   onRename,
   onAddAssetToTimeline,
 }: AssetsTabProps) {
+  const { tx } = useStudioI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const [visibleAssets, setVisibleAssets] = useState<Set<string>>(() => new Set());
@@ -343,8 +345,8 @@ export const AssetsTab = memo(function AssetsTab({
       {dragOver && (
         <div className="pointer-events-none absolute inset-2 z-50 grid place-items-center rounded-lg border-2 border-dashed border-panel-accent/70 bg-panel-bg/90">
           <div className="flex flex-col items-center gap-1 text-center">
-            <span className="text-xs font-semibold text-panel-accent">Drop files to upload</span>
-            <span className="text-[10px] text-panel-text-3">Images, video, audio, and fonts</span>
+            <span className="text-xs font-semibold text-panel-accent">{tx("Drop files to upload")}</span>
+            <span className="text-[10px] text-panel-text-3">{tx("Images, video, audio, and fonts")}</span>
           </div>
         </div>
       )}
@@ -352,14 +354,14 @@ export const AssetsTab = memo(function AssetsTab({
       <div className="flex-shrink-0 border-b border-panel-border px-4 pb-[15px] pt-3">
         <div className="flex items-end gap-2">
           <label className="grid min-w-0 flex-1 gap-[5px] text-[10px] font-medium leading-3 text-panel-text-3">
-            Source
+            {tx("Source")}
             <select
               disabled
-              title="Source selection is not available yet"
+              title={tx("Source selection is not available yet")}
               value="project-01"
               className="h-[34px] min-w-0 cursor-not-allowed rounded-md border-0 bg-panel-input px-[11px] text-[13px] font-medium text-panel-text-1 opacity-100 outline-none"
             >
-              <option value="project-01">Project 01</option>
+              <option value="project-01">{tx("Project 01")}</option>
             </select>
           </label>
           {/* Import */}
@@ -371,7 +373,7 @@ export const AssetsTab = memo(function AssetsTab({
                 className="flex h-[34px] w-auto flex-none items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-[#858a94] bg-panel-bg px-3 text-xs font-medium text-panel-text-1 transition-colors hover:bg-panel-input"
               >
                 <img src={importIconSrc} alt="" className="h-4 w-4" />
-                Import
+                {tx("Import")}
               </button>
               <input
                 ref={fileInputRef}
@@ -396,7 +398,7 @@ export const AssetsTab = memo(function AssetsTab({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search assets…"
+            placeholder={tx("Search assets…")}
             className="min-w-0 w-full bg-transparent text-[13px] text-panel-text-1 outline-none placeholder:text-[#a2a6af]"
           />
         </div>
@@ -411,7 +413,7 @@ export const AssetsTab = memo(function AssetsTab({
                 : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
             }`}
           >
-            All {allMediaAssets.length}
+            {tx("All")} {allMediaAssets.length}
           </button>
           <button
             type="button"
@@ -422,7 +424,7 @@ export const AssetsTab = memo(function AssetsTab({
                 : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
             }`}
           >
-            In use {usageCounts.used}
+            {tx("In use")} {usageCounts.used}
           </button>
           <button
             type="button"
@@ -433,7 +435,7 @@ export const AssetsTab = memo(function AssetsTab({
                 : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
             }`}
           >
-            Unused {usageCounts.unused}
+            {tx("Unused")} {usageCounts.unused}
           </button>
         </div>
       </div>
@@ -462,7 +464,7 @@ export const AssetsTab = memo(function AssetsTab({
               <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
               <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" />
             </svg>
-            <p className="text-[10px] text-neutral-600 text-center">Drop media files here</p>
+            <p className="text-[10px] text-neutral-600 text-center">{tx("Drop media files here")}</p>
           </div>
         ) : (
           visibleCategories.map((cat) => (
@@ -479,7 +481,7 @@ export const AssetsTab = memo(function AssetsTab({
                     weight="bold"
                     className={`h-3 w-3 flex-none text-[#858a94] transition-transform ${collapsedCategories.has(cat) ? "-rotate-90" : ""}`}
                   />
-                  {CATEGORY_LABELS[cat]}
+                  {tx(CATEGORY_LABELS[cat])}
                 </span>
                 <span className="text-xs font-normal tabular-nums">{categorized[cat].length}</span>
                 <span

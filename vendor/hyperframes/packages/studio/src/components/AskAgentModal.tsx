@@ -2,6 +2,7 @@ import { useState, useRef, type CSSProperties } from "react";
 import { useMountEffect } from "../hooks/useMountEffect";
 import { type AgentModalAnchorPoint, clampNumber } from "../utils/studioHelpers";
 import { useDialogBehavior } from "./ui/useDialogBehavior";
+import { useStudioI18n } from "../i18n";
 
 function getAgentModalPositionStyle(
   anchorPoint: AgentModalAnchorPoint | null,
@@ -38,6 +39,7 @@ export function AskAgentModal({
   onSubmit: (instruction: string) => void;
   onClose: () => void;
 }) {
+  const { tx } = useStudioI18n();
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -73,7 +75,7 @@ export function AskAgentModal({
         ref={containerRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Copy prompt to AI agent"
+        aria-label={tx("Copy prompt to AI agent")}
         tabIndex={-1}
         className={`w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl outline-none ${
           anchorPoint ? "fixed" : ""
@@ -83,7 +85,7 @@ export function AskAgentModal({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
           <div>
-            <h3 className="text-sm font-medium text-neutral-200">Copy prompt to AI agent</h3>
+            <h3 className="text-sm font-medium text-neutral-200">{tx("Copy prompt to AI agent")}</h3>
             <p className="text-xs text-neutral-500 mt-0.5">
               {selectionLabel.length > 50 ? `${selectionLabel.slice(0, 49)}…` : selectionLabel}
             </p>
@@ -91,7 +93,7 @@ export function AskAgentModal({
           <button
             className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 active:scale-[0.98]"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={tx("Close")}
           >
             <svg
               width="14"
@@ -111,7 +113,7 @@ export function AskAgentModal({
           <textarea
             ref={inputRef}
             className="w-full h-24 px-3 py-2 rounded-lg border border-neutral-800 bg-neutral-900/60 text-sm text-neutral-200 placeholder-neutral-600 resize-none focus:outline-none focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
-            placeholder="Describe what you want to change…"
+            placeholder={tx("Describe what you want to change…")}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
@@ -123,7 +125,7 @@ export function AskAgentModal({
           {contextPreview && (
             <details className="group">
               <summary className="text-[11px] text-neutral-500 cursor-pointer select-none hover:text-neutral-400">
-                Context included in prompt
+                {tx("Context included in prompt")}
               </summary>
               <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-neutral-900/80 px-3 py-2 text-[11px] leading-relaxed text-neutral-500 whitespace-pre-wrap break-words border border-neutral-800/50">
                 {contextPreview}
@@ -133,14 +135,14 @@ export function AskAgentModal({
         </div>
         <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
           <span className="text-[11px] text-neutral-600">
-            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
+            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+{tx("Enter to copy")}
           </span>
           <button
             className="px-4 py-1.5 rounded-lg bg-studio-accent/90 text-xs font-medium text-neutral-950 hover:bg-studio-accent disabled:opacity-40 disabled:cursor-not-allowed"
             disabled={!value.trim()}
             onClick={handleSubmit}
           >
-            Copy prompt
+            {tx("Copy prompt")}
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
+import { useStudioI18n } from "../../i18n";
 
 interface CompositionsTabProps {
   projectId: string;
@@ -277,10 +278,11 @@ export const CompositionsTab = memo(function CompositionsTab({
   isRendering,
   lintFindingsByFile,
 }: CompositionsTabProps) {
+  const { tx } = useStudioI18n();
   if (compositions.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
-        <p className="text-xs text-neutral-600 text-center">No compositions found</p>
+        <p className="text-xs text-neutral-600 text-center">{tx("No compositions found")}</p>
       </div>
     );
   }

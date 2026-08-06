@@ -17,6 +17,7 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { shouldDismissAssetPreview } from "../../utils/assetPreviewDismiss";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import { useStudioI18n } from "../../i18n";
 
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
@@ -78,6 +79,7 @@ function AssetPreviewMedia({
 }
 
 export function AssetPreviewOverlay() {
+  const { tx } = useStudioI18n();
   const previewAsset = useAssetPreviewStore((s) => s.previewAsset);
   const previewProjectId = useAssetPreviewStore((s) => s.previewProjectId);
   const clearPreviewAsset = useAssetPreviewStore((s) => s.clearPreviewAsset);
@@ -129,7 +131,7 @@ export function AssetPreviewOverlay() {
       className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/20"
       onClick={clearPreviewAsset}
       role="dialog"
-      aria-label={`Preview: ${name}`}
+      aria-label={tx(`Preview: ${name}`)}
     >
       {/* Floating preview card — compact, canvas stays visible around it */}
       <div
@@ -143,7 +145,7 @@ export function AssetPreviewOverlay() {
             e.stopPropagation();
             clearPreviewAsset();
           }}
-          aria-label="Close preview"
+          aria-label={tx("Close preview")}
         >
           <svg
             width="12"

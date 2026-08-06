@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, memo } from "react";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
+import { useStudioI18n } from "../../i18n";
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
 
@@ -15,6 +16,7 @@ export const SpeedMenu = memo(function SpeedMenu({
   setPlaybackRate,
   disabled,
 }: SpeedMenuProps) {
+  const { tx } = useStudioI18n();
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const speedMenuContainerRef = useRef<HTMLDivElement>(null);
 
@@ -36,7 +38,7 @@ export const SpeedMenu = memo(function SpeedMenu({
 
   return (
     <div ref={speedMenuContainerRef} className="relative flex-shrink-0">
-      <Tooltip label="Playback speed">
+      <Tooltip label={tx("Playback speed")}>
         <button
           type="button"
           onClick={() => setShowSpeedMenu((v) => !v)}
@@ -44,7 +46,7 @@ export const SpeedMenu = memo(function SpeedMenu({
           className={`flex h-6 min-w-10 items-center justify-center whitespace-nowrap rounded border-[0.5px] border-[#858a94] px-1.5 text-xs font-medium tabular-nums text-[#59616d] transition-colors hover:bg-[#e8eaed] disabled:opacity-40 ${
             showSpeedMenu ? "bg-[#e8eaed]" : "bg-transparent"
           }`}
-          aria-label={`Playback speed ${playbackRate}x`}
+          aria-label={tx(`Playback speed ${playbackRate}x`)}
           aria-expanded={showSpeedMenu}
         >
           {playbackRate === 1 ? "1x" : `${playbackRate}x`}

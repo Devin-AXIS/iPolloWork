@@ -23,7 +23,7 @@ describe("Studio right panel layout", () => {
     const studioStyles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
 
     expect(header).toContain("min-h-[69px]");
-    expect(header).toContain('aria-label="Ask AI about selected element"');
+    expect(header).toContain('aria-label={tx("Ask AI about selected element")}');
     expect(header).toContain("h-8 flex-shrink-0");
     expect(header).toContain("figmaAskAiSparkle.svg?url");
     expect(header).toContain("hf-property-ask-ai");
@@ -151,13 +151,13 @@ describe("Studio right panel layout", () => {
     expect(mask).toContain('label="Rotation"');
     expect(mask).toContain('label="Feather"');
     expect(mask).toContain("buildMaskGeometry(");
-    expect(fill).toContain('aria-label="Close gradient editor"');
+    expect(fill).toContain('aria-label={tx("Close gradient editor")}');
     expect(fill).toContain('{ value: "hsb", label: "HSB" }');
     expect(fill).toContain('{ value: "rgb", label: "RGB" }');
     expect(fill).toContain('{ value: "hex", label: "HEX" }');
-    expect(fill).toContain('aria-label="Pick color from screen"');
+    expect(fill).toContain('aria-label={tx("Pick color from screen")}');
     expect(fill).toContain('className="grid grid-cols-6 gap-2"');
-    expect(animation).toContain('aria-label="Add animation"');
+    expect(animation).toContain('aria-label={tx("Add animation")}');
     expect(animation).toContain("callbacks.onDeleteAnimation(animation.id)");
     expect(animation).toContain('kind === "position" ? "Start" : "Duration"');
     expect(transform).toContain("Drag to adjust the view");

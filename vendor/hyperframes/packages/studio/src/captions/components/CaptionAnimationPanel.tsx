@@ -62,6 +62,7 @@ const EASE_PRESETS = [
 ];
 
 import { Section, Row, inputCls } from "./shared";
+import { useStudioI18n } from "../../i18n";
 
 // ---------------------------------------------------------------------------
 // Animation phase controls
@@ -82,6 +83,7 @@ function AnimationPhase({
   showIntensity,
   onChange,
 }: AnimationPhaseProps) {
+  const { tx } = useStudioI18n();
   const preset = animation?.preset ?? "none";
   const duration = animation?.duration ?? 0.2;
   const ease = animation?.ease ?? "power2.out";
@@ -98,7 +100,7 @@ function AnimationPhase({
         >
           {presets.map((p) => (
             <option key={p} value={p}>
-              {p}
+              {tx(p)}
             </option>
           ))}
         </select>
@@ -169,6 +171,7 @@ function AnimationPhase({
 // ---------------------------------------------------------------------------
 
 export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
+  const { tx } = useStudioI18n();
   const model = useCaptionStore((s) => s.model);
   const selectedGroupId = useCaptionStore((s) => s.selectedGroupId);
   const selectedSegmentIds = useCaptionStore((s) => s.selectedSegmentIds);
@@ -222,7 +225,9 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
   if (!group || !resolvedGroupId || !animation) {
     return (
       <div className="flex items-center justify-center h-full px-4 text-center">
-        <p className="text-xs text-neutral-500">Select a caption group to edit animations</p>
+        <p className="text-xs text-neutral-500">
+          {tx("Select a caption group to edit animations")}
+        </p>
       </div>
     );
   }
@@ -261,7 +266,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
           onClick={handleApplyToAll}
           className="w-full py-1.5 rounded border border-neutral-700 text-2xs text-neutral-300 hover:border-studio-accent/50 hover:text-studio-accent transition-colors"
         >
-          Apply to all groups
+          {tx("Apply to all groups")}
         </button>
       </div>
     </div>

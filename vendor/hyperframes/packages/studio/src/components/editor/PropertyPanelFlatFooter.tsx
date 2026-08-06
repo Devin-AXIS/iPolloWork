@@ -1,4 +1,5 @@
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 
 export function PropertyPanelFlatFooter({
   recordingState,
@@ -10,10 +11,11 @@ export function PropertyPanelFlatFooter({
   onToggleRecording?: () => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const recording = recordingState === "recording";
-  const recordTitle = recording
+  const recordTitle = tx(recording
     ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s`
-    : "Record gesture (R)";
+    : "Record gesture (R)");
 
   if (!onToggleRecording) return null;
 
