@@ -27,6 +27,7 @@ export function shouldDisableTimelineWhileCompositionLoading(compositionLoading:
 
 export interface NLEContextValue {
   projectId: string;
+  refreshKey?: number;
   // player (from useTimelinePlayer — single instance for the whole shell)
   iframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   togglePlay: () => void;
@@ -302,6 +303,7 @@ export function NLEProvider({
 
   const value: NLEContextValue = {
     projectId,
+    refreshKey,
     iframeRef,
     togglePlay,
     seek,

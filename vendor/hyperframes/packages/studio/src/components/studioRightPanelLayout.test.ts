@@ -390,6 +390,26 @@ describe("Studio right panel layout", () => {
     expect(overlays).not.toContain("ClipContextMenu");
   });
 
+  it("keeps preview refresh loading local to the canvas", () => {
+    const player = readFileSync(new URL("../player/components/Player.tsx", import.meta.url), "utf8");
+    const preview = readFileSync(new URL("./nle/NLEPreview.tsx", import.meta.url), "utf8");
+    const previewPane = readFileSync(new URL("./nle/PreviewPane.tsx", import.meta.url), "utf8");
+    const nleContext = readFileSync(new URL("./nle/NLEContext.tsx", import.meta.url), "utf8");
+
+    expect(player).toContain("const REFRESH_LOADING_OVERLAY_DELAY_MS = 220");
+    expect(player).toContain("function shouldShowRefreshLoadingOverlay");
+    expect(player).toContain("setCompositionLoading(true)");
+    expect(player).toContain('data-testid="composition-refresh-loading-overlay"');
+    expect(player).toContain("h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500");
+    expect(player).toContain("Preparing preview…");
+    expect(player).toContain("onCompositionLoadingChange?.(showCompositionOverlay || showAssetOverlay)");
+    expect(player).not.toContain("onCompositionLoadingChange?.(showCompositionOverlay || showRefreshOverlay");
+    expect(preview).toContain("refreshToken?: number");
+    expect(preview).toContain("refreshToken={refreshToken}");
+    expect(previewPane).toContain("refreshToken={refreshKey}");
+    expect(nleContext).toContain("refreshKey?: number");
+  });
+
   it("matches the Figma playback bar while preserving the existing controls", () => {
     const controls = readFileSync(
       new URL("../player/components/PlayerControls.tsx", import.meta.url),

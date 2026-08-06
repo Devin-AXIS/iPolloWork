@@ -228,6 +228,23 @@ describe("HyperFrames Video Studio", () => {
     expect(studioSource).toContain('type: "ipollowork:studio-ready"');
   });
 
+  test("covers the video canvas with startup loading without remounting or hiding the iframe", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("const showStudioStartupOverlay = status === \"starting\" || (status === \"ready\" && !studioChromeReady)");
+    expect(panelSource).toContain("{showStudioStartupOverlay ? (");
+    expect(panelSource).toContain("absolute inset-0 z-10 grid place-items-center");
+    expect(panelSource).toContain('data-loading-covered={showStudioStartupOverlay ? "true" : "false"}');
+    expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
+    expect(panelSource).not.toContain("studioChromeReady ? \"opacity-100\" : \"opacity-0\"");
+    expect(panelSource.indexOf("setStudioChromeReady(true)")).toBeLessThan(
+      panelSource.indexOf("scheduleStudioLocaleSync()"),
+    );
+  });
+
   test("debounces source saves and lazy-loads optional Studio panels", () => {
     const saveSource = readFileSync(
       new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useEditorSave.ts", import.meta.url),
