@@ -1,7 +1,6 @@
 import { createElement, useCallback, type ReactNode } from "react";
 import { VideoThumbnail, type TimelineElement } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
-import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { TimelineClipContent } from "../player/components/TimelineClipContent";
 import { resolveTimelineKind } from "../player/components/timelineLayerPresentation";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
@@ -38,10 +37,7 @@ function trimFractions(element: TimelineElement): { start?: number; end?: number
   const mediaStart = element.playbackStart ?? 0;
   const rate = element.playbackRate ?? 1;
   const start = Math.max(0, Math.min(1, mediaStart / sourceDuration));
-  const end = Math.max(
-    start,
-    Math.min(1, (mediaStart + element.duration * rate) / sourceDuration),
-  );
+  const end = Math.max(start, Math.min(1, (mediaStart + element.duration * rate) / sourceDuration));
   return { start, end };
 }
 
@@ -91,7 +87,6 @@ export function useRenderClipContent({ projectIdRef }: UseRenderClipContentOptio
 
       if ((kind === "music" || kind === "voiceover" || kind === "audio") && projectId) {
         return createElement(TimelineClipContent, {
-          kind,
           label,
           timecode,
           variant: "audio",
@@ -99,26 +94,9 @@ export function useRenderClipContent({ projectIdRef }: UseRenderClipContentOptio
         });
       }
 
-      if ((kind === "image" || kind === "logo") && element.src) {
-        const imageSrc = projectId
-          ? resolveMediaPreviewUrl(element.src, projectId)
-          : element.src;
-        return createElement(TimelineClipContent, {
-          kind,
-          label,
-          variant: "bar",
-          leadingVisual: createElement(ImageThumbnail, {
-            imageSrc,
-          }),
-        });
-      }
-
       if (kind === "video" && element.src) {
-        const videoSrc = projectId
-          ? resolveMediaPreviewUrl(element.src, projectId)
-          : element.src;
+        const videoSrc = projectId ? resolveMediaPreviewUrl(element.src, projectId) : element.src;
         return createElement(TimelineClipContent, {
-          kind,
           label,
           timecode,
           variant: "media",
@@ -131,7 +109,7 @@ export function useRenderClipContent({ projectIdRef }: UseRenderClipContentOptio
         });
       }
 
-      return createElement(TimelineClipContent, { kind, label, variant: "bar" });
+      return createElement(TimelineClipContent, { label, variant: "bar" });
     },
     [projectIdRef],
   );

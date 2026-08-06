@@ -162,7 +162,7 @@ export function StudioLeftSidebar({
         aria-label={t("sidebar.resize")}
         aria-orientation="vertical"
         tabIndex={0}
-        className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
+        className="group relative w-[3px] flex-shrink-0 cursor-ew-resize outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("left", e)}
         onPointerMove={handlePanelResizeMove}

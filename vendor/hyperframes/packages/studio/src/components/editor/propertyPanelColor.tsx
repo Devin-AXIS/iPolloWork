@@ -12,6 +12,7 @@ import {
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { FlatDropdown } from "./propertyPanelFlatSelectRow";
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
 
@@ -123,18 +124,22 @@ export function ColorField({
   value,
   disabled,
   flat,
+  large = flat,
   onCommit,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
   flat?: boolean;
+  /** Figma's full-width 34px color control used by expanded Layer sections. */
+  large?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [colorMode, setColorMode] = useState<"hsb" | "rgb" | "hex">("hsb");
   const [panelPosition, setPanelPosition] = useState<FloatingPosition | null>(null);
   const [draftColor, setDraftColor] = useState<ParsedColor>(() => colorFromCss(value));
   const [hexDraft, setHexDraft] = useState(() => toHexColor(colorFromCss(value)).toUpperCase());
@@ -356,6 +361,60 @@ export function ColorField({
   };
 
   if (flat) {
+    if (large) {
+      const modeValue =
+        colorMode === "hex"
+          ? toHexColor(draftColor).slice(1).toUpperCase()
+          : colorMode === "rgb"
+            ? `${Math.round(draftColor.red)}, ${Math.round(draftColor.green)}, ${Math.round(draftColor.blue)}`
+            : `${Math.round(hsv.hue)}, ${saturationPercent}%, ${brightnessPercent}%`;
+      return (
+        <div className="flex h-[34px] min-w-0 items-center justify-between rounded-[6px] bg-panel-input pl-2 pr-4">
+          <button
+            type="button"
+            data-flat-color-trigger="true"
+            disabled={disabled}
+            aria-label={`Pick ${label.toLowerCase()} color`}
+            onClick={openPicker}
+            className="flex-shrink-0 disabled:cursor-not-allowed"
+          >
+            <span
+              className="block size-5 rounded-[4px] border border-black/5"
+              style={{ backgroundColor: value || "transparent" }}
+            />
+          </button>
+          <FlatDropdown
+            ariaLabel={`${label} color format`}
+            value={colorMode}
+            options={[
+              { value: "hsb", label: "HSB" },
+              { value: "rgb", label: "RGB" },
+              { value: "hex", label: "HEX" },
+            ]}
+            disabled={disabled}
+            className="ml-2 flex-shrink-0 uppercase"
+            valueClassName="text-[10px] font-normal text-[#858a94]"
+            onChange={(nextMode) => {
+              if (nextMode === "hsb" || nextMode === "rgb" || nextMode === "hex") {
+                setColorMode(nextMode);
+              }
+            }}
+          />
+          <button
+            type="button"
+            data-flat-color-value-trigger="true"
+            disabled={disabled}
+            aria-label={`Pick ${label.toLowerCase()} color`}
+            ref={buttonRef}
+            onClick={openPicker}
+            className="ml-2 min-w-0 flex-1 truncate text-right font-sans text-[13px] font-normal text-[#24262b] disabled:cursor-not-allowed"
+          >
+            {modeValue}
+          </button>
+          {picker}
+        </div>
+      );
+    }
     return (
       <div className="flex h-6 min-w-0 items-center justify-between rounded-[4px] bg-panel-input px-2">
         <span className="text-[8px] text-panel-text-4">{label}</span>

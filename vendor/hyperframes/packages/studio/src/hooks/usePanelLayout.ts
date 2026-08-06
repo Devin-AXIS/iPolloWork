@@ -13,6 +13,8 @@ export interface InitialPanelLayoutState {
   rightPanelTab?: RightPanelTab | null;
 }
 
+export const MIN_RIGHT_PANEL_WIDTH = 280;
+
 function getInitialRightInspectorPanes(tab?: RightPanelTab | null): RightInspectorPanes {
   if (tab === "layers") return { layers: true, design: false };
   return { layers: false, design: true };
@@ -63,8 +65,9 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     if (!drag) return;
     const delta = e.clientX - drag.startX;
     const maxLeft = Math.floor(window.innerWidth * 0.5);
+    const minWidth = drag.side === "left" ? 160 : MIN_RIGHT_PANEL_WIDTH;
     const newW = Math.max(
-      160,
+      minWidth,
       Math.min(
         drag.side === "left" ? maxLeft : 600,
         drag.startW + (drag.side === "left" ? delta : -delta),

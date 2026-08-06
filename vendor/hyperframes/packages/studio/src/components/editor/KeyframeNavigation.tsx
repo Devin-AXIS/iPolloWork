@@ -53,7 +53,7 @@ function ArrowLeft({ disabled }: { disabled: boolean }) {
     >
       <path
         d="M5 1L1 5L5 9"
-        stroke="#a3a3a3"
+        stroke="#858A94"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -73,7 +73,7 @@ function ArrowRight({ disabled }: { disabled: boolean }) {
     >
       <path
         d="M1 1L5 5L1 9"
-        stroke="#a3a3a3"
+        stroke="#858A94"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"

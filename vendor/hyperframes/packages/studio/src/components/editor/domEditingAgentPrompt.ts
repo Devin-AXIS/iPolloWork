@@ -109,3 +109,29 @@ export function buildAgentContextPreview(
     .filter(Boolean)
     .join("\n");
 }
+
+export function postVideoAiSelectionToHost(selection: DomEditSelection): void {
+  const element = selection.element;
+  const computed = element.ownerDocument.defaultView?.getComputedStyle(element);
+  window.parent?.postMessage({
+    type: "ipollowork:hyperframes:ask-ai-selection",
+    target: {
+      file: selection.sourceFile || "index.html",
+      hfId: selection.hfId,
+      id: selection.id ?? undefined,
+      selector: selection.selector,
+      selectorIndex: selection.selectorIndex,
+    },
+    tag: element.tagName.toLowerCase(),
+    text: element.textContent || "",
+    src: element.getAttribute("src") || "",
+    alt: element.getAttribute("alt") || "",
+    styles: {
+      color: computed?.color ?? "",
+      backgroundColor: computed?.backgroundColor ?? "",
+      fontSize: computed?.fontSize ?? "",
+      fontWeight: computed?.fontWeight ?? "",
+      opacity: computed?.opacity ?? "",
+    },
+  }, "*");
+}
