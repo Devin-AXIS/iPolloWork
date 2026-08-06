@@ -431,16 +431,11 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
   const [references, setReferences] = useState<ComposerAttachment[]>([]);
   const [referenceBusy, setReferenceBusy] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement>(null);
-  const referencesRef = useRef<ComposerAttachment[]>([]);
-
-  useEffect(() => {
-    referencesRef.current = references;
-  }, [references]);
+  const referencePreviewUrlsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => () => {
-    for (const reference of referencesRef.current) {
-      if (reference.previewUrl) URL.revokeObjectURL(reference.previewUrl);
-    }
+    for (const previewUrl of referencePreviewUrlsRef.current) URL.revokeObjectURL(previewUrl);
+    referencePreviewUrlsRef.current.clear();
   }, []);
 
   const applyReferenceBriefAutofill = (inferredBriefs: TemplateBrief[]) => {
@@ -477,6 +472,7 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
       for (const file of supported) {
         try {
           const attachment = await prepareTemplateBriefReferenceAttachment(file);
+          if (attachment.previewUrl) referencePreviewUrlsRef.current.add(attachment.previewUrl);
           next.push(attachment);
           inferredBriefs.push(await inferTemplateBriefFromReferenceFile(file));
         } catch (error) {
@@ -495,7 +491,10 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
   const removeReference = (id: string) => {
     setReferences((current) => {
       const target = current.find((item) => item.id === id);
-      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+        referencePreviewUrlsRef.current.delete(target.previewUrl);
+      }
       const next = current.filter((item) => item.id !== id);
       if (!next.length) {
         const fallbackAudience = t("templates.brief.reference_fallback_audience");

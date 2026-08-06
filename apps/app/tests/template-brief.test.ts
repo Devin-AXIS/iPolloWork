@@ -13,6 +13,8 @@ import {
   templateBriefPrompt,
 } from "../src/react-app/domains/session/templates/template-brief";
 
+const sessionPageUrl = new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url);
+
 describe("template brief", () => {
   beforeEach(() => {
     setLocale("en");
@@ -188,6 +190,21 @@ describe("template brief", () => {
     expect(attachment.kind).toBe("file");
     expect(await attachment.file.text()).toContain("annual-review.pdf");
     expect(await attachment.file.text()).not.toContain("%PDF-1.7");
+  });
+
+  test("tracks template reference preview urls independently of React state", async () => {
+    const source = await Bun.file(sessionPageUrl).text();
+    const registry = source.indexOf("referencePreviewUrlsRef");
+    const addPreview = source.indexOf("referencePreviewUrlsRef.current.add");
+    const deletePreview = source.indexOf("referencePreviewUrlsRef.current.delete");
+    const cleanup = source.indexOf("referencePreviewUrlsRef.current.clear");
+
+    expect(registry).toBeGreaterThan(-1);
+    expect(addPreview).toBeGreaterThan(registry);
+    expect(deletePreview).toBeGreaterThan(registry);
+    expect(cleanup).toBeGreaterThan(registry);
+    expect(source).toContain("URL.revokeObjectURL(previewUrl)");
+    expect(source).toContain("URL.revokeObjectURL(target.previewUrl)");
   });
 
   test("infers brief fields from markdown reference text", () => {
