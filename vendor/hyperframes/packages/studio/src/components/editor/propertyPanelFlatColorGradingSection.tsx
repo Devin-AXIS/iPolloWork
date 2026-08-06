@@ -11,7 +11,7 @@ import {
 import { Compare, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { LUT_EXT } from "../../utils/mediaTypes";
-import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
+import { FlatDropdown, FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import type { ColorGradingControllerState, MediaMetadata } from "./useColorGradingController";
 
@@ -368,24 +368,25 @@ export function FlatColorGradingSection({
               <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-panel-text-3">
                 {selectedLutName ?? "None"}
               </span>
-              <select
-                data-flat-grade-lut-select="true"
-                aria-label="Custom LUT"
-                value={lut?.src ?? ""}
-                onChange={(e) => {
-                  const src = e.target.value;
-                  track("select", "Custom LUT");
-                  applyLut(src || null, src && lut?.src === src ? lut.intensity : 1);
-                }}
-                className="border-b border-panel-border-input/50 bg-transparent font-mono text-[10px] text-panel-text-3 outline-none hover:border-panel-border-input"
-              >
-                <option value="">None</option>
-                {lutAssets.map((asset) => (
-                  <option key={asset} value={asset}>
-                    {asset.split("/").pop() ?? asset}
-                  </option>
-                ))}
-              </select>
+              <span data-flat-grade-lut-select="true">
+                <FlatDropdown
+                  ariaLabel="Custom LUT"
+                  value={lut?.src ?? ""}
+                  options={[
+                    { value: "", label: "None" },
+                    ...lutAssets.map((asset) => ({
+                      value: asset,
+                      label: asset.split("/").pop() ?? asset,
+                    })),
+                  ]}
+                  className="min-w-[88px] border-b border-panel-border-input/50"
+                  valueClassName="font-mono text-[10px] text-panel-text-3"
+                  onChange={(src) => {
+                    track("select", "Custom LUT");
+                    applyLut(src || null, src && lut?.src === src ? lut.intensity : 1);
+                  }}
+                />
+              </span>
               <button
                 type="button"
                 disabled={!onImportAssets}
@@ -535,21 +536,23 @@ export function FlatColorGradingSection({
 
       {onApplyScopeAvailable && (
         <div className="flex items-center justify-between gap-2 border-t border-panel-hairline pt-1.5">
-          <span className="flex items-center gap-1.5 text-[11px] text-panel-text-2">
+          <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-panel-text-2">
             Copy grade to
-            <select
-              aria-label="Copy grade to"
+            <FlatDropdown
+              ariaLabel="Copy grade to"
               value={applyScope}
-              onChange={(e) => {
+              options={[
+                { value: "source-file", label: "Current file media" },
+                { value: "project", label: "All project media" },
+              ]}
+              className="min-w-[120px] border-b border-panel-border-input/50"
+              valueClassName="font-mono text-[11px] text-panel-text-0"
+              onChange={(next) => {
                 track("select", "Copy grade scope");
-                onSetApplyScope(e.target.value as "source-file" | "project");
+                if (next === "source-file" || next === "project") onSetApplyScope(next);
               }}
               disabled={applyBusy}
-              className="border-b border-panel-border-input/50 bg-transparent font-mono text-[11px] text-panel-text-0 outline-none hover:border-panel-border-input disabled:opacity-50"
-            >
-              <option value="source-file">Current file media</option>
-              <option value="project">All project media</option>
-            </select>
+            />
           </span>
           <button
             type="button"

@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from "react";
 import { PlayerControls } from "../../player";
-import type { TimelineElement } from "../../player";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
@@ -25,31 +24,11 @@ function getFullscreenElement() {
   return document.fullscreenElement;
 }
 
-// Clear the timeline selection when a pointer lands outside the composition
-// frame (clicks *inside* the frame are handled by the DOM-edit overlay).
-// fallow-ignore-next-line complexity
-function deselectIfPointerOutsideFrame(
-  e: React.PointerEvent,
-  iframe: HTMLIFrameElement | null,
-  onDeselect?: (element: null) => void,
-): void {
-  const el = iframe?.parentElement ?? iframe;
-  if (!el) return;
-  const rect = el.getBoundingClientRect();
-  const outside =
-    e.clientX < rect.left ||
-    e.clientX > rect.right ||
-    e.clientY < rect.top ||
-    e.clientY > rect.bottom;
-  if (outside) onDeselect?.(null);
-}
-
 export interface PreviewPaneProps {
   portrait?: boolean;
   editingEnabled?: boolean;
   /** Slot for overlays rendered on top of the preview (cursors, highlights, etc.) */
   previewOverlay?: ReactNode;
-  onSelectTimelineElement?: (element: TimelineElement | null) => void;
   onPreviewBlockDrop?: (
     blockName: string,
     position: { left: number; top: number },
@@ -62,7 +41,6 @@ export function PreviewPane({
   portrait,
   editingEnabled = true,
   previewOverlay,
-  onSelectTimelineElement,
   onPreviewBlockDrop,
   onPreviewAssetDrop,
 }: PreviewPaneProps) {
@@ -81,39 +59,6 @@ export function PreviewPane({
     setPreviewCompositionSize,
   } = useNLEContext();
   const { domEditSelection } = useDomEditSelectionContext();
-
-  const clearSelectedElement = useCallback(() => {
-    onSelectTimelineElement?.(null);
-    iframeRef.current?.contentWindow?.postMessage({
-      type: "ipollowork:hyperframes:clear-selection",
-    }, "*");
-  }, [iframeRef, onSelectTimelineElement]);
-
-  useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!(event.target instanceof Element)) return;
-      if (event.target.closest('[data-preview-pan-surface="true"]')) return;
-      // Selection-dependent controls must finish their pointer/click gesture before
-      // the selection can be cleared. Without this boundary, capture-phase pointerdown
-      // unmounted the toolbar/inspector before Split, Keyframe, Delete, or a property
-      // control received its click.
-      if (event.target.closest('[data-preserve-studio-selection="true"]')) return;
-      clearSelectedElement();
-    };
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [clearSelectedElement]);
-
-  useEffect(() => {
-    const handleClearSelection = (event: MessageEvent) => {
-      if (event.source !== window.parent) return;
-      if (event.data?.type !== "ipollowork:video-studio-clear-selection") return;
-      if (event.data.projectId !== projectId) return;
-      clearSelectedElement();
-    };
-    window.addEventListener("message", handleClearSelection);
-    return () => window.removeEventListener("message", handleClearSelection);
-  }, [clearSelectedElement, projectId]);
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
   const handleStageRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {
@@ -139,7 +84,8 @@ export function PreviewPane({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isStudioFullscreen, setIsStudioFullscreen] = useState(false);
   const fullscreenElement = useSyncExternalStore(subscribeFullscreen, getFullscreenElement);
-  const isNativeFullscreen = fullscreenElement === containerRef.current && fullscreenElement != null;
+  const isNativeFullscreen =
+    fullscreenElement === containerRef.current && fullscreenElement != null;
   const isFullscreen = isNativeFullscreen || isStudioFullscreen;
 
   useEffect(() => {
@@ -208,10 +154,9 @@ export function PreviewPane({
   return (
     <div
       ref={containerRef}
-      // Panel chrome (rounded border) is dropped in fullscreen so the preview
-      // fills the screen edge-to-edge.
+      // Panel chrome is dropped in fullscreen so the preview fills the screen edge-to-edge.
       className={`hf-preview-pane flex-1 min-h-0 flex flex-col overflow-hidden bg-neutral-950 ${
-        isFullscreen ? "" : "rounded-lg border border-neutral-800/50"
+        isFullscreen ? "" : "border-[0.5px] border-[var(--hf-studio-divider)]"
       } ${isStudioFullscreen ? "hf-preview-pane--studio-fullscreen" : ""}`}
       data-studio-fullscreen-target=""
       data-studio-fullscreen-active={isFullscreen ? "" : undefined}
@@ -219,9 +164,6 @@ export function PreviewPane({
       <div
         className="flex-1 min-h-0 relative overflow-hidden"
         data-preview-pan-surface="true"
-        onPointerDown={(e) =>
-          deselectIfPointerOutsideFrame(e, iframeRef.current, clearSelectedElement)
-        }
         onDragEnter={handlePreviewDragEnter}
         onDragOver={handlePreviewDragOver}
         onDragLeave={handlePreviewDragLeave}

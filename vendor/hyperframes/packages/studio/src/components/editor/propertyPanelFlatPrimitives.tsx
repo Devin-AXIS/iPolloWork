@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
-import { RotateCcw } from "../../icons/SystemIcons";
+import { ChevronDown, RotateCcw } from "../../icons/SystemIcons";
 import { CommitField } from "./propertyPanelPrimitives";
 import {
   VALUE_TIER_LABEL_CLASS,
@@ -20,6 +20,7 @@ export function FlatRow({
   liveCommit,
   suffix,
   dropdown,
+  large = true,
   onCommit,
   onReset,
 }: {
@@ -31,17 +32,35 @@ export function FlatRow({
   suffix?: ReactNode;
   /** Renders a trailing 10px caret-down, for select-backed rows. */
   dropdown?: boolean;
+  /** Figma's 34px inspector control used by the expanded Layer sections. */
+  large?: boolean;
   onCommit: (nextValue: string) => void;
   onReset?: () => void;
 }) {
   const track = useTrackDesignInput();
   return (
-    <div className="group flex h-6 min-w-0 items-center justify-between gap-1.5 rounded-[4px] border border-transparent bg-panel-input px-2 transition-colors focus-within:border-panel-accent/50">
-      <span className={`flex-shrink-0 text-[8px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
-      <span className="flex min-w-0 flex-shrink-0 items-center gap-1.5">
+    <div
+      className={`group flex min-w-0 items-center justify-between gap-1.5 overflow-hidden border border-transparent bg-panel-input transition-colors focus-within:border-panel-accent/50 ${
+        large ? "h-[34px] rounded-[6px] px-[10px]" : "h-6 rounded-[4px] px-2"
+      }`}
+    >
+      <span
+        className={`flex-shrink-0 ${
+          large
+            ? "text-[10px] font-normal text-[#858a94]"
+            : `text-[8px] ${VALUE_TIER_LABEL_CLASS[tier]}`
+        }`}
+      >
+        {label}
+      </span>
+      <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5">
         <span
           data-flat-row-value="true"
-          className={`min-w-0 font-sans text-[10px] ${VALUE_TIER_VALUE_CLASS[tier]}`}
+          className={`min-w-0 flex-1 overflow-hidden font-sans ${
+            large
+              ? "text-[13px] font-normal text-[#24262b]"
+              : `text-[10px] ${VALUE_TIER_VALUE_CLASS[tier]}`
+          }`}
         >
           <CommitField
             value={value}
@@ -69,17 +88,20 @@ export function FlatRow({
             <RotateCcw size={11} />
           </button>
         )}
-        {dropdown && (
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="currentColor"
-            className="flex-shrink-0 text-panel-text-5"
-          >
-            <path d="M2 3l3 4 3-4z" />
-          </svg>
-        )}
+        {dropdown &&
+          (large ? (
+            <ChevronDown size={16} className="flex-shrink-0 text-[#858a94]" />
+          ) : (
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              fill="currentColor"
+              className="flex-shrink-0 text-panel-text-5"
+            >
+              <path d="M2 3l3 4 3-4z" />
+            </svg>
+          ))}
       </span>
     </div>
   );
@@ -116,9 +138,9 @@ export function FlatSegmentedRow({
 }) {
   const track = useTrackDesignInput();
   return (
-    <div className="grid gap-1.5">
-      <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-panel-text-4">{label}</span>
-      <span className="grid auto-cols-fr grid-flow-col items-center gap-1">
+    <div className="grid gap-1">
+      <span className="text-[10px] font-normal text-[#858a94]">{label}</span>
+      <span className="grid auto-cols-fr grid-flow-col items-center gap-1.5">
         {options.map((option, index) => (
           <span key={option.key} className="flex w-full items-center">
             <button
@@ -131,7 +153,7 @@ export function FlatSegmentedRow({
                 if (!option.active) track("segmented", label);
                 onChange(option.key);
               }}
-              className={`flex h-6 w-full items-center justify-center rounded-[4px] px-1.5 text-[9px] transition-colors disabled:cursor-not-allowed ${
+              className={`flex h-[34px] w-full items-center justify-center rounded-[6px] px-2 text-[13px] transition-colors disabled:cursor-not-allowed ${
                 option.active
                   ? "bg-[#171816] text-white"
                   : "bg-panel-input text-panel-text-4 hover:text-panel-text-1"
@@ -187,35 +209,48 @@ export function FlatGroupHeader({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-9 w-full items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-3 text-left transition-colors hover:bg-panel-input dark:hover:bg-panel-input/60`}
+        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[#ebebeb] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input dark:border-panel-hairline dark:hover:bg-panel-input/60`}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <span className="text-[11px] font-medium text-[#2c2d2a] dark:text-panel-text-1">{title}</span>
+          <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
+            {title}
+          </span>
           {summary && (
             <span className="min-w-0 truncate font-mono text-[8px] text-panel-text-4">
               {summary}
             </span>
           )}
         </span>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0 text-[#858a94]">
-          <path d="m6 4.67 3.33 3.33L6 11.33" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <ChevronDown size={16} className="flex-shrink-0 rotate-180 text-[#858a94]" />
       </button>
     );
   }
 
   return (
-    <div className={`${animateEntrance ? "hf-flat-group-enter " : ""}relative flex h-9 items-center justify-between border-b border-panel-hairline bg-panel-bg px-3 shadow-[inset_2px_0_0_#20bbc0]`}>
-      <button type="button" onClick={onToggleOpen} className="absolute inset-0" aria-label={`Collapse ${title}`} />
-      <span className="relative text-[11px] font-medium text-[#2c2d2a] dark:text-panel-text-1">{title}</span>
-      <span className="flex items-center gap-2.5 text-panel-text-5">
-        {accessory}
-        <button type="button" onClick={onToggleOpen} title="Collapse" className="relative text-[#858a94]">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="m4.67 6 3.33 3.33L11.33 6" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      </span>
+    <div
+      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[#ebebeb] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#20bbc0] dark:border-panel-hairline`}
+    >
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        className="flex h-full min-w-0 flex-1 items-center text-left"
+        aria-label={`Collapse ${title}`}
+      >
+        <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
+          {title}
+        </span>
+      </button>
+      {accessory && (
+        <span className="flex items-center gap-2.5 text-panel-text-5">{accessory}</span>
+      )}
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        title="Collapse"
+        className="flex h-full items-center pl-2 text-[#858a94]"
+      >
+        <ChevronDown size={16} className="flex-shrink-0" />
+      </button>
     </div>
   );
 }
@@ -257,6 +292,7 @@ export function FlatSlider({
   displayValue,
   disabled,
   centerTick,
+  large = true,
   onReset,
   onCommit,
 }: {
@@ -269,6 +305,8 @@ export function FlatSlider({
   displayValue: string;
   disabled?: boolean;
   centerTick?: boolean;
+  /** Figma's labeled two-column slider used by expanded Layer sections. */
+  large?: boolean;
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
 }) {
@@ -398,8 +436,22 @@ export function FlatSlider({
   };
 
   return (
-    <div className="flex min-h-7 items-center gap-2">
-      <span className="w-[72px] flex-shrink-0 text-[9px] text-panel-text-3">{label}</span>
+    <div
+      className={
+        large
+          ? "hf-flat-responsive-grid col-span-2 grid grid-cols-2 gap-x-3 gap-y-1"
+          : "flex min-h-7 items-center gap-2"
+      }
+    >
+      <span
+        className={
+          large
+            ? "col-span-2 w-full text-[10px] font-normal text-[#858a94]"
+            : "w-[72px] flex-shrink-0 text-[9px] text-panel-text-3"
+        }
+      >
+        {label}
+      </span>
       <div
         data-flat-slider-track="true"
         role="slider"
@@ -410,7 +462,9 @@ export function FlatSlider({
         aria-disabled={disabled}
         tabIndex={disabled ? -1 : 0}
         style={{ touchAction: "none" }}
-        className={`relative h-5 flex-1 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+        className={`relative ${large ? "h-[34px] w-full" : "h-5 flex-1"} ${
+          disabled ? "cursor-not-allowed" : "cursor-pointer"
+        }`}
         onPointerDown={(e) => {
           if (disabled) return;
           draggingRef.current = true;
@@ -496,7 +550,11 @@ export function FlatSlider({
           cancelDrag(e.currentTarget);
         }}
       >
-        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-panel-hover">
+        <div
+          className={`absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full ${
+            large ? "h-1 bg-[#f5f6f9]" : "h-0.5 bg-panel-hover"
+          }`}
+        >
           {centerTick && (
             <div
               data-flat-slider-center-tick="true"
@@ -506,7 +564,7 @@ export function FlatSlider({
           {tier === "explicitCustom" && (
             <div
               data-flat-slider-fill="true"
-              className="absolute inset-y-0 left-0 rounded-full bg-panel-text-5"
+              className={`absolute inset-y-0 left-0 rounded-full ${large ? "bg-black" : "bg-panel-text-5"}`}
               style={{ width: `${clampedPct}%` }}
             />
           )}
@@ -514,20 +572,35 @@ export function FlatSlider({
         <div
           data-flat-slider-knob="true"
           className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
-            tier === "explicitCustom" ? "h-2 w-2 bg-white" : "h-[7px] w-[7px] bg-panel-text-4"
+            large
+              ? "size-[14px] border-2 border-black bg-white"
+              : tier === "explicitCustom"
+                ? "h-2 w-2 bg-white"
+                : "h-[7px] w-[7px] bg-panel-text-4"
           }`}
           style={{ left: `${clampedPct}%` }}
         />
       </div>
       <span
         data-flat-slider-value="true"
-        className={`w-10 flex-shrink-0 text-right font-mono text-[9px] ${
-          tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
-        }`}
+        className={
+          large
+            ? "flex h-[34px] w-full items-center justify-between rounded-[6px] bg-panel-input px-4 font-sans text-[13px] font-normal text-[#24262b]"
+            : `w-10 flex-shrink-0 text-right font-mono text-[9px] ${
+                tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
+              }`
+        }
       >
-        {displayValue}
+        {large && displayValue.endsWith("%") ? (
+          <>
+            <span>{displayValue.slice(0, -1)}</span>
+            <span className="text-[10px] text-[#858a94]">%</span>
+          </>
+        ) : (
+          displayValue
+        )}
       </span>
-      {(centerTick || onReset) && (
+      {!large && (centerTick || onReset) && (
         <span data-flat-slider-reset-slot="true" className="w-3.5 flex-shrink-0">
           {tier === "explicitCustom" && onReset && (
             <button
@@ -550,4 +623,4 @@ export function FlatSlider({
   );
 }
 
-export { FlatSelectRow } from "./propertyPanelFlatSelectRow";
+export { FlatDropdown, FlatSelectRow } from "./propertyPanelFlatSelectRow";

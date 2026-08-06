@@ -31,6 +31,8 @@ import { X } from "../icons/SystemIcons";
 import { BlocksTab, type BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { AssetsTab } from "./sidebar/AssetsTab";
 import { IllustrationTab } from "./sidebar/IllustrationTab";
+import { postVideoAiSelectionToHost } from "./editor/domEditingAgentPrompt";
+import { MIN_RIGHT_PANEL_WIDTH } from "../hooks/usePanelLayout";
 
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
@@ -132,7 +134,6 @@ export function StudioRightPanel({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
-    handleAskAgent,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -315,7 +316,9 @@ export function StudioRightPanel({
         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
         onAddTextField={handleDomAddTextField}
         onRemoveTextField={handleDomRemoveTextField}
-        onAskAgent={handleAskAgent}
+        onAskAgent={
+          domEditSelection ? () => postVideoAiSelectionToHost(domEditSelection) : undefined
+        }
         onImportAssets={handleImportFiles}
         fontAssets={fontAssets}
         onImportFonts={handleImportFonts}
@@ -392,16 +395,22 @@ export function StudioRightPanel({
     />
   );
 
-  const postHostPanel = useCallback((panel: "voice" | "style") => {
-    if (window.parent !== window) {
-      window.parent.postMessage({
-        type: "ipollowork:video-studio-panel",
-        projectId,
-        panel,
-        width: rightWidth,
-      }, "*");
-    }
-  }, [projectId, rightWidth]);
+  const postHostPanel = useCallback(
+    (panel: "voice" | "style") => {
+      if (window.parent !== window) {
+        window.parent.postMessage(
+          {
+            type: "ipollowork:video-studio-panel",
+            projectId,
+            panel,
+            width: rightWidth,
+          },
+          "*",
+        );
+      }
+    },
+    [projectId, rightWidth],
+  );
 
   const openHostPanel = (panel: "voice" | "style") => {
     setRightPanelTab(panel);
@@ -409,11 +418,14 @@ export function StudioRightPanel({
 
   const closeHostPanel = useCallback(() => {
     if (window.parent !== window) {
-      window.parent.postMessage({
-        type: "ipollowork:video-studio-panel",
-        projectId,
-        panel: null,
-      }, "*");
+      window.parent.postMessage(
+        {
+          type: "ipollowork:video-studio-panel",
+          projectId,
+          panel: null,
+        },
+        "*",
+      );
     }
   }, [projectId]);
 
@@ -436,14 +448,13 @@ export function StudioRightPanel({
 
   return (
     <>
-      {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via
-          the absolutely-positioned inner hit area. */}
+      {/* 0.5px visual separator with an expanded pointer-capture zone. */}
       <div
         role="separator"
         aria-label={t("right.resizeInspector")}
         aria-orientation="vertical"
         tabIndex={0}
-        className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
+        className="group relative w-[0.5px] flex-shrink-0 cursor-ew-resize outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("right", e)}
         onPointerMove={handlePanelResizeMove}
@@ -454,37 +465,62 @@ export function StudioRightPanel({
           e.preventDefault();
           // Panel is right-anchored: ArrowLeft grows it, ArrowRight shrinks it.
           const delta = e.key === "ArrowLeft" ? 16 : -16;
-          setRightWidth(Math.max(160, Math.min(600, rightWidth + delta)));
+          setRightWidth(Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(600, rightWidth + delta)));
         }}
       >
-        {/* Expanded hit zone: 8px wide, centered on the 3px seam */}
-        <div className="absolute inset-y-0 -left-[2.5px] w-2" />
-        {/* Visible hairline */}
-        <div className="absolute top-1/2 left-0 h-[52px] w-[3px] -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
+        <div className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2" />
+        <div className="absolute inset-y-0 left-0 w-[0.5px] bg-[var(--hf-studio-divider)] group-focus-visible:bg-studio-accent/60" />
       </div>
       <div
-        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border border-panel-hairline bg-panel-bg"
-        style={{ width: rightWidth }}
+        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden border-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg"
+        style={{ width: rightWidth, minWidth: MIN_RIGHT_PANEL_WIDTH }}
       >
         {captionEditMode ? (
           <CaptionPropertyPanel iframeRef={previewIframeRef} />
         ) : (
           <>
-            <div className="relative z-30 flex h-[49px] min-w-0 items-center gap-[5px] overflow-visible border-b border-panel-hairline bg-panel-bg px-3">
+            <div className="relative z-30 flex h-[49px] min-w-0 items-center overflow-hidden border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg pl-3 pr-11">
               {exportDrawer ? (
                 <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-200">
                   {t("right.renders")}
                 </span>
-              ) : (<>
-              {STUDIO_INSPECTOR_PANELS_ENABLED && (
-                <>
-                  <PanelTabButton
-                    label={t("right.design")}
-                    tooltip={t("right.designTooltip")}
-                    active={inspectorTabActive}
-                    onClick={() => selectStudioPanel("design")}
-                  />
-                </>
+              ) : (
+                <div className="hf-inspector-tabs-scroll flex min-w-0 flex-1 items-center overflow-x-auto overflow-y-hidden pb-1">
+                  <div className="flex w-max items-center gap-[5px]">
+                    {STUDIO_INSPECTOR_PANELS_ENABLED && (
+                      <PanelTabButton
+                        label={t("right.design")}
+                        tooltip={t("right.designTooltip")}
+                        active={inspectorTabActive}
+                        onClick={() => selectStudioPanel("design")}
+                      />
+                    )}
+                    <PanelTabButton
+                      label={t("right.style")}
+                      tooltip={t("right.styleTooltip")}
+                      active={rightPanelTab === "style"}
+                      onClick={() => openHostPanel("style")}
+                    />
+                    <PanelTabButton
+                      label={t("right.catalog")}
+                      tooltip={t("right.catalogTooltip")}
+                      active={rightPanelTab === "catalog" || rightPanelTab === "effects"}
+                      onClick={() => selectStudioPanel("catalog")}
+                    />
+                    <PanelTabButton
+                      label={t("right.voice")}
+                      tooltip={t("right.voiceTooltip")}
+                      active={rightPanelTab === "voice"}
+                      onClick={() => openHostPanel("voice")}
+                    />
+                    <PanelTabButton
+                      label={t("right.assets")}
+                      tooltip={t("right.assetsTooltip")}
+                      active={rightPanelTab === "assets"}
+                      onClick={() => selectStudioPanel("assets")}
+                    />
+                  </div>
+                </div>
               )}
               <PanelTabButton
                 label={t("right.voice")}
@@ -519,8 +555,11 @@ export function StudioRightPanel({
               </>)}
               <button
                 type="button"
-                onClick={() => { closeHostPanel(); setRightCollapsed(true); }}
-                className="ml-auto flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 active:scale-[0.96]"
+                onClick={() => {
+                  closeHostPanel();
+                  setRightCollapsed(true);
+                }}
+                className="absolute right-3 top-1/2 z-20 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md border border-transparent bg-panel-bg text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-panel-input hover:text-neutral-200 active:scale-[0.96]"
                 aria-label="Close right panel"
                 title="Close right panel"
               >

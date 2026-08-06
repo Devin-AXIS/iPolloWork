@@ -19,6 +19,7 @@ import {
   type LocalFontData,
 } from "./propertyPanelHelpers";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { ChevronDown } from "../../icons/SystemIcons";
 
 /* ------------------------------------------------------------------ */
 /*  Font helper functions                                              */
@@ -125,6 +126,7 @@ export function FontFamilyField({
   value,
   disabled,
   flat,
+  valueOnly,
   importedFonts,
   onImportFonts,
   onCommit,
@@ -132,6 +134,7 @@ export function FontFamilyField({
   value: string;
   disabled?: boolean;
   flat?: boolean;
+  valueOnly?: boolean;
   importedFonts: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onCommit: (nextValue: string) => void;
@@ -468,30 +471,25 @@ export function FontFamilyField({
 
   if (flat) {
     return (
-      <div ref={containerRef} className="relative flex min-h-[30px] items-center justify-between">
-        <span className="text-[11px] text-panel-text-2">Font</span>
+      <div
+        ref={containerRef}
+        className="relative flex h-[34px] min-w-0 items-center justify-between rounded-[8px] bg-panel-input px-2 pr-4"
+      >
+        {!valueOnly && <span className="text-[10px] font-normal text-[#858a94]">Font</span>}
         <button
           type="button"
           data-flat-font-trigger="true"
           disabled={disabled}
           onClick={() => setOpen((next) => !next)}
-          className="flex items-center gap-1.5 disabled:cursor-not-allowed"
+          className={`flex min-w-0 items-center justify-between gap-1.5 disabled:cursor-not-allowed ${valueOnly ? "w-full" : ""}`}
         >
           <span
-            className="max-w-[200px] truncate font-mono text-[11px] text-panel-text-0"
+            className="min-w-0 truncate font-sans text-[13px] font-normal text-[#24262b] dark:text-panel-text-1"
             style={{ fontFamily: value }}
           >
             {currentFamily}
           </span>
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="currentColor"
-            className="flex-shrink-0 text-panel-text-5"
-          >
-            <path d="M2 3l3 4 3-4z" />
-          </svg>
+          <ChevronDown size={16} className="flex-shrink-0 text-[#858a94]" />
         </button>
         {dropdown}
       </div>

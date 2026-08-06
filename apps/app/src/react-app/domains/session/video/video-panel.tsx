@@ -153,20 +153,6 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   }, [sessionId, studioUrl]);
 
   React.useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      const frame = studioFrameRef.current;
-      if (!frame?.contentWindow || !(event.target instanceof Node)) return;
-      if (frame.contains(event.target)) return;
-      frame.contentWindow.postMessage({
-        type: "ipollowork:video-studio-clear-selection",
-        projectId: videoProjectId(sessionId),
-      }, new URL(studioUrl).origin);
-    };
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [sessionId, studioUrl]);
-
-  React.useEffect(() => {
     setStudioHistoryReady(false);
   }, [studioUrl]);
 

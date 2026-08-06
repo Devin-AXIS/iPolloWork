@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/*  FlatToggle — 24×14 pill switch                                     */
+/*  FlatToggle — Layer inspector switch row                            */
 /*  (split out of propertyPanelFlatPrimitives.tsx to stay under the    */
 /*  600-line file-size gate)                                           */
 /* ------------------------------------------------------------------ */
@@ -19,10 +19,10 @@ export function FlatToggle({
 }) {
   const track = useTrackDesignInput();
   return (
-    <div className="flex min-h-[30px] items-center justify-between">
+    <div className="flex h-[34px] items-center justify-between rounded-[6px] bg-panel-input px-[10px]">
       <span
         data-flat-toggle-label="true"
-        className={`text-[11px] ${checked ? "text-panel-text-2" : "text-panel-text-3"}`}
+        className="text-[10px] font-normal text-[#858a94]"
       >
         {label}
       </span>
@@ -37,13 +37,13 @@ export function FlatToggle({
           track("toggle", label);
           onChange(!checked);
         }}
-        className={`relative h-[14px] w-6 flex-shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`relative h-4 w-7 flex-shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
           checked ? "bg-panel-accent/35" : "bg-panel-hover"
         }`}
       >
         <span
           data-flat-toggle-knob="true"
-          className={`absolute top-0.5 h-2.5 w-2.5 rounded-full transition-all ${
+          className={`absolute top-0.5 size-3 rounded-full transition-all ${
             checked ? "right-0.5 bg-panel-accent" : "left-0.5 bg-panel-text-4"
           }`}
         />

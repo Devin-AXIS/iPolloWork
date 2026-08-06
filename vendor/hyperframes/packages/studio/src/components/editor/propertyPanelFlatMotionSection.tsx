@@ -5,8 +5,13 @@ import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
 import { CommitField } from "./propertyPanelPrimitives";
-import { AnimationCard } from "./AnimationCard";
-import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
+import { Plus, Trash } from "../../icons/SystemIcons";
+import {
+  ADD_METHODS,
+  ADD_METHOD_LABELS,
+  METHOD_LABELS,
+  METHOD_TOOLTIPS,
+} from "./gsapAnimationConstants";
 import {
   trackAnimationMetaUpdate,
   type GsapAnimationEditCallbacks,
@@ -83,9 +88,11 @@ export function FlatTimingRow({
   };
 
   const cell = (label: string, value: string, onCommit: (next: string) => void) => (
-    <div className="flex h-6 min-w-0 items-center justify-between gap-1.5 rounded-[4px] bg-panel-input px-2">
-      <span className="flex-shrink-0 text-[8px] text-panel-text-4">{label}</span>
-      <span className="min-w-0 font-sans text-[10px] text-panel-text-0">
+    <div className="flex h-[34px] min-w-0 items-center justify-between gap-1.5 rounded-[6px] border border-[#f5f6f9] bg-[#f5f6f9] px-[10px] py-px dark:border-panel-input dark:bg-panel-input">
+      <span className="flex-shrink-0 text-[10px] font-normal text-[#878984] dark:text-panel-text-4">
+        {label}
+      </span>
+      <span className="min-w-0 font-sans text-[13px] font-normal text-[#242522] dark:text-panel-text-0">
         <CommitField
           value={value}
           onCommit={(next) => {
@@ -98,7 +105,7 @@ export function FlatTimingRow({
   );
 
   return (
-    <div className="grid grid-cols-2 gap-1.5">
+    <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2">
       {cell("Start", formatTimingValue(start), commitStart)}
       {cell("End", formatTimingValue(end), commitEnd)}
       {cell("Duration", formatTimingValue(duration), commitDuration)}
@@ -135,17 +142,6 @@ export function FlatMotionSection({
 } & GsapAnimationEditCallbacks) {
   const track = useTrackDesignInput();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const ownerRange = deriveElementTiming(element, animations);
-  const trackProperty = (property: string) => {
-    const control =
-      property === "visibility"
-        ? "toggle"
-        : property === "filter" || property === "clipPath"
-          ? "text"
-          : "metric";
-    track(control, property);
-  };
-
   return (
     <div className="space-y-3">
       {showTiming && (
@@ -171,110 +167,65 @@ export function FlatMotionSection({
           )}
           {!multipleTimelines && !unsupportedTimelinePattern && (
             <div className="space-y-2">
-              {animations.map((anim, index) => (
-                <AnimationCard
-                  key={anim.id}
-                  animation={anim}
-                  defaultExpanded={index === 0}
-                  flat
-                  ownerId={element.id}
-                  ownerRange={ownerRange.duration > 0 ? ownerRange : undefined}
-                  onUpdateProperty={(animationId, property, value) => {
-                    trackProperty(property);
-                    callbacks.onUpdateProperty(animationId, property, value);
-                  }}
-                  onUpdateMeta={(animationId, updates) => {
-                    trackAnimationMetaUpdate(track, updates);
-                    callbacks.onUpdateMeta(animationId, updates);
-                  }}
-                  onDeleteAnimation={(animationId) => {
-                    track("button", "Remove animation");
-                    callbacks.onDeleteAnimation(animationId);
-                  }}
-                  onAddProperty={(animationId, property) => {
-                    track("select", "Add effect property");
-                    callbacks.onAddProperty(animationId, property);
-                  }}
-                  onRemoveProperty={(animationId, property) => {
-                    track("button", `Remove ${property}`);
-                    callbacks.onRemoveProperty(animationId, property);
-                  }}
-                  onUpdateFromProperty={
-                    callbacks.onUpdateFromProperty
-                      ? (animationId, property, value) => {
-                          trackProperty(property);
-                          callbacks.onUpdateFromProperty?.(animationId, property, value);
-                        }
-                      : undefined
-                  }
-                  onAddFromProperty={
-                    callbacks.onAddFromProperty
-                      ? (animationId, property) => {
-                          track("select", "Add from property");
-                          callbacks.onAddFromProperty?.(animationId, property);
-                        }
-                      : undefined
-                  }
-                  onRemoveFromProperty={
-                    callbacks.onRemoveFromProperty
-                      ? (animationId, property) => {
-                          track("button", `Remove from ${property}`);
-                          callbacks.onRemoveFromProperty?.(animationId, property);
-                        }
-                      : undefined
-                  }
-                  onLivePreview={callbacks.onLivePreview}
-                  onLivePreviewEnd={callbacks.onLivePreviewEnd}
-                  onSetArcPath={
-                    callbacks.onSetArcPath
-                      ? (animationId, config) => {
-                          track(
-                            "toggle",
-                            config.autoRotate !== undefined ? "Auto rotate" : "Arc motion",
-                          );
-                          callbacks.onSetArcPath?.(animationId, config);
-                        }
-                      : undefined
-                  }
-                  onUpdateArcSegment={
-                    callbacks.onUpdateArcSegment
-                      ? (animationId, segmentIndex, update) => {
-                          if (update.curviness === undefined) {
-                            track("button", `Reset arc segment ${segmentIndex + 1}`);
-                          }
-                          callbacks.onUpdateArcSegment?.(animationId, segmentIndex, update);
-                        }
-                      : undefined
-                  }
-                  onUpdateKeyframeEase={
-                    callbacks.onUpdateKeyframeEase
-                      ? (animationId, percentage, ease) => {
-                          track("select", "Keyframe ease");
-                          callbacks.onUpdateKeyframeEase?.(animationId, percentage, ease);
-                        }
-                      : undefined
-                  }
-                  onSetAllKeyframeEases={
-                    callbacks.onSetAllKeyframeEases
-                      ? (animationId, ease) => {
-                          track("select", "All keyframe eases");
-                          callbacks.onSetAllKeyframeEases?.(animationId, ease);
-                        }
-                      : undefined
-                  }
-                  onUnroll={
-                    callbacks.onUnroll
-                      ? (animationId) => {
-                          track("button", "Unroll animation");
-                          callbacks.onUnroll?.(animationId);
-                        }
-                      : undefined
-                  }
-                />
-              ))}
-              <div className="relative pt-1">
+              {animations.map((animation, index) => {
+                const start =
+                  typeof animation.position === "number"
+                    ? animation.position
+                    : (animation.resolvedStart ?? 0);
+                const duration = animation.duration ?? 0;
+                const commitMetric = (kind: "position" | "duration", raw: string) => {
+                  const value = Number.parseFloat(raw.replace("s", ""));
+                  if (!Number.isFinite(value) || value < 0) return;
+                  trackAnimationMetaUpdate(track, { [kind]: value });
+                  callbacks.onUpdateMeta(animation.id, { [kind]: value });
+                };
+                return (
+                  <div key={animation.id} className="grid gap-2">
+                    <div className="grid grid-cols-[minmax(0,1fr)_36px] gap-3">
+                      <div className="flex h-[34px] items-center justify-between rounded-[6px] bg-panel-input pl-2 pr-4">
+                        <span className="text-[10px] text-[#858a94]">Animation</span>
+                        <span className="truncate pl-3 text-[13px] text-[#24262b] dark:text-panel-text-1">
+                          {METHOD_LABELS[animation.method] ??
+                            `Animation ${String(index + 1).padStart(2, "0")}`}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Remove animation ${index + 1}`}
+                        onClick={() => {
+                          track("button", "Remove animation");
+                          callbacks.onDeleteAnimation(animation.id);
+                        }}
+                        className="flex h-[34px] items-center justify-center text-[#858a94] transition-colors hover:text-[#24262b] dark:hover:text-panel-text-1"
+                      >
+                        <Trash size={18} />
+                      </button>
+                    </div>
+                    <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2">
+                      {(["position", "duration"] as const).map((kind) => (
+                        <div
+                          key={kind}
+                          className="flex h-[34px] items-center justify-between rounded-[6px] bg-panel-input px-[10px]"
+                        >
+                          <span className="text-[10px] text-[#858a94]">
+                            {kind === "position" ? "Start" : "Duration"}
+                          </span>
+                          <span className="w-[62px] text-right text-[13px] text-[#24262b] dark:text-panel-text-1">
+                            <CommitField
+                              value={`${(kind === "position" ? start : duration).toFixed(2)} s`}
+                              align="right"
+                              onCommit={(next) => commitMetric(kind, next)}
+                            />
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="relative">
                 {addMenuOpen ? (
-                  <div className="flex gap-1.5">
+                  <div className="hf-flat-responsive-grid grid grid-cols-2 gap-1">
                     {ADD_METHODS.map((method) => (
                       <button
                         key={method}
@@ -285,7 +236,7 @@ export function FlatMotionSection({
                           onAddAnimation(method);
                           setAddMenuOpen(false);
                         }}
-                        className="rounded-lg border border-panel-border-input bg-panel-input px-2.5 py-1.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:border-panel-text-4 hover:text-panel-text-0"
+                        className="h-[34px] rounded-[6px] bg-panel-input px-2 text-[11px] text-panel-text-2 transition-colors hover:text-panel-text-0"
                       >
                         {ADD_METHOD_LABELS[method] ?? method}
                       </button>
@@ -293,7 +244,7 @@ export function FlatMotionSection({
                     <button
                       type="button"
                       onClick={() => setAddMenuOpen(false)}
-                      className="px-1.5 text-[11px] text-panel-text-3 hover:text-panel-text-1"
+                      className="col-span-2 h-7 text-[11px] text-panel-text-3 hover:text-panel-text-1"
                     >
                       Cancel
                     </button>
@@ -302,10 +253,11 @@ export function FlatMotionSection({
                   <button
                     type="button"
                     onClick={() => setAddMenuOpen(true)}
-                    className="text-[11px] font-medium text-panel-text-3 transition-colors hover:text-panel-text-1"
+                    aria-label="Add animation"
+                    className="flex h-[34px] w-full items-center justify-center rounded-[6px] border-[0.5px] border-[#858a94] text-[#858a94] transition-colors hover:border-[#24262b] hover:text-[#24262b] dark:hover:border-panel-text-1 dark:hover:text-panel-text-1"
                     title="Add a new animation effect to this element"
                   >
-                    + Add effect
+                    <Plus size={16} />
                   </button>
                 )}
               </div>

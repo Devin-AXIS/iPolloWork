@@ -356,6 +356,10 @@ describe("HyperFrames Video Studio", () => {
       new URL("../../../vendor/hyperframes/packages/studio/src/components/nle/PreviewTextSelectionToolbar.tsx", import.meta.url),
       "utf8",
     );
+    const nativeAiPromptSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/editor/domEditingAgentPrompt.ts", import.meta.url),
+      "utf8",
+    );
 
     const deleteIndex = electronSource.indexOf('<button type="button" data-action="delete"');
     const advancedIndex = electronSource.indexOf('data-action="advanced"');
@@ -380,9 +384,10 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("video-ai-${crypto.randomUUID()}");
     expect(sessionPageSource).toContain("onAskAi={handleDesignAskAi}");
     expect(nativeToolbarSource).toContain("handleDomEditElementDelete");
-    expect(nativeToolbarSource).toContain("window.parent?.postMessage");
-    expect(nativeToolbarSource).toContain("ipollowork:hyperframes:ask-ai-selection");
-    expect(nativeToolbarSource).toContain("hfId: activeSelection.hfId");
+    expect(nativeToolbarSource).toContain("postVideoAiSelectionToHost(activeSelection)");
+    expect(nativeAiPromptSource).toContain("window.parent?.postMessage");
+    expect(nativeAiPromptSource).toContain("ipollowork:hyperframes:ask-ai-selection");
+    expect(nativeAiPromptSource).toContain("hfId: selection.hfId");
     expect(nativeDeleteIndex).toBeGreaterThan(-1);
     expect(nativeAiIndex).toBeGreaterThan(nativeAdvancedIndex);
     expect(nativeDeleteIndex).toBeGreaterThan(nativeAiIndex);
@@ -390,7 +395,7 @@ describe("HyperFrames Video Studio", () => {
     expect(nativeToolbarSource).toContain("hf-preview-text-toolbar__delete-button");
     expect(nativeToolbarSource).toContain("onClick={deleteSelectedElement}");
     expect(nativeToolbarSource).not.toContain("deleteConfirmationOpen");
-    expect(panelSource).toContain("ipollowork:video-studio-clear-selection");
+    expect(panelSource).not.toContain("ipollowork:video-studio-clear-selection");
     expect(electronSource).toContain("ipollowork:hyperframes:clear-selection");
     expect(electronSource).toContain("finishEditing();");
     expect(electronSource).toContain("hideToolbar();");

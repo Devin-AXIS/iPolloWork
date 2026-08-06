@@ -135,19 +135,17 @@ export function TextAreaField({
 
   if (flat) {
     return (
-      <div className="border-l-2 border-panel-border-input py-0.5 pl-[10px]">
-        <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          {label}
-        </div>
+      <div className="flex min-h-[43px] items-center rounded-[9px] border border-[#99b8f2] bg-panel-bg px-4 py-2 focus-within:border-[#4f8fe8] focus-within:ring-1 focus-within:ring-[#4f8fe8]/20">
         <textarea
           ref={textareaRef}
           value={draft}
           disabled={disabled}
-          rows={2}
+          rows={1}
+          aria-label={label}
           onFocus={handleFocus}
           onChange={handleChange}
           onBlur={handleBlur}
-          className="w-full resize-none bg-transparent font-mono text-[11px] leading-normal text-panel-text-0 outline-none disabled:cursor-not-allowed disabled:text-panel-text-4"
+          className="w-full resize-none bg-transparent font-sans text-[14px] font-normal leading-[20px] text-[#24262b] outline-none disabled:cursor-not-allowed disabled:text-panel-text-4 dark:text-panel-text-1"
         />
       </div>
     );
