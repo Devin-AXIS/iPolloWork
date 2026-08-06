@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "id": "labelu-data-annotation",
+  "name": "数据标注实训云",
+  "description": "面向教学实训的多模态数据标注工作台，支持自有素材、PDF 文字导入、预设实训项目和已保存项目续标。",
+  "category": "数据与分析",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/opendatalab/labelU-Kit"
+  },
+  "composer": {
+    "prompt": "使用数据标注实训云插件时，不要查找素材、索要文件路径或从对话创建标注任务。首次使用直接调用 open-workbench，再立即用 ipollowork_browser_open_url 在右侧内置浏览器打开返回地址，不要在对话中显示带令牌的原始地址。用户可以在工作台上传自己的图片、视频、音频，直接输入文字或从 PDF 提取文字，也可以直接选择插件内置实训项目。只有用户明确要求查看已保存项目或统计已保存标注时，才使用 list-projects 和 get-project；这些对话操作只读，不能修改右侧标注。",
+    "suggestions": [
+      "打开数据标注实训云。",
+      "列出我最近保存的标注项目。",
+      "读取最近的项目，统计已保存标注。"
+    ]
+  },
+  "package": {
+    "version": "0.3.0",
+    "publisher": {
+      "id": "smart-future-school",
+      "name": "智慧未来学校"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.17.28",
+      "opencode": ">=1.18.0"
+    },
+    "updateId": "smart-future-school/data-annotation-training-cloud",
+    "entrypoints": {
+      "service": "service/dist/data-annotation.mjs"
+    }
+  },
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "仅在本机 127.0.0.1 启动数据标注实训页面和标注接口。"
+    },
+    {
+      "id": "workspace-read",
+      "reason": "加载用户在插件页面中上传并保存的图片和标注。"
+    },
+    {
+      "id": "workspace-write",
+      "reason": "将标注结果保存到当前工作区的插件专属目录。"
+    }
+  ],
+  "authorization": {
+    "required": false,
+    "methods": []
+  },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Data Annotation Training Cloud",
+        "description": "A multimodal data annotation workbench for teaching and training, with user-owned media, PDF text import, prepared exercises, and resumable saved projects.",
+        "category": "Data & Analytics",
+        "composer": {
+          "prompt": "When using Data Annotation Training Cloud, do not search for media, request file paths, or create annotation tasks from chat. On first use, call open-workbench and immediately open the returned URL in the right-side in-app browser without showing the token-bearing URL in chat. Users upload their own images, video, and audio, enter text directly or extract text from PDF files, or choose a prepared exercise in the workbench. Only use list-projects and get-project when the user explicitly asks to inspect saved projects or summarize saved annotations. These chat actions are read-only and cannot change annotations in the workbench."
+        },
+        "resources": {
+          "labelu-react-app": {
+            "label": "Data Annotation Training Workbench",
+            "description": "An independent image, video, audio, and text annotation workbench with PDF text extraction and prepared exercises."
+          },
+          "pdfjs-worker": {
+            "label": "PDF Text Extraction Engine",
+            "description": "A bundled PDF text worker that requires no additional software on the customer device."
+          },
+          "pdfjs-text-assets": {
+            "label": "PDF Text Resources",
+            "description": "Character maps and standard font assets for extracting Chinese and common font text."
+          },
+          "labelu-data-annotation-service": {
+            "label": "Data Annotation Training Service",
+            "description": "Starts the independent multimodal workbench, extracts text from imported PDF files, and saves projects and annotations created in the workbench."
+          },
+          "labelu-data-annotation-workflow": {
+            "label": "Data Annotation Training Workflow",
+            "description": "Guides the Agent to open the multimodal workbench directly and inspect saved projects only when explicitly requested."
+          }
+        },
+        "permissions": {
+          "network": {
+            "reason": "Start the data annotation workbench and annotation API only on the local 127.0.0.1 interface."
+          },
+          "workspace-read": {
+            "reason": "Load images and annotations uploaded and saved by the user in the plugin workbench."
+          },
+          "workspace-write": {
+            "reason": "Save annotation results in the plugin-owned directory of the current workspace."
+          }
+        }
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "file",
+      "id": "labelu-react-app",
+      "label": "数据标注实训页面",
+      "description": "独立运行的图片、视频、音频和文字标注页面，支持 PDF 文字提取并包含预设实训项目。",
+      "path": "app/dist",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "pdfjs-worker",
+      "label": "PDF 文字提取引擎",
+      "description": "插件内置的 PDF 文字解析 worker，不依赖客户电脑安装额外工具。",
+      "path": "service/dist/pdf.worker.mjs",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "pdfjs-text-assets",
+      "label": "PDF 中文文字资源",
+      "description": "用于提取中文及常见字体文字的字符映射和标准字体资源。",
+      "path": "service/dist/pdfjs",
+      "required": true
+    },
+    {
+      "type": "local-service",
+      "id": "labelu-data-annotation-service",
+      "label": "数据标注实训服务",
+      "description": "启动独立多模态工作台，提取用户导入的 PDF 文字，并保存页面中创建的项目与标注结果。",
+      "path": "service/dist/data-annotation.mjs",
+      "requires": [
+        "resource:labelu-react-app",
+        "resource:pdfjs-worker",
+        "resource:pdfjs-text-assets"
+      ],
+      "provides": [
+        "action:open-workbench",
+        "action:list-projects",
+        "action:get-project"
+      ],
+      "required": true,
+      "actions": [
+        {
+          "id": "open-workbench",
+          "title": "打开数据标注实训云",
+          "description": "返回独立标注工作台地址；用户可上传素材或选择预设实训项目。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "list-projects",
+          "title": "列出标注项目",
+          "description": "只读列出用户最近保存的图片、视频、音频和文字标注项目。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": { "limit": { "type": "number", "minimum": 1, "maximum": 100 } },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "get-project",
+          "title": "读取标注项目",
+          "description": "只读读取一个已保存项目的类型、标注、版本和更新时间。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": { "projectId": { "type": "string" } },
+            "required": ["projectId"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "skill",
+      "id": "labelu-data-annotation-workflow",
+      "label": "数据标注实训云工作流",
+      "description": "指导 Agent 直接打开多模态工作台，并在用户明确要求时只读查看已保存项目。",
+      "path": ".opencode/skills/labelu-data-annotation/SKILL.md",
+      "requires": [
+        "service:labelu-data-annotation-service"
+      ],
+      "provides": [
+        "workflow:data-annotation"
+      ],
+      "required": true
+    }
+  ]
+}

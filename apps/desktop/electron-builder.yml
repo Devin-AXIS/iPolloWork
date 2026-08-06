@@ -35,6 +35,8 @@ extraResources:
     to: plugin-packages/design-agent
   - from: ../../examples/plugin-packages/video-agent
     to: plugin-packages/video-agent
+  - from: ../../examples/plugin-packages/labelu-data-annotation
+    to: plugin-packages/labelu-data-annotation
   # Templates are installed by copying their full directory into the local
   # library. Electron's virtual ASAR filesystem can read them but Node cannot
   # recursively copy an ASAR directory on macOS, so keep these assets real.

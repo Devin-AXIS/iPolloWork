@@ -445,6 +445,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "wechat-official", version: "0.1.1", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.1.1", installedVersion: null, updateAvailable: false },
           { pluginId: "video-agent", version: "0.1.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "labelu-data-annotation", version: "0.3.0", installedVersion: null, updateAvailable: false },
         ],
       });
 
@@ -551,6 +552,59 @@ describe("plugin package lifecycle", () => {
         .toMatchObject({ extensionId: "wechat-official", action: "reply-comment", effect: "write" });
       expect(wechatActionsBody.actions.find((action: { action: string }) => action.action === "delete-comment"))
         .toMatchObject({ extensionId: "wechat-official", action: "delete-comment", effect: "destructive" });
+
+      const annotationInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/labelu-data-annotation/install`, {
+        method: "POST",
+        headers,
+      });
+      expect(annotationInstallation.status).toBe(200);
+      expect(await annotationInstallation.json()).toMatchObject({
+        result: { status: "installed", pluginId: "labelu-data-annotation", version: "0.3.0" },
+        item: {
+          pluginId: "labelu-data-annotation",
+          manifest: {
+            name: "数据标注实训云",
+            package: { publisher: { id: "smart-future-school", name: "智慧未来学校" } },
+          },
+        },
+      });
+      expect(await readFile(join(workspaceRoot, ".opencode", "skills", "labelu-data-annotation", "SKILL.md"), "utf8"))
+        .toContain("# Data Annotation Training Cloud");
+
+      const annotationLaunch = await fetch(`${base}/experimental/extensions/call`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          extensionId: "labelu-data-annotation",
+          action: "open-workbench",
+          args: {},
+          context: { directory: workspaceRoot },
+        }),
+      });
+      expect(annotationLaunch.status).toBe(200);
+      const annotationLaunchBody = await annotationLaunch.json();
+      const workbenchUrl = annotationLaunchBody.result?.url;
+      expect(typeof workbenchUrl).toBe("string");
+      if (typeof workbenchUrl !== "string") throw new Error("Expected the data annotation workbench URL");
+      const workbenchPage = await fetch(workbenchUrl);
+      expect(workbenchPage.status).toBe(200);
+      expect(await workbenchPage.text()).toContain("数据标注实训云");
+
+      const annotationRemoval = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/labelu-data-annotation`, {
+        method: "DELETE",
+        headers,
+      });
+      expect(annotationRemoval.status).toBe(200);
+      expect(await annotationRemoval.json()).toMatchObject({
+        result: { status: "uninstalled", pluginId: "labelu-data-annotation", version: "0.3.0" },
+      });
+      await expectMissing(join(workspaceRoot, ".opencode", "skills", "labelu-data-annotation", "SKILL.md"));
+      const actionsAfterAnnotationRemoval = await fetch(
+        `${base}/experimental/extensions/actions?extensionId=labelu-data-annotation&directory=${encodeURIComponent(workspaceRoot)}`,
+        { headers },
+      );
+      expect(actionsAfterAnnotationRemoval.status).toBe(200);
+      expect((await actionsAfterAnnotationRemoval.json()).actions).toEqual([]);
 
       const disabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/figma/resources/figma-design-to-code`, {
         method: "PATCH",

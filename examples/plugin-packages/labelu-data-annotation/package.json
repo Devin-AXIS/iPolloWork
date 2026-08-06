@@ -1,0 +1,38 @@
+{
+  "name": "@ipollowork/labelu-plugin",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.23.0",
+  "pnpm": {
+    "overrides": {
+      "i18next": "23.16.8"
+    }
+  },
+  "scripts": {
+    "build": "vite build --config app/vite.config.ts && vite build --config service/vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test service/*.test.ts",
+    "check": "pnpm typecheck && pnpm build && pnpm test"
+  },
+  "dependencies": {
+    "@labelu/audio-annotator-react": "1.9.3",
+    "@labelu/components-react": "1.8.3",
+    "@labelu/image": "1.5.2",
+    "@labelu/image-annotator-react": "2.5.3",
+    "@labelu/video-annotator-react": "1.5.3",
+    "i18next": "^23.2.3",
+    "pdfjs-dist": "4.8.69",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.5.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
