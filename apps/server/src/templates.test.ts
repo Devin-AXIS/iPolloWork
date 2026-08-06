@@ -1077,6 +1077,17 @@ describe("template installations", () => {
     const serverConfig = config(root);
     const ws = workspace(root, "alpha");
     await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "video_export_only", category: "video" });
+    const videoRoot = join(ws.path, "video", "video_export_only");
+    const bgm = Buffer.from([0x49, 0x44, 0x33, 0x04, 0x00, 0x00]);
+    await mkdir(join(videoRoot, "assets"), { recursive: true });
+    await writeFile(join(videoRoot, "assets", "bgm.mp3"), bgm);
+    await writeFile(
+      join(videoRoot, "index.html"),
+      (await readFile(join(videoRoot, "index.html"), "utf8")).replace(
+        "</body>",
+        '  <audio src="assets/bgm.mp3" data-track="audio" data-clip="bgm" data-start="0" data-duration="8"></audio>\n</body>',
+      ),
+    );
     const before = (await listTemplates(serverConfig, ws.id)).filter((item) => item.sourceType === "local");
 
     const exported = await exportTemplateFromSession(serverConfig, ws, {
@@ -1086,10 +1097,14 @@ describe("template installations", () => {
     });
 
     expect(exported.archive.subarray(0, 2).toString("ascii")).toBe("PK");
+    expect(exported.archive.includes(Buffer.from("assets/bgm.mp3"))).toBe(true);
     expect(exported.manifest).toMatchObject({ title: "Exported video", surface: "video", version: "1.0.0" });
     expect((await listTemplates(serverConfig, ws.id)).filter((item) => item.sourceType === "local")).toEqual(before);
     const imported = await importTemplate(serverConfig, ws.id, exported.archive, "video");
     expect(imported).toMatchObject({ sourceType: "local", manifest: { id: exported.manifest.id, surface: "video" } });
+    const materialized = await materializeTemplate(serverConfig, ws, imported.manifest.id, "video_export_only_roundtrip");
+    expect(await readFile(join(ws.path, "video", "video_export_only_roundtrip", "assets", "bgm.mp3"))).toEqual(bgm);
+    expect(await readFile(join(ws.path, materialized.state.entry), "utf8")).toContain('src="assets/bgm.mp3"');
     await rm(root, { recursive: true, force: true });
   });
 
