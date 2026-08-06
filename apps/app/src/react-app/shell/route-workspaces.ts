@@ -13,7 +13,11 @@ import {
   normalizeSessionStatus,
   safeStringify,
 } from "@/app/utils";
-import { getDisplaySessionTitle } from "@/app/lib/session-title";
+import {
+  DEFAULT_SESSION_TITLE,
+  getDisplaySessionTitle,
+  isGeneratedSessionTitle,
+} from "@/app/lib/session-title";
 import { t } from "@/i18n";
 
 export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
@@ -211,13 +215,36 @@ export function isInternalSubtaskSession(session: RouteSession) {
   return Boolean(parentID && agent.trim() && agent !== "orchestrator");
 }
 
+export function isBlankDefaultSession(session: RouteSession) {
+  const title = session.title?.trim() ?? "";
+  const hasDefaultTitle =
+    !title ||
+    title === DEFAULT_SESSION_TITLE ||
+    title === t("session.default_title") ||
+    title === "新建会话" ||
+    isGeneratedSessionTitle(title);
+  if (!hasDefaultTitle) return false;
+
+  const created = session.time?.created;
+  const updated = session.time?.updated ?? created;
+  return (
+    typeof created === "number" &&
+    typeof updated === "number" &&
+    created === updated &&
+    !isInternalSubtaskSession(session)
+  );
+}
+
 export function userVisibleSessionsByWorkspaceId(
   sessionsByWorkspaceId: Record<string, RouteSession[]>,
 ): Record<string, RouteSession[]> {
   return Object.fromEntries(
     Object.entries(sessionsByWorkspaceId).map(([workspaceId, sessions]) => [
       workspaceId,
-      sessions.filter((session) => !isInternalSubtaskSession(session)),
+      sessions.filter((session) => (
+        !isInternalSubtaskSession(session) &&
+        !isBlankDefaultSession(session)
+      )),
     ]),
   );
 }

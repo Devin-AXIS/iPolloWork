@@ -21,6 +21,7 @@ import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
 import { openDesktopPath, revealDesktopItemInDir, saveFile, type WorkspaceInfo } from "../../../../app/lib/desktop";
 import type {
+  ComposerAttachment,
   ComposerDraft,
   PendingPermission,
   PendingQuestion,
@@ -92,7 +93,15 @@ import { loadTemplateSession } from "../templates/template-session-probe";
 import { TemplateSaveDialog, type TemplateSaveInput, type TemplateSaveMode } from "../templates/template-save-dialog";
 import { VideoPanel } from "../video/video-panel";
 import { videoProjectEntryPath } from "../video/video-project";
-import { templateBriefConfigFor, templateBriefPrompt, type TemplateBrief } from "../templates/template-brief";
+import {
+  TEMPLATE_BRIEF_REFERENCE_ACCEPT,
+  inferTemplateBriefFromReferenceFile,
+  isTemplateBriefReferenceFile,
+  prepareTemplateBriefReferenceAttachment,
+  templateBriefConfigFor,
+  templateBriefPrompt,
+  type TemplateBrief,
+} from "../templates/template-brief";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
@@ -416,10 +425,92 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
-function TemplateBriefCard({ template, onSubmit, onClose }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief) => void; onClose: () => void | Promise<void> }) {
+function TemplateBriefCard({ template, onSubmit, onClose }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief, references: ComposerAttachment[]) => void; onClose: () => void | Promise<void> }) {
   const config = templateBriefConfigFor(template);
   const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
-  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("relative p-5 pr-14", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><Button type="button" variant="ghost" size="icon-sm" className={cn("absolute right-4 top-4 rounded-full", template.surface === "video" ? "text-white/70 hover:text-white" : "text-dls-secondary hover:text-dls-text")} aria-label={t("common.close")} onClick={() => void onClose()}><X className="size-4" /></Button><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim()} onClick={() => onSubmit({ title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() })}>{config.submitLabel}</Button></div></div></div>;
+  const [references, setReferences] = useState<ComposerAttachment[]>([]);
+  const [referenceBusy, setReferenceBusy] = useState(false);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
+  const referencesRef = useRef<ComposerAttachment[]>([]);
+
+  useEffect(() => {
+    referencesRef.current = references;
+  }, [references]);
+
+  useEffect(() => () => {
+    for (const reference of referencesRef.current) {
+      if (reference.previewUrl) URL.revokeObjectURL(reference.previewUrl);
+    }
+  }, []);
+
+  const applyReferenceBriefAutofill = (inferredBriefs: TemplateBrief[]) => {
+    const inferred = inferredBriefs.reduce<TemplateBrief>((next, item) => ({
+      title: next.title || item.title,
+      audience: next.audience || item.audience,
+      details: next.details || item.details,
+    }), { title: "", audience: "", details: "" });
+    if (!inferred.title && !inferred.audience && !inferred.details) return;
+    setBrief((current) => ({
+      title: current.title.trim() ? current.title : inferred.title,
+      audience: current.audience.trim() ? current.audience : inferred.audience || t("templates.brief.reference_fallback_audience"),
+      details: current.details.trim() ? current.details : inferred.details || t("templates.brief.reference_fallback_details"),
+    }));
+  };
+
+  const addReferenceFiles = async (files: File[]) => {
+    if (!files.length) return;
+    const unsupported = files.filter((file) => !isTemplateBriefReferenceFile(file));
+    const supported = files.filter((file) => isTemplateBriefReferenceFile(file));
+    if (unsupported.length) {
+      toast.warning(
+        unsupported.length === 1
+          ? t("templates.brief.reference_unsupported_one", { name: unsupported[0]?.name ?? "" })
+          : t("templates.brief.reference_unsupported_many", { count: unsupported.length }),
+        { description: t("templates.brief.reference_supported_formats") },
+      );
+    }
+    if (!supported.length) return;
+    setReferenceBusy(true);
+    try {
+      const next: ComposerAttachment[] = [];
+      const inferredBriefs: TemplateBrief[] = [];
+      for (const file of supported) {
+        try {
+          const attachment = await prepareTemplateBriefReferenceAttachment(file);
+          next.push(attachment);
+          inferredBriefs.push(await inferTemplateBriefFromReferenceFile(file));
+        } catch (error) {
+          toast.warning(error instanceof Error ? error.message : t("templates.brief.reference_prepare_failed"));
+        }
+      }
+      if (next.length) {
+        setReferences((current) => [...current, ...next]);
+        applyReferenceBriefAutofill(inferredBriefs);
+      }
+    } finally {
+      setReferenceBusy(false);
+    }
+  };
+
+  const removeReference = (id: string) => {
+    setReferences((current) => {
+      const target = current.find((item) => item.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      const next = current.filter((item) => item.id !== id);
+      if (!next.length) {
+        const fallbackAudience = t("templates.brief.reference_fallback_audience");
+        const fallbackDetails = t("templates.brief.reference_fallback_details");
+        setBrief((currentBrief) => ({
+          ...currentBrief,
+          audience: currentBrief.audience === fallbackAudience ? "" : currentBrief.audience,
+          details: currentBrief.details === fallbackDetails ? "" : currentBrief.details,
+        }));
+      }
+      return next;
+    });
+  };
+
+  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("relative p-5 pr-14", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><Button type="button" variant="ghost" size="icon-sm" className={cn("absolute right-4 top-4 rounded-full", template.surface === "video" ? "text-white/70 hover:text-white" : "text-dls-secondary hover:text-dls-text")} aria-label={t("common.close")} onClick={() => void onClose()}><X className="size-4" /></Button><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<div className="rounded-xl border border-dls-border bg-dls-canvas/45 p-3"><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-medium">{t("templates.brief.reference_label")}<span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span></div><p className="mt-1 text-xs leading-5 text-dls-secondary">{t("templates.brief.reference_description")}</p></div><Button type="button" variant="outline" size="sm" className="h-8 shrink-0 rounded-lg px-2.5 text-xs" disabled={referenceBusy} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3 animate-spin" /> : <Upload className="size-3" />}{t("templates.brief.reference_upload")}</Button><input ref={referenceInputRef} type="file" multiple accept={TEMPLATE_BRIEF_REFERENCE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} /></div>{references.length ? <div className="mt-3 grid gap-2">{references.map((reference) => <div key={reference.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-dls-border bg-dls-surface px-2.5 py-2"><FileText className="size-3.5 shrink-0 text-dls-secondary" /><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{reference.name}</div><div className="text-[10px] text-dls-secondary">{(reference.size / 1024).toFixed(1)} KB</div></div><Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-dls-secondary hover:text-dls-text" aria-label={t("templates.brief.reference_remove", { name: reference.name })} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button></div>)}</div> : null}</div><Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim() || referenceBusy} onClick={() => onSubmit({ title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() }, references)}>{config.submitLabel}</Button></div></div></div>;
 }
 
 export function SessionPage(props: SessionPageProps) {
@@ -855,7 +946,7 @@ export function SessionPage(props: SessionPageProps) {
       setTemplateBusyId(null);
     }
   }, [activeEnterprise, importDesignTemplate, templateResourceScope]);
-  const submitTemplateBrief = useCallback(async (brief: TemplateBrief) => {
+  const submitTemplateBrief = useCallback(async (brief: TemplateBrief, references: ComposerAttachment[]) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     const templateSession = currentTemplateSessionData;
     if (!templateSession) return;
@@ -870,6 +961,11 @@ export function SessionPage(props: SessionPageProps) {
         pptxCompatibility: template.pptxCompatibility,
         sourcePath: state.entry,
         applyChecklist: template.applyChecklist,
+        referenceFiles: references.map((reference) => ({
+          name: reference.name,
+          mimeType: reference.mimeType,
+          size: reference.size,
+        })),
         ...brief,
       }, null, 2),
       baseUpdatedAt: null,
@@ -883,14 +979,18 @@ export function SessionPage(props: SessionPageProps) {
       return next;
     });
     const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
+    const referencePrompt = references.length
+      ? `Use the attached reference documents as optional source material for this initial template generation. Prefer explicit content from these files over guesses, preserve the selected template's layout contract, and clearly mark missing evidence instead of inventing it. Attached reference files: ${references.map((reference) => reference.name).join(", ")}.`
+      : "";
     const visibleTemplateMessage = t("templates.applied", { title: template.title });
     props.surface?.onSendDraft({
       mode: "prompt",
       parts: [
         { type: "text", text: visibleTemplateMessage },
         { type: "text", text: prompt, synthetic: true },
+        ...(referencePrompt ? [{ type: "text" as const, text: referencePrompt, synthetic: true }] : []),
       ],
-      attachments: [],
+      attachments: references,
       text: visibleTemplateMessage,
       resolvedText: visibleTemplateMessage,
     }, props.selectedSessionId);
@@ -2464,7 +2564,7 @@ export function SessionPage(props: SessionPageProps) {
                           onImport={importDesignTemplate}
                         />
                       ) : currentTemplateSessionData && !hasTemplateBrief && !templateBriefDismissed ? (
-                        <TemplateBriefCard template={currentTemplateSessionData.manifest} onSubmit={(brief) => void submitTemplateBrief(brief)} onClose={() => void closeTemplateBrief()} />
+                        <TemplateBriefCard template={currentTemplateSessionData.manifest} onSubmit={(brief, references) => void submitTemplateBrief(brief, references)} onClose={() => void closeTemplateBrief()} />
                       ) : <SessionSurface
                         key={`${props.runtimeWorkspaceId}:${props.selectedSessionId}`}
                         // Spread `surface` first so the explicit per-workspace
