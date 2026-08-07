@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, RotateCcw } from "../../icons/SystemIcons";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import {
   VALUE_TIER_LABEL_CLASS,
   VALUE_TIER_VALUE_CLASS,
@@ -34,6 +35,7 @@ export function FlatDropdown({
   valueClassName?: string;
   onChange: (nextValue: string) => void;
 }) {
+  const { tx } = useStudioI18n();
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -43,7 +45,7 @@ export function FlatDropdown({
     0,
     options.findIndex((option) => option.value === value),
   );
-  const selectedLabel = options[selectedIndex]?.label ?? value;
+  const selectedLabel = tx(options[selectedIndex]?.label ?? value);
 
   const close = () => setOpen(false);
   const selectIndex = (index: number) => {
@@ -82,7 +84,7 @@ export function FlatDropdown({
       <button
         ref={buttonRef}
         type="button"
-        aria-label={ariaLabel}
+        aria-label={tx(ariaLabel)}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
@@ -119,8 +121,8 @@ export function FlatDropdown({
             ref={menuRef}
             id={listboxId}
             role="listbox"
-            aria-label={ariaLabel}
-            className="fixed z-[220] max-h-[min(280px,calc(100vh-24px))] overflow-y-auto rounded-[6px] border border-[#ebebeb] bg-white p-1 shadow-[0_8px_24px_rgba(25,28,33,0.14)] dark:border-panel-hairline dark:bg-panel-bg"
+            aria-label={tx(ariaLabel)}
+            className="fixed z-[220] max-h-[min(280px,calc(100vh-24px))] overflow-y-auto rounded-[6px] border border-[var(--hf-studio-divider)] bg-panel-bg p-1 shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
             style={{
               left: Math.min(
                 anchorRect.left,
@@ -145,7 +147,7 @@ export function FlatDropdown({
                       : "text-[#50535a] hover:bg-[#f5f6f9] active:bg-[#eceef2] dark:text-panel-text-3 dark:hover:bg-panel-input"
                   }`}
                 >
-                  <span className="min-w-0 truncate">{option.label}</span>
+                  <span className="min-w-0 truncate">{tx(option.label)}</span>
                   {selected && <Check size={14} className="flex-shrink-0 text-[#20bbc0]" />}
                 </button>
               );
@@ -191,6 +193,7 @@ export function FlatSelectRow({
   onReset?: () => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const trackName = ariaLabel || label;
   const normalizedOptions = options.map((option) =>
     typeof option === "string" ? { value: option, label: option } : option,
@@ -220,12 +223,12 @@ export function FlatSelectRow({
               : `text-[8px] ${VALUE_TIER_LABEL_CLASS[tier]}`
           }`}
         >
-          {label}
+          {tx(label)}
         </span>
       )}
       <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5">
         <FlatDropdown
-          ariaLabel={ariaLabel || label}
+          ariaLabel={tx(ariaLabel || label)}
           value={value}
           options={renderedOptions}
           disabled={disabled}
@@ -244,7 +247,7 @@ export function FlatSelectRow({
           <button
             type="button"
             data-flat-select-reset="true"
-            title="Remove — fall back to default"
+            title={tx("Remove — fall back to default")}
             disabled={disabled}
             onClick={() => {
               track("button", `Reset ${trackName}`);

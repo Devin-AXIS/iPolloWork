@@ -106,6 +106,18 @@ describe("template market actions", () => {
     expect(marketDialog).toContain('t("template_market.export_package")');
   });
 
+  test("keeps preview metadata separated from long descriptions and cover edges", () => {
+    expect(marketDialog).toContain('className="relative z-10 flex flex-col gap-5 border-t border-border bg-popover px-6 pb-5 pt-8 sm:flex-row sm:items-end sm:justify-between"');
+    expect(marketDialog).toContain('className="min-w-0 flex-1"');
+    expect(marketDialog).toContain('className="flex min-h-7 flex-wrap items-center gap-2"');
+    expect(marketDialog).toContain('className="mt-2 line-clamp-2 max-w-2xl text-xs leading-5"');
+    expect(marketDialog).toContain('className="flex shrink-0 items-center gap-2"');
+    expect(sessionPage).toContain('className="relative z-10 flex flex-col gap-5 border-t border-dls-border bg-dls-surface px-6 pb-5 pt-8 sm:flex-row sm:items-end sm:justify-between"');
+    expect(sessionPage).toContain('className="flex min-h-7 items-center"');
+    expect(sessionPage).toContain('className="mt-2 line-clamp-2 max-w-2xl text-xs leading-5"');
+    expect(sessionPage).not.toContain("border-t border-dls-border px-6 py-5");
+  });
+
   test("offers typed save and export actions through one dialog", () => {
     expect(saveDialog).toContain('export type TemplateSaveMode = "save" | "export"');
     expect(saveDialog).toContain('mode: "save"');

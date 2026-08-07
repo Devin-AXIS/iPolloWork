@@ -20,6 +20,7 @@ import timelineLockSrc from "../../icons/figmaTimelineLock.svg?url";
 import timelineLockOpenSrc from "../../icons/figmaTimelineLockOpen.svg?url";
 import timelineEyeSrc from "../../icons/figmaTimelineEye.svg?url";
 import timelineEyeOffSrc from "../../icons/figmaTimelineEyeOff.svg?url";
+import { useStudioI18n } from "../../i18n";
 
 function resolveFigmaKindIcon(kind: TimelineKind, selected: boolean): string {
   if (kind === "text") return timelineTextSrc;
@@ -64,6 +65,7 @@ export function TimelineLayerHeader({
   onToggleExpanded,
   onReorderPointerDown,
 }: TimelineLayerHeaderProps) {
+  const { tx } = useStudioI18n();
   const first = elements[0] ?? null;
   const kind = first ? resolveTimelineKind(first) : "element";
   const label = resolveTimelineLayerLabel(elements, track);
@@ -113,9 +115,9 @@ export function TimelineLayerHeader({
         <button
           type="button"
           className="hf-timeline-layer-header__caret"
-          aria-label={`${expanded ? "Collapse" : "Expand"} ${label}`}
+          aria-label={tx(`${expanded ? "Collapse" : "Expand"} ${label}`)}
           aria-expanded={expanded}
-          title={`${expanded ? "Collapse" : "Expand"} ${label}`}
+          title={tx(`${expanded ? "Collapse" : "Expand"} ${label}`)}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
@@ -137,7 +139,7 @@ export function TimelineLayerHeader({
         type="button"
         className="hf-timeline-layer-header__select"
         title={label}
-        aria-label={`Select ${label}`}
+        aria-label={tx(`Select ${label}`)}
         aria-pressed={selected}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
@@ -153,8 +155,8 @@ export function TimelineLayerHeader({
           <span
             className="hf-timeline-layer-header__binding"
             style={{ color: visualStyle.accent }}
-            title={`Bound group: ${bindingId}`}
-            aria-label={`Bound group: ${bindingId}`}
+            title={tx(`Bound group: ${bindingId}`)}
+            aria-label={tx(`Bound group: ${bindingId}`)}
           >
             <LinkSimple size={11} weight="bold" aria-hidden="true" />
           </span>
@@ -167,9 +169,9 @@ export function TimelineLayerHeader({
           className={`hf-timeline-layer-header__status ${
             locked ? "is-locked" : "is-editable"
           }`}
-          aria-label={locked ? `Unlock ${label}` : `Lock ${label}`}
+          aria-label={tx(locked ? `Unlock ${label}` : `Lock ${label}`)}
           aria-pressed={locked}
-          title={locked ? `Unlock ${label}` : `Lock ${label}`}
+          title={tx(locked ? `Unlock ${label}` : `Lock ${label}`)}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
@@ -181,8 +183,8 @@ export function TimelineLayerHeader({
 
         <button
           type="button"
-          aria-label={hidden ? `Show ${label}` : `Hide ${label}`}
-          title={hidden ? `Show ${label}` : `Hide ${label}`}
+          aria-label={tx(hidden ? `Show ${label}` : `Hide ${label}`)}
+          title={tx(hidden ? `Show ${label}` : `Hide ${label}`)}
           className={`hf-timeline-layer-header__visibility ${hidden ? "is-hidden" : ""}`}
           style={{ color: hidden ? visualStyle.accent : "inherit" }}
           onPointerDown={(event) => event.stopPropagation()}
@@ -198,8 +200,8 @@ export function TimelineLayerHeader({
           <button
             type="button"
             className="hf-timeline-layer-header__reorder"
-            aria-label={`Reorder ${label}`}
-            title={reorderTitle}
+            aria-label={tx(`Reorder ${label}`)}
+            title={tx(reorderTitle)}
             disabled={!canReorder}
             onPointerDown={(event) => {
               event.preventDefault();

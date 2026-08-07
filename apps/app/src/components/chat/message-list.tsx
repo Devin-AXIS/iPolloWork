@@ -86,7 +86,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCreated, formatMessageTimestamp, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
@@ -413,7 +413,7 @@ type AssistantMessageProps = {
   artifactContext?: ArtifactInteractionContext
 }
 
-function assistantProcessSummary(groups: AssistantProcessRenderGroup[]) {
+function assistantProcessSummary(groups: AssistantProcessRenderGroup[], durationMs: number | null) {
   let reasoningCount = 0
   let toolCount = 0
   let fileCount = 0
@@ -432,16 +432,18 @@ function assistantProcessSummary(groups: AssistantProcessRenderGroup[]) {
   if (reasoningCount > 0) segments.push(t("message.process_reasoning_count", { count: reasoningCount }))
   if (toolCount > 0) segments.push(t("message.process_tool_count", { count: toolCount }))
   if (fileCount > 0) segments.push(t("message.process_file_count", { count: fileCount }))
+  if (durationMs !== null) segments.push(t("message.process_duration", { duration: formatProcessDuration(durationMs) }))
   return segments.length > 0 ? segments.join(" · ") : t("message.process_steps")
 }
 
 function AssistantProcessDisclosure(props: {
   groups: AssistantProcessRenderGroup[]
   isStreaming: boolean
+  durationMs: number | null
   children: React.ReactNode
   contentClassName?: string
 }) {
-  const { groups, isStreaming, children, contentClassName } = props
+  const { groups, isStreaming, durationMs, children, contentClassName } = props
   const [isOpen, setIsOpen] = React.useState(isStreaming)
   const previousStreamingRef = React.useRef(isStreaming)
 
@@ -472,7 +474,7 @@ function AssistantProcessDisclosure(props: {
         )}
         <span className="min-w-0 truncate">
           {label}
-          <span className="ml-1 text-muted-foreground/75">{assistantProcessSummary(groups)}</span>
+          <span className="ml-1 text-muted-foreground/75">{assistantProcessSummary(groups, durationMs)}</span>
         </span>
         <ChevronDown className={cn("ml-auto size-3.5 shrink-0 transition-transform", isOpen && "rotate-180")} aria-hidden />
       </button>
@@ -488,15 +490,16 @@ function AssistantProcessDisclosure(props: {
 function AssistantProcessSection(props: {
   groups: AssistantProcessRenderGroup[]
   isStreaming: boolean
+  durationMs: number | null
 }) {
-  const { groups, isStreaming } = props
+  const { groups, isStreaming, durationMs } = props
 
   if (groups.length === 0) {
     return null
   }
 
   return (
-    <AssistantProcessDisclosure groups={groups} isStreaming={isStreaming}>
+    <AssistantProcessDisclosure groups={groups} isStreaming={isStreaming} durationMs={durationMs}>
       {groups.map((group, index) => renderAssistantGroup(group, index))}
     </AssistantProcessDisclosure>
   )
@@ -513,6 +516,11 @@ const AssistantMessage = React.memo(
       () => splitAssistantRenderGroups(assistantRenderGroups),
       [assistantRenderGroups]
     )
+    const durationMs = React.useMemo(() => {
+      const created = getMessageCreated(message)
+      const completed = getMessageCompleted(message)
+      return created !== null && completed !== null && completed >= created ? completed - created : null
+    }, [message])
 
     return (
       <Message
@@ -525,20 +533,23 @@ const AssistantMessage = React.memo(
             <AssistantProcessSection
               groups={assistantRenderSections.processGroups}
               isStreaming={isStreaming}
+              durationMs={durationMs}
             />
           )}
           {assistantRenderSections.resultGroups.map((group, index) =>
             renderAssistantGroup(group, index, { highlightQuery })
           )}
-          <ArtifactList
-            messages={artifactMessages ?? [message]}
-            sessionId={sessionId}
-            title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}
-            entryPath={templateEntryPath}
-            supplementalFiles={artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined)}
-            artifactContext={artifactContext}
-            onOpenVideoStudio={onOpenVideoStudio}
-          />
+          {!isStreaming ? (
+            <ArtifactList
+              messages={artifactMessages ?? [message]}
+              sessionId={sessionId}
+              title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}
+              entryPath={templateEntryPath}
+              supplementalFiles={artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined)}
+              artifactContext={artifactContext}
+              onOpenVideoStudio={onOpenVideoStudio}
+            />
+          ) : null}
         </div>
       </Message>
     )
@@ -577,6 +588,11 @@ type VoiceReferenceDataPart = UIMessage["parts"][number] & {
   data: { voiceId: string; model: string; label: string }
 }
 
+type IllustrationReferenceDataPart = UIMessage["parts"][number] & {
+  type: "data-illustration-reference"
+  data: { id: string; label: string; repository: string }
+}
+
 function isDesignSelectionDataPart(part: UIMessage["parts"][number]): part is DesignSelectionDataPart {
   if (part.type !== "data-design-selection" || !part.data || typeof part.data !== "object") return false
   const data = part.data as { contextId?: unknown; label?: unknown }
@@ -600,14 +616,23 @@ function isVoiceReferenceDataPart(part: UIMessage["parts"][number]): part is Voi
   return typeof data.voiceId === "string" && typeof data.model === "string" && typeof data.label === "string" && Boolean(data.label.trim())
 }
 
-function UserReferenceChip(props: { label: string; kind: "design" | "animation" | "voice" }) {
+function isIllustrationReferenceDataPart(part: UIMessage["parts"][number]): part is IllustrationReferenceDataPart {
+  if (part.type !== "data-illustration-reference" || !part.data || typeof part.data !== "object") return false
+  const data = part.data as { id?: unknown; label?: unknown; repository?: unknown }
+  return typeof data.id === "string" && Boolean(data.id.trim())
+    && typeof data.label === "string" && Boolean(data.label.trim())
+    && typeof data.repository === "string" && Boolean(data.repository.trim())
+}
+
+function UserReferenceChip(props: { label: string; kind: "design" | "animation" | "voice" | "illustration" }) {
   return (
     <span
       data-message-design-selection={props.kind === "design" ? "true" : undefined}
       data-message-animation-reference={props.kind === "animation" ? "true" : undefined}
       data-message-voice-reference={props.kind === "voice" ? "true" : undefined}
+      data-message-illustration-reference={props.kind === "illustration" ? "true" : undefined}
       className="inline-flex max-w-full items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11"
-      title={`${props.kind === "design" ? "Design selection" : props.kind === "animation" ? "Animation reference" : "Voice reference"}: ${props.label}`}
+      title={`${props.kind === "design" ? "Design selection" : props.kind === "animation" ? "Animation reference" : props.kind === "voice" ? "Voice reference" : "Illustration reference"}: ${props.label}`}
     >
       <span className="truncate">{props.label}</span>
     </span>
@@ -679,15 +704,32 @@ const UserMessage = React.memo(
                 {message.parts.filter(isFileUIPart).map((part, index) => (
                   <FileMessage key={`${part.url}-${index}`} part={part} tone="user" />
                 ))}
-                {message.parts.filter(isDesignSelectionDataPart).map((part) => (
-                  <UserReferenceChip key={part.data.contextId} label={part.data.label} kind="design" />
-                ))}
-                {message.parts.filter(isAnimationReferencesDataPart).flatMap((part) => part.data.items).map((item) => (
-                  <UserReferenceChip key={item.name} label={item.label} kind="animation" />
-                ))}
-                {message.parts.filter(isVoiceReferenceDataPart).map((part) => (
-                  <UserReferenceChip key={part.data.voiceId} label={part.data.label} kind="voice" />
-                ))}
+                {message.parts.some((part) => (
+                  isDesignSelectionDataPart(part)
+                  || isAnimationReferencesDataPart(part)
+                  || isVoiceReferenceDataPart(part)
+                  || isIllustrationReferenceDataPart(part)
+                )) ? (
+                  <div className="flex max-w-full flex-wrap justify-end gap-1">
+                    {message.parts.flatMap((part) => {
+                      if (isDesignSelectionDataPart(part)) {
+                        return [<UserReferenceChip key={`design:${part.data.contextId}`} label={part.data.label} kind="design" />]
+                      }
+                      if (isAnimationReferencesDataPart(part)) {
+                        return part.data.items.map((item) => (
+                          <UserReferenceChip key={`animation:${item.name}`} label={item.label} kind="animation" />
+                        ))
+                      }
+                      if (isVoiceReferenceDataPart(part)) {
+                        return [<UserReferenceChip key={`voice:${part.data.voiceId}`} label={part.data.label} kind="voice" />]
+                      }
+                      if (isIllustrationReferenceDataPart(part)) {
+                        return [<UserReferenceChip key={`illustration:${part.data.id}`} label={`插画 · ${part.data.label}`} kind="illustration" />]
+                      }
+                      return []
+                    })}
+                  </div>
+                ) : null}
                 {message.parts.some((part) => part.type === "text" && part.text) ? (
                   <MessageContent
                     layoutId={message.id}
@@ -1016,6 +1058,13 @@ function MessageGroup({
   const hasProcessContent = itemRenderData.some(({ groups, sections }, index) =>
     (index === resultItemIndex ? sections.processGroups : groups).length > 0,
   )
+  const processStartedAt = getMessageCreated(items[0].message)
+  const processCompletedAt = getMessageCompleted(lastItem.message)
+  const processDurationMs = processStartedAt !== null
+    && processCompletedAt !== null
+    && processCompletedAt >= processStartedAt
+    ? processCompletedAt - processStartedAt
+    : null
 
   const renderProcessItem = (
     data: (typeof itemRenderData)[number],
@@ -1044,6 +1093,7 @@ function MessageGroup({
         <AssistantProcessDisclosure
           groups={processRenderGroups}
           isStreaming={isLiveGroup}
+          durationMs={processDurationMs}
           contentClassName="max-h-[520px] overflow-y-auto"
         >
           <div ref={stepsRef}>
@@ -1115,7 +1165,7 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext }: MessageListProps) {
-  const isStreaming = status === "streaming" || status === "retrying"
+  const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages, status), [messages, status]);
   const latestAssistantMessageId = React.useMemo(
     () => getLatestArtifactAssistantMessageId(messages),

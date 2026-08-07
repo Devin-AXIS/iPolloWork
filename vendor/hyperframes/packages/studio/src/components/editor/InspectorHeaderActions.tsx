@@ -1,6 +1,7 @@
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { X } from "../../icons/SystemIcons";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import type { DomEditSelection } from "./domEditingTypes";
 
 /** The action buttons in the inspector header: visibility, Ungroup (groups only), copy, clear. */
@@ -26,13 +27,14 @@ export function InspectorHeaderActions({
   onToggleHidden?: (id: string, hidden: boolean) => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   return (
     <div className="flex items-center gap-1">
       {selectedElementId && onToggleHidden && (
         <button
           type="button"
-          aria-label={visibilityLabel}
-          title={visibilityLabel}
+          aria-label={visibilityLabel ? tx(visibilityLabel) : undefined}
+          title={visibilityLabel ? tx(visibilityLabel) : undefined}
           onClick={() => {
             track("toggle", "Element visibility");
             void onToggleHidden(selectedElementId, !selectedElementHidden);
@@ -53,10 +55,10 @@ export function InspectorHeaderActions({
             track("button", "Ungroup");
             onUngroup();
           }}
-          title="Ungroup (⌘⇧G)"
+          title={tx("Ungroup (⌘⇧G)")}
           className="flex h-6 items-center rounded px-2 text-[11px] font-medium text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
         >
-          Ungroup
+          {tx("Ungroup")}
         </button>
       )}
       <button
@@ -70,7 +72,7 @@ export function InspectorHeaderActions({
             ? "text-studio-accent"
             : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
         }`}
-        title={copied ? "Copied!" : "Copy element info to clipboard"}
+        title={tx(copied ? "Copied!" : "Copy element info to clipboard")}
       >
         <svg
           width="13"
@@ -86,7 +88,7 @@ export function InspectorHeaderActions({
       </button>
       <button
         type="button"
-        aria-label="Clear selection"
+        aria-label={tx("Clear selection")}
         onClick={() => {
           track("button", "Clear selection");
           onClear();

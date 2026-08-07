@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import {
   AlignCenter,
   AlignLeft,
@@ -71,12 +72,13 @@ export function TextIconButton({
   children: ReactNode;
   onClick?: () => void;
 }) {
+  const { tx } = useStudioI18n();
   return (
     <button
       type="button"
-      aria-label={label}
+      aria-label={tx(label)}
       aria-pressed={disabled ? undefined : active}
-      title={disabled ? `${label} is not available for this layer yet` : label}
+      title={disabled ? `${tx(label)}（此图层暂不可用）` : tx(label)}
       disabled={disabled}
       onClick={onClick}
       className="hf-text-icon-button flex h-[34px] min-w-0 flex-1 items-center justify-center rounded-[8px] border-[0.5px] border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/50 disabled:cursor-not-allowed disabled:opacity-45"

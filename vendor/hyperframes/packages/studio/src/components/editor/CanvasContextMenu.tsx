@@ -27,6 +27,7 @@ import { memo } from "react";
 import { createPortal } from "react-dom";
 import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { useStudioI18n } from "../../i18n";
 import {
   isZOrderActionEnabled,
   resolveCrossedNeighbor,
@@ -146,6 +147,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   onZOrderCrossed,
   onDelete,
 }: CanvasContextMenuProps) {
+  const { tx } = useStudioI18n();
   const menuRef = useContextMenuDismiss(onClose);
 
   // Gate each item group on the presence of its persist handler. Without the
@@ -250,7 +252,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
               {/* Icon inherits the item's text color via currentColor, so the
                   disabled muted tone applies to both icon and label. */}
               <ZActionIcon action={action} />
-              <span>{label}</span>
+              <span>{tx(label)}</span>
             </button>
           );
         })}
@@ -268,7 +270,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
             handleDelete();
           }}
         >
-          <span>Delete</span>
+          <span>{tx("Delete")}</span>
           <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
         </button>
       )}

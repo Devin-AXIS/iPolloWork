@@ -11,9 +11,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "../design/design-ai-selection";
+import { parseVideoIllustrationReference } from "./video-illustration";
 import { DesignSystemDrawer } from "../design/design-system-drawer";
-import { mergeTemplateTokenCss, parseDesignTokenValues, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
-import { buildTemplateTokenCss, type DesignSystemTheme } from "../design/design-system-registry";
+import { mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
+import { buildStableTokenBridgeCss, buildTemplateTokenCss, getDesignSystemTheme, type DesignSystemTheme } from "../design/design-system-registry";
 import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "../design/design-system-theme-contract";
 import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
@@ -70,6 +71,13 @@ const studioStartupDetailKey: Record<StudioStartupStage, string> = {
 const DEFAULT_STUDIO_PANEL_WIDTH = 400;
 const MIN_STUDIO_PANEL_WIDTH = 160;
 const MAX_STUDIO_PANEL_WIDTH = 600;
+const RUNTIME_THEME_BRIDGE_PATTERN = /\/\*\s*ipw-runtime-theme-bridge:start\s*\*\/[\s\S]*?\/\*\s*ipw-runtime-theme-bridge:end\s*\*\//i;
+
+function ensureVideoTokenBridge(source: string) {
+  const bridge = buildStableTokenBridgeCss();
+  if (RUNTIME_THEME_BRIDGE_PATTERN.test(source)) return source.replace(RUNTIME_THEME_BRIDGE_PATTERN, bridge);
+  return `${source.trimEnd()}${source.trim() ? "\n\n" : ""}${bridge}\n`;
+}
 
 export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
@@ -116,6 +124,25 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     () => readAppliedDesignSystemId(designTokenSource),
     [designTokenSource],
   );
+  const appliedDesignSystemTheme = React.useMemo(
+    () => (appliedDesignSystemId ? getDesignSystemTheme(appliedDesignSystemId) : undefined),
+    [appliedDesignSystemId],
+  );
+  const showStudioStartupOverlay = status === "starting" || (status === "ready" && !studioChromeReady);
+
+  const syncStudioDesignTokens = React.useCallback((tokens: Record<string, string>, cssSource?: string) => {
+    const frameWindow = studioFrameRef.current?.contentWindow;
+    if (!frameWindow || Object.keys(tokens).length === 0) return;
+    frameWindow.postMessage(
+      {
+        type: "ipollowork:studio-design-token-change",
+        projectId: videoProjectId(sessionId),
+        tokens,
+        cssSource,
+      },
+      new URL(studioUrl).origin,
+    );
+  }, [sessionId, studioUrl]);
 
   const loadDesignSystemFiles = React.useCallback(async () => {
     if (!client || !workspaceId) return;
@@ -123,7 +150,10 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     const source = tokens?.content ?? "";
     designTokenSourceRef.current = source;
     setDesignTokenSource(source);
-  }, [client, designTokenPath, workspaceId]);
+    const themeId = readAppliedDesignSystemId(source);
+    const previewCss = themeId && getDesignSystemTheme(themeId) ? source : ensureVideoTokenBridge(source);
+    syncStudioDesignTokens(parseDesignTokenValues(source), previewCss);
+  }, [client, designTokenPath, syncStudioDesignTokens, workspaceId]);
 
   React.useEffect(() => {
     if (studioHostPanel !== "style") return;
@@ -189,12 +219,22 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     }, 350);
   }, [client, designTokenPath, workspaceId]);
 
-  const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
-    const next = replaceDesignTokenValue(designTokenSourceRef.current, name, value);
+  const handleDesignTokenChanges = React.useCallback((values: DesignTokenValues) => {
+    let next = appliedDesignSystemTheme
+      ? refreshTemplateTokenCss(designTokenSourceRef.current, buildTemplateTokenCss(appliedDesignSystemTheme))
+      : ensureVideoTokenBridge(designTokenSourceRef.current);
+    for (const [name, value] of Object.entries(values)) {
+      next = replaceDesignTokenValue(next, name, value);
+    }
     designTokenSourceRef.current = next;
     setDesignTokenSource(next);
+    syncStudioDesignTokens(values, next);
     saveDesignTokenSource(next);
-  }, [saveDesignTokenSource]);
+  }, [appliedDesignSystemTheme, saveDesignTokenSource, syncStudioDesignTokens]);
+
+  const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
+    handleDesignTokenChanges({ [name]: value });
+  }, [handleDesignTokenChanges]);
 
   const recordStudioHostEdit = React.useCallback((label: string, files: StudioHistoryFiles) => {
     const frameWindow = studioFrameRef.current?.contentWindow;
@@ -271,6 +311,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         toast.info(`${theme.name} is already applied to Video Studio.`);
         return;
       }
+      syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens);
       await client.writeWorkspaceFile(workspaceId, {
         path: designTokenPath,
         content: nextTokens,
@@ -337,7 +378,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       }
       toast.error(error instanceof Error ? error.message : "Could not apply the video design system.");
     }
-  }, [client, compositionPath, designTokenPath, recordStudioHostEdit, saveDesignTokenSource, studioHistoryReady, workspaceId]);
+  }, [client, compositionPath, designTokenPath, recordStudioHostEdit, saveDesignTokenSource, studioHistoryReady, syncStudioDesignTokens, workspaceId]);
 
   React.useEffect(() => {
     if (studioHostPanel !== "style") return;
@@ -437,6 +478,22 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [client, onAskAi, onExpandedChange, projectDirectory, sessionId, studioUrl, workspaceId]);
+
+  React.useEffect(() => {
+    const handleIllustrationReference = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow) return;
+      if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type !== "ipollowork:hyperframes:illustration-reference") return;
+      const reference = parseVideoIllustrationReference(event.data.illustration);
+      if (!reference) return;
+      window.dispatchEvent(new CustomEvent("ipollowork:add-illustration-reference", {
+        detail: { sessionId, reference },
+      }));
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    };
+    window.addEventListener("message", handleIllustrationReference);
+    return () => window.removeEventListener("message", handleIllustrationReference);
+  }, [sessionId, studioUrl]);
 
   React.useEffect(() => {
     const handleAnimationReference = (event: MessageEvent) => {
@@ -693,7 +750,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       ) : (
         <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[#0c0c0d]">
           <div className="relative min-w-0 flex-1">
-          {status === "starting" || (status === "ready" && !studioChromeReady) ? (
+          {showStudioStartupOverlay ? (
             <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm" aria-live="polite">
               <div className="text-center">
                 <Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" />
@@ -704,7 +761,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
             </div>
           ) : null}
           {status === "failed" ? <div className="absolute inset-0 z-20 grid place-items-center bg-background p-6"><div className="max-w-md text-center"><p className="text-sm font-medium">{t("video.failed_to_start")}</p><p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{detail}</p><Button className="mt-4" variant="secondary" size="sm" onClick={() => { setStatus("starting"); setStartupStage("starting-service"); setDetail(t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL })); setStudioFrameLoaded(false); studioChromeReadyRef.current = false; setStudioChromeReady(false); setStartAttempt((value) => value + 1); }}>{t("common.retry")}</Button></div></div> : null}
-          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title={t("video.iframe_title")} allow="fullscreen" allowFullScreen className={`h-full w-full border-0 transition-opacity duration-150 ${studioChromeReady ? "opacity-100" : "opacity-0"}`} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
+          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title={t("video.iframe_title")} allow="fullscreen" allowFullScreen className="h-full w-full border-0" data-loading-covered={showStudioStartupOverlay ? "true" : "false"} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
             setStudioFrameLoaded(true);
             if (studioChromeReadyRef.current) return;
             if (studioReadyFallbackRef.current != null) window.clearTimeout(studioReadyFallbackRef.current);
@@ -738,6 +795,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
               initialValues={designTokenValues}
               onClose={() => setStudioHostPanel(null)}
               onTokenChange={handleDesignTokenChange}
+              onTokenChangeMany={handleDesignTokenChanges}
               onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
             />
           </div> : null}

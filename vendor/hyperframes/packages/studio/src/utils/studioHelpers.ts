@@ -18,6 +18,7 @@ export type RightPanelTab =
     | "design"
     | "voice"
     | "style"
+    | "illustration"
     | "assets"
     | "catalog"
   | "effects"
@@ -283,8 +284,10 @@ export function resolveTimelineSelectionSeekTime(
   const start = Math.max(0, element.start);
   const end = Math.max(start, start + Math.max(0, element.duration));
   const time = Number.isFinite(currentTime) ? currentTime : start;
-
-  return clampNumber(time, start, end);
+  if (end === start) return start;
+  // Runtime clip windows are end-exclusive. Seeking exactly to `end` leaves
+  // the selected layer hidden, so keep the inspection frame just inside it.
+  return clampNumber(time, start, Math.max(start, end - 0.001));
 }
 
 export function clampNumber(value: number, min: number, max: number): number {
@@ -301,6 +304,7 @@ export function collectHtmlIds(source: string): string[] {
 
 const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
   image: 3,
+  html: 5,
   video: 5,
   audio: 5,
 };
@@ -310,7 +314,7 @@ export async function resolveDroppedAssetDuration(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<number> {
-  if (kind === "image") return DEFAULT_TIMELINE_ASSET_DURATION.image;
+  if (kind === "image" || kind === "html") return DEFAULT_TIMELINE_ASSET_DURATION[kind];
 
   const media = document.createElement(kind === "video" ? "video" : "audio");
   media.preload = "metadata";
@@ -350,7 +354,7 @@ export async function resolveDroppedAssetDimensions(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<{ width: number; height: number } | null> {
-  if (kind === "audio") return null;
+  if (kind === "audio" || kind === "html") return null;
   const src = `/api/projects/${projectId}/preview/${assetPath}`;
 
   if (kind === "image") {

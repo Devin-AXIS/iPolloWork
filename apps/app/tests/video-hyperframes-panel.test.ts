@@ -12,8 +12,70 @@ import {
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
 } from "../src/react-app/domains/session/video/video-project";
+import {
+  parseVideoIllustrationDisplayMetadata,
+  parseVideoIllustrationReference,
+  videoIllustrationReferenceInstruction,
+} from "../src/react-app/domains/session/video/video-illustration";
 
 describe("HyperFrames Video Studio", () => {
+  test("passes the Ian illustration skill through the composer and asset-library contract", () => {
+    const reference = parseVideoIllustrationReference({
+      id: "ian-xiaohei-illustrations",
+      label: "Ian 小黑正文插画",
+      repository: "helloianneo/ian-xiaohei-illustrations",
+    });
+    expect(reference).not.toBeNull();
+    if (!reference) throw new Error("Expected a valid illustration reference");
+    const instruction = videoIllustrationReferenceInstruction(reference);
+    expect(instruction).toContain("helloianneo/ian-xiaohei-illustrations");
+    expect(instruction).toContain("self-contained HTML file");
+    expect(instruction).toContain("existing workspace file-reading and HTML-authoring capability");
+    expect(instruction).not.toContain("ipollowork_extension_call");
+    expect(instruction).not.toContain("extensionId openai-image-generation");
+    expect(instruction).toContain("current video project's index.html");
+    expect(instruction).toContain("assets/video-illustrations/");
+    expect(instruction).toContain("插画已生成并放入素材库");
+    expect(instruction).toContain("read the file back");
+    expect(parseVideoIllustrationDisplayMetadata(instruction)).toEqual(reference);
+
+    const panelSource = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
+    const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
+    expect(panelSource).toContain('ipollowork:hyperframes:illustration-reference');
+    expect(surfaceSource).toContain('ipollowork:add-illustration-reference');
+    expect(surfaceSource).toContain("Every selected reference is a required deliverable");
+    expect(surfaceSource).toContain("data-ipw-animation-reference");
+    expect(surfaceSource).toContain("requirements.animationReferences");
+    expect(surfaceSource).toContain("AI 插画已添加到对话框");
+  });
+
+  test("maps all six illustration choices to offline self-contained HTML contracts", () => {
+    const profiles = [
+      ["ian-xiaohei-illustrations", "helloianneo/ian-xiaohei-illustrations", "ian-xiaohei-illustrations"],
+      ["html-infographic", "openai/visualize", "visualize"],
+      ["html-concept-explainer", "ipollowork/faceless-explainer", "faceless-explainer + hyperframes-core"],
+      ["html-kinetic-typography", "heygen-com/hyperframes", "hyperframes-animation"],
+      ["html-svg-path", "heygen-com/hyperframes", "hyperframes-keyframes"],
+      ["html-3d-space", "heygen-com/hyperframes", "hyperframes-keyframes"],
+    ];
+
+    for (const [id, repository, skill] of profiles) {
+      const reference = parseVideoIllustrationReference({ id, label: id, repository });
+      expect(reference).not.toBeNull();
+      if (!reference) throw new Error(`Expected ${id} to be a valid illustration profile`);
+      const instruction = videoIllustrationReferenceInstruction(reference);
+      expect(instruction).toContain(skill);
+      expect(instruction).toContain("exactly one self-contained HTML file");
+      expect(instruction).toContain("editable HTML/CSS/inline SVG");
+      expect(instruction).toContain("no CDN, remote font, network request");
+      expect(instruction).toContain("1600x900");
+      expect(instruction).toContain("complete composition must be visible and meaningful on its first frame");
+      expect(instruction).toContain("prefers-reduced-motion: reduce");
+      expect(instruction).toContain("assets/video-illustrations/");
+    }
+
+    expect(parseVideoIllustrationReference({ id: "unknown", label: "Unknown", repository: "unknown" })).toBeNull();
+  });
   test("reuses the embedded Design system inspector for the active video composition", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
@@ -40,11 +102,159 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain('`${projectDirectory}/design-tokens.css`');
     expect(panelSource).toContain("ensureHtmlDesignSystemContract(current.content, theme.id)");
     expect(panelSource).toContain("buildTemplateTokenCss(theme)");
-    expect(panelSource).toContain("replaceDesignTokenValue(designTokenSourceRef.current, name, value)");
+    expect(panelSource).toContain("next = replaceDesignTokenValue(next, name, value)");
+    expect(panelSource).toContain("handleDesignTokenChanges({ [name]: value })");
+    expect(panelSource).toContain('type: "ipollowork:studio-design-token-change"');
     expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
     expect(panelSource).not.toContain("onChooseBackgroundImage=");
     expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
     expect(panelSource).toContain("top-[90px]");
+  });
+
+  test("patches Video Studio theme tokens live without remounting the preview iframe", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const previewPersistenceSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/usePreviewPersistence.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("const syncStudioDesignTokens = React.useCallback");
+    expect(panelSource).toContain("syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens)");
+    expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
+    expect(panelSource).not.toContain("key={`${sessionId}:${revision}:${studioHostPanel}`}");
+    expect(previewPersistenceSource).toContain("parseHostDesignTokensMessage");
+    expect(previewPersistenceSource).toContain("applyDesignTokensToPreview");
+    expect(previewPersistenceSource).toContain("doc.documentElement.style.setProperty(name, value)");
+    expect(previewPersistenceSource).toContain("cssSource?: string");
+    expect(previewPersistenceSource).toContain("style[data-ipw-live-design-tokens]");
+    expect(previewPersistenceSource).toContain("domEditSaveTimestampRef.current = Date.now()");
+  });
+
+  test("scales legacy video typography tokens and common text classes through the theme bridge", () => {
+    const registrySource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-system-registry.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(registrySource).toContain("function templateTokenAliasLine");
+    expect(registrySource).toContain("/^--text-[A-Za-z0-9_-]+$/.test(name)");
+    expect(registrySource).toContain("calc(var(${storageName}) * var(--ipw-type-scale)) !important");
+    expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title");
+    expect(registrySource).toContain(".body, .copy, .caption, .meta, .label, .metric, .stat, .badge");
+    expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title, .body, .copy, .caption, .meta");
+    expect(registrySource).toContain("buildStableTokenBridgeCss");
+    expect(registrySource).toContain(".scene, .hero, .section, .content, .media");
+    expect(registrySource).toContain("box-shadow: var(--ipw-card-shadow) !important");
+    expect(registrySource).toContain("--ipw-motion-duration");
+    expect(registrySource).not.toContain(":where(div, span)");
+  });
+
+  test("persists the embedded motion control instead of local-only state", () => {
+    const drawerSource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-system-drawer.tsx", import.meta.url),
+      "utf8",
+    );
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(drawerSource).toContain('"--ipw-motion-style": profile.value');
+    expect(drawerSource).toContain('"--ipw-motion-duration": profile.duration');
+    expect(drawerSource).not.toContain("const [motion, setMotion] = React.useState");
+    expect(panelSource).toContain("ensureVideoTokenBridge");
+    expect(panelSource).toContain("buildStableTokenBridgeCss");
+  });
+
+  test("keeps the quick toolbar visible and opens properties without hash-driven canvas resync", () => {
+    const desktopSource = readFileSync(
+      new URL("../../../apps/desktop/electron/main.mjs", import.meta.url),
+      "utf8",
+    );
+    const urlStateSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useStudioUrlState.ts", import.meta.url),
+      "utf8",
+    );
+    const studioSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(desktopSource).toContain("window.__ipolloworkSimpleVideoListener !== 15");
+    expect(desktopSource).toContain("new CustomEvent('ipollowork:studio-apply-selection'");
+    expect(desktopSource).toContain("applyCanvasSelectionLive(target, { revealPanel: true })");
+    expect(desktopSource).not.toContain("const current = document.querySelector('button[aria-label=\"Inspector\"]')");
+    expect(studioSource).toContain("const loadStudioRightPanelModule = () => import(\"./components/StudioRightPanel\")");
+    expect(studioSource).toContain("void loadStudioRightPanel()");
+    expect(studioSource).toContain("function RightPanelLoadingFallback({ width }: { width: number })");
+    expect(studioSource).toContain('t("right.openingProperties")');
+    expect(studioSource).toContain("style={{ width }}");
+    expect(studioSource).toContain("Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}");
+
+    const advancedBranchStart = desktopSource.indexOf("} else if (action === 'advanced') {");
+    const advancedBranchEnd = desktopSource.indexOf("postEditorMessage({\n            type: 'ipollowork:hyperframes:open-advanced'", advancedBranchStart);
+    expect(advancedBranchStart).toBeGreaterThan(-1);
+    expect(advancedBranchEnd).toBeGreaterThan(advancedBranchStart);
+    expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).toContain("showToolbar(selected)");
+    expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).not.toContain("toolbar.style.display = 'none'");
+
+    expect(urlStateSource).toContain('window.addEventListener("ipollowork:studio-apply-selection"');
+    expect(urlStateSource).toContain("setRightPanelTab(\"design\")");
+    expect(urlStateSource).toContain("setRightCollapsed(false)");
+    expect(urlStateSource.indexOf("setRightPanelTab(\"design\")")).toBeLessThan(urlStateSource.indexOf("applyUrlSelection(command.selection)"));
+  });
+
+  test("deletes selected canvas elements in place without forcing a full preview reload", () => {
+    const desktopSource = readFileSync(
+      new URL("../../../apps/desktop/electron/main.mjs", import.meta.url),
+      "utf8",
+    );
+    const lifecycleSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useElementLifecycleOps.ts", import.meta.url),
+      "utf8",
+    );
+    const commitsSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useDomEditCommits.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(lifecycleSource).toContain("function removeLivePreviewElement");
+    expect(lifecycleSource).toContain("findElementForSelection(doc, selection, activeCompPath)");
+    expect(lifecycleSource).toContain("parent.insertBefore(element, nextSibling?.parentNode === parent ? nextSibling : null)");
+    expect(lifecycleSource).toContain("if (!liveRemoval) reloadPreview()");
+    expect(lifecycleSource).not.toContain("forceReloadSdkSession?.();\n        reloadPreview();");
+    expect(commitsSource).toContain("previewIframeRef,");
+    const deleteFunctionStart = desktopSource.indexOf("const deleteSelectedElement = async () => {");
+    const deleteFunctionEnd = desktopSource.indexOf("const displayScale = () => {", deleteFunctionStart);
+    expect(deleteFunctionStart).toBeGreaterThan(-1);
+    expect(deleteFunctionEnd).toBeGreaterThan(deleteFunctionStart);
+    const deleteFunctionSource = desktopSource.slice(deleteFunctionStart, deleteFunctionEnd);
+    expect(desktopSource).toContain("data-ipollowork-delete-pending");
+    expect(deleteFunctionSource).toContain("element.setAttribute('data-ipollowork-delete-pending', 'true')");
+    expect(deleteFunctionSource).toContain("element.removeAttribute('data-ipollowork-delete-pending')");
+    expect(deleteFunctionSource).not.toContain("postEditorMessage({ type: 'ipollowork:hyperframes:close-side-panels' });");
+  });
+
+  test("commits embedded theme reset tokens as a single batch", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const drawerSource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-system-drawer.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(drawerSource).toContain("onTokenChangeMany?: (values: DesignTokenValues) => void");
+    expect(drawerSource).toContain("if (onTokenChangeMany) {");
+    expect(drawerSource).toContain("onTokenChangeMany(next)");
+    expect(panelSource).toContain("const handleDesignTokenChanges = React.useCallback");
+    expect(panelSource).toContain("for (const [name, value] of Object.entries(values))");
+    expect(panelSource).toContain("syncStudioDesignTokens(values, next)");
+    expect(panelSource).toContain("onTokenChangeMany={handleDesignTokenChanges}");
   });
 
   test("keeps embedded voice and style content aligned with the resizable Studio drawer", () => {
@@ -101,6 +311,23 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain('type: "ipollowork:studio-refresh-preview"');
     expect(studioSource).not.toContain('event.data?.type !== "ipollowork:studio-refresh-preview"');
     expect(studioSource).toContain('type: "ipollowork:studio-ready"');
+  });
+
+  test("covers the video canvas with startup loading without remounting or hiding the iframe", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("const showStudioStartupOverlay = status === \"starting\" || (status === \"ready\" && !studioChromeReady)");
+    expect(panelSource).toContain("{showStudioStartupOverlay ? (");
+    expect(panelSource).toContain("absolute inset-0 z-10 grid place-items-center");
+    expect(panelSource).toContain('data-loading-covered={showStudioStartupOverlay ? "true" : "false"}');
+    expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
+    expect(panelSource).not.toContain("studioChromeReady ? \"opacity-100\" : \"opacity-0\"");
+    expect(panelSource.indexOf("setStudioChromeReady(true)")).toBeLessThan(
+      panelSource.indexOf("scheduleStudioLocaleSync()"),
+    );
   });
 
   test("debounces source saves and lazy-loads optional Studio panels", () => {
@@ -333,9 +560,9 @@ describe("HyperFrames Video Studio", () => {
     const deleteIndex = electronSource.indexOf('<button type="button" data-action="delete"');
     const advancedIndex = electronSource.indexOf('data-action="advanced"');
     const aiIndex = electronSource.indexOf('data-action="ai"');
-    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label="Delete selected element"');
-    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label="Open Design properties"');
-    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label="Ask AI about selected element"');
+    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label={tx("Delete selected element")}');
+    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label={tx("Open Design properties")}');
+    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label={tx("Ask AI about selected element")}');
 
     expect(deleteIndex).toBeGreaterThan(-1);
     expect(aiIndex).toBeGreaterThan(advancedIndex);
@@ -483,6 +710,16 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
   });
 
+  test("uses a low-contrast themed boundary beside Video Studio", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("border-r border-border/40 dark:border-white/[0.055]");
+    expect(sessionPageSource).not.toContain('border-[#EAEAEA]');
+  });
+
   test("batches right-panel drag updates and cleans up the interaction", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
@@ -553,6 +790,7 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
+    expect(sessionRouteSource).toContain("draft.capability?.instruction");
     expect(sessionRouteSource).toContain("[envSystemContext, videoSystemContext, designSystemContext, authoringSystemContext, capabilitySystemContext]");
   });
 
@@ -565,11 +803,24 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never create or inspect another `video/`/`videos/` project");
     expect(contract).toContain("Never stop all Node processes");
     expect(contract).toContain("not an HTML/JSON response saved with a media extension");
+    expect(contract).toContain("Use `/media-use` to resolve BGM");
     expect(contract).toContain("verify its response type and local file signature");
     expect(contract).toContain("never run `npx hyperframes check`");
     expect(contract).toContain("never use legacy `.frame` millisecond timelines");
     expect(contract).toContain("seconds-based `data-start`");
     expect(contract).toContain("Root `data-duration` must cover the last scene/audio/clip");
+    expect(contract).toContain("Delivery requirements contract");
+    expect(contract).toContain('data-ipw-caption="true"');
+    expect(contract).toContain('data-ipw-bgm="true"');
+    expect(contract).toContain("animationReferences");
+    expect(contract).toContain("unresolved earlier requests");
+    expect(contract).toContain("If valid, stop using tools and answer immediately");
+    expect(contract).toContain("do not follow it with browser/screenshot/eval calls");
+    expect(contract).toContain("manual tag counting, parser scripts, file rereads, or extra shell validation");
+    expect(contract).toContain("at most 20 seconds");
+    expect(contract).toContain("on timeout abandon it without retrying");
+    expect(contract).toContain("Never start either auxiliary operation after validation");
+    expect(contract).toContain("authoritative completion gate");
     expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
     expect(contract).toContain("top-left/bottom-right placement");
     expect(contract).toContain("and local fallback");
@@ -580,6 +831,11 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("/workspace/current/video/ses_current_video/voiceover.json");
     expect(contract).toContain("ipollowork_extension_call");
     expect(contract).toContain("speech_synthesize_workspace_batch");
+    expect(contract).toContain("built into the installed desktop application");
+    expect(contract).toContain("Never check for, install, authenticate, or recommend HeyGen/HyperFrames CLI");
+    expect(contract).toContain("never ask the user to run an auth/login command");
+    expect(contract).toContain("ipollowork_extension_list_actions");
+    expect(contract).toContain("do not replace it with user setup instructions or an external CLI");
     expect(contract).toContain("Never use generic `speech_synthesize`");
     expect(contract).toContain("voiceId");
     expect(contract).toContain("assets/voiceover-<revision>-<scene>.mp3");
@@ -599,6 +855,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never overlap");
     expect(contract).toContain("root duration");
     expect(contract).toContain("GSAP");
+    expect(contract).toContain("requirements.captions: true");
     expect(contract).toContain("another provider");
   });
 

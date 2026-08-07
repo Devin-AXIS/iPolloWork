@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
@@ -35,6 +36,7 @@ export function FlatTimingRow({
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const { start, duration, inferred: derived } = deriveElementTiming(element, animations);
   const end = start + duration;
 
@@ -90,7 +92,7 @@ export function FlatTimingRow({
   const cell = (label: string, value: string, onCommit: (next: string) => void) => (
     <div className="flex h-[34px] min-w-0 items-center justify-between gap-1.5 rounded-[6px] border border-[#f5f6f9] bg-[#f5f6f9] px-[10px] py-px dark:border-panel-input dark:bg-panel-input">
       <span className="flex-shrink-0 text-[10px] font-normal text-[#878984] dark:text-panel-text-4">
-        {label}
+        {tx(label)}
       </span>
       <span className="min-w-0 font-sans text-[13px] font-normal text-[#242522] dark:text-panel-text-0">
         <CommitField
@@ -111,7 +113,7 @@ export function FlatTimingRow({
       {cell("Duration", formatTimingValue(duration), commitDuration)}
       {derived && (
         <p className="col-span-2 mt-1 text-[10px] leading-snug text-panel-text-3">
-          Inferred from this element's animation — edit to pin an explicit clip range.
+          {tx("Inferred from this element's animation — edit to pin an explicit clip range.")}
         </p>
       )}
     </div>
@@ -141,6 +143,7 @@ export function FlatMotionSection({
   onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
 } & GsapAnimationEditCallbacks) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   return (
     <div className="space-y-3">
@@ -156,13 +159,12 @@ export function FlatMotionSection({
         <>
           {multipleTimelines && (
             <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
-              This file has multiple GSAP timelines. Animation editing is disabled to prevent data
-              loss — consolidate into a single timeline to enable editing.
+              {tx("This file has multiple GSAP timelines. Animation editing is disabled to prevent data loss — consolidate into a single timeline to enable editing.")}
             </p>
           )}
           {unsupportedTimelinePattern && (
             <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
-              This timeline uses a computed key the editor can&apos;t resolve statically.
+              {tx("This timeline uses a computed key the editor can't resolve statically.")}
             </p>
           )}
           {!multipleTimelines && !unsupportedTimelinePattern && (
@@ -183,7 +185,7 @@ export function FlatMotionSection({
                   <div key={animation.id} className="grid gap-2">
                     <div className="grid grid-cols-[minmax(0,1fr)_36px] gap-3">
                       <div className="flex h-[34px] items-center justify-between rounded-[6px] bg-panel-input pl-2 pr-4">
-                        <span className="text-[10px] text-[#858a94]">Animation</span>
+                        <span className="text-[10px] text-[#858a94]">{tx("Animation")}</span>
                         <span className="truncate pl-3 text-[13px] text-[#24262b] dark:text-panel-text-1">
                           {METHOD_LABELS[animation.method] ??
                             `Animation ${String(index + 1).padStart(2, "0")}`}
@@ -208,7 +210,7 @@ export function FlatMotionSection({
                           className="flex h-[34px] items-center justify-between rounded-[6px] bg-panel-input px-[10px]"
                         >
                           <span className="text-[10px] text-[#858a94]">
-                            {kind === "position" ? "Start" : "Duration"}
+                            {tx(kind === "position" ? "Start" : "Duration")}
                           </span>
                           <span className="w-[62px] text-right text-[13px] text-[#24262b] dark:text-panel-text-1">
                             <CommitField
@@ -238,7 +240,7 @@ export function FlatMotionSection({
                         }}
                         className="h-[34px] rounded-[6px] bg-panel-input px-2 text-[11px] text-panel-text-2 transition-colors hover:text-panel-text-0"
                       >
-                        {ADD_METHOD_LABELS[method] ?? method}
+                        {tx(ADD_METHOD_LABELS[method] ?? method)}
                       </button>
                     ))}
                     <button
@@ -246,16 +248,16 @@ export function FlatMotionSection({
                       onClick={() => setAddMenuOpen(false)}
                       className="col-span-2 h-7 text-[11px] text-panel-text-3 hover:text-panel-text-1"
                     >
-                      Cancel
+                      {tx("Cancel")}
                     </button>
                   </div>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setAddMenuOpen(true)}
-                    aria-label="Add animation"
+                    aria-label={tx("Add animation")}
                     className="flex h-[34px] w-full items-center justify-center rounded-[6px] border-[0.5px] border-[#858a94] text-[#858a94] transition-colors hover:border-[#24262b] hover:text-[#24262b] dark:hover:border-panel-text-1 dark:hover:text-panel-text-1"
-                    title="Add a new animation effect to this element"
+                    title={tx("Add a new animation effect to this element")}
                   >
                     <Plus size={16} />
                   </button>

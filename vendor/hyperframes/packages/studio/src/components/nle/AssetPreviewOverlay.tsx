@@ -12,19 +12,22 @@
  * Switching to another not-added asset replaces the current preview.
  */
 import { useEffect, useCallback } from "react";
-import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
+import { VIDEO_EXT, IMAGE_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { shouldDismissAssetPreview } from "../../utils/assetPreviewDismiss";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import { HtmlIllustrationPreview } from "../sidebar/HtmlIllustrationPreview";
+import { useStudioI18n } from "../../i18n";
 
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
 }
 
-type AssetKind = "image" | "video" | "audio";
+type AssetKind = "image" | "video" | "audio" | "html";
 
 function resolveAssetKind(path: string): AssetKind {
+  if (isHtmlIllustrationAsset(path)) return "html";
   if (VIDEO_EXT.test(path)) return "video";
   if (IMAGE_EXT.test(path)) return "image";
   return "audio";
@@ -57,6 +60,15 @@ function AssetPreviewMedia({
       />
     );
   }
+  if (kind === "html") {
+    return (
+      <HtmlIllustrationPreview
+        src={serveUrl}
+        title={name}
+        className="w-[52vw] max-w-full rounded"
+      />
+    );
+  }
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-4">
       <svg
@@ -78,6 +90,7 @@ function AssetPreviewMedia({
 }
 
 export function AssetPreviewOverlay() {
+  const { tx } = useStudioI18n();
   const previewAsset = useAssetPreviewStore((s) => s.previewAsset);
   const previewProjectId = useAssetPreviewStore((s) => s.previewProjectId);
   const clearPreviewAsset = useAssetPreviewStore((s) => s.clearPreviewAsset);
@@ -129,7 +142,7 @@ export function AssetPreviewOverlay() {
       className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/20"
       onClick={clearPreviewAsset}
       role="dialog"
-      aria-label={`Preview: ${name}`}
+      aria-label={tx(`Preview: ${name}`)}
     >
       {/* Floating preview card — compact, canvas stays visible around it */}
       <div
@@ -143,7 +156,7 @@ export function AssetPreviewOverlay() {
             e.stopPropagation();
             clearPreviewAsset();
           }}
-          aria-label="Close preview"
+          aria-label={tx("Close preview")}
         >
           <svg
             width="12"

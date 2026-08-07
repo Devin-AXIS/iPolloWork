@@ -247,6 +247,7 @@ export function getTimelineElementSelector(el: Element): string | undefined {
     const classes = el.className.split(/\s+/).filter(Boolean);
     const firstClass = classes.find((className) => className !== "clip") ?? classes[0];
     if (firstClass) return `.${CSS.escape(firstClass)}`;
+    return el.tagName.toLowerCase();
   }
   return undefined;
 }

@@ -12,6 +12,7 @@ import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
 import { DetailField } from "./propertyPanelPrimitives";
 import { FlatDropdown } from "./propertyPanelFlatSelectRow";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import { formatCssColor, hsvToRgb, parseCssColor, rgbToHsv, toHexColor } from "./colorValue";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 
@@ -94,6 +95,7 @@ export function ImageFillField({
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const imageAssets = useMemo(() => assets.filter((a) => IMAGE_EXT.test(a)), [assets]);
@@ -143,7 +145,7 @@ export function ImageFillField({
           />
         </div>
         <div
-          className="flex h-[100px] items-center justify-center overflow-hidden rounded-[8px] border border-[#ebebeb]"
+          className="flex h-[100px] items-center justify-center overflow-hidden rounded-[8px] border border-[var(--hf-studio-divider)]"
           style={{
             backgroundColor: "white",
             backgroundImage: selectedAsset
@@ -159,13 +161,13 @@ export function ImageFillField({
             onClick={() => fileInputRef.current?.click()}
             className="rounded-[8px] bg-black px-4 py-2 text-[10px] text-white shadow-sm transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {uploading ? "Uploading…" : "Choose Media"}
+            {tx(uploading ? "Uploading…" : "Choose Media")}
           </button>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            aria-label="Choose image media"
+            aria-label={tx("Choose image media")}
             className="hidden"
             onChange={async (event) => {
               await handleUpload(event.target.files);
@@ -181,7 +183,7 @@ export function ImageFillField({
     <div className="space-y-4">
       <div className="grid min-w-0 gap-1.5">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <span className={LABEL}>Project asset</span>
+          <span className={LABEL}>{tx("Project asset")}</span>
           <button
             type="button"
             disabled={disabled || uploading}
@@ -193,13 +195,13 @@ export function ImageFillField({
             }`}
           >
             <Plus size={12} className="flex-shrink-0" />
-            <span className="truncate">{uploading ? "Uploading…" : "Upload image"}</span>
+            <span className="truncate">{tx(uploading ? "Uploading…" : "Upload image")}</span>
           </button>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            aria-label="Upload image asset"
+            aria-label={tx("Upload image asset")}
             disabled={disabled || uploading}
             className="hidden"
             onChange={async (event) => {
@@ -234,7 +236,7 @@ export function ImageFillField({
                 }}
                 className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
               >
-                <option value="">None</option>
+                <option value="">{tx("None")}</option>
                 {imageAssets.map((asset) => (
                   <option key={asset} value={asset}>
                     {asset}
@@ -245,7 +247,7 @@ export function ImageFillField({
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-neutral-800 bg-neutral-900/50 px-3 py-3 text-[11px] leading-5 text-neutral-500">
-            No image assets yet. Upload one here and Studio will also add it to the Assets tab.
+            {tx("No image assets yet. Upload one here and Studio will also add it to the Assets tab.")}
           </div>
         )}
       </div>
@@ -276,6 +278,7 @@ export function GradientField({
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const saturationRef = useRef<HTMLDivElement | null>(null);
@@ -422,10 +425,10 @@ export function GradientField({
           style={{ left: panelPosition?.left ?? -9999, top: panelPosition?.top ?? -9999 }}
         >
           <div className="flex h-12 items-center justify-between border-b border-[#e5e5e5] px-4 dark:border-panel-hairline">
-            <span className="text-[14px] font-semibold tracking-[-0.3px]">Gradient</span>
+            <span className="text-[14px] font-semibold tracking-[-0.3px]">{tx("Gradient")}</span>
             <button
               type="button"
-              aria-label="Close gradient editor"
+              aria-label={tx("Close gradient editor")}
               onClick={() => setOpen(false)}
               className="flex size-7 items-center justify-center rounded-[8px] hover:bg-[#f5f5f5] dark:hover:bg-panel-input"
             >
@@ -442,7 +445,7 @@ export function GradientField({
                   <button
                     key={`${item.color}-${index}`}
                     type="button"
-                    aria-label={`Select gradient stop ${index + 1}`}
+                    aria-label={tx(`Select gradient stop ${index + 1}`)}
                     onClick={() => setSelectedStop(index)}
                     className={`absolute top-1/2 flex size-[26px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[7px] border bg-white shadow-sm ${index === stopIndex ? "border-black" : "border-[#dedede]"}`}
                     style={{ left: `${item.position}%` }}
@@ -456,7 +459,7 @@ export function GradientField({
               </div>
               <button
                 type="button"
-                aria-label="Reverse gradient"
+                aria-label={tx("Reverse gradient")}
                 onClick={() => {
                   track("button", "Reverse gradient");
                   commit({
@@ -474,7 +477,7 @@ export function GradientField({
             <div
               ref={saturationRef}
               role="slider"
-              aria-label="Saturation and brightness"
+              aria-label={tx("Saturation and brightness")}
               tabIndex={0}
               className="relative h-[165px] cursor-crosshair overflow-hidden rounded-[8px] border border-[#d9d9d9]"
               style={{ backgroundColor: hueColor }}
@@ -500,7 +503,7 @@ export function GradientField({
             <div className="grid grid-cols-[28px_minmax(0,1fr)] items-center gap-4">
               <button
                 type="button"
-                aria-label="Pick color from screen"
+                aria-label={tx("Pick color from screen")}
                 disabled={!window.EyeDropper}
                 onClick={async () => {
                   const Picker = window.EyeDropper;
@@ -515,7 +518,7 @@ export function GradientField({
               <div className="grid gap-[11px]">
                 <input
                   type="range"
-                  aria-label="Hue"
+                  aria-label={tx("Hue")}
                   min={0}
                   max={360}
                   value={hsv.hue}
@@ -527,7 +530,7 @@ export function GradientField({
                 />
                 <input
                   type="range"
-                  aria-label="Opacity"
+                  aria-label={tx("Opacity")}
                   min={0}
                   max={100}
                   value={Math.round(color.alpha * 100)}
@@ -560,7 +563,7 @@ export function GradientField({
               />
               {colorMode === "hex" ? (
                 <input
-                  aria-label="Hex color"
+                  aria-label={tx("Hex color")}
                   value={toHexColor(color).slice(1).toUpperCase()}
                   onChange={(event) => {
                     const next = parseCssColor(`#${event.target.value}`);
@@ -572,7 +575,7 @@ export function GradientField({
                 fields.map((field) => (
                   <input
                     key={field.label}
-                    aria-label={field.label}
+                    aria-label={tx(field.label)}
                     type="number"
                     min={0}
                     max={field.max}
@@ -586,7 +589,7 @@ export function GradientField({
               )}
               <label className="flex w-12 items-center justify-center gap-0.5 text-[12px]">
                 <input
-                  aria-label="Alpha percent"
+                  aria-label={tx("Alpha percent")}
                   type="number"
                   min={0}
                   max={100}
@@ -609,7 +612,7 @@ export function GradientField({
                 <button
                   key={item}
                   type="button"
-                  aria-label={`Use recommended color ${item}`}
+                  aria-label={tx(`Use recommended color ${item}`)}
                   onClick={() => commitColor(item)}
                   className="aspect-square rounded-[7px] border border-[#dedede]"
                   style={{ backgroundColor: item }}
@@ -628,14 +631,14 @@ export function GradientField({
         ref={triggerRef}
         type="button"
         disabled={disabled}
-        aria-label="Edit gradient"
+        aria-label={tx("Edit gradient")}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         className="flex h-[34px] w-full items-center justify-between rounded-[8px] bg-panel-input pl-2 pr-4"
       >
         <span className="flex items-center gap-2 text-[13px] text-[#24262b] dark:text-panel-text-1">
           <span className="size-5 rounded-[4px]" style={{ backgroundImage: preview }} />
-          Gradient
+          {tx("Gradient")}
         </span>
         <ChevronDown size={16} className="text-[#858a94]" />
       </button>

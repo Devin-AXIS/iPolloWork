@@ -4,6 +4,7 @@ import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/s
 import { usePlayerStore } from "../../player/store/playerStore";
 import magnetIconSrc from "../../icons/figmaToolbarMagnet.svg?url";
 import gridIconSrc from "../../icons/figmaToolbarGrid.svg?url";
+import { useStudioI18n } from "../../i18n";
 
 const SNAP_TOOLBAR_SLOT_ID = "hf-canvas-snap-toolbar-slot";
 const GRID_TOOLBAR_SLOT_ID = "hf-canvas-grid-toolbar-slot";
@@ -36,6 +37,7 @@ interface SnapToolbarProps {
 
 // fallow-ignore-next-line complexity
 export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolbarProps) {
+  const { tx } = useStudioI18n();
   const [prefs, setPrefs] = useState(readSnapPrefs);
   const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
   const [toolbarSlots, setToolbarSlots] = useState<{
@@ -119,8 +121,8 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
         type="button"
         className={`${iconButton} ${prefs.snapEnabled ? "bg-[#f2f2f0]" : ""}`}
         onClick={toggleSnap}
-        title={prefs.snapEnabled ? "Snapping enabled" : "Snapping disabled"}
-        aria-label="Toggle snapping"
+        title={tx(prefs.snapEnabled ? "Snapping enabled" : "Snapping disabled")}
+        aria-label={tx("Toggle snapping")}
         aria-pressed={prefs.snapEnabled}
       >
         <img src={magnetIconSrc} width="16" height="16" alt="" aria-hidden="true" />
@@ -138,8 +140,8 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
         event.preventDefault();
         setGridPopoverOpen((open) => !open);
       }}
-      title={prefs.gridVisible ? "Grid visible (G)" : "Grid hidden (G)"}
-      aria-label="Toggle grid"
+      title={tx(prefs.gridVisible ? "Grid visible (G)" : "Grid hidden (G)")}
+      aria-label={tx("Toggle grid")}
       aria-pressed={prefs.gridVisible}
     >
       <img src={gridIconSrc} width="16" height="16" alt="" aria-hidden="true" />
@@ -155,7 +157,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
         style={{ top: gridButtonRect.bottom + 4, right: window.innerWidth - gridButtonRect.right }}
       >
         <label className="mb-2 flex items-center justify-between text-xs text-white/80">
-          <span>Grid spacing</span>
+          <span>{tx("Grid spacing")}</span>
           <input
             type="number"
             min={10}
@@ -178,7 +180,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
             onChange={() => updatePrefs({ snapToGrid: !prefs.snapToGrid })}
             className="accent-studio-accent"
           />
-          <span>Snap to grid</span>
+          <span>{tx("Snap to grid")}</span>
         </label>
       </div>,
       document.body,

@@ -3,7 +3,7 @@ import type { EnvService } from "../env-file.js";
 import type { ServerConfig } from "../types.js";
 import { link, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, posix } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { resolveWorkspaceFile, withTemporaryWorkspaceObject, workspaceForContext } from "./storage.js";
 
 // The Alibaba adapter stays internal to this module. The public action
@@ -17,6 +17,8 @@ const MAX_TRANSLATION_AUDIO_CHARS = 16 * 1024 * 1024;
 const MAX_SYNTHESIZED_AUDIO_BYTES = 50 * 1024 * 1024;
 const MAX_VOICEOVER_BATCH_SCENES = 24;
 const VOICEOVER_BATCH_CONCURRENCY = 3;
+const MAX_VOICEOVER_AUDIO_CACHE_BYTES = 128 * 1024 * 1024;
+const MAX_VOICEOVER_AUDIO_CACHE_ENTRIES = 128;
 const COSYVOICE_V3_FLASH = "cosyvoice-v3-flash";
 const VOICEOVER_READING_BUFFER_SECONDS = 0.25;
 const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
@@ -29,6 +31,58 @@ const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
 };
 
 type JsonRecord = Record<string, unknown>;
+
+const voiceoverAudioCache = new Map<string, Buffer>();
+let voiceoverAudioCacheBytes = 0;
+
+function voiceoverAudioCacheKey(input: {
+  apiKey: string;
+  baseUrl: string;
+  text: string;
+  model: string;
+  voice: string;
+  sampleRate?: number;
+}) {
+  return createHash("sha256")
+    .update(input.apiKey)
+    .update("\0")
+    .update(input.baseUrl)
+    .update("\0")
+    .update(input.model)
+    .update("\0")
+    .update(input.voice)
+    .update("\0")
+    .update(String(input.sampleRate ?? ""))
+    .update("\0")
+    .update(input.text)
+    .digest("hex");
+}
+
+function readCachedVoiceoverAudio(key: string) {
+  const audio = voiceoverAudioCache.get(key);
+  if (!audio) return null;
+  voiceoverAudioCache.delete(key);
+  voiceoverAudioCache.set(key, audio);
+  return audio;
+}
+
+function cacheVoiceoverAudio(key: string, audio: Buffer) {
+  if (audio.byteLength > MAX_VOICEOVER_AUDIO_CACHE_BYTES) return;
+  const existing = voiceoverAudioCache.get(key);
+  if (existing) voiceoverAudioCacheBytes -= existing.byteLength;
+  voiceoverAudioCache.delete(key);
+  voiceoverAudioCache.set(key, audio);
+  voiceoverAudioCacheBytes += audio.byteLength;
+  while (
+    voiceoverAudioCache.size > MAX_VOICEOVER_AUDIO_CACHE_ENTRIES
+    || voiceoverAudioCacheBytes > MAX_VOICEOVER_AUDIO_CACHE_BYTES
+  ) {
+    const oldest = voiceoverAudioCache.entries().next().value;
+    if (!oldest) break;
+    voiceoverAudioCache.delete(oldest[0]);
+    voiceoverAudioCacheBytes -= oldest[1].byteLength;
+  }
+}
 
 function mediaProviderFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const desktopFetch: unknown = Reflect.get(globalThis, Symbol.for("ipollowork.mediaProviderFetch"));
@@ -106,6 +160,13 @@ type VoiceoverTimelineIssue = {
   code: string;
   message: string;
   sceneId?: string;
+};
+
+type VideoTimelineRequirements = {
+  voiceover?: boolean;
+  captions?: boolean;
+  bgm?: boolean;
+  animationReferences?: string[];
 };
 
 type TimelineNode = {
@@ -218,7 +279,11 @@ function isVoiceoverAssetPath(value: string) {
   return /(?:^|\/)(?:vo_\d+|voiceover(?:_\d+)?|voiceover-[^/]+|narration-[^/]+)\.mp3$/i.test(value.replace(/\\/g, "/"));
 }
 
-async function listWorkspaceVoiceoverAssets(root: string, relativeDirectory: string): Promise<string[]> {
+async function listWorkspaceAssets(
+  root: string,
+  relativeDirectory: string,
+  accepts: (path: string) => boolean,
+): Promise<string[]> {
   const assets: string[] = [];
   async function visit(relativePath: string) {
     const absolute = resolveWorkspaceFile(root, relativePath).absolutePath;
@@ -228,7 +293,7 @@ async function listWorkspaceVoiceoverAssets(root: string, relativeDirectory: str
         const child = `${relativePath.replace(/\/$/, "")}/${entry.name}`.replace(/^\/+/, "");
         if (entry.isDirectory()) {
           await visit(child);
-        } else if (entry.isFile() && isVoiceoverAssetPath(child)) {
+        } else if (entry.isFile() && accepts(child)) {
           assets.push(child);
         }
       }
@@ -247,7 +312,11 @@ function finiteTimelineNumber(node: TimelineNode, name: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-export function validateVoiceoverTimelineHtml(html: string, options: { voiceoverAssets?: string[] } = {}) {
+export function validateVoiceoverTimelineHtml(html: string, options: {
+  voiceoverAssets?: string[];
+  mediaAssets?: string[];
+  requirements?: VideoTimelineRequirements;
+} = {}) {
   const epsilon = 0.001;
   const issues: VoiceoverTimelineIssue[] = [];
   const nodes = timelineNodes(html);
@@ -324,6 +393,65 @@ export function validateVoiceoverTimelineHtml(html: string, options: { voiceover
       start: finiteTimelineNumber(node, "data-start"),
       duration: finiteTimelineNumber(node, "data-duration"),
     }));
+  const captions = nodes.filter((node) => node.attributes.get("data-ipw-caption") === "true");
+  const bgmNodes = nodes.filter((node) => node.tagName === "audio" && node.attributes.get("data-ipw-bgm") === "true");
+  const implementedAnimationReferences = new Set(
+    nodes.flatMap((node) => (node.attributes.get("data-ipw-animation-reference") ?? "")
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)),
+  );
+  const requirements = options.requirements ?? {};
+  if (requirements.voiceover && voiceovers.length === 0) {
+    issues.push({ code: "required_voiceover_missing", message: "The user requested narration, but the timeline has no data-ipw-voiceover audio nodes." });
+  }
+  if (requirements.captions && captions.length === 0) {
+    issues.push({ code: "required_captions_missing", message: "The user requested captions, but the timeline has no data-ipw-caption clips." });
+  }
+  for (const caption of captions) {
+    const start = finiteTimelineNumber(caption, "data-start");
+    const duration = finiteTimelineNumber(caption, "data-duration");
+    if (!caption.classNames.has("clip") || start == null || duration == null || duration <= 0) {
+      issues.push({ code: "invalid_caption_window", message: "Every caption must be a timed .clip with explicit data-start and positive data-duration." });
+    }
+    const dataHfId = caption.attributes.get("data-hf-id")?.trim() ?? "";
+    const id = caption.attributes.get("id")?.trim() ?? "";
+    if (dataHfId && !id && html.includes(`#${dataHfId}`)) {
+      issues.push({
+        code: "caption_animation_target_missing",
+        message: `Caption ${dataHfId} is targeted as #${dataHfId}, but it has no matching id attribute and can remain invisible. Use a matching id or a data-hf-id selector.`,
+      });
+    }
+    const hasInfiniteAnimation = Array.from(caption.classNames).some((className) => {
+      const escapedClassName = className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`\\.${escapedClassName}[^{}]*\\{[^{}]*animation\\s*:[^;{}]*\\binfinite\\b`, "i").test(html);
+    });
+    if (hasInfiniteAnimation) {
+      issues.push({
+        code: "non_seek_safe_caption_animation",
+        message: "Caption animation must use a finite seek-safe timeline; infinite CSS animation can diverge between preview and render.",
+      });
+    }
+  }
+  if (requirements.bgm && bgmNodes.length === 0) {
+    issues.push({ code: "required_bgm_missing", message: "The user requested BGM, but the timeline has no data-ipw-bgm audio node." });
+  }
+  for (const bgm of bgmNodes) {
+    const source = (bgm.attributes.get("src") ?? "").replace(/\\/g, "/").replace(/^\.\//, "");
+    const start = finiteTimelineNumber(bgm, "data-start");
+    const duration = finiteTimelineNumber(bgm, "data-duration");
+    const available = new Set((options.mediaAssets ?? []).map((asset) => asset.replace(/\\/g, "/").replace(/^\.\//, "")));
+    const fileName = source.split("/").pop() ?? source;
+    const sourceExists = options.mediaAssets === undefined || available.has(source) || Array.from(available).some((asset) => asset.endsWith(`/${fileName}`));
+    if (!source || start == null || duration == null || duration <= 0 || !sourceExists) {
+      issues.push({ code: "invalid_bgm_timeline", message: "BGM must reference a real local media file and have explicit data-start and positive data-duration." });
+    }
+  }
+  for (const reference of requirements.animationReferences ?? []) {
+    if (!implementedAnimationReferences.has(reference)) {
+      issues.push({ code: "required_animation_missing", message: `The selected animation ${reference} is not marked on an implemented timeline element.` });
+    }
+  }
   if (voiceovers.length > 0 && containsManualVoiceoverPlayback(html)) {
     issues.push({
       code: "manual_voiceover_playback",
@@ -404,6 +532,9 @@ export function validateVoiceoverTimelineHtml(html: string, options: { voiceover
     sceneCount: scenes.length,
     voiceoverCount: voiceovers.length,
     voiceoverAssetCount: normalizedAssets.length,
+    captionCount: captions.length,
+    bgmCount: bgmNodes.length,
+    animationReferences: Array.from(implementedAnimationReferences),
     compositionDurationSeconds: compositionDuration,
     requiredDurationSeconds: roundVoiceoverTime(latestEnd + (voiceovers.length ? VOICEOVER_READING_BUFFER_SECONDS : 0)),
     issues,
@@ -422,7 +553,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "speech_synthesize",
     title: "Synthesize speech",
-    description: "Create speech from text with CosyVoice. The result contains a temporary audio URL from Model Studio.",
+    description: "Built-in iPolloWork CosyVoice action. Create speech without installing or authenticating an external CLI; the result contains a temporary audio URL from Model Studio.",
     inputSchema: {
       type: "object",
       properties: {
@@ -440,7 +571,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "speech_synthesize_workspace_file",
     title: "Synthesize speech to a workspace file",
-    description: "Create an MP3 voiceover, save it atomically inside the active workspace, and return its measured frame duration for video synchronization.",
+    description: "Built-in iPolloWork CosyVoice action. Create an MP3 voiceover without an external CLI, save it atomically inside the active workspace, and return its measured frame duration for video synchronization.",
     inputSchema: {
       type: "object",
       properties: {
@@ -463,7 +594,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "speech_synthesize_workspace_batch",
     title: "Synthesize scene voiceovers to workspace files",
-    description: "Create a bounded batch of scene MP3 voiceovers with one tool call, synthesize up to three scenes concurrently, and return ordered non-overlapping timeline allocations.",
+    description: "Built-in iPolloWork CosyVoice action. Without installing an external CLI, create a bounded batch of scene MP3 voiceovers, synthesize up to three scenes concurrently, and return ordered non-overlapping timeline allocations.",
     inputSchema: {
       type: "object",
       properties: {
@@ -504,6 +635,17 @@ export const MEDIA_EXTENSION_ACTIONS = [
       type: "object",
       properties: {
         sourcePath: { type: "string", description: "Video index.html path relative to the active workspace." },
+        requirements: {
+          type: "object",
+          description: "Deliverables explicitly requested by the user in the current or unresolved earlier turns.",
+          properties: {
+            voiceover: { type: "boolean" },
+            captions: { type: "boolean" },
+            bgm: { type: "boolean" },
+            animationReferences: { type: "array", items: { type: "string" } },
+          },
+          additionalProperties: false,
+        },
       },
       required: ["sourcePath"],
       additionalProperties: false,
@@ -938,20 +1080,32 @@ async function synthesizeWorkspaceVoiceover(input: {
   voice: string;
   sampleRate?: number;
 }): Promise<SynthesizedWorkspaceVoiceover> {
-  const providerResponse = await requestProviderJson({
+  const cacheKey = voiceoverAudioCacheKey({
     apiKey: input.apiKey,
-    url: endpoint(input.baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
-    body: {
-      model: input.model,
-      input: {
-        text: input.scene.text,
-        ...(input.voice ? { voice: input.voice } : {}),
-        format: "mp3",
-        ...(input.sampleRate ? { sample_rate: input.sampleRate } : {}),
-      },
-    },
+    baseUrl: input.baseUrl,
+    text: input.scene.text,
+    model: input.model,
+    voice: input.voice,
+    sampleRate: input.sampleRate,
   });
-  const audio = await downloadSynthesizedAudio(synthesizedAudioUrl(providerResponse));
+  let audio = readCachedVoiceoverAudio(cacheKey);
+  if (!audio) {
+    const providerResponse = await requestProviderJson({
+      apiKey: input.apiKey,
+      url: endpoint(input.baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
+      body: {
+        model: input.model,
+        input: {
+          text: input.scene.text,
+          ...(input.voice ? { voice: input.voice } : {}),
+          format: "mp3",
+          ...(input.sampleRate ? { sample_rate: input.sampleRate } : {}),
+        },
+      },
+    });
+    audio = await downloadSynthesizedAudio(synthesizedAudioUrl(providerResponse));
+    cacheVoiceoverAudio(cacheKey, audio);
+  }
   const workspace = workspaceForContext(input.config, input.context);
   const destination = resolveWorkspaceFile(workspace.path, input.scene.outputPath);
   const temporaryPath = `${destination.absolutePath}.${randomUUID()}.tmp`;
@@ -1345,8 +1499,19 @@ export async function callMediaExtensionAction(
     }
     const sourceDirectory = posix.dirname(source.relativePath);
     const assetsDirectory = sourceDirectory === "." ? "assets" : `${sourceDirectory}/assets`;
-    const voiceoverAssets = await listWorkspaceVoiceoverAssets(workspace.path, assetsDirectory);
-    const output = validateVoiceoverTimelineHtml(await readFile(source.absolutePath, "utf8"), { voiceoverAssets });
+    const mediaAssets = await listWorkspaceAssets(workspace.path, assetsDirectory, (path) => /\.(?:mp3|wav|m4a|aac|ogg|flac)$/i.test(path));
+    const voiceoverAssets = mediaAssets.filter(isVoiceoverAssetPath);
+    const requirementInput = readRecord(args, "requirements");
+    const output = validateVoiceoverTimelineHtml(await readFile(source.absolutePath, "utf8"), {
+      voiceoverAssets,
+      mediaAssets,
+      requirements: {
+        voiceover: readOptionalBoolean(requirementInput, "voiceover") === true,
+        captions: readOptionalBoolean(requirementInput, "captions") === true,
+        bgm: readOptionalBoolean(requirementInput, "bgm") === true,
+        animationReferences: readStringArray(requirementInput, "animationReferences"),
+      },
+    });
     return {
       ok: true,
       extensionId: MEDIA_EXTENSION_ID,

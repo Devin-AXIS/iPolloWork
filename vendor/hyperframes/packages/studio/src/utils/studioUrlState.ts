@@ -22,6 +22,10 @@ export interface StudioUrlState {
 const VALID_TABS: RightPanelTab[] = [
   "layers",
   "design",
+  "illustration",
+  "assets",
+  "voice",
+  "style",
   "catalog",
   "effects",
   "renders",

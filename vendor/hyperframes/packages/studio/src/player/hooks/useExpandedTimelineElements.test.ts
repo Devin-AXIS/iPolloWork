@@ -129,11 +129,50 @@ describe("expanded timeline hierarchy", () => {
 
     expect(result[1]).toMatchObject({
       id: "tool-pill",
+      key: "compositions/scene.html:tool-pill:0",
       expandedDisplayHostKey: "index.html#scene",
       expandedParentStart: 2,
       start: 2,
       duration: 6,
     });
+  });
+
+  test("keeps same-tag DOM children on distinct selector-index keys", () => {
+    const parent: TimelineElement = {
+      id: "brand",
+      key: "index.html#brand",
+      domId: "brand",
+      tag: "section",
+      start: 0,
+      duration: 6,
+      track: 0,
+      compositionSrc: "compositions/brand.html",
+    };
+    const children = [0, 1].map((selectorIndex) => ({
+      id: `compositions/brand.html:span:${selectorIndex}`,
+      parentId: "brand",
+      hostId: "brand",
+      label: "span clip",
+      tagName: "span",
+      selector: "span",
+      selectorIndex,
+      sourceFile: "compositions/brand.html",
+      stackingContextId: "root",
+    }));
+
+    const result = buildExpandedElements(
+      [parent],
+      [],
+      new Map(children.map((child) => [child.id, child.parentId])),
+      "brand",
+      "brand",
+      children,
+    );
+
+    expect(result.slice(1).map((element) => element.key)).toEqual([
+      "compositions/brand.html:span:0",
+      "compositions/brand.html:span:1",
+    ]);
   });
 
   test("rebases stale manifest children immediately after a parent move", () => {

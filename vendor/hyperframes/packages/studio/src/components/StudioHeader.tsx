@@ -1,8 +1,9 @@
+import { useEffect, useState } from "react";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
 } from "./editor/manualEditingAvailability";
-import { useStudioShellContext } from "../contexts/StudioContext";
+import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
@@ -23,10 +24,23 @@ export function StudioHeader({
   previewMode,
   onPreviewModeChange,
 }: StudioHeaderProps) {
-  const { renderQueue, projectId } = useStudioShellContext();
+  const { renderQueue, projectId, previewIframeRef } = useStudioShellContext();
+  const { compositionLoading, refreshKey } = useStudioPlaybackContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const { t } = useStudioI18n();
   const isRendering = renderQueue.isRendering;
+  const [compositionTitle, setCompositionTitle] = useState(projectId);
+
+  useEffect(() => {
+    const preview = previewIframeRef.current;
+    const updateTitle = () => {
+      const title = preview?.contentDocument?.title.trim();
+      setCompositionTitle(title || projectId);
+    };
+    updateTitle();
+    preview?.addEventListener("load", updateTitle);
+    return () => preview?.removeEventListener("load", updateTitle);
+  }, [compositionLoading, previewIframeRef, projectId, refreshKey]);
 
   const toggleProperties = () => {
     if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
@@ -62,15 +76,15 @@ export function StudioHeader({
   };
 
   return (
-    <header className="relative flex h-[49px] flex-shrink-0 items-center border-b border-[#ebebeb] bg-white/90 px-3 text-[#1d1d1b] backdrop-blur-sm">
+    <header className="hf-studio-header relative flex h-[49px] flex-shrink-0 items-center border-b border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-header-bg)] px-3 text-[var(--hf-panel-text-1)] backdrop-blur-sm">
       <div className="min-w-0 flex-1">
-        <span className="block max-w-64 truncate text-[13px] font-medium text-[#71736e]" title={projectId}>
-          {projectId}
+        <span className="block max-w-64 truncate text-[13px] font-medium text-[var(--hf-panel-text-3)]" title={compositionTitle}>
+          {compositionTitle}
         </span>
       </div>
 
       <div
-        className="absolute left-1/2 flex h-8 -translate-x-1/2 items-center gap-0.5 rounded-[9px] bg-[#ededeb] p-[3px]"
+        className="absolute left-1/2 flex h-8 -translate-x-1/2 items-center gap-0.5 rounded-[9px] bg-[var(--hf-panel-input)] p-[3px]"
         role="tablist"
         aria-label={t("header.viewLabel")}
       >
@@ -81,8 +95,8 @@ export function StudioHeader({
           onClick={() => setPreviewMode(false)}
           className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${
             !previewMode
-              ? "bg-white font-semibold text-[#1d1d1b] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
-              : "font-medium text-[#777974] hover:text-[#1d1d1b]"
+              ? "bg-[var(--hf-panel-surface)] font-semibold text-[var(--hf-panel-text-0)] shadow-[0_1px_2px_rgba(0,0,0,0.24)]"
+              : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"
           }`}
         >
           {t("header.edit")}
@@ -94,8 +108,8 @@ export function StudioHeader({
           onClick={() => setPreviewMode(true)}
           className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${
             previewMode
-              ? "bg-white font-semibold text-[#1d1d1b] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
-              : "font-medium text-[#777974] hover:text-[#1d1d1b]"
+              ? "bg-[var(--hf-panel-surface)] font-semibold text-[var(--hf-panel-text-0)] shadow-[0_1px_2px_rgba(0,0,0,0.24)]"
+              : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"
           }`}
         >
           {t("header.preview")}
@@ -118,16 +132,16 @@ export function StudioHeader({
                 aria-pressed={inspectorButtonActive}
                 className={`flex h-8 items-center gap-1 overflow-hidden rounded-lg border px-[9px] py-px text-xs font-medium leading-normal transition-[background-color,border-color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98] ${
                   inspectorButtonActive
-                    ? "border-[#1d1d1b] bg-[#f2f2f0] text-[#1d1d1b]"
+                    ? "border-[var(--hf-panel-text-3)] bg-[var(--hf-studio-button-bg)] text-[var(--hf-panel-text-0)]"
                     : STUDIO_INSPECTOR_PANELS_ENABLED
-                      ? "border-[#858a94] bg-white text-black hover:border-[#62666e] hover:bg-[#f7f7f5] active:border-black active:bg-[#ededeb]"
+                      ? "border-[var(--hf-panel-border-input)] bg-[var(--hf-studio-button-bg)] text-[var(--hf-panel-text-1)] hover:border-[var(--hf-panel-text-3)] hover:bg-[var(--hf-panel-hover)]"
                       : "cursor-not-allowed border-[#d9dad7] text-[#92948f]"
                 }`}
                 aria-label={
                   STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
                 }
               >
-                <img className="h-4 w-4 shrink-0" src={propertiesIconSrc} alt="" aria-hidden="true" />
+                <img className="hf-studio-properties-icon h-4 w-4 shrink-0" src={propertiesIconSrc} alt="" aria-hidden="true" />
                 {t("header.inspector")}
               </button>
             </Tooltip>

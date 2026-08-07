@@ -15,7 +15,12 @@ interface UseTimelineSelectionPreviewSyncParams {
   ) => Promise<DomEditSelection | null>;
   applyDomSelection: (
     selection: DomEditSelection | null,
-    options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
+    options?: {
+      revealPanel?: boolean;
+      additive?: boolean;
+      preserveGroup?: boolean;
+      preserveTimelineSelection?: boolean;
+    },
   ) => void;
   applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
 }
@@ -83,27 +88,30 @@ export function useTimelineSelectionPreviewSync({
       if (currentSelections.length > 0) applyDomSelection(null, { revealPanel: false });
       return;
     }
-    if (selectionIdsMatch(currentIds, selectedIds, currentAnchor, selectedElementId)) return;
-
     let cancelled = false;
     const syncSelection = async () => {
-      const selections: DomEditSelection[] = [];
-      let resolvableCount = 0;
+      const resolved: Array<{ id: string; selection: DomEditSelection }> = [];
       for (const id of selectedIds) {
         const element = timelineElements.find((item) => (item.key ?? item.id) === id);
         if (!element) continue;
-        resolvableCount += 1;
         const selection = await buildDomSelectionForTimelineElement(element);
-        if (selection) selections.push(selection);
+        if (selection) resolved.push({ id, selection });
       }
       if (cancelled) return;
-      // The store is the source of truth: applying a partial set would write that
-      // shrunk set back and silently drop the members whose DOM node was not ready.
-      // Bail instead; a later effect run (on timelineElements/DOM change) applies the
-      // full set once every resolvable member has a live node.
-      if (selections.length < resolvableCount) return;
+      const visibleIds = resolved.map((item) => item.id);
+      const visibleAnchor = resolved.some((item) => item.id === selectedElementId)
+        ? selectedElementId
+        : (visibleIds[0] ?? null);
+      if (selectionIdsMatch(currentIds, visibleIds, currentAnchor, visibleAnchor)) return;
+
+      const selections = resolved.map((item) => item.selection);
       if (selections.length === 0) {
-        applyDomSelection(null, { revealPanel: false });
+        // Keep the lower tree row selected. An inactive row has no valid canvas
+        // counterpart at this playhead, so only the upper overlay is cleared.
+        applyDomSelection(null, {
+          revealPanel: false,
+          preserveTimelineSelection: true,
+        });
       } else if (selections.length === 1) {
         applyDomSelection(selections[0], { revealPanel: false });
       } else {

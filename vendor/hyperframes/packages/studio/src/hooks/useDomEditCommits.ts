@@ -420,6 +420,7 @@ export function useDomEditCommits({
 
   const { handleDomEditElementDelete, handleDomZIndexReorderCommit } = useElementLifecycleOps({
     activeCompPath,
+    previewIframeRef,
     showToast,
     writeProjectFile,
     domEditSaveTimestampRef,

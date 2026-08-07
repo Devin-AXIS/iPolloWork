@@ -26,6 +26,7 @@ import {
   rebaseExpandedTimelineEdit,
 } from "../utils/timelineToolbarSelection";
 import { useStudioShellContext } from "../contexts/StudioContext";
+import { useStudioI18n } from "../i18n";
 import { requestPreviewZoomReset } from "./nle/previewZoom";
 import undoIconSrc from "../icons/figmaToolbarUndo.svg?url";
 import redoIconSrc from "../icons/figmaToolbarRedo.svg?url";
@@ -84,7 +85,7 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 }
 
 function ToolbarIcon({ src, size = 16 }: { src: string; size?: number }) {
-  return <img src={src} width={size} height={size} alt="" aria-hidden="true" />;
+  return <img className="hf-timeline-toolbar-icon" src={src} width={size} height={size} alt="" aria-hidden="true" />;
 }
 
 // fallow-ignore-next-line complexity
@@ -94,6 +95,7 @@ export function TimelineToolbar({
   onDeleteElement,
   onDeleteDomElement,
 }: TimelineToolbarProps) {
+  const { tx } = useStudioI18n();
   const [pendingAction, setPendingAction] = useState<"split" | "keyframe" | "delete" | null>(
     null,
   );
@@ -131,7 +133,7 @@ export function TimelineToolbar({
   });
 
   const iconButton =
-    "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35 disabled:cursor-not-allowed disabled:opacity-30";
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-white/10";
   const canSplit =
     Boolean(onSplitElement && selectedElement && canSplitElement(selectedElement)) &&
     currentTime > (selectedElement?.start ?? 0) &&
@@ -156,40 +158,40 @@ export function TimelineToolbar({
 
   return (
     <div
-      className="hf-timeline-toolbar flex h-11 items-center justify-between border-y border-[#ebebeb] bg-white px-4"
+      className="hf-timeline-toolbar flex h-11 items-center justify-between border-y border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-toolbar-bg)] px-4"
       data-testid="figma-timeline-toolbar"
       data-preserve-studio-selection="true"
     >
       <div className="flex min-w-0 items-center gap-2">
-        <Tooltip label={editHistory.undoLabel ? `Undo ${editHistory.undoLabel}` : "Undo"}>
+        <Tooltip label={tx(editHistory.undoLabel ? `Undo ${editHistory.undoLabel}` : "Undo")}>
           <button
             type="button"
             className={iconButton}
             onClick={() => void handleUndo()}
             disabled={!editHistory.canUndo}
-            aria-label="Undo"
+            aria-label={tx("Undo")}
           >
             <ToolbarIcon src={undoIconSrc} />
           </button>
         </Tooltip>
-        <Tooltip label={editHistory.redoLabel ? `Redo ${editHistory.redoLabel}` : "Redo"}>
+        <Tooltip label={tx(editHistory.redoLabel ? `Redo ${editHistory.redoLabel}` : "Redo")}>
           <button
             type="button"
             className={iconButton}
             onClick={() => void handleRedo()}
             disabled={!editHistory.canRedo}
-            aria-label="Redo"
+            aria-label={tx("Redo")}
           >
             <ToolbarIcon src={redoIconSrc} />
           </button>
         </Tooltip>
         <ToolbarIcon src={dividerIconSrc} size={17} />
-        <Tooltip label={canSplit ? "Split at playhead (S)" : "Select a clip and place the playhead inside it"}>
+        <Tooltip label={tx(canSplit ? "Split at playhead (S)" : "Select a clip and place the playhead inside it")}>
           <button
             type="button"
             className={iconButton}
             disabled={!canSplit || pendingAction !== null}
-            aria-label="Split at playhead"
+            aria-label={tx("Split at playhead")}
             aria-busy={pendingAction === "split"}
             onClick={() => {
               if (canSplit && selectedElement && onSplitElement) {
@@ -204,13 +206,13 @@ export function TimelineToolbar({
         <div id={CANVAS_SNAP_TOOLBAR_SLOT_ID} className="flex items-center" />
         {STUDIO_KEYFRAMES_ENABLED && (
           <Tooltip
-            label={
+            label={tx(
               !onToggleKeyframe
                 ? "Select an animated element to add a keyframe"
                 : keyframeState === "active"
                   ? "Remove keyframe at playhead (K)"
                   : "Add keyframe at playhead (K)"
-            }
+            )}
           >
             <button
               type="button"
@@ -221,7 +223,7 @@ export function TimelineToolbar({
                   void runSelectionAction("keyframe", onToggleKeyframe);
                 }
               }}
-              aria-label={keyframeState === "active" ? "Remove keyframe at playhead" : "Add keyframe at playhead"}
+              aria-label={tx(keyframeState === "active" ? "Remove keyframe at playhead" : "Add keyframe at playhead")}
               aria-pressed={keyframeState === "active"}
               aria-busy={pendingAction === "keyframe"}
             >
@@ -229,12 +231,12 @@ export function TimelineToolbar({
             </button>
           </Tooltip>
         )}
-        <Tooltip label="Delete selected element">
+        <Tooltip label={tx("Delete selected element")}>
           <button
             type="button"
             className={iconButton}
             disabled={!canDelete || pendingAction !== null}
-            aria-label="Delete selected element"
+            aria-label={tx("Delete selected element")}
             aria-busy={pendingAction === "delete"}
             onClick={() => {
               if (selectedElement && onDeleteElement) {
@@ -257,11 +259,11 @@ export function TimelineToolbar({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <Tooltip label="Zoom timeline out">
+        <Tooltip label={tx("Zoom timeline out")}>
           <button
             type="button"
             className={iconButton}
-            aria-label="Zoom timeline out"
+            aria-label={tx("Zoom timeline out")}
             onClick={() => {
               setZoomMode("manual");
               setManualZoomPercent(getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent));
@@ -276,18 +278,18 @@ export function TimelineToolbar({
           max="100"
           value={timelineZoomPercentToSlider(timelineZoomPercent)}
           title={`${timelineZoomPercent}%`}
-          aria-label="Timeline zoom"
+          aria-label={tx("Timeline zoom")}
           onChange={(event) => {
             setZoomMode("manual");
             setManualZoomPercent(timelineSliderToZoomPercent(Number(event.target.value)));
           }}
           className="w-[90px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-px [&::-webkit-slider-runnable-track]:bg-[#b8bab7] [&::-webkit-slider-thumb]:-mt-[3.5px] [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#858a94]"
         />
-        <Tooltip label="Zoom timeline in">
+        <Tooltip label={tx("Zoom timeline in")}>
           <button
             type="button"
             className={iconButton}
-            aria-label="Zoom timeline in"
+            aria-label={tx("Zoom timeline in")}
             onClick={() => {
               setZoomMode("manual");
               setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
@@ -296,24 +298,24 @@ export function TimelineToolbar({
             <ToolbarIcon src={zoomInIconSrc} />
           </button>
         </Tooltip>
-        <Tooltip label="Reset video to fit">
+        <Tooltip label={tx("Reset video to fit")}>
           <button
             type="button"
             className={iconButton}
-            aria-label="Reset video to fit"
+            aria-label={tx("Reset video to fit")}
             data-testid="preview-fit-reset"
             onClick={requestPreviewZoomReset}
           >
             <ToolbarIcon src={fitIconSrc} />
           </button>
         </Tooltip>
-        <Tooltip label={capturing ? "Capturing current frame" : "Capture current frame"}>
+        <Tooltip label={tx(capturing ? "Capturing current frame" : "Capture current frame")}>
           <a
             href={captureFrameHref}
             download={captureFrameFilename}
             onClick={handleCaptureFrameClick}
             className={`${iconButton} ${capturing ? "pointer-events-none cursor-wait bg-[#f2f2f0]" : ""}`}
-            aria-label={capturing ? "Capturing current frame" : "Capture current frame"}
+            aria-label={tx(capturing ? "Capturing current frame" : "Capture current frame")}
             aria-disabled={capturing}
             aria-busy={capturing}
           >

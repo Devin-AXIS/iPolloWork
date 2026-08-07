@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
-import { ChevronDown, RotateCcw } from "../../icons/SystemIcons";
+import { useStudioI18n } from "../../i18n";
+import { ChevronDown, ChevronRight, RotateCcw } from "../../icons/SystemIcons";
 import { CommitField } from "./propertyPanelPrimitives";
 import {
   VALUE_TIER_LABEL_CLASS,
@@ -38,6 +39,7 @@ export function FlatRow({
   onReset?: () => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   return (
     <div
       className={`group flex min-w-0 items-center justify-between gap-1.5 overflow-hidden border border-transparent bg-panel-input transition-colors focus-within:border-panel-accent/50 ${
@@ -51,7 +53,7 @@ export function FlatRow({
             : `text-[8px] ${VALUE_TIER_LABEL_CLASS[tier]}`
         }`}
       >
-        {label}
+        {tx(label)}
       </span>
       <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5">
         <span
@@ -78,7 +80,7 @@ export function FlatRow({
           <button
             type="button"
             data-flat-row-reset="true"
-            title="Remove — fall back to default"
+            title={tx("Remove — fall back to default")}
             onClick={() => {
               track("button", `Reset ${label}`);
               onReset();
@@ -137,16 +139,17 @@ export function FlatSegmentedRow({
   onChange: (nextKey: string) => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   return (
     <div className="grid gap-1">
-      <span className="text-[10px] font-normal text-[#858a94]">{label}</span>
+      <span className="text-[10px] font-normal text-[#858a94]">{tx(label)}</span>
       <span className="grid auto-cols-fr grid-flow-col items-center gap-1.5">
         {options.map((option, index) => (
           <span key={option.key} className="flex w-full items-center">
             <button
               type="button"
               data-flat-segment="true"
-              aria-label={option.label}
+              aria-label={tx(option.label)}
               aria-pressed={option.active}
               disabled={disabled}
               onClick={() => {
@@ -203,41 +206,43 @@ export function FlatGroupHeader({
    *  that sibling actually changed — gating explicitly avoids that replay. */
   animateEntrance?: boolean;
 }) {
+  const { tx } = useStudioI18n();
+  const translatedTitle = tx(title);
   if (!isOpen) {
     return (
       <button
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[#ebebeb] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input dark:border-panel-hairline dark:hover:bg-panel-input/60`}
+        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input`}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
-            {title}
+            {translatedTitle}
           </span>
           {summary && (
             <span className="min-w-0 truncate font-mono text-[8px] text-panel-text-4">
-              {summary}
+              {tx(summary)}
             </span>
           )}
         </span>
-        <ChevronDown size={16} className="flex-shrink-0 rotate-180 text-[#858a94]" />
+        <ChevronRight size={16} className="flex-shrink-0 text-[#858a94]" />
       </button>
     );
   }
 
   return (
     <div
-      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[#ebebeb] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#20bbc0] dark:border-panel-hairline`}
+      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#20bbc0]`}
     >
       <button
         type="button"
         onClick={onToggleOpen}
         className="flex h-full min-w-0 flex-1 items-center text-left"
-        aria-label={`Collapse ${title}`}
+        aria-label={tx(`Collapse ${title}`)}
       >
         <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
-          {title}
+          {translatedTitle}
         </span>
       </button>
       {accessory && (
@@ -246,7 +251,7 @@ export function FlatGroupHeader({
       <button
         type="button"
         onClick={onToggleOpen}
-        title="Collapse"
+        title={tx("Collapse")}
         className="flex h-full items-center pl-2 text-[#858a94]"
       >
         <ChevronDown size={16} className="flex-shrink-0" />
@@ -311,6 +316,7 @@ export function FlatSlider({
   onCommit: (nextValue: number) => void;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   // `draft` gives the knob instant, drag-local visual feedback. `onCommit` is
   // throttled (not debounced) to at most once per 40ms: a real drag fires
   // pointermove faster than that, and a pure debounce (reset the timer on
@@ -450,12 +456,12 @@ export function FlatSlider({
             : "w-[72px] flex-shrink-0 text-[9px] text-panel-text-3"
         }
       >
-        {label}
+        {tx(label)}
       </span>
       <div
         data-flat-slider-track="true"
         role="slider"
-        aria-label={label}
+        aria-label={tx(label)}
         aria-valuenow={draft}
         aria-valuemin={min}
         aria-valuemax={max}
@@ -606,7 +612,7 @@ export function FlatSlider({
             <button
               type="button"
               data-flat-slider-reset="true"
-              title="Remove — fall back to default"
+              title={tx("Remove — fall back to default")}
               disabled={disabled}
               onClick={() => {
                 track("button", `Reset ${label}`);

@@ -8,6 +8,7 @@ import {
 } from "./propertyPanelHelpers";
 import { FlatRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
 import { resolveValueTier } from "./propertyPanelValueTier";
+import { useStudioI18n } from "../../i18n";
 
 export function FlatMaskSection({
   styles,
@@ -18,6 +19,7 @@ export function FlatMaskSection({
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
 }) {
+  const { tx } = useStudioI18n();
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
   const clipPathValue = styles["clip-path"] || "none";
   const maskShape = inferMaskShape(clipPathValue);
@@ -83,8 +85,8 @@ export function FlatMaskSection({
         />
         <button
           type="button"
-          aria-label="Invert mask"
-          title="Mask inversion is not supported by the current clip-path renderer"
+          aria-label={tx("Invert mask")}
+          title={tx("Mask inversion is not supported by the current clip-path renderer")}
           disabled
           className="flex h-[34px] items-center justify-center rounded-[6px] transition-colors hover:bg-[#f5f6f9] disabled:cursor-not-allowed disabled:opacity-50"
         >

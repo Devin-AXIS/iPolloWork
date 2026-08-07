@@ -247,7 +247,12 @@ export function buildStableSelector(el: HTMLElement): string | undefined {
   const group = el.getAttribute("data-hf-group");
   if (group) return `[data-hf-group="${escapeCssString(group)}"]`;
 
-  return getPreferredClassSelector(el);
+  // Plain authored elements (for example h2/p/span children) are still stable
+  // when paired with the source-scoped selectorIndex carried by every DOM edit
+  // target. Returning their tag keeps the editor and timeline on the same
+  // addressing contract instead of silently promoting the selection to a
+  // parent that happens to have an id or class.
+  return getPreferredClassSelector(el) ?? el.tagName.toLowerCase();
 }
 
 function getPreferredClassSelector(el: HTMLElement): string | undefined {

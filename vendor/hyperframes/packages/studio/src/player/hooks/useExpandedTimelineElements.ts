@@ -119,6 +119,7 @@ function buildChildElements(
   siblings: ClipManifestClip[],
   display: DisplayBounds,
   editBasis: { start: number; sourceFile: string | undefined },
+  domClipChildren: readonly DomClipChild[] = [],
 ): TimelineElement[] {
   const result: TimelineElement[] = [];
   for (const child of siblings) {
@@ -128,8 +129,10 @@ function buildChildElements(
       clip: child,
       fallbackIndex: result.length,
     });
-    const domId = child.id ?? undefined;
-    const selector = child.id ? `#${child.id}` : undefined;
+    const domChild = domClipChildren.find((candidate) => candidate.id === child.id);
+    const domId = domChild?.domId ?? (domChild ? undefined : child.id ?? undefined);
+    const selector = domChild?.selector ?? (domId ? `#${domId}` : child.selector ?? undefined);
+    const selectorIndex = child.selectorIndex ?? domChild?.selectorIndex ?? base.selectorIndex;
     // `base.key` was built without a hostEl, so it fell back to the colon form
     // (`index.html:<id>:<idx>`) even though we set domId below. Recompute it from
     // the same inputs the store uses (`<sourceFile>#<domId>`) so an expanded
@@ -141,8 +144,8 @@ function buildChildElements(
       fallbackIndex: result.length,
       domId,
       selector,
-      selectorIndex: base.selectorIndex,
-      sourceFile: editBasis.sourceFile,
+      selectorIndex,
+      sourceFile: child.sourceFile ?? domChild?.sourceFile ?? editBasis.sourceFile,
     });
     result.push({
       ...base,
@@ -169,9 +172,9 @@ function buildChildElements(
       stackingContextId: base.stackingContextId,
       expandedParentStart: editBasis.start,
       domId,
-      hfId: child.hfId ?? base.hfId,
+      hfId: domChild?.hfId ?? child.hfId ?? base.hfId,
       selector: child.selector ?? selector,
-      selectorIndex: child.selectorIndex ?? base.selectorIndex,
+      selectorIndex,
       sourceFile: child.sourceFile ?? editBasis.sourceFile,
       timingSource: "authored",
     });
@@ -280,6 +283,7 @@ export function buildExpandedElements(
       track: topLevelElement.track,
     },
     editBasis,
+    domClipChildren,
   ).map((child) => ({ ...child, expandedDisplayHostKey: parentKey }));
   if (expanded.length === 0) return filterToTopLevel(elements, parentMap);
 
@@ -339,6 +343,7 @@ export function buildExpandedElementTree(
           track: topLevelElement.track,
         },
         editBasis,
+        domClipChildren,
       );
 
       for (const child of children) {

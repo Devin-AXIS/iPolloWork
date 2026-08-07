@@ -746,9 +746,9 @@ export function SessionRoute() {
       },
       onSendDraft: async (draft: ComposerDraft, sessionId: string) => {
         const targetSessionId = sessionId.trim() || selectedSessionId;
-        if (!targetSessionId) return;
+        if (!targetSessionId) return false;
         const text = (draft.resolvedText ?? draft.text).trim();
-        if (!text && draft.attachments.length === 0) return;
+        if (!text && draft.attachments.length === 0) return false;
         // One-shot provider selection on the first send whenever no user-added
         // provider is connected. The free default model being usable is the
         // normal case here, not a reason to skip the step.
@@ -761,7 +761,7 @@ export function SessionRoute() {
         ) {
           pendingProviderDraftRef.current = { draft, sessionId: targetSessionId };
           setProviderStepOpen(true);
-          return;
+          return false;
         }
         if (selectedModelUnavailable) {
           toast.error("Selected model is unavailable.", {
@@ -780,7 +780,7 @@ export function SessionRoute() {
               },
             },
           });
-          return;
+          return false;
         }
 
         captureAnalyticsEvent("task_message_sent", {
@@ -808,7 +808,7 @@ export function SessionRoute() {
 
         if (draft.mode === "shell") {
           await shellInSession(opencodeClient, targetSessionId, text);
-          return;
+          return true;
         }
 
         if (draft.command) {
@@ -820,7 +820,7 @@ export function SessionRoute() {
           if (result.error) {
             throw new Error(serializeSDKError(result.error));
           }
-          return;
+          return true;
         }
 
         const designSelectionScope = selectedWorkspaceEndpoint
@@ -864,7 +864,7 @@ export function SessionRoute() {
         );
         let includeVoiceoverContext = isVideoTask && videoPromptRequestsVoiceoverContext(
           draft.capability?.id,
-          draft.resolvedText ?? draft.text,
+          [draft.resolvedText ?? draft.text, draft.capability?.instruction].filter(Boolean).join("\n"),
         );
         if (isVideoTask && !includeVoiceoverContext && selectedWorkspaceEndpoint) {
           const entryPath = sessionTemplate?.state.entry ?? videoProjectEntryPath(targetSessionId);
@@ -977,6 +977,7 @@ export function SessionRoute() {
             ...(systemContext ? { system: systemContext } : {}),
           }),
         });
+        return true;
       },
       onDraftChange: () => {
         // Draft persistence will be wired once the full React shell owns session state.

@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { useEffect, useState } from "react";
+import { useStudioI18n } from "../../i18n";
 import figmaFillGradient from "../../icons/figmaFillGradient.svg?url";
 import figmaFillGradientActive from "../../icons/figmaFillGradientActive.svg?url";
 import figmaFillImage from "../../icons/figmaFillImage.svg?url";
@@ -79,15 +80,16 @@ export function FillModeSelector({
   disabled: boolean;
   onChange: (value: FillMode) => void;
 }) {
+  const { tx } = useStudioI18n();
   return (
-    <div className="grid grid-cols-4 gap-1" role="group" aria-label="Fill type">
+    <div className="grid grid-cols-4 gap-1" role="group" aria-label={tx("Fill type")}>
       {FILL_MODE_OPTIONS.map(({ key, label, icon, activeIcon }) => {
         const active = value === key;
         return (
           <button
             key={key}
             type="button"
-            aria-label={label}
+            aria-label={tx(label)}
             aria-pressed={active}
             disabled={disabled}
             onClick={() => onChange(key)}
