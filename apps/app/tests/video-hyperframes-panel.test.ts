@@ -164,7 +164,7 @@ describe("HyperFrames Video Studio", () => {
     expect(desktopSource).toContain("new CustomEvent('ipollowork:studio-apply-selection'");
     expect(desktopSource).toContain("applyCanvasSelectionLive(target, { revealPanel: true })");
     expect(desktopSource).not.toContain("const current = document.querySelector('button[aria-label=\"Inspector\"]')");
-    expect(studioSource).toContain("const loadStudioRightPanel = () => import(\"./components/StudioRightPanel\")");
+    expect(studioSource).toContain("const loadStudioRightPanelModule = () => import(\"./components/StudioRightPanel\")");
     expect(studioSource).toContain("void loadStudioRightPanel()");
     expect(studioSource).toContain("function RightPanelLoadingFallback({ width }: { width: number })");
     expect(studioSource).toContain('t("right.openingProperties")');
@@ -537,9 +537,9 @@ describe("HyperFrames Video Studio", () => {
     const deleteIndex = electronSource.indexOf('<button type="button" data-action="delete"');
     const advancedIndex = electronSource.indexOf('data-action="advanced"');
     const aiIndex = electronSource.indexOf('data-action="ai"');
-    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label="Delete selected element"');
-    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label="Open Design properties"');
-    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label="Ask AI about selected element"');
+    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label={tx("Delete selected element")}');
+    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label={tx("Open Design properties")}');
+    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label={tx("Ask AI about selected element")}');
 
     expect(deleteIndex).toBeGreaterThan(-1);
     expect(aiIndex).toBeGreaterThan(advancedIndex);
