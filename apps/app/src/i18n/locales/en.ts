@@ -62,6 +62,8 @@ export default {
   "plugin_platform.import_agents": "Agents",
   "plugin_platform.import_commands": "Commands",
   "plugin_platform.import_safety": "Declarative safety check passed: no local service, system process, native binary, or host-process code will be loaded.",
+  "plugin_platform.import_signed_safety": "The publisher signature from {publisher} is verified. This plugin contains local code and will run the local services declared in its manifest.",
+  "plugin_platform.import_permissions": "Permissions granted after installation",
   "plugin_platform.import_error": "Could not import this plugin package.",
   "plugin_platform.publisher_unknown": "Unknown publisher",
   "plugin_platform.integrity_verified": "Checksum verified",
