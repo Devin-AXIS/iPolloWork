@@ -39,6 +39,22 @@ describe("timeline tree selection", () => {
     ).toBe("compositions/scene.html#title");
   });
 
+  test("does not select a same-id element from another composition", () => {
+    const shared = { id: "title", domId: "title", tag: "h1", start: 0, duration: 3, track: 0 };
+    expect(
+      resolveTimelineTreeSelectionKey({
+        elementId: "title",
+        sourceFile: "compositions/second.html",
+        elements: [
+          { ...shared, key: "compositions/first.html#title", sourceFile: "compositions/first.html" },
+          { ...shared, key: "compositions/second.html#title", sourceFile: "compositions/second.html" },
+        ],
+        manifest: [],
+        domClipChildren: [],
+      }),
+    ).toBe("compositions/second.html#title");
+  });
+
   test("resolves an id-less preview selection through its hf id and expands its parents", () => {
     const domClipChildren = [
       {

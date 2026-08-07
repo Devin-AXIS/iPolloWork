@@ -190,22 +190,12 @@ export function resolveAllVisualDomEditTargets(
 
   if (raw.length === 0) return [];
 
-  // First pass: for each contiguous ancestor-descendant run, keep only the
-  // deepest (most specific) element, matching the original single-pick logic.
-  const layers: HTMLElement[] = [];
-  let best = raw[0];
-  for (let i = 1; i < raw.length; i++) {
-    const el = raw[i];
-    if (best.contains(el)) {
-      best = el; // go deeper in this subtree
-    } else {
-      layers.push(best);
-      best = el;
-    }
-  }
-  layers.push(best);
-
-  return layers;
+  // Browsers commonly return a child before its ancestors. Remove every
+  // candidate that contains another hit, independent of ordering, so the
+  // deepest authored child always wins. This list is bounded by DOM depth.
+  return raw.filter(
+    (candidate) => !raw.some((other) => other !== candidate && candidate.contains(other)),
+  );
 }
 
 // ─── Raster detection ────────────────────────────────────────────────────────
