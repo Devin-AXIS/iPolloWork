@@ -158,7 +158,7 @@ describe("template brief", () => {
     expect(isTemplateBriefReferenceFile(new File(["svg"], "logo.svg", { type: "image/svg+xml" }))).toBe(false);
   });
 
-  test("keeps docx reference files as original attachments before sending", async () => {
+  test("keeps legacy docx reference attachments as extracted text before sending", async () => {
     const zip = new JSZip();
     zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
       <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -173,9 +173,10 @@ describe("template brief", () => {
     );
 
     expect(attachment.name).toBe("reference.docx");
-    expect(attachment.mimeType).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    expect(attachment.mimeType).toBe("text/plain");
     expect(attachment.kind).toBe("file");
-    expect(attachment.file.name).toBe("reference.docx");
+    expect(attachment.file.name).toBe("reference.docx.txt");
+    expect(await attachment.file.text()).toContain("Use concise clinical language.");
   });
 
   test("keeps PDF references as PDF attachments until a real PDF text extractor is available", async () => {
@@ -228,7 +229,7 @@ describe("template brief", () => {
 
     expect(attachment.mimeType).toBe("application/pdf");
     expect(attachment.file.name).toBe("north-window-treatment.pdf");
-    expect(brief.title).toBe("north window treatment");
+    expect(brief).toEqual({ title: "", audience: "", details: "" });
     expect(brief.details).toBe("");
   });
 
@@ -246,8 +247,7 @@ describe("template brief", () => {
 
     expect(attachment.mimeType).toBe("application/pdf");
     expect(attachment.file.name).toBe(file.name);
-    expect(brief.title).not.toBe("Chromium");
-    expect(brief.details).not.toContain("Skia/PDF");
+    expect(brief).toEqual({ title: "", audience: "", details: "" });
   });
 
   test("infers brief fields from markdown reference text", () => {

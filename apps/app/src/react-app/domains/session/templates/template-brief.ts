@@ -1,6 +1,8 @@
 import type { TemplateCategory, TemplateManifestV1 } from "@ipollowork/types/templates";
+import type { ComposerAttachment } from "@/app/types";
 import { t } from "@/i18n";
 import {
+  ingestReferenceFile,
   isReferenceFile,
   prepareOriginalReferenceAttachment,
 } from "@/react-app/domains/session/references/ingestion";
@@ -81,8 +83,28 @@ function templateBriefReferenceNameStem(name: string) {
 }
 
 export const isTemplateBriefReferenceFile = isReferenceFile;
-export const prepareTemplateBriefReferenceAttachment = prepareOriginalReferenceAttachment;
 export { inferTemplateBriefFromIngestions };
+
+export async function prepareTemplateBriefReferenceAttachment(file: File): Promise<ComposerAttachment> {
+  const isDocx = templateBriefReferenceExtension(file.name) === "docx" || templateBriefReferenceMime(file) === DOCX_MIME;
+  if (!isDocx) return prepareOriginalReferenceAttachment(file);
+
+  if (file.size > TEMPLATE_BRIEF_REFERENCE_MAX_BYTES) {
+    throw new Error(`${file.name} is larger than 25 MB.`);
+  }
+  if (!isTemplateBriefReferenceFile(file)) {
+    throw new Error(`${file.name} is not a supported reference document.`);
+  }
+
+  return {
+    id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+    name: file.name,
+    mimeType: "text/plain",
+    size: file.size,
+    kind: "file",
+    file: new File([await extractDocxText(file)], `${file.name}.txt`, { type: "text/plain" }),
+  };
+}
 
 function templateBriefReferenceMime(file: Pick<File, "name" | "type">) {
   const mime = file.type.trim().toLowerCase();
@@ -276,10 +298,7 @@ export async function extractTemplateBriefReferenceText(file: File) {
 }
 
 export async function inferTemplateBriefFromReferenceFile(file: File): Promise<TemplateBrief> {
-  return templateBriefFromReferenceText({
-    filename: file.name,
-    text: await extractTemplateBriefReferenceText(file),
-  });
+  return inferTemplateBriefFromIngestions([await ingestReferenceFile(file)]);
 }
 
 export type TemplateBriefFields = TemplateBrief;
