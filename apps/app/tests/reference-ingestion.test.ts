@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 
 import {
   cleanReferenceText,
@@ -15,6 +16,9 @@ import {
   packReferenceContext,
 } from "../src/react-app/domains/session/references/prompt-pack";
 import type { ReferenceIngestionResult } from "../src/react-app/domains/session/references/types";
+import { extractTextReference } from "../src/react-app/domains/session/references/extractors/text";
+import { extractTableReference } from "../src/react-app/domains/session/references/extractors/table";
+import { extractDocxReference } from "../src/react-app/domains/session/references/extractors/docx";
 
 describe("reference ingestion core", () => {
   test("cleans known PDF renderer metadata before quality checks", () => {
@@ -219,5 +223,61 @@ describe("reference ingestion core", () => {
     expect(summary).toContain("File: launch.md");
     expect(summary).toContain("Detected topics:");
     expect(summary).toContain("audience");
+  });
+});
+
+describe("reference extractors", () => {
+  test("extracts markdown headings as chunk headings", async () => {
+    const file = new File(["# Launch Plan\n\n## Audience\nEnterprise teams."], "launch.md", { type: "text/markdown" });
+    const extracted = await extractTextReference(file);
+
+    expect(extracted.text).toContain("Launch Plan");
+    expect(extracted.chunks?.some((chunk) => chunk.heading === "Launch Plan")).toBe(true);
+    expect(extracted.chunks?.some((chunk) => chunk.heading === "Audience")).toBe(true);
+  });
+
+  test("profiles CSV without dumping all rows", async () => {
+    const rows = ["name,role", ...Array.from({ length: 30 }, (_, index) => `user${index},designer`)];
+    const file = new File([rows.join("\n")], "users.csv", { type: "text/csv" });
+    const extracted = await extractTableReference(file);
+
+    expect(extracted.text).toContain("Rows: 30");
+    expect(extracted.text).toContain("Columns: 2");
+    expect(extracted.text).toContain("name, role");
+    expect(extracted.text).toContain("user19");
+    expect(extracted.text).not.toContain("user29");
+  });
+
+  test("profiles JSON arrays with compact samples", async () => {
+    const data = Array.from({ length: 25 }, (_, index) => ({ id: index, segment: "team" }));
+    const file = new File([JSON.stringify(data)], "segments.json", { type: "application/json" });
+    const extracted = await extractTableReference(file);
+
+    expect(extracted.text).toContain("Top-level type: array");
+    expect(extracted.text).toContain("Array length: 25");
+    expect(extracted.text).toContain("\"id\"");
+    expect(extracted.text).not.toContain("\"id\":24");
+  });
+
+  test("extracts DOCX paragraphs and table cells", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8"?>
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Clinical Handoff</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Audience: Ward nurses.</w:t></w:r></w:p>
+          <w:tbl>
+            <w:tr><w:tc><w:p><w:r><w:t>Risk</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Owner</w:t></w:r></w:p></w:tc></w:tr>
+          </w:tbl>
+        </w:body>
+      </w:document>`);
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const file = new File([buffer], "handoff.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const extracted = await extractDocxReference(file);
+
+    expect(extracted.text).toContain("Clinical Handoff");
+    expect(extracted.text).toContain("Audience: Ward nurses.");
+    expect(extracted.text).toContain("Risk | Owner");
+    expect(extracted.chunks?.some((chunk) => chunk.heading === "Clinical Handoff")).toBe(true);
   });
 });
