@@ -122,7 +122,7 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(panelSource).toContain("const syncStudioDesignTokens = React.useCallback");
-    expect(panelSource).toContain("syncStudioDesignTokens(parseDesignTokenValues(nextTokens))");
+    expect(panelSource).toContain("syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens)");
     expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
     expect(panelSource).not.toContain("key={`${sessionId}:${revision}:${studioHostPanel}`}");
     expect(previewPersistenceSource).toContain("parseHostDesignTokensMessage");
@@ -230,7 +230,7 @@ describe("HyperFrames Video Studio", () => {
     expect(drawerSource).toContain("onTokenChangeMany(next)");
     expect(panelSource).toContain("const handleDesignTokenChanges = React.useCallback");
     expect(panelSource).toContain("for (const [name, value] of Object.entries(values))");
-    expect(panelSource).toContain("syncStudioDesignTokens(values)");
+    expect(panelSource).toContain("syncStudioDesignTokens(values, next)");
     expect(panelSource).toContain("onTokenChangeMany={handleDesignTokenChanges}");
   });
 

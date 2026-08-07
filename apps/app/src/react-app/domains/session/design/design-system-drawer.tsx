@@ -232,7 +232,19 @@ export function DesignSystemDrawer({
   }, [onTokenChange, onTokenChangeMany]);
 
   const resetAll = React.useCallback(() => {
-    updateMany(Object.fromEntries(selectedThemeControls.map((control) => [control.storageName, control.value])));
+    const themeDefaults = Object.fromEntries(selectedThemeControls.map((control) => [control.storageName, control.value]));
+    updateMany({
+      ...themeDefaults,
+      "--ipw-type-scale": "1",
+      "--ipw-body-line-height": "1.55",
+      "--ipw-button-radius": "8px",
+      "--ipw-card-radius": "14px",
+      "--ipw-page-padding": "32px",
+      "--ipw-section-space": "80px",
+      "--ipw-card-shadow": "0 12px 32px rgba(28,27,26,.10)",
+      "--ipw-font-display": DEFAULTS["--ipw-font-display"],
+      "--ipw-font-body": DEFAULTS["--ipw-font-body"],
+    });
   }, [selectedThemeControls, updateMany]);
   const resetThemeColors = React.useCallback(() => {
     const presetValues = selectedTheme ? buildDesignSystemPresetValues(selectedTheme) : DEFAULTS;

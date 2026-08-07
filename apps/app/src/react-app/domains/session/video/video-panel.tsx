@@ -13,8 +13,8 @@ import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "../design/design-ai-selection";
 import { parseVideoIllustrationReference } from "./video-illustration";
 import { DesignSystemDrawer } from "../design/design-system-drawer";
-import { mergeTemplateTokenCss, parseDesignTokenValues, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
-import { buildTemplateTokenCss, type DesignSystemTheme } from "../design/design-system-registry";
+import { mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
+import { buildTemplateTokenCss, getDesignSystemTheme, type DesignSystemTheme } from "../design/design-system-registry";
 import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "../design/design-system-theme-contract";
 import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
@@ -117,9 +117,13 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     () => readAppliedDesignSystemId(designTokenSource),
     [designTokenSource],
   );
+  const appliedDesignSystemTheme = React.useMemo(
+    () => (appliedDesignSystemId ? getDesignSystemTheme(appliedDesignSystemId) : undefined),
+    [appliedDesignSystemId],
+  );
   const showStudioStartupOverlay = status === "starting" || (status === "ready" && !studioChromeReady);
 
-  const syncStudioDesignTokens = React.useCallback((tokens: Record<string, string>) => {
+  const syncStudioDesignTokens = React.useCallback((tokens: Record<string, string>, cssSource?: string) => {
     const frameWindow = studioFrameRef.current?.contentWindow;
     if (!frameWindow || Object.keys(tokens).length === 0) return;
     frameWindow.postMessage(
@@ -127,6 +131,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         type: "ipollowork:studio-design-token-change",
         projectId: videoProjectId(sessionId),
         tokens,
+        cssSource,
       },
       new URL(studioUrl).origin,
     );
@@ -138,7 +143,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     const source = tokens?.content ?? "";
     designTokenSourceRef.current = source;
     setDesignTokenSource(source);
-    syncStudioDesignTokens(parseDesignTokenValues(source));
+    syncStudioDesignTokens(parseDesignTokenValues(source), source);
   }, [client, designTokenPath, syncStudioDesignTokens, workspaceId]);
 
   React.useEffect(() => {
@@ -206,15 +211,17 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   }, [client, designTokenPath, workspaceId]);
 
   const handleDesignTokenChanges = React.useCallback((values: DesignTokenValues) => {
-    let next = designTokenSourceRef.current;
+    let next = appliedDesignSystemTheme
+      ? refreshTemplateTokenCss(designTokenSourceRef.current, buildTemplateTokenCss(appliedDesignSystemTheme))
+      : designTokenSourceRef.current;
     for (const [name, value] of Object.entries(values)) {
       next = replaceDesignTokenValue(next, name, value);
     }
     designTokenSourceRef.current = next;
     setDesignTokenSource(next);
-    syncStudioDesignTokens(values);
+    syncStudioDesignTokens(values, next);
     saveDesignTokenSource(next);
-  }, [saveDesignTokenSource, syncStudioDesignTokens]);
+  }, [appliedDesignSystemTheme, saveDesignTokenSource, syncStudioDesignTokens]);
 
   const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
     handleDesignTokenChanges({ [name]: value });
@@ -295,7 +302,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         toast.info(`${theme.name} is already applied to Video Studio.`);
         return;
       }
-      syncStudioDesignTokens(parseDesignTokenValues(nextTokens));
+      syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens);
       await client.writeWorkspaceFile(workspaceId, {
         path: designTokenPath,
         content: nextTokens,

@@ -27,6 +27,7 @@ type HostDesignTokensMessage = {
   type: "ipollowork:studio-design-token-change";
   projectId: string;
   tokens: Record<string, string>;
+  cssSource?: string;
 };
 
 // ── Types ──
@@ -91,6 +92,9 @@ function parseHostDesignTokensMessage(
         type: "ipollowork:studio-design-token-change",
         projectId: activeProjectId,
         tokens,
+        cssSource: typeof value.cssSource === "string" && value.cssSource.length < 200_000
+          ? value.cssSource
+          : undefined,
       }
     : null;
 }
@@ -98,10 +102,20 @@ function parseHostDesignTokensMessage(
 function applyDesignTokensToPreview(
   iframe: HTMLIFrameElement | null,
   tokens: Record<string, string>,
+  cssSource?: string,
 ): boolean {
   if (!iframe) return false;
   const doc = readIframeDocument(iframe);
   if (!doc) return false;
+  if (cssSource) {
+    let style = doc.head.querySelector<HTMLStyleElement>("style[data-ipw-live-design-tokens]");
+    if (!style) {
+      style = doc.createElement("style");
+      style.dataset.ipwLiveDesignTokens = "true";
+      doc.head.append(style);
+    }
+    style.textContent = cssSource;
+  }
   for (const [name, value] of Object.entries(tokens)) {
     doc.documentElement.style.setProperty(name, value);
   }
@@ -312,7 +326,7 @@ export function usePreviewPersistence({
       if (!acceptsIPolloWorkHostHistoryOrigin(event.origin, expectedParentOrigin)) return;
       const message = parseHostDesignTokensMessage(event.data, projectIdRef.current);
       if (!message) return;
-      if (applyDesignTokensToPreview(previewIframeRef.current, message.tokens)) {
+      if (applyDesignTokensToPreview(previewIframeRef.current, message.tokens, message.cssSource)) {
         domEditSaveTimestampRef.current = Date.now();
       }
     };

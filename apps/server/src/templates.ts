@@ -752,9 +752,9 @@ function authoringEntry(manifest: TemplateManifestV1) {
   <style>
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; }
-    body { overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
-    .scene { position: absolute; inset: 0; display: grid; place-items: center; padding: 96px; background: var(--ipw-color-bg); }
-    h1 { max-width: 14ch; margin: 0; color: var(--accent, var(--ipw-color-primary)); font: 700 96px/1 var(--ipw-font-display); text-align: center; }
+    body { overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); line-height: var(--ipw-body-line-height); }
+    .scene { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--ipw-page-padding); background: var(--ipw-color-bg); border-radius: var(--ipw-card-radius); }
+    h1 { max-width: 14ch; margin: 0; color: var(--accent, var(--ipw-color-primary)); font: 700 calc(96px * var(--ipw-type-scale))/1 var(--ipw-font-display); text-align: center; text-shadow: var(--ipw-card-shadow); }
   </style>
   <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
 </head>
