@@ -5,17 +5,20 @@ import { buildTimelineAssetInsertHtml, getTimelineAssetKind } from "../../utils/
 import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
 
 describe("preview editing interactions", () => {
-  it("selects canvas elements on one click without opening Design automatically", () => {
+  it("selects canvas elements on one click and opens their inspector", () => {
     const source = readFileSync(
       new URL("../../hooks/usePreviewInteraction.ts", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain("applyDomSelection(nextSelection, { revealPanel: false })");
-    expect(source).toContain("applyDomSelection(nextSel, { revealPanel: false })");
+    expect(source).toContain("applyDomSelection(resolvedSelection)");
+    expect(source).toContain("applyDomSelection(nextSelection, { additive: true })");
     expect(source).not.toContain("DOUBLE_CLICK_MS");
     expect(source).not.toContain("isDoubleClick");
-    expect(source).not.toContain("applyDomSelection(hit, { revealPanel: true })");
+    expect(source).not.toContain("cycleRef");
+    expect(source).not.toContain("resolveAllDomSelectionsFromPreviewPoint");
+    expect(source).toContain("Every click resolves the deepest authored child");
+    expect(source).not.toContain("revealPanel: false");
     expect(source).not.toContain("exitPreviewFullscreenForInspector");
   });
 
@@ -83,7 +86,7 @@ describe("preview editing interactions", () => {
     expect(layersSource).not.toContain("useLayerRevealOverride");
   });
 
-  it("keeps timeline selection while clearing an inactive current-frame preview selection", () => {
+  it("keeps off-frame timeline properties without drawing an invisible canvas selection", () => {
     const selectionSource = readFileSync(
       new URL("../../hooks/useDomSelection.ts", import.meta.url),
       "utf8",
@@ -93,13 +96,35 @@ describe("preview editing interactions", () => {
       "utf8",
     );
 
-    expect(selectionSource).toContain("isElementComputedVisible(targetElement)");
+    const overlayRectsSource = readFileSync(
+      new URL("../editor/useDomEditOverlayRects.ts", import.meta.url),
+      "utf8",
+    );
+    expect(selectionSource).not.toContain("isElementComputedVisible(targetElement)");
+    expect(selectionSource).not.toContain("playerState.requestSeek(inspectionTime)");
+    expect(selectionSource).toContain("Property selection is independent from current-frame visibility");
+    expect(selectionSource).toContain("applyDomSelection(selection)");
+    expect(overlayRectsSource).toContain("isElementVisibleForOverlay(el)");
     expect(selectionSource).toContain("preserveTimelineSelection: true");
     expect(selectionSource).toContain("Generated compositions can contain detached nodes");
     expect(selectionSource).toContain("selection must remain usable");
     expect(syncSource).toContain("const visibleIds = resolved.map");
     expect(syncSource).toContain("preserveTimelineSelection: true");
     expect(syncSource).not.toContain("if (selections.length < resolvableCount) return");
+  });
+
+  it("resolves an explicit grouped timeline child instead of its wrapper", () => {
+    const selectionSource = readFileSync(
+      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+      "utf8",
+    );
+    expect(selectionSource).toContain(
+      'targetElement.closest<HTMLElement>("[data-hf-group]")',
+    );
+    expect(selectionSource).toContain("activeGroupElement: owningGroup");
+    expect(selectionSource).toContain(
+      'const owningGroup = target.closest<HTMLElement>("[data-hf-group]")',
+    );
   });
 
   it("uses the same resolved DOM host for timeline rows and their editable child trees", () => {

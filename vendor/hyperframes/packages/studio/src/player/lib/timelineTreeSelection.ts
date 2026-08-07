@@ -31,11 +31,13 @@ export function resolveTimelineTreeSelectionKey(input: {
 }): string {
   const elementId = resolveTimelineTreeSelectionId(input);
   if (!elementId) return "";
+  const sourceFile = input.sourceFile ?? "index.html";
   const existing = input.elements.find(
     (element) =>
-      element.domId === elementId ||
-      element.id === elementId ||
-      (Boolean(input.hfId) && element.hfId === input.hfId),
+      (element.sourceFile ?? "index.html") === sourceFile &&
+      (element.domId === elementId ||
+        element.id === elementId ||
+        (Boolean(input.hfId) && element.hfId === input.hfId)),
   );
   if (existing) return existing.key ?? existing.id;
 
