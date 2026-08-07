@@ -14,7 +14,7 @@ import type { DesignAiSelectionContext } from "../design/design-ai-selection";
 import { parseVideoIllustrationReference } from "./video-illustration";
 import { DesignSystemDrawer } from "../design/design-system-drawer";
 import { mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
-import { buildTemplateTokenCss, getDesignSystemTheme, type DesignSystemTheme } from "../design/design-system-registry";
+import { buildStableTokenBridgeCss, buildTemplateTokenCss, getDesignSystemTheme, type DesignSystemTheme } from "../design/design-system-registry";
 import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "../design/design-system-theme-contract";
 import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
@@ -71,6 +71,13 @@ const studioStartupDetailKey: Record<StudioStartupStage, string> = {
 const DEFAULT_STUDIO_PANEL_WIDTH = 400;
 const MIN_STUDIO_PANEL_WIDTH = 160;
 const MAX_STUDIO_PANEL_WIDTH = 600;
+const RUNTIME_THEME_BRIDGE_PATTERN = /\/\*\s*ipw-runtime-theme-bridge:start\s*\*\/[\s\S]*?\/\*\s*ipw-runtime-theme-bridge:end\s*\*\//i;
+
+function ensureVideoTokenBridge(source: string) {
+  const bridge = buildStableTokenBridgeCss();
+  if (RUNTIME_THEME_BRIDGE_PATTERN.test(source)) return source.replace(RUNTIME_THEME_BRIDGE_PATTERN, bridge);
+  return `${source.trimEnd()}${source.trim() ? "\n\n" : ""}${bridge}\n`;
+}
 
 export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
@@ -143,7 +150,9 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     const source = tokens?.content ?? "";
     designTokenSourceRef.current = source;
     setDesignTokenSource(source);
-    syncStudioDesignTokens(parseDesignTokenValues(source), source);
+    const themeId = readAppliedDesignSystemId(source);
+    const previewCss = themeId && getDesignSystemTheme(themeId) ? source : ensureVideoTokenBridge(source);
+    syncStudioDesignTokens(parseDesignTokenValues(source), previewCss);
   }, [client, designTokenPath, syncStudioDesignTokens, workspaceId]);
 
   React.useEffect(() => {
@@ -213,7 +222,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const handleDesignTokenChanges = React.useCallback((values: DesignTokenValues) => {
     let next = appliedDesignSystemTheme
       ? refreshTemplateTokenCss(designTokenSourceRef.current, buildTemplateTokenCss(appliedDesignSystemTheme))
-      : designTokenSourceRef.current;
+      : ensureVideoTokenBridge(designTokenSourceRef.current);
     for (const [name, value] of Object.entries(values)) {
       next = replaceDesignTokenValue(next, name, value);
     }

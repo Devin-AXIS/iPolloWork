@@ -128,6 +128,8 @@ describe("HyperFrames Video Studio", () => {
     expect(previewPersistenceSource).toContain("parseHostDesignTokensMessage");
     expect(previewPersistenceSource).toContain("applyDesignTokensToPreview");
     expect(previewPersistenceSource).toContain("doc.documentElement.style.setProperty(name, value)");
+    expect(previewPersistenceSource).toContain("cssSource?: string");
+    expect(previewPersistenceSource).toContain("style[data-ipw-live-design-tokens]");
     expect(previewPersistenceSource).toContain("domEditSaveTimestampRef.current = Date.now()");
   });
 
@@ -143,7 +145,28 @@ describe("HyperFrames Video Studio", () => {
     expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title");
     expect(registrySource).toContain(".body, .copy, .caption, .meta, .label, .metric, .stat, .badge");
     expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title, .body, .copy, .caption, .meta");
+    expect(registrySource).toContain("buildStableTokenBridgeCss");
+    expect(registrySource).toContain(".scene, .hero, .section, .content, .media");
+    expect(registrySource).toContain("box-shadow: var(--ipw-card-shadow) !important");
+    expect(registrySource).toContain("--ipw-motion-duration");
     expect(registrySource).not.toContain(":where(div, span)");
+  });
+
+  test("persists the embedded motion control instead of local-only state", () => {
+    const drawerSource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-system-drawer.tsx", import.meta.url),
+      "utf8",
+    );
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(drawerSource).toContain('"--ipw-motion-style": profile.value');
+    expect(drawerSource).toContain('"--ipw-motion-duration": profile.duration');
+    expect(drawerSource).not.toContain("const [motion, setMotion] = React.useState");
+    expect(panelSource).toContain("ensureVideoTokenBridge");
+    expect(panelSource).toContain("buildStableTokenBridgeCss");
   });
 
   test("keeps the quick toolbar visible and opens properties without hash-driven canvas resync", () => {
