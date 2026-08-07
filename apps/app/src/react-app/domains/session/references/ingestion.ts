@@ -1,6 +1,7 @@
 import type { ComposerAttachment } from "@/app/types";
 import { buildDeterministicSummary } from "./compression";
 import { extractDocxReference } from "./extractors/docx";
+import { extractPdfReference } from "./extractors/pdf";
 import { extractTableReference } from "./extractors/table";
 import { extractTextReference } from "./extractors/text";
 import { assessReferenceQuality } from "./quality";
@@ -64,6 +65,7 @@ async function extractReference(file: File): Promise<ExtractedReferenceContent> 
     return extractTableReference(file);
   }
   if (extension === "md" || extension === "txt" || mime.startsWith("text/")) return extractTextReference(file);
+  if (extension === "pdf" || mime === PDF_MIME) return extractPdfReference(file);
   if (mime.startsWith("image/")) {
     return { text: "", chunks: [], warnings: ["Images are kept as optional visual attachments; OCR is not available."] };
   }

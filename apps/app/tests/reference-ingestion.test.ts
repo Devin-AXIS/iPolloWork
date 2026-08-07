@@ -24,6 +24,7 @@ import type { ReferenceIngestionResult } from "../src/react-app/domains/session/
 import { extractTextReference } from "../src/react-app/domains/session/references/extractors/text";
 import { extractTableReference } from "../src/react-app/domains/session/references/extractors/table";
 import { extractDocxReference } from "../src/react-app/domains/session/references/extractors/docx";
+import { extractPdfReference } from "../src/react-app/domains/session/references/extractors/pdf";
 import {
   ingestReferenceFile,
   isReferenceFile,
@@ -240,6 +241,14 @@ describe("reference ingestion core", () => {
 });
 
 describe("reference extractors", () => {
+  test("fails cleanly for invalid PDF bytes", async () => {
+    const extracted = await extractPdfReference(new File(["not a pdf"], "broken.pdf", { type: "application/pdf" }));
+
+    expect(extracted.text).toBe("");
+    expect(extracted.chunks).toEqual([]);
+    expect(extracted.warnings?.some((warning) => warning.includes("PDF parsing failed"))).toBe(true);
+  });
+
   test("extracts markdown headings as chunk headings", async () => {
     const file = new File(["# Launch Plan\n\n## Audience\nEnterprise teams."], "launch.md", { type: "text/markdown" });
     const extracted = await extractTextReference(file);
@@ -331,6 +340,13 @@ describe("reference ingestion router", () => {
     expect(result.quality).toBe("high");
     expect(result.summary).toContain("File: launch.md");
     expect(result.chunks.length).toBeGreaterThan(0);
+  });
+
+  test("routes invalid PDF through failed quality without throwing", async () => {
+    const result = await ingestReferenceFile(new File(["not a pdf"], "broken.pdf", { type: "application/pdf" }));
+
+    expect(result.quality).toBe("failed");
+    expect(result.warnings.some((warning) => warning.includes("PDF parsing failed"))).toBe(true);
   });
 
   test("autofills only from high and medium quality references", () => {
