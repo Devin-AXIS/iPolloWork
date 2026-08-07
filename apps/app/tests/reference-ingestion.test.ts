@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { DOMParser as XmlDomParser } from "../../../node_modules/.pnpm/@xmldom+xmldom@0.8.13/node_modules/@xmldom/xmldom";
+
+if (typeof DOMParser === "undefined") {
+  Object.assign(globalThis, { DOMParser: XmlDomParser });
+}
 
 import {
   cleanReferenceText,
@@ -279,5 +284,23 @@ describe("reference extractors", () => {
     expect(extracted.text).toContain("Audience: Ward nurses.");
     expect(extracted.text).toContain("Risk | Owner");
     expect(extracted.chunks?.some((chunk) => chunk.heading === "Clinical Handoff")).toBe(true);
+  });
+
+  test("extracts DOCX XML with alternate prefixes and single-quoted attributes", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8"?>
+      <x:document xmlns:x='http://schemas.openxmlformats.org/wordprocessingml/2006/main'>
+        <x:body>
+          <x:p><x:pPr><x:pStyle x:val='Heading2'/></x:pPr><x:r><x:t>XML-safe heading</x:t></x:r></x:p>
+          <x:p><x:r><x:t>Literal &amp; ampersand.</x:t></x:r></x:p>
+        </x:body>
+      </x:document>`);
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const file = new File([buffer], "xml-safe.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const extracted = await extractDocxReference(file);
+
+    expect(extracted.text).toContain("XML-safe heading");
+    expect(extracted.text).toContain("Literal & ampersand.");
+    expect(extracted.chunks?.some((chunk) => chunk.heading === "XML-safe heading")).toBe(true);
   });
 });

@@ -5,25 +5,21 @@ import type { ExtractedReferenceContent } from "../types";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
-function decodeXml(text: string) {
-  return text
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
+function elementChildren(element: Element): Element[] {
+  return Array.from(element.childNodes).filter((node): node is Element => node.nodeType === 1);
 }
 
-function textFromXml(xml: string) {
-  return [...xml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)]
-    .map((match) => decodeXml(match[1] ?? ""))
+function textFromNode(node: Element) {
+  return Array.from(node.getElementsByTagNameNS(W_NS, "t"))
+    .map((item) => item.textContent ?? "")
     .join("")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function paragraphStyle(paragraph: string) {
-  return paragraph.match(/<w:pStyle\b[^>]*w:val="([^"]+)"[^>]*\/?\s*>/)?.[1] ?? "";
+function paragraphStyle(paragraph: Element) {
+  const style = paragraph.getElementsByTagNameNS(W_NS, "pStyle")[0];
+  return style?.getAttributeNS(W_NS, "val") ?? "";
 }
 
 export async function extractDocxReference(file: File): Promise<ExtractedReferenceContent> {
@@ -31,24 +27,24 @@ export async function extractDocxReference(file: File): Promise<ExtractedReferen
   const xml = await zip.file("word/document.xml")?.async("string");
   if (!xml) return { text: "", chunks: [], warnings: ["DOCX document.xml was not found."] };
 
-  const body = xml.match(/<w:body\b[^>]*>([\s\S]*?)<\/w:body>/)?.[1];
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const body = doc.getElementsByTagNameNS(W_NS, "body")[0];
   if (!body) return { text: "", chunks: [], warnings: ["DOCX body was not found."] };
 
   const lines: string[] = [];
   const headings: string[] = [];
-  for (const child of body.matchAll(/<w:(p|tbl)\b[^>]*>[\s\S]*?<\/w:\1>/g)) {
-    const childXml = child[0] ?? "";
-    if (child[1] === "p") {
-      const text = textFromXml(childXml);
+  for (const child of elementChildren(body)) {
+    if (child.localName === "p" && child.namespaceURI === W_NS) {
+      const text = textFromNode(child);
       if (!text) continue;
-      const style = paragraphStyle(childXml);
+      const style = paragraphStyle(child);
       if (/heading/i.test(style)) headings.push(text);
       lines.push(text);
     }
-    if (child[1] === "tbl") {
-      for (const row of childXml.matchAll(/<w:tr\b[^>]*>[\s\S]*?<\/w:tr>/g)) {
-        const cells = [...(row[0] ?? "").matchAll(/<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g)]
-          .map((cell) => textFromXml(cell[0] ?? ""))
+    if (child.localName === "tbl" && child.namespaceURI === W_NS) {
+      for (const row of Array.from(child.getElementsByTagNameNS(W_NS, "tr"))) {
+        const cells = Array.from(row.getElementsByTagNameNS(W_NS, "tc"))
+          .map(textFromNode)
           .filter(Boolean);
         if (cells.length) lines.push(cells.join(" | "));
       }
