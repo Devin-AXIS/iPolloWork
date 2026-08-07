@@ -3,8 +3,12 @@ import { cleanReferenceText } from "../quality";
 import type { ExtractedReferenceContent, ReferenceChunk } from "../types";
 
 async function loadPdfjs() {
+  if (typeof window === "undefined") {
+    return import("pdfjs-dist/legacy/build/pdf.mjs");
+  }
+
   const pdfjs = await import("pdfjs-dist");
-  if ("GlobalWorkerOptions" in pdfjs && typeof window !== "undefined") {
+  if ("GlobalWorkerOptions" in pdfjs) {
     const worker = await import("pdfjs-dist/build/pdf.worker.mjs?url");
     pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
   }

@@ -34,6 +34,30 @@ import {
   inferTemplateBriefFromIngestions,
 } from "../src/react-app/domains/session/references/brief-autofill";
 
+function createTextPdf(text: string): Uint8Array {
+  const stream = `BT\n/F1 16 Tf\n72 720 Td\n(${text}) Tj\nET\n`;
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+    "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+    `5 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+
+  for (const object of objects) {
+    offsets.push(pdf.length);
+    pdf += object;
+  }
+
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return new TextEncoder().encode(pdf);
+}
+
 describe("reference ingestion core", () => {
   test("cleans known PDF renderer metadata before quality checks", () => {
     const cleaned = cleanReferenceText([
@@ -241,6 +265,16 @@ describe("reference ingestion core", () => {
 });
 
 describe("reference extractors", () => {
+  test("extracts readable text into page-aware chunks from a valid PDF", async () => {
+    const file = new File([createTextPdf("Node PDF extraction works")], "readable.pdf", { type: "application/pdf" });
+    const extracted = await extractPdfReference(file);
+
+    expect(extracted.text).toContain("Node PDF extraction works");
+    expect(extracted.metadata).toEqual({ pages: 1 });
+    expect(extracted.chunks).toHaveLength(1);
+    expect(extracted.chunks[0]).toMatchObject({ source: "readable.pdf", page: 1, text: "Node PDF extraction works" });
+  });
+
   test("fails cleanly for invalid PDF bytes", async () => {
     const extracted = await extractPdfReference(new File(["not a pdf"], "broken.pdf", { type: "application/pdf" }));
 
