@@ -154,6 +154,9 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("ASSET_VIRTUAL_OVERSCAN_PX");
     expect(assetsSource).toContain("visible ? (");
+    expect(assetsSource).toContain("type MediaCategory, CATEGORY_LABELS, getCategory, FILTER_ORDER");
+    expect(assetsSource).toContain("tx(CATEGORY_LABELS[cat])");
+    expect(assetsSource).not.toContain("const categoryLabels:");
     expect(assetsSource).toContain("CaretDown");
     expect(assetsSource).not.toContain("timelineChevronDown.svg?url");
     expect(assetsSource).toContain("e.stopPropagation()");

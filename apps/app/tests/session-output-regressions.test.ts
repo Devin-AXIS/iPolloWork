@@ -101,6 +101,8 @@ describe("session output issue regressions", () => {
     expect(source).toContain("const isLatestAssistantGroup = items.some");
     expect(source).toContain("artifactFiles={isLatestAssistantGroup ? artifactFiles : undefined}");
     expect(source).toContain('title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}');
+    expect(source).toContain('status === "submitted" || status === "streaming" || status === "retrying"');
+    expect(source).toContain("{!isStreaming ? (");
   });
 
   test("video and presentation sessions show only scoped openable outputs", () => {
