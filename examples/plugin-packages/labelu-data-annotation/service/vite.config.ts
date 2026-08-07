@@ -24,7 +24,7 @@ export default defineConfig({
   },
   build: {
     emptyOutDir: true,
-    minify: false,
+    minify: true,
     outDir: serviceDist,
     rollupOptions: {
       external: ["canvas", "path2d"],

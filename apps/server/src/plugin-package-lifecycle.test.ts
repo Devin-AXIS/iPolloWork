@@ -89,6 +89,55 @@ async function writeDeclarativePackage(packageRoot: string, version = "1.0.0") {
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 }
 
+async function writeSignedExecutablePackage(packageRoot: string) {
+  const skillPath = ".opencode/skills/signed-research/SKILL.md";
+  await mkdir(join(packageRoot, dirname(skillPath)), { recursive: true });
+  await writeFile(join(packageRoot, "service.mjs"), "export default async () => ({ actions: { ping: async () => ({ pong: true }) } });\n", "utf8");
+  await writeFile(join(packageRoot, skillPath), "# Signed Research\n", "utf8");
+  await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
+    schemaVersion: 1,
+    id: "signed-research",
+    name: "Signed Research",
+    description: "Signed executable test package.",
+    source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+    package: {
+      version: "1.0.0",
+      publisher: { id: "smart-future-school", name: "智慧未来学校" },
+      updateId: "smart-future-school/signed-research",
+      entrypoints: { service: "service.mjs" },
+      checksum: { algorithm: "sha256", value: "e1f0989fd33e680640c020a16309a1ac88b01412b837181aacdc1f059e257346" },
+      signature: {
+        algorithm: "ed25519",
+        keyId: "smart-future-school-2026",
+        value: "zz4FD0ePLKBuyasb69aanwG5GemRzLF6uZCQ23Zg4Pc+H3QxWpANef5RGfGoIMNriqbW2e96X7vRSmBrvIy7Dw==",
+      },
+    },
+    permissions: [{ id: "network", reason: "Run the signed local service." }],
+    resources: [
+      {
+        type: "local-service",
+        id: "signed-research-service",
+        path: "service.mjs",
+        actions: [{
+          id: "ping",
+          title: "Ping",
+          description: "Return a test response.",
+          effect: "read",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        }],
+        required: true,
+      },
+      {
+        type: "skill",
+        id: "signed-research-skill",
+        path: skillPath,
+        requires: ["service:signed-research-service"],
+        required: true,
+      },
+    ],
+  }, null, 2), "utf8");
+}
+
 async function expectMissing(path: string) {
   await expect(stat(path)).rejects.toThrow();
 }
@@ -414,6 +463,93 @@ describe("plugin package lifecycle", () => {
       const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research`, { method: "DELETE", headers });
       expect(removal.status).toBe(200);
       expect(await (await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers })).json()).toEqual({ items: [] });
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("imports, runs, and uninstalls a trusted publisher-signed executable archive", async () => {
+    const workspaceRoot = await createRoot("ipollowork-signed-plugin-workspace-");
+    const packageRoot = await createRoot("ipollowork-signed-plugin-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writeSignedExecutablePackage(packageRoot);
+    const upload = {
+      archiveName: "signed-research.ipollowork-plugin",
+      files: await Promise.all([
+        "ipollowork.plugin.json",
+        "service.mjs",
+        ".opencode/skills/signed-research/SKILL.md",
+      ].map(async (path) => ({ path, contentBase64: (await readFile(join(packageRoot, path))).toString("base64") }))),
+    };
+    const config = serverConfig(workspaceRoot);
+    const server = await startServer(config);
+    const base = `http://127.0.0.1:${server.port}`;
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    try {
+      const validation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import/validate`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(upload),
+      });
+      expect(validation.status).toBe(200);
+      expect(await validation.json()).toMatchObject({
+        preview: {
+          manifest: { id: "signed-research", source: { trusted: false } },
+          integrity: { status: "verified" },
+          safety: {
+            level: "signed",
+            localCode: true,
+            publisher: { id: "smart-future-school", name: "智慧未来学校" },
+            signature: { algorithm: "ed25519", keyId: "smart-future-school-2026", status: "verified" },
+          },
+        },
+      });
+
+      const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(upload),
+      });
+      expect(installation.status).toBe(200);
+      expect(await installation.json()).toMatchObject({
+        result: { status: "installed", pluginId: "signed-research", version: "1.0.0" },
+        safety: { level: "signed", localCode: true },
+      });
+      expect(await readFile(join(workspaceRoot, ".opencode", "skills", "signed-research", "SKILL.md"), "utf8"))
+        .toBe("# Signed Research\n");
+
+      const call = await fetch(`${base}/experimental/extensions/call`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          extensionId: "signed-research",
+          action: "ping",
+          args: {},
+          context: { directory: workspaceRoot },
+        }),
+      });
+      expect(call.status).toBe(200);
+      expect(await call.json()).toMatchObject({ result: { pong: true } });
+
+      const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/signed-research`, { method: "DELETE", headers });
+      expect(removal.status).toBe(200);
+      await expectMissing(join(workspaceRoot, ".opencode", "skills", "signed-research", "SKILL.md"));
+
+      const tamperedManifest = JSON.parse(Buffer.from(upload.files[0]?.contentBase64 ?? "", "base64").toString("utf8"));
+      tamperedManifest.package.signature.value = `${"A".repeat(86)}==`;
+      const tamperedUpload = {
+        ...upload,
+        files: upload.files.map((file) => file.path === "ipollowork.plugin.json"
+          ? { ...file, contentBase64: Buffer.from(JSON.stringify(tamperedManifest)).toString("base64") }
+          : file),
+      };
+      const rejected = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import/validate`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(tamperedUpload),
+      });
+      expect(rejected.status).toBe(400);
+      expect(await rejected.json()).toMatchObject({ code: "plugin_package_signature_invalid" });
     } finally {
       await server.stop();
     }
