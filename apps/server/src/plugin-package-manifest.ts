@@ -181,6 +181,11 @@ const packageSchema = z.object({
     algorithm: z.literal("sha256"),
     value: z.string().regex(/^[a-f0-9]{64}$/i),
   }).strict().optional(),
+  signature: z.object({
+    algorithm: z.literal("ed25519"),
+    keyId: z.string().regex(SIMPLE_ID_RE),
+    value: z.string().regex(/^[A-Za-z0-9+/]{86}==$/, "must be a base64 Ed25519 signature"),
+  }).strict().optional(),
 }).strict();
 
 const localizedTextSchema = z.string().trim().min(1);

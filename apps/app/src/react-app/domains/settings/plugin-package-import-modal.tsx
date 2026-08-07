@@ -105,6 +105,7 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
 
   const isUpdate = preview ? props.installedPluginIds.includes(preview.manifest.id) : false;
   const previewManifest = preview ? localizePluginPackageManifest(preview.manifest, locale) : null;
+  const signedSafety = preview?.safety.level === "signed" ? preview.safety : null;
 
   return (
     <Dialog open={props.open} onOpenChange={(open) => { if (!open) close(); }}>
@@ -173,10 +174,22 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
                   </div>
                 ))}
               </div>
-              <div className="flex items-start gap-2 border-t border-green-6 bg-green-2 px-4 py-3 text-xs leading-5 text-green-11">
+              <div className={`flex items-start gap-2 border-t px-4 py-3 text-xs leading-5 ${signedSafety ? "border-amber-6 bg-amber-2 text-amber-11" : "border-green-6 bg-green-2 text-green-11"}`}>
                 <ShieldCheck size={16} className="mt-0.5 shrink-0" />
-                <span>{t("plugin_platform.import_safety")}</span>
+                <span>
+                  {signedSafety
+                    ? t("plugin_platform.import_signed_safety", { publisher: signedSafety.publisher.name })
+                    : t("plugin_platform.import_safety")}
+                </span>
               </div>
+              {signedSafety && previewManifest.permissions?.length ? (
+                <div className="border-t border-dls-border px-4 py-3">
+                  <p className="text-xs font-medium text-dls-text">{t("plugin_platform.import_permissions")}</p>
+                  <ul className="mt-2 space-y-1.5 text-xs leading-5 text-dls-secondary">
+                    {previewManifest.permissions.map((permission) => <li key={permission.id}>• {permission.reason}</li>)}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

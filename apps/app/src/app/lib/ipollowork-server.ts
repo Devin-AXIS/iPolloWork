@@ -314,11 +314,19 @@ export type iPolloWorkPluginPackagePreview = {
   safety: iPolloWorkPluginPackageImportSafety;
 };
 
-export type iPolloWorkPluginPackageImportSafety = {
-  level: "declarative";
-  localCode: false;
-  allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
-};
+export type iPolloWorkPluginPackageImportSafety =
+  | {
+      level: "declarative";
+      localCode: false;
+      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
+    }
+  | {
+      level: "signed";
+      localCode: boolean;
+      allowedResourceTypes: iPolloWorkExtensionManifest["resources"][number]["type"][];
+      publisher: { id: string; name: string };
+      signature: { algorithm: "ed25519"; keyId: string; status: "verified" };
+    };
 
 export type iPolloWorkPluginPackageUpload = {
   archiveName: string;
