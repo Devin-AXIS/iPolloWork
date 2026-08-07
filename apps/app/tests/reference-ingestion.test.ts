@@ -55,6 +55,16 @@ describe("reference ingestion core", () => {
     expect(chunks[0]?.tokenEstimate).toBeGreaterThan(0);
   });
 
+  test("normalizes a zero chunk-size budget to a safe minimum", () => {
+    const chunks = chunkPlainText({
+      source: "narrow.md",
+      text: "abc",
+      maxChunkChars: 0,
+    });
+
+    expect(chunks.map((chunk) => chunk.text)).toEqual(["a", "b", "c"]);
+  });
+
   test("packs only high and medium quality files within budgets", () => {
     const highChunks = chunkPlainText({
       source: "product-plan.pdf",
@@ -106,6 +116,32 @@ describe("reference ingestion core", () => {
     expect(pack.promptText).not.toContain("bad.pdf");
     expect(pack.totalChars).toBeLessThanOrEqual(1800);
     expect(pack.warnings).toContain("Excluded 1 low-quality reference file.");
+  });
+
+  test("omits summaries when the summary budget is zero", () => {
+    const file = {
+      id: "ref_summary_zero",
+      fileName: "summary.md",
+      mimeType: "text/markdown",
+      size: 10,
+      sourceMode: "memory" as const,
+      extractedText: "A sufficiently readable reference body for testing.",
+      summary: "This summary must not be included.",
+      chunks: [],
+      quality: "high" as const,
+      warnings: [],
+    };
+
+    const pack = packReferenceContext([file], { maxSummaryChars: 0 });
+
+    expect(pack.promptText).not.toContain(file.summary);
+  });
+
+  test("returns an empty prompt when the total budget is zero", () => {
+    const pack = packReferenceContext([], { maxTotalChars: 0 });
+
+    expect(pack.promptText).toBe("");
+    expect(pack.totalChars).toBe(0);
   });
 
   test("deterministic summary names sections without calling AI", () => {

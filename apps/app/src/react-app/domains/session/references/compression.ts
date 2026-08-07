@@ -13,8 +13,16 @@ const TOPIC_KEYWORDS = [
   "cta",
 ];
 
+function normalizeLimit(value: number | undefined, fallback: number) {
+  const limit = value ?? fallback;
+  return Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : fallback;
+}
+
 function truncate(text: string, max: number) {
-  return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 3)).trimEnd()}...`;
+  const limit = normalizeLimit(max, 1200);
+  if (text.length <= limit) return text;
+  if (limit < 3) return text.slice(0, limit);
+  return `${text.slice(0, limit - 3).trimEnd()}...`;
 }
 
 function chunkScore(chunk: ReferenceChunk) {
@@ -32,7 +40,7 @@ export function selectReferenceChunks(
   options: { maxChunks?: number; maxChunkChars?: number } = {},
 ) {
   const maxChunks = options.maxChunks ?? 8;
-  const maxChunkChars = options.maxChunkChars ?? 1200;
+  const maxChunkChars = normalizeLimit(options.maxChunkChars, 1200);
   return [...chunks]
     .sort((a, b) => chunkScore(b) - chunkScore(a) || a.id.localeCompare(b.id))
     .slice(0, maxChunks)

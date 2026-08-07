@@ -1,5 +1,10 @@
 import type { ReferenceChunk } from "./types";
 
+function normalizeChunkSize(value: number | undefined) {
+  const size = value ?? 1200;
+  return Number.isFinite(size) ? Math.max(1, Math.floor(size)) : 1200;
+}
+
 export function estimateTokens(text: string): number {
   const asciiWords = text.match(/[A-Za-z0-9_]+/g)?.length ?? 0;
   const nonAsciiChars = text.replace(/[\x00-\x7F\s]/g, "").length;
@@ -13,7 +18,7 @@ export function chunkPlainText(input: {
   heading?: string;
   maxChunkChars?: number;
 }): ReferenceChunk[] {
-  const maxChunkChars = input.maxChunkChars ?? 1200;
+  const maxChunkChars = normalizeChunkSize(input.maxChunkChars);
   const blocks = input.text
     .split(/\n{2,}/)
     .map((block) => block.replace(/\s+/g, " ").trim())
