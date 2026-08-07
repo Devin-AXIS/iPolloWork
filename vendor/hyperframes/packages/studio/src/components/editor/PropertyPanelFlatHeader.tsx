@@ -19,7 +19,7 @@ export function PropertyPanelFlatHeader({
   return (
     <div
       data-element-kind={elementKind}
-      className="flex min-h-[69px] items-center justify-between gap-3 border-b-[0.5px] border-[#ebebeb] px-4 py-4 dark:border-panel-hairline"
+      className="flex min-h-[69px] items-center justify-between gap-3 border-b-[0.5px] border-[var(--hf-studio-divider)] px-4 py-4"
     >
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-[14px] font-semibold tracking-[-0.3px] text-[#171816] dark:text-panel-text-0">

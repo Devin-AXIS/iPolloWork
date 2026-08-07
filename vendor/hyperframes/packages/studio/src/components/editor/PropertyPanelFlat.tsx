@@ -603,7 +603,7 @@ export function PropertyPanelFlat({
                   {isOpen && (
                     <div
                       data-flat-group-content="true"
-                      className={`${justToggledIds.includes(group.id) ? "hf-flat-group-enter " : ""}border-b-[0.5px] border-[#ebebeb] bg-panel-bg px-[17px] pb-[15px] pt-2 dark:border-panel-hairline dark:bg-panel-bg`}
+                      className={`${justToggledIds.includes(group.id) ? "hf-flat-group-enter " : ""}border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] pb-[15px] pt-2`}
                     >
                       {group.content}
                     </div>

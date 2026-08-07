@@ -162,6 +162,16 @@ export function useTimelineSyncCallbacks({
       } catch {
         iframeDoc = null;
       }
+      const resolvedClipHosts = new Map<ClipManifestClip, Element>();
+      if (iframeDoc) {
+        const usedHostElements = new Set<Element>();
+        data.clips.forEach((clip, index) => {
+          const host = findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostElements);
+          if (!host) return;
+          usedHostElements.add(host);
+          resolvedClipHosts.set(clip, host);
+        });
+      }
 
       try {
         const iframeWin = iframeRef.current?.contentWindow as
@@ -226,7 +236,7 @@ export function useTimelineSyncCallbacks({
 
           for (const clip of data.clips) {
             if (!clip.id) continue;
-            const hostEl = iframeDoc.getElementById(clip.id);
+            const hostEl = resolvedClipHosts.get(clip) ?? null;
             if (!hostEl) continue;
             const hostId = clip.id;
             const innerRoot =
@@ -267,12 +277,8 @@ export function useTimelineSyncCallbacks({
         // cross-origin or __clipTree not available — maps stay empty
       }
 
-      const usedHostEls = new Set<Element>();
       const els: TimelineElement[] = filtered.map((clip, index) => {
-        const hostEl = iframeDoc
-          ? findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostEls)
-          : null;
-        if (hostEl) usedHostEls.add(hostEl);
+        const hostEl = resolvedClipHosts.get(clip) ?? null;
         return createTimelineElementFromManifestClip({
           clip,
           fallbackIndex: index,

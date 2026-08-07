@@ -551,8 +551,8 @@ export function StudioRightPanel({
                       onClick={() => openHostPanel("voice")}
                     />
                     <PanelTabButton
-                      label="插画"
-                      tooltip="使用 HTML 插画能力生成视频素材"
+                      label={t("right.illustration")}
+                      tooltip={t("right.illustrationTooltip")}
                       active={rightPanelTab === "illustration"}
                       onClick={() => selectStudioPanel("illustration")}
                     />
