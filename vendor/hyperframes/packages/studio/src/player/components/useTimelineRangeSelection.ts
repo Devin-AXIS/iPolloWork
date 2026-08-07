@@ -353,7 +353,7 @@ export function useTimelineRangeSelection({
     });
   }, [setShowPopover]);
 
-  // Release of a marquee gesture: a plain click keeps the current selection;
+  // Release of a marquee gesture: a plain empty-lane click clears selection;
   // a real drag replaces it and notifies the new primary element.
   const finishMarquee = useCallback(
     (marquee: MarqueeDragState) => {
@@ -362,6 +362,8 @@ export function useTimelineRangeSelection({
       setMarqueeRect(null);
       const store = usePlayerStore.getState();
       if (!marquee.active) {
+        store.setSelectedElementId(null);
+        onSelectElement?.(null);
         return;
       }
       const primaryKey = store.selectedElementId;

@@ -569,15 +569,13 @@ export const TimelineLanes = memo(function TimelineLanes({
                               onSelectElement?.(anchorElement);
                               return;
                             }
-                            // Plain click single-selects: drop any marquee multi-selection.
-                            // Only a click on the PRIMARY selection toggles it off — a click
-                            // on a marquee-selected clip narrows the selection to that clip.
-                            const hadMultiSelection = selectedElementIds.size > 0;
+                            // Pointer-down may already select a movable clip before the
+                            // browser dispatches click. Keep that selection stable instead
+                            // of treating the follow-up click as a request to deselect it.
+                            // Empty-lane clicks remain the explicit way to clear selection.
                             usePlayerStore.getState().clearSelectedElementIds();
-                            const nextElement =
-                              selectedElementId === elementKey && !hadMultiSelection ? null : el;
-                            setSelectedElementId(nextElement ? elementKey : null);
-                            onSelectElement?.(nextElement);
+                            setSelectedElementId(elementKey);
+                            onSelectElement?.(el);
                           }
                         }
                         onDoubleClick={(e) => {

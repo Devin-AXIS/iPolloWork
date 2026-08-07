@@ -124,11 +124,16 @@ export interface DomEditViewport {
 
 export interface TimelineElementDomTarget {
   id?: string;
+  tag?: string;
+  start?: number;
+  duration?: number;
+  track?: number;
   domId?: string;
   hfId?: string;
   selector?: string;
   selectorIndex?: number;
   sourceFile?: string;
+  previewHostId?: string;
   compositionSrc?: string;
 }
 

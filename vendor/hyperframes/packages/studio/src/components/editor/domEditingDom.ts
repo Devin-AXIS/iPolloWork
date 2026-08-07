@@ -213,9 +213,9 @@ export function escapeCssString(value: string): string {
     .replace(/\f/g, "\\c ");
 }
 
-export function querySelectorAllSafely(doc: Document, selector: string): Element[] {
+export function querySelectorAllSafely(root: ParentNode, selector: string): Element[] {
   try {
-    return Array.from(doc.querySelectorAll(selector));
+    return Array.from(root.querySelectorAll(selector));
   } catch {
     return [];
   }
@@ -300,7 +300,7 @@ export function getSelectorIndex(
   sourceFile: string,
   activeCompositionPath: string | null,
 ): number | undefined {
-  if (!selector?.startsWith(".")) return undefined;
+  if (!selector) return undefined;
 
   return getSourceScopedSelectorIndex(doc, el, selector, sourceFile, (candidate) =>
     isHtmlElement(candidate)

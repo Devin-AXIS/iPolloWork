@@ -7,7 +7,6 @@ import {
   AlignRight,
   ListBullets,
   ListNumbers,
-  Plus,
   TextIndent,
   X,
 } from "../../icons/SystemIcons";
@@ -298,7 +297,6 @@ export function FlatTextSection({
   onImportFonts,
   onSetText,
   onSetTextFieldStyle,
-  onAddTextField,
   onRemoveTextField,
 }: {
   element: DomEditSelection;
@@ -310,7 +308,6 @@ export function FlatTextSection({
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
-  const track = useTrackDesignInput();
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
   );
@@ -336,11 +333,6 @@ export function FlatTextSection({
           activeFieldKey={activeField.key}
           styles={styles}
           onSelect={setActiveFieldKey}
-          onAdd={() =>
-            void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
-              if (nextKey) setActiveFieldKey(nextKey);
-            })
-          }
           onRemove={onRemoveTextField}
         />
         <FlatTextFieldEditor
@@ -367,17 +359,6 @@ export function FlatTextSection({
         onSetText={onSetText}
         onSetTextFieldStyle={onSetTextFieldStyle}
       />
-      <button
-        type="button"
-        onClick={() => {
-          track("button", "Add text field");
-          void onAddTextField(activeField.key);
-        }}
-        className="mt-0.5 flex items-center gap-[5px] text-[10px] text-panel-text-4 hover:text-panel-text-2"
-      >
-        <Plus size={10} />
-        Add text field
-      </button>
     </div>
   );
 }
@@ -395,14 +376,12 @@ export function FlatTextLayerList({
   activeFieldKey,
   styles,
   onSelect,
-  onAdd,
   onRemove,
 }: {
   fields: DomEditSelection["textFields"];
   activeFieldKey: string;
   styles: Record<string, string>;
   onSelect: (fieldKey: string) => void;
-  onAdd: () => void;
   onRemove: (fieldKey: string) => void;
 }) {
   const track = useTrackDesignInput();
@@ -453,18 +432,6 @@ export function FlatTextLayerList({
           );
         })}
       </div>
-      <button
-        type="button"
-        data-flat-text-layer-add="true"
-        onClick={() => {
-          track("button", "Add text field");
-          onAdd();
-        }}
-        className="mt-1 flex items-center gap-[5px] text-[10px] text-panel-text-4 hover:text-panel-text-2"
-      >
-        <Plus size={10} />
-        Add text field
-      </button>
     </div>
   );
 }
