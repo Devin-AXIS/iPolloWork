@@ -12,6 +12,8 @@ async function loadPdfjs() {
 }
 
 export async function extractPdfReference(file: File): Promise<ExtractedReferenceContent> {
+  const warnings = new Set<string>();
+
   try {
     const pdfjs = await loadPdfjs();
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -27,6 +29,7 @@ export async function extractPdfReference(file: File): Promise<ExtractedReferenc
         .map((item) => "str" in item ? String(item.str) : "")
         .join(" ");
       const cleaned = cleanReferenceText(raw);
+      cleaned.warnings.forEach((warning) => warnings.add(warning));
       if (!cleaned.text) continue;
       pageTexts.push(cleaned.text);
       chunks.push(...chunkPlainText({ source: file.name, page: pageNumber, text: cleaned.text }));
@@ -36,11 +39,11 @@ export async function extractPdfReference(file: File): Promise<ExtractedReferenc
     return {
       text,
       chunks,
-      warnings: text ? [] : ["No readable PDF text was extracted."],
+      warnings: [...warnings, ...(text ? [] : ["No readable PDF text was extracted."])],
       metadata: { pages: pdf.numPages },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { text: "", chunks: [], warnings: [`PDF parsing failed: ${message}`] };
+    return { text: "", chunks: [], warnings: [...warnings, `PDF parsing failed: ${message}`] };
   }
 }

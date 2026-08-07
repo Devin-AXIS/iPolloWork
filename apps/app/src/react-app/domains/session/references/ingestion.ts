@@ -64,8 +64,8 @@ async function extractReference(file: File): Promise<ExtractedReferenceContent> 
   if (extension === "csv" || extension === "json" || mime === "text/csv" || mime === "application/csv" || mime === "application/json") {
     return extractTableReference(file);
   }
-  if (extension === "md" || extension === "txt" || mime.startsWith("text/")) return extractTextReference(file);
   if (extension === "pdf" || mime === PDF_MIME) return extractPdfReference(file);
+  if (extension === "md" || extension === "txt" || mime.startsWith("text/")) return extractTextReference(file);
   if (mime.startsWith("image/")) {
     return { text: "", chunks: [], warnings: ["Images are kept as optional visual attachments; OCR is not available."] };
   }

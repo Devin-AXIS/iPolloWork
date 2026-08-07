@@ -349,6 +349,15 @@ describe("reference ingestion router", () => {
     expect(result.warnings.some((warning) => warning.includes("PDF parsing failed"))).toBe(true);
   });
 
+  test("routes PDFs by extension before generic text handling", async () => {
+    const file = new File(["not a pdf"], "broken.pdf", { type: "text/plain" });
+    Object.defineProperty(file, "type", { value: "text/plain" });
+    const result = await ingestReferenceFile(file);
+
+    expect(result.quality).toBe("failed");
+    expect(result.warnings.some((warning) => warning.includes("PDF parsing failed"))).toBe(true);
+  });
+
   test("autofills only from high and medium quality references", () => {
     const text = "# Product Launch\n\nAudience: enterprise design teams.\n\nRequirements: preserve template layout.";
     const good = {
