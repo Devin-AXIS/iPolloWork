@@ -687,6 +687,16 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
   });
 
+  test("uses a low-contrast themed boundary beside Video Studio", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("border-r border-border/40 dark:border-white/[0.055]");
+    expect(sessionPageSource).not.toContain('border-[#EAEAEA]');
+  });
+
   test("batches right-panel drag updates and cleans up the interaction", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),

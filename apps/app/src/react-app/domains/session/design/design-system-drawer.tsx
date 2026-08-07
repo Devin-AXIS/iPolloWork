@@ -1,16 +1,11 @@
 ﻿/** @jsxImportSource react */
 import * as React from "react";
-import { Check, ChevronDown, GripVertical, Palette, RotateCcw, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, Grip, GripVertical, Image as ImageIcon, Minus, Palette, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
-import backgroundGradientIcon from "./assets/background-gradient.svg";
-import backgroundImageIcon from "./assets/background-image.svg";
-import backgroundNoneIcon from "./assets/background-none.svg";
-import backgroundSolidActiveIcon from "./assets/background-solid-active.svg";
-import backgroundSolidDefaultIcon from "./assets/background-solid-default.svg";
 import designSystemSearchIcon from "./assets/design-system-search.svg";
 import designSystemChevronUpIcon from "./assets/design-system-chevron-up.svg";
 
@@ -638,12 +633,12 @@ function TokenSelect({ value, ariaLabel, options, onChange }: { value: string; a
 function LabeledTokenSelect({ label, ...props }: { label: string; value: string; ariaLabel: string; options: Array<{ label: string; value: string }>; onChange: (value: string) => void }) { return <label className="block"><span className="mb-1 block text-[10px] text-muted-foreground">{label}</span><TokenSelect {...props} /></label>; }
 function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="group relative grid size-[25px] cursor-pointer place-items-center overflow-hidden rounded-[7px] border border-black/10" title={label} style={{ backgroundColor: normalizeHex(value, "#ffffff") }}><input type="color" className="absolute inset-0 size-full cursor-pointer opacity-0" value={normalizeHex(value, "#ffffff")} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`${label} color`} /></label>; }
 function BackgroundSection({ mode, values, colors, onSelectMode, onTokenChange, onChooseMedia }: { mode: BackgroundMode; values: DesignTokenValues; colors: string[]; onSelectMode: (mode: BackgroundMode) => void; onTokenChange: (name: string, value: string) => void; onChooseMedia?: () => void }) {
-  const controls: Array<{ mode: BackgroundMode; label: string; icon: string }> = [{ mode: "none", label: t("design_system.embedded.no_background"), icon: backgroundNoneIcon }, { mode: "solid", label: t("design_system.embedded.solid_color"), icon: backgroundSolidDefaultIcon }, { mode: "gradient", label: t("design_system.embedded.gradient"), icon: backgroundGradientIcon }, { mode: "image", label: t("design_system.embedded.image"), icon: backgroundImageIcon }];
+  const controls: Array<{ mode: BackgroundMode; label: string }> = [{ mode: "none", label: t("design_system.embedded.no_background") }, { mode: "solid", label: t("design_system.embedded.solid_color") }, { mode: "gradient", label: t("design_system.embedded.gradient") }, { mode: "image", label: t("design_system.embedded.image") }];
   const solidColor = normalizeHex(colors[2] ?? "#ffffff", "#ffffff");
   const imageMode = backgroundImageFitMode(values["--ipw-bg-size"]);
 
   return <PanelSection title={t("design_system.embedded.background")}>
-    <div className="flex gap-1">{controls.map(({ mode: itemMode, label, icon }) => <button key={itemMode} type="button" className={cn("grid h-[34px] flex-1 place-items-center rounded-lg transition-colors", mode === itemMode ? "bg-foreground" : "bg-muted hover:bg-accent")} onClick={() => onSelectMode(itemMode)} aria-label={label} aria-pressed={mode === itemMode}>{itemMode === "solid" ? <img src={mode === "solid" ? backgroundSolidActiveIcon : icon} alt="" className="h-[34px] w-[68px] max-w-none" /> : <img src={icon} alt="" className={cn("size-4", mode === itemMode && "brightness-0 invert")} />}</button>)}</div>
+    <div className="flex gap-1">{controls.map(({ mode: itemMode, label }) => <button key={itemMode} type="button" className={cn("grid h-[34px] flex-1 place-items-center rounded-lg transition-colors", mode === itemMode ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground")} onClick={() => onSelectMode(itemMode)} aria-label={label} aria-pressed={mode === itemMode}>{itemMode === "none" ? <Minus aria-hidden="true" className="size-4" /> : itemMode === "solid" ? <span aria-hidden="true" className="relative size-3 rounded-[2px] border-[1.25px] border-current"><span className="absolute inset-[2px] rounded-[1px] bg-current" /></span> : itemMode === "gradient" ? <Grip aria-hidden="true" className="size-4" /> : <ImageIcon aria-hidden="true" className="size-4" />}</button>)}</div>
     {mode === "solid" ? <DesignColorField value={solidColor} onChange={(value) => onTokenChange("--ipw-color-bg", value)} className="mt-3" /> : null}
     {mode === "gradient" ? <DesignGradientPicker
       value={values["--ipw-bg-gradient"] ?? "linear-gradient(135deg, #2e6bdb 0%, #76e3e9 100%)"}

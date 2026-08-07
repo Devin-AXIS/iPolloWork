@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { SelectElementOptions, TimelineElement } from "../player";
+import { usePlayerStore, type SelectElementOptions, type TimelineElement } from "../player";
 import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
@@ -7,6 +7,7 @@ import {
 import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
+  resolveTimelineSelectionSeekTime,
   type RightPanelTab,
 } from "../utils/studioHelpers";
 import {
@@ -378,11 +379,23 @@ export function useDomSelection({
         return;
       }
 
-      const selection = await buildDomSelectionForTimelineElement(element);
-      // A newer selection superseded this one while we were resolving — drop the stale result.
-      if (seq !== timelineSelectSeqRef.current) return;
-      if (selection) applyDomSelection(selection);
-      else {
+      try {
+        const selection = await buildDomSelectionForTimelineElement(element);
+        // A newer selection superseded this one while we were resolving — drop the stale result.
+        if (seq !== timelineSelectSeqRef.current) return;
+        if (selection) {
+          applyDomSelection(selection);
+          return;
+        }
+        applyDomSelection(null, {
+          revealPanel: false,
+          preserveTimelineSelection: true,
+        });
+      } catch {
+        // Generated compositions can contain detached nodes, inaccessible nested
+        // iframes, or CSS that fails while resolving inspector metadata. Timeline
+        // selection must remain usable even when that element cannot be inspected.
+        if (seq !== timelineSelectSeqRef.current) return;
         applyDomSelection(null, {
           revealPanel: false,
           preserveTimelineSelection: true,

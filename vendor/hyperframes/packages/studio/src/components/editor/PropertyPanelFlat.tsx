@@ -34,24 +34,117 @@ type EditingSections = ReturnType<typeof resolveEditingSections>;
 type FlatGroupDescriptor = {
   id: string;
   title: string;
-  summary?: string;
+  summary: string;
   accessory?: ReactNode;
   content: ReactNode;
 };
 
-// Type-only fallback for the Motion effect-card callbacks. Used solely to
-// satisfy FlatMotionSection's required-callback shape when the effect list is
-// gated off (showEffects === false, so none of these are ever invoked). Keeps
-// the gated-off path free of `!` non-null assertions — the real, narrowed
-// handlers flow through only when the double-gate below passes.
-const EMPTY_GSAP_EFFECT_HANDLERS = {
-  onAddAnimation: () => {},
-  onUpdateProperty: () => {},
-  onUpdateMeta: () => {},
-  onDeleteAnimation: () => {},
-  onAddProperty: () => {},
-  onRemoveProperty: () => {},
+export type InspectorElementKind = "text" | "image" | "video" | "audio" | "other";
+
+const INSPECTOR_GROUP_PRIORITIES: Record<InspectorElementKind, readonly string[]> = {
+  text: [
+    "text",
+    "layout",
+    "fill",
+    "appearance",
+    "stroke",
+    "mask",
+    "timing",
+    "transform-3d",
+    "grade",
+    "media",
+  ],
+  image: [
+    "layout",
+    "mask",
+    "appearance",
+    "media",
+    "grade",
+    "fill",
+    "stroke",
+    "timing",
+    "transform-3d",
+    "text",
+  ],
+  video: [
+    "media",
+    "mask",
+    "layout",
+    "appearance",
+    "grade",
+    "timing",
+    "fill",
+    "stroke",
+    "transform-3d",
+    "text",
+  ],
+  audio: ["media", "timing"],
+  other: [
+    "layout",
+    "fill",
+    "appearance",
+    "stroke",
+    "mask",
+    "timing",
+    "transform-3d",
+    "text",
+    "media",
+    "grade",
+  ],
 };
+
+export function resolveInspectorElementKind(
+  tagName: string,
+  isTextEditable: boolean,
+): InspectorElementKind {
+  const normalizedTag = tagName.toLowerCase();
+  if (normalizedTag === "img") return "image";
+  if (normalizedTag === "video") return "video";
+  if (normalizedTag === "audio") return "audio";
+  return isTextEditable ? "text" : "other";
+}
+
+export function resolveInspectorGroupOrder({
+  elementKind,
+  hasAnimationParameters,
+  availableGroupIds,
+}: {
+  elementKind: InspectorElementKind;
+  hasAnimationParameters: boolean;
+  availableGroupIds: readonly string[];
+}): string[] {
+  const available = new Set(availableGroupIds);
+  const ordered: string[] = [];
+  const priorities = hasAnimationParameters
+    ? ["animation", ...INSPECTOR_GROUP_PRIORITIES[elementKind]]
+    : INSPECTOR_GROUP_PRIORITIES[elementKind];
+
+  for (const groupId of priorities) {
+    if (available.has(groupId) && !ordered.includes(groupId)) ordered.push(groupId);
+  }
+  for (const groupId of availableGroupIds) {
+    if (!ordered.includes(groupId)) ordered.push(groupId);
+  }
+  return ordered;
+}
+
+export function resolveOpenInspectorGroup({
+  currentGroupId,
+  orderedGroupIds,
+  hasManualSelection,
+}: {
+  currentGroupId: string;
+  orderedGroupIds: readonly string[];
+  hasManualSelection: boolean;
+}): string {
+  if (
+    hasManualSelection &&
+    (currentGroupId === "" || orderedGroupIds.includes(currentGroupId))
+  ) {
+    return currentGroupId;
+  }
+  return orderedGroupIds[0] ?? "";
+}
 
 /**
  * The flat "Ledger" inspector shell (design_handoff_studio_inspector).
@@ -214,15 +307,82 @@ export function PropertyPanelFlat({
     showEditableSections: boolean;
     currentTime: number;
   }) {
-  // Lazy initializer: pick whichever group actually renders for this element
-  // (Text if text-editable, else Style if style-editable, else none open) so a
-  // style-only element doesn't start with everything collapsed. Only runs on
-  // mount — PropertyPanel.tsx keys <PropertyPanelFlat> by element identity so
-  // switching the selection re-mounts this component and re-derives the
-  // default instead of preserving stale state across unrelated elements.
+  const isTextEditable = isTextEditableSelection(element);
+  const elementKind = resolveInspectorElementKind(element.tagName, isTextEditable);
+  const headerElementKind =
+    elementKind === "text"
+      ? "text"
+      : elementKind === "image" || elementKind === "video" || elementKind === "audio"
+        ? "media"
+        : "other";
+  const hasAnimationParameters =
+    gsapAnimations.length > 0 &&
+    STUDIO_GSAP_PANEL_ENABLED &&
+    Boolean(
+      onUpdateGsapProperty &&
+        onUpdateGsapMeta &&
+        onDeleteGsapAnimation &&
+        onAddGsapProperty &&
+        onAddGsapAnimation,
+    );
+  const showMotionTiming = Boolean(sections.timing);
+  const gsapEffectHandlers =
+    hasAnimationParameters &&
+    onUpdateGsapProperty &&
+    onUpdateGsapMeta &&
+    onDeleteGsapAnimation &&
+    onAddGsapProperty &&
+    onAddGsapAnimation
+      ? {
+          onAddAnimation: onAddGsapAnimation,
+          onUpdateProperty: onUpdateGsapProperty,
+          onUpdateMeta: onUpdateGsapMeta,
+          onDeleteAnimation: onDeleteGsapAnimation,
+          onAddProperty: onAddGsapProperty,
+          onRemoveProperty: onRemoveGsapProperty ?? (() => {}),
+          onUpdateFromProperty: onUpdateGsapFromProperty,
+          onAddFromProperty: onAddGsapFromProperty,
+          onRemoveFromProperty: onRemoveGsapFromProperty,
+          onSetArcPath,
+          onUpdateArcSegment,
+          onUnroll,
+          onUpdateKeyframeEase,
+          onSetAllKeyframeEases,
+        }
+      : null;
+  const showMotionEffects = gsapEffectHandlers !== null;
+  const availableGroupIds = [
+    ...(showMotionTiming ? ["timing"] : []),
+    ...(isTextEditable ? ["text"] : []),
+    ...(showEditableSections ? ["fill", "stroke", "appearance", "mask"] : []),
+    ...(sections.layout ? ["layout", "transform-3d"] : []),
+    ...(showMotionEffects ? ["animation"] : []),
+    ...(sections.colorGrading ? ["grade"] : []),
+    ...(sections.media ? ["media"] : []),
+  ];
+  const orderedGroupIds = resolveInspectorGroupOrder({
+    elementKind,
+    hasAnimationParameters,
+    availableGroupIds,
+  });
+  const orderedGroupKey = orderedGroupIds.join("|");
   const [openGroupId, setOpenGroupId] = useState<string>(() =>
-    sections.timing ? "timing" : sections.layout ? "layout" : showEditableSections ? "fill" : "",
+    resolveOpenInspectorGroup({
+      currentGroupId: "",
+      orderedGroupIds,
+      hasManualSelection: false,
+    }),
   );
+  const hasManualGroupSelectionRef = useRef(false);
+  useEffect(() => {
+    setOpenGroupId((currentGroupId) =>
+      resolveOpenInspectorGroup({
+        currentGroupId,
+        orderedGroupIds: orderedGroupKey ? orderedGroupKey.split("|") : [],
+        hasManualSelection: hasManualGroupSelectionRef.current,
+      }),
+    );
+  }, [orderedGroupKey]);
 
   // Tracks which group(s) are actively transitioning this toggle cycle, so
   // their header/body gets the fast entrance animation (hf-flat-group-enter)
@@ -259,9 +419,8 @@ export function PropertyPanelFlat({
     onApplyScope: onApplyColorGradingScope,
   });
 
-  const isTextEditable = isTextEditableSelection(element);
-  const elementKind = sections.media ? "media" : element.textFields.length > 0 ? "text" : "other";
   const toggleOpen = (groupId: string) => {
+    hasManualGroupSelectionRef.current = true;
     // Capture what was open BEFORE this click (this render's closure over
     // openGroupId), so the group that's about to be implicitly closed can be
     // tracked too — not just the one the user clicked.
@@ -290,42 +449,8 @@ export function PropertyPanelFlat({
   // (follow-up fix to 684ec4e87, which corrected the seek basis but left this
   // one still naive).
   const currentPct = elDuration > 0 ? ((currentTime - elStart) / elDuration) * 100 : 0;
-
-  // Motion group double-gate — reproduces the legacy PropertyPanel gate exactly:
-  //  • Timing (sections.timing) shows via resolveEditingSections, same as today.
-  //  • The effect-card list shows only when STUDIO_GSAP_PANEL_ENABLED is on AND
-  //    all five edit handlers are present (identical to PropertyPanel's legacy
-  //    `<GsapAnimationSection>` guard).
-  // Computing the narrowed handler bundle inside the `&&`-guarded ternary lets
-  // TypeScript prove each handler non-undefined without a `!` assertion; the
-  // noop bundle only fills the type when the gate is off (never invoked, since
-  // FlatMotionSection guards every call behind showEffects).
-  const showMotionTiming = Boolean(sections.timing);
-  const gsapEffectHandlers =
-    STUDIO_GSAP_PANEL_ENABLED &&
-    onUpdateGsapProperty &&
-    onUpdateGsapMeta &&
-    onDeleteGsapAnimation &&
-    onAddGsapProperty &&
-    onAddGsapAnimation
-      ? {
-          onAddAnimation: onAddGsapAnimation,
-          onUpdateProperty: onUpdateGsapProperty,
-          onUpdateMeta: onUpdateGsapMeta,
-          onDeleteAnimation: onDeleteGsapAnimation,
-          onAddProperty: onAddGsapProperty,
-          onRemoveProperty: onRemoveGsapProperty ?? (() => {}),
-          onUpdateFromProperty: onUpdateGsapFromProperty,
-          onAddFromProperty: onAddGsapFromProperty,
-          onRemoveFromProperty: onRemoveGsapFromProperty,
-          onSetArcPath,
-          onUpdateArcSegment,
-          onUnroll,
-          onUpdateKeyframeEase,
-          onSetAllKeyframeEases,
-        }
-      : null;
-  const showMotionEffects = gsapEffectHandlers !== null;
+  const parsedOpacity = Number.parseFloat(styles.opacity ?? "1");
+  const opacityPercent = Math.round((Number.isFinite(parsedOpacity) ? parsedOpacity : 1) * 100);
 
   // Ordered group descriptors — one per FlatGroup this panel renders, gated by
   // the same conditions the inline JSX used. Split below into before-open/
@@ -335,6 +460,7 @@ export function PropertyPanelFlat({
     groups.push({
       id: "timing",
       title: "Timing",
+      summary: `${elDuration.toFixed(2)}s · 2 parameters`,
       content: (
         <FlatTimingRow
           element={element}
@@ -368,6 +494,10 @@ export function PropertyPanelFlat({
     groups.push({
       id: "fill",
       title: "Fill",
+      summary:
+        styles["background-image"] && styles["background-image"] !== "none"
+          ? "Image fill"
+          : styles["background-color"] || "Color · image",
       content: (
         <FlatFillSection
           projectId={projectId}
@@ -383,6 +513,7 @@ export function PropertyPanelFlat({
       {
         id: "stroke",
         title: "Stroke",
+        summary: styles["border-width"] || "Width · color · style",
         content: (
           <FlatStrokeSection
             styles={styles}
@@ -394,6 +525,7 @@ export function PropertyPanelFlat({
       {
         id: "appearance",
         title: "Appearance",
+        summary: `${opacityPercent}% opacity`,
         content: (
           <FlatAppearanceSection
             styles={styles}
@@ -406,6 +538,10 @@ export function PropertyPanelFlat({
       {
         id: "mask",
         title: "Mask",
+        summary:
+          styles["clip-path"] && styles["clip-path"] !== "none"
+            ? "Crop applied"
+            : "Crop · overflow",
         content: (
           <FlatMaskSection
             styles={styles}
@@ -461,7 +597,7 @@ export function PropertyPanelFlat({
       ),
     });
   }
-  if (showMotionEffects) {
+  if (gsapEffectHandlers) {
     groups.push({
       id: "animation",
       title: "Animation",
@@ -476,7 +612,7 @@ export function PropertyPanelFlat({
           unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
           onSetAttribute={onSetAttribute}
           onSetAttributes={onSetAttributes}
-          {...(gsapEffectHandlers ?? EMPTY_GSAP_EFFECT_HANDLERS)}
+          {...gsapEffectHandlers}
         />
       ),
     });
@@ -485,6 +621,7 @@ export function PropertyPanelFlat({
     groups.push({
       id: "transform-3d",
       title: "3D Transform",
+      summary: "9 parameters",
       content: (
         <LayoutTransform3DBlock
           gsapRuntimeValues={gsapRuntimeValues}
@@ -528,10 +665,11 @@ export function PropertyPanelFlat({
     });
   }
   if (sections.media) {
+    const mediaParameterCount = elementKind === "video" ? 10 : elementKind === "audio" ? 5 : 3;
     groups.push({
       id: "media",
       title: "Media",
-      summary: element.tagName,
+      summary: `${element.tagName} · ${mediaParameterCount} parameters`,
       content: (
         <FlatMediaSection
           projectDir={projectDir}
@@ -553,20 +691,7 @@ export function PropertyPanelFlat({
   // a dedicated region between the two fixed header stacks. When no group is
   // open, every group is just a collapsed header — there's no scrollable
   // middle region at all, since nothing is expanded.
-  const groupOrder = [
-    "timing",
-    "layout",
-    "fill",
-    "stroke",
-    "appearance",
-    "mask",
-    "animation",
-    "transform-3d",
-    "text",
-    "grade",
-    "media",
-  ];
-  groups.sort((a, b) => groupOrder.indexOf(a.id) - groupOrder.indexOf(b.id));
+  groups.sort((a, b) => orderedGroupIds.indexOf(a.id) - orderedGroupIds.indexOf(b.id));
   return (
     <DesignPanelInputProvider ui="flat">
       <div
@@ -578,7 +703,7 @@ export function PropertyPanelFlat({
           <PropertyPanelFlatHeader
             name={element.label}
             meta={`${sourceLabel} · ${element.tagName}`}
-            elementKind={elementKind}
+            elementKind={headerElementKind}
             onAskAgent={onAskAgent}
           />
         </DesignPanelInputProvider>
@@ -603,7 +728,7 @@ export function PropertyPanelFlat({
                   {isOpen && (
                     <div
                       data-flat-group-content="true"
-                      className={`${justToggledIds.includes(group.id) ? "hf-flat-group-enter " : ""}border-b-[0.5px] border-[#ebebeb] bg-panel-bg px-[17px] pb-[15px] pt-2 dark:border-panel-hairline dark:bg-panel-bg`}
+                      className={`${justToggledIds.includes(group.id) ? "hf-flat-group-enter " : ""}border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] pb-[15px] pt-2`}
                     >
                       {group.content}
                     </div>

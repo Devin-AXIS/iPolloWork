@@ -145,7 +145,7 @@ export function ImageFillField({
           />
         </div>
         <div
-          className="flex h-[100px] items-center justify-center overflow-hidden rounded-[8px] border border-[#ebebeb]"
+          className="flex h-[100px] items-center justify-center overflow-hidden rounded-[8px] border border-[var(--hf-studio-divider)]"
           style={{
             backgroundColor: "white",
             backgroundImage: selectedAsset

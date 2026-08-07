@@ -2352,7 +2352,7 @@ export function SessionPage(props: SessionPageProps) {
                 transition: sessionShellTransition,
               }}
             >
-              <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
+              <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
             mainHeaderHidden ? "hidden" : "flex",
