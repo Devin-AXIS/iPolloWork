@@ -379,19 +379,23 @@ export function useDomSelection({
         return;
       }
 
-      let selection = await buildDomSelectionForTimelineElement(element);
-      if (!selection) {
-        const player = usePlayerStore.getState();
-        const inspectTime = resolveTimelineSelectionSeekTime(player.currentTime, element);
-        if (inspectTime != null) {
-          player.requestSeek(inspectTime);
-          selection = await buildDomSelectionForTimelineElement(element);
+      try {
+        const selection = await buildDomSelectionForTimelineElement(element);
+        // A newer selection superseded this one while we were resolving — drop the stale result.
+        if (seq !== timelineSelectSeqRef.current) return;
+        if (selection) {
+          applyDomSelection(selection);
+          return;
         }
-      }
-      // A newer selection superseded this one while we were resolving — drop the stale result.
-      if (seq !== timelineSelectSeqRef.current) return;
-      if (selection) applyDomSelection(selection);
-      else {
+        applyDomSelection(null, {
+          revealPanel: false,
+          preserveTimelineSelection: true,
+        });
+      } catch {
+        // Generated compositions can contain detached nodes, inaccessible nested
+        // iframes, or CSS that fails while resolving inspector metadata. Timeline
+        // selection must remain usable even when that element cannot be inspected.
+        if (seq !== timelineSelectSeqRef.current) return;
         applyDomSelection(null, {
           revealPanel: false,
           preserveTimelineSelection: true,

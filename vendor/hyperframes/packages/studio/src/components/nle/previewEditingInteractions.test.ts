@@ -95,28 +95,23 @@ describe("preview editing interactions", () => {
 
     expect(selectionSource).toContain("isElementComputedVisible(targetElement)");
     expect(selectionSource).toContain("preserveTimelineSelection: true");
+    expect(selectionSource).toContain("Generated compositions can contain detached nodes");
+    expect(selectionSource).toContain("selection must remain usable");
     expect(syncSource).toContain("const visibleIds = resolved.map");
     expect(syncSource).toContain("preserveTimelineSelection: true");
     expect(syncSource).not.toContain("if (selections.length < resolvableCount) return");
   });
 
-  it("seeks inactive child layers to a visible inspection frame before resolving them", () => {
-    const selectionSource = readFileSync(
-      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+  it("uses the same resolved DOM host for timeline rows and their editable child trees", () => {
+    const source = readFileSync(
+      new URL("../../player/hooks/useTimelineSyncCallbacks.ts", import.meta.url),
       "utf8",
     );
-    const childLayer = { start: 3, duration: 2 };
 
-    expect(resolveTimelineSelectionSeekTime(1, childLayer)).toBe(3);
-    expect(resolveTimelineSelectionSeekTime(4, childLayer)).toBe(4);
-    expect(resolveTimelineSelectionSeekTime(8, childLayer)).toBeCloseTo(4.999);
-    const seekIndex = selectionSource.indexOf("player.requestSeek(inspectTime)");
-    const retryIndex = selectionSource.indexOf(
-      "selection = await buildDomSelectionForTimelineElement(element)",
-      seekIndex,
-    );
-    expect(seekIndex).toBeGreaterThan(-1);
-    expect(retryIndex).toBeGreaterThan(seekIndex);
+    expect(source).toContain("const resolvedClipHosts = new Map<ClipManifestClip, Element>()");
+    expect(source).toContain("findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostElements)");
+    expect(source).toContain("const hostEl = resolvedClipHosts.get(clip) ?? null");
+    expect(source).not.toContain("const hostEl = iframeDoc.getElementById(clip.id)");
   });
 
   it("authors resizable geometry for visual assets dragged from the library", () => {

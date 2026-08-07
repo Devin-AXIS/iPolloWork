@@ -214,7 +214,7 @@ export function FlatGroupHeader({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[#ebebeb] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input dark:border-panel-hairline dark:hover:bg-panel-input/60`}
+        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input`}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
@@ -233,7 +233,7 @@ export function FlatGroupHeader({
 
   return (
     <div
-      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[#ebebeb] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#20bbc0] dark:border-panel-hairline`}
+      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#20bbc0]`}
     >
       <button
         type="button"

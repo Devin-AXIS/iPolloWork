@@ -122,7 +122,7 @@ export function FlatDropdown({
             id={listboxId}
             role="listbox"
             aria-label={tx(ariaLabel)}
-            className="fixed z-[220] max-h-[min(280px,calc(100vh-24px))] overflow-y-auto rounded-[6px] border border-[#ebebeb] bg-white p-1 shadow-[0_8px_24px_rgba(25,28,33,0.14)] dark:border-panel-hairline dark:bg-panel-bg"
+            className="fixed z-[220] max-h-[min(280px,calc(100vh-24px))] overflow-y-auto rounded-[6px] border border-[var(--hf-studio-divider)] bg-panel-bg p-1 shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
             style={{
               left: Math.min(
                 anchorRect.left,

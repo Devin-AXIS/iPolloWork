@@ -125,6 +125,10 @@ describe("Design system theme contract", () => {
     expect(drawer).not.toContain(">当前主题<");
     expect(drawer).not.toContain(">应用主题<");
     expect(drawer).toContain('PanelSection title={t("design_system.embedded.background")}');
+    expect(drawer).toContain('mode === itemMode ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"');
+    expect(drawer).toContain('<Minus aria-hidden="true" className="size-4" />');
+    expect(drawer).not.toContain("backgroundSolidDefaultIcon");
+    expect(drawer).not.toContain("backgroundSolidActiveIcon");
     expect(drawer).toContain("DesignImageFitSelect");
     expect(drawer).toContain("buildDesignSystemPresetValues(theme)");
     expect(drawer).not.toContain("Image overlay");

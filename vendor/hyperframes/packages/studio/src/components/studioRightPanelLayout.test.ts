@@ -377,7 +377,10 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
     expect(panel).toContain('label={t("right.assets")}');
-    expect(panel).toContain('label="插画"');
+    expect(panel).toContain('label={t("right.illustration")}');
+    expect(panel).toContain('tooltip={t("right.illustrationTooltip")}');
+    expect(translations).toContain('"right.illustration": "Illustrations"');
+    expect(translations).toContain('"right.illustration": "插画"');
     expect(panel).toContain('<IllustrationTab />');
     expect(panel).not.toContain('label={t("right.renders")}');
     expect(panel).not.toContain('label={t("right.effects")}');
@@ -407,8 +410,8 @@ describe("Studio right panel layout", () => {
       'import propertiesIconSrc from "../icons/studioHeaderProperties.svg?url"',
     );
     expect(header).toContain('import exportIconSrc from "../icons/studioHeaderExport.svg?url"');
-    expect(header).toContain("hover:border-[#62666e]");
-    expect(header).toContain("active:bg-[#ededeb]");
+    expect(header).toContain("hover:border-[var(--hf-panel-text-3)]");
+    expect(header).toContain("hover:bg-[var(--hf-panel-hover)]");
     expect(header).toContain("hf-studio-header-export");
     expect(styles).toContain(".hf-studio-header-export {");
     expect(styles).toContain("color: #ffffff !important;");
@@ -420,7 +423,8 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain("overflow-x-auto");
     expect(panel).toContain("absolute right-3 top-1/2");
     expect(panel).toContain("border-[0.5px] border-[var(--hf-studio-divider)]");
-    expect(styles).toContain("--hf-studio-divider: #ebebeb");
+    expect(styles).toContain("--hf-studio-divider: rgba(255, 255, 255, 0.075)");
+    expect(styles).toContain("--hf-studio-divider: #dfe3e8");
     expect(header).not.toContain('t("header.undo")');
     expect(header).not.toContain('t("header.capture")');
     expect(header).not.toContain("studio-toggle-fullscreen");
@@ -463,6 +467,7 @@ describe("Studio right panel layout", () => {
       "utf8",
     );
     const toolbar = readFileSync(new URL("./TimelineToolbar.tsx", import.meta.url), "utf8");
+    const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
     const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
 
     expect(layout).toContain("export const LAYER_HEADER_W = 255");
@@ -490,6 +495,12 @@ describe("Studio right panel layout", () => {
     expect(layerHeader).toContain("hf-timeline-layer-header__visibility");
     expect(layerHeader).toContain("hf-timeline-layer-header__reorder");
     expect(toolbar).toContain("hf-timeline-toolbar");
+    expect(toolbar).toContain("bg-[var(--hf-studio-toolbar-bg)]");
+    expect(header).toContain("bg-[var(--hf-studio-header-bg)]");
+    expect(styles).toContain(".hf-studio-properties-icon");
+    expect(styles).toContain(".hf-timeline-toolbar-icon");
+    expect(styles).toContain("--hf-timeline-clip-bg: #18181b");
+    expect(styles).toContain("--hf-timeline-clip-bg: #f5f6f9");
     expect(styles).toContain(".hf-timeline-layer-header.is-selected");
     expect(styles).toContain("background-color: #20bbc0 !important");
     expect(styles).toContain(".hf-timeline-ruler-label");
