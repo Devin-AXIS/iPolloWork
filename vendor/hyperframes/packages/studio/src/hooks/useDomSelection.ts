@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { SelectElementOptions, TimelineElement } from "../player";
+import { usePlayerStore, type SelectElementOptions, type TimelineElement } from "../player";
 import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
@@ -7,6 +7,7 @@ import {
 import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
+  resolveTimelineSelectionSeekTime,
   type RightPanelTab,
 } from "../utils/studioHelpers";
 import {

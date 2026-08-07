@@ -30,7 +30,7 @@ import {
   STUDIO_GSAP_PANEL_ENABLED,
   STUDIO_KEYFRAMES_ENABLED,
 } from "./manualEditingAvailability";
-import { PropertyPanelFlat } from "./PropertyPanelFlat";
+import { PropertyPanelFlat, resolveInspectorElementKind } from "./PropertyPanelFlat";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import { usePlayerStore, liveTime } from "../../player";
 import { TimingSection } from "./propertyPanelTimingSection";
@@ -276,7 +276,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     return (
       <PropertyPanelFlat
         {...props}
-        key={selectionIdentityKey(element)}
+        key={resolveInspectorElementKind(element.tagName, sections.text)}
         element={element}
         styles={styles}
         sections={sections}
