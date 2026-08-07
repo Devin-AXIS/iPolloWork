@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createPublicKey, randomUUID, verify } from "node:crypto";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,6 +14,13 @@ import serverPackage from "../package.json" with { type: "json" };
 import constants from "../../../constants.json" with { type: "json" };
 
 const MANIFEST_FILE = "ipollowork.plugin.json";
+const PACKAGE_SIGNATURE_PREFIX = "ipollowork-plugin-package-v1\0";
+const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
+  [
+    "smart-future-school/smart-future-school-2026",
+    "MCowBQYDK2VwAyEANqxN7w94IK3NWdYZWtoyz/Y6daP7MEqWnKrJHz+XAyI=",
+  ],
+]);
 
 const ownedFileSchema = z.object({ path: z.string(), sha256: z.string() });
 const installedVersionSchema = z.object({
@@ -47,11 +54,21 @@ export type PluginPackagePreview = {
   integrity: { sha256: string; status: "verified" | "unsigned" };
 };
 
-export type PluginPackageImportSafety = {
-  level: "declarative";
-  localCode: false;
-  allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
-};
+type PluginPackageResourceType = PluginPackageManifest["resources"][number]["type"];
+
+export type PluginPackageImportSafety =
+  | {
+      level: "declarative";
+      localCode: false;
+      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
+    }
+  | {
+      level: "signed";
+      localCode: boolean;
+      allowedResourceTypes: PluginPackageResourceType[];
+      publisher: { id: string; name: string };
+      signature: { algorithm: "ed25519"; keyId: string; status: "verified" };
+    };
 
 export type InstalledPluginPackageSummary = {
   pluginId: string;
@@ -186,17 +203,21 @@ function canonicalJson(value: unknown): string {
   return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
 }
 
+function compareRelativePaths(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function packageSha256(manifest: PluginPackageManifest, files: OwnedFile[]): string {
   const hash = createHash("sha256");
   const packageMetadata = manifest.package;
   const checksumFreeManifest = packageMetadata
-    ? { ...manifest, package: { ...packageMetadata, checksum: undefined } }
+    ? { ...manifest, package: { ...packageMetadata, checksum: undefined, signature: undefined } }
     : manifest;
   hash.update(MANIFEST_FILE);
   hash.update("\0");
   hash.update(createHash("sha256").update(canonicalJson(checksumFreeManifest)).digest("hex"));
   hash.update("\n");
-  for (const file of [...files].sort((left, right) => left.path.localeCompare(right.path))) {
+  for (const file of [...files].sort((left, right) => compareRelativePaths(left.path, right.path))) {
     hash.update(file.path);
     hash.update("\0");
     hash.update(file.sha256);
@@ -534,6 +555,42 @@ export async function previewPluginPackage(input: { packageRoot: string; workspa
 
 const SAFE_IMPORT_RESOURCE_TYPES = new Set(["skill", "agent", "command", "file", "mcp"]);
 
+function signedImportSafety(manifest: PluginPackageManifest, integrity: PluginPackagePreview["integrity"]): PluginPackageImportSafety | null {
+  const signature = manifest.package?.signature;
+  if (!signature) return null;
+  const publisher = manifest.package?.publisher;
+  if (!publisher) {
+    throw new ApiError(400, "plugin_package_signature_untrusted", "Signed plugin packages must declare their publisher");
+  }
+  if (integrity.status !== "verified") {
+    throw new ApiError(400, "plugin_package_signature_requires_checksum", "Signed plugin packages must declare a matching SHA-256 checksum");
+  }
+  const publicKey = TRUSTED_IMPORT_PUBLISHER_KEYS.get(`${publisher.id}/${signature.keyId}`);
+  if (!publicKey) {
+    throw new ApiError(400, "plugin_package_signature_untrusted", "Plugin publisher or signing key is not trusted by this iPolloWork build", {
+      publisherId: publisher.id,
+      keyId: signature.keyId,
+    });
+  }
+  const signatureBytes = Buffer.from(signature.value, "base64");
+  const valid = signatureBytes.byteLength === 64 && verify(
+    null,
+    Buffer.from(`${PACKAGE_SIGNATURE_PREFIX}${integrity.sha256}`, "utf8"),
+    createPublicKey({ key: Buffer.from(publicKey, "base64"), format: "der", type: "spki" }),
+    signatureBytes,
+  );
+  if (!valid) {
+    throw new ApiError(400, "plugin_package_signature_invalid", "Plugin package publisher signature is invalid");
+  }
+  return {
+    level: "signed",
+    localCode: Boolean(manifest.package?.entrypoints.opencode || manifest.package?.entrypoints.service),
+    allowedResourceTypes: [...new Set(manifest.resources.map((resource) => resource.type))],
+    publisher,
+    signature: { algorithm: "ed25519", keyId: signature.keyId, status: "verified" },
+  };
+}
+
 function safeImportResourcePath(type: string, path: string): boolean {
   if (type === "skill") return path.startsWith(".opencode/skills/");
   if (type === "agent") return path.startsWith(".opencode/agents/");
@@ -566,6 +623,10 @@ export async function assertPluginPackageSafeForImport(input: {
   const { manifest } = input.preview;
   const reasons: string[] = [];
   if (manifest.source.trusted) reasons.push("Imported packages cannot declare themselves trusted");
+  if (reasons.length === 0) {
+    const signedSafety = signedImportSafety(manifest, input.preview.integrity);
+    if (signedSafety) return signedSafety;
+  }
   if (manifest.package?.entrypoints.opencode || manifest.package?.entrypoints.service) {
     reasons.push("Imported packages cannot include executable entrypoints");
   }
