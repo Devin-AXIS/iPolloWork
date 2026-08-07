@@ -30,6 +30,8 @@ import {
   isReferenceFile,
   prepareOriginalReferenceAttachment,
 } from "../src/react-app/domains/session/references/ingestion";
+import { buildTemplateReferenceSubmitPayload } from "../src/react-app/domains/session/references/template-reference-submit";
+import type { TemplateReferenceItem } from "../src/react-app/domains/session/references/types";
 import {
   inferTemplateBriefFromIngestions,
 } from "../src/react-app/domains/session/references/brief-autofill";
@@ -357,6 +359,32 @@ describe("reference extractors", () => {
 });
 
 describe("reference ingestion router", () => {
+  test("does not send original source files unless opt in is selected", async () => {
+    const file = new File([
+      "Audience: team\nRequirements: provide a concise, source-grounded template brief for the upcoming review.",
+    ], "source.txt", { type: "text/plain" });
+    const result = await ingestReferenceFile(file);
+    const reference: TemplateReferenceItem = {
+      id: result.id,
+      file,
+      fileName: result.fileName,
+      mimeType: result.mimeType,
+      size: result.size,
+      status: "ready",
+      sendOriginal: false,
+      ingestion: result,
+    };
+
+    const defaultPayload = await buildTemplateReferenceSubmitPayload([reference]);
+    expect(defaultPayload.contextPack.promptText).toContain("source.txt");
+    expect(defaultPayload.attachments).toEqual([]);
+    expect(result.sourceMode).toBe("memory");
+
+    const optInPayload = await buildTemplateReferenceSubmitPayload([{ ...reference, sendOriginal: true }]);
+    expect(optInPayload.attachments).toHaveLength(1);
+    expect(optInPayload.attachments[0]?.name).toBe("source.txt");
+  });
+
   test("accepts existing reference file types", () => {
     expect(isReferenceFile(new File(["x"], "brief.pdf", { type: "application/pdf" }))).toBe(true);
     expect(isReferenceFile(new File(["x"], "brief.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }))).toBe(true);
