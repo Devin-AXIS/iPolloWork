@@ -103,9 +103,15 @@ import {
   isReferenceFile,
 } from "../references/ingestion";
 import { inferTemplateBriefFromIngestions } from "../references/brief-autofill";
-import { buildTemplateReferenceSubmitPayload } from "../references/template-reference-submit";
+import {
+  buildTemplateReferenceSubmitPayload,
+  revokeTemplateReferenceAttachmentPreviews,
+} from "../references/template-reference-submit";
 import type { TemplateReferenceItem } from "../references/types";
-export { buildTemplateReferenceSubmitPayload } from "../references/template-reference-submit";
+export {
+  buildTemplateReferenceSubmitPayload,
+  revokeTemplateReferenceAttachmentPreviews,
+} from "../references/template-reference-submit";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
@@ -437,9 +443,11 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const referencesRef = useRef<TemplateReferenceItem[]>([]);
 
-  useEffect(() => {
-    referencesRef.current = references;
-  }, [references]);
+  const updateReferences = (updater: (current: TemplateReferenceItem[]) => TemplateReferenceItem[]) => {
+    const next = updater(referencesRef.current);
+    referencesRef.current = next;
+    setReferences(next);
+  };
 
   const applyReferenceBriefAutofill = (inferred: TemplateBrief) => {
     if (!inferred.title && !inferred.audience && !inferred.details) return;
@@ -474,23 +482,33 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
       status: "parsing" as const,
       sendOriginal: false,
     }));
-    setReferences((current) => [...current, ...pending]);
+    updateReferences((current) => [...current, ...pending]);
 
     try {
-      const results = await Promise.all(pending.map(async (item) => {
-        const ingestion = await ingestReferenceFile(item.file);
-        const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
-        return { ...item, mimeType: ingestion.mimeType, status, ingestion };
+      const results = await Promise.all(pending.map(async (item): Promise<TemplateReferenceItem> => {
+        try {
+          const ingestion = await ingestReferenceFile(item.file);
+          const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
+          return { ...item, mimeType: ingestion.mimeType, status, ingestion };
+        } catch (error) {
+          toast.warning(t("templates.brief.reference_status_failed"), {
+            description: error instanceof Error ? error.message : item.fileName,
+          });
+          return { ...item, status: "failed" };
+        }
       }));
-      setReferences((current) => current.map((item) => results.find((result) => result.id === item.id) ?? item));
-      applyReferenceBriefAutofill(inferTemplateBriefFromIngestions(results.map((result) => result.ingestion)));
+      const activeResults = results.filter((result) => referencesRef.current.some((reference) => reference.id === result.id));
+      updateReferences((current) => current.map((item) => activeResults.find((result) => result.id === item.id) ?? item));
+      applyReferenceBriefAutofill(inferTemplateBriefFromIngestions(
+        activeResults.flatMap((result) => result.ingestion ? [result.ingestion] : []),
+      ));
     } finally {
       setReferenceBusy(false);
     }
   };
 
   const removeReference = (id: string) => {
-    setReferences((current) => current.filter((item) => item.id !== id));
+    updateReferences((current) => current.filter((item) => item.id !== id));
   };
 
   return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10">
@@ -512,7 +530,7 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
           {references.length ? <div className="mt-3 grid gap-2">{references.map((reference) => <div key={reference.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-dls-border bg-dls-surface px-2.5 py-2">
             <FileText className="size-3.5 shrink-0 text-dls-secondary" />
             <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{reference.fileName}</div><div className="text-[10px] text-dls-secondary">{reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div></div>
-            <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing"} onClick={() => setReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
+            <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing"} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
             <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-dls-secondary hover:text-dls-text" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
           </div>)}</div> : null}
         </div>
@@ -961,7 +979,8 @@ export function SessionPage(props: SessionPageProps) {
     if (!templateSession) return;
     const { manifest: template, state } = templateSession;
     const referencePayload = await buildTemplateReferenceSubmitPayload(references);
-    await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
+    try {
+      await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
       path: state.briefPath,
       content: JSON.stringify({
         templateId: template.id,
@@ -982,29 +1001,32 @@ export function SessionPage(props: SessionPageProps) {
         ...brief,
       }, null, 2),
       baseUpdatedAt: null,
-    });
-    setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
-    setTemplateSessionRevision((value) => value + 1);
-    setDismissedTemplateBriefSessionIds((current) => {
-      if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
-      const next = new Set(current);
-      next.delete(props.selectedSessionId);
-      return next;
-    });
-    const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
-    const referencePrompt = referencePayload.contextPack.promptText.trim();
-    const visibleTemplateMessage = t("templates.applied", { title: template.title });
-    props.surface?.onSendDraft({
-      mode: "prompt",
-      parts: [
-        { type: "text", text: visibleTemplateMessage },
-        { type: "text", text: prompt, synthetic: true },
-        ...(referencePrompt ? [{ type: "text" as const, text: referencePrompt, synthetic: true }] : []),
-      ],
-      attachments: referencePayload.attachments,
-      text: visibleTemplateMessage,
-      resolvedText: visibleTemplateMessage,
-    }, props.selectedSessionId);
+      });
+      setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
+      setTemplateSessionRevision((value) => value + 1);
+      setDismissedTemplateBriefSessionIds((current) => {
+        if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
+        const next = new Set(current);
+        next.delete(props.selectedSessionId);
+        return next;
+      });
+      const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
+      const referencePrompt = referencePayload.contextPack.promptText.trim();
+      const visibleTemplateMessage = t("templates.applied", { title: template.title });
+      props.surface?.onSendDraft({
+        mode: "prompt",
+        parts: [
+          { type: "text", text: visibleTemplateMessage },
+          { type: "text", text: prompt, synthetic: true },
+          ...(referencePrompt ? [{ type: "text" as const, text: referencePrompt, synthetic: true }] : []),
+        ],
+        attachments: referencePayload.attachments,
+        text: visibleTemplateMessage,
+        resolvedText: visibleTemplateMessage,
+      }, props.selectedSessionId);
+    } finally {
+      revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
+    }
   }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const closeTemplateBrief = useCallback(async () => {
     const sessionId = props.selectedSessionId;

@@ -12,7 +12,10 @@ import {
   templateBriefConfigFor,
   templateBriefPrompt,
 } from "../src/react-app/domains/session/templates/template-brief";
-import { buildTemplateReferenceSubmitPayload } from "../src/react-app/domains/session/references/template-reference-submit";
+import {
+  buildTemplateReferenceSubmitPayload,
+  revokeTemplateReferenceAttachmentPreviews,
+} from "../src/react-app/domains/session/references/template-reference-submit";
 import type { TemplateReferenceItem } from "../src/react-app/domains/session/references/types";
 
 describe("template brief", () => {
@@ -51,6 +54,38 @@ describe("template brief", () => {
     const optInPayload = await buildTemplateReferenceSubmitPayload([{ ...reference, sendOriginal: true }]);
     expect(optInPayload.attachments).toHaveLength(1);
     expect(optInPayload.attachments[0]?.name).toBe("launch.txt");
+  });
+
+  test("revokes only created template reference preview URLs", () => {
+    const revoked: string[] = [];
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    URL.revokeObjectURL = (url) => { revoked.push(url); };
+
+    try {
+      revokeTemplateReferenceAttachmentPreviews([
+        {
+          id: "image",
+          name: "visual.png",
+          mimeType: "image/png",
+          size: 1,
+          kind: "image",
+          file: new File(["x"], "visual.png", { type: "image/png" }),
+          previewUrl: "blob:template-image",
+        },
+        {
+          id: "text",
+          name: "notes.txt",
+          mimeType: "text/plain",
+          size: 1,
+          kind: "file",
+          file: new File(["x"], "notes.txt", { type: "text/plain" }),
+        },
+      ]);
+    } finally {
+      URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+
+    expect(revoked).toEqual(["blob:template-image"]);
   });
 
   test("asks website creators for a site-specific brief", () => {
