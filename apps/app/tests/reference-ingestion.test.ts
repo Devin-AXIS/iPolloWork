@@ -77,6 +77,17 @@ describe("reference ingestion core", () => {
     expect(selected[0]?.text.length).toBeLessThanOrEqual(1200);
   });
 
+  test("clamps direct chunk selection to 8 chunks per file", () => {
+    const chunks = Array.from({ length: 12 }, (_, index) => ({
+      id: `many:chunk:${index + 1}`,
+      source: "many.md",
+      text: `chunk-${index + 1}`,
+      tokenEstimate: 1,
+    }));
+
+    expect(selectReferenceChunks(chunks, { maxChunks: 100 })).toHaveLength(8);
+  });
+
   test("packs only high and medium quality files within budgets", () => {
     const highChunks = chunkPlainText({
       source: "product-plan.pdf",
@@ -180,6 +191,7 @@ describe("reference ingestion core", () => {
     expect(summary.length).toBeLessThanOrEqual(1200);
     expect(excerpts.length).toBeLessThanOrEqual(8);
     expect(Math.max(...excerpts.map((excerpt) => excerpt.length - "[excerpt] ".length))).toBeLessThanOrEqual(1200);
+    expect(pack.totalChars).toBeGreaterThan(1200);
     expect(pack.totalChars).toBeLessThanOrEqual(12000);
   });
 

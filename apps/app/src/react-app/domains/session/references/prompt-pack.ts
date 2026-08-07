@@ -6,8 +6,8 @@ function normalizeLimit(value: number | undefined, fallback: number, ceiling: nu
   return Number.isFinite(limit) ? Math.min(ceiling, Math.max(0, Math.floor(limit))) : fallback;
 }
 
-function truncate(text: string, max: number) {
-  const limit = normalizeLimit(max, 1200, 1200);
+function truncate(text: string, max: number, ceiling = 1200) {
+  const limit = normalizeLimit(max, ceiling, ceiling);
   if (text.length <= limit) return text;
   if (limit < 3) return text.slice(0, limit);
   return `${text.slice(0, limit - 3).trimEnd()}...`;
@@ -53,6 +53,6 @@ export function packReferenceContext(files: ReferenceIngestionResult[], options:
     ].join("\n"));
   }
 
-  const promptText = truncate(sections.join("\n"), maxTotalChars);
+  const promptText = truncate(sections.join("\n"), maxTotalChars, 12000);
   return { files: accepted, promptText, totalChars: promptText.length, warnings };
 }

@@ -101,3 +101,21 @@ pnpm.cmd --filter @ipollowork/app exec bun test --isolate tests/reference-ingest
 pnpm.cmd --filter @ipollowork/app typecheck
 exit code 0
 ```
+
+## Remaining Task 1 Review Findings
+
+Fixed the remaining budget-ceiling issues:
+
+- Prompt-pack summary and chunk truncation remain capped at 1200 characters, while final total prompt truncation can use up to 12000 and still honors smaller values.
+- Direct `selectReferenceChunks` callers now clamp `maxChunks` to the hard ceiling of 8 per file.
+- Added regression coverage for `maxChunks: 100` and for a sufficiently large prompt pack exceeding 1200 while remaining within 12000.
+
+Verification:
+
+```text
+pnpm.cmd --filter @ipollowork/app exec bun test --isolate tests/reference-ingestion.test.ts
+11 pass, 0 fail, 30 expect() calls
+
+pnpm.cmd --filter @ipollowork/app typecheck
+exit code 0
+```

@@ -39,7 +39,7 @@ export function selectReferenceChunks(
   chunks: ReferenceChunk[],
   options: { maxChunks?: number; maxChunkChars?: number } = {},
 ) {
-  const maxChunks = options.maxChunks ?? 8;
+  const maxChunks = normalizeLimit(options.maxChunks, 8, 8);
   const maxChunkChars = normalizeLimit(options.maxChunkChars, 1200, 1200);
   return [...chunks]
     .sort((a, b) => chunkScore(b) - chunkScore(a) || a.id.localeCompare(b.id))
