@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
-import { ChevronDown, RotateCcw } from "../../icons/SystemIcons";
+import { ChevronDown, ChevronRight, RotateCcw } from "../../icons/SystemIcons";
 import { CommitField } from "./propertyPanelPrimitives";
 import {
   VALUE_TIER_LABEL_CLASS,

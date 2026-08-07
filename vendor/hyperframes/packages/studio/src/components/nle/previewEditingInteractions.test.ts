@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parsePreviewAssetPayload } from "./usePreviewBlockDrop";
 import { buildTimelineAssetInsertHtml, getTimelineAssetKind } from "../../utils/timelineAssetDrop";
+import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
 
 describe("preview editing interactions", () => {
   it("selects canvas elements on one click without opening Design automatically", () => {
@@ -97,6 +98,25 @@ describe("preview editing interactions", () => {
     expect(syncSource).toContain("const visibleIds = resolved.map");
     expect(syncSource).toContain("preserveTimelineSelection: true");
     expect(syncSource).not.toContain("if (selections.length < resolvableCount) return");
+  });
+
+  it("seeks inactive child layers to a visible inspection frame before resolving them", () => {
+    const selectionSource = readFileSync(
+      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+      "utf8",
+    );
+    const childLayer = { start: 3, duration: 2 };
+
+    expect(resolveTimelineSelectionSeekTime(1, childLayer)).toBe(3);
+    expect(resolveTimelineSelectionSeekTime(4, childLayer)).toBe(4);
+    expect(resolveTimelineSelectionSeekTime(8, childLayer)).toBeCloseTo(4.999);
+    const seekIndex = selectionSource.indexOf("player.requestSeek(inspectTime)");
+    const retryIndex = selectionSource.indexOf(
+      "selection = await buildDomSelectionForTimelineElement(element)",
+      seekIndex,
+    );
+    expect(seekIndex).toBeGreaterThan(-1);
+    expect(retryIndex).toBeGreaterThan(seekIndex);
   });
 
   it("authors resizable geometry for visual assets dragged from the library", () => {

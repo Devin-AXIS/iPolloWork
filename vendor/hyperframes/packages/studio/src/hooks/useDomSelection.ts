@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { SelectElementOptions, TimelineElement } from "../player";
+import { usePlayerStore, type SelectElementOptions, type TimelineElement } from "../player";
 import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
@@ -7,6 +7,7 @@ import {
 import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
+  resolveTimelineSelectionSeekTime,
   type RightPanelTab,
 } from "../utils/studioHelpers";
 import {
@@ -378,7 +379,15 @@ export function useDomSelection({
         return;
       }
 
-      const selection = await buildDomSelectionForTimelineElement(element);
+      let selection = await buildDomSelectionForTimelineElement(element);
+      if (!selection) {
+        const player = usePlayerStore.getState();
+        const inspectTime = resolveTimelineSelectionSeekTime(player.currentTime, element);
+        if (inspectTime != null) {
+          player.requestSeek(inspectTime);
+          selection = await buildDomSelectionForTimelineElement(element);
+        }
+      }
       // A newer selection superseded this one while we were resolving — drop the stale result.
       if (seq !== timelineSelectSeqRef.current) return;
       if (selection) applyDomSelection(selection);
