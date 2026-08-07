@@ -122,12 +122,14 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(panelSource).toContain("const syncStudioDesignTokens = React.useCallback");
-    expect(panelSource).toContain("syncStudioDesignTokens(parseDesignTokenValues(nextTokens))");
+    expect(panelSource).toContain("syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens)");
     expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
     expect(panelSource).not.toContain("key={`${sessionId}:${revision}:${studioHostPanel}`}");
     expect(previewPersistenceSource).toContain("parseHostDesignTokensMessage");
     expect(previewPersistenceSource).toContain("applyDesignTokensToPreview");
     expect(previewPersistenceSource).toContain("doc.documentElement.style.setProperty(name, value)");
+    expect(previewPersistenceSource).toContain("cssSource?: string");
+    expect(previewPersistenceSource).toContain("style[data-ipw-live-design-tokens]");
     expect(previewPersistenceSource).toContain("domEditSaveTimestampRef.current = Date.now()");
   });
 
@@ -143,7 +145,28 @@ describe("HyperFrames Video Studio", () => {
     expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title");
     expect(registrySource).toContain(".body, .copy, .caption, .meta, .label, .metric, .stat, .badge");
     expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title, .body, .copy, .caption, .meta");
+    expect(registrySource).toContain("buildStableTokenBridgeCss");
+    expect(registrySource).toContain(".scene, .hero, .section, .content, .media");
+    expect(registrySource).toContain("box-shadow: var(--ipw-card-shadow) !important");
+    expect(registrySource).toContain("--ipw-motion-duration");
     expect(registrySource).not.toContain(":where(div, span)");
+  });
+
+  test("persists the embedded motion control instead of local-only state", () => {
+    const drawerSource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-system-drawer.tsx", import.meta.url),
+      "utf8",
+    );
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(drawerSource).toContain('"--ipw-motion-style": profile.value');
+    expect(drawerSource).toContain('"--ipw-motion-duration": profile.duration');
+    expect(drawerSource).not.toContain("const [motion, setMotion] = React.useState");
+    expect(panelSource).toContain("ensureVideoTokenBridge");
+    expect(panelSource).toContain("buildStableTokenBridgeCss");
   });
 
   test("keeps the quick toolbar visible and opens properties without hash-driven canvas resync", () => {
@@ -164,7 +187,7 @@ describe("HyperFrames Video Studio", () => {
     expect(desktopSource).toContain("new CustomEvent('ipollowork:studio-apply-selection'");
     expect(desktopSource).toContain("applyCanvasSelectionLive(target, { revealPanel: true })");
     expect(desktopSource).not.toContain("const current = document.querySelector('button[aria-label=\"Inspector\"]')");
-    expect(studioSource).toContain("const loadStudioRightPanel = () => import(\"./components/StudioRightPanel\")");
+    expect(studioSource).toContain("const loadStudioRightPanelModule = () => import(\"./components/StudioRightPanel\")");
     expect(studioSource).toContain("void loadStudioRightPanel()");
     expect(studioSource).toContain("function RightPanelLoadingFallback({ width }: { width: number })");
     expect(studioSource).toContain('t("right.openingProperties")');
@@ -230,7 +253,7 @@ describe("HyperFrames Video Studio", () => {
     expect(drawerSource).toContain("onTokenChangeMany(next)");
     expect(panelSource).toContain("const handleDesignTokenChanges = React.useCallback");
     expect(panelSource).toContain("for (const [name, value] of Object.entries(values))");
-    expect(panelSource).toContain("syncStudioDesignTokens(values)");
+    expect(panelSource).toContain("syncStudioDesignTokens(values, next)");
     expect(panelSource).toContain("onTokenChangeMany={handleDesignTokenChanges}");
   });
 
@@ -537,9 +560,9 @@ describe("HyperFrames Video Studio", () => {
     const deleteIndex = electronSource.indexOf('<button type="button" data-action="delete"');
     const advancedIndex = electronSource.indexOf('data-action="advanced"');
     const aiIndex = electronSource.indexOf('data-action="ai"');
-    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label="Delete selected element"');
-    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label="Open Design properties"');
-    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label="Ask AI about selected element"');
+    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label={tx("Delete selected element")}');
+    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label={tx("Open Design properties")}');
+    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label={tx("Ask AI about selected element")}');
 
     expect(deleteIndex).toBeGreaterThan(-1);
     expect(aiIndex).toBeGreaterThan(advancedIndex);
