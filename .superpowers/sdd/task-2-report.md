@@ -48,3 +48,9 @@ The commit contains only the four task files. The report itself remains outside 
 ## Review Fix Concerns
 
 - `@xmldom/xmldom` is not importable by bare package name from app tests; the test polyfill uses the already-materialized locked pnpm virtual-store path. If that path is absent in another install layout, test dependency wiring will need context outside the allowed files.
+
+## Remaining Review Finding Fix
+
+- Declared `@xmldom/xmldom` `0.8.13` as an app devDependency and updated `pnpm-lock.yaml` with pnpm.
+- Replaced the test-only virtual-store import with the package-name import `@xmldom/xmldom`.
+- Kept production DOCX parsing on the browser-global `DOMParser`.

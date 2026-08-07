@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
-import { DOMParser as XmlDomParser } from "../../../node_modules/.pnpm/@xmldom+xmldom@0.8.13/node_modules/@xmldom/xmldom";
+import { DOMParser as XmlDomParser } from "@xmldom/xmldom";
 
 if (typeof DOMParser === "undefined") {
   Object.assign(globalThis, { DOMParser: XmlDomParser });
