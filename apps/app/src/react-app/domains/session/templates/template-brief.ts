@@ -1,6 +1,12 @@
 import type { TemplateCategory, TemplateManifestV1 } from "@ipollowork/types/templates";
 import { t } from "@/i18n";
-import type { ComposerAttachment } from "@/app/types";
+import {
+  isReferenceFile,
+  prepareOriginalReferenceAttachment,
+} from "@/react-app/domains/session/references/ingestion";
+import {
+  inferTemplateBriefFromIngestions,
+} from "@/react-app/domains/session/references/brief-autofill";
 
 export type TemplateBrief = {
   title: string;
@@ -33,24 +39,12 @@ export const TEMPLATE_BRIEF_REFERENCE_ACCEPT = [
 ].join(",");
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PDF_MIME = "application/pdf";
 const TEMPLATE_BRIEF_AUTOFILL_TEXT_LIMIT = 12_000;
 const TEMPLATE_BRIEF_AUTOFILL_FIELD_LIMIT = 700;
 
-const TEMPLATE_BRIEF_REFERENCE_EXTENSIONS = new Set([
-  "pdf",
-  "docx",
-  "md",
-  "txt",
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-  "csv",
-  "json",
-]);
-
 const TEMPLATE_BRIEF_REFERENCE_MIMES = new Set([
-  "application/pdf",
+  PDF_MIME,
   DOCX_MIME,
   "text/markdown",
   "text/plain",
@@ -63,7 +57,7 @@ const TEMPLATE_BRIEF_REFERENCE_MIMES = new Set([
 ]);
 
 const TEMPLATE_BRIEF_REFERENCE_MIME_BY_EXTENSION: Record<string, string> = {
-  pdf: "application/pdf",
+  pdf: PDF_MIME,
   docx: DOCX_MIME,
   md: "text/markdown",
   txt: "text/plain",
@@ -86,12 +80,9 @@ function templateBriefReferenceNameStem(name: string) {
   return withoutExtension.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
-export function isTemplateBriefReferenceFile(file: Pick<File, "name" | "type">) {
-  const extension = templateBriefReferenceExtension(file.name);
-  if (TEMPLATE_BRIEF_REFERENCE_EXTENSIONS.has(extension)) return true;
-  const mime = file.type.trim().toLowerCase();
-  return Boolean(mime && TEMPLATE_BRIEF_REFERENCE_MIMES.has(mime));
-}
+export const isTemplateBriefReferenceFile = isReferenceFile;
+export const prepareTemplateBriefReferenceAttachment = prepareOriginalReferenceAttachment;
+export { inferTemplateBriefFromIngestions };
 
 function templateBriefReferenceMime(file: Pick<File, "name" | "type">) {
   const mime = file.type.trim().toLowerCase();
@@ -121,6 +112,10 @@ async function extractDocxText(file: File) {
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
   return paragraphs.join("\n");
+}
+
+function isTemplateBriefPdfReference(file: Pick<File, "name" | "type">) {
+  return templateBriefReferenceExtension(file.name) === "pdf" || templateBriefReferenceMime(file) === PDF_MIME;
 }
 
 function isTemplateBriefTextReference(file: Pick<File, "name" | "type">) {
@@ -272,6 +267,8 @@ export async function extractTemplateBriefReferenceText(file: File) {
   const extension = templateBriefReferenceExtension(file.name);
   const text = extension === "docx" || file.type.trim().toLowerCase() === DOCX_MIME
     ? await extractDocxText(file)
+    : isTemplateBriefPdfReference(file)
+      ? ""
     : isTemplateBriefTextReference(file)
       ? await file.text()
       : "";
@@ -283,36 +280,6 @@ export async function inferTemplateBriefFromReferenceFile(file: File): Promise<T
     filename: file.name,
     text: await extractTemplateBriefReferenceText(file),
   });
-}
-
-export async function prepareTemplateBriefReferenceAttachment(file: File): Promise<ComposerAttachment> {
-  if (file.size > TEMPLATE_BRIEF_REFERENCE_MAX_BYTES) {
-    throw new Error(`${file.name} is larger than 25 MB.`);
-  }
-  if (!isTemplateBriefReferenceFile(file)) {
-    throw new Error(`${file.name} is not a supported reference document.`);
-  }
-
-  const originalMime = templateBriefReferenceMime(file);
-  const isDocx = templateBriefReferenceExtension(file.name) === "docx" || originalMime === DOCX_MIME;
-  const attachmentFile = isDocx
-    ? new File([await extractDocxText(file)], `${file.name}.txt`, { type: "text/plain" })
-    : file;
-  const mimeType = isDocx ? "text/plain" : originalMime;
-  const kind = mimeType.startsWith("image/") ? "image" as const : "file" as const;
-  const previewUrl = kind === "image" && typeof URL !== "undefined" && "createObjectURL" in URL
-    ? URL.createObjectURL(file)
-    : undefined;
-
-  return {
-    id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
-    name: file.name,
-    mimeType,
-    size: file.size,
-    kind,
-    file: attachmentFile,
-    previewUrl,
-  };
 }
 
 export type TemplateBriefFields = TemplateBrief;

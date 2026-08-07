@@ -158,7 +158,7 @@ describe("template brief", () => {
     expect(isTemplateBriefReferenceFile(new File(["svg"], "logo.svg", { type: "image/svg+xml" }))).toBe(false);
   });
 
-  test("converts docx reference files to text attachments before sending", async () => {
+  test("keeps docx reference files as original attachments before sending", async () => {
     const zip = new JSZip();
     zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
       <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -173,9 +173,81 @@ describe("template brief", () => {
     );
 
     expect(attachment.name).toBe("reference.docx");
-    expect(attachment.mimeType).toBe("text/plain");
+    expect(attachment.mimeType).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     expect(attachment.kind).toBe("file");
-    expect(await attachment.file.text()).toContain("Use concise clinical language.");
+    expect(attachment.file.name).toBe("reference.docx");
+  });
+
+  test("keeps PDF references as PDF attachments until a real PDF text extractor is available", async () => {
+    const pdf = [
+      "%PDF-1.4",
+      "1 0 obj",
+      "<< /Type /Page >>",
+      "stream",
+      "BT",
+      "(Clinical Handoff) Tj",
+      "(Audience: Ward 7 nurses deciding handoff priorities.) Tj",
+      "(Include escalation path, risk flags, checklist, and shift-owner notes.) Tj",
+      "ET",
+      "endstream",
+      "endobj",
+      "%%EOF",
+    ].join("\n");
+
+    const attachment = await prepareTemplateBriefReferenceAttachment(
+      new File([pdf], "clinical-handoff.pdf", { type: "application/pdf" }),
+    );
+
+    expect(attachment.name).toBe("clinical-handoff.pdf");
+    expect(attachment.mimeType).toBe("application/pdf");
+    expect(attachment.kind).toBe("file");
+    expect(attachment.file.name).toBe("clinical-handoff.pdf");
+  });
+
+  test("keeps image-only PDF references as PDF attachments when text cannot be extracted", async () => {
+    const attachment = await prepareTemplateBriefReferenceAttachment(
+      new File(["%PDF-1.4\n/Type /XObject /Subtype /Image\n%%EOF"], "scan.pdf", { type: "application/pdf" }),
+    );
+
+    expect(attachment.name).toBe("scan.pdf");
+    expect(attachment.mimeType).toBe("application/pdf");
+    expect(attachment.file.name).toBe("scan.pdf");
+  });
+
+  test("keeps low-confidence PDF text as a PDF attachment instead of autofilling garbage", async () => {
+    const pdf = [
+      "%PDF-1.4",
+      "(zh)",
+      "(9□¾¨□9□ñ□3È□X5□E□¼□ib□÷~Ð□´|ôX-´D1#□□□cÔ□)",
+      "%%EOF",
+    ].join("\n");
+    const file = new File([pdf], "north-window-treatment.pdf", { type: "application/pdf" });
+
+    const attachment = await prepareTemplateBriefReferenceAttachment(file);
+    const brief = await inferTemplateBriefFromReferenceFile(file);
+
+    expect(attachment.mimeType).toBe("application/pdf");
+    expect(attachment.file.name).toBe("north-window-treatment.pdf");
+    expect(brief.title).toBe("north window treatment");
+    expect(brief.details).toBe("");
+  });
+
+  test("ignores PDF producer metadata instead of autofilling it", async () => {
+    const pdf = [
+      "%PDF-1.7",
+      "(Chromium)",
+      "(Skia/PDF m92 D:20241102090758+00'00' ÎU1 ÛUÔ=ué)",
+      "%%EOF",
+    ].join("\n");
+    const file = new File([pdf], "receipt_从双线叙事下的人物塑造看《牡丹亭》中的哲学思....pdf", { type: "application/pdf" });
+
+    const attachment = await prepareTemplateBriefReferenceAttachment(file);
+    const brief = await inferTemplateBriefFromReferenceFile(file);
+
+    expect(attachment.mimeType).toBe("application/pdf");
+    expect(attachment.file.name).toBe(file.name);
+    expect(brief.title).not.toBe("Chromium");
+    expect(brief.details).not.toContain("Skia/PDF");
   });
 
   test("infers brief fields from markdown reference text", () => {

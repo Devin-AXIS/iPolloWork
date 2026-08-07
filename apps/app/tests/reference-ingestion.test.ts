@@ -24,6 +24,14 @@ import type { ReferenceIngestionResult } from "../src/react-app/domains/session/
 import { extractTextReference } from "../src/react-app/domains/session/references/extractors/text";
 import { extractTableReference } from "../src/react-app/domains/session/references/extractors/table";
 import { extractDocxReference } from "../src/react-app/domains/session/references/extractors/docx";
+import {
+  ingestReferenceFile,
+  isReferenceFile,
+  prepareOriginalReferenceAttachment,
+} from "../src/react-app/domains/session/references/ingestion";
+import {
+  inferTemplateBriefFromIngestions,
+} from "../src/react-app/domains/session/references/brief-autofill";
 
 describe("reference ingestion core", () => {
   test("cleans known PDF renderer metadata before quality checks", () => {
@@ -302,5 +310,58 @@ describe("reference extractors", () => {
     expect(extracted.text).toContain("XML-safe heading");
     expect(extracted.text).toContain("Literal & ampersand.");
     expect(extracted.chunks?.some((chunk) => chunk.heading === "XML-safe heading")).toBe(true);
+  });
+});
+
+describe("reference ingestion router", () => {
+  test("accepts existing reference file types", () => {
+    expect(isReferenceFile(new File(["x"], "brief.pdf", { type: "application/pdf" }))).toBe(true);
+    expect(isReferenceFile(new File(["x"], "brief.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }))).toBe(true);
+    expect(isReferenceFile(new File(["x"], "brief.md", { type: "text/markdown" }))).toBe(true);
+    expect(isReferenceFile(new File(["x"], "brief.csv", { type: "text/csv" }))).toBe(true);
+    expect(isReferenceFile(new File(["x"], "brief.json", { type: "application/json" }))).toBe(true);
+    expect(isReferenceFile(new File(["x"], "brief.svg", { type: "image/svg+xml" }))).toBe(false);
+  });
+
+  test("ingests high quality text references with deterministic summary", async () => {
+    const file = new File(["# Product Launch\n\nAudience: enterprise design teams.\n\nRequirements: preserve template layout."], "launch.md", { type: "text/markdown" });
+    const result = await ingestReferenceFile(file);
+
+    expect(result.fileName).toBe("launch.md");
+    expect(result.quality).toBe("high");
+    expect(result.summary).toContain("File: launch.md");
+    expect(result.chunks.length).toBeGreaterThan(0);
+  });
+
+  test("autofills only from high and medium quality references", () => {
+    const text = "# Product Launch\n\nAudience: enterprise design teams.\n\nRequirements: preserve template layout.";
+    const good = {
+      id: "good",
+      fileName: "launch.md",
+      mimeType: "text/markdown",
+      size: 100,
+      sourceMode: "memory" as const,
+      extractedText: text,
+      summary: "File: launch.md",
+      chunks: chunkPlainText({ source: "launch.md", text }),
+      quality: "high" as const,
+      warnings: [],
+    };
+    const bad = { ...good, id: "bad", fileName: "bad.pdf", extractedText: "Chromium", quality: "failed" as const };
+
+    const brief = inferTemplateBriefFromIngestions([bad, good]);
+
+    expect(brief.title).toBe("Product Launch");
+    expect(brief.audience).toContain("enterprise design teams");
+    expect(brief.details).toContain("preserve template layout");
+  });
+
+  test("prepares original attachments only for explicit opt in", async () => {
+    const attachment = await prepareOriginalReferenceAttachment(new File(["hello"], "notes.txt", { type: "text/plain" }));
+
+    expect(attachment.name).toBe("notes.txt");
+    expect(attachment.mimeType).toBe("text/plain");
+    expect(attachment.kind).toBe("file");
+    expect(await attachment.file.text()).toBe("hello");
   });
 });
