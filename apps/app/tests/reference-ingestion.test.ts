@@ -356,6 +356,29 @@ describe("reference extractors", () => {
     expect(extracted.text).toContain("Literal & ampersand.");
     expect(extracted.chunks?.some((chunk) => chunk.heading === "XML-safe heading")).toBe(true);
   });
+
+  test("keeps DOCX heading chunks scoped to their sections", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8"?>
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>First section</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Alpha body detail.</w:t></w:r></w:p>
+          <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Second section</w:t></w:r></w:p>
+          <w:p><w:r><w:t>Beta body detail.</w:t></w:r></w:p>
+        </w:body>
+      </w:document>`);
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const file = new File([buffer], "sections.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const extracted = await extractDocxReference(file);
+
+    const first = extracted.chunks?.find((chunk) => chunk.heading === "First section");
+    const second = extracted.chunks?.find((chunk) => chunk.heading === "Second section");
+    expect(first?.text).toContain("Alpha body detail.");
+    expect(first?.text).not.toContain("Beta body detail.");
+    expect(second?.text).toContain("Beta body detail.");
+    expect(second?.text).not.toContain("Alpha body detail.");
+  });
 });
 
 describe("reference ingestion router", () => {
@@ -409,6 +432,14 @@ describe("reference ingestion router", () => {
 
     expect(result.quality).toBe("failed");
     expect(result.warnings.some((warning) => warning.includes("PDF parsing failed"))).toBe(true);
+  });
+
+  test("routes invalid JSON through failed quality without throwing", async () => {
+    const result = await ingestReferenceFile(new File(["{\"broken\""], "broken.json", { type: "application/json" }));
+
+    expect(result.quality).toBe("failed");
+    expect(result.chunks).toEqual([]);
+    expect(result.warnings.some((warning) => warning.includes("Reference parsing failed"))).toBe(true);
   });
 
   test("routes PDFs by extension before generic text handling", async () => {

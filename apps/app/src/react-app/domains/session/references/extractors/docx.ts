@@ -32,28 +32,43 @@ export async function extractDocxReference(file: File): Promise<ExtractedReferen
   if (!body) return { text: "", chunks: [], warnings: ["DOCX body was not found."] };
 
   const lines: string[] = [];
+  const sections: Array<{ heading?: string; lines: string[] }> = [{ lines: [] }];
   const headings: string[] = [];
+  let currentSection = sections[0]!;
   for (const child of elementChildren(body)) {
     if (child.localName === "p" && child.namespaceURI === W_NS) {
       const text = textFromNode(child);
       if (!text) continue;
       const style = paragraphStyle(child);
-      if (/heading/i.test(style)) headings.push(text);
+      if (/heading/i.test(style)) {
+        headings.push(text);
+        currentSection = { heading: text, lines: [] };
+        sections.push(currentSection);
+      }
       lines.push(text);
+      currentSection.lines.push(text);
     }
     if (child.localName === "tbl" && child.namespaceURI === W_NS) {
       for (const row of Array.from(child.getElementsByTagNameNS(W_NS, "tr"))) {
         const cells = Array.from(row.getElementsByTagNameNS(W_NS, "tc"))
           .map(textFromNode)
           .filter(Boolean);
-        if (cells.length) lines.push(cells.join(" | "));
+        if (cells.length) {
+          const rowText = cells.join(" | ");
+          lines.push(rowText);
+          currentSection.lines.push(rowText);
+        }
       }
     }
   }
 
   const cleaned = cleanReferenceText(lines.join("\n\n"));
-  const chunks = headings.length
-    ? headings.flatMap((heading) => chunkPlainText({ source: file.name, heading, text: cleaned.text }))
+  const sectionTexts = sections
+    .map((section) => ({ heading: section.heading, text: cleanReferenceText(section.lines.join("\n\n")).text }))
+    .filter((section) => section.text);
+  const chunks = headings.length && sectionTexts.length
+    ? sectionTexts.flatMap((section, sectionIndex) => chunkPlainText({ source: file.name, heading: section.heading, text: section.text })
+      .map((chunk, chunkIndex) => ({ ...chunk, id: `${file.name}:section:${sectionIndex + 1}:chunk:${chunkIndex + 1}` })))
     : chunkPlainText({ source: file.name, text: cleaned.text });
 
   return { text: cleaned.text, chunks, warnings: cleaned.warnings, metadata: { headings } };

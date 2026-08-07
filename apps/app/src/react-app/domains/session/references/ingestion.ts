@@ -73,11 +73,14 @@ async function extractReference(file: File): Promise<ExtractedReferenceContent> 
 }
 
 export async function ingestReferenceFile(file: File): Promise<ReferenceIngestionResult> {
+  const fileId = `${file.name}-${file.lastModified}`;
+  const mimeType = referenceMime(file);
+
   if (file.size > REFERENCE_MAX_BYTES) {
     return {
-      id: `${file.name}-${file.lastModified}`,
+      id: fileId,
       fileName: file.name,
-      mimeType: referenceMime(file),
+      mimeType,
       size: file.size,
       sourceMode: "memory",
       extractedText: "",
@@ -88,12 +91,16 @@ export async function ingestReferenceFile(file: File): Promise<ReferenceIngestio
     };
   }
 
-  const extracted = await extractReference(file);
+  const extracted = await extractReference(file).catch((error): ExtractedReferenceContent => ({
+    text: "",
+    chunks: [],
+    warnings: [`Reference parsing failed: ${error instanceof Error ? error.message : String(error)}`],
+  }));
   const quality = assessReferenceQuality({ text: extracted.text, chunks: extracted.chunks, warnings: extracted.warnings });
   const draft: ReferenceIngestionResult = {
-    id: `${file.name}-${file.lastModified}`,
+    id: fileId,
     fileName: file.name,
-    mimeType: referenceMime(file),
+    mimeType,
     size: file.size,
     sourceMode: "memory",
     extractedText: extracted.text,
