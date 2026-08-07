@@ -12,10 +12,45 @@ import {
   templateBriefConfigFor,
   templateBriefPrompt,
 } from "../src/react-app/domains/session/templates/template-brief";
+import { buildTemplateReferenceSubmitPayload } from "../src/react-app/domains/session/references/template-reference-submit";
+import type { TemplateReferenceItem } from "../src/react-app/domains/session/references/types";
 
 describe("template brief", () => {
   beforeEach(() => {
     setLocale("en");
+  });
+
+  test("template reference submit payload sends context by default and raw files only by opt in", async () => {
+    const file = new File(["Audience: enterprise teams"], "launch.txt", { type: "text/plain" });
+    const reference: TemplateReferenceItem = {
+      id: "ref_1",
+      file,
+      fileName: "launch.txt",
+      mimeType: "text/plain",
+      size: file.size,
+      status: "ready",
+      sendOriginal: false,
+      ingestion: {
+        id: "ref_1",
+        fileName: "launch.txt",
+        mimeType: "text/plain",
+        size: file.size,
+        sourceMode: "memory",
+        extractedText: "Audience: enterprise teams",
+        summary: "File: launch.txt",
+        chunks: [{ id: "launch.txt:chunk:1", source: "launch.txt", text: "Audience: enterprise teams", tokenEstimate: 4 }],
+        quality: "high",
+        warnings: [],
+      },
+    };
+
+    const defaultPayload = await buildTemplateReferenceSubmitPayload([reference]);
+    expect(defaultPayload.contextPack.promptText).toContain("launch.txt");
+    expect(defaultPayload.attachments).toEqual([]);
+
+    const optInPayload = await buildTemplateReferenceSubmitPayload([{ ...reference, sendOriginal: true }]);
+    expect(optInPayload.attachments).toHaveLength(1);
+    expect(optInPayload.attachments[0]?.name).toBe("launch.txt");
   });
 
   test("asks website creators for a site-specific brief", () => {
