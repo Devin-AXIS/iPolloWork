@@ -284,8 +284,10 @@ export function resolveTimelineSelectionSeekTime(
   const start = Math.max(0, element.start);
   const end = Math.max(start, start + Math.max(0, element.duration));
   const time = Number.isFinite(currentTime) ? currentTime : start;
-
-  return clampNumber(time, start, end);
+  if (end === start) return start;
+  // Runtime clip windows are end-exclusive. Seeking exactly to `end` leaves
+  // the selected layer hidden, so keep the inspection frame just inside it.
+  return clampNumber(time, start, Math.max(start, end - 0.001));
 }
 
 export function clampNumber(value: number, min: number, max: number): number {

@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { flipScaleValue } from "./editor/propertyPanelFlatLayoutSection";
+import {
+  resolveInspectorElementKind,
+  resolveInspectorGroupOrder,
+  resolveOpenInspectorGroup,
+} from "./editor/PropertyPanelFlat";
 
 describe("Studio right panel layout", () => {
   it("offers six selectable HTML illustration capabilities", () => {
@@ -14,6 +19,103 @@ describe("Studio right panel layout", () => {
     expect(illustration).toContain("onChange={(event) =>");
     expect(illustration).not.toContain("disabled");
     expect(illustration).toContain("自包含 HTML 插画");
+  });
+
+  it("orders populated inspector groups for the selected element type", () => {
+    const availableGroupIds = [
+      "timing",
+      "layout",
+      "fill",
+      "stroke",
+      "appearance",
+      "mask",
+      "animation",
+      "transform-3d",
+      "text",
+      "grade",
+      "media",
+    ];
+    expect(
+      resolveInspectorGroupOrder({
+        elementKind: "text",
+        hasAnimationParameters: true,
+        availableGroupIds,
+      }),
+    ).toEqual([
+      "animation",
+      "text",
+      "layout",
+      "fill",
+      "appearance",
+      "stroke",
+      "mask",
+      "timing",
+      "transform-3d",
+      "grade",
+      "media",
+    ]);
+    expect(
+      resolveInspectorGroupOrder({
+        elementKind: "image",
+        hasAnimationParameters: false,
+        availableGroupIds,
+      }).slice(0, 4),
+    ).toEqual(["layout", "mask", "appearance", "media"]);
+    expect(
+      resolveInspectorGroupOrder({
+        elementKind: "video",
+        hasAnimationParameters: false,
+        availableGroupIds,
+      }).slice(0, 4),
+    ).toEqual(["media", "mask", "layout", "appearance"]);
+    expect(
+      resolveInspectorGroupOrder({
+        elementKind: "audio",
+        hasAnimationParameters: false,
+        availableGroupIds: ["timing", "media"],
+      }),
+    ).toEqual(["media", "timing"]);
+  });
+
+  it("opens the best available group without overriding a manual choice", () => {
+    expect(
+      resolveOpenInspectorGroup({
+        currentGroupId: "timing",
+        orderedGroupIds: ["animation", "timing"],
+        hasManualSelection: false,
+      }),
+    ).toBe("animation");
+    expect(
+      resolveOpenInspectorGroup({
+        currentGroupId: "layout",
+        orderedGroupIds: ["animation", "layout"],
+        hasManualSelection: true,
+      }),
+    ).toBe("layout");
+    expect(
+      resolveOpenInspectorGroup({
+        currentGroupId: "",
+        orderedGroupIds: ["media"],
+        hasManualSelection: false,
+      }),
+    ).toBe("media");
+    expect(
+      resolveOpenInspectorGroup({
+        currentGroupId: "",
+        orderedGroupIds: ["media", "timing"],
+        hasManualSelection: true,
+      }),
+    ).toBe("");
+  });
+
+  it("classifies inspector element types before preserving manual state", () => {
+    const panel = readFileSync(new URL("./editor/PropertyPanel.tsx", import.meta.url), "utf8");
+    expect(resolveInspectorElementKind("p", true)).toBe("text");
+    expect(resolveInspectorElementKind("IMG", false)).toBe("image");
+    expect(resolveInspectorElementKind("video", false)).toBe("video");
+    expect(resolveInspectorElementKind("audio", false)).toBe("audio");
+    expect(resolveInspectorElementKind("div", false)).toBe("other");
+    expect(panel).toContain("key={resolveInspectorElementKind(element.tagName, sections.text)}");
   });
 
   it("matches the Figma property-inspector group and timing states", () => {
