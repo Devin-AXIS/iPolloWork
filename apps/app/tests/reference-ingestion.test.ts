@@ -65,6 +65,18 @@ describe("reference ingestion core", () => {
     expect(chunks.map((chunk) => chunk.text)).toEqual(["a", "b", "c"]);
   });
 
+  test("clamps oversized chunk budgets to 1200 characters", () => {
+    const text = "x".repeat(2401);
+    const chunks = chunkPlainText({ source: "large.md", text, maxChunkChars: 5000 });
+    const selected = selectReferenceChunks(
+      [{ ...chunks[0]!, id: "large:chunk:1", text }],
+      { maxChunkChars: 5000 },
+    );
+
+    expect(Math.max(...chunks.map((chunk) => chunk.text.length))).toBeLessThanOrEqual(1200);
+    expect(selected[0]?.text.length).toBeLessThanOrEqual(1200);
+  });
+
   test("packs only high and medium quality files within budgets", () => {
     const highChunks = chunkPlainText({
       source: "product-plan.pdf",
@@ -135,6 +147,40 @@ describe("reference ingestion core", () => {
     const pack = packReferenceContext([file], { maxSummaryChars: 0 });
 
     expect(pack.promptText).not.toContain(file.summary);
+  });
+
+  test("clamps oversized prompt-pack budgets to the global ceilings", () => {
+    const file = {
+      id: "ref_caps",
+      fileName: "caps.md",
+      mimeType: "text/markdown",
+      size: 10,
+      sourceMode: "memory" as const,
+      extractedText: "Readable reference body with enough content for quality checks.",
+      summary: "s".repeat(5000),
+      chunks: Array.from({ length: 12 }, (_, index) => ({
+        id: `caps:chunk:${index + 1}`,
+        source: "caps.md",
+        text: `chunk-${index}-` + "c".repeat(1800),
+        tokenEstimate: 1,
+      })),
+      quality: "high" as const,
+      warnings: [],
+    };
+
+    const pack = packReferenceContext([file], {
+      maxSummaryChars: 5000,
+      maxChunkChars: 5000,
+      maxChunksPerFile: 100,
+      maxTotalChars: 50000,
+    });
+    const summary = pack.promptText.match(/Summary:\n([\s\S]*?)\n\nRelevant excerpts:/)?.[1] ?? "";
+    const excerpts = pack.promptText.match(/\[excerpt\] ([^\n]*)/g) ?? [];
+
+    expect(summary.length).toBeLessThanOrEqual(1200);
+    expect(excerpts.length).toBeLessThanOrEqual(8);
+    expect(Math.max(...excerpts.map((excerpt) => excerpt.length - "[excerpt] ".length))).toBeLessThanOrEqual(1200);
+    expect(pack.totalChars).toBeLessThanOrEqual(12000);
   });
 
   test("returns an empty prompt when the total budget is zero", () => {

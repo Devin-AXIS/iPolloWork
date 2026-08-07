@@ -2,7 +2,7 @@ import type { ReferenceChunk } from "./types";
 
 function normalizeChunkSize(value: number | undefined) {
   const size = value ?? 1200;
-  return Number.isFinite(size) ? Math.max(1, Math.floor(size)) : 1200;
+  return Number.isFinite(size) ? Math.min(1200, Math.max(1, Math.floor(size))) : 1200;
 }
 
 export function estimateTokens(text: string): number {

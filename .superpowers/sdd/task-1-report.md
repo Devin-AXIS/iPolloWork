@@ -63,6 +63,27 @@ The six task files were committed in one commit:
 
 The commit hook printed `Can't find lefthook in PATH`; no hook checks ran because that tool is not installed or available in the environment. Focused tests and app typecheck were run directly and passed.
 
+## Remaining Review Finding Fix
+
+Clamped configurable reference-context budgets to the hard ceilings while preserving smaller caller budgets, including zero, one, and two:
+
+- Per-file summary: 1200 characters.
+- Per chunk: 1200 characters in chunking and compression selection.
+- Chunks per file: 8.
+- Total prompt pack: 12000 characters.
+
+Added regression coverage proving oversized values such as 5000, 100, and 50000 cannot bypass those ceilings.
+
+Verification:
+
+```text
+pnpm.cmd --filter @ipollowork/app exec bun test --isolate tests/reference-ingestion.test.ts
+10 pass, 0 fail, 28 expect() calls
+
+pnpm.cmd --filter @ipollowork/app typecheck
+exit code 0
+```
+
 ## Review Fix Report
 
 Fixed the Task 1 review findings:
