@@ -30,6 +30,27 @@ describe("preview editing interactions", () => {
     expect(source).toContain("if (!resolvedSelection)");
     expect(source).toContain("updateDomEditHoverSelection(null)");
     expect(source).toContain("applyDomSelection(null, { revealPanel: false })");
+    expect(source).toContain("const resolvedSelection = nextSelection");
+    expect(source).not.toContain("nextSelection ?? options?.hoverSelection");
+
+    const selectionSource = readFileSync(
+      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+      "utf8",
+    );
+    expect(selectionSource).toContain(
+      "if (!additive) applyDomSelection(null, { revealPanel: false })",
+    );
+  });
+
+  it("clears canvas and inspector selection when the user clicks an empty timeline lane", () => {
+    const source = readFileSync(
+      new URL("../../player/components/useTimelineRangeSelection.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("if (!marquee.active)");
+    expect(source).toContain("store.setSelectedElementId(null)");
+    expect(source).toContain("onSelectElement?.(null)");
   });
 
   it("keeps a timeline clip selected after its pointer-down and click sequence", () => {

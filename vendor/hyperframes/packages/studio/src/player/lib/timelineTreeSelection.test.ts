@@ -110,4 +110,59 @@ describe("timeline tree selection", () => {
       }),
     ).toBe("compositions/scene.html:h2:1");
   });
+
+  test("maps a runtime data-hf-id back to the manifest row that owns that id", () => {
+    expect(
+      resolveTimelineTreeSelectionKey({
+        hfId: "hf-logo",
+        sourceFile: "index.html",
+        elements: [
+          {
+            id: "hf-logo",
+            key: "index.html:hf-logo:0",
+            tag: "img",
+            start: 0,
+            duration: 8,
+            track: 0,
+          },
+        ],
+        manifest: [],
+        domClipChildren: [],
+      }),
+    ).toBe("index.html:hf-logo:0");
+  });
+
+  test("keeps a runtime media selection on its enriched expanded timeline key", () => {
+    expect(
+      resolveTimelineTreeSelectionKey({
+        elementId: "hf-logo",
+        hfId: "hf-logo",
+        sourceFile: "index.html",
+        elements: [
+          {
+            id: "hf-logo",
+            key: "index.html:hf-logo:0",
+            tag: "img",
+            start: 0,
+            duration: 8,
+            track: 0,
+          },
+        ],
+        manifest: [],
+        domClipChildren: [
+          {
+            id: "hf-logo",
+            hfId: "hf-logo",
+            parentId: "logo-wrap",
+            hostId: "index.html:.logo-wrap:0",
+            label: "Absolute",
+            sourceFile: "index.html",
+            selector: ".absolute",
+            selectorIndex: 1,
+            stackingContextId: "root",
+          },
+        ],
+      }),
+    ).toBe("index.html:.logo-wrap:0::index.html:.absolute:1");
+  });
 });

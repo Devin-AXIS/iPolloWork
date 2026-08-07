@@ -311,6 +311,12 @@ export function findElementForTimelineElement(
     "index.html";
   const escapedElementId = escapeCssString(elementId);
   const escapedCompositionSource = compositionSource ? escapeCssString(compositionSource) : null;
+  // Runtime-generated manifest entries use their data-hf-id value as `id`
+  // even when the translated timeline element has no explicit `hfId` field.
+  // Treat that id as the stable DOM handle only when no authored DOM target
+  // was preserved, so exact image/media rows remain inspectable.
+  const runtimeHfId =
+    element.hfId ?? (!element.domId && !element.selector ? elementId || undefined : undefined);
   const selector =
     element.selector ??
     (compositionSource
@@ -331,7 +337,7 @@ export function findElementForTimelineElement(
       doc,
       {
         id: element.domId ?? undefined,
-        hfId: element.hfId,
+        hfId: runtimeHfId,
         selector,
         selectorIndex: element.selectorIndex,
         sourceFile,

@@ -542,6 +542,7 @@ export function useDomSelection({
         return;
       }
       if (selections.length === 0) {
+        if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
       }
       const current = domEditSelectionRef.current;

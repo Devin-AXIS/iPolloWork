@@ -150,6 +150,31 @@ describe("timeline manifest translation", () => {
     expect(selection?.sourceFile).toBe("compositions/outro.html");
   });
 
+  test("keeps repeated plain-tag children mapped to their exact timeline row", async () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <div class="meta">
+          <span>htmlanything.dev</span>
+          <span>·</span>
+          <span>@htmlanything</span>
+        </div>
+      </main>
+    `;
+    const spans = Array.from(document.querySelectorAll<HTMLElement>("span"));
+    const selections = await Promise.all(
+      spans.map((span) =>
+        resolveDomEditSelection(span, {
+          activeCompositionPath: "index.html",
+          isMasterView: false,
+          skipSourceProbe: true,
+        }),
+      ),
+    );
+
+    expect(selections.map((selection) => selection?.selector)).toEqual(["span", "span", "span"]);
+    expect(selections.map((selection) => selection?.selectorIndex)).toEqual([0, 1, 2]);
+  });
+
   test("prefers the deepest hit regardless of child-parent result order", () => {
     document.body.innerHTML = `
       <main data-composition-id="main" data-composition-file="index.html">
@@ -208,6 +233,27 @@ describe("timeline manifest translation", () => {
         { activeCompositionPath: "index.html", isMasterView: true },
       ),
     ).toBe(second);
+  });
+
+  test("resolves a runtime-generated media id through its data-hf-id", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <img data-hf-id="hf-logo" src="logo.svg" alt="Brand logo" />
+      </main>
+    `;
+    const logo = document.querySelector("img");
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        {
+          id: "hf-logo",
+          tag: "img",
+          sourceFile: "index.html",
+        },
+        { activeCompositionPath: "index.html", isMasterView: true },
+      ),
+    ).toBe(logo);
   });
 
   test("recovers a timeline scene by authored timing when runtime host binding is missing", () => {
