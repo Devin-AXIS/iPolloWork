@@ -158,6 +158,7 @@ export type iPolloWorkPluginPackageMetadata = {
   updateId: string;
   entrypoints: { opencode?: string; service?: string };
   checksum?: { algorithm: "sha256"; value: string };
+  signature?: { algorithm: "ed25519"; keyId: string; value: string };
 };
 
 export type iPolloWorkPluginAuthorizationMethodTranslation = {

@@ -65,6 +65,8 @@ export default {
   "plugin_platform.import_agents": "Agent",
   "plugin_platform.import_commands": "命令",
   "plugin_platform.import_safety": "已通过声明式安全检查：不会加载本地服务、系统进程、原生程序或主进程代码。",
+  "plugin_platform.import_signed_safety": "已验证{publisher}的发布者签名。这个插件包含本地代码，安装后会运行清单中声明的本地服务。",
+  "plugin_platform.import_permissions": "安装后将获得以下权限",
   "plugin_platform.import_error": "无法导入这个插件包。",
   "plugin_platform.publisher_unknown": "未知发布者",
   "plugin_platform.integrity_verified": "校验值已验证",
