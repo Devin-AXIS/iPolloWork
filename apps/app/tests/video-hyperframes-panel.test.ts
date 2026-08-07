@@ -781,7 +781,13 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain('data-ipw-bgm="true"');
     expect(contract).toContain("animationReferences");
     expect(contract).toContain("unresolved earlier requests");
-    expect(contract).toContain("never claim completion from structural validation alone");
+    expect(contract).toContain("If valid, stop using tools and answer immediately");
+    expect(contract).toContain("do not follow it with browser/screenshot/eval calls");
+    expect(contract).toContain("manual tag counting, parser scripts, file rereads, or extra shell validation");
+    expect(contract).toContain("at most 20 seconds");
+    expect(contract).toContain("on timeout abandon it without retrying");
+    expect(contract).toContain("Never start either auxiliary operation after validation");
+    expect(contract).toContain("authoritative completion gate");
     expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
     expect(contract).toContain("top-left/bottom-right placement");
     expect(contract).toContain("and local fallback");
