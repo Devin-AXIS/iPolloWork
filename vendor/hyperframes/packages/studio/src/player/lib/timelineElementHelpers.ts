@@ -282,11 +282,15 @@ export function buildTimelineElementKey(params: {
   selector?: string;
   selectorIndex?: number;
   sourceFile?: string;
+  previewHostId?: string;
 }): string {
   const scope = params.sourceFile ?? "index.html";
-  if (params.domId) return `${scope}#${params.domId}`;
-  if (params.selector) return `${scope}:${params.selector}:${params.selectorIndex ?? 0}`;
-  return `${scope}:${params.id}:${params.fallbackIndex}`;
+  const sourceKey = params.domId
+    ? `${scope}#${params.domId}`
+    : params.selector
+      ? `${scope}:${params.selector}:${params.selectorIndex ?? 0}`
+      : `${scope}:${params.id}:${params.fallbackIndex}`;
+  return params.previewHostId ? `${params.previewHostId}::${sourceKey}` : sourceKey;
 }
 
 export function buildTimelineElementIdentity(params: {

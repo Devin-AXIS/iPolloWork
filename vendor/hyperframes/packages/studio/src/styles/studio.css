@@ -400,7 +400,7 @@ button[aria-label="退出全屏"] {
   border-radius: 0.375rem;
   border: 1px solid var(--hf-shortcuts-border);
   background: var(--hf-panel-bg-1);
-  color: var(--hf-panel-text-0);
+  color: #18181b;
   padding: 0 0.5rem;
   font-size: 0.75rem;
   outline: none;

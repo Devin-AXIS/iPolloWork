@@ -235,6 +235,7 @@ export function findElementForSelection(
   doc: Document,
   selection: FindElementSelection,
   activeCompositionPath: string | null = null,
+  queryRoot: ParentNode = doc,
 ): HTMLElement | null {
   const sourceMatches = (candidate: Element): candidate is HTMLElement =>
     isHtmlElement(candidate) &&
@@ -242,7 +243,7 @@ export function findElementForSelection(
       getSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
         selection.sourceFile);
   const findAll = (selector: string): HTMLElement[] =>
-    querySelectorAllSafely(doc, selector).filter(sourceMatches);
+    querySelectorAllSafely(queryRoot, selector).filter(sourceMatches);
 
   if (selection.hfId) {
     const byHfId = findAll(`[data-hf-id="${escapeCssString(selection.hfId)}"]`)[0];
@@ -257,7 +258,40 @@ export function findElementForSelection(
   }
 
   if (!selection.selector) return null;
-  return findAll(selection.selector)[selection.selectorIndex ?? 0] ?? null;
+  const selectorMatches = findAll(selection.selector);
+  if (selectorMatches.length === 0) return null;
+  const selectorIndex = selection.selectorIndex ?? 0;
+  if (queryRoot === doc) return selectorMatches[selectorIndex] ?? null;
+  // Flattened repeated compositions number selectors globally. A host-scoped
+  // lookup folds that index back into the authored selector set for this copy.
+  return selectorMatches[selectorIndex % selectorMatches.length] ?? null;
+}
+
+function timelineNumberMatches(element: Element, attribute: string, expected: number): boolean {
+  const actual = Number.parseFloat(element.getAttribute(attribute) ?? "");
+  return Number.isFinite(actual) && Math.abs(actual - expected) < 0.001;
+}
+
+function findElementForTimelineTiming(
+  root: ParentNode,
+  element: TimelineElementDomTarget,
+  sourceFile: string,
+  activeCompositionPath: string | null,
+): HTMLElement | null {
+  if (element.start == null || element.duration == null || element.track == null) return null;
+  const expectedTag = element.tag?.toLowerCase();
+  return (
+    querySelectorAllSafely(root, "[data-start]")
+      .filter(isHtmlElement)
+      .find(
+        (candidate) =>
+          (!expectedTag || candidate.tagName.toLowerCase() === expectedTag) &&
+          timelineNumberMatches(candidate, "data-start", element.start ?? 0) &&
+          timelineNumberMatches(candidate, "data-duration", element.duration ?? 0) &&
+          timelineNumberMatches(candidate, "data-track-index", element.track ?? 0) &&
+          getSourceFileForElement(candidate, activeCompositionPath).sourceFile === sourceFile,
+      ) ?? null
+  );
 }
 
 // fallow-ignore-next-line complexity
@@ -284,6 +318,13 @@ export function findElementForTimelineElement(
       : escapedElementId
         ? `[data-composition-id="${escapedElementId}"]`
         : undefined);
+  const previewHost = element.previewHostId
+    ? querySelectorAllSafely(
+        doc,
+        `[data-composition-id="${escapeCssString(element.previewHostId)}"],[data-hf-id="${escapeCssString(element.previewHostId)}"],[id="${escapeCssString(element.previewHostId)}"]`,
+      ).find(isHtmlElement)
+    : undefined;
+  const queryRoot = previewHost?.querySelector("[data-hf-inner-root]") ?? previewHost ?? doc;
 
   if (selector || element.domId) {
     const targetElement = findElementForSelection(
@@ -296,9 +337,18 @@ export function findElementForTimelineElement(
         sourceFile,
       },
       options.activeCompositionPath,
+      queryRoot,
     );
     if (targetElement) return targetElement;
   }
+
+  const timingElement = findElementForTimelineTiming(
+    queryRoot,
+    element,
+    sourceFile,
+    options.activeCompositionPath,
+  );
+  if (timingElement) return timingElement;
 
   const hasExplicitDomTarget = Boolean(element.domId || element.selector || compositionSource);
   if (options.isMasterView || hasExplicitDomTarget || !options.activeCompositionPath) {

@@ -36,7 +36,7 @@ describe("timeline tree selection", () => {
           },
         ],
       }),
-    ).toBe("compositions/scene.html#title");
+    ).toBe("scene::compositions/scene.html#title");
   });
 
   test("does not select a same-id element from another composition", () => {
@@ -78,7 +78,9 @@ describe("timeline tree selection", () => {
     };
 
     expect(resolveTimelineTreeSelectionId(input)).toBe("hf-title");
-    expect(resolveTimelineTreeSelectionKey(input)).toBe("compositions/scene.html:.title:0");
+    expect(resolveTimelineTreeSelectionKey(input)).toBe(
+      "scene::compositions/scene.html:.title:0",
+    );
     expect(collectTimelineAncestorIds("hf-title", new Map([["hf-title", "hero"]]))).toEqual([
       "hero",
     ]);

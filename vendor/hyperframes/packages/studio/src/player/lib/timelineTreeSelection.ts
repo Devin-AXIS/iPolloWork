@@ -50,6 +50,7 @@ export function resolveTimelineTreeSelectionKey(input: {
     selector: domChild?.selector ?? manifestClip?.selector ?? input.selector,
     selectorIndex: domChild?.selectorIndex ?? manifestClip?.selectorIndex ?? input.selectorIndex,
     sourceFile: domChild?.sourceFile ?? manifestClip?.sourceFile ?? input.sourceFile,
+    previewHostId: domChild?.hostId,
   });
 }
 

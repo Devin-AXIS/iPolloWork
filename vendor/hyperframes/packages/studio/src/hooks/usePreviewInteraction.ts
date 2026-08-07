@@ -109,6 +109,10 @@ export function usePreviewInteraction({
       });
       const resolvedSelection = nextSelection ?? options?.hoverSelection ?? null;
       if (!resolvedSelection) {
+        e.preventDefault();
+        e.stopPropagation();
+        updateDomEditHoverSelection(null);
+        applyDomSelection(null, { revealPanel: false });
         resumeIfNothingSelected();
         return;
       }
@@ -127,6 +131,7 @@ export function usePreviewInteraction({
       onClickToSource,
       pausePreviewPlayback,
       resolveDomSelectionFromPreviewPoint,
+      updateDomEditHoverSelection,
     ],
   );
 

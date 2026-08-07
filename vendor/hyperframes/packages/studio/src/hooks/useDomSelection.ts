@@ -366,6 +366,7 @@ export function useDomSelection({
       const owningGroup = targetElement.closest<HTMLElement>("[data-hf-group]");
       return buildDomSelectionFromTarget(targetElement, {
         preferClipAncestor: false,
+        skipSourceProbe: true,
         activeGroupElement: owningGroup,
       });
     },

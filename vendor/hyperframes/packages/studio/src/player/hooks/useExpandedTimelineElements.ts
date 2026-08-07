@@ -146,6 +146,7 @@ function buildChildElements(
       selector,
       selectorIndex,
       sourceFile: child.sourceFile ?? domChild?.sourceFile ?? editBasis.sourceFile,
+      previewHostId: domChild?.hostId,
     });
     result.push({
       ...base,
@@ -176,6 +177,7 @@ function buildChildElements(
       selector: child.selector ?? selector,
       selectorIndex,
       sourceFile: child.sourceFile ?? editBasis.sourceFile,
+      previewHostId: domChild?.hostId,
       timingSource: "authored",
     });
   }
