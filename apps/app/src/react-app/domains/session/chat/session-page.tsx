@@ -696,7 +696,6 @@ export function SessionPage(props: SessionPageProps) {
   }, [
     artifactDirectory,
     artifactScopeKey,
-    conversationMessages,
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   ]);
