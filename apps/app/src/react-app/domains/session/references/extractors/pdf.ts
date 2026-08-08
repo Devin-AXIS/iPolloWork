@@ -2,14 +2,35 @@ import { chunkPlainText } from "../chunking";
 import { cleanReferenceText } from "../quality";
 import type { ExtractedReferenceContent, ReferenceChunk } from "../types";
 
+type Uint8ArrayPrototypeWithHex = Uint8Array & { toHex?: () => string };
+
+export function ensurePdfTypedArrayHexSupport() {
+  const prototype = Uint8Array.prototype as Uint8ArrayPrototypeWithHex;
+  if (typeof prototype.toHex === "function") return;
+
+  Object.defineProperty(Uint8Array.prototype, "toHex", {
+    configurable: true,
+    writable: true,
+    value: function toHex(this: Uint8Array) {
+      let hex = "";
+      for (let index = 0; index < this.length; index += 1) {
+        hex += this[index]!.toString(16).padStart(2, "0");
+      }
+      return hex;
+    },
+  });
+}
+
 async function loadPdfjs() {
+  ensurePdfTypedArrayHexSupport();
+
   if (typeof window === "undefined") {
     return import("pdfjs-dist/legacy/build/pdf.mjs");
   }
 
-  const pdfjs = await import("pdfjs-dist");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   if ("GlobalWorkerOptions" in pdfjs) {
-    const worker = await import("pdfjs-dist/build/pdf.worker.mjs?url");
+    const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs?url");
     pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
   }
   return pdfjs;
