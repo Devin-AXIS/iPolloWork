@@ -130,6 +130,22 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("openCurrentVideoStudio();");
   });
 
+  test("artifact catalog refresh is scoped to the output directory rather than message streaming", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const effectStart = sessionPageSource.indexOf(".listWorkspaceFiles(workspaceId, artifactDirectory)");
+    expect(effectStart).toBeGreaterThan(0);
+    const dependencyStart = sessionPageSource.indexOf("  }, [", effectStart);
+    const dependencyEnd = sessionPageSource.indexOf("  ]);", dependencyStart);
+    const dependencies = sessionPageSource.slice(dependencyStart, dependencyEnd);
+
+    expect(dependencies).toContain("artifactDirectory");
+    expect(dependencies).toContain("artifactScopeKey");
+    expect(dependencies).not.toContain("conversationMessages");
+  });
+
   test("template covers expose a retryable failure placeholder", () => {
     const marketSource = readFileSync(
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),

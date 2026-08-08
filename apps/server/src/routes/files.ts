@@ -16,9 +16,31 @@ const FILE_SESSION_MAX_BATCH_ITEMS = 64;
 const FILE_SESSION_MAX_FILE_BYTES = 5_000_000;
 const FILE_SESSION_CATALOG_DEFAULT_LIMIT = 2000;
 const FILE_SESSION_CATALOG_MAX_LIMIT = 10000;
+const FILE_SESSION_CATALOG_IGNORED_DIRS = new Set([
+  ".git",
+  ".hg",
+  ".svn",
+  ".next",
+  ".nuxt",
+  ".pnpm",
+  ".turbo",
+  ".vite",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "out",
+  "target",
+  "vendor",
+]);
 
 type JsonResponse = (data: unknown, status?: number) => Response;
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
+type CatalogWalkOptions = {
+  prefix?: string | null;
+  includeDirs?: boolean;
+  onVisitDirectory?: (relativePath: string) => void;
+};
 
 interface RegisterFileRoutesOptions {
   routes: Route[];
@@ -373,11 +395,6 @@ function parseCatalogPathFilter(input: string | null): string | null {
   return normalizeWorkspaceRelativePath(trimmed, { allowSubdirs: true });
 }
 
-function matchesCatalogFilter(path: string, filter: string | null): boolean {
-  if (!filter) return true;
-  return path === filter || path.startsWith(`${filter}/`);
-}
-
 function normalizeResolvedRelativePath(input: string): string {
   const normalized = input.replace(/\\/g, "/");
   const parts = normalized.split("/").filter(Boolean);
@@ -392,11 +409,41 @@ function normalizeResolvedRelativePath(input: string): string {
   return parts.join("/");
 }
 
-async function listWorkspaceCatalogEntries(workspaceRoot: string): Promise<FileSessionCatalogEntry[]> {
+function resolveCatalogStart(workspaceRoot: string, prefix: string | null): { absPath: string; relativePath: string } {
   const rootResolved = resolve(workspaceRoot);
+  if (!prefix) return { absPath: rootResolved, relativePath: "" };
+
+  const candidate = resolve(rootResolved, prefix);
+  if (candidate !== rootResolved && !candidate.startsWith(rootResolved + sep)) {
+    throw new ApiError(400, "invalid_path", "Path traversal is not allowed");
+  }
+  return { absPath: candidate, relativePath: prefix };
+}
+
+function shouldSkipCatalogDirectory(relativePath: string, explicitPrefix: string | null): boolean {
+  if (!relativePath) return false;
+  if (explicitPrefix && (relativePath === explicitPrefix || explicitPrefix.startsWith(`${relativePath}/`))) {
+    return false;
+  }
+  return FILE_SESSION_CATALOG_IGNORED_DIRS.has(basename(relativePath));
+}
+
+export async function listWorkspaceCatalogEntries(
+  workspaceRoot: string,
+  options: CatalogWalkOptions = {},
+): Promise<FileSessionCatalogEntry[]> {
+  const rootResolved = resolve(workspaceRoot);
+  const prefix = options.prefix ?? null;
+  const includeDirs = options.includeDirs !== false;
+  const start = resolveCatalogStart(rootResolved, prefix);
   const items: FileSessionCatalogEntry[] = [];
 
   const walk = async (dirPath: string) => {
+    const currentRelRaw = relative(rootResolved, dirPath).replace(/\\/g, "/");
+    const currentRel = currentRelRaw ? normalizeResolvedRelativePath(currentRelRaw) : "";
+    if (shouldSkipCatalogDirectory(currentRel, prefix)) return;
+    options.onVisitDirectory?.(currentRel);
+
     const entries = await readdir(dirPath, { withFileTypes: true });
     entries.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -406,14 +453,17 @@ async function listWorkspaceCatalogEntries(workspaceRoot: string): Promise<FileS
       const rel = normalizeResolvedRelativePath(relRaw);
 
       if (entry.isDirectory()) {
+        if (shouldSkipCatalogDirectory(rel, prefix)) continue;
         const info = await stat(absPath);
-        items.push({
-          path: rel,
-          kind: "dir",
-          size: 0,
-          mtimeMs: info.mtimeMs,
-          revision: fileRevision({ mtimeMs: info.mtimeMs, size: 0 }),
-        });
+        if (includeDirs) {
+          items.push({
+            path: rel,
+            kind: "dir",
+            size: 0,
+            mtimeMs: info.mtimeMs,
+            revision: fileRevision({ mtimeMs: info.mtimeMs, size: 0 }),
+          });
+        }
         await walk(absPath);
         continue;
       }
@@ -430,8 +480,28 @@ async function listWorkspaceCatalogEntries(workspaceRoot: string): Promise<FileS
     }
   };
 
-  if (await exists(rootResolved)) {
-    await walk(rootResolved);
+  if (await exists(start.absPath)) {
+    const info = await stat(start.absPath);
+    if (info.isFile()) {
+      items.push({
+        path: start.relativePath,
+        kind: "file",
+        size: info.size,
+        mtimeMs: info.mtimeMs,
+        revision: fileRevision(info),
+      });
+    } else if (info.isDirectory()) {
+      if (includeDirs && start.relativePath) {
+        items.push({
+          path: start.relativePath,
+          kind: "dir",
+          size: 0,
+          mtimeMs: info.mtimeMs,
+          revision: fileRevision({ mtimeMs: info.mtimeMs, size: 0 }),
+        });
+      }
+      await walk(start.absPath);
+    }
   }
 
   items.sort((a, b) => a.path.localeCompare(b.path));
@@ -715,10 +785,8 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const includeDirs = ctx.url.searchParams.get("includeDirs") !== "false";
     const limit = parseCatalogLimit(ctx.url.searchParams.get("limit"));
 
-    const entries = await listWorkspaceCatalogEntries(workspace.path);
+    const entries = await listWorkspaceCatalogEntries(workspace.path, { prefix, includeDirs });
     const filtered = entries.filter((entry) => {
-      if (!includeDirs && entry.kind === "dir") return false;
-      if (!matchesCatalogFilter(entry.path, prefix)) return false;
       if (after && entry.path <= after) return false;
       return true;
     });

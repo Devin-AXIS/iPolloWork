@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 import { DOMParser as XmlDomParser } from "@xmldom/xmldom";
 
@@ -24,7 +25,7 @@ import type { ReferenceIngestionResult } from "../src/react-app/domains/session/
 import { extractTextReference } from "../src/react-app/domains/session/references/extractors/text";
 import { extractTableReference } from "../src/react-app/domains/session/references/extractors/table";
 import { extractDocxReference } from "../src/react-app/domains/session/references/extractors/docx";
-import { extractPdfReference } from "../src/react-app/domains/session/references/extractors/pdf";
+import { ensurePdfTypedArrayHexSupport, extractPdfReference } from "../src/react-app/domains/session/references/extractors/pdf";
 import {
   ingestReferenceFile,
   isReferenceFile,
@@ -288,6 +289,37 @@ describe("reference ingestion core", () => {
 });
 
 describe("reference extractors", () => {
+  test("uses PDF.js legacy browser builds for Electron compatibility", () => {
+    const source = readFileSync(new URL("../src/react-app/domains/session/references/extractors/pdf.ts", import.meta.url), "utf8");
+
+    expect(source).toContain('import("pdfjs-dist/legacy/build/pdf.mjs")');
+    expect(source).toContain('import("pdfjs-dist/legacy/build/pdf.worker.mjs?url")');
+    expect(source).not.toContain('import("pdfjs-dist")');
+    expect(source).not.toContain('import("pdfjs-dist/build/pdf.worker.mjs?url")');
+  });
+
+  test("polyfills Uint8Array.toHex when the Electron runtime does not provide it", () => {
+    const prototype = Uint8Array.prototype as Uint8Array & { toHex?: () => string };
+    const descriptor = Object.getOwnPropertyDescriptor(Uint8Array.prototype, "toHex");
+
+    if (descriptor && !descriptor.configurable) {
+      expect(typeof prototype.toHex).toBe("function");
+      return;
+    }
+
+    try {
+      delete prototype.toHex;
+      ensurePdfTypedArrayHexSupport();
+      expect(new Uint8Array([0, 1, 15, 16, 255]).toHex()).toBe("00010f10ff");
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(Uint8Array.prototype, "toHex", descriptor);
+      } else {
+        delete prototype.toHex;
+      }
+    }
+  });
+
   test("extracts readable text into page-aware chunks from a valid PDF", async () => {
     const file = new File([createTextPdf("Node PDF extraction works")], "readable.pdf", { type: "application/pdf" });
     const extracted = await extractPdfReference(file);
