@@ -7,6 +7,7 @@ import {
   listEnterpriseResources,
   normalizeEnterpriseOrigin,
   readEnterpriseConnections,
+  refreshEnterpriseConnection,
   removeEnterpriseConnection,
   saveEnterpriseConnection,
   type EnterpriseConnection,
@@ -39,6 +40,19 @@ const connectedEnterprise: EnterpriseConnection = {
   membership: { id: "member-1", role: "member" },
   session: { token: "enterprise-session", expiresAt: "2026-08-26T00:00:00.000Z" },
 };
+
+async function sha256Hex(bytes: Uint8Array) {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function artifactResponse(bytes: Uint8Array, type: EnterpriseResource["type"], digest: string, contentType: string) {
+  return new Response(bytes, { headers: {
+    "content-type": contentType,
+    "x-ipollo-artifact-sha256": digest,
+    "x-ipollo-resource-type": type,
+  } });
+}
 
 describe("enterprise connections", () => {
   beforeEach(() => {
@@ -130,6 +144,40 @@ describe("enterprise connections", () => {
     await expect(
       discoverEnterpriseConnection("https://enterprise.example.com", fetcher),
     ).rejects.toThrow("enterprise_manifest_mismatch");
+  });
+
+  test("refreshes stored Enterprise branding without replacing its membership or session", async () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    const refreshed = await refreshEnterpriseConnection(connectedEnterprise, async (input) => {
+      const url = String(input);
+      if (url.endsWith("/.well-known/ipollo-enterprise")) {
+        return Response.json({
+          serverId: "ent_medical",
+          name: "Medical Enterprise",
+          origin: "https://enterprise.example.com",
+          authMode: "ipollo_oidc",
+        });
+      }
+      return Response.json({
+        enterprise: {
+          id: "ent_medical",
+          name: "Updated Medical Enterprise",
+          shortName: "Updated Medical",
+          logoUrl: "https://enterprise.example.com/api/v1/branding/logo?revision=7",
+          accent: "neutral",
+        },
+      });
+    });
+
+    expect(refreshed).toMatchObject({
+      name: "Updated Medical Enterprise",
+      shortName: "Updated Medical",
+      logoUrl: "https://enterprise.example.com/api/v1/branding/logo?revision=7",
+      accent: "neutral",
+      membership: connectedEnterprise.membership,
+      session: connectedEnterprise.session,
+    });
+    expect(readEnterpriseConnections()[0]).toEqual(refreshed);
   });
 
   test("joins the configured Enterprise with a Cloud-issued identity token", async () => {
@@ -225,14 +273,17 @@ describe("enterprise connections", () => {
     expect(readEnterpriseConnections().map((connection) => connection.id)).toEqual(["ent_medical"]);
   });
 
-  test("loads only valid resources from the active Enterprise catalog", async () => {
+  test("loads every page and only valid resources from the active Enterprise catalog", async () => {
+    const digest = "a".repeat(64);
+    const requested: string[] = [];
     const fetcher: typeof fetch = async (input, init) => {
-      expect(String(input)).toBe("https://enterprise.example.com/api/v1/resources?type=template&limit=50");
+      requested.push(String(input));
       expect(new Headers(init?.headers).get("authorization")).toBe("Bearer enterprise-session");
-      return Response.json({ items: [{
+      if (!String(input).includes("cursor=")) return Response.json({ items: [{
         id: "resource-1",
         type: "template",
         slug: "medical-report",
+        sourceTemplateId: "personal.medical-report",
         name: "Medical report",
         description: "Approved report format",
         category: "report",
@@ -242,18 +293,38 @@ describe("enterprise connections", () => {
         updatedAt: "2026-07-28T00:00:00.000Z",
         latestVersion: {
           version: "1.2.0",
-          digest: "sha256:abc",
+          digest,
           downloadPath: "/api/v1/resources/resource-1/versions/1.2.0/download",
         },
-      }, { id: "wrong-type", type: "extension" }] });
+      }, { id: "wrong-type", type: "extension" }], nextCursor: "resource-1" });
+      return Response.json({ items: [{
+        id: "resource-2",
+        type: "template",
+        slug: "medical-slides",
+        name: "Medical slides",
+        description: "Approved presentation",
+        category: "slides",
+        enterpriseCategory: "Clinical",
+        iconPath: null,
+        featured: false,
+        updatedAt: "2026-07-29T00:00:00.000Z",
+        latestVersion: null,
+      }], nextCursor: null });
     };
 
     await expect(listEnterpriseResources(connectedEnterprise, "template", fetcher)).resolves.toMatchObject([
-      { id: "resource-1", type: "template", latestVersion: { version: "1.2.0" } },
+      { id: "resource-1", type: "template", sourceTemplateId: "personal.medical-report", latestVersion: { version: "1.2.0" } },
+      { id: "resource-2", type: "template", latestVersion: null },
+    ]);
+    expect(requested).toEqual([
+      "https://enterprise.example.com/api/v1/resources?type=template&limit=50",
+      "https://enterprise.example.com/api/v1/resources?type=template&limit=50&cursor=resource-1",
     ]);
   });
 
   test("downloads an explicitly selected Enterprise resource with its session", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const digest = await sha256Hex(bytes);
     const resource = (await listEnterpriseResources(connectedEnterprise, "extension", async () => Response.json({ items: [{
       id: "resource-2",
       type: "extension",
@@ -266,7 +337,7 @@ describe("enterprise connections", () => {
       updatedAt: "2026-07-28T00:00:00.000Z",
       latestVersion: {
         version: "2.0.0",
-        digest: "sha256:def",
+        digest,
         downloadPath: "/api/v1/resources/resource-2/versions/2.0.0/download",
       },
     }] })))[0];
@@ -274,18 +345,21 @@ describe("enterprise connections", () => {
     const fetcher: typeof fetch = async (input, init) => {
       expect(String(input)).toContain("/api/v1/resources/resource-2/versions/2.0.0/download");
       expect(new Headers(init?.headers).get("authorization")).toBe("Bearer enterprise-session");
-      return new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "application/zip" } });
+      return artifactResponse(bytes, "extension", digest, "application/zip");
     };
     const file = await downloadEnterpriseResource(connectedEnterprise, resource, fetcher);
-    expect(file.name).toBe("github-tools-2.0.0.zip");
+    expect(file.name).toBe("github-tools-2.0.0.ipollowork-plugin");
     expect(file.size).toBe(3);
   });
 
   test("keeps legacy Enterprise templates importable and names canonical packages .ipwp", async () => {
+    const bytes = new Uint8Array([1]);
+    const digest = await sha256Hex(bytes);
     const resource: EnterpriseResource = {
       id: "resource-template",
       type: "template",
       slug: "clinical-report",
+      sourceTemplateId: null,
       name: "Clinical report",
       description: "Approved report format",
       category: "report",
@@ -295,18 +369,47 @@ describe("enterprise connections", () => {
       updatedAt: "2026-07-28T00:00:00.000Z",
       latestVersion: {
         version: "1.2.0",
-        digest: "sha256:abc",
+        digest,
         downloadPath: "/api/v1/resources/resource-template/versions/1.2.0/download",
       },
     };
     const legacy = await downloadEnterpriseResource(connectedEnterprise, resource, async () => (
-      new Response(new Uint8Array([1]), { headers: { "content-type": "application/octet-stream" } })
+      artifactResponse(bytes, "template", digest, "application/octet-stream")
     ));
     const canonical = await downloadEnterpriseResource(connectedEnterprise, resource, async () => (
-      new Response(new Uint8Array([1]), { headers: { "content-type": IPOLLOWORK_PACKAGE_MEDIA_TYPE } })
+      artifactResponse(bytes, "template", digest, IPOLLOWORK_PACKAGE_MEDIA_TYPE)
     ));
 
     expect(legacy.name).toBe("clinical-report-1.2.0.ipwt");
     expect(canonical.name).toBe("clinical-report-1.2.0.ipwp");
+  });
+
+  test("rejects Enterprise artifacts whose digest or resource type does not match the catalog", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const digest = await sha256Hex(bytes);
+    const resource: EnterpriseResource = {
+      id: "resource-extension",
+      type: "extension",
+      slug: "approved-tools",
+      sourceTemplateId: null,
+      name: "Approved tools",
+      description: "Approved extension",
+      category: "developer",
+      enterpriseCategory: "Engineering",
+      iconPath: null,
+      featured: false,
+      updatedAt: "2026-07-28T00:00:00.000Z",
+      latestVersion: {
+        version: "1.0.0",
+        digest,
+        downloadPath: "/api/v1/resources/resource-extension/versions/1.0.0/download",
+      },
+    };
+    await expect(downloadEnterpriseResource(connectedEnterprise, resource, async () => (
+      artifactResponse(bytes, "template", digest, "application/zip")
+    ))).rejects.toThrow("enterprise_resource_type_mismatch");
+    await expect(downloadEnterpriseResource(connectedEnterprise, resource, async () => (
+      artifactResponse(bytes, "extension", "b".repeat(64), "application/zip")
+    ))).rejects.toThrow("enterprise_resource_digest_mismatch");
   });
 });

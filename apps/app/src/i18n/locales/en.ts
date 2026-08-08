@@ -1562,6 +1562,7 @@ export default {
   "enterprise_connection.enterprise_templates_empty": "No enterprise templates are available to your account.",
   "enterprise_connection.enterprise_extensions_empty": "No enterprise extensions are available to your account.",
   "enterprise_connection.enterprise_resources_error": "Could not load resources from this Enterprise Server.",
+  "enterprise_connection.desktop_restart_required": "The desktop process has not loaded the enterprise download update yet. Fully restart iPolloWork and try again.",
   "enterprise_connection.install_from_enterprise": "Install",
   "enterprise_connection.sources_hint": "Switch to this space's separate chats, templates, and extension sources",
   "enterprise_connection.sources_title": "Work identity",

@@ -2616,7 +2616,9 @@ const desktopCommandHandlers = {
         status: response.status,
         statusText: response.statusText,
         headers: Array.from(response.headers.entries()),
-        body: await response.text(),
+        body: init.responseType === "arrayBuffer"
+          ? await response.arrayBuffer()
+          : await response.text(),
       };
   },
   "__homeDir": async (event, ...args) => {

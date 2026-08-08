@@ -294,13 +294,14 @@ export type DesktopFetchInit = {
   headers?: Record<string, string>;
   body?: string;
   timeoutMs?: number;
+  responseType?: "text" | "arrayBuffer";
 };
 
 export type DesktopFetchResult = {
   status: number;
   statusText: string;
   headers: [string, string][];
-  body: string;
+  body: string | ArrayBuffer;
 };
 
 export type WorkspaceCreateInput = {
