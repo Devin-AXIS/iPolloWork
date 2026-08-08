@@ -1,6 +1,10 @@
 import type { Data } from "./open-target";
-
-export type SpreadsheetRows = string[][];
+import {
+  parseDelimitedSpreadsheet,
+  serializeDelimitedSpreadsheet,
+  type SpreadsheetRows,
+} from "../spreadsheets/delimited";
+export type { SpreadsheetRows } from "../spreadsheets/delimited";
 
 function extension(name: string) {
   const clean = name.toLowerCase().split(/[?#]/)[0] ?? name.toLowerCase();
@@ -13,76 +17,6 @@ function delimiterForName(name: string) {
   return extension(name) === "tsv" ? "\t" : ",";
 }
 
-function parseDelimited(content: string, delimiter: string): SpreadsheetRows {
-  const rows: SpreadsheetRows = [];
-
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const char = content[index];
-    const next = content[index + 1];
-
-    if (quoted) {
-      if (char === '"' && next === '"') {
-        cell += '"';
-        index += 1;
-      } else if (char === '"') {
-        quoted = false;
-      } else {
-        cell += char;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      quoted = true;
-      continue;
-    }
-
-    if (char === delimiter) {
-      row.push(cell);
-      cell = "";
-      continue;
-    }
-
-    if (char === "\n") {
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-      continue;
-    }
-
-    if (char === "\r") {
-      continue;
-    }
-
-    cell += char;
-  }
-
-  if (cell || row.length) {
-    row.push(cell);
-    rows.push(row);
-  }
-  return rows.length ? rows : [[""]];
-}
-
-function serializeDelimited(rows: SpreadsheetRows, delimiter: string) {
-  return rows
-    .map((row) => row.map((value) => {
-      const cell = String(value ?? "");
-
-      if (!cell.includes(delimiter) && !/["\r\n]/.test(cell)) {
-        return cell;
-      }
-
-      return `"${cell.replace(/"/g, '""')}"`;
-    }).join(delimiter))
-    .join("\n") + "\n";
-}
-
 function normalizeRows(rows: unknown[][]): SpreadsheetRows {
   const next = rows.map((row) => row.map((cell) => cell == null ? "" : String(cell)));
 
@@ -93,7 +27,7 @@ export async function parseSpreadsheet(input: { name: string; content: Data }): 
   const ext = extension(input.name);
 
   if (ext === "csv" || ext === "tsv") {
-    return parseDelimited(input.content.kind === "text" ? input.content.data : "", delimiterForName(input.name));
+    return parseDelimitedSpreadsheet(input.content.kind === "text" ? input.content.data : "", delimiterForName(input.name));
   }
 
   const XLSX = await import("xlsx");
@@ -113,7 +47,7 @@ export async function serializeSpreadsheet(name: string, rows: SpreadsheetRows):
   const ext = extension(name);
 
   if (ext === "csv" || ext === "tsv") {
-    return { kind: "text", data: serializeDelimited(rows, delimiterForName(name)) };
+    return { kind: "text", data: serializeDelimitedSpreadsheet(rows, delimiterForName(name)) };
   }
 
   const XLSX = await import("xlsx");
