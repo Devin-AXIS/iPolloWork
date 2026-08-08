@@ -555,6 +555,7 @@ export function SessionPage(props: SessionPageProps) {
   const [templateCatalogLoading, setTemplateCatalogLoading] = useState(false);
   const [templateCatalogError, setTemplateCatalogError] = useState<string | null>(null);
   const [templateBusyId, setTemplateBusyId] = useState<string | null>(null);
+  const templateCatalogRequestIdRef = useRef(0);
   const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
   const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
@@ -564,11 +565,17 @@ export function SessionPage(props: SessionPageProps) {
   const [templateValidationReport, setTemplateValidationReport] = useState<TemplateValidationReport | null>(null);
   const [templateValidationBusy, setTemplateValidationBusy] = useState(false);
   const [templateSaveMode, setTemplateSaveMode] = useState<TemplateSaveMode | null>(null);
+  const changeTemplateResourceScope = useCallback((scope: WorkContextId) => {
+    templateCatalogRequestIdRef.current += 1;
+    setTemplateResourceScope(scope);
+    setTemplateCatalog([]);
+    setEnterpriseTemplateResources([]);
+    setTemplateCatalogLoading(false);
+    setTemplateCatalogError(null);
+  }, []);
   useEffect(() => {
-    const nextScope = readActiveWorkContextId();
-    setTemplateResourceScope(nextScope);
-    if (nextScope === "personal") setEnterpriseTemplateResources([]);
-  }, [activeEnterprise?.id]);
+    changeTemplateResourceScope(readActiveWorkContextId());
+  }, [activeEnterprise?.id, changeTemplateResourceScope]);
   const [sessionTypeRevision, setSessionTypeRevision] = useState(0);
   const selectedSessionType = useMemo(() => (
     props.selectedSessionId && typeof window !== "undefined"
@@ -701,19 +708,36 @@ export function SessionPage(props: SessionPageProps) {
   }, [prioritizeRightPanel, props.selectedSessionId, setSidePanelState]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
+    const requestId = ++templateCatalogRequestIdRef.current;
     setTemplateCatalogLoading(true);
     setTemplateCatalogError(null);
     try {
-      const localCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope);
-      setTemplateCatalog(localCatalog.items);
-      if (templateResourceScope !== "personal" && activeEnterprise) {
-        setEnterpriseTemplateResources(await listEnterpriseResources(activeEnterprise, "template"));
+      if (templateResourceScope === "personal") {
+        const localCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, "personal");
+        if (requestId !== templateCatalogRequestIdRef.current) return;
+        setTemplateCatalog(localCatalog.items);
+        setEnterpriseTemplateResources([]);
+      } else if (activeEnterprise) {
+        const [enterpriseResources, installedCatalog] = await Promise.all([
+          listEnterpriseResources(activeEnterprise, "template"),
+          props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope),
+        ]);
+        if (requestId !== templateCatalogRequestIdRef.current) return;
+        setTemplateCatalog(installedCatalog.items.filter((item) => item.sourceType === "local" && item.installed));
+        setEnterpriseTemplateResources(enterpriseResources);
       } else {
+        setTemplateCatalog([]);
         setEnterpriseTemplateResources([]);
       }
     }
-    catch (error) { setTemplateCatalogError(error instanceof Error ? error.message : t("templates.error_load")); }
-    finally { setTemplateCatalogLoading(false); }
+    catch (error) {
+      if (requestId === templateCatalogRequestIdRef.current) {
+        setTemplateCatalogError(error instanceof Error ? error.message : t("templates.error_load"));
+      }
+    }
+    finally {
+      if (requestId === templateCatalogRequestIdRef.current) setTemplateCatalogLoading(false);
+    }
   }, [activeEnterprise, props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
   const getTemplateCover = useCallback((templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
@@ -940,7 +964,10 @@ export function SessionPage(props: SessionPageProps) {
       const file = await downloadEnterpriseResource(activeEnterprise, resource);
       await importDesignTemplate(file);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("enterprise_connection.enterprise_resources_error"));
+      const message = error instanceof Error ? error.message : "";
+      toast.error(message === "desktop_binary_fetch_requires_restart"
+        ? t("enterprise_connection.desktop_restart_required")
+        : message || t("enterprise_connection.enterprise_resources_error"));
     } finally {
       setTemplateBusyId(null);
     }
@@ -2878,7 +2905,7 @@ export function SessionPage(props: SessionPageProps) {
         enterprise={activeEnterprise}
         resourceScope={templateResourceScope}
         enterpriseResources={enterpriseTemplateResources}
-        onResourceScopeChange={setTemplateResourceScope}
+        onResourceScopeChange={changeTemplateResourceScope}
         onInstallEnterprise={(resource) => void installEnterpriseTemplate(resource)}
         onRefresh={refreshTemplateCatalog}
         onInstall={(templateId) => void installDesignTemplate(templateId)}

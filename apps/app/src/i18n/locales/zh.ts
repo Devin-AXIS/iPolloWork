@@ -2577,6 +2577,7 @@ export default {
   "enterprise_connection.enterprise_templates_empty": "当前账号暂无可用的企业模板。",
   "enterprise_connection.enterprise_extensions_empty": "当前账号暂无可用的企业扩展。",
   "enterprise_connection.enterprise_resources_error": "无法从当前企业服务器加载资源。",
+  "enterprise_connection.desktop_restart_required": "桌面主进程尚未加载企业资源下载更新，请完全重启 iPolloWork 后重试。",
   "enterprise_connection.install_from_enterprise": "安装",
   "enterprise_connection.sources_hint": "切换后进入该空间独立的聊天记录、模板与扩展来源",
   "enterprise_connection.sources_title": "工作身份",

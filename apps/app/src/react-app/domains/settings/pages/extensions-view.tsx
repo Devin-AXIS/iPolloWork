@@ -69,6 +69,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   const activeEnterprise = useActiveEnterpriseConnection();
   const [resourceScope, setResourceScope] = useState<WorkContextId>(() => readActiveWorkContextId());
   const [enterpriseResources, setEnterpriseResources] = useState<EnterpriseResource[]>([]);
+  const [installedEnterpriseExtensionVersions, setInstalledEnterpriseExtensionVersions] = useState<Map<string, string>>(new Map());
   const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
   const [enterpriseBusyId, setEnterpriseBusyId] = useState<string | null>(null);
@@ -86,21 +87,32 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   useEffect(() => {
     if (!activeEnterprise || resourceScope === "personal") {
       setEnterpriseResources([]);
+      setInstalledEnterpriseExtensionVersions(new Map());
       setEnterpriseError(null);
       return;
     }
     let current = true;
     setEnterpriseLoading(true);
+    setEnterpriseResources([]);
+    setInstalledEnterpriseExtensionVersions(new Map());
     setEnterpriseError(null);
-    void listEnterpriseResources(activeEnterprise, "extension").then((items) => {
-      if (current) setEnterpriseResources(items);
+    const installedPackages = props.client && props.workspaceId
+      ? props.client.listPluginPackages(props.workspaceId).catch(() => ({ items: [] }))
+      : Promise.resolve({ items: [] });
+    void Promise.all([
+      listEnterpriseResources(activeEnterprise, "extension"),
+      installedPackages,
+    ]).then(([items, packages]) => {
+      if (!current) return;
+      setEnterpriseResources(items);
+      setInstalledEnterpriseExtensionVersions(new Map(packages.items.map((item) => [item.pluginId, item.version])));
     }).catch(() => {
       if (current) setEnterpriseError(t("enterprise_connection.enterprise_resources_error"));
     }).finally(() => {
       if (current) setEnterpriseLoading(false);
     });
     return () => { current = false; };
-  }, [activeEnterprise, enterpriseRefreshRevision, resourceScope]);
+  }, [activeEnterprise, enterpriseRefreshRevision, props.client, props.workspaceId, resourceScope]);
   const installEnterpriseExtension = async (resource: EnterpriseResource) => {
     if (!activeEnterprise || !props.client || !props.workspaceId || !resource.latestVersion) return;
     setEnterpriseBusyId(resource.id);
@@ -109,10 +121,14 @@ export function ExtensionsView(props: ExtensionsViewProps) {
       const upload = await readPluginPackageArchive(file);
       await props.client.validatePluginPackageUpload(props.workspaceId, upload);
       const result = await props.client.importPluginPackage(props.workspaceId, upload);
+      setInstalledEnterpriseExtensionVersions((versions) => new Map(versions).set(result.result.pluginId, result.result.version));
       toast.success(`${resource.name} v${result.result.version}`);
       await props.extensions.refreshPlugins();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("enterprise_connection.enterprise_resources_error"));
+      const message = error instanceof Error ? error.message : "";
+      toast.error(message === "desktop_binary_fetch_requires_restart"
+        ? t("enterprise_connection.desktop_restart_required")
+        : message || t("enterprise_connection.enterprise_resources_error"));
     } finally {
       setEnterpriseBusyId(null);
     }
@@ -147,12 +163,19 @@ export function ExtensionsView(props: ExtensionsViewProps) {
           <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-4 py-3 text-sm text-red-11">{enterpriseError}</div>
         ) : enterpriseResources.length ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            {enterpriseResources.map((resource) => (
-              <article key={resource.id} className="rounded-2xl border border-dls-border bg-dls-surface p-4 shadow-sm">
-                <div className="flex items-start gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Package size={17} /></div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold text-dls-text">{resource.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{resource.description}</p></div></div>
-                <div className="mt-4 flex items-center justify-between gap-3"><span className="truncate text-[11px] text-dls-secondary">{resource.enterpriseCategory}{resource.latestVersion ? ` · v${resource.latestVersion.version}` : ""}</span><Button size="sm" disabled={!resource.latestVersion || enterpriseBusyId !== null || !props.client || !props.workspaceId} onClick={() => void installEnterpriseExtension(resource)}>{enterpriseBusyId === resource.id ? <Loader2 size={14} className="animate-spin" /> : null}{t("enterprise_connection.install_from_enterprise")}</Button></div>
-              </article>
-            ))}
+            {enterpriseResources.map((resource) => {
+              const installedVersion = installedEnterpriseExtensionVersions.get(resource.slug);
+              const currentVersionInstalled = Boolean(installedVersion && installedVersion === resource.latestVersion?.version);
+              const actionLabel = currentVersionInstalled
+                ? t("plugin_platform.status.installed")
+                : installedVersion ? t("template_market.update") : t("enterprise_connection.install_from_enterprise");
+              return (
+                <article key={resource.id} className="rounded-2xl border border-dls-border bg-dls-surface p-4 shadow-sm">
+                  <div className="flex items-start gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Package size={17} /></div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold text-dls-text">{resource.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{resource.description}</p></div></div>
+                  <div className="mt-4 flex items-center justify-between gap-3"><span className="truncate text-[11px] text-dls-secondary">{resource.enterpriseCategory}{resource.latestVersion ? ` · v${resource.latestVersion.version}` : ""}</span><Button variant={currentVersionInstalled ? "outline" : "default"} size="sm" disabled={currentVersionInstalled || !resource.latestVersion || enterpriseBusyId !== null || !props.client || !props.workspaceId} onClick={() => void installEnterpriseExtension(resource)}>{enterpriseBusyId === resource.id ? <Loader2 size={14} className="animate-spin" /> : null}{actionLabel}</Button></div>
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-dls-border px-5 py-10 text-center text-sm text-dls-secondary"><Building2 className="mx-auto mb-3 size-5" />{t("enterprise_connection.enterprise_extensions_empty")}</div>

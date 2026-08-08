@@ -623,7 +623,10 @@ export function AppSidebar(props: AppSidebarProps) {
   const brandLogoUrl = useBrandLogoUrl();
   const brandAppName = useBrandAppName();
   const { config: shellConfig } = useShellConfig();
-  const effectiveBrandLogoUrl = brandLogoUrl ?? shellConfig.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL;
+  const effectiveBrandLogoUrl = activeEnterprise
+    ? activeEnterprise.logoUrl ?? DEFAULT_BRAND_LOGO_URL
+    : brandLogoUrl ?? shellConfig.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL;
+  const effectiveBrandAppName = activeEnterprise?.name ?? brandAppName;
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -644,12 +647,16 @@ export function AppSidebar(props: AppSidebarProps) {
             <div className="flex min-w-0 items-center gap-2">
               <img
                 src={effectiveBrandLogoUrl}
-                alt={`${brandAppName} logo`}
+                alt={`${effectiveBrandAppName} logo`}
                 className="size-6 shrink-0 rounded-full object-cover"
                 data-testid="brand-logo"
               />
-              <span className="truncate text-sm font-semibold" data-testid="brand-app-name">
-                {brandAppName}
+              <span
+                className="truncate text-sm font-semibold"
+                data-testid="brand-app-name"
+                title={effectiveBrandAppName}
+              >
+                {effectiveBrandAppName}
               </span>
             </div>
             {props.onOpenSessionSearch ? (
