@@ -50,6 +50,15 @@ apps/app/src/react-app/domains/session/references/
   brief-autofill.ts
 ```
 
+Delimited spreadsheet parsing is shared at the session-domain level:
+
+```text
+apps/app/src/react-app/domains/session/spreadsheets/
+  delimited.ts
+```
+
+`artifact-spreadsheet-model.ts` and `references/extractors/table.ts` must both use this module for CSV and TSV parsing. The shared module owns quoted fields, escaped quotes, embedded newlines, delimiter handling, and serialization. Reference ingestion owns only profiling, sampling, and context budgets. This avoids a second CSV parser or an additional parsing dependency.
+
 The module runs in the app layer and does not require server-side storage in the first version.
 
 ## Core Types
@@ -171,7 +180,9 @@ Generate a table profile:
 - First 20 sample rows.
 - Optional simple completeness hints, such as empty cell counts per column when cheap.
 
-Use the existing table tooling where practical instead of hand-rolled CSV parsing.
+Reuse the existing editable-spreadsheet CSV/TSV parser by extracting its delimited parsing and serialization into `domains/session/spreadsheets/delimited.ts`. Both the artifact editor and reference ingestion must call this shared implementation. Do not add a second CSV parsing dependency.
+
+The shared parser must preserve quoted commas, escaped quotes, and embedded newlines. Reference profiling must cap individual sampled cells and the complete generated profile so a single large cell cannot expand the ingestion context.
 
 ### JSON
 
@@ -346,7 +357,8 @@ Unit tests:
 - Garbled PDF content becomes `low` or `failed`.
 - DOCX extracts paragraphs and simple tables.
 - Markdown headings become chunk headings.
-- CSV produces schema, row count, column count, and sample rows.
+- CSV produces schema, row count, column count, and sample rows through the same parser used by the editable spreadsheet surface.
+- Quoted CSV records with escaped quotes and embedded newlines parse identically in the editor and reference ingestion.
 - JSON produces compact structure and samples.
 - Long text is chunked and budgeted.
 - Low-quality ingestion does not autofill brief fields.
