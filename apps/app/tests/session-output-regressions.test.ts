@@ -155,10 +155,35 @@ describe("session output issue regressions", () => {
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
       "utf8",
     );
+    const sessionSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(source).toContain("const categoryCounts = React.useMemo");
     expect(source).toContain("const allCount = React.useMemo");
     expect(source).toContain("categoryCounts.get(id) ?? 0");
     expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
+    expect(source).toContain("enterpriseMode ? (visibleEnterpriseResources.length");
+    expect(source).not.toContain("enterpriseMode ? (visible.length || visibleEnterpriseResources.length");
+    expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
+    expect(sessionSource).toContain('listEnterpriseResources(activeEnterprise, "template")');
+    expect(sessionSource).toContain("item.sourceType === \"local\" && item.installed");
+    expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
+    expect(source).toContain("enterpriseTemplateInstallations");
+    expect(source).toContain("resource.sourceTemplateId");
+    expect(source).toContain('t("plugin_platform.status.installed")');
+  });
+
+  test("enterprise extensions reflect local package installation versions", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/settings/pages/extensions-view.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("listPluginPackages(props.workspaceId)");
+    expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.slug)");
+    expect(source).toContain('t("plugin_platform.status.installed")');
+    expect(source).toContain("currentVersionInstalled || !resource.latestVersion");
   });
 });

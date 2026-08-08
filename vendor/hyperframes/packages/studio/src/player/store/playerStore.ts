@@ -67,6 +67,8 @@ export interface TimelineElement {
   selectorIndex?: number;
   /** Source composition file that owns this element, when known */
   sourceFile?: string;
+  /** Runtime host that disambiguates repeated previews of the same authored element. */
+  previewHostId?: string;
   src?: string;
   playbackStart?: number;
   playbackStartAttr?: "media-start" | "playback-start";

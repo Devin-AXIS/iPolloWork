@@ -107,8 +107,15 @@ export function usePreviewInteraction({
       const nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
         preferClipAncestor: options?.preferClipAncestor ?? false,
       });
-      const resolvedSelection = nextSelection ?? options?.hoverSelection ?? null;
+      // The fresh point hit-test is authoritative for a plain click. Falling
+      // back to the prior hover cache here makes a direct click on blank space
+      // reselect the element the pointer just left instead of clearing it.
+      const resolvedSelection = nextSelection;
       if (!resolvedSelection) {
+        e.preventDefault();
+        e.stopPropagation();
+        updateDomEditHoverSelection(null);
+        applyDomSelection(null, { revealPanel: false });
         resumeIfNothingSelected();
         return;
       }
@@ -127,6 +134,7 @@ export function usePreviewInteraction({
       onClickToSource,
       pausePreviewPlayback,
       resolveDomSelectionFromPreviewPoint,
+      updateDomEditHoverSelection,
     ],
   );
 

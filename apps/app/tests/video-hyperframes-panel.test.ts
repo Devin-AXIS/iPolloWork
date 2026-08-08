@@ -106,7 +106,10 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("handleDesignTokenChanges({ [name]: value })");
     expect(panelSource).toContain('type: "ipollowork:studio-design-token-change"');
     expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
-    expect(panelSource).not.toContain("onChooseBackgroundImage=");
+    expect(panelSource).toContain("pickLocalImageFile(\"选择视频背景图片\")");
+    expect(panelSource).toContain("readLocalImageAsDataUrl(pickedPath)");
+    expect(panelSource).toContain('"--ipw-bg-image": `url(\"${dataUrl}\")`');
+    expect(panelSource).toContain("onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}");
     expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
     expect(panelSource).toContain("top-[90px]");
   });
@@ -142,6 +145,7 @@ describe("HyperFrames Video Studio", () => {
     expect(registrySource).toContain("function templateTokenAliasLine");
     expect(registrySource).toContain("/^--text-[A-Za-z0-9_-]+$/.test(name)");
     expect(registrySource).toContain("calc(var(${storageName}) * var(--ipw-type-scale)) !important");
+    expect(registrySource).toContain("var(--ipw-od-text-4xl, 2.5rem)");
     expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title");
     expect(registrySource).toContain(".body, .copy, .caption, .meta, .label, .metric, .stat, .badge");
     expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title, .body, .copy, .caption, .meta");
@@ -149,6 +153,7 @@ describe("HyperFrames Video Studio", () => {
     expect(registrySource).toContain(".scene, .hero, .section, .content, .media");
     expect(registrySource).toContain("box-shadow: var(--ipw-card-shadow) !important");
     expect(registrySource).toContain("--ipw-motion-duration");
+    expect(registrySource).toContain("h1, [data-ipw-theme-role=\"heading\"], .title, .headline, .hero-title");
     expect(registrySource).not.toContain(":where(div, span)");
   });
 
@@ -167,6 +172,7 @@ describe("HyperFrames Video Studio", () => {
     expect(drawerSource).not.toContain("const [motion, setMotion] = React.useState");
     expect(panelSource).toContain("ensureVideoTokenBridge");
     expect(panelSource).toContain("buildStableTokenBridgeCss");
+    expect(panelSource).toContain('replaceDesignTokenValue(source, "--ipw-type-scale", "1")');
   });
 
   test("keeps the quick toolbar visible and opens properties without hash-driven canvas resync", () => {

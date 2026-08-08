@@ -366,6 +366,7 @@ export function useDomSelection({
       const owningGroup = targetElement.closest<HTMLElement>("[data-hf-group]");
       return buildDomSelectionFromTarget(targetElement, {
         preferClipAncestor: false,
+        skipSourceProbe: true,
         activeGroupElement: owningGroup,
       });
     },
@@ -541,6 +542,7 @@ export function useDomSelection({
         return;
       }
       if (selections.length === 0) {
+        if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
       }
       const current = domEditSelectionRef.current;

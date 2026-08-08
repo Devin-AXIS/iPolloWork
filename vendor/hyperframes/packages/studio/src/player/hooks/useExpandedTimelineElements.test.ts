@@ -120,6 +120,7 @@ describe("expanded timeline hierarchy", () => {
         {
           id: "tool-pill",
           parentId: "scene",
+          hostId: "scene",
           label: "Tool pill",
           tagName: "div",
           sourceFile: "compositions/scene.html",
@@ -129,7 +130,8 @@ describe("expanded timeline hierarchy", () => {
 
     expect(result[1]).toMatchObject({
       id: "tool-pill",
-      key: "compositions/scene.html:tool-pill:0",
+      key: "scene::compositions/scene.html:tool-pill:0",
+      previewHostId: "scene",
       expandedDisplayHostKey: "index.html#scene",
       expandedParentStart: 2,
       start: 2,
@@ -170,9 +172,54 @@ describe("expanded timeline hierarchy", () => {
     );
 
     expect(result.slice(1).map((element) => element.key)).toEqual([
-      "compositions/brand.html:span:0",
-      "compositions/brand.html:span:1",
+      "brand::compositions/brand.html:span:0",
+      "brand::compositions/brand.html:span:1",
     ]);
+  });
+
+  test("keeps the same authored child independently selectable in repeated hosts", () => {
+    const parents: TimelineElement[] = ["file-one", "file-two"].map((id, track) => ({
+      id,
+      key: `index.html#${id}`,
+      domId: id,
+      tag: "section",
+      start: 0,
+      duration: 6,
+      track,
+      compositionSrc: "compositions/file.html",
+    }));
+    const children = parents.map((parent) => ({
+      id: `${parent.id}-small`,
+      parentId: parent.id,
+      hostId: parent.id,
+      label: "small clip",
+      tagName: "small",
+      selector: "small",
+      selectorIndex: 0,
+      sourceFile: "compositions/file.html",
+      stackingContextId: "root",
+    }));
+    const parentMap = new Map(children.map((child) => [child.id, child.parentId]));
+
+    const first = buildExpandedElements(
+      parents,
+      [],
+      parentMap,
+      "file-one",
+      "file-one",
+      children,
+    );
+    const second = buildExpandedElements(
+      parents,
+      [],
+      parentMap,
+      "file-two",
+      "file-two",
+      children,
+    );
+
+    expect(first[1]?.key).toBe("file-one::compositions/file.html:small:0");
+    expect(second[2]?.key).toBe("file-two::compositions/file.html:small:0");
   });
 
   test("rebases stale manifest children immediately after a parent move", () => {

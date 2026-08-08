@@ -242,6 +242,36 @@ describe("Studio right panel layout", () => {
     expect(colors).toContain("toHexColor(draftColor).slice(1).toUpperCase()");
   });
 
+  it("renders Radius as a numeric input without a dropdown affordance", () => {
+    const styles = readFileSync(
+      new URL("./editor/propertyPanelFlatStyleSections.tsx", import.meta.url),
+      "utf8",
+    );
+    const radiusRow = styles.slice(
+      styles.indexOf("function FlatRadiusRow"),
+      styles.indexOf("function FlatShadowBlendRows"),
+    );
+
+    expect(radiusRow).toContain('label="Radius"');
+    expect(radiusRow).toContain("liveCommit");
+    expect(radiusRow).not.toContain("dropdown");
+  });
+
+  it("hides the add-text-field action from both property panel variants", () => {
+    const flatTextSection = readFileSync(
+      new URL("./editor/propertyPanelFlatTextSection.tsx", import.meta.url),
+      "utf8",
+    );
+    const legacyTextSection = readFileSync(
+      new URL("./editor/propertyPanelSections.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(flatTextSection).not.toContain("Add text field");
+    expect(flatTextSection).not.toContain('data-flat-text-layer-add="true"');
+    expect(legacyTextSection).not.toContain('<span className="truncate">Add text</span>');
+  });
+
   it("matches the expanded Figma Fill, Animation, Mask, and 3D Transform states", () => {
     const styles = readFileSync(
       new URL("./editor/propertyPanelFlatStyleSections.tsx", import.meta.url),

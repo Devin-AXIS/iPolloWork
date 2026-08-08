@@ -4,7 +4,10 @@ import type { ClipManifestClip } from "./playbackTypes";
 import { collectDomClipChildren, createTimelineElementFromManifestClip } from "./timelineDOM";
 import { resolveDomEditSelection } from "../../components/editor/domEditing";
 import { buildStableSelector } from "../../components/editor/domEditingDom";
-import { resolveAllVisualDomEditTargets } from "../../components/editor/domEditingElement";
+import {
+  findElementForTimelineElement,
+  resolveAllVisualDomEditTargets,
+} from "../../components/editor/domEditingElement";
 
 const MANIFEST_CLIP: ClipManifestClip = {
   id: "headline",
@@ -71,6 +74,55 @@ describe("timeline manifest translation", () => {
     expect(hierarchy.parentMap.get(title!.id)).toBe(hero!.id);
   });
 
+  test("keeps descendants under their nearest resolved timed host", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <section class="lfc-stream" data-start="6" data-duration="4" data-track-index="3">
+          <article class="lfc-file"><small>MARKDOWN</small><b>interviews.md</b></article>
+        </section>
+      </main>
+    `;
+    const root = document.querySelector("main");
+    const stream = document.querySelector(".lfc-stream");
+    expect(root).not.toBeNull();
+    expect(stream).not.toBeNull();
+    const rootClip: ClipManifestClip = {
+      ...MANIFEST_CLIP,
+      id: "main",
+      label: "Main",
+      start: 0,
+      duration: 13,
+      track: 0,
+      kind: "composition",
+      tagName: "main",
+      compositionId: "main",
+    };
+    const streamClip: ClipManifestClip = {
+      ...MANIFEST_CLIP,
+      id: "lfc-stream",
+      label: "Lfc Stream",
+      start: 6,
+      duration: 4,
+      track: 3,
+      tagName: "section",
+    };
+
+    const hierarchy = collectDomClipChildren(
+      document,
+      [rootClip, streamClip],
+      new Map([
+        [rootClip, root!],
+        [streamClip, stream!],
+      ]),
+    );
+    const file = hierarchy.children.find((child) => child.selector === ".lfc-file");
+    const small = hierarchy.children.find((child) => child.selector === "small");
+
+    expect(file).toMatchObject({ hostId: "lfc-stream", parentId: "lfc-stream" });
+    expect(small).toMatchObject({ hostId: "lfc-stream", parentId: file?.id });
+    expect(hierarchy.children.some((child) => child.selector === ".lfc-stream")).toBe(false);
+  });
+
   test("keeps plain text children inside a group directly inspectable", async () => {
     document.body.innerHTML = `
       <main data-composition-id="main" data-composition-file="compositions/outro.html">
@@ -96,6 +148,31 @@ describe("timeline manifest translation", () => {
     expect(selection?.element).toBe(heading);
     expect(selection?.selector).toBe("h2");
     expect(selection?.sourceFile).toBe("compositions/outro.html");
+  });
+
+  test("keeps repeated plain-tag children mapped to their exact timeline row", async () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <div class="meta">
+          <span>htmlanything.dev</span>
+          <span>·</span>
+          <span>@htmlanything</span>
+        </div>
+      </main>
+    `;
+    const spans = Array.from(document.querySelectorAll<HTMLElement>("span"));
+    const selections = await Promise.all(
+      spans.map((span) =>
+        resolveDomEditSelection(span, {
+          activeCompositionPath: "index.html",
+          isMasterView: false,
+          skipSourceProbe: true,
+        }),
+      ),
+    );
+
+    expect(selections.map((selection) => selection?.selector)).toEqual(["span", "span", "span"]);
+    expect(selections.map((selection) => selection?.selectorIndex)).toEqual([0, 1, 2]);
   });
 
   test("prefers the deepest hit regardless of child-parent result order", () => {
@@ -132,5 +209,76 @@ describe("timeline manifest translation", () => {
     expect(resolveAllVisualDomEditTargets([stage, screen, label], { activeCompositionPath: "index.html" })).toEqual([
       label,
     ]);
+  });
+
+  test("resolves a repeated authored selector inside the requested preview host", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <section data-composition-id="file-one"><div data-hf-inner-root><small>One</small></div></section>
+        <section data-composition-id="file-two"><div data-hf-inner-root><small>Two</small></div></section>
+      </main>
+    `;
+    const second = document.querySelectorAll("small")[1];
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        {
+          id: "file-two-small",
+          selector: "small",
+          selectorIndex: 1,
+          sourceFile: "index.html",
+          previewHostId: "file-two",
+        },
+        { activeCompositionPath: "index.html", isMasterView: true },
+      ),
+    ).toBe(second);
+  });
+
+  test("resolves a runtime-generated media id through its data-hf-id", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <img data-hf-id="hf-logo" src="logo.svg" alt="Brand logo" />
+      </main>
+    `;
+    const logo = document.querySelector("img");
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        {
+          id: "hf-logo",
+          tag: "img",
+          sourceFile: "index.html",
+        },
+        { activeCompositionPath: "index.html", isMasterView: true },
+      ),
+    ).toBe(logo);
+  });
+
+  test("recovers a timeline scene by authored timing when runtime host binding is missing", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="local-file-cascade" data-composition-file="index.html">
+        <section data-start="6" data-duration="4" data-track-index="3" class="lfc-stream">
+          <article class="lfc-file">Document</article>
+        </section>
+      </main>
+    `;
+    const stream = document.querySelector(".lfc-stream");
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        {
+          id: "unbound-runtime-clip",
+          tag: "section",
+          start: 6,
+          duration: 4,
+          track: 3,
+          sourceFile: "index.html",
+        },
+        { activeCompositionPath: "index.html", isMasterView: true },
+      ),
+    ).toBe(stream);
   });
 });

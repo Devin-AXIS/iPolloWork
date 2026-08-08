@@ -12,6 +12,7 @@ import { postVideoAiSelectionToHost } from "../editor/domEditingAgentPrompt";
 import { useDomEditActionsContext } from "../../contexts/DomEditContext";
 import { resolveBoundedOverlayPosition } from "./boundedOverlay";
 import { useStudioI18n } from "../../i18n";
+import { isElementVisibleForOverlay } from "../editor/domEditOverlayGeometry";
 
 type TextFormatAction = "bold" | "italic" | "strike" | "code" | "link";
 type TextFormatState = Record<TextFormatAction, boolean>;
@@ -325,7 +326,15 @@ export function PreviewTextSelectionToolbar({
     const iframe = iframeRef.current;
     const doc = iframe?.contentDocument;
     const element = activeSelection?.element;
-    if (hidden || !iframe || !doc || !element || !element.isConnected) return null;
+    if (
+      hidden ||
+      !iframe ||
+      !doc ||
+      !element ||
+      !element.isConnected ||
+      !isElementVisibleForOverlay(element)
+    )
+      return null;
     const showTextControls = isTextLeafElement(element);
     const range = doc.createRange();
     range.selectNodeContents(element);

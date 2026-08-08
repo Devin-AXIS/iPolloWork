@@ -1,14 +1,20 @@
-import { desktopFetchViaMain } from "./desktop";
+import { desktopFetchBinaryViaMain, desktopFetchViaMain } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
 import {
   IPOLLOWORK_PACKAGE_EXTENSION,
   IPOLLOWORK_PACKAGE_MEDIA_TYPE,
   LEGACY_TEMPLATE_PACKAGE_EXTENSION,
+  MAX_TEMPLATE_PACKAGE_BYTES,
 } from "@ipollowork/types/templates";
 
 const ENTERPRISE_CONNECTIONS_KEY = "ipollowork.enterprise-connections.v1";
 const ENTERPRISE_CONNECTION_LIMIT = 12;
 const ENTERPRISE_TIMEOUT_MS = 12_000;
+const ENTERPRISE_DOWNLOAD_TIMEOUT_MS = 120_000;
+const ENTERPRISE_RESOURCE_PAGE_SIZE = 50;
+const ENTERPRISE_RESOURCE_MAX_PAGES = 20;
+const ENTERPRISE_EXTENSION_PACKAGE_EXTENSION = ".ipollowork-plugin";
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
 
 export const enterpriseConnectionsChangedEvent = "ipollowork:enterprise-connections-changed";
 
@@ -43,6 +49,7 @@ export type EnterpriseResource = {
   id: string;
   type: EnterpriseResourceType;
   slug: string;
+  sourceTemplateId: string | null;
   name: string;
   description: string;
   category: string;
@@ -131,8 +138,20 @@ function endpoint(origin: string, path: string) {
   return `${origin.replace(/\/+$/u, "")}${path}`;
 }
 
-function enterpriseFetcher(fetcher: typeof fetch) {
-  return isDesktopRuntime() && fetcher === globalThis.fetch ? desktopFetchViaMain : fetcher;
+function enterpriseFetcher(fetcher?: typeof fetch) {
+  if (fetcher) return fetcher;
+  if (!isDesktopRuntime()) return globalThis.fetch;
+  return (input: RequestInfo | URL, init?: RequestInit) => (
+    desktopFetchViaMain(input, init, ENTERPRISE_TIMEOUT_MS)
+  );
+}
+
+function enterpriseBinaryFetcher(fetcher?: typeof fetch) {
+  if (fetcher) return fetcher;
+  if (!isDesktopRuntime()) return globalThis.fetch;
+  return (input: RequestInfo | URL, init?: RequestInit) => (
+    desktopFetchBinaryViaMain(input, init, ENTERPRISE_DOWNLOAD_TIMEOUT_MS)
+  );
 }
 
 async function readResponseJson(response: Response): Promise<unknown> {
@@ -157,18 +176,19 @@ async function fetchJson(
 
 export async function discoverEnterpriseConnection(
   input: string,
-  fetcher: typeof fetch = fetch,
+  fetcher?: typeof fetch,
 ): Promise<EnterpriseServer> {
   const requestedOrigin = normalizeEnterpriseOrigin(input);
   if (!requestedOrigin) throw new Error("invalid_enterprise_url");
+  const requestFetcher = enterpriseFetcher(fetcher);
 
   const discovery = parseDiscovery(
-    await fetchJson(endpoint(requestedOrigin, "/.well-known/ipollo-enterprise"), {}, fetcher),
+    await fetchJson(endpoint(requestedOrigin, "/.well-known/ipollo-enterprise"), {}, requestFetcher),
   );
   if (!discovery) throw new Error("invalid_enterprise_discovery");
 
   const manifest = parseManifest(
-    await fetchJson(endpoint(discovery.origin, "/api/v1/client-manifest"), {}, fetcher),
+    await fetchJson(endpoint(discovery.origin, "/api/v1/client-manifest"), {}, requestFetcher),
   );
   if (!manifest || manifest.id !== discovery.serverId) throw new Error("enterprise_manifest_mismatch");
 
@@ -181,6 +201,27 @@ export async function discoverEnterpriseConnection(
     accent: manifest.accent,
     authMode: discovery.authMode,
   };
+}
+
+export async function refreshEnterpriseConnection(
+  connection: EnterpriseConnection,
+  fetcher?: typeof fetch,
+): Promise<EnterpriseConnection> {
+  const server = await discoverEnterpriseConnection(connection.origin, fetcher);
+  if (server.id !== connection.id) throw new Error("enterprise_manifest_mismatch");
+  const current = readEnterpriseConnections().find((item) => item.id === connection.id) ?? connection;
+  const refreshed = { ...current, ...server };
+  if (
+    current.name !== refreshed.name
+    || current.shortName !== refreshed.shortName
+    || current.logoUrl !== refreshed.logoUrl
+    || current.accent !== refreshed.accent
+    || current.origin !== refreshed.origin
+    || current.authMode !== refreshed.authMode
+  ) {
+    saveEnterpriseConnection(refreshed);
+  }
+  return refreshed;
 }
 
 function parseJoinResult(value: unknown, server: EnterpriseServer): EnterpriseConnection | null {
@@ -216,6 +257,9 @@ function parseEnterpriseResource(value: unknown, expectedType: EnterpriseResourc
     id,
     type: expectedType,
     slug,
+    sourceTemplateId: typeof value.sourceTemplateId === "string" && value.sourceTemplateId.trim()
+      ? value.sourceTemplateId.trim()
+      : null,
     name,
     description: readString(value, "description"),
     category,
@@ -223,7 +267,7 @@ function parseEnterpriseResource(value: unknown, expectedType: EnterpriseResourc
     iconPath,
     featured: value.featured === true,
     updatedAt,
-    latestVersion: version && digest && downloadPath.startsWith("/api/v1/resources/")
+    latestVersion: version && SHA256_HEX_PATTERN.test(digest) && downloadPath.startsWith("/api/v1/resources/")
       ? { version, digest, downloadPath }
       : null,
   };
@@ -237,50 +281,88 @@ export function enterpriseResourceUrl(connection: EnterpriseConnection, path: st
 export async function listEnterpriseResources(
   connection: EnterpriseConnection,
   type: EnterpriseResourceType,
-  fetcher: typeof fetch = fetch,
+  fetcher?: typeof fetch,
 ): Promise<EnterpriseResource[]> {
-  const payload = await fetchJson(
-    endpoint(connection.origin, `/api/v1/resources?type=${encodeURIComponent(type)}&limit=50`),
-    { headers: { Authorization: `Bearer ${connection.session.token}` } },
-    enterpriseFetcher(fetcher),
-  );
-  if (!isRecord(payload) || !Array.isArray(payload.items)) throw new Error("invalid_enterprise_resource_catalog");
-  return payload.items.flatMap((item) => {
-    const parsed = parseEnterpriseResource(item, type);
-    return parsed ? [parsed] : [];
-  });
+  const resources = new Map<string, EnterpriseResource>();
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+  for (let page = 0; page < ENTERPRISE_RESOURCE_MAX_PAGES; page += 1) {
+    const query = new URLSearchParams({ type, limit: String(ENTERPRISE_RESOURCE_PAGE_SIZE) });
+    if (cursor) query.set("cursor", cursor);
+    const payload = await fetchJson(
+      endpoint(connection.origin, `/api/v1/resources?${query.toString()}`),
+      { headers: { Authorization: `Bearer ${connection.session.token}` } },
+      enterpriseFetcher(fetcher),
+    );
+    if (!isRecord(payload) || !Array.isArray(payload.items)) throw new Error("invalid_enterprise_resource_catalog");
+    for (const item of payload.items) {
+      const parsed = parseEnterpriseResource(item, type);
+      if (parsed) resources.set(parsed.id, parsed);
+    }
+    const nextCursor = payload.nextCursor;
+    if (nextCursor === null || nextCursor === undefined) return [...resources.values()];
+    if (typeof nextCursor !== "string" || !nextCursor || nextCursor.length > 128 || seenCursors.has(nextCursor)) {
+      throw new Error("invalid_enterprise_resource_cursor");
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+  throw new Error("enterprise_resource_catalog_too_large");
+}
+
+async function sha256Hex(bytes: ArrayBuffer) {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function downloadEnterpriseResource(
   connection: EnterpriseConnection,
   resource: EnterpriseResource,
-  fetcher: typeof fetch = fetch,
+  fetcher?: typeof fetch,
 ): Promise<File> {
   const downloadUrl = enterpriseResourceUrl(connection, resource.latestVersion?.downloadPath ?? null);
   if (!downloadUrl || !resource.latestVersion) throw new Error("enterprise_resource_version_unavailable");
-  const response = await enterpriseFetcher(fetcher)(downloadUrl, {
+  const response = await enterpriseBinaryFetcher(fetcher)(downloadUrl, {
     headers: { Authorization: `Bearer ${connection.session.token}` },
-    signal: AbortSignal.timeout(ENTERPRISE_TIMEOUT_MS),
+    signal: AbortSignal.timeout(ENTERPRISE_DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null);
     const code = isRecord(payload) ? readString(payload, "error") : "";
     throw new Error(code || `enterprise_server_${response.status}`);
   }
+  const expectedDigest = resource.latestVersion.digest.toLowerCase();
+  const responseDigest = response.headers.get("x-ipollo-artifact-sha256")?.trim().toLowerCase() ?? "";
+  if (!SHA256_HEX_PATTERN.test(expectedDigest) || !SHA256_HEX_PATTERN.test(responseDigest)) {
+    throw new Error("enterprise_resource_digest_missing");
+  }
+  if (response.headers.get("x-ipollo-resource-type")?.trim() !== resource.type) {
+    throw new Error("enterprise_resource_type_mismatch");
+  }
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_TEMPLATE_PACKAGE_BYTES) {
+    throw new Error("enterprise_resource_package_too_large");
+  }
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength > MAX_TEMPLATE_PACKAGE_BYTES) throw new Error("enterprise_resource_package_too_large");
+  const actualDigest = await sha256Hex(bytes);
+  if (actualDigest !== expectedDigest || actualDigest !== responseDigest) {
+    throw new Error("enterprise_resource_digest_mismatch");
+  }
   const canonicalPackage = response.headers.get("content-type")?.split(";", 1)[0]?.trim() === IPOLLOWORK_PACKAGE_MEDIA_TYPE
     || response.headers.get("content-disposition")?.toLowerCase().includes(IPOLLOWORK_PACKAGE_EXTENSION)
     || new URL(downloadUrl).pathname.toLowerCase().endsWith(IPOLLOWORK_PACKAGE_EXTENSION);
   const extension = resource.type === "template"
     ? (canonicalPackage ? IPOLLOWORK_PACKAGE_EXTENSION : LEGACY_TEMPLATE_PACKAGE_EXTENSION).slice(1)
-    : "zip";
-  return new File([await response.arrayBuffer()], `${resource.slug}-${resource.latestVersion.version}.${extension}`, {
+    : ENTERPRISE_EXTENSION_PACKAGE_EXTENSION.slice(1);
+  return new File([bytes], `${resource.slug}-${resource.latestVersion.version}.${extension}`, {
     type: response.headers.get("content-type") || "application/octet-stream",
   });
 }
 
 export async function joinEnterpriseWithCode(
   input: { joinCode: string; cloudBaseUrl: string; cloudToken: string; enterpriseBaseUrl: string },
-  fetcher: typeof fetch = fetch,
+  fetcher?: typeof fetch,
 ): Promise<EnterpriseConnection> {
   const joinCode = normalizeEnterpriseJoinCode(input.joinCode);
   const cloudOrigin = normalizeEnterpriseOrigin(input.cloudBaseUrl);
@@ -366,7 +448,7 @@ export function removeEnterpriseConnection(connectionId: string) {
 
 export async function leaveEnterpriseConnection(
   connection: EnterpriseConnection,
-  fetcher: typeof fetch = fetch,
+  fetcher?: typeof fetch,
 ) {
   await fetchJson(endpoint(connection.origin, "/api/v1/membership"), {
     method: "DELETE",

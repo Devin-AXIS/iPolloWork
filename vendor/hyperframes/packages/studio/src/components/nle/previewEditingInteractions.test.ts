@@ -18,8 +18,51 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("cycleRef");
     expect(source).not.toContain("resolveAllDomSelectionsFromPreviewPoint");
     expect(source).toContain("Every click resolves the deepest authored child");
-    expect(source).not.toContain("revealPanel: false");
     expect(source).not.toContain("exitPreviewFullscreenForInspector");
+  });
+
+  it("clears the active element when the user clicks blank preview canvas", () => {
+    const source = readFileSync(
+      new URL("../../hooks/usePreviewInteraction.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("if (!resolvedSelection)");
+    expect(source).toContain("updateDomEditHoverSelection(null)");
+    expect(source).toContain("applyDomSelection(null, { revealPanel: false })");
+    expect(source).toContain("const resolvedSelection = nextSelection");
+    expect(source).not.toContain("nextSelection ?? options?.hoverSelection");
+
+    const selectionSource = readFileSync(
+      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+      "utf8",
+    );
+    expect(selectionSource).toContain(
+      "if (!additive) applyDomSelection(null, { revealPanel: false })",
+    );
+  });
+
+  it("clears canvas and inspector selection when the user clicks an empty timeline lane", () => {
+    const source = readFileSync(
+      new URL("../../player/components/useTimelineRangeSelection.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("if (!marquee.active)");
+    expect(source).toContain("store.setSelectedElementId(null)");
+    expect(source).toContain("onSelectElement?.(null)");
+  });
+
+  it("keeps a timeline clip selected after its pointer-down and click sequence", () => {
+    const source = readFileSync(
+      new URL("../../player/components/TimelineLanes.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("setSelectedElementId(elementKey)");
+    expect(source).toContain("onSelectElement?.(el)");
+    expect(source).not.toContain("selectedElementId === elementKey && !hadMultiSelection");
+    expect(source).not.toContain("onSelectElement?.(nextElement)");
   });
 
   it("keeps the selected element while the user interacts outside the preview surface", () => {
@@ -70,7 +113,7 @@ describe("preview editing interactions", () => {
     );
   });
 
-  it("keeps paused timeline selections visible and selectable across right-panel tabs", () => {
+  it("reveals only selections that are visible at the paused playhead", () => {
     const sessionSource = readFileSync(
       new URL("../../hooks/useDomEditSession.ts", import.meta.url),
       "utf8",
@@ -79,10 +122,18 @@ describe("preview editing interactions", () => {
       new URL("../editor/LayersPanel.tsx", import.meta.url),
       "utf8",
     );
+    const revealSource = readFileSync(
+      new URL("../editor/useLayerRevealOverride.ts", import.meta.url),
+      "utf8",
+    );
 
     expect(sessionSource).toContain("useTimelineSelectionPreviewSync({");
     expect(sessionSource).toContain("useLayerRevealOverride({");
+    expect(sessionSource).toContain("currentTime,");
+    expect(sessionSource).toContain("!isElementVisibleForOverlay(element)");
     expect(sessionSource).toContain("scheduleReveal(element, 0)");
+    expect(revealSource).toContain("restore the runtime-authored visibility at the new");
+    expect(revealSource).toContain("currentTime, restoreReveal");
     expect(layersSource).not.toContain("useLayerRevealOverride");
   });
 
@@ -104,6 +155,7 @@ describe("preview editing interactions", () => {
     expect(selectionSource).not.toContain("playerState.requestSeek(inspectionTime)");
     expect(selectionSource).toContain("Property selection is independent from current-frame visibility");
     expect(selectionSource).toContain("applyDomSelection(selection)");
+    expect(selectionSource).toContain("skipSourceProbe: true");
     expect(overlayRectsSource).toContain("isElementVisibleForOverlay(el)");
     expect(selectionSource).toContain("preserveTimelineSelection: true");
     expect(selectionSource).toContain("Generated compositions can contain detached nodes");
@@ -222,15 +274,20 @@ describe("preview editing interactions", () => {
       new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),
       "utf8",
     );
+    const styleSource = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
 
     expect(source).toContain("activeSelection?.element");
     expect(source).toContain("isTextLeafElement");
     expect(source).toContain("showTextControls");
+    expect(source).toContain("!isElementVisibleForOverlay(element)");
     expect(source).toContain('aria-label={tx("Open Design properties")}');
     expect(source).toContain("applyDomSelection(activeSelection, { revealPanel: true })");
     expect(source).not.toContain('addEventListener("selectionchange"');
     expect(source).not.toContain("beginDragSelection");
     expect(source).not.toContain("TextSelectionDrag");
+    expect(styleSource).toMatch(
+      /\.hf-preview-text-toolbar__input\s*\{[\s\S]*?color:\s*#18181b;/,
+    );
   });
 
   it("hides inline rich-text actions from the selected-element toolbar", () => {
