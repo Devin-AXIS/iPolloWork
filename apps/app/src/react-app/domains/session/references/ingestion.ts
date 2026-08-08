@@ -56,6 +56,10 @@ export function isReferenceFile(file: Pick<File, "name" | "type">): boolean {
   return Boolean(mime && MIMES.has(mime));
 }
 
+export function canSendOriginalReference(file: Pick<File, "name" | "type" | "size">): boolean {
+  return file.size <= REFERENCE_MAX_BYTES && isReferenceFile(file);
+}
+
 async function extractReference(file: File): Promise<ExtractedReferenceContent> {
   const extension = referenceFileExtension(file.name);
   const mime = referenceMime(file);

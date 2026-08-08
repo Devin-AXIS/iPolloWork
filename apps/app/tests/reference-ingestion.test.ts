@@ -246,6 +246,27 @@ describe("reference ingestion core", () => {
     expect(pack.totalChars).toBe(0);
   });
 
+  test("returns an empty prompt when every reference is rejected", () => {
+    const rejected: ReferenceIngestionResult = {
+      id: "rejected",
+      fileName: "scan.pdf",
+      mimeType: "application/pdf",
+      size: 100,
+      sourceMode: "memory",
+      extractedText: "",
+      summary: "",
+      chunks: [],
+      quality: "failed",
+      warnings: ["No reliable body text was extracted."],
+    };
+
+    const pack = packReferenceContext([rejected]);
+
+    expect(pack.promptText).toBe("");
+    expect(pack.totalChars).toBe(0);
+    expect(pack.warnings).toContain("Excluded 1 low-quality reference file.");
+  });
+
   test("deterministic summary names sections without calling AI", () => {
     const chunks = chunkPlainText({
       source: "launch.md",
@@ -306,6 +327,15 @@ describe("reference extractors", () => {
     expect(extracted.text).not.toContain("user29");
   });
 
+  test("profiles quoted CSV records containing embedded newlines", async () => {
+    const csv = 'name,notes\nAlice,"first line\nsecond line"\nBob,"plain"';
+    const extracted = await extractTableReference(new File([csv], "notes.csv", { type: "text/csv" }));
+
+    expect(extracted.metadata).toMatchObject({ rows: 2, columns: 2 });
+    expect(extracted.text).toContain("Alice | first line\nsecond line");
+    expect(extracted.text).toContain("Bob | plain");
+  });
+
   test("profiles JSON arrays with compact samples", async () => {
     const data = Array.from({ length: 25 }, (_, index) => ({ id: index, segment: "team" }));
     const file = new File([JSON.stringify(data)], "segments.json", { type: "application/json" });
@@ -315,6 +345,19 @@ describe("reference extractors", () => {
     expect(extracted.text).toContain("Array length: 25");
     expect(extracted.text).toContain("\"id\"");
     expect(extracted.text).not.toContain("\"id\":24");
+  });
+
+  test("bounds deeply nested JSON samples and long string values", async () => {
+    const data = [{
+      id: 1,
+      payload: "x".repeat(100_000),
+      nested: { one: { two: { three: { four: { five: "too deep" } } } } },
+    }];
+    const extracted = await extractTableReference(new File([JSON.stringify(data)], "large.json", { type: "application/json" }));
+
+    expect(extracted.text.length).toBeLessThanOrEqual(12_000);
+    expect(extracted.text).not.toContain("x".repeat(1_000));
+    expect(extracted.text).toContain("[truncated]");
   });
 
   test("extracts DOCX paragraphs and table cells", async () => {
@@ -408,6 +451,26 @@ describe("reference ingestion router", () => {
     expect(optInPayload.attachments[0]?.name).toBe("source.txt");
   });
 
+  test("ignores original-file opt in when a reference exceeds the attachment limit", async () => {
+    const file = new File(["oversized"], "oversized.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "size", { value: 25 * 1024 * 1024 + 1 });
+    const result = await ingestReferenceFile(file);
+    const reference: TemplateReferenceItem = {
+      id: result.id,
+      file,
+      fileName: result.fileName,
+      mimeType: result.mimeType,
+      size: result.size,
+      status: "failed",
+      sendOriginal: true,
+      ingestion: result,
+    };
+
+    const payload = await buildTemplateReferenceSubmitPayload([reference]);
+
+    expect(payload.attachments).toEqual([]);
+  });
+
   test("accepts existing reference file types", () => {
     expect(isReferenceFile(new File(["x"], "brief.pdf", { type: "application/pdf" }))).toBe(true);
     expect(isReferenceFile(new File(["x"], "brief.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }))).toBe(true);
@@ -472,6 +535,28 @@ describe("reference ingestion router", () => {
     expect(brief.title).toBe("Product Launch");
     expect(brief.audience).toContain("enterprise design teams");
     expect(brief.details).toContain("preserve template layout");
+  });
+
+  test("autofills Chinese-labeled audience and requirement fields", () => {
+    const text = "# 临床交接看板\n\n目标用户：七病区护士\n\n需求：展示风险、负责人和升级路径。";
+    const ingestion: ReferenceIngestionResult = {
+      id: "zh",
+      fileName: "临床交接.md",
+      mimeType: "text/markdown",
+      size: text.length,
+      sourceMode: "memory",
+      extractedText: text,
+      summary: "File: 临床交接.md",
+      chunks: chunkPlainText({ source: "临床交接.md", text }),
+      quality: "high",
+      warnings: [],
+    };
+
+    const brief = inferTemplateBriefFromIngestions([ingestion]);
+
+    expect(brief.title).toBe("临床交接看板");
+    expect(brief.audience).toBe("七病区护士");
+    expect(brief.details).toBe("展示风险、负责人和升级路径。");
   });
 
   test("prepares original attachments only for explicit opt in", async () => {

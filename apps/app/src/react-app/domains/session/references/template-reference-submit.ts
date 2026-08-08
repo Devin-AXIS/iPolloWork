@@ -1,5 +1,5 @@
 import type { ComposerAttachment } from "@/app/types";
-import { prepareOriginalReferenceAttachment } from "./ingestion";
+import { canSendOriginalReference, prepareOriginalReferenceAttachment } from "./ingestion";
 import { packReferenceContext } from "./prompt-pack";
 import type { ReferenceIngestionResult, TemplateReferenceItem } from "./types";
 
@@ -17,7 +17,9 @@ export async function buildTemplateReferenceSubmitPayload(references: TemplateRe
   const attachments: ComposerAttachment[] = [];
   try {
     for (const reference of references) {
-      if (reference.sendOriginal) attachments.push(await prepareOriginalReferenceAttachment(reference.file));
+      if (reference.sendOriginal && canSendOriginalReference(reference.file)) {
+        attachments.push(await prepareOriginalReferenceAttachment(reference.file));
+      }
     }
   } catch (error) {
     revokeTemplateReferenceAttachmentPreviews(attachments);

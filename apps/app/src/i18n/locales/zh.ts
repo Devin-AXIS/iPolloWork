@@ -518,6 +518,7 @@ export default {
   "templates.brief.reference_unsupported_many": "{count} 个文件不是支持的参考文档格式。",
   "templates.brief.reference_prepare_failed": "无法准备这个参考文档。",
   "templates.brief.reference_autofilled": "已根据参考文档填入标题、受众和信息，可手动修改。",
+  "templates.brief.submit_failed": "无法提交模板需求，请重试。",
   "templates.brief.reference_status_parsing": "解析中...",
   "templates.brief.reference_status_ready": "已提取参考上下文，质量 {quality}",
   "templates.brief.reference_status_weak": "无法可靠提取，仅保留为可选附件",

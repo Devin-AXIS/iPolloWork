@@ -20,6 +20,10 @@ function fileNameStem(name: string): string {
   return name.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() ?? name;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function titleFromText(text: string, fileName: string): string {
   const h1 = text.match(/^\s{0,3}#\s+(.+?)\s*#*\s*$/m);
   if (h1?.[1]) return snippet(h1[1], 120);
@@ -31,7 +35,7 @@ function labelValue(text: string, labels: string[]): string {
   for (const line of text.split(/\r?\n/)) {
     const clean = cleanLine(line);
     for (const label of labels) {
-      const match = clean.match(new RegExp(`^${label}\\s*:\\s*(.+)$`, "i"));
+      const match = clean.match(new RegExp(`^${escapeRegExp(label)}\\s*[:：]\\s*(.+)$`, "i"));
       if (match?.[1]) return snippet(match[1], 360);
     }
   }
@@ -47,8 +51,8 @@ export function inferTemplateBriefFromIngestions(ingestions: ReferenceIngestionR
     .map((item) => [item.extractedText, ...item.chunks.slice(0, 4).map((chunk) => chunk.text)].join("\n"))
     .join("\n\n");
   const title = titleFromText(first.extractedText, first.fileName);
-  const audience = labelValue(combined, ["Audience", "For", "Users", "Customers"]);
-  const details = labelValue(combined, ["Requirements", "Details", "Key information", "Content", "Scope"])
+  const audience = labelValue(combined, ["Audience", "For", "Users", "Customers", "受众", "目标用户", "面向谁"]);
+  const details = labelValue(combined, ["Requirements", "Details", "Key information", "Content", "Scope", "需求", "要求", "关键信息", "内容", "范围"])
     || accepted.flatMap((item) => item.chunks).slice(0, 3).map((chunk) => cleanLine(chunk.text)).join(" ").slice(0, 700).trim();
 
   return { title, audience, details };

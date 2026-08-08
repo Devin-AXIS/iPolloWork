@@ -11,6 +11,17 @@ const TOPIC_KEYWORDS = [
   "deliverable",
   "brand",
   "cta",
+  "受众",
+  "目标用户",
+  "面向谁",
+  "目标",
+  "需求",
+  "要求",
+  "背景",
+  "范围",
+  "结论",
+  "交付物",
+  "品牌",
 ];
 
 function normalizeLimit(value: number | undefined, fallback: number, ceiling: number) {

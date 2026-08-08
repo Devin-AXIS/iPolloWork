@@ -146,4 +146,10 @@ describe("template market actions", () => {
     expect(marketDialog).toContain("if (await props.onImport(pendingImport)) setPendingImport(null)");
     expect(sessionPage).toContain("if (await onImport(pendingImport, serverCategory)) setPendingImport(null)");
   });
+
+  test("surfaces reference warnings and template brief submission failures", () => {
+    expect(sessionPage).toContain("reference.ingestion?.warnings[0]");
+    expect(sessionPage).toContain('t("templates.brief.submit_failed")');
+    expect(sessionPage).toContain("sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file)");
+  });
 });

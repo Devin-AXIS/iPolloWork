@@ -516,6 +516,7 @@ export default {
   "templates.brief.reference_unsupported_many": "{count} files are not supported reference documents.",
   "templates.brief.reference_prepare_failed": "Could not prepare this reference document.",
   "templates.brief.reference_autofilled": "Filled title, audience, and details from the reference document. You can edit them before sending.",
+  "templates.brief.submit_failed": "Could not submit this template brief.",
   "templates.brief.reference_status_parsing": "Parsing...",
   "templates.brief.reference_status_ready": "Extracted context, quality {quality}",
   "templates.brief.reference_status_weak": "Could not extract reliable context; kept as optional attachment",

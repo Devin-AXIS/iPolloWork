@@ -99,6 +99,7 @@ import {
   type TemplateBrief,
 } from "../templates/template-brief";
 import {
+  canSendOriginalReference,
   ingestReferenceFile,
   isReferenceFile,
 } from "../references/ingestion";
@@ -529,8 +530,12 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
           </div>
           {references.length ? <div className="mt-3 grid gap-2">{references.map((reference) => <div key={reference.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-dls-border bg-dls-surface px-2.5 py-2">
             <FileText className="size-3.5 shrink-0 text-dls-secondary" />
-            <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{reference.fileName}</div><div className="text-[10px] text-dls-secondary">{reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div></div>
-            <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing"} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium">{reference.fileName}</div>
+              <div className="text-[10px] text-dls-secondary">{reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div>
+              {reference.ingestion?.warnings[0] ? <div className="truncate text-[10px] text-dls-secondary" title={reference.ingestion.warnings[0]}>{reference.ingestion?.warnings[0]}</div> : null}
+            </div>
+            <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file)} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
             <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-dls-secondary hover:text-dls-text" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
           </div>)}</div> : null}
         </div>
@@ -978,8 +983,9 @@ export function SessionPage(props: SessionPageProps) {
     const templateSession = currentTemplateSessionData;
     if (!templateSession) return;
     const { manifest: template, state } = templateSession;
-    const referencePayload = await buildTemplateReferenceSubmitPayload(references);
+    let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     try {
+      referencePayload = await buildTemplateReferenceSubmitPayload(references);
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
       path: state.briefPath,
       content: JSON.stringify({
@@ -996,7 +1002,7 @@ export function SessionPage(props: SessionPageProps) {
           size: reference.size,
           quality: reference.ingestion?.quality ?? "failed",
           sourceMode: reference.ingestion?.sourceMode ?? "memory",
-          sentOriginal: reference.sendOriginal,
+          sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file),
         })),
         ...brief,
       }, null, 2),
@@ -1024,8 +1030,12 @@ export function SessionPage(props: SessionPageProps) {
         text: visibleTemplateMessage,
         resolvedText: visibleTemplateMessage,
       }, props.selectedSessionId);
+    } catch (error) {
+      toast.error(t("templates.brief.submit_failed"), {
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
-      revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
+      if (referencePayload) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
     }
   }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const closeTemplateBrief = useCallback(async () => {

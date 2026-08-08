@@ -21,6 +21,8 @@ export function packReferenceContext(files: ReferenceIngestionResult[], options:
   const accepted = files.filter((file) => file.quality === "high" || file.quality === "medium");
   const rejected = files.length - accepted.length;
   const warnings = rejected ? [`Excluded ${rejected} low-quality reference file${rejected === 1 ? "" : "s"}.`] : [];
+  if (!accepted.length) return { files: [], promptText: "", totalChars: 0, warnings };
+
   const sections: string[] = ["Reference context for this iPolloWork template task:"];
 
   for (const [index, file] of accepted.entries()) {
@@ -43,15 +45,13 @@ export function packReferenceContext(files: ReferenceIngestionResult[], options:
     ].join("\n"));
   }
 
-  if (accepted.length) {
-    sections.push([
-      "",
-      "When applying the selected template:",
-      "- Prefer explicit facts from these excerpts.",
-      "- Do not invent missing evidence.",
-      "- Preserve the selected template layout and visual contract.",
-    ].join("\n"));
-  }
+  sections.push([
+    "",
+    "When applying the selected template:",
+    "- Prefer explicit facts from these excerpts.",
+    "- Do not invent missing evidence.",
+    "- Preserve the selected template layout and visual contract.",
+  ].join("\n"));
 
   const promptText = truncate(sections.join("\n"), maxTotalChars, 12000);
   return { files: accepted, promptText, totalChars: promptText.length, warnings };
