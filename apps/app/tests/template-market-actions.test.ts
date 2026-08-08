@@ -106,6 +106,14 @@ describe("template market actions", () => {
     expect(marketDialog).toContain('t("template_market.export_package")');
   });
 
+  test("reuses the HTML cover and preview flow for installed enterprise templates", () => {
+    expect(marketDialog).toContain("if (installedTemplate) {");
+    expect(marketDialog).toContain("<TemplateCard template={installedTemplate} getCover={getCover}");
+    expect(marketDialog).toContain("onPreview={(template) => setPreviewSelection({ template, enterpriseResourceId: resource.id })}");
+    expect(marketDialog).toContain("previewEnterpriseResource.latestVersion.version === previewTemplate?.installedVersion");
+    expect(marketDialog).toContain("props.onInstallEnterprise(enterpriseResource)");
+  });
+
   test("keeps preview metadata separated from long descriptions and cover edges", () => {
     expect(marketDialog).toContain('className="relative z-10 flex flex-col gap-5 border-t border-border bg-popover px-6 pb-5 pt-8 sm:flex-row sm:items-end sm:justify-between"');
     expect(marketDialog).toContain('className="min-w-0 flex-1"');

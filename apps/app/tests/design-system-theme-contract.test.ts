@@ -42,6 +42,8 @@ describe("Design system theme contract", () => {
     expect(source).toContain("width: 18px !important; height: 18px !important");
     expect(source).toContain("object-fit: contain !important");
     expect(source).toContain('import.meta.glob("./design-systems/design-systems/*/design-tokens.json"');
+    expect(source).not.toContain('as: "raw"');
+    expect(source.match(/query: "\?raw"/g)).toHaveLength(6);
     expect(source).toContain("buildDesignSystemPresetValues");
     expect(source).toContain('"--ipw-type-scale": themeTypeScale(tokens)');
   });
