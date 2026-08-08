@@ -10,21 +10,16 @@
 
 import { useCallback } from "react";
 import { liveTime, usePlayerStore } from "../store/playerStore";
-import type { TimelineElement, DomClipChild } from "../store/playerStore";
-import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
+import type { TimelineElement } from "../store/playerStore";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
   parseTimelineFromDOM,
+  collectDomClipChildren,
   createTimelineElementFromManifestClip,
   findTimelineDomNodeForClip,
   createImplicitTimelineLayersFromDOM,
   buildStandaloneRootTimelineElement,
   getTimelineElementSelector,
-  getTimelineElementSelectorIndex,
-  getTimelineElementSourceFile,
-  getImplicitTimelineLayerLabel,
-  isImplicitTimelineLayerCandidate,
-  buildTimelineElementIdentity,
   readTimelineDurationFromDocument,
 } from "../lib/timelineDOM";
 import {
@@ -157,10 +152,21 @@ export function useTimelineSyncCallbacks({
         (clip) => !clip.parentCompositionId || !clipCompositionIds.has(clip.parentCompositionId),
       );
       let iframeDoc: Document | null = null;
+      const parentMap = new Map<string, string>();
       try {
         iframeDoc = iframeRef.current?.contentDocument ?? null;
       } catch {
         iframeDoc = null;
+      }
+      const resolvedClipHosts = new Map<ClipManifestClip, Element>();
+      if (iframeDoc) {
+        const usedHostElements = new Set<Element>();
+        data.clips.forEach((clip, index) => {
+          const host = findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostElements);
+          if (!host) return;
+          usedHostElements.add(host);
+          resolvedClipHosts.set(clip, host);
+        });
       }
 
       try {
@@ -168,7 +174,6 @@ export function useTimelineSyncCallbacks({
           | (Window & { __clipTree?: import("@hyperframes/core/runtime/clipTree").ClipTree })
           | null;
         const clipTree = iframeWin?.__clipTree;
-        const parentMap = new Map<string, string>();
         if (clipTree) {
           const walk = (nodes: typeof clipTree.roots) => {
             for (const node of nodes) {
@@ -178,101 +183,23 @@ export function useTimelineSyncCallbacks({
           };
           walk(clipTree.roots);
         }
-
-        // Descend into every id'd timeline host. Internal wrappers and children
-        // without `data-start` never enter the clip manifest, but they still form
-        // the editable layer tree. This intentionally includes ordinary element
-        // hosts, not only compositions: any element may own child layers.
-        const domClipChildren: DomClipChild[] = [];
-        const collectedTreeIds = new Set<string>();
-        if (iframeDoc) {
-          const collect = (parentEl: Element, parentId: string, hostId: string) => {
-            for (const child of Array.from(parentEl.children)) {
-              const selector = getTimelineElementSelector(child);
-              if (!selector) {
-                collect(child, parentId, hostId);
-                continue;
-              }
-              const sourceFile = getTimelineElementSourceFile(child);
-              const selectorIndex = getTimelineElementSelectorIndex(iframeDoc, child, selector);
-              const domId = child.id || undefined;
-              const hfId = child.getAttribute("data-hf-id") || undefined;
-              const treeId =
-                domId ??
-                hfId ??
-                `${sourceFile ?? "index.html"}:${selector}:${selectorIndex ?? 0}`;
-              if (collectedTreeIds.has(treeId)) continue;
-              collectedTreeIds.add(treeId);
-              const isGroup = child.hasAttribute("data-hf-group");
-              domClipChildren.push({
-                id: treeId,
-                domId,
-                hfId,
-                selector,
-                selectorIndex,
-                sourceFile,
-                parentId,
-                hostId,
-                label:
-                  (isGroup ? child.getAttribute("data-hf-group") : null) ||
-                  getImplicitTimelineLayerLabel(child as HTMLElement),
-                tagName: child.tagName.toLowerCase(),
-                stackingContextId: resolveCssStackingContextId(child),
-              });
-              parentMap.set(treeId, parentId);
-              collect(child, treeId, hostId);
-            }
-          };
-
-          for (const clip of data.clips) {
-            if (!clip.id) continue;
-            const hostEl = iframeDoc.getElementById(clip.id);
-            if (!hostEl) continue;
-            const hostId = clip.id;
-            const innerRoot =
-              clip.kind === "composition"
-                ? (hostEl.querySelector("[data-hf-inner-root]") ?? hostEl)
-                : hostEl;
-            collect(innerRoot, hostId, hostId);
-          }
-
-          // Root-level static layers have no timing attributes, but they are
-          // visible/selectable throughout the composition. They already become
-          // implicit top-level timeline rows; attach their descendants here so
-          // canvas selection can reveal the complete path to any static child.
-          const compositionRoot = iframeDoc.querySelector("[data-composition-id]");
-          if (compositionRoot) {
-            for (const child of Array.from(compositionRoot.children)) {
-              if (!isImplicitTimelineLayerCandidate(compositionRoot, child)) continue;
-              const selector = getTimelineElementSelector(child);
-              if (!selector) continue;
-              const selectorIndex = getTimelineElementSelectorIndex(iframeDoc, child, selector);
-              const sourceFile = getTimelineElementSourceFile(child);
-              const identity = buildTimelineElementIdentity({
-                preferredId: child.id || null,
-                label: getImplicitTimelineLayerLabel(child),
-                fallbackIndex: 0,
-                domId: child.id || undefined,
-                selector,
-                selectorIndex,
-                sourceFile,
-              });
-              collect(child, identity.id, identity.id);
-            }
-          }
-        }
-        usePlayerStore.getState().setClipParentMap(parentMap);
-        usePlayerStore.getState().setDomClipChildren(domClipChildren);
       } catch {
         // cross-origin or __clipTree not available — maps stay empty
       }
 
-      const usedHostEls = new Set<Element>();
+      if (iframeDoc) {
+        const domHierarchy = collectDomClipChildren(iframeDoc, data.clips, resolvedClipHosts);
+        for (const [childId, parentId] of domHierarchy.parentMap) {
+          parentMap.set(childId, parentId);
+        }
+        usePlayerStore.getState().setDomClipChildren(domHierarchy.children);
+      } else {
+        usePlayerStore.getState().setDomClipChildren([]);
+      }
+      usePlayerStore.getState().setClipParentMap(parentMap);
+
       const els: TimelineElement[] = filtered.map((clip, index) => {
-        const hostEl = iframeDoc
-          ? findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostEls)
-          : null;
-        if (hostEl) usedHostEls.add(hostEl);
+        const hostEl = resolvedClipHosts.get(clip) ?? null;
         return createTimelineElementFromManifestClip({
           clip,
           fallbackIndex: index,

@@ -213,7 +213,7 @@ export function useDomEditOverlayRects({
           const el = resolveGroupElement(doc, groupSelection);
           const base = el ? groupAwareOverlayRect(overlayEl, iframe, el) : null;
           const rect = base && el ? { ...base, ...hugRectForElement(base, el) } : base;
-          if (el && rect)
+          if (el && isElementVisibleForOverlay(el) && rect)
             nextGroupItems.push({ key, selection: groupSelection, element: el, rect });
         }
         for (const key of resolvedGroupElementRef.current.keys()) {

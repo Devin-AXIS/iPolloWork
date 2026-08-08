@@ -31,15 +31,34 @@ export function resolveTimelineTreeSelectionKey(input: {
 }): string {
   const elementId = resolveTimelineTreeSelectionId(input);
   if (!elementId) return "";
+  const sourceFile = input.sourceFile ?? "index.html";
+  const domChild = input.domClipChildren.find((child) => child.id === elementId);
   const existing = input.elements.find(
     (element) =>
-      element.domId === elementId ||
-      element.id === elementId ||
-      (Boolean(input.hfId) && element.hfId === input.hfId),
+      (element.sourceFile ?? "index.html") === sourceFile &&
+      (element.domId === elementId ||
+        element.id === elementId ||
+        (Boolean(input.hfId) && element.hfId === input.hfId)),
   );
-  if (existing) return existing.key ?? existing.id;
+  if (existing) {
+    // Runtime media rows can enter the store before the DOM scan enriches
+    // them with an authored selector. Expanded timeline children use that
+    // enriched identity, so return the same key or the DOM -> timeline sync
+    // immediately clears their visible selected state after a click.
+    if (!existing.domId && !existing.selector && (domChild?.domId || domChild?.selector)) {
+      return buildTimelineElementKey({
+        id: existing.id,
+        fallbackIndex: 0,
+        domId: domChild.domId,
+        selector: domChild.selector,
+        selectorIndex: domChild.selectorIndex,
+        sourceFile: domChild.sourceFile ?? existing.sourceFile ?? input.sourceFile,
+        previewHostId: existing.previewHostId ?? domChild.hostId,
+      });
+    }
+    return existing.key ?? existing.id;
+  }
 
-  const domChild = input.domClipChildren.find((child) => child.id === elementId);
   const manifestClip = input.manifest.find((clip) => clip.id === elementId);
   return buildTimelineElementKey({
     id: elementId,
@@ -48,6 +67,7 @@ export function resolveTimelineTreeSelectionKey(input: {
     selector: domChild?.selector ?? manifestClip?.selector ?? input.selector,
     selectorIndex: domChild?.selectorIndex ?? manifestClip?.selectorIndex ?? input.selectorIndex,
     sourceFile: domChild?.sourceFile ?? manifestClip?.sourceFile ?? input.sourceFile,
+    previewHostId: domChild?.hostId,
   });
 }
 
@@ -74,7 +94,7 @@ export function resolveTimelineTreeSelectionId(input: {
   if (domChild) return domChild.id;
   const element = input.elements.find(
     (candidate) =>
-      (input.hfId && candidate.hfId === input.hfId) ||
+      (input.hfId && (candidate.hfId === input.hfId || candidate.id === input.hfId)) ||
       (input.selector &&
         candidate.selector === input.selector &&
         (candidate.selectorIndex ?? 0) === (input.selectorIndex ?? 0) &&

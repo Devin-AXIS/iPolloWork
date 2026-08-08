@@ -36,7 +36,23 @@ describe("timeline tree selection", () => {
           },
         ],
       }),
-    ).toBe("compositions/scene.html#title");
+    ).toBe("scene::compositions/scene.html#title");
+  });
+
+  test("does not select a same-id element from another composition", () => {
+    const shared = { id: "title", domId: "title", tag: "h1", start: 0, duration: 3, track: 0 };
+    expect(
+      resolveTimelineTreeSelectionKey({
+        elementId: "title",
+        sourceFile: "compositions/second.html",
+        elements: [
+          { ...shared, key: "compositions/first.html#title", sourceFile: "compositions/first.html" },
+          { ...shared, key: "compositions/second.html#title", sourceFile: "compositions/second.html" },
+        ],
+        manifest: [],
+        domClipChildren: [],
+      }),
+    ).toBe("compositions/second.html#title");
   });
 
   test("resolves an id-less preview selection through its hf id and expands its parents", () => {
@@ -62,7 +78,9 @@ describe("timeline tree selection", () => {
     };
 
     expect(resolveTimelineTreeSelectionId(input)).toBe("hf-title");
-    expect(resolveTimelineTreeSelectionKey(input)).toBe("compositions/scene.html:.title:0");
+    expect(resolveTimelineTreeSelectionKey(input)).toBe(
+      "scene::compositions/scene.html:.title:0",
+    );
     expect(collectTimelineAncestorIds("hf-title", new Map([["hf-title", "hero"]]))).toEqual([
       "hero",
     ]);
@@ -91,5 +109,60 @@ describe("timeline tree selection", () => {
         domClipChildren,
       }),
     ).toBe("compositions/scene.html:h2:1");
+  });
+
+  test("maps a runtime data-hf-id back to the manifest row that owns that id", () => {
+    expect(
+      resolveTimelineTreeSelectionKey({
+        hfId: "hf-logo",
+        sourceFile: "index.html",
+        elements: [
+          {
+            id: "hf-logo",
+            key: "index.html:hf-logo:0",
+            tag: "img",
+            start: 0,
+            duration: 8,
+            track: 0,
+          },
+        ],
+        manifest: [],
+        domClipChildren: [],
+      }),
+    ).toBe("index.html:hf-logo:0");
+  });
+
+  test("keeps a runtime media selection on its enriched expanded timeline key", () => {
+    expect(
+      resolveTimelineTreeSelectionKey({
+        elementId: "hf-logo",
+        hfId: "hf-logo",
+        sourceFile: "index.html",
+        elements: [
+          {
+            id: "hf-logo",
+            key: "index.html:hf-logo:0",
+            tag: "img",
+            start: 0,
+            duration: 8,
+            track: 0,
+          },
+        ],
+        manifest: [],
+        domClipChildren: [
+          {
+            id: "hf-logo",
+            hfId: "hf-logo",
+            parentId: "logo-wrap",
+            hostId: "index.html:.logo-wrap:0",
+            label: "Absolute",
+            sourceFile: "index.html",
+            selector: ".absolute",
+            selectorIndex: 1,
+            stackingContextId: "root",
+          },
+        ],
+      }),
+    ).toBe("index.html:.logo-wrap:0::index.html:.absolute:1");
   });
 });

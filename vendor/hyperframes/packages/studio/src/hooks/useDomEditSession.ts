@@ -21,6 +21,7 @@ import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useTimelineSelectionPreviewSync } from "./useTimelineSelectionPreviewSync";
 import { useLayerRevealOverride } from "../components/editor/useLayerRevealOverride";
+import { isElementVisibleForOverlay } from "../components/editor/domEditOverlayGeometry";
 
 // ── Types ──
 
@@ -129,7 +130,6 @@ export function useDomEditSession({
     clearDomSelection,
     buildDomSelectionFromTarget,
     resolveDomSelectionFromPreviewPoint,
-    resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
@@ -154,6 +154,7 @@ export function useDomEditSession({
   const selectedElementId = usePlayerStore((state) => state.selectedElementId);
   const selectedElementIds = usePlayerStore((state) => state.selectedElementIds);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
+  const currentTime = usePlayerStore((state) => state.currentTime);
 
   useTimelineSelectionPreviewSync({
     selectedElementId,
@@ -169,14 +170,15 @@ export function useDomEditSession({
 
   const { scheduleReveal } = useLayerRevealOverride({
     isPlaying,
+    currentTime,
     selectedElement: domEditSelection?.element ?? null,
   });
 
   useEffect(() => {
     const element = domEditSelection?.element;
-    if (!element || isPlaying) return;
+    if (!element || isPlaying || !isElementVisibleForOverlay(element)) return;
     scheduleReveal(element, 0);
-  }, [domEditSelection?.element, isPlaying, scheduleReveal]);
+  }, [currentTime, domEditSelection?.element, isPlaying, scheduleReveal]);
 
   // ── Agent modal ──
 
@@ -469,9 +471,7 @@ export function useDomEditSession({
     showToast,
     applyDomSelection,
     resolveDomSelectionFromPreviewPoint,
-    resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
-    setActiveGroupElement,
     onClickToSource,
   });
 

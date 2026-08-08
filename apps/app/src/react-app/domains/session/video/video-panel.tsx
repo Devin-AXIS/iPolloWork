@@ -3,6 +3,7 @@ import * as React from "react";
 import { AudioLines, Ellipsis, Film, LayoutTemplate, Loader2, Maximize2, Minimize2, Palette, Plus, RefreshCw, X } from "lucide-react";
 
 import type { HyperframesCatalogItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -13,8 +14,8 @@ import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "../design/design-ai-selection";
 import { parseVideoIllustrationReference } from "./video-illustration";
 import { DesignSystemDrawer } from "../design/design-system-drawer";
-import { mergeTemplateTokenCss, parseDesignTokenValues, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
-import { buildTemplateTokenCss, type DesignSystemTheme } from "../design/design-system-registry";
+import { mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
+import { buildStableTokenBridgeCss, buildTemplateTokenCss, getDesignSystemTheme, type DesignSystemTheme } from "../design/design-system-registry";
 import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "../design/design-system-theme-contract";
 import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
@@ -71,6 +72,17 @@ const studioStartupDetailKey: Record<StudioStartupStage, string> = {
 const DEFAULT_STUDIO_PANEL_WIDTH = 400;
 const MIN_STUDIO_PANEL_WIDTH = 160;
 const MAX_STUDIO_PANEL_WIDTH = 600;
+const RUNTIME_THEME_BRIDGE_PATTERN = /\/\*\s*ipw-runtime-theme-bridge:start\s*\*\/[\s\S]*?\/\*\s*ipw-runtime-theme-bridge:end\s*\*\//i;
+
+function ensureVideoTokenBridge(source: string) {
+  const bridge = buildStableTokenBridgeCss();
+  if (RUNTIME_THEME_BRIDGE_PATTERN.test(source)) return source.replace(RUNTIME_THEME_BRIDGE_PATTERN, bridge);
+  return `${source.trimEnd()}${source.trim() ? "\n\n" : ""}${bridge}\n`;
+}
+
+function normalizeVideoThemeTypeScale(source: string) {
+  return replaceDesignTokenValue(source, "--ipw-type-scale", "1");
+}
 
 export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
@@ -90,6 +102,10 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const [studioPanelWidth, setStudioPanelWidth] = React.useState(DEFAULT_STUDIO_PANEL_WIDTH);
   const [designTokenSource, setDesignTokenSource] = React.useState("");
   const designTokenSourceRef = React.useRef("");
+  const designTokenLoadRequestRef = React.useRef(0);
+  const designTokenLoadedRef = React.useRef(false);
+  const pendingDesignTokenChangesRef = React.useRef<DesignTokenValues>({});
+  const pendingStudioDesignTokensRef = React.useRef<{ tokens: Record<string, string>; cssSource?: string } | null>(null);
   const designTokenSaveTimerRef = React.useRef<number | null>(null);
   const studioPort = hyperframesStudioPort(sessionId);
   const [activeStudioPort, setActiveStudioPort] = React.useState(studioPort);
@@ -117,9 +133,14 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     () => readAppliedDesignSystemId(designTokenSource),
     [designTokenSource],
   );
+  const appliedDesignSystemTheme = React.useMemo(
+    () => (appliedDesignSystemId ? getDesignSystemTheme(appliedDesignSystemId) : undefined),
+    [appliedDesignSystemId],
+  );
   const showStudioStartupOverlay = status === "starting" || (status === "ready" && !studioChromeReady);
 
-  const syncStudioDesignTokens = React.useCallback((tokens: Record<string, string>) => {
+  const syncStudioDesignTokens = React.useCallback((tokens: Record<string, string>, cssSource?: string) => {
+    pendingStudioDesignTokensRef.current = { tokens, cssSource };
     const frameWindow = studioFrameRef.current?.contentWindow;
     if (!frameWindow || Object.keys(tokens).length === 0) return;
     frameWindow.postMessage(
@@ -127,19 +148,61 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         type: "ipollowork:studio-design-token-change",
         projectId: videoProjectId(sessionId),
         tokens,
+        cssSource,
       },
       new URL(studioUrl).origin,
     );
   }, [sessionId, studioUrl]);
 
+  const replayPendingStudioDesignTokens = React.useCallback(() => {
+    const pending = pendingStudioDesignTokensRef.current;
+    if (pending) syncStudioDesignTokens(pending.tokens, pending.cssSource);
+  }, [syncStudioDesignTokens]);
+
+  const saveDesignTokenSource = React.useCallback((source: string) => {
+    if (!client || !workspaceId) return;
+    if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
+    designTokenSaveTimerRef.current = window.setTimeout(() => {
+      designTokenSaveTimerRef.current = null;
+      void client.writeWorkspaceFile(workspaceId, {
+        path: designTokenPath,
+        content: source,
+        force: true,
+      }).catch((error) => {
+        toast.error(error instanceof Error ? error.message : "Could not save video design tokens.");
+      });
+    }, 350);
+  }, [client, designTokenPath, workspaceId]);
+
   const loadDesignSystemFiles = React.useCallback(async () => {
     if (!client || !workspaceId) return;
+    const requestId = ++designTokenLoadRequestRef.current;
+    designTokenLoadedRef.current = false;
     const tokens = await client.readWorkspaceFile(workspaceId, designTokenPath).catch(() => null);
+    if (requestId !== designTokenLoadRequestRef.current) return;
     const source = tokens?.content ?? "";
-    designTokenSourceRef.current = source;
-    setDesignTokenSource(source);
-    syncStudioDesignTokens(parseDesignTokenValues(source));
-  }, [client, designTokenPath, syncStudioDesignTokens, workspaceId]);
+    const pendingChanges = pendingDesignTokenChangesRef.current;
+    const hasPendingChanges = Object.keys(pendingChanges).length > 0;
+    let nextSource = source;
+    if (hasPendingChanges) {
+      const themeId = readAppliedDesignSystemId(source);
+      const theme = themeId ? getDesignSystemTheme(themeId) : undefined;
+      nextSource = theme
+        ? refreshTemplateTokenCss(source, buildTemplateTokenCss(theme))
+        : ensureVideoTokenBridge(source);
+      for (const [name, value] of Object.entries(pendingChanges)) {
+        nextSource = replaceDesignTokenValue(nextSource, name, value);
+      }
+      pendingDesignTokenChangesRef.current = {};
+    }
+    designTokenSourceRef.current = nextSource;
+    designTokenLoadedRef.current = true;
+    setDesignTokenSource(nextSource);
+    const themeId = readAppliedDesignSystemId(source);
+    const previewCss = themeId && getDesignSystemTheme(themeId) ? nextSource : ensureVideoTokenBridge(nextSource);
+    syncStudioDesignTokens(parseDesignTokenValues(nextSource), previewCss);
+    if (hasPendingChanges) saveDesignTokenSource(nextSource);
+  }, [client, designTokenPath, saveDesignTokenSource, syncStudioDesignTokens, workspaceId]);
 
   React.useEffect(() => {
     if (studioHostPanel !== "style") return;
@@ -190,34 +253,47 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
   }, []);
 
-  const saveDesignTokenSource = React.useCallback((source: string) => {
-    if (!client || !workspaceId) return;
-    if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
-    designTokenSaveTimerRef.current = window.setTimeout(() => {
-      designTokenSaveTimerRef.current = null;
-      void client.writeWorkspaceFile(workspaceId, {
-        path: designTokenPath,
-        content: source,
-        force: true,
-      }).catch((error) => {
-        toast.error(error instanceof Error ? error.message : "Could not save video design tokens.");
-      });
-    }, 350);
-  }, [client, designTokenPath, workspaceId]);
-
   const handleDesignTokenChanges = React.useCallback((values: DesignTokenValues) => {
-    let next = designTokenSourceRef.current;
+    if (!designTokenLoadedRef.current) {
+      pendingDesignTokenChangesRef.current = {
+        ...pendingDesignTokenChangesRef.current,
+        ...values,
+      };
+    }
+    let next = appliedDesignSystemTheme
+      ? refreshTemplateTokenCss(designTokenSourceRef.current, buildTemplateTokenCss(appliedDesignSystemTheme))
+      : ensureVideoTokenBridge(designTokenSourceRef.current);
     for (const [name, value] of Object.entries(values)) {
       next = replaceDesignTokenValue(next, name, value);
     }
     designTokenSourceRef.current = next;
     setDesignTokenSource(next);
-    syncStudioDesignTokens(values);
+    syncStudioDesignTokens(values, next);
     saveDesignTokenSource(next);
-  }, [saveDesignTokenSource, syncStudioDesignTokens]);
+  }, [appliedDesignSystemTheme, saveDesignTokenSource, syncStudioDesignTokens]);
 
   const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
     handleDesignTokenChanges({ [name]: value });
+  }, [handleDesignTokenChanges]);
+
+  const chooseDesignSystemBackgroundImage = React.useCallback(async () => {
+    const pickedPath = await pickLocalImageFile("选择视频背景图片");
+    if (!pickedPath) return;
+    const dataUrl = await readLocalImageAsDataUrl(pickedPath);
+    if (!dataUrl) {
+      toast.error("无法读取图片，请选择 PNG、JPG 或 WebP 文件。");
+      return;
+    }
+    handleDesignTokenChanges({
+      "--ipw-bg-image": `url("${dataUrl}")`,
+      "--ipw-bg-gradient": "none",
+      "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,.45), rgba(28,27,26,.45))",
+      "--ipw-bg-overlay-opacity": "0.45",
+      "--ipw-bg-mode": "image",
+      "--ipw-bg-size": "cover",
+      "--ipw-bg-position": "50% 50%",
+    });
+    toast.success("背景图片已应用。");
   }, [handleDesignTokenChanges]);
 
   const recordStudioHostEdit = React.useCallback((label: string, files: StudioHistoryFiles) => {
@@ -289,13 +365,15 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       ]);
       const currentTokenCss = hadPendingTokenSave ? pendingTokenSource : currentTokens.content;
       const themedHtml = ensureHtmlDesignSystemContract(current.content, theme.id);
-      const nextTokens = mergeTemplateTokenCss(currentTokenCss, buildTemplateTokenCss(theme));
+      const nextTokens = normalizeVideoThemeTypeScale(
+        mergeTemplateTokenCss(currentTokenCss, buildTemplateTokenCss(theme)),
+      );
       if (themedHtml === current.content && nextTokens === currentTokenCss) {
         if (hadPendingTokenSave) saveDesignTokenSource(currentTokenCss);
         toast.info(`${theme.name} is already applied to Video Studio.`);
         return;
       }
-      syncStudioDesignTokens(parseDesignTokenValues(nextTokens));
+      syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens);
       await client.writeWorkspaceFile(workspaceId, {
         path: designTokenPath,
         content: nextTokens,
@@ -546,10 +624,11 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       setDetail(t("video.ready_on_port", { port: activeStudioPort }));
       scheduleStudioLocaleSync();
       syncStudioTheme();
+      replayPendingStudioDesignTokens();
     };
     window.addEventListener("message", handleStudioReady);
     return () => window.removeEventListener("message", handleStudioReady);
-  }, [activeStudioPort, scheduleStudioLocaleSync, sessionId, studioUrl, syncStudioTheme]);
+  }, [activeStudioPort, replayPendingStudioDesignTokens, scheduleStudioLocaleSync, sessionId, studioUrl, syncStudioTheme]);
 
   React.useEffect(() => {
     setStatus("starting");
@@ -755,6 +834,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
               setStudioChromeReady(true);
               scheduleStudioLocaleSync();
               syncStudioTheme();
+              replayPendingStudioDesignTokens();
             }, 8_000);
           }} onError={() => {
             setStatus("failed");
@@ -781,6 +861,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
               onTokenChange={handleDesignTokenChange}
               onTokenChangeMany={handleDesignTokenChanges}
               onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
+              onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}
             />
           </div> : null}
           </div>

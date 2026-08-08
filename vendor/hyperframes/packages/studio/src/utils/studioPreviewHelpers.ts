@@ -155,70 +155,15 @@ function hasAuthorPointerEventsNone(el: HTMLElement): boolean {
   return inheritsPointerEventsNoneFromAncestor(el, win);
 }
 
-function collectPointerEventsNoneTargets(
-  elements: Iterable<Element | null | undefined>,
-): WeakSet<HTMLElement> {
-  const disabled = new WeakSet<HTMLElement>();
-  for (const entry of elements) {
-    if (isHtmlElement(entry) && hasAuthorPointerEventsNone(entry)) {
-      disabled.add(entry);
-    }
-  }
-  return disabled;
-}
-
-// Shared tail of both pointer resolvers: hit-test candidates minus elements the
-// author hid from hit-testing via pointer-events:none.
+// Shared tail of both edit-mode pointer resolvers.
 function filterAuthorInteractiveTargets(
   elements: Element[],
   activeCompositionPath: string | null,
 ): HTMLElement[] {
-  const pointerEventsNoneTargets = collectPointerEventsNoneTargets(elements);
-  return resolveAllVisualDomEditTargets(elements, { activeCompositionPath }).filter(
-    (el) => !pointerEventsNoneTargets.has(el),
-  );
-}
-
-function normalizedEffectText(element: HTMLElement): string {
-  return (element.textContent ?? "").replace(/\s+/g, " ").trim();
-}
-
-function verticallyOverlaps(a: DOMRect, b: DOMRect): boolean {
-  const overlap = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-  return overlap >= Math.min(a.height, b.height) * 0.75;
-}
-
-/**
- * Glitch, shadow, and outline title effects commonly use two or three identical
- * sibling text nodes layered on top of each other. Treat that stack as one visual
- * object so dragging a visible layer cannot leave its effect siblings behind.
- */
-export function resolveEffectStackSelectionTarget(element: HTMLElement): HTMLElement {
-  const parent = element.parentElement;
-  const text = normalizedEffectText(element);
-  if (!parent || !text) return element;
-  const win = element.ownerDocument.defaultView;
-  if (!win) return element;
-  const sourceRect = element.getBoundingClientRect();
-  if (sourceRect.width <= 0 || sourceRect.height <= 0) return element;
-
-  const matches = Array.from(parent.children).filter((entry): entry is HTMLElement => {
-    if (!isHtmlElement(entry)) return false;
-    if (normalizedEffectText(entry) !== text) return false;
-    return verticallyOverlaps(sourceRect, entry.getBoundingClientRect());
-  });
-  if (matches.length < 2) return element;
-
-  const hasEffectLayer = matches.some((entry) => {
-    const style = entry.ownerDocument.defaultView?.getComputedStyle(entry);
-    if (!style) return false;
-    return style.position === "absolute" || style.pointerEvents === "none";
-  });
-  return hasEffectLayer ? parent : element;
-}
-
-function promoteEffectStackTarget(target: HTMLElement): HTMLElement {
-  return resolveEffectStackSelectionTarget(resolveEmbeddedHtmlAssetSelectionTarget(target));
+  // The preview temporarily enables pointer events specifically so Studio can
+  // edit authored decorative/text layers. Runtime pointer-event semantics still
+  // apply during playback; edit-mode hit testing must expose visible children.
+  return resolveAllVisualDomEditTargets(elements, { activeCompositionPath });
 }
 
 /** HTML illustration iframes are viewports; the surrounding clip owns geometry. */
@@ -290,7 +235,7 @@ export function getPreviewTargetFromPointer(
       const candidates = filterAuthorInteractiveTargets(elements, activeCompositionPath);
       const visualTarget =
         candidates.find((el) => !isFullBleedTarget(el, localPointer.viewport)) ?? null;
-      if (visualTarget) return promoteEffectStackTarget(visualTarget);
+      if (visualTarget) return resolveEmbeddedHtmlAssetSelectionTarget(visualTarget);
     }
 
     // Belt-and-suspenders: elementsFromPoint is universally supported in the
@@ -309,61 +254,14 @@ export function getPreviewTargetFromPointer(
       !hasAuthorPointerEventsNone(groupHit) &&
       getDomLayerPatchTarget(groupHit, activeCompositionPath)
     )
-      return promoteEffectStackTarget(groupHit);
+      return resolveEmbeddedHtmlAssetSelectionTarget(groupHit);
 
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
     if (hasAuthorPointerEventsNone(fallback)) return null;
     if (!isElementComputedVisible(fallback)) return null;
     if (isFullBleedTarget(fallback, localPointer.viewport)) return null;
-    return promoteEffectStackTarget(fallback);
-  } finally {
-    removePointerEventsOverride(overrideStyle);
-  }
-}
-
-/** Returns all independently-selectable elements at the pointer (topmost first). */
-export function getAllPreviewTargetsFromPointer(
-  iframe: HTMLIFrameElement,
-  clientX: number,
-  clientY: number,
-  activeCompositionPath: string | null,
-): HTMLElement[] {
-  let doc: Document | null = null;
-  let win: Window | null = null;
-  try {
-    doc = iframe.contentDocument;
-    win = iframe.contentWindow;
-  } catch {
-    return [];
-  }
-  if (!doc || !win) return [];
-
-  const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
-  if (!localPointer) return [];
-
-  let overrideStyle = forcePointerEventsAuto(doc);
-  try {
-    if (typeof doc.elementsFromPoint === "function") {
-      const elements = doc.elementsFromPoint(localPointer.x, localPointer.y);
-      removePointerEventsOverride(overrideStyle);
-      overrideStyle = null;
-      return Array.from(
-        new Set(
-          filterAuthorInteractiveTargets(elements, activeCompositionPath)
-            .filter((el) => !isFullBleedTarget(el, localPointer.viewport))
-            .map(promoteEffectStackTarget),
-        ),
-      );
-    }
-    const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
-    if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return [];
-    removePointerEventsOverride(overrideStyle);
-    overrideStyle = null;
-    if (hasAuthorPointerEventsNone(fallback)) return [];
-    if (!isElementComputedVisible(fallback)) return [];
-    if (isFullBleedTarget(fallback, localPointer.viewport)) return [];
-    return [promoteEffectStackTarget(fallback)];
+    return resolveEmbeddedHtmlAssetSelectionTarget(fallback);
   } finally {
     removePointerEventsOverride(overrideStyle);
   }

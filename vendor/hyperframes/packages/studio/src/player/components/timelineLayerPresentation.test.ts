@@ -74,12 +74,12 @@ describe("timeline layer presentation", () => {
   test("uses one neutral clip style for every timeline kind and palette index", () => {
     const expected = {
       accent: "#20BBC0",
-      clip: "#F5F6F9",
-      clipActive: "#F5F6F9",
-      border: "#CCCCCC",
-      hover: "#F5F6F9",
+      clip: "var(--hf-timeline-clip-bg)",
+      clipActive: "var(--hf-timeline-clip-active)",
+      border: "var(--hf-timeline-clip-border)",
+      hover: "var(--hf-timeline-clip-hover)",
       dragging: "#20BBC0",
-      label: "#20262D",
+      label: "var(--hf-timeline-clip-text)",
     };
 
     expect(getTimelineTrackStyle("text")).toEqual(expected);

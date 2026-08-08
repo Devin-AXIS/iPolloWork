@@ -1,14 +1,16 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { SelectElementOptions, TimelineElement } from "../player";
-import {
-  getAllPreviewTargetsFromPointer,
-  getPreviewTargetFromPointer,
-} from "../utils/studioPreviewHelpers";
+import { usePlayerStore, type SelectElementOptions, type TimelineElement } from "../player";
+import { getPreviewTargetFromPointer } from "../utils/studioPreviewHelpers";
 import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
   type RightPanelTab,
 } from "../utils/studioHelpers";
+import {
+  collectTimelineAncestorIds,
+  resolveTimelineTreeSelectionId,
+  resolveTimelineTreeSelectionKey,
+} from "../player/lib/timelineTreeSelection";
 import {
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
@@ -20,7 +22,6 @@ import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEdit
 import {
   findElementForSelection,
   findElementForTimelineElement,
-  isElementComputedVisible,
   resolveDomEditSelection,
   type DomEditSelection,
 } from "../components/editor/domEditing";
@@ -88,10 +89,6 @@ export interface UseDomSelectionReturn {
     clientY: number,
     options?: ResolveDomSelectionOptions,
   ) => Promise<DomEditSelection | null>;
-  resolveAllDomSelectionsFromPreviewPoint: (
-    clientX: number,
-    clientY: number,
-  ) => Promise<DomEditSelection[]>;
   updateDomEditHoverSelection: (selection: DomEditSelection | null) => void;
   buildDomSelectionForTimelineElement: (
     element: TimelineElement,
@@ -215,8 +212,27 @@ export function useDomSelection({
             setRightPanelTab("design");
           }
         }
+        const playerState = usePlayerStore.getState();
+        const treeSelection = {
+          elementId: nextSelection.id ?? undefined,
+          hfId: nextSelection.hfId,
+          sourceFile: nextSelection.sourceFile,
+          selector: nextSelection.selector,
+          selectorIndex: nextSelection.selectorIndex,
+          elements: timelineElements,
+          manifest: playerState.clipManifest ?? [],
+          domClipChildren: playerState.domClipChildren,
+        };
+        const treeId = resolveTimelineTreeSelectionId(treeSelection);
+        const treeKey = treeId ? resolveTimelineTreeSelectionKey(treeSelection) : "";
+        if (treeId) {
+          playerState.expandTimelineElementIds(
+            collectTimelineAncestorIds(treeId, playerState.clipParentMap),
+          );
+        }
         const nextSelectedTimelineId =
-          findMatchingTimelineElementId(nextSelection, timelineElements) ??
+          treeKey ||
+          findMatchingTimelineElementId(nextSelection, timelineElements) ||
           findTimelineIdByAncestor(
             nextSelection.element,
             timelineElements,
@@ -294,6 +310,7 @@ export function useDomSelection({
       }
       const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
       if (!target) return null;
+      const owningGroup = target.closest<HTMLElement>("[data-hf-group]");
       return buildDomSelectionFromTarget(
         target,
         options && "activeGroupElement" in options
@@ -305,29 +322,9 @@ export function useDomSelection({
           : {
               preferClipAncestor: options?.preferClipAncestor,
               skipSourceProbe: options?.skipSourceProbe,
+              activeGroupElement: owningGroup,
             },
       );
-    },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
-  );
-
-  const resolveAllDomSelectionsFromPreviewPoint = useCallback(
-    // fallow-ignore-next-line complexity
-    async (clientX: number, clientY: number): Promise<DomEditSelection[]> => {
-      const iframe = previewIframeRef.current;
-      if (!iframe || captionEditMode) return [];
-      try {
-        if (iframe.contentDocument) reapplyPositionEditsAfterSeek(iframe.contentDocument);
-      } catch {
-        /* cross-origin guard */
-      }
-      const targets = getAllPreviewTargetsFromPointer(iframe, clientX, clientY, activeCompPath);
-      const results: DomEditSelection[] = [];
-      for (const target of targets) {
-        const sel = await buildDomSelectionFromTarget(target, { skipSourceProbe: true });
-        if (sel) results.push(sel);
-      }
-      return results;
     },
     [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
   );
@@ -357,14 +354,21 @@ export function useDomSelection({
         compIdToSrc,
         isMasterView,
       });
-      // Timeline rows exist for the whole composition, while the preview only
-      // represents the current frame. Never create an overlay for a timed clip
-      // (or one of its descendants) while the runtime has it hidden.
-      return targetElement && isElementComputedVisible(targetElement)
-        ? buildDomSelectionFromTarget(targetElement, {
-            preferClipAncestor: false,
-          })
-        : null;
+      // Property selection is independent from current-frame visibility. The
+      // overlay geometry layer suppresses its box for hidden elements while the
+      // inspector keeps the authored DOM target editable.
+      if (!targetElement) return null;
+
+      // A timeline-tree click names an exact authored node. Resolve inside its
+      // nearest group so canvas group-capture semantics do not replace that
+      // explicit child with the group wrapper. Canvas clicks still retain their
+      // existing group/drill-in behavior through the default resolver path.
+      const owningGroup = targetElement.closest<HTMLElement>("[data-hf-group]");
+      return buildDomSelectionFromTarget(targetElement, {
+        preferClipAncestor: false,
+        skipSourceProbe: true,
+        activeGroupElement: owningGroup,
+      });
     },
     [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView, previewIframeRef],
   );
@@ -378,11 +382,23 @@ export function useDomSelection({
         return;
       }
 
-      const selection = await buildDomSelectionForTimelineElement(element);
-      // A newer selection superseded this one while we were resolving — drop the stale result.
-      if (seq !== timelineSelectSeqRef.current) return;
-      if (selection) applyDomSelection(selection);
-      else {
+      try {
+        const selection = await buildDomSelectionForTimelineElement(element);
+        // A newer selection superseded this one while we were resolving — drop the stale result.
+        if (seq !== timelineSelectSeqRef.current) return;
+        if (selection) {
+          applyDomSelection(selection);
+          return;
+        }
+        applyDomSelection(null, {
+          revealPanel: false,
+          preserveTimelineSelection: true,
+        });
+      } catch {
+        // Generated compositions can contain detached nodes, inaccessible nested
+        // iframes, or CSS that fails while resolving inspector metadata. Timeline
+        // selection must remain usable even when that element cannot be inspected.
+        if (seq !== timelineSelectSeqRef.current) return;
         applyDomSelection(null, {
           revealPanel: false,
           preserveTimelineSelection: true,
@@ -526,6 +542,7 @@ export function useDomSelection({
         return;
       }
       if (selections.length === 0) {
+        if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
       }
       const current = domEditSelectionRef.current;
@@ -589,7 +606,6 @@ export function useDomSelection({
     clearDomSelection,
     buildDomSelectionFromTarget,
     resolveDomSelectionFromPreviewPoint,
-    resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,

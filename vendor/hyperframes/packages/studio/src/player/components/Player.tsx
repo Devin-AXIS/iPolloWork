@@ -25,19 +25,6 @@ interface HyperframesPlayerElement extends HTMLElement {
 const MEDIA_HAVE_FUTURE_DATA = 3;
 const MEDIA_NETWORK_NO_SOURCE = 3;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function getShaderTransitionLoading(event: Event): boolean | null {
-  if (!(event instanceof CustomEvent)) return null;
-  const detail: unknown = event.detail;
-  if (!isRecord(detail)) return null;
-  const state = detail.state;
-  if (!isRecord(state)) return null;
-  return state.loading === true && state.ready !== true;
-}
-
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
 const REFRESH_LOADING_OVERLAY_DELAY_MS = 220;
 
@@ -136,11 +123,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const assetFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [assetsLoading, setAssetsLoading] = useState(false);
-    const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
-    const [assetOverlayFading, setAssetOverlayFading] = useState(false);
-    const [shaderTransitionLoading, setShaderTransitionLoading] = useState(false);
     const [compositionLoading, setCompositionLoading] = useState(true);
     const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
     const previousRefreshTokenRef = useRef(refreshToken);
@@ -164,8 +146,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       if (refreshToken === previousRefreshTokenRef.current) return;
       previousRefreshTokenRef.current = refreshToken;
       if (loadCountRef.current === 0) return;
+      if (suppressLoadingOverlay) return;
       setCompositionLoading(true);
-    }, [refreshToken]);
+    }, [refreshToken, suppressLoadingOverlay]);
 
     useMountEffect(() => {
       const container = containerRef.current;
@@ -224,12 +207,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         const preventToggle = (e: Event) => e.stopImmediatePropagation();
         player.addEventListener("click", preventToggle, { capture: true });
 
-        const handleShaderTransitionState = (event: Event) => {
-          const loading = getShaderTransitionLoading(event);
-          if (loading !== null) setShaderTransitionLoading(loading);
-        };
-        player.addEventListener("shadertransitionstate", handleShaderTransitionState);
-
         const handleReady = () => {
           setCompositionLoading(false);
         };
@@ -242,7 +219,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         // Forward the iframe's native load event to the studio's onIframeLoad.
         const handleLoad = () => {
           loadCountRef.current++;
-          setShaderTransitionLoading(false);
           setCompositionLoading(true);
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
@@ -254,27 +230,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           }
           onLoad();
 
-          // Show a loading overlay until every `<video>`/`<audio>` and Lottie
-          // asset is ready. Without this users can click play before audio has
-          // buffered — the runtime is resilient (queued play() resolves once
-          // data arrives), but the overlay communicates why the first frame
-          // or first audio beat may lag.
-          //
-          // Skip the overlay on subsequent loads (content refreshes via
-          // refreshPlayer). The browser has already cached the assets from
-          // the first load, so they resolve near-instantly and the overlay
-          // just creates a disruptive flash.
-          //
-          // Poll with a 10 s safety cap (100 ticks × 100 ms). If the cap
-          // trips we hide the overlay so the UI doesn't appear stuck forever,
-          // but we log a debug warning so the case is diagnosable — a long
-          // cold video or a broken asset can legitimately exceed 10 s on a
-          // slow network.
+          // Keep polling media and motion readiness without covering the
+          // preview. The player remains usable while assets finish loading.
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           const isContentRefresh = loadCountRef.current > 1;
           let lastUnloaded = isContentRefresh ? false : hasUnloadedAssets(iframe, false);
           if (lastUnloaded) {
-            setAssetsLoading(true);
             let attempts = 0;
             assetPollRef.current = setInterval(() => {
               attempts += 1;
@@ -282,11 +243,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               if (!lastUnloaded || attempts > 100) {
                 if (assetPollRef.current) clearInterval(assetPollRef.current);
                 assetPollRef.current = null;
-                setAssetsLoading(false);
               }
             }, 100);
-          } else {
-            setAssetsLoading(false);
           }
         };
         iframe.addEventListener("load", handleLoad);
@@ -294,7 +252,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         cleanup = () => {
           iframe.removeEventListener("load", handleLoad);
           player.removeEventListener("click", preventToggle, { capture: true });
-          player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
           player.removeEventListener("ready", handleReady);
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
@@ -324,33 +281,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       };
     });
 
-    useEffect(() => {
-      if (assetFadeRef.current) {
-        clearTimeout(assetFadeRef.current);
-        assetFadeRef.current = null;
-      }
-
-      if (assetsLoading) {
-        setAssetOverlayVisible(true);
-        setAssetOverlayFading(false);
-        return;
-      }
-
-      setAssetOverlayFading(true);
-      assetFadeRef.current = setTimeout(() => {
-        setAssetOverlayVisible(false);
-        setAssetOverlayFading(false);
-        assetFadeRef.current = null;
-      }, 240);
-
-      return () => {
-        if (assetFadeRef.current) {
-          clearTimeout(assetFadeRef.current);
-          assetFadeRef.current = null;
-        }
-      };
-    }, [assetsLoading]);
-
     const showCompositionOverlay =
       !suppressLoadingOverlay &&
       !compositionOverlayDeferred &&
@@ -360,12 +290,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       suppressLoadingOverlay,
       deferred: compositionOverlayDeferred,
     });
-    const showAssetOverlay =
-      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay && !showRefreshOverlay;
-
     useEffect(() => {
-      onCompositionLoadingChange?.(showCompositionOverlay || showAssetOverlay);
-    }, [onCompositionLoadingChange, showCompositionOverlay, showAssetOverlay]);
+      onCompositionLoadingChange?.(showCompositionOverlay);
+    }, [onCompositionLoadingChange, showCompositionOverlay]);
 
     return (
       <div
@@ -407,27 +334,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500 motion-reduce:animate-none" />
               <p className="text-xs text-neutral-400">Preparing preview…</p>
             </div>
-          </div>
-        )}
-        {showAssetOverlay && (
-          <div
-            className="absolute inset-0 bg-black flex items-center justify-center z-20 select-none"
-            data-hyperframes-ignore=""
-            draggable={false}
-            style={{
-              opacity: assetOverlayFading ? 0 : 1,
-              pointerEvents: assetOverlayFading ? "none" : "auto",
-              transition: "opacity 240ms ease-out",
-            }}
-            onDragStart={(event) => event.preventDefault()}
-            onMouseDown={(event) => event.preventDefault()}
-            onPointerDown={(event) => event.preventDefault()}
-          >
-            <HyperframesLoader
-              title="Preparing preview assets"
-              detail="Waiting for media and motion assets before playback starts."
-              size={56}
-            />
           </div>
         )}
       </div>

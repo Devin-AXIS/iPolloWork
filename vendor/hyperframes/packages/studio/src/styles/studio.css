@@ -14,7 +14,7 @@
   --hf-studio-border: #262626;
   --hf-studio-text: #e5e5e5;
   --hf-studio-muted: #737373;
-  --hf-studio-divider: #ebebeb;
+  --hf-studio-divider: rgba(255, 255, 255, 0.075);
   --hf-panel-bg: #0c0c0e;
   --hf-panel-bg-inset: #121214;
   --hf-panel-input: #161618;
@@ -32,6 +32,15 @@
   --hf-shortcuts-bg: #161618;
   --hf-shortcuts-border: rgba(255, 255, 255, 0.08);
   --hf-shortcuts-divider: rgba(255, 255, 255, 0.06);
+  --hf-studio-header-bg: #15161a;
+  --hf-studio-controls-bg: #111216;
+  --hf-studio-toolbar-bg: #131419;
+  --hf-studio-button-bg: #202127;
+  --hf-timeline-clip-bg: #18181b;
+  --hf-timeline-clip-active: #202126;
+  --hf-timeline-clip-hover: #24252b;
+  --hf-timeline-clip-border: #303138;
+  --hf-timeline-clip-text: #e4e4e7;
 }
 
 :root[data-ipollowork-theme="light"] {
@@ -41,6 +50,7 @@
   --hf-studio-border: #e5e7eb;
   --hf-studio-text: #18181b;
   --hf-studio-muted: #71717a;
+  --hf-studio-divider: #dfe3e8;
   --hf-panel-bg: #ffffff;
   --hf-panel-bg-inset: #f7f7f8;
   --hf-panel-input: #f4f4f5;
@@ -64,6 +74,21 @@
   --hf-shortcuts-bg: #ffffff;
   --hf-shortcuts-border: #d8dde3;
   --hf-shortcuts-divider: #e5e7eb;
+  --hf-studio-header-bg: rgba(255, 255, 255, 0.9);
+  --hf-studio-controls-bg: #f5f6f9;
+  --hf-studio-toolbar-bg: #ffffff;
+  --hf-studio-button-bg: #f2f2f0;
+  --hf-timeline-clip-bg: #f5f6f9;
+  --hf-timeline-clip-active: #f5f6f9;
+  --hf-timeline-clip-hover: #eceef2;
+  --hf-timeline-clip-border: #cccccc;
+  --hf-timeline-clip-text: #20262d;
+}
+
+:root:not([data-ipollowork-theme="light"]) .hf-studio-properties-icon,
+:root:not([data-ipollowork-theme="light"]) .hf-timeline-toolbar-icon {
+  filter: invert(1) brightness(1.25);
+  opacity: 0.9;
 }
 
 :root:not([data-ipollowork-theme="light"]) {
@@ -375,7 +400,7 @@ button[aria-label="退出全屏"] {
   border-radius: 0.375rem;
   border: 1px solid var(--hf-shortcuts-border);
   background: var(--hf-panel-bg-1);
-  color: var(--hf-panel-text-0);
+  color: #18181b;
   padding: 0 0.5rem;
   font-size: 0.75rem;
   outline: none;

@@ -85,7 +85,7 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 }
 
 function ToolbarIcon({ src, size = 16 }: { src: string; size?: number }) {
-  return <img src={src} width={size} height={size} alt="" aria-hidden="true" />;
+  return <img className="hf-timeline-toolbar-icon" src={src} width={size} height={size} alt="" aria-hidden="true" />;
 }
 
 // fallow-ignore-next-line complexity
@@ -133,7 +133,7 @@ export function TimelineToolbar({
   });
 
   const iconButton =
-    "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35 disabled:cursor-not-allowed disabled:opacity-30";
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-white/10";
   const canSplit =
     Boolean(onSplitElement && selectedElement && canSplitElement(selectedElement)) &&
     currentTime > (selectedElement?.start ?? 0) &&
@@ -158,7 +158,7 @@ export function TimelineToolbar({
 
   return (
     <div
-      className="hf-timeline-toolbar flex h-11 items-center justify-between border-y border-[#ebebeb] bg-white px-4"
+      className="hf-timeline-toolbar flex h-11 items-center justify-between border-y border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-toolbar-bg)] px-4"
       data-testid="figma-timeline-toolbar"
       data-preserve-studio-selection="true"
     >

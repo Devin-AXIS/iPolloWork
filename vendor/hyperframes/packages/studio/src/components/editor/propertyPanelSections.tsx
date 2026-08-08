@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Plus, Type } from "../../icons/SystemIcons";
+import { Type } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { FIELD, LABEL, normalizeTextMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
@@ -400,7 +400,6 @@ export function TextSection({
   onImportFonts,
   onSetText,
   onSetTextFieldStyle,
-  onAddTextField,
   onRemoveTextField,
   hideOwnHeading = false,
 }: {
@@ -418,7 +417,6 @@ export function TextSection({
    *  false so the legacy (non-flat) call site is unaffected. */
   hideOwnHeading?: boolean;
 }) {
-  const track = useTrackDesignInput();
   const hasTextControls = isTextEditableSelection(element);
   const [activeTextFieldKey, setActiveTextFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
@@ -462,22 +460,7 @@ export function TextSection({
   const content = (
     <div className="space-y-4">
       <div className="grid gap-1.5">
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <span className={LABEL}>Text layers</span>
-          <button
-            type="button"
-            onClick={() => {
-              track("button", "Add text field");
-              void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
-                if (nextKey) setActiveTextFieldKey(nextKey);
-              });
-            }}
-            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
-          >
-            <Plus size={12} className="flex-shrink-0" />
-            <span className="truncate">Add text</span>
-          </button>
-        </div>
+        <span className={LABEL}>Text layers</span>
         <div className="grid gap-2">
           {textFields.map((field, index) => {
             const active = field.key === activeField.key;

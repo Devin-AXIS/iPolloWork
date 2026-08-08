@@ -302,7 +302,7 @@ export const PlayerControls = memo(function PlayerControls({
     <div
       // No own background/border: the transport blends into the preview
       // panel's surface — buttons carry their own chrome.
-      className="hf-player-controls flex h-[52px] flex-shrink-0 items-center gap-4 bg-[#f5f6f9] px-4"
+      className="hf-player-controls flex h-[52px] flex-shrink-0 items-center gap-4 bg-[var(--hf-studio-controls-bg)] px-4"
       aria-disabled={disabled || undefined}
       data-testid="figma-player-controls"
     >
@@ -328,7 +328,7 @@ export const PlayerControls = memo(function PlayerControls({
           type="button"
           onClick={() => setTimeDisplayMode(timeDisplayMode === "time" ? "frame" : "time")}
           disabled={disabled}
-          className="w-[76px] flex-shrink-0 text-left text-xs tabular-nums text-[#080808] transition-opacity hover:opacity-75 disabled:pointer-events-none"
+          className="w-[76px] flex-shrink-0 text-left text-xs tabular-nums text-[var(--hf-panel-text-1)] transition-opacity hover:opacity-75 disabled:pointer-events-none"
         >
           <span ref={timeDisplayRef}>{formatTime(0)}</span>
           {timeDisplayMode === "time" ? (

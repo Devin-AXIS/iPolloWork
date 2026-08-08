@@ -300,9 +300,11 @@ export function restoreLiftedElement(element: HTMLElement, lift: RevealLift): vo
  */
 export function useLayerRevealOverride({
   isPlaying,
+  currentTime,
   selectedElement,
 }: {
   isPlaying: boolean;
+  currentTime: number;
   selectedElement: HTMLElement | null;
 }): {
   scheduleReveal: (element: HTMLElement, delayMs: number) => void;
@@ -375,6 +377,15 @@ export function useLayerRevealOverride({
     const base = stateRef.current?.base;
     if (isPlaying || (base && selectedElement !== base)) restoreReveal();
   }, [cancelScheduledReveal, isPlaying, restoreReveal, selectedElement]);
+
+  // A paused seek must first restore the runtime-authored visibility at the new
+  // frame. The caller may schedule a new lift only when the selected element is
+  // genuinely visible there; an off-frame timeline selection remains available
+  // to the inspector without leaking onto the canvas.
+  useEffect(() => {
+    cancelScheduledReveal();
+    restoreReveal();
+  }, [cancelScheduledReveal, currentTime, restoreReveal]);
 
   // Unmount: never leave a timer or override behind.
   useEffect(

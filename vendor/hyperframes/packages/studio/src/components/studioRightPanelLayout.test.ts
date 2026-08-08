@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { flipScaleValue } from "./editor/propertyPanelFlatLayoutSection";
+import {
+  resolveInspectorElementKind,
+  resolveInspectorGroupOrder,
+  resolveOpenInspectorGroup,
+} from "./editor/PropertyPanelFlat";
 
 describe("Studio right panel layout", () => {
   it("offers six selectable HTML illustration capabilities", () => {
@@ -14,6 +19,103 @@ describe("Studio right panel layout", () => {
     expect(illustration).toContain("onChange={(event) =>");
     expect(illustration).not.toContain("disabled");
     expect(illustration).toContain("自包含 HTML 插画");
+  });
+
+  it("orders populated inspector groups for the selected element type", () => {
+    const availableGroupIds = [
+      "timing",
+      "layout",
+      "fill",
+      "stroke",
+      "appearance",
+      "mask",
+      "animation",
+      "transform-3d",
+      "text",
+      "grade",
+      "media",
+    ];
+    expect(
+      resolveInspectorGroupOrder({
+        elementKind: "text",
+        hasAnimationParameters: true,
+        availableGroupIds,
+      }),
+    ).toEqual([
+      "animation",
+      "text",
+      "layout",
+      "fill",
+      "appearance",
+      "stroke",
+      "mask",
+      "timing",
+      "transform-3d",
+      "grade",
+      "media",
+    ]);
+    expect(
+      resolveInspectorGroupOrder({
+        elementKind: "image",
+        hasAnimationParameters: false,
+        availableGroupIds,
+      }).slice(0, 4),
+    ).toEqual(["layout", "mask", "appearance", "media"]);
+    expect(
+      resolveInspectorGroupOrder({
+        elementKind: "video",
+        hasAnimationParameters: false,
+        availableGroupIds,
+      }).slice(0, 4),
+    ).toEqual(["media", "mask", "layout", "appearance"]);
+    expect(
+      resolveInspectorGroupOrder({
+        elementKind: "audio",
+        hasAnimationParameters: false,
+        availableGroupIds: ["timing", "media"],
+      }),
+    ).toEqual(["media", "timing"]);
+  });
+
+  it("opens the best available group without overriding a manual choice", () => {
+    expect(
+      resolveOpenInspectorGroup({
+        currentGroupId: "timing",
+        orderedGroupIds: ["animation", "timing"],
+        hasManualSelection: false,
+      }),
+    ).toBe("animation");
+    expect(
+      resolveOpenInspectorGroup({
+        currentGroupId: "layout",
+        orderedGroupIds: ["animation", "layout"],
+        hasManualSelection: true,
+      }),
+    ).toBe("layout");
+    expect(
+      resolveOpenInspectorGroup({
+        currentGroupId: "",
+        orderedGroupIds: ["media"],
+        hasManualSelection: false,
+      }),
+    ).toBe("media");
+    expect(
+      resolveOpenInspectorGroup({
+        currentGroupId: "",
+        orderedGroupIds: ["media", "timing"],
+        hasManualSelection: true,
+      }),
+    ).toBe("");
+  });
+
+  it("classifies inspector element types before preserving manual state", () => {
+    const panel = readFileSync(new URL("./editor/PropertyPanel.tsx", import.meta.url), "utf8");
+    expect(resolveInspectorElementKind("p", true)).toBe("text");
+    expect(resolveInspectorElementKind("IMG", false)).toBe("image");
+    expect(resolveInspectorElementKind("video", false)).toBe("video");
+    expect(resolveInspectorElementKind("audio", false)).toBe("audio");
+    expect(resolveInspectorElementKind("div", false)).toBe("other");
+    expect(panel).toContain("key={resolveInspectorElementKind(element.tagName, sections.text)}");
   });
 
   it("matches the Figma property-inspector group and timing states", () => {
@@ -138,6 +240,36 @@ describe("Studio right panel layout", () => {
     expect(colors).toContain('{ value: "rgb", label: "RGB" }');
     expect(colors).toContain('{ value: "hex", label: "HEX" }');
     expect(colors).toContain("toHexColor(draftColor).slice(1).toUpperCase()");
+  });
+
+  it("renders Radius as a numeric input without a dropdown affordance", () => {
+    const styles = readFileSync(
+      new URL("./editor/propertyPanelFlatStyleSections.tsx", import.meta.url),
+      "utf8",
+    );
+    const radiusRow = styles.slice(
+      styles.indexOf("function FlatRadiusRow"),
+      styles.indexOf("function FlatShadowBlendRows"),
+    );
+
+    expect(radiusRow).toContain('label="Radius"');
+    expect(radiusRow).toContain("liveCommit");
+    expect(radiusRow).not.toContain("dropdown");
+  });
+
+  it("hides the add-text-field action from both property panel variants", () => {
+    const flatTextSection = readFileSync(
+      new URL("./editor/propertyPanelFlatTextSection.tsx", import.meta.url),
+      "utf8",
+    );
+    const legacyTextSection = readFileSync(
+      new URL("./editor/propertyPanelSections.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(flatTextSection).not.toContain("Add text field");
+    expect(flatTextSection).not.toContain('data-flat-text-layer-add="true"');
+    expect(legacyTextSection).not.toContain('<span className="truncate">Add text</span>');
   });
 
   it("matches the expanded Figma Fill, Animation, Mask, and 3D Transform states", () => {
@@ -275,7 +407,10 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
     expect(panel).toContain('label={t("right.assets")}');
-    expect(panel).toContain('label="插画"');
+    expect(panel).toContain('label={t("right.illustration")}');
+    expect(panel).toContain('tooltip={t("right.illustrationTooltip")}');
+    expect(translations).toContain('"right.illustration": "Illustrations"');
+    expect(translations).toContain('"right.illustration": "插画"');
     expect(panel).toContain('<IllustrationTab />');
     expect(panel).not.toContain('label={t("right.renders")}');
     expect(panel).not.toContain('label={t("right.effects")}');
@@ -305,8 +440,8 @@ describe("Studio right panel layout", () => {
       'import propertiesIconSrc from "../icons/studioHeaderProperties.svg?url"',
     );
     expect(header).toContain('import exportIconSrc from "../icons/studioHeaderExport.svg?url"');
-    expect(header).toContain("hover:border-[#62666e]");
-    expect(header).toContain("active:bg-[#ededeb]");
+    expect(header).toContain("hover:border-[var(--hf-panel-text-3)]");
+    expect(header).toContain("hover:bg-[var(--hf-panel-hover)]");
     expect(header).toContain("hf-studio-header-export");
     expect(styles).toContain(".hf-studio-header-export {");
     expect(styles).toContain("color: #ffffff !important;");
@@ -318,7 +453,8 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain("overflow-x-auto");
     expect(panel).toContain("absolute right-3 top-1/2");
     expect(panel).toContain("border-[0.5px] border-[var(--hf-studio-divider)]");
-    expect(styles).toContain("--hf-studio-divider: #ebebeb");
+    expect(styles).toContain("--hf-studio-divider: rgba(255, 255, 255, 0.075)");
+    expect(styles).toContain("--hf-studio-divider: #dfe3e8");
     expect(header).not.toContain('t("header.undo")');
     expect(header).not.toContain('t("header.capture")');
     expect(header).not.toContain("studio-toggle-fullscreen");
@@ -361,6 +497,7 @@ describe("Studio right panel layout", () => {
       "utf8",
     );
     const toolbar = readFileSync(new URL("./TimelineToolbar.tsx", import.meta.url), "utf8");
+    const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
     const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
 
     expect(layout).toContain("export const LAYER_HEADER_W = 255");
@@ -388,6 +525,12 @@ describe("Studio right panel layout", () => {
     expect(layerHeader).toContain("hf-timeline-layer-header__visibility");
     expect(layerHeader).toContain("hf-timeline-layer-header__reorder");
     expect(toolbar).toContain("hf-timeline-toolbar");
+    expect(toolbar).toContain("bg-[var(--hf-studio-toolbar-bg)]");
+    expect(header).toContain("bg-[var(--hf-studio-header-bg)]");
+    expect(styles).toContain(".hf-studio-properties-icon");
+    expect(styles).toContain(".hf-timeline-toolbar-icon");
+    expect(styles).toContain("--hf-timeline-clip-bg: #18181b");
+    expect(styles).toContain("--hf-timeline-clip-bg: #f5f6f9");
     expect(styles).toContain(".hf-timeline-layer-header.is-selected");
     expect(styles).toContain("background-color: #20bbc0 !important");
     expect(styles).toContain(".hf-timeline-ruler-label");

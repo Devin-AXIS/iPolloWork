@@ -106,7 +106,10 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("handleDesignTokenChanges({ [name]: value })");
     expect(panelSource).toContain('type: "ipollowork:studio-design-token-change"');
     expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
-    expect(panelSource).not.toContain("onChooseBackgroundImage=");
+    expect(panelSource).toContain("pickLocalImageFile(\"选择视频背景图片\")");
+    expect(panelSource).toContain("readLocalImageAsDataUrl(pickedPath)");
+    expect(panelSource).toContain('"--ipw-bg-image": `url(\"${dataUrl}\")`');
+    expect(panelSource).toContain("onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}");
     expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
     expect(panelSource).toContain("top-[90px]");
   });
@@ -122,12 +125,14 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(panelSource).toContain("const syncStudioDesignTokens = React.useCallback");
-    expect(panelSource).toContain("syncStudioDesignTokens(parseDesignTokenValues(nextTokens))");
+    expect(panelSource).toContain("syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens)");
     expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
     expect(panelSource).not.toContain("key={`${sessionId}:${revision}:${studioHostPanel}`}");
     expect(previewPersistenceSource).toContain("parseHostDesignTokensMessage");
     expect(previewPersistenceSource).toContain("applyDesignTokensToPreview");
     expect(previewPersistenceSource).toContain("doc.documentElement.style.setProperty(name, value)");
+    expect(previewPersistenceSource).toContain("cssSource?: string");
+    expect(previewPersistenceSource).toContain("style[data-ipw-live-design-tokens]");
     expect(previewPersistenceSource).toContain("domEditSaveTimestampRef.current = Date.now()");
   });
 
@@ -140,10 +145,34 @@ describe("HyperFrames Video Studio", () => {
     expect(registrySource).toContain("function templateTokenAliasLine");
     expect(registrySource).toContain("/^--text-[A-Za-z0-9_-]+$/.test(name)");
     expect(registrySource).toContain("calc(var(${storageName}) * var(--ipw-type-scale)) !important");
+    expect(registrySource).toContain("var(--ipw-od-text-4xl, 2.5rem)");
     expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title");
     expect(registrySource).toContain(".body, .copy, .caption, .meta, .label, .metric, .stat, .badge");
     expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title, .body, .copy, .caption, .meta");
+    expect(registrySource).toContain("buildStableTokenBridgeCss");
+    expect(registrySource).toContain(".scene, .hero, .section, .content, .media");
+    expect(registrySource).toContain("box-shadow: var(--ipw-card-shadow) !important");
+    expect(registrySource).toContain("--ipw-motion-duration");
+    expect(registrySource).toContain("h1, [data-ipw-theme-role=\"heading\"], .title, .headline, .hero-title");
     expect(registrySource).not.toContain(":where(div, span)");
+  });
+
+  test("persists the embedded motion control instead of local-only state", () => {
+    const drawerSource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-system-drawer.tsx", import.meta.url),
+      "utf8",
+    );
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(drawerSource).toContain('"--ipw-motion-style": profile.value');
+    expect(drawerSource).toContain('"--ipw-motion-duration": profile.duration');
+    expect(drawerSource).not.toContain("const [motion, setMotion] = React.useState");
+    expect(panelSource).toContain("ensureVideoTokenBridge");
+    expect(panelSource).toContain("buildStableTokenBridgeCss");
+    expect(panelSource).toContain('replaceDesignTokenValue(source, "--ipw-type-scale", "1")');
   });
 
   test("keeps the quick toolbar visible and opens properties without hash-driven canvas resync", () => {
@@ -164,7 +193,7 @@ describe("HyperFrames Video Studio", () => {
     expect(desktopSource).toContain("new CustomEvent('ipollowork:studio-apply-selection'");
     expect(desktopSource).toContain("applyCanvasSelectionLive(target, { revealPanel: true })");
     expect(desktopSource).not.toContain("const current = document.querySelector('button[aria-label=\"Inspector\"]')");
-    expect(studioSource).toContain("const loadStudioRightPanel = () => import(\"./components/StudioRightPanel\")");
+    expect(studioSource).toContain("const loadStudioRightPanelModule = () => import(\"./components/StudioRightPanel\")");
     expect(studioSource).toContain("void loadStudioRightPanel()");
     expect(studioSource).toContain("function RightPanelLoadingFallback({ width }: { width: number })");
     expect(studioSource).toContain('t("right.openingProperties")');
@@ -230,7 +259,7 @@ describe("HyperFrames Video Studio", () => {
     expect(drawerSource).toContain("onTokenChangeMany(next)");
     expect(panelSource).toContain("const handleDesignTokenChanges = React.useCallback");
     expect(panelSource).toContain("for (const [name, value] of Object.entries(values))");
-    expect(panelSource).toContain("syncStudioDesignTokens(values)");
+    expect(panelSource).toContain("syncStudioDesignTokens(values, next)");
     expect(panelSource).toContain("onTokenChangeMany={handleDesignTokenChanges}");
   });
 
@@ -537,9 +566,9 @@ describe("HyperFrames Video Studio", () => {
     const deleteIndex = electronSource.indexOf('<button type="button" data-action="delete"');
     const advancedIndex = electronSource.indexOf('data-action="advanced"');
     const aiIndex = electronSource.indexOf('data-action="ai"');
-    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label="Delete selected element"');
-    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label="Open Design properties"');
-    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label="Ask AI about selected element"');
+    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label={tx("Delete selected element")}');
+    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label={tx("Open Design properties")}');
+    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label={tx("Ask AI about selected element")}');
 
     expect(deleteIndex).toBeGreaterThan(-1);
     expect(aiIndex).toBeGreaterThan(advancedIndex);
@@ -687,6 +716,16 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
   });
 
+  test("uses a low-contrast themed boundary beside Video Studio", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("border-r border-border/40 dark:border-white/[0.055]");
+    expect(sessionPageSource).not.toContain('border-[#EAEAEA]');
+  });
+
   test("batches right-panel drag updates and cleans up the interaction", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
@@ -781,7 +820,13 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain('data-ipw-bgm="true"');
     expect(contract).toContain("animationReferences");
     expect(contract).toContain("unresolved earlier requests");
-    expect(contract).toContain("never claim completion from structural validation alone");
+    expect(contract).toContain("If valid, stop using tools and answer immediately");
+    expect(contract).toContain("do not follow it with browser/screenshot/eval calls");
+    expect(contract).toContain("manual tag counting, parser scripts, file rereads, or extra shell validation");
+    expect(contract).toContain("at most 20 seconds");
+    expect(contract).toContain("on timeout abandon it without retrying");
+    expect(contract).toContain("Never start either auxiliary operation after validation");
+    expect(contract).toContain("authoritative completion gate");
     expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
     expect(contract).toContain("top-left/bottom-right placement");
     expect(contract).toContain("and local fallback");

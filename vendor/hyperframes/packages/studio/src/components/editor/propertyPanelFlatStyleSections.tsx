@@ -319,7 +319,6 @@ function FlatRadiusRow({
       tier={resolveValueTier(styles["border-radius"], "0px")}
       disabled={disabled}
       liveCommit
-      dropdown
       large
       onCommit={(next) => {
         const parsed = parseNumericValue(next);

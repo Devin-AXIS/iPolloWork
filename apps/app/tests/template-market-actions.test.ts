@@ -142,7 +142,8 @@ describe("template market actions", () => {
     expect(desktopMain).toContain("ArrayBuffer.isView(data)");
   });
 
-  test("clears a selected package after every install attempt", () => {
-    expect(marketDialog).toContain("await props.onImport(pendingImport); setPendingImport(null);");
+  test("clears a selected package only after a successful install", () => {
+    expect(marketDialog).toContain("if (await props.onImport(pendingImport)) setPendingImport(null)");
+    expect(sessionPage).toContain("if (await onImport(pendingImport, serverCategory)) setPendingImport(null)");
   });
 });

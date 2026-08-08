@@ -539,15 +539,17 @@ const AssistantMessage = React.memo(
           {assistantRenderSections.resultGroups.map((group, index) =>
             renderAssistantGroup(group, index, { highlightQuery })
           )}
-          <ArtifactList
-            messages={artifactMessages ?? [message]}
-            sessionId={sessionId}
-            title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}
-            entryPath={templateEntryPath}
-            supplementalFiles={artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined)}
-            artifactContext={artifactContext}
-            onOpenVideoStudio={onOpenVideoStudio}
-          />
+          {!isStreaming ? (
+            <ArtifactList
+              messages={artifactMessages ?? [message]}
+              sessionId={sessionId}
+              title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}
+              entryPath={templateEntryPath}
+              supplementalFiles={artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined)}
+              artifactContext={artifactContext}
+              onOpenVideoStudio={onOpenVideoStudio}
+            />
+          ) : null}
         </div>
       </Message>
     )
@@ -1163,7 +1165,7 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext }: MessageListProps) {
-  const isStreaming = status === "streaming" || status === "retrying"
+  const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages, status), [messages, status]);
   const latestAssistantMessageId = React.useMemo(
     () => getLatestArtifactAssistantMessageId(messages),
