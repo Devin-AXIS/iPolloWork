@@ -10,6 +10,7 @@ import {
 } from "../utils/studioSaveDiagnostics";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
+import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
 
 /**
  * Thin useCallback wrappers that guard on `domEditSelection` before
@@ -24,6 +25,7 @@ export function useGsapSelectionHandlers({
   deleteGsapAnimation,
   deleteAllForSelector,
   addGsapAnimation,
+  mutateMotion,
   addGsapProperty,
   removeGsapProperty,
   updateGsapFromProperty,
@@ -58,6 +60,11 @@ export function useGsapSelectionHandlers({
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     time: number,
+  ) => Promise<void>;
+  mutateMotion: (
+    sel: DomEditSelection,
+    targetKind: MotionTargetKind,
+    mutation: MotionMutationInput,
   ) => Promise<void>;
   addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
@@ -209,6 +216,19 @@ export function useGsapSelectionHandlers({
       }
     },
     [domEditSelection, addGsapAnimation, handleDomManualEditsReset, trackGsapHandlerFailure],
+  );
+
+  const handleMotionMutation = useCallback(
+    (targetKind: MotionTargetKind, mutation: MotionMutationInput) => {
+      if (!domEditSelection) return;
+      observeGsapMutation(
+        mutateMotion(domEditSelection, targetKind, mutation),
+        domEditSelection,
+        "mutate-motion",
+        mutation.operation === "remove" ? "Remove motion preset" : "Apply motion preset",
+      );
+    },
+    [domEditSelection, mutateMotion, observeGsapMutation],
   );
 
   const handleGsapAddProperty = useCallback(
@@ -431,6 +451,7 @@ export function useGsapSelectionHandlers({
   }, [domEditSelection, observeGsapMutation, removeAllKeyframes, selectedGsapAnimations]);
 
   return {
+    handleMotionMutation,
     handleGsapUpdateProperty,
     handleGsapUpdateMeta,
     handleGsapDeleteAnimation,

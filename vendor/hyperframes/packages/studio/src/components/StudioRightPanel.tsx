@@ -165,6 +165,7 @@ export function StudioRightPanel({
     handleGsapUpdateMeta,
     handleGsapDeleteAnimation,
     handleGsapAddAnimation,
+    handleMotionMutation,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
     handleGsapUpdateFromProperty,
@@ -351,6 +352,7 @@ export function StudioRightPanel({
         onAddGsapFromProperty={handleGsapAddFromProperty}
         onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
         onAddGsapAnimation={handleGsapAddAnimation}
+        onMutateMotion={handleMotionMutation}
         onCommitAnimatedProperty={commitAnimatedProperty}
         onCommitAnimatedProperties={commitAnimatedProperties}
         onAddKeyframe={handleGsapAddKeyframe}

@@ -60,10 +60,10 @@ interface UseTimelineSyncCallbacksParams {
  * playhead (the clamp below is the one sanctioned move — content shrank past it).
  */
 /**
- * Undo the `visibility: hidden` that refreshPlayer sets across a full reload.
- * Safe to call when the iframe was never hidden (idempotent no-op). Every reload
- * completion + failure path funnels through here so the preview can never get
- * stuck invisible.
+ * Reveal a deferred replacement iframe after its runtime and seek position are
+ * ready. Safe to call for an ordinary visible iframe (idempotent no-op). Every
+ * reload completion + failure path funnels through here so a staged player can
+ * never get stuck invisible.
  */
 export function revealIframe(iframe: HTMLIFrameElement | null): void {
   if (iframe && iframe.style.visibility === "hidden") {
@@ -301,10 +301,10 @@ export function useTimelineSyncCallbacks({
     const guardTime = startTime > 0.001 ? Math.max(0, startTime - 0.001) : 0.001;
     adapter.seek(guardTime);
     adapter.seek(startTime);
-    // The correct frame is now rendered — reveal the iframe that refreshPlayer hid
-    // for the reload, so the user sees the restored frame directly (never the raw
-    // all-clips DOM). Cleared unconditionally: any later failure path must not leave
-    // the preview stuck invisible.
+    // The correct frame is now rendered — reveal a deferred replacement iframe so
+    // the user sees the restored frame directly (never the raw all-clips DOM).
+    // Ordinary in-place initialization is unchanged because revealIframe is an
+    // idempotent no-op for an already-visible frame.
     revealIframe(iframeRef.current);
     // Keep non-React listeners such as the capture link and time display in sync
     // with the initial adapter seek on iframe load.

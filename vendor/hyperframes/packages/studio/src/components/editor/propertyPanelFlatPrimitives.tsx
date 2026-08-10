@@ -298,6 +298,7 @@ export function FlatSlider({
   disabled,
   centerTick,
   large = true,
+  commitMode = "live",
   onReset,
   onCommit,
 }: {
@@ -312,6 +313,8 @@ export function FlatSlider({
   centerTick?: boolean;
   /** Figma's labeled two-column slider used by expanded Layer sections. */
   large?: boolean;
+  /** Persist on release when each commit rewrites source instead of patching local UI state. */
+  commitMode?: "live" | "release";
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
 }) {
@@ -411,6 +414,10 @@ export function FlatSlider({
     }
   };
   const scheduleCommit = (nextDraft: number) => {
+    if (commitMode === "release") {
+      pendingRef.current = nextDraft;
+      return;
+    }
     const elapsed = Date.now() - lastCommitAtRef.current;
     if (elapsed >= 40) {
       commitDraft(nextDraft);

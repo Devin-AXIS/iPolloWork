@@ -9,6 +9,7 @@
  * does that conversion itself when given a `clipById` map.
  */
 import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-acorn";
+import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
 
@@ -29,6 +30,9 @@ export interface RuntimeTween {
   kill?: () => void;
   /** The timeline this tween lives in — used to re-insert a rebuilt tween. */
   parent?: RuntimeTimeline;
+  /** GSAP promotes the reserved `vars.data` field onto the runtime animation. */
+  data?: unknown;
+  __ipwMotionId?: string;
 }
 
 export interface RuntimeTimeline {
@@ -36,6 +40,13 @@ export interface RuntimeTimeline {
   duration?: () => number;
   time?: () => number;
   invalidate?: () => RuntimeTimeline;
+  /** GSAP keyframe tweens are represented by a nested timeline whose vars carry metadata. */
+  vars?: GsapVars;
+  parent?: RuntimeTimeline;
+  startTime?: () => number;
+  kill?: () => void;
+  data?: unknown;
+  __ipwMotionId?: string;
   /** Add a tween at an absolute position — used to rebuild a keyframe tween in place. */
   to?: (targets: Element[], vars: GsapVars, position?: number) => RuntimeTween;
 }
@@ -81,6 +92,31 @@ function timelinesOf(iframe: HTMLIFrameElement | null): Record<string, RuntimeTi
   } catch {
     return null;
   }
+}
+
+function runtimeAnimationById(
+  iframe: HTMLIFrameElement | null,
+  motionId: string,
+): RuntimeTween | null {
+  try {
+    const gsap = (
+      iframe?.contentWindow as unknown as {
+        gsap?: { getById?: (id: string) => RuntimeTween | null };
+      } | null
+    )?.gsap;
+    return gsap?.getById?.(motionId) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function ownsRuntimeAnimation(timeline: RuntimeTimeline, animation: RuntimeTween): boolean {
+  let current: RuntimeTween | RuntimeTimeline | undefined = animation;
+  for (let depth = 0; current && depth < 12; depth += 1) {
+    if (current === timeline) return true;
+    current = current.parent;
+  }
+  return false;
 }
 
 function isXY(p: unknown): p is { x: number; y: number } {
@@ -181,6 +217,93 @@ export interface ResolvedRuntimeTween {
   tween: RuntimeTween;
   /** The composition timeline that owns it. */
   timeline: RuntimeTimeline;
+  /** Explicit runtime targets when metadata lives on an ancestor keyframe timeline. */
+  targets?: Element[];
+}
+
+function resolveMotionOwner(
+  tween: RuntimeTween,
+  timeline: RuntimeTimeline,
+  motionId: string,
+): RuntimeTween | RuntimeTimeline | null {
+  let current: RuntimeTween | RuntimeTimeline | undefined = tween;
+  for (let depth = 0; current && depth < 12; depth += 1) {
+    const instance =
+      readMotionInstanceFromExtras(current.vars) ??
+      readMotionInstanceFromExtras({ data: current.data });
+    if (
+      instance?.id === motionId ||
+      current.vars?.id === motionId ||
+      current.__ipwMotionId === motionId
+    )
+      return current;
+    if (current === timeline) break;
+    current = current.parent;
+  }
+  return null;
+}
+
+/** Resolve one semantic motion tween by its stable instance id, never by playhead order. */
+export function resolveRuntimeMotionTween(
+  iframe: HTMLIFrameElement | null,
+  selector: string,
+  motionId: string,
+  expectedPosition?: number,
+): ResolvedRuntimeTween | null {
+  const timelines = timelinesOf(iframe);
+  if (!timelines) return null;
+  let target: Element | null = null;
+  try {
+    target = iframe?.contentDocument?.querySelector(selector) ?? null;
+  } catch {
+    return null;
+  }
+  if (!target) return null;
+  const direct = runtimeAnimationById(iframe, motionId);
+  if (direct) {
+    for (const timeline of Object.values(timelines)) {
+      if (ownsRuntimeAnimation(timeline, direct)) {
+        return { tween: direct, timeline, targets: [target] };
+      }
+    }
+  }
+  for (const timeline of Object.values(timelines)) {
+    if (!timeline?.getChildren) continue;
+    for (const tween of timeline.getChildren(true)) {
+      if (!matchesElement(tween, target)) continue;
+      // GSAP expands object-form keyframes into a wrapper timeline. The semantic
+      // `data` lives on that wrapper while only its child tweens carry targets.
+      // Walk upward so identity and target can be resolved together.
+      const owner = resolveMotionOwner(tween, timeline, motionId);
+      if (owner) return { tween: owner as RuntimeTween, timeline, targets: [target] };
+    }
+  }
+  // GSAP does not retain custom `data`/`id` on every object-keyframe wrapper.
+  // For an older untagged runtime, fall back only when the semantic motion's
+  // persisted absolute start resolves to exactly one top-level wrapper for the
+  // selected target. Ambiguous co-located custom animations deliberately miss.
+  if (typeof expectedPosition === "number" && Number.isFinite(expectedPosition)) {
+    for (const timeline of Object.values(timelines)) {
+      if (!timeline?.getChildren) continue;
+      const candidates = new Set<RuntimeTween | RuntimeTimeline>();
+      for (const tween of timeline.getChildren(true)) {
+        if (!matchesElement(tween, target)) continue;
+        let owner: RuntimeTween | RuntimeTimeline = tween;
+        for (let depth = 0; owner.parent && owner.parent !== timeline && depth < 12; depth += 1) {
+          owner = owner.parent;
+        }
+        const start = owner.startTime?.();
+        if (typeof start === "number" && Math.abs(start - expectedPosition) < 0.02) {
+          candidates.add(owner);
+        }
+      }
+      if (candidates.size === 1) {
+        const [owner] = candidates;
+        return { tween: owner as RuntimeTween, timeline, targets: [target] };
+      }
+    }
+  }
+  return null;
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   useCallback,
   useRef,
   useEffect,
+  useLayoutEffect,
   type ReactNode,
 } from "react";
 import { useTimelinePlayer, usePlayerStore } from "../../player";
@@ -31,6 +32,7 @@ export interface NLEContextValue {
   // player (from useTimelinePlayer — single instance for the whole shell)
   iframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   togglePlay: () => void;
+  previewRange: (start: number, duration: number) => void;
   seek: (time: number, options?: { keepPlaying?: boolean }) => boolean;
   refreshPlayer: () => void;
   onIframeLoad: () => void;
@@ -87,6 +89,7 @@ export function NLEProvider({
   const {
     iframeRef,
     togglePlay,
+    previewRange,
     seek,
     onIframeLoad: baseOnIframeLoad,
     refreshPlayer,
@@ -115,9 +118,9 @@ export function NLEProvider({
     height: number;
   } | null>(null);
 
-  // Lightweight reload: change iframe src instead of destroying the Player.
+  // Save playback state before NLEPreview mounts its staged replacement player.
   const prevRefreshKeyRef = useRef(refreshKey);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (refreshKey === prevRefreshKeyRef.current) return;
     prevRefreshKeyRef.current = refreshKey;
     refreshPlayer();
@@ -306,6 +309,7 @@ export function NLEProvider({
     refreshKey,
     iframeRef,
     togglePlay,
+    previewRange,
     seek,
     refreshPlayer,
     onIframeLoad,

@@ -14,7 +14,9 @@
  * uses (`resolveRuntimeTween`), so read and write agree on the target.
  */
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../utils/authoredOpacity";
+import type { CompiledMotion } from "@hyperframes/core/motion-presets";
 import {
+  resolveRuntimeMotionTween,
   resolveRuntimeTween,
   type RuntimeTween,
   type RuntimeTimeline,
@@ -48,6 +50,7 @@ export type RuntimeTweenChange =
   // (kill + recreate at the same position) instead of mutating it. Lets a design-panel
   // keyframe edit show instantly rather than soft-reloading the iframe (a flash).
   | { kind: "keyframe-rebuild"; pct: number; props: KeyframeStep }
+  | { kind: "motion"; motionId: string; compiled: CompiledMotion }
   // Apply a base `gsap.set` value to the element directly (`gsap.set(el, props)`).
   // A base set lives OFF the timeline, so there's no runtime tween to patch — but
   // the element is static on these channels, so setting them immediately reflects
@@ -213,6 +216,38 @@ function rebuildKeyframeTween(tween: RuntimeTween, pct: number, props: KeyframeS
   return true;
 }
 
+function rebuildMotionTween(
+  tween: RuntimeTween,
+  compiled: CompiledMotion,
+  resolvedTargets?: Element[],
+): boolean {
+  const parent = tween.parent;
+  const targets = resolvedTargets ?? tween.targets?.();
+  if (!parent?.to || !targets || targets.length === 0 || typeof tween.kill !== "function") {
+    return false;
+  }
+  const keyframes: Record<string, Record<string, number | string>> = {};
+  for (const frame of compiled.keyframes) {
+    keyframes[`${frame.percentage}%`] = {
+      ...frame.properties,
+      ...(frame.ease ? { ease: frame.ease } : {}),
+    };
+  }
+  tween.kill();
+  const replacement = parent.to(
+    targets,
+    {
+      keyframes,
+      duration: compiled.duration,
+      ease: compiled.ease,
+      ...compiled.extras,
+    },
+    compiled.position,
+  );
+  replacement.__ipwMotionId = String(compiled.extras.id ?? "");
+  return true;
+}
+
 /** The channels a change writes, for the resolver to disambiguate co-located tweens. */
 function changeChannels(change: RuntimeTweenChange): string[] | undefined {
   if (change.kind === "set") {
@@ -221,6 +256,7 @@ function changeChannels(change: RuntimeTweenChange): string[] | undefined {
     );
   }
   if (change.kind === "keyframe-rebuild") return Object.keys(change.props);
+  if (change.kind === "motion") return undefined;
   return undefined;
 }
 
@@ -241,6 +277,8 @@ function changeTouchesOpacity(change: RuntimeTweenChange): boolean {
   if (change.kind === "set" || change.kind === "global-set")
     return change.props.opacity !== undefined;
   if (change.kind === "keyframes") return change.keyframes.some((step) => "opacity" in step);
+  if (change.kind === "motion")
+    return change.compiled.keyframes.some((frame) => "opacity" in frame.properties);
   return "opacity" in change.props;
 }
 
@@ -253,8 +291,8 @@ function changeTouchesOpacity(change: RuntimeTweenChange): boolean {
  * first; the re-seek after the patch re-renders the animated value anyway.
  * Duck-typed (no instanceof): the targets live in the preview iframe's realm.
  */
-function restoreAuthoredOpacityForCapture(tween: RuntimeTween): void {
-  const targets = typeof tween.targets === "function" ? tween.targets() : [];
+function restoreAuthoredOpacityForCapture(tween: RuntimeTween, resolvedTargets?: Element[]): void {
+  const targets = resolvedTargets ?? (typeof tween.targets === "function" ? tween.targets() : []);
   for (const target of targets ?? []) {
     const el = target as HTMLElement | null;
     if (!el?.style || typeof el.getAttribute !== "function") continue;
@@ -266,11 +304,16 @@ function restoreAuthoredOpacityForCapture(tween: RuntimeTween): void {
 
 /** Apply `change` to the resolved tween. `true` if applied, `false` to soft-reload.
  *  `global-set` is handled before this (no tween) and never reaches here. */
-function applyChange(tween: RuntimeTween, change: RuntimeTweenChange): boolean {
+function applyChange(
+  tween: RuntimeTween,
+  change: RuntimeTweenChange,
+  resolvedTargets?: Element[],
+): boolean {
   if (change.kind === "set") return patchSet(tween, change.props);
   if (change.kind === "keyframes") return patchKeyframes(tween, change.keyframes);
   if (change.kind === "keyframe-rebuild")
     return rebuildKeyframeTween(tween, change.pct, change.props);
+  if (change.kind === "motion") return rebuildMotionTween(tween, change.compiled, resolvedTargets);
   return false;
 }
 
@@ -289,18 +332,21 @@ export function patchRuntimeTweenInPlace(
   // to the element so the edit shows instantly (no soft reload, no flash).
   if (change.kind === "global-set") return applyGlobalSet(iframe, selector, change.props);
   try {
-    const resolved = resolveRuntimeTween(
-      iframe,
-      selector,
-      change.kind === "set" ? "set" : "keyframe",
-      compositionId,
-      changeChannels(change),
-    );
+    const resolved =
+      change.kind === "motion"
+        ? resolveRuntimeMotionTween(iframe, selector, change.motionId, change.compiled.position)
+        : resolveRuntimeTween(
+            iframe,
+            selector,
+            change.kind === "set" ? "set" : "keyframe",
+            compositionId,
+            changeChannels(change),
+          );
     if (!resolved) return false;
-    const { tween, timeline } = resolved;
+    const { tween, timeline, targets } = resolved;
 
-    if (changeTouchesOpacity(change)) restoreAuthoredOpacityForCapture(tween);
-    if (!applyChange(tween, change)) return false;
+    if (changeTouchesOpacity(change)) restoreAuthoredOpacityForCapture(tween, targets);
+    if (!applyChange(tween, change, targets)) return false;
 
     // A rebuild already recreated the tween; set/keyframes mutate vars in place, so
     // invalidate to make GSAP re-read them on the next render. Either way, re-seek.
@@ -309,7 +355,7 @@ export function patchRuntimeTweenInPlace(
     // styles, and the color-grading engine hides its source elements with
     // `opacity: 0 !important` — so every graded element's from(opacity) re-captures
     // 0 as its end value and animates 0→0 forever (all graded elements vanish).
-    if (change.kind !== "keyframe-rebuild") {
+    if (change.kind !== "keyframe-rebuild" && change.kind !== "motion") {
       tween.invalidate?.();
     }
     seekToCurrent(iframe, timeline);

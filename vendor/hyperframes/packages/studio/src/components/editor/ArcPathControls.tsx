@@ -3,6 +3,7 @@ import type { ArcPathConfig, ArcPathSegment } from "@hyperframes/core/gsap-parse
 import { SliderControl } from "./propertyPanelPrimitives";
 import { LABEL } from "./propertyPanelHelpers";
 import { P } from "./panelTokens";
+import { useStudioI18n } from "../../i18n";
 
 interface ArcPathControlsProps {
   arcPath: ArcPathConfig;
@@ -21,6 +22,7 @@ export const ArcPathControls = memo(function ArcPathControls({
   onToggleAutoRotate,
   disabled,
 }: ArcPathControlsProps) {
+  const { tx } = useStudioI18n();
   const handleToggle = useCallback(() => {
     onToggle(!arcPath.enabled);
   }, [arcPath.enabled, onToggle]);
@@ -33,7 +35,7 @@ export const ArcPathControls = memo(function ArcPathControls({
     return (
       <div className="rounded-md border border-neutral-800 bg-neutral-900/50 px-3 py-2">
         <p className="text-[11px] text-neutral-500">
-          Add at least 2 position keyframes to enable arc motion.
+          {tx("Add at least 2 position keyframes to enable arc motion.")}
         </p>
       </div>
     );
@@ -42,14 +44,14 @@ export const ArcPathControls = memo(function ArcPathControls({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className={LABEL}>Arc Motion</span>
+        <span className={LABEL}>{tx("Arc Motion")}</span>
         <button
           type="button"
           onClick={handleToggle}
           disabled={disabled}
           className="relative rounded-full transition-all duration-150"
           style={{ width: 28, height: 16, background: arcPath.enabled ? P.accent : P.borderInput }}
-          title={arcPath.enabled ? "Disable arc motion" : "Enable arc motion"}
+          title={tx(arcPath.enabled ? "Disable arc motion" : "Enable arc motion")}
         >
           <span
             className="absolute top-[2px] left-0 rounded-full transition-transform duration-150"
@@ -66,7 +68,7 @@ export const ArcPathControls = memo(function ArcPathControls({
       {arcPath.enabled && (
         <>
           <div className="flex items-center justify-between">
-            <span className={LABEL}>Auto-Rotate</span>
+            <span className={LABEL}>{tx("Auto-Rotate")}</span>
             <button
               type="button"
               onClick={handleAutoRotate}
@@ -77,11 +79,11 @@ export const ArcPathControls = memo(function ArcPathControls({
                 height: 16,
                 background: arcPath.autoRotate ? P.accent : "#27272A",
               }}
-              title={
+              title={tx(
                 arcPath.autoRotate
                   ? "Disable auto-rotate along path"
-                  : "Rotate element to follow path tangent"
-              }
+                  : "Rotate element to follow path tangent",
+              )}
             >
               <span
                 className="absolute top-[2px] left-0 rounded-full transition-transform duration-150"
@@ -99,21 +101,23 @@ export const ArcPathControls = memo(function ArcPathControls({
             <div key={i} className="grid min-w-0 gap-1.5">
               <div className="flex items-center justify-between">
                 <span className={LABEL}>
-                  {segmentCount === 1 ? "Curviness" : `Segment ${i + 1}`}
+                  {tx(segmentCount === 1 ? "Curviness" : `Segment ${i + 1}`)}
                 </span>
                 {seg.cp1 && seg.cp2 && (
                   <button
                     type="button"
                     onClick={() => onUpdateSegment(i, { cp1: undefined, cp2: undefined })}
                     className="text-[9px] font-medium text-neutral-500 transition-colors hover:text-neutral-300"
-                    title="Reset to auto-generated control points"
+                    title={tx("Reset to auto-generated control points")}
                   >
-                    Reset
+                    {tx("Reset")}
                   </button>
                 )}
               </div>
               <SliderControl
-                trackName={segmentCount === 1 ? "Curviness" : `Segment ${i + 1} curviness`}
+                trackName={tx(
+                  segmentCount === 1 ? "Curviness" : `Segment ${i + 1} curviness`,
+                )}
                 value={seg.curviness}
                 min={0}
                 max={3}

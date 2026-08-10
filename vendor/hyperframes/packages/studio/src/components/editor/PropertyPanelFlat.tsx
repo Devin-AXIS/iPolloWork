@@ -215,20 +215,7 @@ export function PropertyPanelFlat({
   onConvertToKeyframes,
   gsapMultipleTimelines,
   gsapUnsupportedTimelinePattern,
-  onUpdateGsapProperty,
-  onUpdateGsapMeta,
-  onDeleteGsapAnimation,
-  onAddGsapProperty,
-  onRemoveGsapProperty,
-  onUpdateGsapFromProperty,
-  onAddGsapFromProperty,
-  onRemoveGsapFromProperty,
-  onAddGsapAnimation,
-  onSetArcPath,
-  onUpdateArcSegment,
-  onUnroll,
-  onUpdateKeyframeEase,
-  onSetAllKeyframeEases,
+  onMutateMotion,
 }: Pick<
   PropertyPanelProps,
   | "projectId"
@@ -262,6 +249,7 @@ export function PropertyPanelFlat({
   | "onAddGsapFromProperty"
   | "onRemoveGsapFromProperty"
   | "onAddGsapAnimation"
+  | "onMutateMotion"
   | "onSetArcPath"
   | "onUpdateArcSegment"
   | "onUnroll"
@@ -316,40 +304,10 @@ export function PropertyPanelFlat({
         ? "media"
         : "other";
   const hasAnimationParameters =
-    gsapAnimations.length > 0 &&
-    STUDIO_GSAP_PANEL_ENABLED &&
-    Boolean(
-      onUpdateGsapProperty &&
-        onUpdateGsapMeta &&
-        onDeleteGsapAnimation &&
-        onAddGsapProperty &&
-        onAddGsapAnimation,
-    );
+    STUDIO_GSAP_PANEL_ENABLED && Boolean(onMutateMotion);
   const showMotionTiming = Boolean(sections.timing);
   const gsapEffectHandlers =
-    hasAnimationParameters &&
-    onUpdateGsapProperty &&
-    onUpdateGsapMeta &&
-    onDeleteGsapAnimation &&
-    onAddGsapProperty &&
-    onAddGsapAnimation
-      ? {
-          onAddAnimation: onAddGsapAnimation,
-          onUpdateProperty: onUpdateGsapProperty,
-          onUpdateMeta: onUpdateGsapMeta,
-          onDeleteAnimation: onDeleteGsapAnimation,
-          onAddProperty: onAddGsapProperty,
-          onRemoveProperty: onRemoveGsapProperty ?? (() => {}),
-          onUpdateFromProperty: onUpdateGsapFromProperty,
-          onAddFromProperty: onAddGsapFromProperty,
-          onRemoveFromProperty: onRemoveGsapFromProperty,
-          onSetArcPath,
-          onUpdateArcSegment,
-          onUnroll,
-          onUpdateKeyframeEase,
-          onSetAllKeyframeEases,
-        }
-      : null;
+    hasAnimationParameters && onMutateMotion ? { onMutateMotion } : null;
   const showMotionEffects = gsapEffectHandlers !== null;
   const availableGroupIds = [
     ...(showMotionTiming ? ["timing"] : []),
@@ -601,7 +559,7 @@ export function PropertyPanelFlat({
     groups.push({
       id: "animation",
       title: "Animation",
-      summary: `${gsapAnimations.length} effect${gsapAnimations.length === 1 ? "" : "s"}`,
+      summary: "出现 · 动作 · 消失",
       content: (
         <FlatMotionSection
           element={element}

@@ -1,6 +1,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { editabilityForProvenance } from "@hyperframes/core/gsap-parser-acorn";
 import { resolveTweenDuration, resolveTweenStart } from "./globalTimeCompiler";
+import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
 
 export type TimelineAnimationPhase = "entrance" | "loop" | "exit";
 
@@ -26,13 +27,28 @@ export interface TimelineAnimationElementRange extends TimelineAnimationOwnerRan
   expandedParentStart?: number;
 }
 
+export interface TimelineAnimationOwnerLocator {
+  selector?: string;
+  hfId?: string;
+}
+
 const EDGE_EPSILON_SECONDS = 0.001;
 
 export function isAnimationSharedForOwner(
   animation: GsapAnimation,
   ownerId: string | null | undefined,
+  ownerLocator: TimelineAnimationOwnerLocator = {},
 ): boolean {
   if (!ownerId) return true;
+  const motion = readMotionInstanceFromExtras(animation.extras);
+  if (motion) {
+    const targetsOwner =
+      motion.target.elementId === ownerId ||
+      (ownerLocator.hfId !== undefined && motion.target.hfId === ownerLocator.hfId) ||
+      (ownerLocator.selector !== undefined && motion.target.selector === ownerLocator.selector) ||
+      motion.target.selector === `#${ownerId}`;
+    return !targetsOwner;
+  }
   const selectorParts = animation.targetSelector
     .split(",")
     .map((part) => part.trim())
@@ -43,10 +59,11 @@ export function isAnimationSharedForOwner(
 export function isTimelineAnimationDirectlyMovable(
   animation: GsapAnimation,
   ownerId: string | null | undefined,
+  ownerLocator: TimelineAnimationOwnerLocator = {},
 ): boolean {
   return (
     animation.method !== "set" &&
-    !isAnimationSharedForOwner(animation, ownerId) &&
+    !isAnimationSharedForOwner(animation, ownerId, ownerLocator) &&
     editabilityForProvenance(animation.provenance) === "direct" &&
     resolveTweenStart(animation) !== null
   );
@@ -82,10 +99,7 @@ function resolveRepeatCount(animation: GsapAnimation): number {
   return readNumericExtra(animation, "repeat") ?? 0;
 }
 
-function resolveAnimationSpanForDuration(
-  animation: GsapAnimation,
-  duration: number,
-): number {
+function resolveAnimationSpanForDuration(animation: GsapAnimation, duration: number): number {
   const repeat = resolveRepeatCount(animation);
   if (repeat < 0) return Number.POSITIVE_INFINITY;
   const repeatCount = Math.max(0, Math.floor(repeat));
@@ -102,10 +116,7 @@ function maxBaseDurationForSpan(animation: GsapAnimation, availableSpan: number)
   if (repeat < 0) return Math.max(0, availableSpan);
   const repeatCount = Math.max(0, Math.floor(repeat));
   const repeatDelay = Math.max(0, readNumericExtra(animation, "repeatDelay") ?? 0);
-  return Math.max(
-    0,
-    (availableSpan - repeatDelay * repeatCount) / (repeatCount + 1),
-  );
+  return Math.max(0, (availableSpan - repeatDelay * repeatCount) / (repeatCount + 1));
 }
 
 function hasLoopConfiguration(animation: GsapAnimation): boolean {
@@ -129,16 +140,17 @@ export function resolveTimelineAnimationPhase(
   animation: GsapAnimation,
   ownerRange: TimelineAnimationOwnerRange,
 ): TimelineAnimationPhase {
+  const motion = readMotionInstanceFromExtras(animation.extras);
+  if (motion?.phase === "enter") return "entrance";
+  if (motion?.phase === "emphasis") return "loop";
+  if (motion?.phase === "exit") return "exit";
   if (hasLoopConfiguration(animation)) return "loop";
 
   const animationStart = resolveTweenStart(animation);
   if (animationStart === null || ownerRange.duration <= 0) return "loop";
   const animationEnd = animationStart + resolveAnimationSpan(animation);
   const ownerEnd = ownerRange.start + ownerRange.duration;
-  const tolerance = Math.max(
-    EDGE_EPSILON_SECONDS,
-    Math.min(0.15, ownerRange.duration * 0.02),
-  );
+  const tolerance = Math.max(EDGE_EPSILON_SECONDS, Math.min(0.15, ownerRange.duration * 0.02));
   const touchesStart =
     animationStart <= ownerRange.start + tolerance && animationEnd > ownerRange.start;
   const touchesEnd = animationEnd >= ownerEnd - tolerance && animationStart < ownerEnd;

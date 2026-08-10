@@ -1,15 +1,13 @@
 import type { TemplateManifestV1 } from "@ipollowork/types/templates";
+import {
+  hyperframesStudioPort,
+  videoProjectDirectory,
+  videoProjectId,
+} from "@ipollowork/types/hyperframes";
+
+export { hyperframesStudioPort, videoProjectDirectory, videoProjectId };
 
 export const HYPERFRAMES_STUDIO_LABEL = "Local HyperFrames Studio";
-
-const HYPERFRAMES_PORT_BASE = 3_100;
-const HYPERFRAMES_PORT_RANGE = 800;
-
-export function hyperframesStudioPort(sessionId: string) {
-  let hash = 0;
-  for (const character of sessionId) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
-  return HYPERFRAMES_PORT_BASE + (hash % HYPERFRAMES_PORT_RANGE);
-}
 
 export function hyperframesStudioUrl(
   port = 3_002,
@@ -33,14 +31,6 @@ export function hyperframesStudioUrl(
   if (theme) params.set("ipolloworkTheme", theme);
   if (reloadToken != null) params.set("reload", String(reloadToken));
   return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?${params.toString()}`;
-}
-
-export function videoProjectId(sessionId: string) {
-  return sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
-
-export function videoProjectDirectory(sessionId: string) {
-  return `video/${videoProjectId(sessionId)}`;
 }
 
 export function videoProjectEntryPath(sessionId: string) {
@@ -116,6 +106,10 @@ export function videoTaskSystemContext(
     "- Interpret each request independently. Choose only the needed operations from update-element, add/remove/reorder-scene, apply-animation, add-voiceover, add-asset, restyle, or freeform-patch; this is an extensible planning vocabulary, not a fixed workflow.",
     "- For a small local edit, patch only that element. For a structural, multi-scene, or narrated edit, first form one complete internal operation plan from the current composition, then execute it without narrating the plan or creating a plan file.",
     "- Preserve unrelated scenes, media, timing, interactions, and user edits. Use freeform-patch only when the typed operations cannot express the request, and still obey the composition and validation contracts.",
+    "Semantic motion contract:",
+    "- For ordinary motion on an existing leaf text element, call `list_motion_presets` and then `mutate_motion`. The product determines the target type and compiles the preset into the current GSAP/HyperFrames timeline; do not hand-write equivalent GSAP.",
+    "- Address exactly one stable text selector, choose one of enter/emphasis/exit, use the returned stable preset id, and send only declared parameters. Replacing a phase is intentional; never stack two preset animations in the same phase.",
+    "- Treat voice-transcribed animation requests exactly like typed requests and use the same tools. Use custom GSAP only when the user explicitly requests an advanced effect that the preset catalog cannot express.",
     "Performance and runtime contract:",
     "- The app already bundles and runs HyperFrames. Never run npm/pnpm/yarn install, `npx`, catalog/version/update commands, preview/dev servers, or runtime health probes. Do not install a second HyperFrames copy.",
     "- Plan before editing. Batch compatible HTML/CSS/JS changes into one complete edit or write, then run one final validation. Do not alternate many tiny reads and edits; the validator reads the saved composition itself.",

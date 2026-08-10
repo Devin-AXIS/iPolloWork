@@ -9,7 +9,10 @@ import {
 
 describe("Studio right panel layout", () => {
   it("offers six selectable HTML illustration capabilities", () => {
-    const illustration = readFileSync(new URL("./sidebar/IllustrationTab.tsx", import.meta.url), "utf8");
+    const illustration = readFileSync(
+      new URL("./sidebar/IllustrationTab.tsx", import.meta.url),
+      "utf8",
+    );
     expect(illustration).toContain('id: "ian-xiaohei-illustrations"');
     expect(illustration).toContain('id: "html-infographic"');
     expect(illustration).toContain('id: "html-concept-explainer"');
@@ -212,12 +215,10 @@ describe("Studio right panel layout", () => {
     expect(layout).toContain("<RotateCw size={16}");
     expect(layout).toContain("<FlipHorizontal size={16}");
     expect(layout).toContain("<FlipVertical size={16}");
-    expect(layout).toContain('aria-label="Flip horizontally"');
-    expect(layout).toContain('aria-label="Flip vertically"');
-    expect(layout).toContain('commitScaleFlip("scaleX")');
-    expect(layout).toContain('commitScaleFlip("scaleY")');
-    expect(layout).not.toContain("Flip horizontally (unavailable)");
-    expect(layout).not.toContain("Flip vertically (unavailable)");
+    expect(layout).toContain('aria-label={tx("Flip horizontally (unavailable)")}');
+    expect(layout).toContain('aria-label={tx("Flip vertically (unavailable)")}');
+    expect(layout).not.toContain('commitScaleFlip("scaleX")');
+    expect(layout).not.toContain('commitScaleFlip("scaleY")');
     expect(flipScaleValue(1)).toBe(-1);
     expect(flipScaleValue(-1.25)).toBe(1.25);
     expect(flipScaleValue(0)).toBe(-1);
@@ -286,6 +287,10 @@ describe("Studio right panel layout", () => {
       new URL("./editor/propertyPanelFlatMotionSection.tsx", import.meta.url),
       "utf8",
     );
+    const semanticMotion = readFileSync(
+      new URL("./editor/SemanticMotionPanel.tsx", import.meta.url),
+      "utf8",
+    );
     const transform = readFileSync(
       new URL("./editor/propertyPanel3dTransform.tsx", import.meta.url),
       "utf8",
@@ -315,9 +320,14 @@ describe("Studio right panel layout", () => {
     expect(fill).toContain('{ value: "hex", label: "HEX" }');
     expect(fill).toContain('aria-label={tx("Pick color from screen")}');
     expect(fill).toContain('className="grid grid-cols-6 gap-2"');
-    expect(animation).toContain('aria-label={tx("Add animation")}');
-    expect(animation).toContain("callbacks.onDeleteAnimation(animation.id)");
-    expect(animation).toContain('kind === "position" ? "Start" : "Duration"');
+    expect(animation).toContain("<SemanticMotionPanel");
+    expect(animation).toContain("onPreview={previewRange}");
+    expect(animation).not.toContain("旧版");
+    expect(semanticMotion).toContain('{ id: "enter", label: "出现" }');
+    expect(semanticMotion).toContain('{ id: "emphasis", label: "动作" }');
+    expect(semanticMotion).toContain('{ id: "exit", label: "消失" }');
+    expect(semanticMotion).toContain('label="时长"');
+    expect(semanticMotion).toContain("SPEEDS.map");
     expect(transform).toContain("Drag to adjust the view");
     expect(transform).toContain('"Low Angle"');
     expect(transform).toContain("aria-expanded={presetOpen}");
@@ -411,7 +421,7 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('tooltip={t("right.illustrationTooltip")}');
     expect(translations).toContain('"right.illustration": "Illustrations"');
     expect(translations).toContain('"right.illustration": "插画"');
-    expect(panel).toContain('<IllustrationTab />');
+    expect(panel).toContain("<IllustrationTab />");
     expect(panel).not.toContain('label={t("right.renders")}');
     expect(panel).not.toContain('label={t("right.effects")}');
     expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');
@@ -482,7 +492,7 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain("<Suspense");
     expect(panel).toContain("key={rightPanelTab}");
     expect(panel).not.toContain('import { PropertyPanel } from "./editor/PropertyPanel"');
-    expect(panel).not.toContain('import { BlocksTab,');
+    expect(panel).not.toContain("import { BlocksTab,");
     expect(panel).toContain("const propertyPanel = singleDomEditSelection ? (");
     expect(panel).toContain("propertyPanelContent");
   });
@@ -579,23 +589,39 @@ describe("Studio right panel layout", () => {
   });
 
   it("keeps preview refresh loading local to the canvas", () => {
-    const player = readFileSync(new URL("../player/components/Player.tsx", import.meta.url), "utf8");
+    const player = readFileSync(
+      new URL("../player/components/Player.tsx", import.meta.url),
+      "utf8",
+    );
     const preview = readFileSync(new URL("./nle/NLEPreview.tsx", import.meta.url), "utf8");
     const previewPane = readFileSync(new URL("./nle/PreviewPane.tsx", import.meta.url), "utf8");
     const nleContext = readFileSync(new URL("./nle/NLEContext.tsx", import.meta.url), "utf8");
+    const timelinePlayer = readFileSync(
+      new URL("../player/hooks/useTimelinePlayer.ts", import.meta.url),
+      "utf8",
+    );
 
     expect(player).toContain("const REFRESH_LOADING_OVERLAY_DELAY_MS = 220");
     expect(player).toContain("function shouldShowRefreshLoadingOverlay");
     expect(player).toContain("setCompositionLoading(true)");
     expect(player).toContain('data-testid="composition-refresh-loading-overlay"');
-    expect(player).toContain("h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500");
+    expect(player).toContain(
+      "h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500",
+    );
     expect(player).toContain("Preparing preview…");
-    expect(player).toContain("onCompositionLoadingChange?.(showCompositionOverlay || showAssetOverlay)");
-    expect(player).not.toContain("onCompositionLoadingChange?.(showCompositionOverlay || showRefreshOverlay");
+    expect(player).toContain("onCompositionLoadingChange?.(showCompositionOverlay)");
+    expect(player).not.toContain("onCompositionLoadingChange?.(showRefreshOverlay)");
     expect(preview).toContain("refreshToken?: number");
-    expect(preview).toContain("refreshToken={refreshToken}");
+    expect(preview).toContain("refreshToken={slot.refreshToken}");
+    expect(preview).toContain("visibleSlot");
+    expect(preview).toContain("loadingSlot");
+    expect(preview).toContain("deferReveal={incoming}");
+    expect(player).toContain("onReadyToReveal");
+    expect(player).toContain('iframe.style.visibility = "hidden"');
     expect(previewPane).toContain("refreshToken={refreshKey}");
     expect(nleContext).toContain("refreshKey?: number");
+    expect(nleContext).toContain("useLayoutEffect(() =>");
+    expect(timelinePlayer).not.toContain("iframe.src = url.toString()");
   });
 
   it("matches the Figma playback bar while preserving the existing controls", () => {
@@ -613,7 +639,7 @@ describe("Studio right panel layout", () => {
     expect(controls).toContain("figmaPlayerRepeat.svg?url");
     expect(controls).toContain("figmaPlayerVolume.svg?url");
     expect(controls).toContain("h-[52px]");
-    expect(controls).toContain("bg-[#f5f6f9]");
+    expect(controls).toContain("bg-[var(--hf-studio-controls-bg)]");
     expect(controls).toContain("bg-[#20bbc0]");
     expect(controls).toContain("bg-[#858a94]");
     expect(controls.indexOf("<SpeedMenu")).toBeLessThan(controls.indexOf("<LoopButton"));
@@ -678,13 +704,12 @@ describe("Studio right panel layout", () => {
     const i18n = readFileSync(new URL("../i18n.tsx", import.meta.url), "utf8");
 
     expect(assets).toContain("useStudioI18n");
-    expect(assets).toContain('t("assets.import")');
-    expect(assets).toContain('t("assets.dropUpload")');
-    expect(assets).toContain('t("assets.mediaTypes")');
-    expect(assets).toContain('placeholder={t("assets.searchPlaceholder")}');
+    expect(assets).toContain('tx("Import")');
+    expect(assets).toContain('tx("Drop files to upload")');
+    expect(assets).toContain('tx("Images, video, audio, and fonts")');
+    expect(assets).toContain('placeholder={tx("Search assets…")}');
     expect(assets).not.toContain(">Import<");
-    expect(assets).not.toContain("Drop files to upload");
-    expect(i18n).toContain('"assets.import": "Import"');
-    expect(i18n).toContain('"assets.import": "导入"');
+    expect(i18n).toContain('Import: "导入"');
+    expect(i18n).toContain('"Drop files to upload": "拖入文件以上传"');
   });
 });

@@ -18,6 +18,7 @@ import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureT
 import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
+import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
 import {
   collectTimelineAncestorIds,
   resolveTimelineTreeSelectionId,
@@ -67,6 +68,11 @@ export interface UseDomEditWiringParams {
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     time: number,
+  ) => Promise<void>;
+  mutateMotion: (
+    sel: DomEditSelection,
+    targetKind: MotionTargetKind,
+    mutation: MotionMutationInput,
   ) => Promise<void>;
   addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
@@ -141,6 +147,7 @@ export function useDomEditWiring({
   deleteGsapAnimation,
   deleteAllForSelector,
   addGsapAnimation,
+  mutateMotion,
   addGsapProperty,
   removeGsapProperty,
   updateGsapFromProperty,
@@ -260,6 +267,7 @@ export function useDomEditWiring({
     deleteGsapAnimation,
     deleteAllForSelector,
     addGsapAnimation,
+    mutateMotion,
     addGsapProperty,
     removeGsapProperty,
     updateGsapFromProperty,

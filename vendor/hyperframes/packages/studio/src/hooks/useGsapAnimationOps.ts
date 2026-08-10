@@ -14,7 +14,17 @@ import {
   assignGsapTargetAutoIdIfNeeded,
   ensureElementAddressable,
 } from "./gsapScriptCommitHelpers";
-import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
+import type {
+  CommitMutation,
+  CommitMutationOptions,
+  SafeGsapCommitMutation,
+} from "./gsapScriptCommitTypes";
+import {
+  compileMotionInstance,
+  createMotionInstance,
+  type MotionMutationInput,
+  type MotionTargetKind,
+} from "@hyperframes/core/motion-presets";
 
 interface SdkAnimationDeps {
   sdkSession?: Composition | null;
@@ -29,6 +39,40 @@ interface GsapAnimationOpsParams extends SdkAnimationDeps {
   showToast: (message: string, tone?: "error" | "info") => void;
 }
 
+function buildMotionInstantPatch(
+  selector: string,
+  targetKind: MotionTargetKind,
+  mutation: MotionMutationInput,
+  locator: { elementId?: string; hfId?: string },
+): CommitMutationOptions["instantPatch"] | undefined {
+  if (
+    mutation.operation !== "upsert" ||
+    !mutation.presetId ||
+    mutation.start === undefined ||
+    mutation.duration === undefined ||
+    !mutation.parameters
+  ) {
+    return undefined;
+  }
+  try {
+    const instance = createMotionInstance({
+      presetId: mutation.presetId,
+      target: { selector, ...locator },
+      targetKind,
+      start: mutation.start,
+      duration: mutation.duration,
+      parameters: mutation.parameters,
+    });
+    const compiled = compileMotionInstance(instance);
+    return {
+      selector: compiled.targetSelector,
+      change: { kind: "motion", motionId: instance.id, compiled },
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export function useGsapAnimationOps({
   projectIdRef,
   activeCompPath,
@@ -38,6 +82,49 @@ export function useGsapAnimationOps({
   sdkSession,
   sdkDeps,
 }: GsapAnimationOpsParams) {
+  const mutateMotion = useCallback(
+    async (
+      selection: DomEditSelection,
+      targetKind: MotionTargetKind,
+      mutation: MotionMutationInput,
+    ) => {
+      const { selector, autoId } = ensureElementAddressable(selection);
+      if (autoId) {
+        const projectId = projectIdRef.current;
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        if (!projectId) return;
+        const assigned = await assignGsapTargetAutoIdIfNeeded({
+          projectId,
+          targetPath,
+          selection,
+          autoId,
+          showToast,
+        });
+        if (!assigned) return;
+      }
+      const locator = {
+        ...(selection.id || autoId ? { elementId: selection.id ?? autoId } : {}),
+        ...(selection.hfId ? { hfId: selection.hfId } : {}),
+      };
+      const instantPatch = buildMotionInstantPatch(selector, targetKind, mutation, locator);
+      await commitMutation(
+        selection,
+        {
+          type: "mutate-motion",
+          ...mutation,
+          targetSelector: selector,
+          targetKind,
+          ...locator,
+        },
+        {
+          label: mutation.operation === "remove" ? "Remove motion preset" : "Apply motion preset",
+          softReload: true,
+          ...(instantPatch ? { instantPatch } : {}),
+        },
+      );
+    },
+    [activeCompPath, commitMutation, projectIdRef, showToast],
+  );
   const updateGsapMeta = useCallback(
     async (
       selection: DomEditSelection,
@@ -277,6 +364,7 @@ export function useGsapAnimationOps({
   );
 
   return {
+    mutateMotion,
     updateGsapMeta,
     deleteGsapAnimation,
     deleteAllForSelector,

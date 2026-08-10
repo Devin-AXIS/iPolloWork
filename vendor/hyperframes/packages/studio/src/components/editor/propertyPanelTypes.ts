@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import type { ArcPathSegment, GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
+import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
 
 export interface BackgroundRemovalProgress {
   status: "processing" | "complete" | "failed";
@@ -85,6 +86,7 @@ export interface PropertyPanelProps {
   onAddGsapFromProperty?: (animId: string, prop: string) => void;
   onRemoveGsapFromProperty?: (animId: string, prop: string) => void;
   onAddGsapAnimation?: (method: "to" | "from" | "set" | "fromTo") => void;
+  onMutateMotion?: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void;
   onSetArcPath?: (
     animId: string,
     config: {

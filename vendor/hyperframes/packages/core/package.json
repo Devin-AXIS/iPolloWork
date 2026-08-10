@@ -52,6 +52,12 @@
       "import": "./src/editing/affordances.ts",
       "types": "./src/editing/affordances.ts"
     },
+    "./motion-presets": {
+      "bun": "./src/motionPresets.ts",
+      "node": "./dist/motionPresets.js",
+      "import": "./src/motionPresets.ts",
+      "types": "./src/motionPresets.ts"
+    },
     "./variables": {
       "bun": "./src/variables.ts",
       "node": "./dist/variables.js",
