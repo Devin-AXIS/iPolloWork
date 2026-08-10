@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Diagonal Slice</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #111; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; }
+      .scene { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+      .outgoing { background: #f3eadb; color: #1a1917; }
+      .incoming { background: #2838ff; color: #fff; clip-path: polygon(100% 0, 100% 0, 76% 100%, 76% 100%); }
+      .band { position: absolute; top: -260px; bottom: -260px; left: -360px; width: 250px; transform: skewX(-20deg); background: #ffdf32; box-shadow: 0 0 0 22px #141414; }
+      .eyebrow { font-size: 20px; font-weight: 900; letter-spacing: .32em; }
+      h1 { margin: 24px 0 0; font-size: 156px; line-height: .86; letter-spacing: -.076em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="transition-diagonal-slice" data-width="1920" data-height="1080" data-start="0" data-duration="1.15">
+      <section class="scene outgoing" data-hf-id="tds-outgoing" data-layout-allow-overlap data-layout-allow-occlusion><div><div class="eyebrow">CHAPTER ONE</div><h1>Set the pace.</h1></div></section>
+      <section class="scene incoming" data-hf-id="tds-incoming" data-layout-allow-overlap data-layout-allow-occlusion><div><div class="eyebrow">CHAPTER TWO</div><h1>Change direction.</h1></div></section>
+      <div class="band" data-layout-ignore></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .to(".outgoing", { xPercent: -14, scale: .94, duration: .95, ease: "power4.inOut" }, 0)
+        .to(".incoming", { clipPath: "polygon(0% 0, 100% 0, 100% 100%, 0% 100%)", duration: .95, ease: "power4.inOut" }, .08)
+        .fromTo(".band", { x: -280 }, { x: 2580, duration: 1, ease: "power4.inOut" }, 0)
+        .from(".incoming h1", { x: 90, opacity: 0, duration: .58, ease: "power3.out" }, .42);
+      window.__timelines["transition-diagonal-slice"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 1.15))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

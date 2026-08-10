@@ -7,14 +7,12 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { getPersistedRenderSettings } from "./renders/renderSettings";
-import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { useStudioI18n } from "../i18n";
 
 export interface StudioLeftSidebarProps {
   leftSidebarRef: RefObject<LeftSidebarHandle | null>;
   onSelectComposition: (comp: string) => void;
   onAddBlock: (blockName: string) => void;
-  onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
   onLint: () => void;
   linting: boolean;
   lintFindingCount?: number;
@@ -27,7 +25,6 @@ export function StudioLeftSidebar({
   leftSidebarRef,
   onSelectComposition,
   onAddBlock,
-  onPreviewBlock,
   onLint,
   linting,
   lintFindingCount,
@@ -150,7 +147,6 @@ export function StudioLeftSidebar({
         lintFindingsByFile={lintFindingsByFile}
         onToggleCollapse={toggleLeftSidebar}
         onAddBlock={onAddBlock}
-        onPreviewBlock={onPreviewBlock}
         onAddAssetToTimeline={onAddAssetToTimeline}
       />
       {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via

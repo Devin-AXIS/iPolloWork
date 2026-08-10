@@ -10,13 +10,13 @@ import {
 
 describe("motion presets", () => {
   it("ships stable text and element presets across all three phases", () => {
-    expect(MOTION_PRESETS).toHaveLength(29);
-    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(29);
-    expect(listMotionPresets({ targetKind: "text", phase: "enter" })).toHaveLength(8);
-    expect(listMotionPresets({ targetKind: "text", phase: "emphasis" })).toHaveLength(6);
+    expect(MOTION_PRESETS).toHaveLength(50);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(50);
+    expect(listMotionPresets({ targetKind: "text", phase: "enter" })).toHaveLength(14);
+    expect(listMotionPresets({ targetKind: "text", phase: "emphasis" })).toHaveLength(12);
     expect(listMotionPresets({ targetKind: "text", phase: "exit" })).toHaveLength(6);
-    expect(listMotionPresets({ targetKind: "element", phase: "enter" })).toHaveLength(3);
-    expect(listMotionPresets({ targetKind: "element", phase: "emphasis" })).toHaveLength(3);
+    expect(listMotionPresets({ targetKind: "element", phase: "enter" })).toHaveLength(7);
+    expect(listMotionPresets({ targetKind: "element", phase: "emphasis" })).toHaveLength(14);
     expect(listMotionPresets({ targetKind: "element", phase: "exit" })).toHaveLength(3);
     expect(
       listMotionPresets({ targetKind: "text", phase: "enter", tone: "modern" }).map(
@@ -94,6 +94,106 @@ describe("motion presets", () => {
     expect(character.targetSelector).toBe("#mixed [data-ipw-motion-char]");
     expect(character.extras.stagger).toBe(0.06);
     expect(word.targetSelector).toBe("#mixed > [data-ipw-motion-word]");
+  });
+
+  it("compiles editable React Bits-inspired text, general, and background templates", () => {
+    const text = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.enter.blur-reveal",
+        target: { selector: "#headline" },
+        targetKind: "text",
+        start: 0,
+        parameters: { unit: "word", stagger: 0.08, blur: 18, direction: "up" },
+      }),
+    );
+    const general = compileMotionInstance(
+      createMotionInstance({
+        presetId: "motion.enter.content-reveal",
+        target: { selector: "#card" },
+        targetKind: "element",
+        start: 0,
+        parameters: { direction: "left", distance: 80, initialOpacity: 0.2, initialScale: 0.9 },
+      }),
+    );
+    const background = compileMotionInstance(
+      createMotionInstance({
+        presetId: "background.emphasis.molten-flow",
+        target: { selector: "#background" },
+        targetKind: "element",
+        start: 0,
+        parameters: { color1: "#111111", color2: "#222222", color3: "#FFFFFF", glow: 1.4 },
+      }),
+    );
+
+    expect(text.targetSelector).toBe("#headline > [data-ipw-motion-word]");
+    expect(text.keyframes[0]?.properties.filter).toContain("blur(18px)");
+    expect(general.keyframes[0]?.properties).toMatchObject({ x: 80, y: 0, opacity: 0.2 });
+    expect(background.duration).toBe(3.2);
+    expect(background.keyframes.map((keyframe) => keyframe.properties.backgroundColor)).toEqual([
+      "#111111",
+      "#222222",
+      "#FFFFFF",
+      "#111111",
+    ]);
+  });
+
+  it("keeps color animations theme-aware until the user chooses custom colors", () => {
+    const text = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.emphasis.shiny-sweep",
+        target: { selector: "#headline" },
+        targetKind: "text",
+        start: 0,
+        parameters: { colorSource: "theme" },
+      }),
+    );
+    const background = compileMotionInstance(
+      createMotionInstance({
+        presetId: "background.emphasis.light-rays",
+        target: { selector: "#background" },
+        targetKind: "element",
+        start: 0,
+        parameters: { colorSource: "theme" },
+      }),
+    );
+    const custom = compileMotionInstance(
+      createMotionInstance({
+        presetId: "element.emphasis.spotlight-card",
+        target: { selector: "#card" },
+        targetKind: "element",
+        start: 0,
+        parameters: { colorSource: "custom", color: "#FF5500" },
+      }),
+    );
+
+    expect(text.keyframes[1]?.properties.color).toBe("var(--ipw-color-accent, #7c3aed)");
+    expect(background.keyframes.map((keyframe) => keyframe.properties.backgroundColor)).toEqual([
+      "var(--ipw-color-bg, #0B1020)",
+      "var(--ipw-color-primary, #2563EB)",
+      "var(--ipw-color-accent, #FFFFFF)",
+      "var(--ipw-color-bg, #0B1020)",
+    ]);
+    expect(custom.keyframes[1]?.properties.filter).toContain("#FF5500");
+  });
+
+  it("compiles every catalog preset to bounded editable keyframes", () => {
+    for (const preset of MOTION_PRESETS) {
+      const targetKind = preset.targetKinds[0];
+      const compiled = compileMotionInstance(
+        createMotionInstance({
+          presetId: preset.id,
+          target: { selector: "#subject" },
+          targetKind,
+          start: 0,
+        }),
+      );
+      expect(compiled.keyframes.length, preset.id).toBeGreaterThanOrEqual(2);
+      expect(compiled.keyframes[0]?.percentage, preset.id).toBe(0);
+      expect(compiled.keyframes.at(-1)?.percentage, preset.id).toBe(100);
+      expect(compiled.keyframes.every((keyframe) => Number.isFinite(keyframe.percentage))).toBe(
+        true,
+      );
+    }
   });
 
   it("rejects unknown and unsafe parameters structurally", () => {

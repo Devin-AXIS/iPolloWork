@@ -206,6 +206,13 @@ export function FlatMediaSection({
             max={100}
             tier={volumePercent === 100 ? "default" : "explicitCustom"}
             displayValue={`${volumePercent}%`}
+            commitMode="release"
+            onPreview={(next) => {
+              (el as HTMLMediaElement).volume = next / 100;
+            }}
+            onPreviewCancel={() => {
+              (el as HTMLMediaElement).volume = volume;
+            }}
             onCommit={(next) => void onSetAttribute("volume", formatNumericValue(next / 100))}
           />
           <FlatSlider
@@ -215,6 +222,13 @@ export function FlatMediaSection({
             max={300}
             tier={playbackRate === 1 ? "default" : "explicitCustom"}
             displayValue={`${formatNumericValue(playbackRate)}x`}
+            commitMode="release"
+            onPreview={(next) => {
+              (el as HTMLMediaElement).playbackRate = next / 100;
+            }}
+            onPreviewCancel={() => {
+              (el as HTMLMediaElement).playbackRate = playbackRate;
+            }}
             onCommit={(next) =>
               void onSetAttribute("playback-rate", formatNumericValue(next / 100))
             }
@@ -226,6 +240,7 @@ export function FlatMediaSection({
             max={mediaStartMax * 100}
             tier={mediaStart === 0 ? "default" : "explicitCustom"}
             displayValue={formatTimingValue(mediaStart)}
+            commitMode="release"
             onCommit={(next) => void onSetAttribute("media-start", (next / 100).toFixed(2))}
           />
           <FlatToggle

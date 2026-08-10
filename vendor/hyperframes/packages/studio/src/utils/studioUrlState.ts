@@ -26,6 +26,8 @@ const VALID_TABS: RightPanelTab[] = [
   "assets",
   "voice",
   "style",
+  "animation",
+  "animation-properties",
   "catalog",
   "effects",
   "renders",

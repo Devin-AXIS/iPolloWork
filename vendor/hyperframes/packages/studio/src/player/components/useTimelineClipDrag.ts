@@ -79,6 +79,11 @@ interface UseTimelineClipDragInput {
   onStackingPatches?: (patches: StackingPatch[]) => Promise<unknown> | void;
 }
 
+export interface TimelineDragPreviewStore {
+  getSnapshot: () => DraggedClipState | null;
+  subscribe: (listener: () => void) => () => void;
+}
+
 export function useTimelineClipDrag({
   scrollRef,
   ppsRef,
@@ -164,9 +169,59 @@ export function useTimelineClipDrag({
     [],
   );
 
-  const [draggedClip, setDraggedClip] = useState<DraggedClipState | null>(null);
+  const [draggedClip, setDraggedClipState] = useState<DraggedClipState | null>(null);
   const draggedClipRef = useRef<DraggedClipState | null>(null);
-  draggedClipRef.current = draggedClip;
+  const renderedDraggedClipRef = useRef<DraggedClipState | null>(null);
+  const dragPreviewSnapshotRef = useRef<DraggedClipState | null>(null);
+  const dragPreviewListenersRef = useRef(new Set<() => void>());
+  const publishDragPreview = useCallback((next: DraggedClipState | null) => {
+    dragPreviewSnapshotRef.current = next;
+    for (const listener of dragPreviewListenersRef.current) listener();
+  }, []);
+  const dragPreviewStore = useMemo<TimelineDragPreviewStore>(
+    () => ({
+      getSnapshot: () => dragPreviewSnapshotRef.current,
+      subscribe: (listener) => {
+        dragPreviewListenersRef.current.add(listener);
+        return () => dragPreviewListenersRef.current.delete(listener);
+      },
+    }),
+    [],
+  );
+  const setDraggedClip = useCallback(
+    (next: DraggedClipState | null) => {
+      draggedClipRef.current = next;
+      renderedDraggedClipRef.current = next;
+      publishDragPreview(next);
+      setDraggedClipState(next);
+    },
+    [publishDragPreview],
+  );
+  const updateLiveDraggedClip = useCallback(
+    (next: DraggedClipState) => {
+      const rendered = renderedDraggedClipRef.current;
+      draggedClipRef.current = next;
+      publishDragPreview(next);
+
+      // Keep the React tree informed only when lane structure or rendered
+      // extent can change. Pointer position, snap guides, and the drag ghost
+      // flow through the lightweight preview store above. Multi-selection
+      // retains frame-by-frame React updates because passenger clips move too.
+      const requiresTreeRefresh =
+        next.selectionKeys.size > 1 ||
+        !rendered ||
+        rendered.started !== next.started ||
+        rendered.mode !== next.mode ||
+        rendered.previewTrack !== next.previewTrack ||
+        rendered.insertRow !== next.insertRow ||
+        (rendered.element.key ?? rendered.element.id) !== (next.element.key ?? next.element.id) ||
+        Math.abs(rendered.previewStart - next.previewStart) * Math.max(ppsRef.current, 1) >= 48;
+      if (!requiresTreeRefresh) return;
+      renderedDraggedClipRef.current = next;
+      setDraggedClipState(next);
+    },
+    [ppsRef, publishDragPreview],
+  );
 
   const [resizingClip, setResizingClip] = useState<ResizingClipState | null>(null);
   const resizingClipRef = useRef<ResizingClipState | null>(null);
@@ -323,15 +378,14 @@ export function useTimelineClipDrag({
 
     if (drag) {
       const updated = updateDraggedClipPreview(drag, pointer.clientX, pointer.clientY);
-      draggedClipRef.current = updated;
-      setDraggedClip(updated);
+      updateLiveDraggedClip(updated);
     } else if (resize) {
       // Re-run the trim preview so the edge keeps tracking while the content
       // scrolls under the stationary pointer (scroll-compensated pointer x).
       applyResizePointerRef.current(resize, pointer.clientX);
     }
     clipDragScrollRaf.current = requestAnimationFrame(stepClipDragAutoScroll);
-  }, [scrollRef, updateDraggedClipPreview]);
+  }, [scrollRef, updateDraggedClipPreview, updateLiveDraggedClip]);
 
   const syncClipDragAutoScroll = useCallback(
     (clientX: number, clientY: number) => {
@@ -427,8 +481,7 @@ export function useTimelineClipDrag({
       setRangeSelectionRef.current?.(null);
 
       const updated = updateDraggedClipPreviewRef.current(drag, clientX, clientY);
-      draggedClipRef.current = updated;
-      setDraggedClip(updated);
+      updateLiveDraggedClip(updated);
       syncClipDragAutoScrollRef.current(clientX, clientY);
     };
 
@@ -633,5 +686,6 @@ export function useTimelineClipDrag({
     suppressClickRef,
     syncClipDragAutoScroll,
     stopClipDragAutoScroll,
+    dragPreviewStore,
   };
 }

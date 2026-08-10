@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, test } from "vitest";
 import type { ClipManifestClip } from "./playbackTypes";
-import { collectDomClipChildren, createTimelineElementFromManifestClip } from "./timelineDOM";
+import {
+  collectDomClipChildren,
+  createTimelineElementFromManifestClip,
+  findTimelineDomNodeForClip,
+} from "./timelineDOM";
 import { resolveDomEditSelection } from "../../components/editor/domEditing";
 import { buildStableSelector } from "../../components/editor/domEditingDom";
 import {
@@ -38,6 +42,44 @@ describe("timeline manifest translation", () => {
 
     expect(element.timelineRole).toBe("title");
     expect(element.timelineGroupId).toBe("intro-lockup");
+  });
+
+  test("binds runtime hf ids before consuming an authored scene fallback", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <img data-hf-id="hf-logo" data-start="0" data-duration="3" src="logo.svg" />
+        <section id="scene-intro" data-start="0" data-duration="3"></section>
+      </main>
+    `;
+    const logoClip = { ...MANIFEST_CLIP, id: "hf-logo", tagName: "img" };
+    const sceneClip = { ...MANIFEST_CLIP, id: "scene-intro", tagName: "section" };
+    const used = new Set<Element>();
+    const logo = findTimelineDomNodeForClip(document, logoClip, 0, used);
+    expect(logo?.getAttribute("data-hf-id")).toBe("hf-logo");
+    if (logo) used.add(logo);
+
+    expect(findTimelineDomNodeForClip(document, sceneClip, 1, used)?.id).toBe("scene-intro");
+  });
+
+  test("keeps fallback bindings in DOM order after an earlier host was claimed", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <section id="first" data-start="0"></section>
+        <section id="second" data-start="1"></section>
+        <section id="third" data-start="2"></section>
+      </main>
+    `;
+    const first = document.getElementById("first");
+    const used = new Set<Element>(first ? [first] : []);
+    const unresolvedClip = {
+      ...MANIFEST_CLIP,
+      id: "runtime-only",
+      start: 99,
+      duration: 99,
+      tagName: "article",
+    };
+
+    expect(findTimelineDomNodeForClip(document, unresolvedClip, 1, used)?.id).toBe("second");
   });
 
   test("collects every untimed child below a timed scene for canvas/tree parity", () => {

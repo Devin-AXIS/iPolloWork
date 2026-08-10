@@ -2,6 +2,7 @@ import { MOTION_PRESETS } from "./motionPresetCatalog.js";
 import { buildPresetKeyframes } from "./motionPresetKeyframes.js";
 
 export {
+  MOTION_COLOR_SOURCE_PARAMETER,
   MOTION_COMMON_PARAMETERS,
   MOTION_DIRECTION_PARAMETER,
   MOTION_PRESETS,
@@ -329,6 +330,19 @@ export function compileMotionInstance(instance: MotionInstance): CompiledMotion 
 }
 
 export function defaultMotionDuration(preset: MotionPreset): number {
+  if (preset.id.startsWith("background.")) return 3.2;
+  if (preset.id === "text.enter.fold-reveal") return 0.9;
+  if (preset.id === "motion.enter.gradual-focus") return 0.85;
+  if (preset.id === "motion.enter.scan-reveal") return 0.75;
+  if (preset.id === "element.enter.bounce-card") return 0.9;
+  if (preset.id === "motion.emphasis.soft-float") return 1.6;
+  if (preset.id === "motion.emphasis.focus-tilt") return 1.1;
+  if (preset.id === "motion.emphasis.magnetic-snap") return 0.9;
+  if (preset.id === "text.emphasis.prism-glow") return 1.4;
+  if (preset.id === "text.emphasis.shiny-sweep") return 1.4;
+  if (preset.id === "text.emphasis.true-focus") return 1.2;
+  if (preset.id === "element.emphasis.spotlight-card") return 1.1;
+  if (preset.id === "element.emphasis.glare-sweep") return 1.1;
   if (preset.phase === "emphasis") return 0.8;
   if (preset.id === "text.enter.typewriter" || preset.id === "text.enter.decode") return 1.2;
   return 0.65;

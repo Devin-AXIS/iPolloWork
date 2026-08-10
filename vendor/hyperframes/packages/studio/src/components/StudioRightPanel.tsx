@@ -23,7 +23,6 @@ import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
 import { useStudioI18n } from "../i18n";
 import { X } from "../icons/SystemIcons";
-import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { postVideoAiSelectionToHost } from "./editor/domEditingAgentPrompt";
 import { MIN_RIGHT_PANEL_WIDTH } from "../hooks/usePanelLayout";
 
@@ -50,6 +49,11 @@ const RenderQueue = lazy(() =>
 );
 const BlocksTab = lazy(() =>
   import("./sidebar/BlocksTab").then((module) => ({ default: module.BlocksTab })),
+);
+const AnimationTemplatesTab = lazy(() =>
+  import("./sidebar/AnimationTemplatesTab").then((module) => ({
+    default: module.AnimationTemplatesTab,
+  })),
 );
 const AssetsTab = lazy(() =>
   import("./sidebar/AssetsTab").then((module) => ({ default: module.AssetsTab })),
@@ -95,7 +99,6 @@ export interface StudioRightPanelProps {
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
   onAddBlock?: (blockName: string) => void;
-  onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -114,7 +117,6 @@ export function StudioRightPanel({
   recordEdit,
   onToggleElementHidden,
   onAddBlock,
-  onPreviewBlock,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -301,75 +303,76 @@ export function StudioRightPanel({
     const keys = timelineKeysForSelections(domEditGroupSelections, elements, activeCompPath);
     if (keys.length > 0) void onToggleElementHidden?.(keys, true);
   };
-  const singleDomEditSelection =
-    domEditGroupSelections.length > 1 ? null : domEditSelection;
+  const singleDomEditSelection = domEditGroupSelections.length > 1 ? null : domEditSelection;
   const propertyPanelContent = (
     <PropertyPanel
-        projectId={projectId}
-        projectDir={projectDir}
-        assets={assets}
-        element={singleDomEditSelection}
-        multiSelectCount={domEditGroupSelections.length}
-        multiSelectedElements={domEditGroupSelections}
-        onGroupSelection={handleGroupSelection}
-        onHideAllSelected={handleHideAllSelected}
-        copiedAgentPrompt={copiedAgentPrompt}
-        onClearSelection={clearDomSelection}
-        onToggleElementHidden={onToggleElementHidden}
-        onUngroup={handleUngroupSelection}
-        onSetStyle={handleDomStyleCommit}
-        onSetAttribute={handleDomAttributeCommit}
-        onSetAttributes={handleDomAttributesCommit}
-        onSetAttributeLive={handleDomAttributeLiveCommit}
-        onApplyColorGradingScope={handleApplyColorGradingScope}
-        onSetHtmlAttribute={handleDomHtmlAttributeCommit}
-        onRemoveBackground={handleRemoveBackground}
-        onSetManualOffset={handleDomPathOffsetCommit}
-        onSetManualSize={handleDomBoxSizeCommit}
-        onSetManualRotation={handleDomRotationCommit}
-        onSetText={handleDomTextCommit}
-        onSetTextFieldStyle={handleDomTextFieldStyleCommit}
-        onAddTextField={handleDomAddTextField}
-        onRemoveTextField={handleDomRemoveTextField}
-        onAskAgent={
-          singleDomEditSelection
-            ? () => postVideoAiSelectionToHost(singleDomEditSelection)
-            : undefined
-        }
-        onImportAssets={handleImportFiles}
-        fontAssets={fontAssets}
-        onImportFonts={handleImportFonts}
-        previewIframeRef={previewIframeRef}
-        gsapAnimations={selectedGsapAnimations}
-        gsapMultipleTimelines={gsapMultipleTimelines}
-        gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-        onUpdateGsapProperty={handleGsapUpdateProperty}
-        onUpdateGsapMeta={handleGsapUpdateMeta}
-        onDeleteGsapAnimation={handleGsapDeleteAnimation}
-        onAddGsapProperty={handleGsapAddProperty}
-        onRemoveGsapProperty={handleGsapRemoveProperty}
-        onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
-        onAddGsapFromProperty={handleGsapAddFromProperty}
-        onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
-        onAddGsapAnimation={handleGsapAddAnimation}
-        onMutateMotion={handleMotionMutation}
-        onCommitAnimatedProperty={commitAnimatedProperty}
-        onCommitAnimatedProperties={commitAnimatedProperties}
-        onAddKeyframe={handleGsapAddKeyframe}
-        onRemoveKeyframe={handleGsapRemoveKeyframe}
-        onConvertToKeyframes={(animId, duration) =>
-          handleGsapConvertToKeyframes(animId, undefined, duration)
-        }
-        onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
-        onSetArcPath={handleSetArcPath}
-        onUpdateArcSegment={handleUpdateArcSegment}
-        onUnroll={handleUnroll}
-        onUpdateKeyframeEase={handleUpdateKeyframeEase}
-        onSetAllKeyframeEases={handleSetAllKeyframeEases}
-        recordingState={recordingState}
-        recordingDuration={recordingDuration}
-        onToggleRecording={onToggleRecording}
-      />
+      projectId={projectId}
+      projectDir={projectDir}
+      assets={assets}
+      element={singleDomEditSelection}
+      inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}
+      showInspectorChrome={rightPanelTab !== "animation-properties"}
+      multiSelectCount={domEditGroupSelections.length}
+      multiSelectedElements={domEditGroupSelections}
+      onGroupSelection={handleGroupSelection}
+      onHideAllSelected={handleHideAllSelected}
+      copiedAgentPrompt={copiedAgentPrompt}
+      onClearSelection={clearDomSelection}
+      onToggleElementHidden={onToggleElementHidden}
+      onUngroup={handleUngroupSelection}
+      onSetStyle={handleDomStyleCommit}
+      onSetAttribute={handleDomAttributeCommit}
+      onSetAttributes={handleDomAttributesCommit}
+      onSetAttributeLive={handleDomAttributeLiveCommit}
+      onApplyColorGradingScope={handleApplyColorGradingScope}
+      onSetHtmlAttribute={handleDomHtmlAttributeCommit}
+      onRemoveBackground={handleRemoveBackground}
+      onSetManualOffset={handleDomPathOffsetCommit}
+      onSetManualSize={handleDomBoxSizeCommit}
+      onSetManualRotation={handleDomRotationCommit}
+      onSetText={handleDomTextCommit}
+      onSetTextFieldStyle={handleDomTextFieldStyleCommit}
+      onAddTextField={handleDomAddTextField}
+      onRemoveTextField={handleDomRemoveTextField}
+      onAskAgent={
+        singleDomEditSelection
+          ? () => postVideoAiSelectionToHost(singleDomEditSelection)
+          : undefined
+      }
+      onImportAssets={handleImportFiles}
+      fontAssets={fontAssets}
+      onImportFonts={handleImportFonts}
+      previewIframeRef={previewIframeRef}
+      gsapAnimations={selectedGsapAnimations}
+      gsapMultipleTimelines={gsapMultipleTimelines}
+      gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+      onUpdateGsapProperty={handleGsapUpdateProperty}
+      onUpdateGsapMeta={handleGsapUpdateMeta}
+      onDeleteGsapAnimation={handleGsapDeleteAnimation}
+      onAddGsapProperty={handleGsapAddProperty}
+      onRemoveGsapProperty={handleGsapRemoveProperty}
+      onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
+      onAddGsapFromProperty={handleGsapAddFromProperty}
+      onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
+      onAddGsapAnimation={handleGsapAddAnimation}
+      onMutateMotion={handleMotionMutation}
+      onCommitAnimatedProperty={commitAnimatedProperty}
+      onCommitAnimatedProperties={commitAnimatedProperties}
+      onAddKeyframe={handleGsapAddKeyframe}
+      onRemoveKeyframe={handleGsapRemoveKeyframe}
+      onConvertToKeyframes={(animId, duration) =>
+        handleGsapConvertToKeyframes(animId, undefined, duration)
+      }
+      onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
+      onSetArcPath={handleSetArcPath}
+      onUpdateArcSegment={handleUpdateArcSegment}
+      onUnroll={handleUnroll}
+      onUpdateKeyframeEase={handleUpdateKeyframeEase}
+      onSetAllKeyframeEases={handleSetAllKeyframeEases}
+      recordingState={recordingState}
+      recordingDuration={recordingDuration}
+      onToggleRecording={onToggleRecording}
+    />
   );
   const propertyPanel = singleDomEditSelection ? (
     <DesignPanelPromoteProvider
@@ -388,6 +391,49 @@ export function StudioRightPanel({
     </DesignPanelPromoteProvider>
   ) : (
     propertyPanelContent
+  );
+  const animationPanelActive =
+    rightPanelTab === "animation" || rightPanelTab === "animation-properties";
+  const animationPanel = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex-shrink-0 px-3 pb-3">
+        <div
+          role="tablist"
+          aria-label={t("right.animation")}
+          className="grid h-9 grid-cols-2 gap-1 rounded-lg bg-panel-input p-1"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={rightPanelTab === "animation"}
+            onClick={() => setRightPanelTab("animation")}
+            className={`rounded-md px-2 text-xs font-medium transition-colors ${
+              rightPanelTab === "animation"
+                ? "bg-panel-bg text-panel-text-0 shadow-sm"
+                : "text-panel-text-3 hover:text-panel-text-1"
+            }`}
+          >
+            {t("right.animationTemplates")}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={rightPanelTab === "animation-properties"}
+            onClick={() => setRightPanelTab("animation-properties")}
+            className={`rounded-md px-2 text-xs font-medium transition-colors ${
+              rightPanelTab === "animation-properties"
+                ? "bg-panel-bg text-panel-text-0 shadow-sm"
+                : "text-panel-text-3 hover:text-panel-text-1"
+            }`}
+          >
+            {t("right.animationProperties")}
+          </button>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {rightPanelTab === "animation" ? <AnimationTemplatesTab /> : propertyPanel}
+      </div>
+    </div>
   );
 
   const renderQueuePanel = (
@@ -474,7 +520,16 @@ export function StudioRightPanel({
 
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
-  const selectStudioPanel = (panel: "design" | "illustration" | "assets" | "catalog" | "effects") => {
+  const selectStudioPanel = (
+    panel:
+      | "design"
+      | "animation"
+      | "animation-properties"
+      | "illustration"
+      | "assets"
+      | "catalog"
+      | "effects",
+  ) => {
     closeHostPanel();
     setRightPanelTab(panel);
   };
@@ -512,7 +567,9 @@ export function StudioRightPanel({
       >
         {captionEditMode ? (
           <Suspense
-            fallback={<div className="h-full animate-pulse bg-panel-bg motion-reduce:animate-none" />}
+            fallback={
+              <div className="h-full animate-pulse bg-panel-bg motion-reduce:animate-none" />
+            }
           >
             <CaptionPropertyPanel iframeRef={previewIframeRef} />
           </Suspense>
@@ -539,6 +596,12 @@ export function StudioRightPanel({
                       tooltip={t("right.styleTooltip")}
                       active={rightPanelTab === "style"}
                       onClick={() => openHostPanel("style")}
+                    />
+                    <PanelTabButton
+                      label={t("right.animation")}
+                      tooltip={t("right.animationTooltip")}
+                      active={animationPanelActive}
+                      onClick={() => selectStudioPanel("animation")}
                     />
                     <PanelTabButton
                       label={t("right.catalog")}
@@ -582,7 +645,9 @@ export function StudioRightPanel({
             </div>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden pt-3">
               <Suspense
-                fallback={<div className="h-full animate-pulse bg-panel-bg motion-reduce:animate-none" />}
+                fallback={
+                  <div className="h-full animate-pulse bg-panel-bg motion-reduce:animate-none" />
+                }
               >
                 <div key={rightPanelTab} className="h-full min-h-0 min-w-0 overflow-hidden">
                   {rightPanelTab === "block-params" && activeBlockParams ? (
@@ -594,11 +659,9 @@ export function StudioRightPanel({
                       onClose={onCloseBlockParams ?? (() => {})}
                     />
                   ) : rightPanelTab === "catalog" || rightPanelTab === "effects" ? (
-                    <BlocksTab
-                      page="animation"
-                      onAddBlock={onAddBlock}
-                      onPreviewBlock={onPreviewBlock}
-                    />
+                    <BlocksTab page="animation" onAddBlock={onAddBlock} />
+                  ) : animationPanelActive ? (
+                    animationPanel
                   ) : rightPanelTab === "illustration" ? (
                     <IllustrationTab />
                   ) : rightPanelTab === "assets" ? (

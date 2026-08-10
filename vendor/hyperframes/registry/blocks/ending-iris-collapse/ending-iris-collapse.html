@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Iris Collapse</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #0c0c0d; color: #fff; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0c0c0d; }
+      .iris { position: absolute; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
+      .iris-a { width: 1800px; height: 1800px; background: #ff4f35; }
+      .iris-b { width: 1320px; height: 1320px; background: #ffca39; }
+      .iris-c { width: 860px; height: 860px; background: #6d4dff; }
+      .iris-d { width: 430px; height: 430px; background: #0c0c0d; }
+      .lockup { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+      .mark { font-size: 108px; font-weight: 900; letter-spacing: -.08em; }
+      .tag { margin-top: 20px; font-size: 18px; font-weight: 800; letter-spacing: .28em; }
+      .footer { position: absolute; left: 88px; right: 88px; bottom: 64px; display: flex; justify-content: space-between; color: #b7b7bd; font-size: 16px; letter-spacing: .2em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="ending-iris-collapse" data-width="1920" data-height="1080" data-start="0" data-duration="4.2">
+      <div class="iris iris-a" data-layout-ignore></div>
+      <div class="iris iris-b" data-layout-ignore></div>
+      <div class="iris iris-c" data-layout-ignore></div>
+      <div class="iris iris-d" data-layout-ignore></div>
+      <section class="lockup" data-hf-id="eic-lockup" data-layout-allow-overlap><div class="mark">iPOLLO</div><div class="tag">KEEP MAKING</div></section>
+      <div class="footer"><span>END / 04</span><span>IPOLLOWORK 2026</span></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from(".iris-a", { scale: 1.4, opacity: 0, duration: .8, ease: "power3.out" }, 0)
+        .from(".iris-b", { scale: 1.35, opacity: 0, duration: .8, ease: "power3.out" }, .12)
+        .from(".iris-c", { scale: 1.3, opacity: 0, duration: .8, ease: "power3.out" }, .24)
+        .from(".iris-d", { scale: .2, opacity: 0, duration: .8, ease: "power3.out" }, .36)
+        .from(".lockup", { opacity: 0, scale: .72, rotation: -8, duration: .9, ease: "back.out(1.6)" }, .72)
+        .from(".footer", { opacity: 0, duration: .55, ease: "none" }, 1.25)
+        .to(".iris-a", { scale: .64, duration: 1.2, ease: "expo.inOut" }, 2.2)
+        .to(".iris-b", { scale: .56, duration: 1.2, ease: "expo.inOut" }, 2.22)
+        .to(".iris-c", { scale: .42, duration: 1.2, ease: "expo.inOut" }, 2.24)
+        .to(".iris-d", { scale: .8, duration: 1.2, ease: "expo.inOut" }, 2.26);
+      window.__timelines["ending-iris-collapse"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.2))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

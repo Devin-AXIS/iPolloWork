@@ -1,0 +1,59 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "transition-lens-focus",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Lens Focus",
+  "description": "A circular focus window expands across the outgoing scene while the incoming content sharpens underneath it.",
+  "kind": "effect",
+  "librarySection": "transition-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 1.25,
+  "tags": ["transition", "lens", "focus", "circle", "optical"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "transition",
+    "targets": ["any", "text", "image", "shape", "group"],
+    "anchor": "playhead",
+    "duration": 0.85,
+    "ease": "expo.inOut",
+    "keyframes": [
+      {
+        "percentage": 0,
+        "properties": {
+          "opacity": 0,
+          "scale": 1.12,
+          "filter": "blur(20px)",
+          "clipPath": "circle(0% at 50% 50%)"
+        }
+      },
+      {
+        "percentage": 72,
+        "properties": {
+          "opacity": 1,
+          "scale": 1,
+          "filter": "blur(0px)",
+          "clipPath": "circle(74% at 50% 50%)"
+        }
+      },
+      {
+        "percentage": 100,
+        "properties": {
+          "opacity": 1,
+          "scale": 1,
+          "filter": "blur(0px)",
+          "clipPath": "circle(100% at 50% 50%)"
+        }
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "transition-lens-focus.html",
+      "target": "compositions/transition-lens-focus.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

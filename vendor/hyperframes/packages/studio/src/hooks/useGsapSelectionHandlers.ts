@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { RegistryMotionPreset } from "@hyperframes/core/registry";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 import { computeCurrentPercentage } from "./gsapDragCommit";
@@ -26,6 +27,7 @@ export function useGsapSelectionHandlers({
   deleteAllForSelector,
   addGsapAnimation,
   mutateMotion,
+  applyGsapMotionPreset,
   addGsapProperty,
   removeGsapProperty,
   updateGsapFromProperty,
@@ -64,7 +66,12 @@ export function useGsapSelectionHandlers({
   mutateMotion: (
     sel: DomEditSelection,
     targetKind: MotionTargetKind,
-    mutation: MotionMutationInput,
+    mutation: MotionMutationInput,)=> Promise<void>;
+  applyGsapMotionPreset: (
+    sel: DomEditSelection,
+    preset: RegistryMotionPreset,
+    currentTime: number,
+    label: string,
   ) => Promise<void>;
   addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
@@ -228,7 +235,21 @@ export function useGsapSelectionHandlers({
         mutation.operation === "remove" ? "Remove motion preset" : "Apply motion preset",
       );
     },
-    [domEditSelection, mutateMotion, observeGsapMutation],
+    [domEditSelection, mutateMotion, observeGsapMutation],)
+  const handleGsapApplyMotionPreset = useCallback(
+    (preset: RegistryMotionPreset, label: string, selectionOverride?: DomEditSelection | null) => {
+      const selection = selectionOverride ?? domEditSelection;
+      if (!selection) return Promise.resolve();
+      return applyGsapMotionPreset(
+        selection,
+        preset,
+        usePlayerStore.getState().currentTime,
+        label,
+      ).catch((error) => {
+        trackGsapHandlerFailure(error, selection, "apply-motion-preset", `Apply ${label}`);
+      });
+    },
+    [applyGsapMotionPreset, domEditSelection, trackGsapHandlerFailure],
   );
 
   const handleGsapAddProperty = useCallback(
@@ -457,6 +478,7 @@ export function useGsapSelectionHandlers({
     handleGsapDeleteAnimation,
     handleGsapDeleteAllForElement,
     handleGsapAddAnimation,
+    handleGsapApplyMotionPreset,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
     handleGsapUpdateFromProperty,

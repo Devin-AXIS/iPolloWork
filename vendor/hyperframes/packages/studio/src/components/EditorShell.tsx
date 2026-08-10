@@ -13,7 +13,6 @@ import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/Stu
 import { useDomEditActionsContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { TimelineElement } from "../player";
-import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
 import { useAddAssetAtPlayhead } from "../hooks/useAddAssetAtPlayhead";
 import { useStudioI18n } from "../i18n";
@@ -57,7 +56,6 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowSelectedDomBounds: boolean;
-  blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
@@ -95,7 +93,6 @@ export function EditorShell({
   isGestureRecording,
   recordingState,
   onToggleRecording,
-  blockPreview,
   gestureOverlay,
 }: EditorShellProps) {
   const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef } =
@@ -153,7 +150,6 @@ export function EditorShell({
               previewOnly ? null : (
                 <PreviewOverlays
                   shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
-                  blockPreview={blockPreview}
                   isGestureRecording={isGestureRecording}
                   recordingState={recordingState}
                   onToggleRecording={onToggleRecording}

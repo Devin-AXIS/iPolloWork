@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { Composition } from "@hyperframes/sdk";
+import type { RegistryMotionPreset } from "@hyperframes/core/registry";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { roundTo3 } from "../utils/rounding";
 import {
@@ -25,6 +26,7 @@ import {
   type MotionMutationInput,
   type MotionTargetKind,
 } from "@hyperframes/core/motion-presets";
+import { resolveMotionPresetTiming } from "../utils/motionPreset";
 
 interface SdkAnimationDeps {
   sdkSession?: Composition | null;
@@ -363,12 +365,67 @@ export function useGsapAnimationOps({
     [commitMutation, activeCompPath, sdkSession, sdkDeps],
   );
 
+  const applyGsapMotionPreset = useCallback(
+    async (
+      selection: DomEditSelection,
+      preset: RegistryMotionPreset,
+      currentTime: number,
+      label: string,
+    ) => {
+      const { selector, autoId } = ensureElementAddressable(selection);
+      if (autoId) {
+        const projectId = projectIdRef.current;
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        if (!projectId) return;
+        const assigned = await assignGsapTargetAutoIdIfNeeded({
+          projectId,
+          targetPath,
+          selection,
+          autoId,
+          showToast,
+        });
+        if (!assigned) return;
+      }
+
+      const { position, duration } = resolveMotionPresetTiming(selection, preset, currentTime);
+      const mutation = {
+        type: "add-with-keyframes",
+        targetSelector: selector,
+        position,
+        duration,
+        keyframes: preset.keyframes,
+        ease: preset.ease,
+      };
+      const commitOptions = { label: `Apply ${label} motion preset`, softReload: true };
+
+      if (!autoId && sdkSession && sdkDeps) {
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        const handled = await sdkAddWithKeyframesPersist(
+          targetPath,
+          selector,
+          position,
+          duration,
+          preset.keyframes,
+          preset.ease,
+          sdkSession,
+          sdkDeps,
+          commitOptions,
+        );
+        if (cutoverCommittedOrThrow(handled)) return;
+      }
+
+      await commitMutation(selection, mutation, commitOptions);
+    },
+    [activeCompPath, commitMutation, projectIdRef, sdkDeps, sdkSession, showToast],
+  );
+
   return {
     mutateMotion,
     updateGsapMeta,
     deleteGsapAnimation,
     deleteAllForSelector,
     addGsapAnimation,
+    applyGsapMotionPreset,
     addWithKeyframes,
     replaceWithKeyframes,
   };

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "opening-signal-assembly",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Signal Assembly",
+  "description": "Fine signal lines assemble a crisp editorial title and settle into a readable identity lockup.",
+  "kind": "animation",
+  "librarySection": "opening-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.8,
+  "tags": ["opening", "brand", "editorial", "line", "mechanical"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "opening",
+    "targets": ["any", "text", "image", "shape", "group"],
+    "anchor": "clip-start",
+    "duration": 1.15,
+    "ease": "power3.out",
+    "keyframes": [
+      {
+        "percentage": 0,
+        "properties": { "opacity": 0, "y": 48, "scale": 0.94, "filter": "blur(14px)" }
+      },
+      {
+        "percentage": 58,
+        "properties": { "opacity": 1, "y": 0, "scale": 1.02, "filter": "blur(0px)" }
+      },
+      {
+        "percentage": 100,
+        "properties": { "opacity": 1, "y": 0, "scale": 1, "filter": "blur(0px)" }
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "opening-signal-assembly.html",
+      "target": "compositions/opening-signal-assembly.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

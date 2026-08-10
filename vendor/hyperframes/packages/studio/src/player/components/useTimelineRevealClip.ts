@@ -10,11 +10,27 @@
  * only the vertical axis is scrolled there.
  */
 import { useEffect } from "react";
-import { usePlayerStore } from "../store/playerStore";
-import { GUTTER, RULER_H } from "./timelineLayout";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import {
+  CLIP_Y,
+  GUTTER,
+  RULER_H,
+  TRACK_H,
+  TRACKS_LEFT_PAD,
+  getTimelineRowTop,
+} from "./timelineLayout";
 import { computeRevealScroll } from "./timelineRevealScroll";
 
-export function useTimelineRevealClip(scrollRef: React.RefObject<HTMLDivElement | null>): void {
+interface TimelineRevealGeometry {
+  elements: TimelineElement[];
+  displayTrackOrder: number[];
+  pps: number;
+}
+
+export function useTimelineRevealClip(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  geometry: TimelineRevealGeometry,
+): void {
   const revealRequest = usePlayerStore((s) => s.clipRevealRequest);
 
   useEffect(() => {
@@ -25,13 +41,19 @@ export function useTimelineRevealClip(scrollRef: React.RefObject<HTMLDivElement 
 
     const container = scrollRef.current;
     if (!container) return;
-    const clip = container.querySelector(`[data-el-id="${CSS.escape(revealRequest.elementId)}"]`);
-    if (!(clip instanceof HTMLElement)) return;
+    const element = geometry.elements.find(
+      (candidate) =>
+        candidate.key === revealRequest.elementId ||
+        candidate.id === revealRequest.elementId ||
+        candidate.domId === revealRequest.elementId,
+    );
+    if (!element) return;
+    const rowIndex = geometry.displayTrackOrder.indexOf(element.track);
+    if (rowIndex < 0) return;
 
-    const containerRect = container.getBoundingClientRect();
-    const clipRect = clip.getBoundingClientRect();
-    const clipLeft = clipRect.left - containerRect.left + container.scrollLeft;
-    const clipTop = clipRect.top - containerRect.top + container.scrollTop;
+    const clipLeft = GUTTER + TRACKS_LEFT_PAD + element.start * geometry.pps;
+    const clipTop = getTimelineRowTop(rowIndex) + CLIP_Y;
+    const clipWidth = Math.max(element.duration * geometry.pps, 4);
 
     const target = computeRevealScroll({
       scrollLeft: container.scrollLeft,
@@ -39,9 +61,9 @@ export function useTimelineRevealClip(scrollRef: React.RefObject<HTMLDivElement 
       viewportWidth: container.clientWidth,
       viewportHeight: container.clientHeight,
       clipLeft,
-      clipRight: clipLeft + clipRect.width,
+      clipRight: clipLeft + clipWidth,
       clipTop,
-      clipBottom: clipTop + clipRect.height,
+      clipBottom: clipTop + TRACK_H - CLIP_Y * 2,
       stickyLeft: GUTTER,
       stickyTop: RULER_H,
       allowHorizontal: usePlayerStore.getState().zoomMode === "manual",
@@ -52,5 +74,5 @@ export function useTimelineRevealClip(scrollRef: React.RefObject<HTMLDivElement 
       top: target.top ?? container.scrollTop,
       behavior: "smooth",
     });
-  }, [revealRequest, scrollRef]);
+  }, [geometry.displayTrackOrder, geometry.elements, geometry.pps, revealRequest, scrollRef]);
 }

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ending-slide-resolve",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Slide Resolve",
+  "description": "Graphic panels close the story, then part just enough to reveal a compact final message and brand mark.",
+  "kind": "animation",
+  "librarySection": "ending-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.4,
+  "tags": ["ending", "panels", "slide", "editorial", "resolve"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "ending",
+    "targets": ["any", "text", "image", "shape", "group"],
+    "anchor": "clip-end",
+    "duration": 1,
+    "ease": "power3.inOut",
+    "keyframes": [
+      { "percentage": 0, "properties": { "opacity": 1, "xPercent": 0, "scale": 1 } },
+      { "percentage": 66, "properties": { "opacity": 1, "xPercent": -8, "scale": 0.96 } },
+      { "percentage": 100, "properties": { "opacity": 0, "xPercent": -24, "scale": 0.92 } }
+    ]
+  },
+  "files": [
+    {
+      "path": "ending-slide-resolve.html",
+      "target": "compositions/ending-slide-resolve.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

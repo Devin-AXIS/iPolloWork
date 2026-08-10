@@ -42,9 +42,90 @@
         "text-animation",
         "interface-animation",
         "transition-scene",
-        "background-scene"
+        "background-scene",
+        "opening-animation",
+        "ending-animation",
+        "transition-animation",
+        "caption-animation"
       ],
       "description": "Explicit placement within the Studio animation and scene libraries."
+    },
+    "motionPreset": {
+      "type": "object",
+      "description": "Literal editable GSAP keyframes that Video Studio can apply to a selected element.",
+      "required": ["version", "category", "targets", "anchor", "duration", "ease", "keyframes"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "const": 1 },
+        "category": {
+          "type": "string",
+          "enum": ["opening", "ending", "transition", "caption"]
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["any", "text", "caption", "image", "shape", "group"]
+          }
+        },
+        "anchor": {
+          "type": "string",
+          "enum": ["clip-start", "playhead", "clip-end"]
+        },
+        "duration": { "type": "number", "exclusiveMinimum": 0 },
+        "ease": { "type": "string", "minLength": 1 },
+        "keyframes": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["percentage", "properties"],
+            "additionalProperties": false,
+            "properties": {
+              "percentage": { "type": "number", "minimum": 0, "maximum": 100 },
+              "properties": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "enum": [
+                    "x",
+                    "y",
+                    "xPercent",
+                    "yPercent",
+                    "scale",
+                    "scaleX",
+                    "scaleY",
+                    "rotation",
+                    "opacity",
+                    "autoAlpha",
+                    "filter",
+                    "clipPath",
+                    "transformOrigin"
+                  ]
+                },
+                "additionalProperties": { "type": ["number", "string"] }
+              },
+              "ease": { "type": "string", "minLength": 1 }
+            }
+          },
+          "allOf": [
+            {
+              "contains": {
+                "properties": { "percentage": { "const": 0 } },
+                "required": ["percentage"]
+              }
+            },
+            {
+              "contains": {
+                "properties": { "percentage": { "const": 100 } },
+                "required": ["percentage"]
+              }
+            }
+          ]
+        }
+      }
     },
     "author": {
       "type": "string",

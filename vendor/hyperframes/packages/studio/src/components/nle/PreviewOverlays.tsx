@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CaptionOverlay } from "../../captions/components/CaptionOverlay";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
@@ -7,6 +7,7 @@ import { useCompositionDimensions } from "../../hooks/useCompositionDimensions";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_KEYFRAMES_ENABLED,
+  STUDIO_MOTION_PATH_OVERLAY_ENABLED,
   STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
   STUDIO_PREVIEW_SELECTION_ENABLED,
 } from "../editor/manualEditingAvailability";
@@ -22,13 +23,11 @@ import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers"
 import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
 import { useCanvasZOrderTimelineMirror } from "./useCanvasZOrderTimelineMirror";
 import { runZLaneGesture } from "./zLaneGesture";
-import type { BlockPreviewInfo } from "../sidebar/BlocksTab";
 import type { GestureRecordingState } from "../editor/GestureRecordControl";
 import type { ReactNode } from "react";
 
 export interface PreviewOverlaysProps {
   shouldShowSelectedDomBounds: boolean;
-  blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
@@ -133,7 +132,6 @@ export function resolveZIndexEntries(
 // fallow-ignore-next-line complexity
 export function PreviewOverlays({
   shouldShowSelectedDomBounds,
-  blockPreview,
   isGestureRecording,
   recordingState,
   onToggleRecording,
@@ -173,10 +171,6 @@ export function PreviewOverlays({
       snapToGrid: p.snapToGrid ?? false,
     };
   });
-
-  if (blockPreview) {
-    return <BlockPreviewOverlay blockPreview={blockPreview} />;
-  }
 
   if (captionEditMode) {
     return <CaptionOverlay iframeRef={previewIframeRef} />;
@@ -252,7 +246,7 @@ export function PreviewOverlays({
         onMarqueeSelect={applyMarqueeSelection}
       />
       <SnapToolbar onSnapChange={setSnapPrefs} />
-      {STUDIO_KEYFRAMES_ENABLED && (
+      {STUDIO_MOTION_PATH_OVERLAY_ENABLED && STUDIO_KEYFRAMES_ENABLED && (
         <MotionPathOverlay
           iframeRef={previewIframeRef}
           selection={shouldShowSelectedDomBounds ? domEditSelection : null}
@@ -262,54 +256,5 @@ export function PreviewOverlays({
       )}
       {gestureOverlay}
     </>
-  );
-}
-
-function BlockPreviewOverlay({ blockPreview }: { blockPreview: BlockPreviewInfo }) {
-  const [videoReady, setVideoReady] = useState(false);
-  const [videoFailed, setVideoFailed] = useState(false);
-
-  useEffect(() => {
-    setVideoReady(false);
-    setVideoFailed(false);
-  }, [blockPreview.videoUrl]);
-
-  const showComposition = Boolean(blockPreview.compositionUrl);
-  const showVideo = !showComposition && Boolean(blockPreview.videoUrl) && !videoFailed;
-
-  return (
-    <div className="pointer-events-none absolute inset-0 z-30 bg-black">
-      {blockPreview.posterUrl ? (
-        <img
-          src={blockPreview.posterUrl}
-          alt={blockPreview.title}
-          className="absolute inset-0 size-full object-contain"
-        />
-      ) : null}
-      {showComposition ? (
-        <iframe
-          src={blockPreview.compositionUrl}
-          title={blockPreview.title}
-          sandbox="allow-scripts"
-          className="absolute inset-0 size-full border-0 bg-black"
-        />
-      ) : showVideo ? (
-        <video
-          src={blockPreview.videoUrl}
-          poster={blockPreview.posterUrl}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="auto"
-          onCanPlay={() => setVideoReady(true)}
-          onLoadedData={() => setVideoReady(true)}
-          onError={() => setVideoFailed(true)}
-          className={`absolute inset-0 size-full object-contain transition-opacity duration-100 ${
-            videoReady ? "opacity-100" : "opacity-0"
-          }`}
-        />
-      ) : null}
-    </div>
   );
 }

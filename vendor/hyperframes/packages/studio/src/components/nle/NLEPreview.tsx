@@ -146,12 +146,20 @@ export const NLEPreview = memo(function NLEPreview({
   };
   const [visibleSlot, setVisibleSlot] = useState<PreviewPlayerSlot>(requestedSlot);
   const [loadingSlot, setLoadingSlot] = useState<PreviewPlayerSlot | null>(null);
+  const [retiringSlot, setRetiringSlot] = useState<PreviewPlayerSlot | null>(null);
   const loadingSlotKeyRef = useRef<string | null>(null);
+  const retireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   loadingSlotKeyRef.current = loadingSlot?.key ?? null;
   useEffect(() => {
     if (requestedSlot.key === visibleSlot.key || requestedSlot.key === loadingSlot?.key) return;
     setLoadingSlot(requestedSlot);
   }, [requestedSlot.key, projectId, directUrl, refreshToken, visibleSlot.key, loadingSlot?.key]);
+  useEffect(
+    () => () => {
+      if (retireTimerRef.current) clearTimeout(retireTimerRef.current);
+    },
+    [],
+  );
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -511,8 +519,14 @@ export const NLEPreview = memo(function NLEPreview({
                 style={{ position: "absolute", inset: 0, zIndex: 0 }}
               />
             )}
-            {[visibleSlot, ...(loadingSlot ? [loadingSlot] : [])].map((slot) => {
+            {[
+              ...(retiringSlot && retiringSlot.key !== visibleSlot.key ? [retiringSlot] : []),
+              visibleSlot,
+              ...(loadingSlot ? [loadingSlot] : []),
+            ].map((slot) => {
               const incoming = slot.key === loadingSlot?.key;
+              const retiring = slot.key === retiringSlot?.key;
+              const active = slot.key === visibleSlot.key;
               return (
                 <Player
                   key={slot.key}
@@ -525,8 +539,14 @@ export const NLEPreview = memo(function NLEPreview({
                     incoming
                       ? () => {
                           if (loadingSlotKeyRef.current !== slot.key) return;
+                          if (retireTimerRef.current) clearTimeout(retireTimerRef.current);
+                          setRetiringSlot(visibleSlot);
                           setVisibleSlot(slot);
                           setLoadingSlot(null);
+                          retireTimerRef.current = setTimeout(() => {
+                            retireTimerRef.current = null;
+                            setRetiringSlot(null);
+                          }, 160);
                         }
                       : undefined
                   }
@@ -535,21 +555,18 @@ export const NLEPreview = memo(function NLEPreview({
                     onIframeLoad();
                     applyInitialZoom();
                   }}
-                  onCompositionLoadingChange={incoming ? undefined : onCompositionLoadingChange}
+                  onCompositionLoadingChange={active ? onCompositionLoadingChange : undefined}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   style={{
                     position: "absolute",
                     inset: 0,
-                    zIndex: slot.directUrl?.includes("/components/")
-                      ? incoming
-                        ? 2
-                        : 1
-                      : incoming
-                        ? 1
-                        : 0,
-                    opacity: incoming ? 0 : 1,
-                    pointerEvents: incoming ? "none" : undefined,
+                    zIndex:
+                      (slot.directUrl?.includes("/components/") ? 1 : 0) +
+                      (retiring ? 2 : incoming ? 1 : 0),
+                    opacity: incoming || retiring ? 0 : 1,
+                    pointerEvents: incoming || retiring ? "none" : undefined,
+                    transition: retiring ? "opacity 140ms ease-out" : undefined,
                   }}
                 />
               );

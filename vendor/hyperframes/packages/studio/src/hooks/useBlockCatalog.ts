@@ -3,7 +3,6 @@ import {
   GSAP_OFFICIAL_CAPABILITIES,
   type RegistryItem,
   type RegistryItemKind,
-  type RegistryItemLibrarySection,
   resolveRegistryItemKind,
 } from "@hyperframes/core/registry";
 import { type BlockCategory, resolveBlockCategory } from "../utils/blockCategories";
@@ -11,26 +10,32 @@ import { type BlockCategory, resolveBlockCategory } from "../utils/blockCategori
 export type CatalogItem = RegistryItem & {
   category: BlockCategory;
   kind: RegistryItemKind;
-  librarySection: RegistryItemLibrarySection;
+  librarySection: AnimationLibrarySection;
 };
+
+export type AnimationLibrarySection =
+  | "opening-animation"
+  | "ending-animation"
+  | "transition-animation"
+  | "caption-animation";
 
 export type CatalogPage = "animation" | "scene";
 
 export interface CatalogSection {
-  id: RegistryItemLibrarySection;
+  id: AnimationLibrarySection;
   items: CatalogItem[];
 }
 
-export const CATALOG_PAGE_SECTIONS: Record<CatalogPage, readonly RegistryItemLibrarySection[]> = {
-  animation: ["text-animation", "interface-animation", "transition-scene", "background-scene"],
-  scene: ["transition-scene", "background-scene"],
+export const CATALOG_PAGE_SECTIONS: Record<CatalogPage, readonly AnimationLibrarySection[]> = {
+  animation: ["opening-animation", "ending-animation", "transition-animation", "caption-animation"],
+  scene: ["opening-animation", "ending-animation", "transition-animation"],
 };
 
-const SECTION_SEARCH_TERMS: Record<RegistryItemLibrarySection, string> = {
-  "text-animation": "text animation typography caption 文字动画 字幕",
-  "interface-animation": "interface ui animation 界面动画 交互",
-  "transition-scene": "transition scene 转场场景",
-  "background-scene": "background scene effect 背景场景 特效",
+const SECTION_SEARCH_TERMS: Record<AnimationLibrarySection, string> = {
+  "opening-animation": "opening intro title logo 开场 片头 标题",
+  "ending-animation": "ending outro cta logo 结尾 片尾 收束",
+  "transition-animation": "transition scene wipe push 转场 场景 切换",
+  "caption-animation": "caption subtitle text 字幕 文字 逐词",
 };
 
 export function resolveGsapCatalogCoverage(items: CatalogItem[]) {
@@ -55,14 +60,12 @@ export function isGsapCatalogItem(item: CatalogItem): boolean {
   return item.engine?.name.trim().toLowerCase() === "gsap";
 }
 
-export function isCatalogLibrarySection(
-  value: unknown,
-): value is RegistryItemLibrarySection {
+export function isCatalogLibrarySection(value: unknown): value is AnimationLibrarySection {
   return (
-    value === "text-animation" ||
-    value === "interface-animation" ||
-    value === "transition-scene" ||
-    value === "background-scene"
+    value === "opening-animation" ||
+    value === "ending-animation" ||
+    value === "transition-animation" ||
+    value === "caption-animation"
   );
 }
 
@@ -84,7 +87,7 @@ export function useBlockCatalog(page: CatalogPage) {
             (
               block,
             ): block is RegistryItem & {
-              librarySection: RegistryItemLibrarySection;
+              librarySection: AnimationLibrarySection;
             } => isCatalogLibrarySection(block.librarySection),
           )
           .map((block) => {

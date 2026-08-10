@@ -14,13 +14,15 @@ export interface AppToast {
 }
 
 export type RightPanelTab =
-    | "layers"
-    | "design"
-    | "voice"
-    | "style"
-    | "illustration"
-    | "assets"
-    | "catalog"
+  | "layers"
+  | "design"
+  | "voice"
+  | "style"
+  | "illustration"
+  | "assets"
+  | "animation"
+  | "animation-properties"
+  | "catalog"
   | "effects"
   | "renders"
   | "block-params"
@@ -218,13 +220,18 @@ export function findTimelineIdByAncestor(
 ): string | null {
   let ancestor = element?.parentElement ?? null;
   while (ancestor) {
-    const id = ancestor.id;
-    if (id) {
-      const match = elements.find(
-        (el) => el.domId === id && (el.sourceFile ?? "index.html") === sourceFile,
-      );
-      if (match) return match.key ?? match.id;
-    }
+    const candidate = ancestor;
+    const match = elements.find((timelineElement) => {
+      if ((timelineElement.sourceFile ?? "index.html") !== sourceFile) return false;
+      if (candidate.id && timelineElement.domId === candidate.id) return true;
+      if (!timelineElement.selector) return false;
+      try {
+        return candidate.matches(timelineElement.selector);
+      } catch {
+        return false;
+      }
+    });
+    if (match) return match.key ?? match.id;
     ancestor = ancestor.parentElement;
   }
   return null;

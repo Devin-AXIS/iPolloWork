@@ -69,6 +69,10 @@ type TranslationKey =
   | "right.assetsTooltip"
   | "right.illustration"
   | "right.illustrationTooltip"
+  | "right.animation"
+  | "right.animationTooltip"
+  | "right.animationTemplates"
+  | "right.animationProperties"
   | "right.catalog"
   | "right.catalogTooltip"
   | "right.effects"
@@ -159,8 +163,12 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.assetsTooltip": "Videos, images, audio, and fonts",
     "right.illustration": "Illustrations",
     "right.illustrationTooltip": "Generate video assets with HTML illustrations",
-    "right.catalog": "Animation",
-    "right.catalogTooltip": "Browse reusable animation presets",
+    "right.animation": "Animation",
+    "right.animationTooltip": "Browse templates and edit selected-element animation",
+    "right.animationTemplates": "Animation templates",
+    "right.animationProperties": "Animation properties",
+    "right.catalog": "Effects",
+    "right.catalogTooltip": "Browse reusable animation effects",
     "right.effects": "Scenes",
     "right.effectsTooltip": "Browse transition and background scenes",
     "right.layers": "Layers",
@@ -249,8 +257,12 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.assetsTooltip": "视频、图片、音频和字体",
     "right.illustration": "插画",
     "right.illustrationTooltip": "使用 HTML 插画能力生成视频素材",
-    "right.catalog": "动画",
-    "right.catalogTooltip": "浏览可复用动画预设",
+    "right.animation": "动画",
+    "right.animationTooltip": "浏览模板并编辑所选元素动画",
+    "right.animationTemplates": "动画模板",
+    "right.animationProperties": "动画属性",
+    "right.catalog": "特效",
+    "right.catalogTooltip": "浏览可复用动画特效",
     "right.effects": "场景",
     "right.effectsTooltip": "浏览转场场景和背景场景",
     "right.layers": "图层",

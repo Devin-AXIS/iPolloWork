@@ -249,12 +249,17 @@ export function useDomEditAttributeCommits({
   );
 
   const handleDomAttributesCommit = useCallback(
-    async (selection: DomEditSelection, attrs: Record<string, string>) => {
+    async (
+      selection: DomEditSelection,
+      attrs: Record<string, string>,
+      label = "Edit timing",
+      behavior?: { skipRefresh?: boolean; refreshAfter?: boolean },
+    ) => {
       await commitDataAttributes(selection, attrs, {
-        label: "Edit timing",
+        label,
         coalescePrefix: "attrs",
-        skipRefresh: false,
-        refreshAfter: true,
+        skipRefresh: behavior?.skipRefresh ?? false,
+        refreshAfter: behavior?.refreshAfter ?? true,
       });
     },
     [commitDataAttributes],

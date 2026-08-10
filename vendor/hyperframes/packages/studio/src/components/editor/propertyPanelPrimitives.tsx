@@ -11,6 +11,7 @@ export function CommitField({
   disabled,
   liveCommit,
   align = "left",
+  onPreview,
   onCommit,
 }: {
   value: string;
@@ -21,6 +22,7 @@ export function CommitField({
    *  where a left-aligned value looks stranded at the edge of its own
    *  right-hand box instead of lining up with every other row's value. */
   align?: "left" | "right";
+  onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
 }) {
   const { tx } = useStudioI18n();
@@ -28,10 +30,12 @@ export function CommitField({
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const valueRef = useRef(value);
   const draftRef = useRef(draft);
+  const onPreviewRef = useRef(onPreview);
   const inputRef = useRef<HTMLInputElement>(null);
 
   valueRef.current = value;
   draftRef.current = draft;
+  onPreviewRef.current = onPreview;
 
   useEffect(() => {
     setDraft(value);
@@ -49,6 +53,7 @@ export function CommitField({
       e.preventDefault();
       e.stopPropagation();
       setDraft(nextDraft);
+      onPreviewRef.current?.(nextDraft);
       scheduleCommitRef.current(nextDraft);
     };
     el.addEventListener("wheel", handler, { passive: false });
@@ -84,6 +89,7 @@ export function CommitField({
       disabled={disabled}
       onChange={(e) => {
         setDraft(e.target.value);
+        onPreview?.(e.target.value);
         if (liveCommit) scheduleCommit(e.target.value);
       }}
       onBlur={() => commitDraft(draft)}
@@ -97,6 +103,7 @@ export function CommitField({
         if (!nextDraft) return;
         e.preventDefault();
         setDraft(nextDraft);
+        onPreview?.(nextDraft);
         scheduleCommit(nextDraft);
       }}
       title={parseNumericToken(value) ? tx("Scroll or use Arrow keys to adjust") : undefined}

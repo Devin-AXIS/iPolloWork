@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import {
   defaultMotionDuration,
-  listMotionPresets,
+  getMotionPreset,
   readMotionInstanceFromExtras,
   type MotionInstance,
   type MotionMutationInput,
@@ -70,32 +70,6 @@ function closestSpeed(preset: MotionPreset, duration: number): (typeof SPEEDS)[n
   }).id;
 }
 
-function PresetGrid({
-  presets,
-  onChoose,
-}: {
-  presets: MotionPreset[];
-  onChoose: (preset: MotionPreset) => void;
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      {presets.map((preset) => (
-        <button
-          key={preset.id}
-          type="button"
-          onClick={() => onChoose(preset)}
-          className="group min-h-[56px] rounded-[8px] border border-transparent bg-panel-input px-3 py-2 text-left transition-colors hover:border-[var(--hf-studio-accent)]"
-        >
-          <div className="text-[12px] font-medium text-panel-text-1">{preset.label}</div>
-          <div className="mt-1 truncate text-[10px] text-panel-text-3">
-            {preset.semantics.tones.slice(0, 2).join(" · ")}
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function ParameterControl({
   parameter,
   value,
@@ -143,19 +117,19 @@ function ParameterControl({
 
 function AppliedMotionEditor({
   resolved,
-  presets,
   targetKind,
+  variableBoundText,
   onMutate,
   onPreview,
 }: {
   resolved: ResolvedMotionInstance;
-  presets: MotionPreset[];
   targetKind: MotionTargetKind;
+  variableBoundText: boolean;
   onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void;
   onPreview: (start: number, duration: number) => void;
 }) {
   const { animation, instance } = resolved;
-  const preset = presets.find((candidate) => candidate.id === instance.presetId) ?? presets[0];
+  const preset = getMotionPreset(instance.presetId);
   if (!preset) return null;
   const start = displayStart(animation, instance);
   const apply = (updates: Partial<MotionMutationInput>) => {
@@ -169,25 +143,24 @@ function AppliedMotionEditor({
       ...updates,
     });
   };
-  const updateParameter = (id: string, value: string | number) => {
-    apply({ parameters: { ...instance.parameters, [id]: value } });
+  const updateParameter = (parameter: MotionParameter, value: string | number) => {
+    apply({
+      parameters: {
+        ...instance.parameters,
+        [parameter.id]: value,
+        ...(parameter.kind === "color" && "colorSource" in instance.parameters
+          ? { colorSource: "custom" }
+          : {}),
+      },
+    });
   };
   const selectedSpeed = closestSpeed(preset, instance.duration);
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-[minmax(0,1fr)_34px] gap-2">
-        <FlatSelectRow
-          ariaLabel="动画效果"
-          label=""
-          value={instance.presetId}
-          options={presets.map((candidate) => ({ value: candidate.id, label: candidate.label }))}
-          tier="explicitDefault"
-          valueOnly
-          onChange={(presetId) => {
-            const nextPreset = presets.find((candidate) => candidate.id === presetId);
-            if (nextPreset) apply({ presetId, parameters: nextPreset.defaults });
-          }}
-        />
+        <div className="flex h-[34px] min-w-0 items-center rounded-[6px] bg-panel-input px-3 text-[11px] font-medium text-panel-text-1">
+          <span className="truncate">{preset.label}</span>
+        </div>
         <button
           type="button"
           aria-label="删除动画"
@@ -232,16 +205,23 @@ function AppliedMotionEditor({
       </div>
 
       <div className="space-y-2">
-        {preset.parameterSchema
-          .filter((parameter) => parameter.id !== "ease")
-          .map((parameter) => (
+        {preset.parameterSchema.map((parameter) => {
+          const editableParameter =
+            variableBoundText && parameter.id === "unit"
+              ? {
+                  ...parameter,
+                  options: parameter.options?.filter((option) => option.value === "whole"),
+                }
+              : parameter;
+          return (
             <ParameterControl
               key={parameter.id}
-              parameter={parameter}
+              parameter={editableParameter}
               value={instance.parameters[parameter.id]}
-              onChange={(value) => updateParameter(parameter.id, value)}
+              onChange={(value) => updateParameter(parameter, value)}
             />
-          ))}
+          );
+        })}
       </div>
 
       <button
@@ -266,11 +246,22 @@ export function SemanticMotionPanel({
   onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void;
   onPreview: (start: number, duration: number) => void;
 }) {
-  const [phase, setPhase] = useState<MotionPhase>("enter");
   const targetKind = resolveMotionTargetKind(element);
   const instances = useMemo(() => resolveMotionInstances(animations), [animations]);
+  const [phase, setPhase] = useState<MotionPhase>(
+    () => instances.at(-1)?.instance.phase ?? "enter",
+  );
+  const instanceSignature = instances
+    .map(({ instance }) => `${instance.id}:${instance.presetId}`)
+    .join("|");
+  const previousInstanceSignatureRef = useRef(instanceSignature);
+  useEffect(() => {
+    if (previousInstanceSignatureRef.current === instanceSignature) return;
+    previousInstanceSignatureRef.current = instanceSignature;
+    const latest = instances.at(-1);
+    if (latest) setPhase(latest.instance.phase);
+  }, [instanceSignature, instances]);
   const current = instances.find((item) => item.instance.phase === phase);
-  const presets = listMotionPresets({ targetKind, phase });
 
   return (
     <div className="space-y-3" data-testid="semantic-motion-panel">
@@ -294,23 +285,15 @@ export function SemanticMotionPanel({
       {current ? (
         <AppliedMotionEditor
           resolved={current}
-          presets={presets}
           targetKind={targetKind}
+          variableBoundText={element.element.hasAttribute("data-var-text")}
           onMutate={onMutate}
           onPreview={onPreview}
         />
       ) : (
-        <PresetGrid
-          presets={presets}
-          onChoose={(preset) =>
-            onMutate(targetKind, {
-              operation: "upsert",
-              phase,
-              presetId: preset.id,
-              parameters: preset.defaults,
-            })
-          }
-        />
+        <div className="rounded-[8px] bg-panel-input px-3 py-4 text-center text-[11px] leading-5 text-panel-text-3">
+          当前阶段还没有动画。请到“动画模板”中选择并应用一个模板。
+        </div>
       )}
     </div>
   );

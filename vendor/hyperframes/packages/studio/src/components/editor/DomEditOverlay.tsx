@@ -8,6 +8,7 @@ import { useZOrderCrossedFlash, ZOrderCrossedFlash } from "./useZOrderCrossedFla
 import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
 import {
   type BlockedMoveState,
+  type DomEditPointerMoveSample,
   type DomEditGroupPathOffsetCommit,
   type FocusableDomEditOverlay,
   type GestureState,
@@ -153,11 +154,24 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const gestureRef = useRef<GestureState | null>(null);
   const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
+  const gestureMoveFrameRef = useRef<number | null>(null);
+  const pendingGestureMoveRef = useRef<DomEditPointerMoveSample | null>(null);
   const suppressNextBoxClickRef = useRef(false);
   const suppressNextBoxMouseDownRef = useRef(false);
   const suppressNextOverlayMouseDownRef = useRef(false);
   const snapGuidesRef = useRef<SnapGuidesState | null>(null);
   const rafPausedRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      if (gestureMoveFrameRef.current !== null) {
+        cancelAnimationFrame(gestureMoveFrameRef.current);
+      }
+      gestureMoveFrameRef.current = null;
+      pendingGestureMoveRef.current = null;
+    },
+    [],
+  );
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
@@ -269,6 +283,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     gestureRef,
     groupGestureRef,
     blockedMoveRef,
+    gestureMoveFrameRef,
+    pendingGestureMoveRef,
     rafPausedRef,
     suppressNextBoxClickRef,
     setOverlayRect,
