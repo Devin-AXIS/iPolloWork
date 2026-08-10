@@ -66,8 +66,8 @@ importers:
         specifier: ^0.35.0
         version: 0.35.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(yjs@13.6.30)
       '@opencode-ai/sdk':
-        specifier: ^1.17.11
-        version: 1.17.11
+        specifier: ^1.18.16
+        version: 1.18.16
       '@shikijs/transformers':
         specifier: ^4.0.2
         version: 4.0.2
@@ -211,8 +211,8 @@ importers:
         specifier: ^2.1.2
         version: 2.1.2
       '@opencode-ai/sdk':
-        specifier: ^1.17.11
-        version: 1.17.11
+        specifier: ^1.18.16
+        version: 1.18.16
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0
@@ -266,8 +266,8 @@ importers:
   apps/orchestrator:
     dependencies:
       '@opencode-ai/sdk':
-        specifier: ^1.18.3
-        version: 1.18.3
+        specifier: ^1.18.16
+        version: 1.18.16
       '@opentui/core':
         specifier: 0.1.77
         version: 0.1.77(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -315,8 +315,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/types
       '@opencode-ai/sdk':
-        specifier: ^1.18.3
-        version: 1.18.3
+        specifier: ^1.18.16
+        version: 1.18.16
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0
@@ -2052,11 +2052,8 @@ packages:
   '@open-draft/until@2.1.0':
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
 
-  '@opencode-ai/sdk@1.17.11':
-    resolution: {integrity: sha512-UdSwnNM4/cD5rHnI8O7VaHuiwYnsEOglpRPVeeYE2S5Nm1K34ijCyZGDvBecb0ShdBQgn49XvyQWJH6cREsIPw==}
-
-  '@opencode-ai/sdk@1.18.3':
-    resolution: {integrity: sha512-Mevo4e6kQwbvto9E+42KSIVMhp+JBu+SwQhC5AomAvrV6Xkio3U249T+xDILDCXhl5Z/Hi/DlAuVLzpGnuh0gg==}
+  '@opencode-ai/sdk@1.18.16':
+    resolution: {integrity: sha512-UvaHyL93spLm7MttoprWTOBSYQN3aYWd7/3Ie5WNnG2pRAPq/U/d51qt0smYBTrkjxqlQmg+AJoGw8MEH6lGUg==}
 
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
@@ -8287,11 +8284,7 @@ snapshots:
 
   '@open-draft/until@2.1.0': {}
 
-  '@opencode-ai/sdk@1.17.11':
-    dependencies:
-      cross-spawn: 7.0.6
-
-  '@opencode-ai/sdk@1.18.3':
+  '@opencode-ai/sdk@1.18.16':
     dependencies:
       cross-spawn: 7.0.6
 
