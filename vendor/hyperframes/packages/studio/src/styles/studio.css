@@ -1204,6 +1204,11 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   line-height: 1;
 }
 
+.timeline-clip.is-micro .hf-timeline-clip-content__header,
+.timeline-clip.is-micro .hf-timeline-clip-content__timecode {
+  display: none;
+}
+
 .hf-timeline-clip-content__body {
   position: absolute;
   inset: 18px 0 0;

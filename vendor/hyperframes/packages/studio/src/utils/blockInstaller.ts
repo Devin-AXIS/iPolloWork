@@ -56,6 +56,22 @@ function buildUniqueCompositionId(baseName: string, existingIds: Iterable<string
   return `${baseName}_${i}`;
 }
 
+const DOCUMENT_BACKGROUND_RULE_RE =
+  /(\b(?:html|body|:root)\b(?:\s*,\s*\b(?:html|body|:root)\b)*\s*\{)([^{}]*)(\})/gim;
+
+function makeComponentDocumentBackgroundTransparent(source: string): string {
+  return source.replace(
+    DOCUMENT_BACKGROUND_RULE_RE,
+    (_match, open: string, body: string, close: string) => {
+      const transparentBody = body.replace(
+        /\bbackground(?:-color)?\s*:\s*[^;]+;/gi,
+        "background: transparent;",
+      );
+      return `${open}${transparentBody}${close}`;
+    },
+  );
+}
+
 export async function addBlockToProject(
   opts: AddBlockOptions,
 ): Promise<{ block: RegistryItem; compositionPath: string } | null> {
@@ -100,10 +116,7 @@ export async function addBlockToProject(
 
     if (block.type === "hyperframes:component") {
       const compContent = await readProjectFile(compositionFile);
-      const transparentContent = compContent.replace(
-        /background:\s*(?:#(?:0a0a0a|000000|000|0a0805)|rgba?\([^)]*\))\s*;/g,
-        "background: transparent;",
-      );
+      const transparentContent = makeComponentDocumentBackgroundTransparent(compContent);
       if (transparentContent !== compContent) {
         await writeProjectFile(compositionFile, transparentContent);
       }

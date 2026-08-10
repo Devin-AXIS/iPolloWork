@@ -56,11 +56,12 @@ export const TimelineClip = memo(function TimelineClip({
 }: TimelineClipProps) {
   const leftPx = el.start * pps;
   const widthPx = Math.max(el.duration * pps, 4);
+  const isMicroClip = widthPx < 40;
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
   const displayLabel = el.label || el.id || el.tag;
   const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
-  const showLabel = !hasCustomContent && (widthPx >= 40 || isSelected);
-  const showDefaultText = !hasCustomContent && (widthPx >= 40 || isSelected);
+  const showLabel = !hasCustomContent && !isMicroClip;
+  const showDefaultText = !hasCustomContent && !isMicroClip;
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
   const timelineKind = resolveTimelineKind(el);
@@ -71,7 +72,7 @@ export const TimelineClip = memo(function TimelineClip({
     isSelected ? "is-selected" : "",
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
-    showDefaultText ? "" : "is-micro",
+    isMicroClip ? "is-micro" : "",
     isAudioTimelineElement(el) ? "is-audio" : "",
     `is-${timelineKind}`,
   ]
