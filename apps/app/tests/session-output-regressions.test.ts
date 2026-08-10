@@ -166,7 +166,7 @@ describe("session output issue regressions", () => {
     }
   });
 
-  test("template market exposes category counts and clean import separators", () => {
+  test("template market exposes category counts, import details, and installed enterprise actions", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
       "utf8",
@@ -188,7 +188,8 @@ describe("session output issue regressions", () => {
     expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
     expect(source).toContain("enterpriseTemplateInstallations");
     expect(source).toContain("resource.sourceTemplateId");
-    expect(source).toContain('t("plugin_platform.status.installed")');
+    expect(source).toContain("return <TemplateCard template={installedTemplate}");
+    expect(source).toContain("primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel}");
   });
 
   test("enterprise extensions reflect local package installation versions", () => {
