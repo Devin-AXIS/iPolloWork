@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
 import { roundToCenti } from "../../utils/rounding";
+import { useStudioI18n } from "../../i18n";
 
 // Figma-canonical ordering: linear, the three core eases, then the expressive
 // (back / snappy) family. Each maps to a GSAP ease so it round-trips cleanly.
@@ -49,6 +50,7 @@ const EasePresetGrid = function EasePresetGrid({
   currentEase: string;
   onSelect: (ease: string) => void;
 }) {
+  const { tx } = useStudioI18n();
   return (
     <div className="grid grid-cols-4 gap-1 mb-2">
       {PRESET_GRID_EASES.map((name) => {
@@ -63,13 +65,13 @@ const EasePresetGrid = function EasePresetGrid({
             className={`flex flex-col items-center gap-0.5 rounded-md p-1 transition-colors ${
               isActive ? "bg-panel-accent/10 ring-1 ring-panel-accent/30" : "hover:bg-neutral-800"
             }`}
-            title={EASE_LABELS[name] ?? name}
+            title={tx(EASE_LABELS[name] ?? name)}
           >
             <MiniCurveSvg curve={curve} active={isActive} />
             <span
               className={`text-[8px] leading-none ${isActive ? "text-panel-accent" : "text-neutral-500"}`}
             >
-              {(EASE_LABELS[name] ?? name).split(" ").slice(0, 2).join(" ")}
+              {tx(EASE_LABELS[name] ?? name).split(" ").slice(0, 2).join(" ")}
             </span>
           </button>
         );
@@ -120,6 +122,7 @@ export function EaseCurveSection({
   duration?: number;
   onCustomEaseCommit: (ease: string) => void;
 }) {
+  const { tx } = useStudioI18n();
   const isCustom = ease.startsWith("custom(");
   const curveFromPreset = EASE_CURVES[ease];
   const customPoints = isCustom ? parseCustomEaseFromString(ease) : null;
@@ -211,20 +214,20 @@ export function EaseCurveSection({
   const bottom = yToSvg(0);
   const left = xToSvg(0);
   const right = xToSvg(1);
-  const label = isCustom ? "Custom curve" : (EASE_LABELS[ease] ?? ease);
+  const label = tx(isCustom ? "Custom curve" : (EASE_LABELS[ease] ?? ease));
   const bezierText = `${x1} · ${y1} · ${x2} · ${y2}`;
 
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
       <EasePresetGrid currentEase={ease} onSelect={(name) => onCustomEaseCommit(name)} />
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-[10px] font-medium text-neutral-500">Speed curve</span>
+        <span className="text-[10px] font-medium text-neutral-500">{tx("Speed curve")}</span>
         <button
           type="button"
           onClick={play}
           className="rounded px-1.5 py-0.5 text-[10px] font-medium text-panel-accent transition-colors hover:bg-panel-accent/10"
         >
-          {progress !== null ? "Playing…" : "Preview"}
+          {tx(progress !== null ? "Playing…" : "Preview")}
         </button>
       </div>
       <div
@@ -349,14 +352,14 @@ export function EaseCurveSection({
       {/* Axis + value readout */}
       <div className="mt-1.5 flex items-center justify-between px-0.5 text-[9px] text-neutral-600">
         <span>{duration != null && duration > 0 ? "0s" : "start"}</span>
-        <span className="tracking-wide text-neutral-500">time →</span>
+        <span className="tracking-wide text-neutral-500">{tx("time →")}</span>
         <span>{duration != null && duration > 0 ? `${duration}s` : "end"}</span>
       </div>
       <div className="mt-1 flex items-center justify-between px-0.5">
         <span className="text-[10px] text-neutral-400">{label}</span>
         <span
           className="font-mono text-[9px] tracking-tight text-neutral-600"
-          title="cubic-bezier control points"
+          title={tx("cubic-bezier control points")}
         >
           {bezierText}
         </span>

@@ -22,12 +22,10 @@ import { MediaSection } from "./propertyPanelMediaSection";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
 import { domEditSelectionToFacts } from "./domEditingLayers";
 import { TextSection, StyleSections } from "./propertyPanelSections";
-import { GsapAnimationSection } from "./GsapAnimationSection";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import {
   STUDIO_FLAT_INSPECTOR_ENABLED,
-  STUDIO_GSAP_PANEL_ENABLED,
   STUDIO_KEYFRAMES_ENABLED,
 } from "./manualEditingAvailability";
 import { PropertyPanelFlat, resolveInspectorElementKind } from "./PropertyPanelFlat";
@@ -547,37 +545,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             </div>
           </Section>
         )}
-
-        {STUDIO_GSAP_PANEL_ENABLED &&
-          onUpdateGsapProperty &&
-          onUpdateGsapMeta &&
-          onDeleteGsapAnimation &&
-          onAddGsapProperty &&
-          onAddGsapAnimation && (
-            <GsapAnimationSection
-              animations={gsapAnimations}
-              ownerId={element.id}
-              ownerRange={
-                elDuration > 0 ? { start: elStart, duration: elDuration } : undefined
-              }
-              multipleTimelines={gsapMultipleTimelines}
-              unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-              onUpdateProperty={onUpdateGsapProperty}
-              onUpdateMeta={onUpdateGsapMeta}
-              onDeleteAnimation={onDeleteGsapAnimation}
-              onAddProperty={onAddGsapProperty}
-              onRemoveProperty={onRemoveGsapProperty ?? (() => {})}
-              onUpdateFromProperty={onUpdateGsapFromProperty}
-              onAddFromProperty={onAddGsapFromProperty}
-              onRemoveFromProperty={onRemoveGsapFromProperty}
-              onAddAnimation={onAddGsapAnimation}
-              onSetArcPath={onSetArcPath}
-              onUpdateArcSegment={onUpdateArcSegment}
-              onUnroll={onUnroll}
-              onUpdateKeyframeEase={onUpdateKeyframeEase}
-              onSetAllKeyframeEases={onSetAllKeyframeEases}
-            />
-          )}
 
         {showEditableSections && (
           <StyleSections

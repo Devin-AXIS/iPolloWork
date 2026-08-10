@@ -1,23 +1,14 @@
-import { useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
+import { useNLEContext } from "../nle/NLEContext";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
 import { CommitField } from "./propertyPanelPrimitives";
-import { Plus, Trash } from "../../icons/SystemIcons";
-import {
-  ADD_METHODS,
-  ADD_METHOD_LABELS,
-  METHOD_LABELS,
-  METHOD_TOOLTIPS,
-} from "./gsapAnimationConstants";
-import {
-  trackAnimationMetaUpdate,
-  type GsapAnimationEditCallbacks,
-} from "./gsapAnimationCallbacks";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
+import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
+import { SemanticMotionPanel } from "./SemanticMotionPanel";
 
 export function FlatTimingRow({
   element,
@@ -129,8 +120,7 @@ export function FlatMotionSection({
   unsupportedTimelinePattern,
   onSetAttribute,
   onSetAttributes,
-  onAddAnimation,
-  ...callbacks
+  onMutateMotion,
 }: {
   element: DomEditSelection;
   animations: GsapAnimation[];
@@ -140,11 +130,10 @@ export function FlatMotionSection({
   unsupportedTimelinePattern?: boolean;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
-  onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
-} & GsapAnimationEditCallbacks) {
-  const track = useTrackDesignInput();
+  onMutateMotion: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void;
+}) {
   const { tx } = useStudioI18n();
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const { previewRange } = useNLEContext();
   return (
     <div className="space-y-3">
       {showTiming && (
@@ -159,7 +148,9 @@ export function FlatMotionSection({
         <>
           {multipleTimelines && (
             <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
-              {tx("This file has multiple GSAP timelines. Animation editing is disabled to prevent data loss — consolidate into a single timeline to enable editing.")}
+              {tx(
+                "This file has multiple GSAP timelines. Animation editing is disabled to prevent data loss — consolidate into a single timeline to enable editing.",
+              )}
             </p>
           )}
           {unsupportedTimelinePattern && (
@@ -168,102 +159,12 @@ export function FlatMotionSection({
             </p>
           )}
           {!multipleTimelines && !unsupportedTimelinePattern && (
-            <div className="space-y-2">
-              {animations.map((animation, index) => {
-                const start =
-                  typeof animation.position === "number"
-                    ? animation.position
-                    : (animation.resolvedStart ?? 0);
-                const duration = animation.duration ?? 0;
-                const commitMetric = (kind: "position" | "duration", raw: string) => {
-                  const value = Number.parseFloat(raw.replace("s", ""));
-                  if (!Number.isFinite(value) || value < 0) return;
-                  trackAnimationMetaUpdate(track, { [kind]: value });
-                  callbacks.onUpdateMeta(animation.id, { [kind]: value });
-                };
-                return (
-                  <div key={animation.id} className="grid gap-2">
-                    <div className="grid grid-cols-[minmax(0,1fr)_36px] gap-3">
-                      <div className="flex h-[34px] items-center justify-between rounded-[6px] bg-panel-input pl-2 pr-4">
-                        <span className="text-[10px] text-[#858a94]">{tx("Animation")}</span>
-                        <span className="truncate pl-3 text-[13px] text-[#24262b] dark:text-panel-text-1">
-                          {METHOD_LABELS[animation.method] ??
-                            `Animation ${String(index + 1).padStart(2, "0")}`}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        aria-label={`Remove animation ${index + 1}`}
-                        onClick={() => {
-                          track("button", "Remove animation");
-                          callbacks.onDeleteAnimation(animation.id);
-                        }}
-                        className="flex h-[34px] items-center justify-center text-[#858a94] transition-colors hover:text-[#24262b] dark:hover:text-panel-text-1"
-                      >
-                        <Trash size={18} />
-                      </button>
-                    </div>
-                    <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2">
-                      {(["position", "duration"] as const).map((kind) => (
-                        <div
-                          key={kind}
-                          className="flex h-[34px] items-center justify-between rounded-[6px] bg-panel-input px-[10px]"
-                        >
-                          <span className="text-[10px] text-[#858a94]">
-                            {tx(kind === "position" ? "Start" : "Duration")}
-                          </span>
-                          <span className="w-[62px] text-right text-[13px] text-[#24262b] dark:text-panel-text-1">
-                            <CommitField
-                              value={`${(kind === "position" ? start : duration).toFixed(2)} s`}
-                              align="right"
-                              onCommit={(next) => commitMetric(kind, next)}
-                            />
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="relative">
-                {addMenuOpen ? (
-                  <div className="hf-flat-responsive-grid grid grid-cols-2 gap-1">
-                    {ADD_METHODS.map((method) => (
-                      <button
-                        key={method}
-                        type="button"
-                        title={METHOD_TOOLTIPS[method]}
-                        onClick={() => {
-                          track("button", `Add ${method} animation`);
-                          onAddAnimation(method);
-                          setAddMenuOpen(false);
-                        }}
-                        className="h-[34px] rounded-[6px] bg-panel-input px-2 text-[11px] text-panel-text-2 transition-colors hover:text-panel-text-0"
-                      >
-                        {tx(ADD_METHOD_LABELS[method] ?? method)}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => setAddMenuOpen(false)}
-                      className="col-span-2 h-7 text-[11px] text-panel-text-3 hover:text-panel-text-1"
-                    >
-                      {tx("Cancel")}
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setAddMenuOpen(true)}
-                    aria-label={tx("Add animation")}
-                    className="flex h-[34px] w-full items-center justify-center rounded-[6px] border-[0.5px] border-[#858a94] text-[#858a94] transition-colors hover:border-[#24262b] hover:text-[#24262b] dark:hover:border-panel-text-1 dark:hover:text-panel-text-1"
-                    title={tx("Add a new animation effect to this element")}
-                  >
-                    <Plus size={16} />
-                  </button>
-                )}
-              </div>
-            </div>
+            <SemanticMotionPanel
+              element={element}
+              animations={animations}
+              onMutate={onMutateMotion}
+              onPreview={previewRange}
+            />
           )}
         </>
       )}

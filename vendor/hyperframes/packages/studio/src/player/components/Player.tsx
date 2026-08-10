@@ -16,6 +16,10 @@ interface PlayerProps {
   style?: React.CSSProperties;
   suppressLoadingOverlay?: boolean;
   refreshToken?: number;
+  /** Keep this player's iframe hidden until Studio has restored its seek position. */
+  deferReveal?: boolean;
+  /** Fires after the deferred iframe is both runtime-ready and seek-restored. */
+  onReadyToReveal?: () => void;
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
@@ -117,6 +121,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       style,
       suppressLoadingOverlay,
       refreshToken,
+      deferReveal,
+      onReadyToReveal,
     },
     ref,
   ) => {
@@ -156,6 +162,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
       let canceled = false;
       let cleanup: (() => void) | undefined;
+      let revealRaf = 0;
 
       // Dynamic import registers the custom element in the browser only.
       import("@hyperframes/player").then(() => {
@@ -196,19 +203,41 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
         const iframe = player.iframeElement;
-        if (typeof ref === "function") {
-          ref(iframe);
-        } else if (ref) {
-          (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = iframe;
-        }
+        if (deferReveal) iframe.style.visibility = "hidden";
+        const assignForwardedRef = () => {
+          if (typeof ref === "function") {
+            ref(iframe);
+          } else if (ref) {
+            (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = iframe;
+          }
+        };
+        if (!deferReveal) assignForwardedRef();
 
         // Prevent the web component's built-in click-to-toggle behavior.
         // The studio manages playback exclusively via useTimelinePlayer.
         const preventToggle = (e: Event) => e.stopImmediatePropagation();
         player.addEventListener("click", preventToggle, { capture: true });
 
+        let deferredReadyHandled = false;
         const handleReady = () => {
           setCompositionLoading(false);
+          if (!deferReveal) return;
+          if (deferredReadyHandled) return;
+          deferredReadyHandled = true;
+          // Keep playback/selection bound to the visible player while the new
+          // document loads. Once its runtime is ready, hand over the ref and let
+          // Studio restore the seek before revealing it.
+          assignForwardedRef();
+          onLoad();
+          const notifyWhenRestored = () => {
+            if (canceled) return;
+            if (iframe.style.visibility !== "hidden") {
+              onReadyToReveal?.();
+              return;
+            }
+            revealRaf = requestAnimationFrame(notifyWhenRestored);
+          };
+          notifyWhenRestored();
         };
         const handleError = () => {
           setCompositionLoading(false);
@@ -228,7 +257,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             const onEnd = () => container.classList.remove("preview-revealing");
             container.addEventListener("animationend", onEnd, { once: true });
           }
-          onLoad();
+          if (!deferReveal) onLoad();
 
           // Keep polling media and motion readiness without covering the
           // preview. The player remains usable while assets finish loading.
@@ -256,6 +285,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
+          if (revealRaf) cancelAnimationFrame(revealRaf);
           container.removeChild(player);
           // Clear the forwarded ref only if it still points to THIS iframe.
           // During crossfade refreshes the retiring Player unmounts after the

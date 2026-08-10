@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { compileMotionInstance, createMotionInstance } from "@hyperframes/core/motion-presets";
 import {
   buildTimelineAnimationSegment,
   buildTimelineAnimationSegments,
@@ -85,6 +86,54 @@ describe("timeline animation segments", () => {
         OWNER,
       ),
     ).toBe("loop");
+  });
+
+  test("uses semantic phase and parent locator for generated text targets", () => {
+    const compiled = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.emphasis.pulse",
+        target: { selector: "#title", elementId: "title" },
+        targetKind: "text",
+        start: 4,
+        duration: 1,
+        parameters: { unit: "character" },
+      }),
+    );
+    const motion = animation({
+      targetSelector: compiled.targetSelector,
+      position: compiled.position,
+      duration: compiled.duration,
+      extras: compiled.extras,
+    });
+
+    expect(resolveTimelineAnimationPhase(motion, OWNER)).toBe("loop");
+    expect(isAnimationSharedForOwner(motion, "title")).toBe(false);
+    expect(isTimelineAnimationDirectlyMovable(motion, "title")).toBe(true);
+  });
+
+  test("allows selector-owned semantic animations to move on selector timeline rows", () => {
+    const compiled = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.enter.rise",
+        target: { selector: ".status", hfId: "hf-status" },
+        targetKind: "text",
+        start: 0,
+        duration: 0.65,
+      }),
+    );
+    const motion = animation({
+      targetSelector: compiled.targetSelector,
+      position: compiled.position,
+      duration: compiled.duration,
+      extras: compiled.extras,
+    });
+
+    expect(
+      isTimelineAnimationDirectlyMovable(motion, ".status", {
+        selector: ".status",
+        hfId: "hf-status",
+      }),
+    ).toBe(true);
   });
 
   test("uses repeat and repeatDelay for the visible span", () => {

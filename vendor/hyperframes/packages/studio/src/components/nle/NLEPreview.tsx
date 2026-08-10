@@ -46,6 +46,13 @@ interface PreviewCompositionSize {
   height: number;
 }
 
+interface PreviewPlayerSlot {
+  key: string;
+  projectId: string;
+  directUrl?: string;
+  refreshToken?: number;
+}
+
 function isPreviewAtFit(state: PreviewZoomState): boolean {
   return (
     Math.abs(state.zoomPercent - 100) < 0.5 &&
@@ -131,6 +138,20 @@ export const NLEPreview = memo(function NLEPreview({
   onCompositionSizeChange,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
+  const requestedSlot: PreviewPlayerSlot = {
+    key: `${activeKey}:${refreshToken ?? 0}`,
+    projectId,
+    directUrl,
+    refreshToken,
+  };
+  const [visibleSlot, setVisibleSlot] = useState<PreviewPlayerSlot>(requestedSlot);
+  const [loadingSlot, setLoadingSlot] = useState<PreviewPlayerSlot | null>(null);
+  const loadingSlotKeyRef = useRef<string | null>(null);
+  loadingSlotKeyRef.current = loadingSlot?.key ?? null;
+  useEffect(() => {
+    if (requestedSlot.key === visibleSlot.key || requestedSlot.key === loadingSlot?.key) return;
+    setLoadingSlot(requestedSlot);
+  }, [requestedSlot.key, projectId, directUrl, refreshToken, visibleSlot.key, loadingSlot?.key]);
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -490,26 +511,49 @@ export const NLEPreview = memo(function NLEPreview({
                 style={{ position: "absolute", inset: 0, zIndex: 0 }}
               />
             )}
-            <Player
-              key={activeKey}
-              ref={setPreviewIframeRef}
-              projectId={directUrl ? undefined : projectId}
-              directUrl={directUrl}
-              refreshToken={refreshToken}
-              onLoad={() => {
-                updateCompositionSizeFromPreview();
-                onIframeLoad();
-                applyInitialZoom();
-              }}
-              onCompositionLoadingChange={onCompositionLoadingChange}
-              portrait={portrait}
-              suppressLoadingOverlay={suppressLoadingOverlay}
-              style={
-                directUrl?.includes("/components/")
-                  ? { position: "absolute", inset: 0, zIndex: 1 }
-                  : undefined
-              }
-            />
+            {[visibleSlot, ...(loadingSlot ? [loadingSlot] : [])].map((slot) => {
+              const incoming = slot.key === loadingSlot?.key;
+              return (
+                <Player
+                  key={slot.key}
+                  ref={setPreviewIframeRef}
+                  projectId={slot.directUrl ? undefined : slot.projectId}
+                  directUrl={slot.directUrl}
+                  refreshToken={slot.refreshToken}
+                  deferReveal={incoming}
+                  onReadyToReveal={
+                    incoming
+                      ? () => {
+                          if (loadingSlotKeyRef.current !== slot.key) return;
+                          setVisibleSlot(slot);
+                          setLoadingSlot(null);
+                        }
+                      : undefined
+                  }
+                  onLoad={() => {
+                    updateCompositionSizeFromPreview();
+                    onIframeLoad();
+                    applyInitialZoom();
+                  }}
+                  onCompositionLoadingChange={incoming ? undefined : onCompositionLoadingChange}
+                  portrait={portrait}
+                  suppressLoadingOverlay={suppressLoadingOverlay}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: slot.directUrl?.includes("/components/")
+                      ? incoming
+                        ? 2
+                        : 1
+                      : incoming
+                        ? 1
+                        : 0,
+                    opacity: incoming ? 0 : 1,
+                    pointerEvents: incoming ? "none" : undefined,
+                  }}
+                />
+              );
+            })}
           </div>
         </div>
         <div

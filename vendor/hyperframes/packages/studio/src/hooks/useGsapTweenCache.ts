@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { isStudioHoldSet, type GsapAnimation, type GsapKeyframesData, type ParsedGsap } from "@hyperframes/core/gsap-parser";
+import {
+  isStudioHoldSet,
+  type GsapAnimation,
+  type GsapKeyframesData,
+  type ParsedGsap,
+} from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
 import {
@@ -9,10 +14,12 @@ import {
 import { toAbsoluteTime } from "./gsapShared";
 import { deduplicateKeyframes, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
 import { buildTimelineAnimationSegments } from "../utils/timelineAnimationSegments";
+import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
 import {
   appendTimelineAnimationSegments,
   attachTimelineAnimationSegments,
   buildTimelineCacheUpdates,
+  resolveMotionTimelineTargetKeys,
   type TimelineSegmentsByElement,
 } from "./gsapTimelineSegmentCache";
 
@@ -85,8 +92,17 @@ export function getAnimationsForElement(
   if (target.id) matchers.add(`#${target.id}`);
   if (target.selector) matchers.add(target.selector);
   if (matchers.size === 0 && !element) return [];
-  return animations.filter((a) =>
-    a.targetSelector.split(",").some((part) => {
+  return animations.filter((a) => {
+    const motion = readMotionInstanceFromExtras(a.extras);
+    if (
+      motion &&
+      ((target.id && motion.target.elementId === target.id) ||
+        (target.selector && motion.target.selector === target.selector) ||
+        (target.id && motion.target.selector === `#${target.id}`))
+    ) {
+      return true;
+    }
+    return a.targetSelector.split(",").some((part) => {
       const trimmed = part.trim();
       if (!trimmed) return false;
       if (matchers.has(trimmed)) return true;
@@ -100,8 +116,8 @@ export function getAnimationsForElement(
         }
       }
       return false;
-    }),
-  );
+    });
+  });
 }
 
 export async function fetchParsedAnimations(
@@ -147,7 +163,10 @@ export function resolveClipTimingBasis(
   domClipChildren: ReadonlyArray<{ id: string; hostId: string }>,
 ): { elStart: number; elDuration: number } {
   const direct = elements.find(
-    (el) => el.domId === elementId || (el.key ?? el.id) === `${sourceFile}#${elementId}`,
+    (el) =>
+      el.domId === elementId ||
+      (el.key ?? el.id) === elementId ||
+      (el.key ?? el.id) === `${sourceFile}#${elementId}`,
   );
   if (direct) return { elStart: direct.start, elDuration: direct.duration };
   const hostId = domClipChildren.find((c) => c.id === elementId)?.hostId;
@@ -471,7 +490,16 @@ export function usePopulateKeyframeCacheForFile(
       const mergedByElement = new Map<string, KeyframeCacheEntry>();
       const animationSegmentsByElement: TimelineSegmentsByElement = new Map();
       for (const anim of parsed.animations) {
-        const targetIds = resolveSelectorElementIds(anim.targetSelector, doc);
+        const motion = readMotionInstanceFromExtras(anim.extras);
+        const motionTargetKeys = motion
+          ? resolveMotionTimelineTargetKeys(motion.target, sf, [...elements, ...domClipChildren])
+          : [];
+        const targetIds =
+          motionTargetKeys.length > 0
+            ? motionTargetKeys
+            : motion?.target.elementId
+              ? [motion.target.elementId]
+              : resolveSelectorElementIds(anim.targetSelector, doc);
         appendTimelineAnimationSegments(animationSegmentsByElement, anim, targetIds, (id) => {
           const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
           return { start: elStart, duration: elDuration };
